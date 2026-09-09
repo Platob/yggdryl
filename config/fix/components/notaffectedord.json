@@ -1,0 +1,52 @@
+{
+  "name": "notaffectedord",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "notafforigclordid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notafforigclordid"
+        }
+      },
+      {
+        "name": "notaffectedorderid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notaffectedorderid"
+        }
+      },
+      {
+        "name": "notaffsecondaryorderid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notaffsecondaryorderid"
+        }
+      },
+      {
+        "name": "notaffectedreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notaffectedreason"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "NotAffectedOrd"
+  }
+}

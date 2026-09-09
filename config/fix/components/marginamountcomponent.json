@@ -1,0 +1,92 @@
+{
+  "name": "marginamountcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "marginamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marginamt"
+        }
+      },
+      {
+        "name": "marginamttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marginamttype"
+        }
+      },
+      {
+        "name": "marginamtccy",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marginamtccy"
+        }
+      },
+      {
+        "name": "marginamtfxrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marginamtfxrate"
+        }
+      },
+      {
+        "name": "marginamtfxratecalc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marginamtfxratecalc"
+        }
+      },
+      {
+        "name": "marginamountmarketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marginamountmarketsegmentid"
+        }
+      },
+      {
+        "name": "marginamountmarketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marginamountmarketid"
+        }
+      },
+      {
+        "name": "margindirection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "margindirection"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MarginAmount"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "name": "tradepositionqtycomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "postype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "postype"
+        }
+      },
+      {
+        "name": "longqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "longqty"
+        }
+      },
+      {
+        "name": "shortqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "shortqty"
+        }
+      },
+      {
+        "name": "coveredqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "coveredqty"
+        }
+      },
+      {
+        "name": "posqtystatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posqtystatus"
+        }
+      },
+      {
+        "name": "quantitydate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quantitydate"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TradePositionQty"
+  }
+}

@@ -140,8 +140,6 @@ pub enum DataTypeId {
     Version,
     /// FIX's side of a trade, four ASCII bytes.
     Side,
-    /// FIX's message type, eight ASCII bytes.
-    MsgType,
     /// What state one thing is in.
     State,
     /// How long an order stands.
@@ -160,7 +158,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 62] = [
+    pub const ALL: [Self; 61] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -217,7 +215,6 @@ impl DataTypeId {
         Self::Geography,
         Self::Version,
         Self::Side,
-        Self::MsgType,
         Self::State,
         Self::TimeInForce,
         Self::MsgDirection,
@@ -280,7 +277,6 @@ impl DataTypeId {
             Self::Cfi => "cfi",
             Self::Isin => "isin",
             Self::Side => "side",
-            Self::MsgType => "msgtype",
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
             Self::MsgDirection => "msgdirection",
@@ -370,7 +366,6 @@ impl DataTypeId {
             | Self::Cfi
             | Self::Isin
             | Self::Side
-            | Self::MsgType
             | Self::State
             | Self::TimeInForce
             | Self::MsgDirection => DataTypeKind::Ascii,
@@ -516,7 +511,7 @@ impl DataTypeId {
             Self::Cfi => Some(6),
             Self::Isin => Some(12),
             Self::Side | Self::MsgDirection => Some(4),
-            Self::MsgType | Self::TimeInForce => Some(8),
+            Self::TimeInForce => Some(8),
             Self::State => Some(10),
             Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
             Self::Decimal256 => Some(32),
@@ -603,7 +598,7 @@ mod tests {
 
     #[test]
     fn the_ascii_family_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 62);
+        assert_eq!(DataTypeId::ALL.len(), 61);
         for id in [
             DataTypeId::Ascii,
             DataTypeId::FixedAscii,
@@ -694,8 +689,8 @@ mod tests {
         assert_eq!(DataTypeId::Geometry.as_u8(), 52);
         assert_eq!(DataTypeId::Geography.as_u8(), 53);
         assert_eq!(DataTypeId::Version.as_u8(), 54);
-        assert_eq!(DataTypeId::Url.as_u8(), 60);
-        assert_eq!(DataTypeId::Isin.as_u8(), 61);
+        assert_eq!(DataTypeId::Url.as_u8(), 59);
+        assert_eq!(DataTypeId::Isin.as_u8(), 60);
         assert_eq!(DataTypeId::Isin.fixed_byte_width(), Some(12));
     }
 

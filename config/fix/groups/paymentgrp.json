@@ -1,0 +1,23 @@
+{
+  "name": "paymentgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "payment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "payment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPayments(40212) > 0.",
+    "display": "PaymentGrp",
+    "fix:component": "payment",
+    "fix:counter": "40212"
+  }
+}

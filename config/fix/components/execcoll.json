@@ -1,0 +1,22 @@
+{
+  "name": "execcoll",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "execid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "execid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ExecColl"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "streamcommoditydatasourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamcommoditydatasource",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "streamcommoditydatasource"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoStreamCommodityDataSources(41280) > 0.",
+    "display": "StreamCommodityDataSourceGrp",
+    "fix:component": "streamcommoditydatasource",
+    "fix:counter": "41280"
+  }
+}

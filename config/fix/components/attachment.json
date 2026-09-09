@@ -1,0 +1,112 @@
+{
+  "name": "attachment",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "attachmentname",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "attachmentname"
+        }
+      },
+      {
+        "name": "attachmentmediatype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "attachmentmediatype"
+        }
+      },
+      {
+        "name": "attachmentclassification",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "attachmentclassification"
+        }
+      },
+      {
+        "name": "attachmentexternalurl",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "attachmentexternalurl"
+        }
+      },
+      {
+        "name": "attachmentencodingtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "attachmentencodingtype"
+        }
+      },
+      {
+        "name": "unencodedattachmentlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "unencodedattachmentlen"
+        }
+      },
+      {
+        "name": "encodedattachmentlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedattachmentlen"
+        }
+      },
+      {
+        "name": "encodedattachment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedattachment"
+        }
+      },
+      {
+        "name": "noattachmentkeywords",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noattachmentkeywords"
+        }
+      },
+      {
+        "name": "attachmentkeywordgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "attachmentkeywordgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Attachment"
+  }
+}

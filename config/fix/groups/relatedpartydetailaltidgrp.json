@@ -1,0 +1,23 @@
+{
+  "name": "relatedpartydetailaltidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedpartydetailaltidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "relatedpartydetailaltidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoRelatedPartyDetailAltID > 0.",
+    "display": "RelatedPartyDetailAltIDGrp",
+    "fix:component": "relatedpartydetailaltidcomponent",
+    "fix:counter": "1569"
+  }
+}

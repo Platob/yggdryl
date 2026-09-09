@@ -1,0 +1,299 @@
+[
+  {
+    "name": "paymentfloatingrateindexcurveunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the floating rate index.",
+      "display": "PaymentFloatingRateIndexCurveUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:tag": "43100"
+    }
+  },
+  {
+    "name": "paymentfloatingratespread",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Spread from floating rate index.",
+      "display": "PaymentFloatingRateSpread",
+      "fix:tag": "43101"
+    }
+  },
+  {
+    "name": "paymentfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the payment frequency.",
+      "display": "PaymentFrequencyPeriod",
+      "fix:tag": "43102"
+    }
+  },
+  {
+    "name": "paymentfrequencyunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the payment frequency.",
+      "display": "PaymentFrequencyUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:tag": "43103"
+    }
+  },
+  {
+    "name": "paymentrateresetfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the floating rate reset frequency.",
+      "display": "PaymentRateResetFrequencyPeriod",
+      "fix:tag": "43104"
+    }
+  },
+  {
+    "name": "paymentrateresetfrequencyunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the floating rate reset frequency.",
+      "display": "PaymentRateResetFrequencyUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:tag": "43105"
+    }
+  },
+  {
+    "name": "paymentstreamotherdaycount",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The industry name of the day count convention not listed in PaymentStreamDayCount(40742).",
+      "display": "PaymentStreamOtherDayCount",
+      "fix:tag": "43106"
+    }
+  },
+  {
+    "name": "underlyingpaymentstreamotherdaycount",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The industry name of the day count convention not listed in UnderlyingPaymentStreamDayCount(40572).",
+      "display": "UnderlyingPaymentStreamOtherDayCount",
+      "fix:tag": "43107"
+    }
+  },
+  {
+    "name": "legpaymentstreamotherdaycount",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The industry name of the day count convention not listed in LegPaymentStreamDayCount(40283).",
+      "display": "LegPaymentStreamOtherDayCount",
+      "fix:tag": "43108"
+    }
+  },
+  {
+    "name": "paymentstreamformulalength",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) PaymentStreamFormula(42648) field.",
+      "display": "PaymentStreamFormulaLength",
+      "fix:tag": "43109"
+    }
+  },
+  {
+    "name": "legpaymentstreamformulalength",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) LegPaymentStreamFormula(42486) field.",
+      "display": "LegPaymentStreamFormulaLength",
+      "fix:tag": "43110"
+    }
+  },
+  {
+    "name": "underlyingpaymentstreamformulalength",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) UnderlyingPaymentStreamFormula(42982) field.",
+      "display": "UnderlyingPaymentStreamFormulaLength",
+      "fix:tag": "43111"
+    }
+  },
+  {
+    "name": "paymentstreamrateindex2",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The payment stream's second floating rate index.",
+      "display": "PaymentStreamRateIndex2",
+      "fix:tag": "43112"
+    }
+  },
+  {
+    "name": "paymentstreamrateindex2source",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The source of the payment stream's second floating rate index.",
+      "display": "PaymentStreamRateIndex2Source",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:tag": "43113"
+    }
+  },
+  {
+    "name": "paymentstreamrateindex2id",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Security identifier of the second floating rate index.",
+      "display": "PaymentStreamRateIndex2ID",
+      "fix:tag": "43114"
+    }
+  },
+  {
+    "name": "paymentstreamrateindex2idsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Source for the second floating rate index identified in PaymentStreamRateIndex2ID(43114).",
+      "display": "PaymentStreamRateIndex2IDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:tag": "43115"
+    }
+  },
+  {
+    "name": "legpaymentstreamrateindex2",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The payment stream's second floating rate index.",
+      "display": "LegPaymentStreamRateIndex2",
+      "fix:tag": "43116"
+    }
+  },
+  {
+    "name": "legpaymentstreamrateindex2source",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The source of the payment stream's second floating rate index.",
+      "display": "LegPaymentStreamRateIndex2Source",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:tag": "43117"
+    }
+  },
+  {
+    "name": "legpaymentstreamrateindex2id",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Security identifier of the second floating rate index.",
+      "display": "LegPaymentStreamRateIndex2ID",
+      "fix:tag": "43118"
+    }
+  },
+  {
+    "name": "legpaymentstreamrateindex2idsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Source for the second floating rate index identified in LegPaymentStreamRateIndex2ID(43118).",
+      "display": "LegPaymentStreamRateIndex2IDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:tag": "43119"
+    }
+  },
+  {
+    "name": "underlyingpaymentstreamrateindex2",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The payment stream's second floating rate index.",
+      "display": "UnderlyingPaymentStreamRateIndex2",
+      "fix:tag": "43120"
+    }
+  },
+  {
+    "name": "underlyingpaymentstreamrateindex2source",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The source of the payment stream's second floating rate index.",
+      "display": "UnderlyingPaymentStreamRateIndex2Source",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:tag": "43121"
+    }
+  },
+  {
+    "name": "underlyingpaymentstreamrateindex2id",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Security identifier of the second floating rate index.",
+      "display": "UnderlyingPaymentStreamRateIndex2ID",
+      "fix:tag": "43122"
+    }
+  },
+  {
+    "name": "underlyingpaymentstreamrateindex2idsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Source for the second floating rate index identified in UnderlyingPaymentStreamRateIndex2ID(43122).",
+      "display": "UnderlyingPaymentStreamRateIndex2IDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:tag": "43123"
+    }
+  }
+]

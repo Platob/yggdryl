@@ -1,0 +1,22 @@
+{
+  "name": "underlyingdeliverystreamcommoditysourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingdeliverystreamcommoditysource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliverystreamcommoditysource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingDeliveryStreamCommoditySource"
+  }
+}

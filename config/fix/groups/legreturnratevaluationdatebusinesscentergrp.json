@@ -1,0 +1,23 @@
+{
+  "name": "legreturnratevaluationdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legreturnratevaluationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legreturnratevaluationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegReturnRateValuationDateBusinessCenters(42569) > 0.",
+    "display": "LegReturnRateValuationDateBusinessCenterGrp",
+    "fix:component": "legreturnratevaluationdatebusinesscentercomponent",
+    "fix:counter": "42569"
+  }
+}

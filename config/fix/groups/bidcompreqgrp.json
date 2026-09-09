@@ -1,0 +1,23 @@
+{
+  "name": "bidcompreqgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "bidcompreq",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "bidcompreq"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Used if BidType=\"Disclosed\"",
+    "display": "BidCompReqGrp",
+    "fix:component": "bidcompreq",
+    "fix:counter": "420"
+  }
+}

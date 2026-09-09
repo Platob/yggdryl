@@ -1,0 +1,112 @@
+{
+  "name": "teststep",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "teststepid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststepid"
+        }
+      },
+      {
+        "name": "teststepdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststepdesc"
+        }
+      },
+      {
+        "name": "teststepstarttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststepstarttime"
+        }
+      },
+      {
+        "name": "teststepstartoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststepstartoffsetperiod"
+        }
+      },
+      {
+        "name": "teststepstartoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststepstartoffsetunit"
+        }
+      },
+      {
+        "name": "teststependtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststependtime"
+        }
+      },
+      {
+        "name": "teststependoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststependoffsetperiod"
+        }
+      },
+      {
+        "name": "teststependoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststependoffsetunit"
+        }
+      },
+      {
+        "name": "noteststepparameters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noteststepparameters"
+        }
+      },
+      {
+        "name": "teststepparametergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "teststepparametergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TestStep"
+  }
+}

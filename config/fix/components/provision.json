@@ -1,0 +1,362 @@
+{
+  "name": "provision",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "provisiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisiontype"
+        }
+      },
+      {
+        "name": "provisiondateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisiondateunadjusted"
+        }
+      },
+      {
+        "name": "provisiondatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisiondatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "noprovisiondatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprovisiondatebusinesscenters"
+        }
+      },
+      {
+        "name": "provisiondatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "provisiondatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "provisiondateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisiondateadjusted"
+        }
+      },
+      {
+        "name": "provisiondatetenorperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisiondatetenorperiod"
+        }
+      },
+      {
+        "name": "provisiondatetenorunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisiondatetenorunit"
+        }
+      },
+      {
+        "name": "provisionbreakfeeelection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionbreakfeeelection"
+        }
+      },
+      {
+        "name": "provisionbreakfeerate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionbreakfeerate"
+        }
+      },
+      {
+        "name": "provisioncalculationagent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncalculationagent"
+        }
+      },
+      {
+        "name": "provisionoptionsinglepartybuyerside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionsinglepartybuyerside"
+        }
+      },
+      {
+        "name": "provisionoptionsinglepartysellerside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionsinglepartysellerside"
+        }
+      },
+      {
+        "name": "provisioncashsettlvaluedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "provisioncashsettlvaluedates"
+        }
+      },
+      {
+        "name": "provisionoptionexercisedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "provisionoptionexercisedates"
+        }
+      },
+      {
+        "name": "provisionoptionexpirationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "provisionoptionexpirationdate"
+        }
+      },
+      {
+        "name": "provisionoptionrelevantunderlyingdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "provisionoptionrelevantunderlyingdate"
+        }
+      },
+      {
+        "name": "provisionoptionexercisestyle",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexercisestyle"
+        }
+      },
+      {
+        "name": "provisionoptionexercisemultiplenotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexercisemultiplenotional"
+        }
+      },
+      {
+        "name": "provisionoptionexerciseminimumnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexerciseminimumnotional"
+        }
+      },
+      {
+        "name": "provisionoptionexercisemaximumnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexercisemaximumnotional"
+        }
+      },
+      {
+        "name": "provisionoptionminimumnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionminimumnumber"
+        }
+      },
+      {
+        "name": "provisionoptionmaximumnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionmaximumnumber"
+        }
+      },
+      {
+        "name": "provisionoptionexerciseconfirmation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexerciseconfirmation"
+        }
+      },
+      {
+        "name": "provisioncashsettlpaymentdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "provisioncashsettlpaymentdates"
+        }
+      },
+      {
+        "name": "provisioncashsettlmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlmethod"
+        }
+      },
+      {
+        "name": "provisioncashsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlcurrency"
+        }
+      },
+      {
+        "name": "provisioncashsettlcurrency2",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlcurrency2"
+        }
+      },
+      {
+        "name": "provisioncashsettlquotetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlquotetype"
+        }
+      },
+      {
+        "name": "provisioncashsettlquotesourcecomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "provisioncashsettlquotesourcecomponent"
+        }
+      },
+      {
+        "name": "provisiontext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisiontext"
+        }
+      },
+      {
+        "name": "encodedprovisiontextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedprovisiontextlen"
+        }
+      },
+      {
+        "name": "encodedprovisiontext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedprovisiontext"
+        }
+      },
+      {
+        "name": "noprovisionpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprovisionpartyids"
+        }
+      },
+      {
+        "name": "provisionparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "provisionparties"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Provision"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "name": "pricemovement",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "nopricemovementvalues",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopricemovementvalues"
+        }
+      },
+      {
+        "name": "pricemovementvaluegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "pricemovementvaluegrp"
+        }
+      },
+      {
+        "name": "noclearingaccounttypes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noclearingaccounttypes"
+        }
+      },
+      {
+        "name": "clearingaccounttypegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "clearingaccounttypegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PriceMovement"
+  }
+}

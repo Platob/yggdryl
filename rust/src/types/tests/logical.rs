@@ -2,6 +2,22 @@ use super::super::DataType;
 use super::{TimeUnit, UnionMode};
 use crate::Timezone;
 
+#[test]
+fn message_codes_are_text_owned_by_the_fix_registry() {
+    for spelling in ["msgtype", "MsgType", "MSGTYPE"] {
+        assert!(DataType::from_str(spelling).is_err(), "{spelling}");
+        assert!(DataType::from_logical_name(spelling).is_err(), "{spelling}");
+        assert!(crate::DataTypeId::from_str(spelling).is_err(), "{spelling}");
+        assert!(
+            crate::AsciiEnum::from_logical_name(spelling).is_err(),
+            "{spelling}"
+        );
+    }
+    assert!(DataType::from_json(r#"{"type":"msgtype"}"#).is_err());
+    let value = "A venue message type longer than eight bytes";
+    assert_eq!(DataType::Utf8.scalar(value).unwrap().as_str(), Some(value));
+}
+
 /// The whole registry, as the module documents it. A change to a mapping
 /// changes what a stored schema string means, so it changes here first.
 fn registered() -> Vec<(&'static str, DataType)> {
@@ -13,7 +29,6 @@ fn registered() -> Vec<(&'static str, DataType)> {
         ("cfi", DataType::Cfi),
         ("isin", DataType::Isin),
         ("side", DataType::Side),
-        ("msgtype", DataType::MsgType),
         ("msgdirection", DataType::MsgDirection),
         ("state", DataType::State),
         ("timeinforce", DataType::TimeInForce),

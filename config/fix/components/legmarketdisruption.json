@@ -1,0 +1,123 @@
+{
+  "name": "legmarketdisruption",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legmarketdisruptionprovision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionprovision"
+        }
+      },
+      {
+        "name": "nolegmarketdisruptionevents",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegmarketdisruptionevents"
+        }
+      },
+      {
+        "name": "legmarketdisruptioneventgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legmarketdisruptioneventgrp"
+        }
+      },
+      {
+        "name": "legmarketdisruptionfallbackprovision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionfallbackprovision"
+        }
+      },
+      {
+        "name": "nolegmarketdisruptionfallbacks",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegmarketdisruptionfallbacks"
+        }
+      },
+      {
+        "name": "legmarketdisruptionfallbackgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legmarketdisruptionfallbackgrp"
+        }
+      },
+      {
+        "name": "nolegmarketdisruptionfallbackreferenceprices",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegmarketdisruptionfallbackreferenceprices"
+        }
+      },
+      {
+        "name": "legmarketdisruptionfallbackreferencepricegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legmarketdisruptionfallbackreferencepricegrp"
+        }
+      },
+      {
+        "name": "legmarketdisruptionmaximumdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionmaximumdays"
+        }
+      },
+      {
+        "name": "legmarketdisruptionmaterialitypercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionmaterialitypercentage"
+        }
+      },
+      {
+        "name": "legmarketdisruptionminimumfuturescontracts",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionminimumfuturescontracts"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "If specified, the disruption event should be specified in LegMarketDisruptionEventGrp.",
+    "display": "LegMarketDisruption"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "legdividendaccrualpaymentdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdividendaccrualpaymentdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendaccrualpaymentdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegDividendAccrualPaymentDateBusinessCenter"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "returnratevaluationdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "returnratevaluationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "returnratevaluationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoReturnRateValuationDateBusinessCenters(42770) > 0.",
+    "display": "ReturnRateValuationDateBusinessCenterGrp",
+    "fix:component": "returnratevaluationdatebusinesscentercomponent",
+    "fix:counter": "42770"
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "name": "legoptionexercisemakewholeprovision",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legmakewholedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmakewholedate"
+        }
+      },
+      {
+        "name": "legmakewholeamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmakewholeamount"
+        }
+      },
+      {
+        "name": "legmakewholebenchmarkcurvename",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmakewholebenchmarkcurvename"
+        }
+      },
+      {
+        "name": "legmakewholebenchmarkcurvepoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmakewholebenchmarkcurvepoint"
+        }
+      },
+      {
+        "name": "legmakewholerecallspread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmakewholerecallspread"
+        }
+      },
+      {
+        "name": "legmakewholebenchmarkquote",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmakewholebenchmarkquote"
+        }
+      },
+      {
+        "name": "legmakewholeinterpolationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmakewholeinterpolationmethod"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "LegOptionExerciseMakeWholeProvision is a subcomponent of the LegOptionExercise component used to specify the set of rules of maintaining balance when an option is exercised.",
+    "display": "LegOptionExerciseMakeWholeProvision"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "quotesizerule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "minbidsize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "minbidsize"
+        }
+      },
+      {
+        "name": "minoffersize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "minoffersize"
+        }
+      },
+      {
+        "name": "fastmarketindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fastmarketindicator"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "QuoteSizeRule"
+  }
+}

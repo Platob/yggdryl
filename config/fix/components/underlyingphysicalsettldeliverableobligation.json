@@ -1,0 +1,32 @@
+{
+  "name": "underlyingphysicalsettldeliverableobligation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingphysicalsettldeliverableobligationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingphysicalsettldeliverableobligationtype"
+        }
+      },
+      {
+        "name": "underlyingphysicalsettldeliverableobligationvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingphysicalsettldeliverableobligationvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPhysicalSettlDeliverableObligation"
+  }
+}

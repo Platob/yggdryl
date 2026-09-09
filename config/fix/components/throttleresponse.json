@@ -1,0 +1,42 @@
+{
+  "name": "throttleresponse",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "throttleinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttleinst"
+        }
+      },
+      {
+        "name": "throttlestatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttlestatus"
+        }
+      },
+      {
+        "name": "throttlecountindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttlecountindicator"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ThrottleResponse"
+  }
+}

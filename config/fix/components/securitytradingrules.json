@@ -1,0 +1,63 @@
+{
+  "name": "securitytradingrules",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "basetradingrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "basetradingrules"
+        }
+      },
+      {
+        "name": "notradingsessionrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notradingsessionrules"
+        }
+      },
+      {
+        "name": "tradingsessionrulesgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "tradingsessionrulesgrp"
+        }
+      },
+      {
+        "name": "nonestedinstrattrib",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonestedinstrattrib"
+        }
+      },
+      {
+        "name": "nestedinstrumentattribute",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedinstrumentattribute"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "This block contains the base trading rules",
+    "display": "SecurityTradingRules"
+  }
+}

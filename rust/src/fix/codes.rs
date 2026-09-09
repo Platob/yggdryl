@@ -486,6 +486,9 @@ impl<'field> FixCodes<'field> {
             self.started = true;
             if !self.cursor.open_array(CODES)? {
                 self.cursor.expect(b'}')?;
+                if !self.cursor.is_done() {
+                    return Err(Refusal::Trailing);
+                }
                 return Ok(None);
             }
         } else if !self.cursor.next_element()? {

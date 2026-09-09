@@ -386,11 +386,6 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "side",
             Some(PyString::new(py, value.as_str()).into_any().unbind()),
         ),
-        Scalar::Ascii(AsciiFamily::MsgType(value)) => tagged_pickle_state(
-            py,
-            "msgtype",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
         Scalar::Ascii(AsciiFamily::MsgDirection(value)) => tagged_pickle_state(
             py,
             "msgdirection",
@@ -680,9 +675,6 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "side" => yggdryl::types::Side::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Ascii(AsciiFamily::Side(value)))
-            .map_err(value_error),
-        "msgtype" => yggdryl::types::MsgType::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Ascii(AsciiFamily::MsgType(value)))
             .map_err(value_error),
         "msgdirection" => yggdryl::types::MsgDirection::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Ascii(AsciiFamily::MsgDirection(value)))
@@ -1665,7 +1657,10 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::Text(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::Ascii(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
-        Scalar::Version(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
+        Scalar::Version(value) => Ok(crate::version::PyVersion { inner: *value }
+            .into_pyobject(py)?
+            .into_any()
+            .unbind()),
         // A location crosses as the canonical text it validated to, exactly as
         // the other parsed text families do.
         Scalar::Url(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
@@ -2337,6 +2332,9 @@ fn push_dataclass_field(
 
 /// Convert a native Yggdryl wrapper into its canonical scalar shape.
 fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
+    if let Ok(value) = value.extract::<PyRef<'_, crate::version::PyVersion>>() {
+        return Some(Scalar::Version(value.inner));
+    }
     if let Ok(value) = value.extract::<PyRef<'_, PyScalar>>() {
         return Some(value.inner.clone());
     }

@@ -1,0 +1,22 @@
+{
+  "name": "streameffectivedatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streameffectivedatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streameffectivedatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StreamEffectiveDateBusinessCenter"
+  }
+}

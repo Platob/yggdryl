@@ -1,0 +1,23 @@
+{
+  "name": "flexproducteligibilitygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "flexproducteligibility",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "flexproducteligibility"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoFlexProductEligibilities(2560) > 0.",
+    "display": "FlexProductEligibilityGrp",
+    "fix:component": "flexproducteligibility",
+    "fix:counter": "2560"
+  }
+}

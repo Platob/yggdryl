@@ -1,0 +1,23 @@
+{
+  "name": "returnratevaluationdategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "returnratevaluationdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "returnratevaluationdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoReturnRateValuationDates(42772) > 0.",
+    "display": "ReturnRateValuationDateGrp",
+    "fix:component": "returnratevaluationdatecomponent",
+    "fix:counter": "42772"
+  }
+}

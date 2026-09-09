@@ -1,0 +1,23 @@
+{
+  "name": "ordereventgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "orderevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "orderevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoOrderEvents(1795) > 0.",
+    "display": "OrderEventGrp",
+    "fix:component": "orderevent",
+    "fix:counter": "1795"
+  }
+}

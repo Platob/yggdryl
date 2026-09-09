@@ -1,0 +1,23 @@
+{
+  "name": "legstreamgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstream",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legstream"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegStreams(40241) > 0.",
+    "display": "LegStreamGrp",
+    "fix:component": "legstream",
+    "fix:counter": "40241"
+  }
+}

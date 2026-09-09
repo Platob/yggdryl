@@ -1,0 +1,23 @@
+{
+  "name": "returnratepricegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "returnratepricecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "returnratepricecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoReturnRatePrices(42765) > 0.",
+    "display": "ReturnRatePriceGrp",
+    "fix:component": "returnratepricecomponent",
+    "fix:counter": "42765"
+  }
+}

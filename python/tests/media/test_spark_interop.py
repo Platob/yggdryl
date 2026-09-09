@@ -184,6 +184,57 @@ class TestTableCreationAndFieldIds:
         assert scan_rows(catalog.table("ids.ygg_made")) == [(1, "from spark")]
 
 
+class TestFormatVersion3:
+    """Alternate Apache and native commits under v3 row-lineage metadata."""
+
+    def test_spark_created_v3_table_accepts_alternating_writers(
+        self, spark: Any, catalog: Catalog
+    ) -> None:
+        name = f"{CATALOG}.v3.external_writer"
+        spark.sql(
+            f"CREATE TABLE {name} (id BIGINT NOT NULL, note STRING) "
+            "USING iceberg TBLPROPERTIES ('format-version'='3')"
+        )
+        spark.sql(f"INSERT INTO {name} VALUES (1, 'spark-first'), (2, NULL)")
+        spark.sql(f"INSERT INTO {name} VALUES (3, 'spark-second')")
+
+        table = catalog.table("v3.external_writer")
+        assert table.format_version == 3
+        expected = [(1, "spark-first"), (2, None), (3, "spark-second")]
+        assert scan_rows(table, "id", "note") == expected
+
+        schema = pa.schema(
+            [pa.field("id", pa.int64(), nullable=False), pa.field("note", pa.string())]
+        )
+        table.append(
+            pa.Table.from_pylist([{"id": 4, "note": "rust-append"}], schema=schema)
+        )
+        expected.append((4, "rust-append"))
+        assert spark_rows(spark, f"SELECT id, note FROM {name}") == expected
+
+        spark.sql(f"INSERT INTO {name} VALUES (5, 'spark-after-rust')")
+        expected.append((5, "spark-after-rust"))
+        reopened = catalog.table("v3.external_writer")
+        assert reopened.format_version == 3
+        assert scan_rows(reopened, "id", "note") == expected
+
+        lineage = spark_rows(
+            spark,
+            f"SELECT id, _row_id, _last_updated_sequence_number FROM {name}",
+        )
+        assert sorted(row[1] for row in lineage) == [0, 1, 2, 3, 4]
+        assert [(row[0], row[2]) for row in lineage] == [
+            (1, 1), (2, 1), (3, 2), (4, 3), (5, 4)
+        ]
+        assert [snapshot.sequence_number for snapshot in reopened.snapshots] == [
+            1, 2, 3, 4
+        ]
+        assert [
+            (snapshot.first_row_id, snapshot.added_rows)
+            for snapshot in reopened.snapshots
+        ] == [(0, 2), (2, 1), (3, 1), (4, 1)]
+
+
 class TestPrimitiveTypes:
     """Every primitive both implementations can express, with nulls."""
 

@@ -1,0 +1,23 @@
+{
+  "name": "instrmtstrkpxgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrmtstrkpx",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "instrmtstrkpx"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of strike price entries",
+    "display": "InstrmtStrkPxGrp",
+    "fix:component": "instrmtstrkpx",
+    "fix:counter": "428"
+  }
+}

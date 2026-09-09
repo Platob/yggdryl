@@ -1,0 +1,22 @@
+{
+  "name": "hopgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "hop",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "hop"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "HopGrp",
+    "fix:component": "hop",
+    "fix:counter": "627"
+  }
+}

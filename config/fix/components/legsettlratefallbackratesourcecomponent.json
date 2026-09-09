@@ -1,0 +1,33 @@
+{
+  "name": "legsettlratefallbackratesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legsettlratefallbackratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlratefallbackratesource"
+        }
+      },
+      {
+        "name": "legsettlratefallbackreferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlratefallbackreferencepage"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when LegSettlRateFallbackRateSource(40366) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
+    "display": "LegSettlRateFallbackRateSource"
+  }
+}

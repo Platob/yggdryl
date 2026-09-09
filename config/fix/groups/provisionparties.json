@@ -1,0 +1,23 @@
+{
+  "name": "provisionparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provisionparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "provisionparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProvisionPartyIDs(40174) > 0.",
+    "display": "ProvisionParties",
+    "fix:component": "provisionparty",
+    "fix:counter": "40174"
+  }
+}

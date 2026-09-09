@@ -1,0 +1,22 @@
+{
+  "name": "legpaymentscheduleinterimexchangedatebusinesscenter",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentscheduleinterimexchangedatesbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentscheduleinterimexchangedatesbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPaymentScheduleInterimExchangeDateBusinessCenter"
+  }
+}

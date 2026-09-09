@@ -1,0 +1,322 @@
+{
+  "name": "legpaymentstub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubtype"
+        }
+      },
+      {
+        "name": "legpaymentstublength",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstublength"
+        }
+      },
+      {
+        "name": "legpaymentstubstartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstubstartdate"
+        }
+      },
+      {
+        "name": "legpaymentstubenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstubenddate"
+        }
+      },
+      {
+        "name": "legpaymentstubrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubrate"
+        }
+      },
+      {
+        "name": "legpaymentstubfixedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubfixedamount"
+        }
+      },
+      {
+        "name": "legpaymentstubfixedcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubfixedcurrency"
+        }
+      },
+      {
+        "name": "legpaymentstubindex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex"
+        }
+      },
+      {
+        "name": "legpaymentstubindexsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexsource"
+        }
+      },
+      {
+        "name": "legpaymentstubindexcurveperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexcurveperiod"
+        }
+      },
+      {
+        "name": "legpaymentstubindexcurveunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexcurveunit"
+        }
+      },
+      {
+        "name": "legpaymentstubindexratemultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexratemultiplier"
+        }
+      },
+      {
+        "name": "legpaymentstubindexratespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexratespread"
+        }
+      },
+      {
+        "name": "legpaymentstubindexratespreadpositiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexratespreadpositiontype"
+        }
+      },
+      {
+        "name": "legpaymentstubindexratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexratetreatment"
+        }
+      },
+      {
+        "name": "legpaymentstubindexcaprate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexcaprate"
+        }
+      },
+      {
+        "name": "legpaymentstubindexcapratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexcapratebuyside"
+        }
+      },
+      {
+        "name": "legpaymentstubindexcapratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexcapratesellside"
+        }
+      },
+      {
+        "name": "legpaymentstubindexfloorrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexfloorrate"
+        }
+      },
+      {
+        "name": "legpaymentstubindexfloorratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexfloorratebuyside"
+        }
+      },
+      {
+        "name": "legpaymentstubindexfloorratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindexfloorratesellside"
+        }
+      },
+      {
+        "name": "legpaymentstubindex2",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex2"
+        }
+      },
+      {
+        "name": "legpaymentstubindex2source",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex2source"
+        }
+      },
+      {
+        "name": "legpaymentstubindex2curveperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex2curveperiod"
+        }
+      },
+      {
+        "name": "legpaymentstubindex2curveunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex2curveunit"
+        }
+      },
+      {
+        "name": "legpaymentstubindex2ratemultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex2ratemultiplier"
+        }
+      },
+      {
+        "name": "legpaymentstubindex2ratespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex2ratespread"
+        }
+      },
+      {
+        "name": "legpaymentstubindex2ratespreadpositiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex2ratespreadpositiontype"
+        }
+      },
+      {
+        "name": "legpaymentstubindex2ratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex2ratetreatment"
+        }
+      },
+      {
+        "name": "legpaymentstubindex2caprate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex2caprate"
+        }
+      },
+      {
+        "name": "legpaymentstubindex2floorrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstubindex2floorrate"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPaymentStub"
+  }
+}

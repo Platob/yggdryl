@@ -1,0 +1,22 @@
+{
+  "name": "legstreamfirstperiodstartdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamfirstperiodstartdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamfirstperiodstartdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamFirstPeriodStartDateBusinessCenter"
+  }
+}

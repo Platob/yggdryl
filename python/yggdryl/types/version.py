@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
-from .._native import DataType, Field
+from .._native import DataType, Field, Version
 from ._common import MetadataInput, new_field
 from ._typing import TypedField
 
 if TYPE_CHECKING:
-    VersionField: TypeAlias = TypedField[Literal["version"], str]
+    VersionField: TypeAlias = TypedField[Literal["version"], Version]
 else:
     VersionField = Field
 
@@ -28,4 +28,4 @@ def version(
     return new_field(VersionField, name, _VERSION, nullable, metadata)
 
 
-__all__ = ["VersionField", "version"]
+__all__ = ["Version", "VersionField", "version"]

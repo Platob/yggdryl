@@ -1,0 +1,562 @@
+{
+  "name": "trdmatchside",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "side",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "side"
+        }
+      },
+      {
+        "name": "sideexecid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideexecid"
+        }
+      },
+      {
+        "name": "sideexecrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideexecrefid"
+        }
+      },
+      {
+        "name": "sidetradeid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidetradeid"
+        }
+      },
+      {
+        "name": "sidetradereportid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidetradereportid"
+        }
+      },
+      {
+        "name": "orderdelay",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderdelay"
+        }
+      },
+      {
+        "name": "orderdelayunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderdelayunit"
+        }
+      },
+      {
+        "name": "sidelastqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidelastqty"
+        }
+      },
+      {
+        "name": "sideclearingtradeprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideclearingtradeprice"
+        }
+      },
+      {
+        "name": "sidepricedifferential",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidepricedifferential"
+        }
+      },
+      {
+        "name": "sideclearingtradepricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideclearingtradepricetype"
+        }
+      },
+      {
+        "name": "sidefillstationcd",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidefillstationcd"
+        }
+      },
+      {
+        "name": "sidereasoncd",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidereasoncd"
+        }
+      },
+      {
+        "name": "sidetrdsubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidetrdsubtype"
+        }
+      },
+      {
+        "name": "netgrossind",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "netgrossind"
+        }
+      },
+      {
+        "name": "sidecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecurrency"
+        }
+      },
+      {
+        "name": "sidecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecurrencycodesource"
+        }
+      },
+      {
+        "name": "sidesettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidesettlcurrency"
+        }
+      },
+      {
+        "name": "sidesettlcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidesettlcurrencycodesource"
+        }
+      },
+      {
+        "name": "nopartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartyids"
+        }
+      },
+      {
+        "name": "parties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "parties"
+        }
+      },
+      {
+        "name": "tradeinputsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeinputsource"
+        }
+      },
+      {
+        "name": "tradeinputdevice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeinputdevice"
+        }
+      },
+      {
+        "name": "complianceid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complianceid"
+        }
+      },
+      {
+        "name": "compliancetext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "compliancetext"
+        }
+      },
+      {
+        "name": "encodedcompliancetextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedcompliancetextlen"
+        }
+      },
+      {
+        "name": "encodedcompliancetext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedcompliancetext"
+        }
+      },
+      {
+        "name": "solicitedflag",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "solicitedflag"
+        }
+      },
+      {
+        "name": "custordercapacity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "custordercapacity"
+        }
+      },
+      {
+        "name": "timebracket",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "timebracket"
+        }
+      },
+      {
+        "name": "positioneffect",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "positioneffect"
+        }
+      },
+      {
+        "name": "exchangerule",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exchangerule"
+        }
+      },
+      {
+        "name": "tradeallocindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeallocindicator"
+        }
+      },
+      {
+        "name": "preallocmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "preallocmethod"
+        }
+      },
+      {
+        "name": "allocid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocid"
+        }
+      },
+      {
+        "name": "noallocs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noallocs"
+        }
+      },
+      {
+        "name": "trdallocgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "trdallocgrp"
+        }
+      },
+      {
+        "name": "sidegrosstradeamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidegrosstradeamt"
+        }
+      },
+      {
+        "name": "aggressorindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "aggressorindicator"
+        }
+      },
+      {
+        "name": "exchangespecialinstructions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exchangespecialinstructions"
+        }
+      },
+      {
+        "name": "sideshortsaleexemptionreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideshortsaleexemptionreason"
+        }
+      },
+      {
+        "name": "ordercategory",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordercategory"
+        }
+      },
+      {
+        "name": "avgpxindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "avgpxindicator"
+        }
+      },
+      {
+        "name": "avgpxgroupid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "avgpxgroupid"
+        }
+      },
+      {
+        "name": "sidemarketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidemarketsegmentid"
+        }
+      },
+      {
+        "name": "sidevenuetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidevenuetype"
+        }
+      },
+      {
+        "name": "clearingfeeindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clearingfeeindicator"
+        }
+      },
+      {
+        "name": "tradereportorderdetail",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "tradereportorderdetail"
+        }
+      },
+      {
+        "name": "nolegexecs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegexecs"
+        }
+      },
+      {
+        "name": "trdinstrmtlegexecgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "trdinstrmtlegexecgrp"
+        }
+      },
+      {
+        "name": "custorderhandlinginst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "custorderhandlinginst"
+        }
+      },
+      {
+        "name": "orderhandlinginstsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderhandlinginstsource"
+        }
+      },
+      {
+        "name": "text",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "text"
+        }
+      },
+      {
+        "name": "encodedtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtextlen"
+        }
+      },
+      {
+        "name": "encodedtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TrdMatchSide"
+  }
+}

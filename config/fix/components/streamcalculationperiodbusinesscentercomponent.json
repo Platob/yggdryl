@@ -1,0 +1,22 @@
+{
+  "name": "streamcalculationperiodbusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streamcalculationperiodbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationperiodbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StreamCalculationPeriodBusinessCenter"
+  }
+}

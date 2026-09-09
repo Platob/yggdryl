@@ -1,0 +1,23 @@
+{
+  "name": "legpaymentstreamnondeliverablefixingdatesbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstreamnondeliverablefixingdatesbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentstreamnondeliverablefixingdatesbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentStreamNonDeliverableFixingDatesBusinessCenters(40929) > 0.",
+    "display": "LegPaymentStreamNonDeliverableFixingDatesBusinessCenterGrp",
+    "fix:component": "legpaymentstreamnondeliverablefixingdatesbusinesscentercomponent",
+    "fix:counter": "40929"
+  }
+}

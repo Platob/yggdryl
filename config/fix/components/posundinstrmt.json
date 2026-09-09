@@ -1,0 +1,72 @@
+{
+  "name": "posundinstrmt",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyinginstrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyinginstrument"
+        }
+      },
+      {
+        "name": "underlyingsettlprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsettlprice"
+        }
+      },
+      {
+        "name": "underlyingsettlpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsettlpricetype"
+        }
+      },
+      {
+        "name": "underlyingdeliveryamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryamount"
+        }
+      },
+      {
+        "name": "nounderlyingamounts",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingamounts"
+        }
+      },
+      {
+        "name": "underlyingamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingamount"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PosUndInstrmt"
+  }
+}

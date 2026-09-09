@@ -92,11 +92,12 @@ pub fn mount(handle: Holder) -> Holder {
 /// archive the next level is a member of.
 ///
 /// ```
-/// use yggdryl::{IOBase, Url, holder::zip};
+/// use yggdryl::{IOBase, holder::{local::Folder, zip}};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let archive = std::env::temp_dir().join("yggdryl-zip-from-url.zip");
-/// let mut root = zip::mount(yggdryl::holder::Holder::file(&archive)?);
+/// let name = format!("yggdryl-zip-from-url-{}.zip", std::process::id());
+/// let archive = Folder::temporary()?.child_by_path(&name)?;
+/// let mut root = zip::mount(archive);
 /// root.child_by_path("trades/eu.csv")?.write_all_bytes(b"symbol")?;
 ///
 /// // A member reports where it is, and that is enough to open it again.
@@ -104,6 +105,9 @@ pub fn mount(handle: Holder) -> Holder {
 /// let located = zip::from_url(member.url().expect("a member url"))?;
 /// assert_eq!(located.read_all_bytes()?, b"symbol");
 ///
+/// // Release the independently opened mapping before removing the archive.
+/// drop(located);
+/// drop(member);
 /// root.remove(true)?;
 /// # Ok(())
 /// # }

@@ -1,0 +1,32 @@
+{
+  "name": "paymentstreampaymentdatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreampaymentdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampaymentdate"
+        }
+      },
+      {
+        "name": "paymentstreampaymentdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampaymentdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentStreamPaymentDate"
+  }
+}

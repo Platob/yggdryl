@@ -1,0 +1,23 @@
+{
+  "name": "undlyinstrumentparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "undlyinstrumentparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "undlyinstrumentparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Repeating group below should contain unique combinations of UnderlyingInstrumentPartyID(1059), UnderlyingInstrumentPartyIDSource(1060) and UnderlyingInstrumentPartyRole(1061).",
+    "display": "UndlyInstrumentParties",
+    "fix:component": "undlyinstrumentparty",
+    "fix:counter": "1058"
+  }
+}

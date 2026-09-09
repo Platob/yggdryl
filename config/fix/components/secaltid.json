@@ -1,0 +1,42 @@
+{
+  "name": "secaltid",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "securityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securityaltid"
+        }
+      },
+      {
+        "name": "securityaltidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securityaltidsource"
+        }
+      },
+      {
+        "name": "symbolpositionnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "symbolpositionnumber"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SecAltID"
+  }
+}

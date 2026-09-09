@@ -1,0 +1,254 @@
+{
+  "name": "marketdatarequest",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "mdreqid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "mdreqid"
+        }
+      },
+      {
+        "name": "subscriptionrequesttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "subscriptionrequesttype"
+        }
+      },
+      {
+        "name": "nopartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartyids"
+        }
+      },
+      {
+        "name": "parties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "parties"
+        }
+      },
+      {
+        "name": "marketdepth",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "marketdepth"
+        }
+      },
+      {
+        "name": "mdupdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdupdatetype"
+        }
+      },
+      {
+        "name": "aggregatedbook",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "aggregatedbook"
+        }
+      },
+      {
+        "name": "openclosesettlflag",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "openclosesettlflag"
+        }
+      },
+      {
+        "name": "scope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "scope"
+        }
+      },
+      {
+        "name": "mdimplicitdelete",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdimplicitdelete"
+        }
+      },
+      {
+        "name": "nomdentrytypes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "nomdentrytypes"
+        }
+      },
+      {
+        "name": "mdreqgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "mdreqgrp"
+        }
+      },
+      {
+        "name": "nomarketsegments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomarketsegments"
+        }
+      },
+      {
+        "name": "marketsegmentscopegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "marketsegmentscopegrp"
+        }
+      },
+      {
+        "name": "norelatedsym",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "norelatedsym"
+        }
+      },
+      {
+        "name": "instrmtmdreqgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "instrmtmdreqgrp"
+        }
+      },
+      {
+        "name": "notradingsessions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notradingsessions"
+        }
+      },
+      {
+        "name": "trdgsesgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "trdgsesgrp"
+        }
+      },
+      {
+        "name": "applqueueaction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "applqueueaction"
+        }
+      },
+      {
+        "name": "applqueuemax",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "applqueuemax"
+        }
+      },
+      {
+        "name": "mdquotetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdquotetype"
+        }
+      },
+      {
+        "name": "fastmarketindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fastmarketindicator"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = V",
+    "display": "MarketDataRequest",
+    "fix:msgtype": "V"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "parties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "party",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "party"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Repeating group below should contain unique combinations of PartyID, PartyIDSource, and PartyRole",
+    "display": "Parties",
+    "fix:component": "party",
+    "fix:counter": "453"
+  }
+}

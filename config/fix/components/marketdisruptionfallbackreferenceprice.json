@@ -1,0 +1,102 @@
+{
+  "name": "marketdisruptionfallbackreferenceprice",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "marketdisruptionfallbackunderliertype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionfallbackunderliertype"
+        }
+      },
+      {
+        "name": "marketdisruptionfallbackunderliersecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionfallbackunderliersecurityid"
+        }
+      },
+      {
+        "name": "marketdisruptionfallbackunderliersecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionfallbackunderliersecurityidsource"
+        }
+      },
+      {
+        "name": "marketdisruptionfallbackunderliersecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionfallbackunderliersecuritydesc"
+        }
+      },
+      {
+        "name": "encodedmarketdisruptionfallbackunderliersecuritydesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedmarketdisruptionfallbackunderliersecuritydesclen"
+        }
+      },
+      {
+        "name": "encodedmarketdisruptionfallbackunderliersecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedmarketdisruptionfallbackunderliersecuritydesc"
+        }
+      },
+      {
+        "name": "marketdisruptionfallbackopenunits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionfallbackopenunits"
+        }
+      },
+      {
+        "name": "marketdisruptionfallbackbasketcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionfallbackbasketcurrency"
+        }
+      },
+      {
+        "name": "marketdisruptionfallbackbasketdivisor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionfallbackbasketdivisor"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MarketDisruptionFallbackReferencePrice"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "paymentstreamcompoundingdatesbusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreamcompoundingdatesbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingdatesbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentStreamCompoundingDatesBusinessCenter"
+  }
+}

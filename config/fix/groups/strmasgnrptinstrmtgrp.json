@@ -1,0 +1,22 @@
+{
+  "name": "strmasgnrptinstrmtgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "strmasgnrptinstrmt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "strmasgnrptinstrmt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StrmAsgnRptInstrmtGrp",
+    "fix:component": "strmasgnrptinstrmt",
+    "fix:counter": "146"
+  }
+}

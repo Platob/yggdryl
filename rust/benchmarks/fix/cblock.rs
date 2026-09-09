@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
-use yggdryl::{FixBranch, FixRegistry, IOBase};
+use yggdryl::{DataType, FixBranch, FixCategory, FixId, FixRegistry, IOBase};
 
 /// How many vocabulary tags and bound constraints one measured file holds.
 ///
@@ -11,7 +11,7 @@ use yggdryl::{FixBranch, FixRegistry, IOBase};
 /// this is the same shape at a size a benchmark can run repeatedly.
 const TAGS: usize = crate::bench_profile::corpus(2_000, 200);
 
-/// A CBlock of `TAGS` tags, a flat binding over all of them, and a group.
+/// A CBlock of `TAGS` tags, including a counter and its nested group member.
 fn document() -> String {
     let mut body = String::with_capacity(TAGS * 220);
     body.push_str(
@@ -29,8 +29,13 @@ fn document() -> String {
     body.push_str("\t</message-types>\n\t<vocabulary>\n");
     for index in 0..TAGS {
         let tag = 5_000 + index;
+        let (name, dtype) = if index == 0 {
+            ("NoVendorEntries".to_owned(), "integer")
+        } else {
+            (format!("Vendor{index:05}"), "string")
+        };
         body.push_str(&format!(
-            "\t\t<vocabulary-tag name=\"{tag}\" alt=\"Vendor{index:05}\" type=\"string\" read-only=\"false\">\n\
+            "\t\t<vocabulary-tag name=\"{tag}\" alt=\"{name}\" type=\"{dtype}\" read-only=\"false\">\n\
              \t\t\t<description>A field carrying a trailing &lt;SOH&gt; and a &quot;quoted&quot; word.</description>\n\
              \t\t</vocabulary-tag>\n"
         ));
@@ -38,7 +43,13 @@ fn document() -> String {
     body.push_str(
         "\t</vocabulary>\n\t<grammar-binding type=\"D\">\n\t\t<grammar checkordering=\"false\">\n",
     );
-    for index in 0..TAGS {
+    body.push_str(
+        "\t\t\t<grammar rg-name=\"VendorEntries\" checkordering=\"false\">\n\
+         \t\t\t\t<tag-constraint name=\"5000\" part=\"body\" required=\"false\" />\n\
+         \t\t\t\t<tag-constraint name=\"5001\" part=\"body\" required=\"false\" />\n\
+         \t\t\t</grammar>\n",
+    );
+    for index in 2..TAGS {
         let tag = 5_000 + index;
         body.push_str(&format!(
             "\t\t\t<tag-constraint name=\"{tag}\" activated=\"true\" read-only=\"false\" part=\"body\" required=\"false\">\n\
@@ -65,11 +76,27 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let body = document();
     let handle = handle(&body);
     let branch = FixBranch::from_str("venue").expect("a valid branch");
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle, Some(&branch)).expect("a readable CBlock");
+    let counter = FixId::from_parts(&branch, 5_000).unwrap();
+    assert_eq!(registry.field(counter).unwrap().dtype(), &DataType::Int32);
+    assert!(
+        registry
+            .get_definition(FixCategory::Groups, "VendorEntries", Some(&branch))
+            .is_some()
+    );
+    assert!(
+        registry
+            .msgtype("D", Some(&branch))
+            .unwrap()
+            .get_group_by_counter(counter)
+            .is_some()
+    );
 
     let mut group = criterion.benchmark_group("fix/cblock");
     group.throughput(Throughput::Bytes(body.len() as u64));
-    // The whole parse: skip twelve of fourteen top-level children by depth,
-    // build the vocabulary, then bind the grammar out of it.
+    // The whole parse: skip unrelated children, build the vocabulary, then
+    // bind the message and its group from the resolved fields.
     group.bench_function("parse", |bencher| {
         bencher.iter(|| {
             FixRegistry::from_cfb_file(black_box(&handle), Some(black_box(&branch)))

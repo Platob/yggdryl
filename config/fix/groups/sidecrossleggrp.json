@@ -1,0 +1,23 @@
+{
+  "name": "sidecrossleggrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "sidecrossleg",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "sidecrossleg"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoCrossLegs(1829) > 0.",
+    "display": "SideCrossLegGrp",
+    "fix:component": "sidecrossleg",
+    "fix:counter": "1829"
+  }
+}

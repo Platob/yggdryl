@@ -1,0 +1,72 @@
+{
+  "name": "sideregulatorytradeidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "sideregulatorytradeid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideregulatorytradeid"
+        }
+      },
+      {
+        "name": "sideregulatorytradeidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideregulatorytradeidsource"
+        }
+      },
+      {
+        "name": "sideregulatorytradeidevent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideregulatorytradeidevent"
+        }
+      },
+      {
+        "name": "sideregulatorytradeidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideregulatorytradeidtype"
+        }
+      },
+      {
+        "name": "sideregulatorylegrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideregulatorylegrefid"
+        }
+      },
+      {
+        "name": "sideregulatorytradeidscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideregulatorytradeidscope"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SideRegulatoryTradeID"
+  }
+}

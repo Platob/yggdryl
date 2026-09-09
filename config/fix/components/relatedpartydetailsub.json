@@ -1,0 +1,32 @@
+{
+  "name": "relatedpartydetailsub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "relatedpartydetailsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedpartydetailsubid"
+        }
+      },
+      {
+        "name": "relatedpartydetailsubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedpartydetailsubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RelatedPartyDetailSub"
+  }
+}

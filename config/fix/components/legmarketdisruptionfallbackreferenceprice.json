@@ -1,0 +1,102 @@
+{
+  "name": "legmarketdisruptionfallbackreferenceprice",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legmarketdisruptionfallbackunderliertype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionfallbackunderliertype"
+        }
+      },
+      {
+        "name": "legmarketdisruptionfallbackunderliersecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionfallbackunderliersecurityid"
+        }
+      },
+      {
+        "name": "legmarketdisruptionfallbackunderliersecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionfallbackunderliersecurityidsource"
+        }
+      },
+      {
+        "name": "legmarketdisruptionfallbackunderliersecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionfallbackunderliersecuritydesc"
+        }
+      },
+      {
+        "name": "encodedlegmarketdisruptionfallbackunderliersecuritydesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegmarketdisruptionfallbackunderliersecuritydesclen"
+        }
+      },
+      {
+        "name": "encodedlegmarketdisruptionfallbackunderliersecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegmarketdisruptionfallbackunderliersecuritydesc"
+        }
+      },
+      {
+        "name": "legmarketdisruptionfallbackopenunits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionfallbackopenunits"
+        }
+      },
+      {
+        "name": "legmarketdisruptionfallbackbasketcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionfallbackbasketcurrency"
+        }
+      },
+      {
+        "name": "legmarketdisruptionfallbackbasketdivisor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionfallbackbasketdivisor"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegMarketDisruptionFallbackReferencePrice"
+  }
+}

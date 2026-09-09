@@ -1,0 +1,22 @@
+{
+  "name": "legfinancingcontractualdefinition",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcontractualdefinition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcontractualdefinition"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegFinancingContractualDefinition"
+  }
+}

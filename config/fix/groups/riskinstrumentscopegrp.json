@@ -1,0 +1,23 @@
+{
+  "name": "riskinstrumentscopegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "riskinstrumentscope",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "riskinstrumentscope"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoRiskInstrumentScopes > 0.",
+    "display": "RiskInstrumentScopeGrp",
+    "fix:component": "riskinstrumentscope",
+    "fix:counter": "1534"
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "name": "testorder",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "testorderid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testorderid"
+        }
+      },
+      {
+        "name": "testordersymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testordersymbol"
+        }
+      },
+      {
+        "name": "testordersecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testordersecurityid"
+        }
+      },
+      {
+        "name": "testordersecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testordersecurityidsource"
+        }
+      },
+      {
+        "name": "testorderprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testorderprice"
+        }
+      },
+      {
+        "name": "testorderpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testorderpricetype"
+        }
+      },
+      {
+        "name": "testorderqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testorderqty"
+        }
+      },
+      {
+        "name": "testorderoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testorderoffsetperiod"
+        }
+      },
+      {
+        "name": "testorderoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testorderoffsetunit"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TestOrder"
+  }
+}

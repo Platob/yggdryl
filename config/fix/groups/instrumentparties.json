@@ -1,0 +1,23 @@
+{
+  "name": "instrumentparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrumentparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "instrumentparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Repeating group below should contain unique combinations of InstrumentPartyID(1019), InstrumentPartyIDSource(1050) and InstrumentPartyRole(1051).",
+    "display": "InstrumentParties",
+    "fix:component": "instrumentparty",
+    "fix:counter": "1018"
+  }
+}

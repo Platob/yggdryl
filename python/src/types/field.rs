@@ -2709,6 +2709,152 @@ impl PyProtocolField {
     /// An absent property is an empty list, and assigning an empty iterable
     /// removes it: a field states alternate tags only when it has them.
     #[getter]
+    fn counter(&self, py: Python<'_>) -> PyResult<Option<i32>> {
+        self.require_fix("counter")?;
+        self.borrow_field(py)?
+            .inner
+            .as_fix()
+            .counter()
+            .map_err(value_error)
+    }
+
+    #[setter]
+    fn set_counter(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("counter")?;
+        let tag = if value.is_none() {
+            None
+        } else {
+            Some(value.extract::<crate::fix::FixTag>()?.0)
+        };
+        let mut field = self.borrow_field_mut(value.py())?;
+        match tag {
+            Some(tag) => field
+                .inner
+                .as_fix_mut()
+                .set_counter(tag)
+                .map_err(value_error),
+            None => field
+                .inner
+                .as_fix_mut()
+                .remove_counter()
+                .map(|_| ())
+                .map_err(value_error),
+        }
+    }
+
+    #[getter]
+    fn component(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("component")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .component()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_component(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("component")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_component(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_component();
+            Ok(())
+        }
+    }
+
+    #[getter]
+    fn field_ref(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("field_ref")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .field_ref()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_field_ref(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("field_ref")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_field_ref(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_field_ref();
+            Ok(())
+        }
+    }
+
+    #[getter]
+    fn group(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("group")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .group()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_group(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("group")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_group(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_group();
+            Ok(())
+        }
+    }
+
+    #[getter]
+    fn msgtype(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("msgtype")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .msgtype()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_msgtype(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("msgtype")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_msgtype(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_msgtype();
+            Ok(())
+        }
+    }
+
+    #[getter]
     fn tags(&self, py: Python<'_>) -> PyResult<Vec<i32>> {
         self.require_fix("tags")?;
         let field = self.borrow_field(py)?;

@@ -1,0 +1,23 @@
+{
+  "name": "settlparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "settlparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "settlparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Repeating group below should contain unique combinations of SettlPartyID, SettlPartyIDSource, and SettlPartyRole",
+    "display": "SettlParties",
+    "fix:component": "settlparty",
+    "fix:counter": "781"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "legpaymentstreamnondeliverablefixingdatesbusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamnondeliverablefixingdatesbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPaymentStreamNonDeliverableFixingDatesBusinessCenter"
+  }
+}

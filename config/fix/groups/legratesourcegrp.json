@@ -1,0 +1,23 @@
+{
+  "name": "legratesourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegRateSources(3116) > 0.",
+    "display": "LegRateSource",
+    "fix:component": "legratesourcecomponent",
+    "fix:counter": "3116"
+  }
+}

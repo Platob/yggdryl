@@ -1,0 +1,112 @@
+{
+  "name": "quotsetack",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "quotesetid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotesetid"
+        }
+      },
+      {
+        "name": "underlyinginstrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyinginstrument"
+        }
+      },
+      {
+        "name": "quotesetvaliduntiltime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotesetvaliduntiltime"
+        }
+      },
+      {
+        "name": "totnoquoteentries",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "totnoquoteentries"
+        }
+      },
+      {
+        "name": "totnocxldquotes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "totnocxldquotes"
+        }
+      },
+      {
+        "name": "totnoaccquotes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "totnoaccquotes"
+        }
+      },
+      {
+        "name": "totnorejquotes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "totnorejquotes"
+        }
+      },
+      {
+        "name": "lastfragment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastfragment"
+        }
+      },
+      {
+        "name": "noquoteentries",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noquoteentries"
+        }
+      },
+      {
+        "name": "quotentryackgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "quotentryackgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "QuotSetAck"
+  }
+}

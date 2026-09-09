@@ -14,15 +14,21 @@
 //! deterministic best match, and a colon-bearing string is a name, never an
 //! identifier.
 
+mod catalog;
+mod ulplugin;
+
+pub use catalog::{JsFixDefinitionIterator, JsMsgType, JsMsgTypeIterator};
+pub use ulplugin::{JsFixMessages, JsUlPlugin, JsUlPlugins};
+
 use std::sync::Arc;
 
 use napi::JsValue as _;
 use napi::bindgen_prelude::{Buffer, ClassInstance, Env, Generator, Result, Unknown, ValueType};
 use napi_derive::napi;
 use yggdryl::{
-    Field as CoreField, FixBranch as CoreFixBranch, FixCodec as CoreFixCodec, FixId as CoreFixId,
-    FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry,
-    Scalar, Version as CoreVersion,
+    Field as CoreField, FixBranch as CoreFixBranch, FixCategory, FixCodec as CoreFixCodec,
+    FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
+    FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
 };
 
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
@@ -176,9 +182,170 @@ impl JsFixRegistry {
 #[allow(clippy::cast_possible_truncation)]
 #[napi]
 impl JsFixRegistry {
+    /// Look up a globally unique group by its scalar counter identifier.
+    #[napi]
+    pub fn get_group_by_counter(&self, id: String) -> Result<Option<JsField>> {
+        let id = id_from_js(&id)?;
+        Ok(self
+            .inner
+            .get_group_by_counter(id)
+            .cloned()
+            .map(JsField::from_core))
+    }
+
+    /// Look up a globally unique group, failing when absent or ambiguous.
+    #[napi]
+    pub fn group_by_counter(&self, id: String) -> Result<JsField> {
+        let id = id_from_js(&id)?;
+        self.inner
+            .group_by_counter(id)
+            .cloned()
+            .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Look up a category definition, returning null when absent.
+    #[napi]
+    pub fn get_definition(
+        &self,
+        category: String,
+        name: String,
+        branch: Option<String>,
+    ) -> Result<Option<JsField>> {
+        let category = FixCategory::from_str(&category).map_err(napi_error)?;
+        let branch = branch.as_deref().map(branch_from_js).transpose()?;
+        Ok(self
+            .inner
+            .get_definition(category, &name, branch.as_ref())
+            .cloned()
+            .map(JsField::from_core))
+    }
+
+    /// Look up a category definition, failing when absent.
+    #[napi]
+    pub fn definition(
+        &self,
+        category: String,
+        name: String,
+        branch: Option<String>,
+    ) -> Result<JsField> {
+        let category = FixCategory::from_str(&category).map_err(napi_error)?;
+        let branch = branch.as_deref().map(branch_from_js).transpose()?;
+        self.inner
+            .definition(category, &name, branch.as_ref())
+            .map(|field| JsField::from_core(field.clone()))
+            .map_err(napi_error)
+    }
+
+    /// Definitions in native category order, retaining the registry while active.
+    #[napi]
+    pub fn definitions(&self, category: String) -> Result<JsFixDefinitionIterator> {
+        let category = FixCategory::from_str(&category).map_err(napi_error)?;
+        Ok(JsFixDefinitionIterator {
+            registry: Some(Arc::clone(&self.inner)),
+            category,
+            index: 0,
+        })
+    }
+
+    /// Insert or replace a complete native category definition atomically.
+    #[napi]
+    pub fn insert_definition(
+        &mut self,
+        category: String,
+        field: &JsField,
+    ) -> Result<Option<JsField>> {
+        let category = FixCategory::from_str(&category).map_err(napi_error)?;
+        self.inner_mut()?
+            .insert_definition(category, field.inner.clone())
+            .map(|field| field.map(JsField::from_core))
+            .map_err(napi_error)
+    }
+
+    /// Create a definition, refusing an existing identity.
+    #[napi]
+    pub fn create_definition(&mut self, category: String, field: &JsField) -> Result<()> {
+        let category = FixCategory::from_str(&category).map_err(napi_error)?;
+        self.inner_mut()?
+            .create_definition(category, field.inner.clone())
+            .map_err(napi_error)
+    }
+
+    /// Replace an existing definition atomically, preserving identity.
+    #[napi]
+    pub fn update_definition(&mut self, category: String, field: &JsField) -> Result<JsField> {
+        let category = FixCategory::from_str(&category).map_err(napi_error)?;
+        self.inner_mut()?
+            .update_definition(category, field.inner.clone())
+            .map(JsField::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Remove a definition, refusing dangling references.
+    #[napi]
+    pub fn remove_definition(
+        &mut self,
+        category: String,
+        name: String,
+        branch: Option<String>,
+    ) -> Result<Option<JsField>> {
+        let category = FixCategory::from_str(&category).map_err(napi_error)?;
+        let branch = branch.as_deref().map(branch_from_js).transpose()?;
+        self.inner_mut()?
+            .remove_definition(category, &name, branch.as_ref())
+            .map(|field| field.map(JsField::from_core))
+            .map_err(napi_error)
+    }
+
+    /// Borrow the message singleton named by wire code, canonical name, or alias.
+    #[napi]
+    pub fn get_msgtype(
+        &self,
+        spelling: String,
+        branch: Option<String>,
+    ) -> Result<Option<JsMsgType>> {
+        let branch = branch.as_deref().map(branch_from_js).transpose()?;
+        Ok(self
+            .inner
+            .get_msgtype(&spelling, branch.as_ref())
+            .map(|message| JsMsgType::from_borrowed(&self.inner, message)))
+    }
+
+    /// Borrow a message singleton, failing when absent.
+    #[napi]
+    pub fn msgtype(&self, spelling: String, branch: Option<String>) -> Result<JsMsgType> {
+        let branch = branch.as_deref().map(branch_from_js).transpose()?;
+        let message = self
+            .inner
+            .msgtype(&spelling, branch.as_ref())
+            .map_err(napi_error)?;
+        Ok(JsMsgType::from_borrowed(&self.inner, message))
+    }
+
+    /// Iterate native message singletons in canonical order.
+    #[napi]
+    pub fn msgtypes(&self) -> JsMsgTypeIterator {
+        JsMsgTypeIterator {
+            registry: Some(Arc::clone(&self.inner)),
+            index: 0,
+        }
+    }
+
+    /// Add native scalar `ULBridge` fields atomically.
+    #[napi]
+    pub fn with_ulbridge_fields(&mut self) -> Result<()> {
+        let registry = self
+            .inner_mut()?
+            .clone()
+            .with_ulbridge_fields()
+            .map_err(napi_error)?;
+        self.inner = Arc::new(registry);
+        Ok(())
+    }
+
     /// A registry holding nothing but this crate's own fields.
     ///
-    /// Every registry starts here: the nineteen standard fields from tag 65000
+    /// Every registry starts here: the twenty standard fields from tag 65000
     /// that `fixCrateFields` lists - the digest, the clock and its partition,
     /// the session a message states, the bridge's message context, the
     /// plugin sessions a line moved between and the identities a lifecycle
@@ -199,7 +366,7 @@ impl JsFixRegistry {
             .map_err(napi_error)
     }
 
-    /// Load every shard under `<location>/primitive` and `<location>/nested`.
+    /// Load the fields, messages, components, and groups categories.
     ///
     /// `location` is an `IOBase` handle, a `Url`, or the string naming one, run
     /// through the coercion every folder-shaped entry point uses. A folder that
@@ -244,7 +411,7 @@ impl JsFixRegistry {
         ))
     }
 
-    /// Register one message type, answering the value it takes.
+    /// Register a full wire code and borrow its immutable message definition.
     ///
     /// A type the code set does not have is added to it rather than rejected,
     /// and the value it takes is the core's: itself where it fits, a stable
@@ -260,11 +427,11 @@ impl JsFixRegistry {
         spelling: String,
         name: Option<String>,
         description: Option<String>,
-    ) -> Result<String> {
+    ) -> Result<JsMsgType> {
         self.inner_mut()?
             .register_msgtype(&spelling, name.as_deref(), description.as_deref())
-            .map(|held| held.as_str().to_owned())
-            .map_err(napi_error)
+            .map_err(napi_error)?;
+        self.msgtype(spelling, None)
     }
 
     /// Write every populated shard under `<location>/<tree>/<branch>`, removing
@@ -278,7 +445,7 @@ impl JsFixRegistry {
         self.inner.write_into(&mut holder).map_err(napi_error)
     }
 
-    /// How many fields are held, the crate's own nineteen among them.
+    /// How many fields are held, the crate's own twenty among them.
     #[napi(getter)]
     pub fn size(&self) -> u32 {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
@@ -513,10 +680,10 @@ impl JsFixRegistry {
         Arc::ptr_eq(&self.inner, &other.inner) || self.inner == other.inner
     }
 
-    /// Deterministic hash bits over the fields, shared with the core.
+    /// Deterministic hash bits over all categories and branch definitions.
     #[napi]
     pub fn stable_hash(&self) -> u64 {
-        Scalar::from_sequence(self.inner.iter().map(Scalar::from)).stable_hash()
+        self.inner.stable_hash()
     }
 
     /// A deep copy that is independently mutable.
@@ -531,13 +698,24 @@ impl JsFixRegistry {
         format!("FixRegistry({} fields)", self.inner.len())
     }
 
-    /// The fields as their own JSON documents, in canonical-identifier order.
+    /// A complete native catalog snapshot, including branch definitions.
     #[napi(js_name = "toJSON")]
-    pub fn js_json(&self) -> Result<Vec<serde_json::Value>> {
-        self.inner
-            .iter()
-            .map(|field| serde_json::to_value(field).map_err(napi_error))
-            .collect()
+    pub fn js_json(&self) -> Result<serde_json::Value> {
+        serde_json::from_str(&self.inner.into_json().map_err(napi_error)?).map_err(napi_error)
+    }
+
+    /// Load a complete native catalog snapshot.
+    #[napi(factory)]
+    pub fn from_json(input: String) -> Result<Self> {
+        CoreFixRegistry::from_json(&input)
+            .map(|registry| Self::from_arc(Arc::new(registry)))
+            .map_err(napi_error)
+    }
+
+    /// Render a complete native catalog snapshot.
+    #[napi]
+    pub fn into_json(&self) -> Result<String> {
+        self.inner.into_json().map_err(napi_error)
     }
 }
 
@@ -636,14 +814,6 @@ impl JsFixMsg {
     /// Wrap a message the core built.
     pub(crate) const fn from_core(inner: CoreFixMsg) -> Self {
         Self { inner }
-    }
-
-    /// The value both the hash and the JSON document read.
-    fn identity_value(&self) -> Scalar {
-        Scalar::from_sequence([
-            Scalar::from(self.inner.as_field()),
-            self.inner.as_value().clone(),
-        ])
     }
 }
 
@@ -929,16 +1099,16 @@ impl JsFixMsg {
     /// neighbours, and a column no tag names answers null because it is the
     /// capture's rather than the message's.
     #[napi]
-    pub fn to_row(&self, schema: &JsField) -> Result<JsScalar> {
+    pub fn into_row(&self, schema: &JsField) -> Result<JsScalar> {
         self.inner
-            .to_row(&schema.inner)
+            .into_row(&schema.inner)
             .map(JsScalar::from_core)
             .map_err(napi_error)
     }
 
     /// Re-emit this message on the wire, separated by `separator`.
     #[napi]
-    pub fn to_bytes(&self, separator: Option<f64>) -> Result<Buffer> {
+    pub fn into_bytes(&self, separator: Option<f64>) -> Result<Buffer> {
         let separator = separator_byte(separator)?;
         Ok(Buffer::from(self.inner.into_bytes(separator)))
     }
@@ -952,7 +1122,7 @@ impl JsFixMsg {
     /// Deterministic hash bits over the schema and the value.
     #[napi]
     pub fn stable_hash(&self) -> u64 {
-        self.identity_value().stable_hash()
+        self.inner.stable_hash()
     }
 
     /// A cheap clone: the schema and value are shared, the registry link kept.
@@ -1081,13 +1251,51 @@ impl JsFixCodec {
         JsFixRegistry::from_arc(Arc::clone(&self.registry))
     }
 
-    /// One captured line, whatever it is wrapped in.
+    /// Messages in one captured line, including every bulk configuration.
     #[napi]
-    pub fn transform_line(&self, row: Buffer, enrich: Option<bool>) -> Result<JsFixMsg> {
+    pub fn transform_line(&self, row: Buffer, enrich: Option<bool>) -> Result<JsFixMessages> {
         self.inner
             .transform_line(&row, enrich.unwrap_or(false))
-            .map(JsFixMsg::from_core)
+            .map(JsFixMessages::from_core)
             .map_err(napi_error)
+    }
+
+    /// Messages in a bulk or wildcard UL configuration response, lazily.
+    #[napi]
+    pub fn transform_ulconfig_line(
+        &self,
+        body: Buffer,
+        enrich: Option<bool>,
+    ) -> Result<JsFixMessages> {
+        self.inner
+            .transform_ulconfig_line(&body, enrich.unwrap_or(false))
+            .map(JsFixMessages::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Messages carried by one native record.
+    #[napi]
+    pub fn transform_record(
+        &self,
+        record: &JsScalar,
+        enrich: Option<bool>,
+    ) -> Result<JsFixMessages> {
+        self.inner
+            .transform_record(&record.inner, enrich.unwrap_or(false))
+            .map(JsFixMessages::from_core)
+            .map_err(napi_error)
+    }
+
+    /// The complete raw message code declared by captured bytes.
+    #[napi]
+    pub fn infer_msgtype_bytes(body: Buffer) -> Option<Buffer> {
+        CoreFixCodec::infer_msgtype_bytes(&body).map(|value| Buffer::from(value.to_vec()))
+    }
+
+    /// The complete raw message code declared by captured text.
+    #[napi]
+    pub fn infer_msgtype_text(body: String) -> Option<String> {
+        CoreFixCodec::infer_msgtype_text(&body).map(ToOwned::to_owned)
     }
 
     /// One numeric frame, split on the separator stated or inferred.
@@ -1150,7 +1358,7 @@ impl JsFixCodec {
     ///
     /// An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
     /// Only the row is filled: the arrival record is what the wire carried and
-    /// is left alone, so `toBytes` re-emits the received line either way, and
+    /// is left alone, so `intoBytes` re-emits the received line either way, and
     /// a stated value is never replaced.
     #[napi]
     pub fn enrich_fixmsg(&self, message: &JsFixMsg) -> Result<JsFixMsg> {
@@ -1297,9 +1505,9 @@ pub fn fix_schema(
 /// `carrier` is a capture's own root - where a line was read from, which line
 /// it was, what stamped it - and its columns lead the row, because that is what
 /// a monitor orders and joins on. A carried column whose folded name a FIX
-/// column already takes - `sessionId` and `sessionid` are one name - is dropped
+/// column already takes - `senderSessionId` and `sendersessionid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means,
-/// and `sessionid` means the session the message itself states. A bridge's own
+/// and `sendersessionid` means the session the message itself states. A bridge's own
 /// session instance is captured as `sessionUid` for that reason and leads the
 /// row beside `threadId` and `level`, while its `plugin` capture fills the
 /// plugin session the line's direction names: the sender's for a line it
@@ -1321,7 +1529,7 @@ pub fn fix_schema_tags() -> Vec<f64> {
         .collect()
 }
 
-/// The nineteen fields this crate defines, in tag order: standard fields from
+/// The twenty fields this crate defines, in tag order: standard fields from
 /// 65000 up, above every tag FIX or a venue publishes.
 ///
 /// The digest, the version read at, the ticker, the clock and its partition,
@@ -1334,6 +1542,14 @@ pub fn fix_schema_tags() -> Vec<f64> {
 #[napi(js_name = "fixCrateFields")]
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {
     yggdryl::fix_crate_fields()
+        .map(|held| held.iter().cloned().map(JsField::from_core).collect())
+        .map_err(napi_error)
+}
+
+/// The scalar fields owned by `ULBridge`.
+#[napi(js_name = "fixUlbridgeFields")]
+pub fn fix_ulbridge_fields() -> Result<Vec<JsField>> {
+    yggdryl::fix_ulbridge_fields()
         .map(|held| held.iter().cloned().map(JsField::from_core).collect())
         .map_err(napi_error)
 }

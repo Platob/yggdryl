@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprovisiondatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisiondatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprovisiondatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProvisionDateBusinessCenters(42190) > 0.",
+    "display": "UnderlyingProvisionDateBusinessCenterGrp",
+    "fix:component": "underlyingprovisiondatebusinesscentercomponent",
+    "fix:counter": "42190"
+  }
+}

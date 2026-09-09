@@ -1,0 +1,153 @@
+{
+  "name": "optionexerciseexpiration",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "optionexerciseexpirationdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nooptionexerciseexpirationdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nooptionexerciseexpirationdatebusinesscenters"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "optionexerciseexpirationdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "nooptionexerciseexpirationdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nooptionexerciseexpirationdates"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "optionexerciseexpirationdategrp"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationdaterelativeto"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationdateoffsetunit"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationfrequencyperiod"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationfrequencyunit"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationrollconvention"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationtime"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationtimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of option exercise expiration dates.",
+    "display": "OptionExerciseExpiration"
+  }
+}

@@ -5,7 +5,7 @@
 //! than as an addition beside a removal, and a retype shows what it was and
 //! what it became.
 
-use yggdryl::{Field, FixRegistry};
+use yggdryl::{Field, FixCategory, FixRegistry};
 
 use crate::style;
 
@@ -41,28 +41,45 @@ impl Change {
 #[must_use]
 pub fn compare(before: &FixRegistry, after: &FixRegistry) -> Vec<Change> {
     let mut changes = Vec::new();
-    for held in after {
-        let tag = tag_of(held);
-        match before.get_field_by_id(identity(held)) {
-            None => changes.push(Change::Added(tag, held.name().to_owned())),
-            Some(was) => {
-                let details = differences(was, held);
-                if !details.is_empty() {
-                    changes.push(Change::Changed {
-                        tag,
-                        name: held.name().to_owned(),
-                        details,
-                    });
+    for category in FixCategory::ALL {
+        for held in after.definitions(category) {
+            let tag = key_of(category, held);
+            match previous(before, category, held) {
+                None => changes.push(Change::Added(tag, held.name().to_owned())),
+                Some(was) => {
+                    let details = differences(was, held);
+                    if !details.is_empty() {
+                        changes.push(Change::Changed {
+                            tag,
+                            name: held.name().to_owned(),
+                            details,
+                        });
+                    }
                 }
             }
         }
-    }
-    for held in before {
-        if after.get_field_by_id(identity(held)).is_none() {
-            changes.push(Change::Removed(tag_of(held), held.name().to_owned()));
+        for held in before.definitions(category) {
+            if previous(after, category, held).is_none() {
+                changes.push(Change::Removed(
+                    key_of(category, held),
+                    held.name().to_owned(),
+                ));
+            }
         }
     }
     changes
+}
+
+fn previous<'registry>(
+    registry: &'registry FixRegistry,
+    category: FixCategory,
+    field: &Field,
+) -> Option<&'registry Field> {
+    if category == FixCategory::Fields {
+        return registry.get_field_by_id(identity(field));
+    }
+    let branch = field.as_fix().branch().ok()?;
+    registry.get_definition(category, field.name(), Some(&branch))
 }
 
 /// One field's identity, or a standard tag where it declares none.
@@ -76,13 +93,18 @@ fn identity(field: &Field) -> yggdryl::FixId {
 }
 
 /// One field's tag, rendered.
-fn tag_of(field: &Field) -> String {
-    field
-        .as_fix()
-        .tag()
-        .ok()
-        .flatten()
-        .map_or_else(|| "-".to_owned(), |held| held.to_string())
+fn key_of(category: FixCategory, field: &Field) -> String {
+    if category == FixCategory::Fields {
+        format!("{category}/{}", identity(field))
+    } else {
+        let branch = field
+            .as_fix()
+            .branch()
+            .ok()
+            .filter(|branch| !branch.is_standard())
+            .map_or_else(String::new, |branch| format!("{}/", branch.name()));
+        format!("{category}/{branch}{}", field.name())
+    }
 }
 
 /// What differs between two versions of one field.
@@ -101,15 +123,8 @@ fn differences(was: &Field, now: &Field) -> Vec<String> {
             "became required".to_owned()
         });
     }
-    let before = was.as_fix().codes().count();
-    let after = now.as_fix().codes().count();
-    if before != after {
-        held.push(format!("code set {before} to {after}"));
-    }
-    let before = was.as_fix().description().unwrap_or_default();
-    let after = now.as_fix().description().unwrap_or_default();
-    if before != after {
-        held.push("description changed".to_owned());
+    if was.as_metadata() != now.as_metadata() {
+        held.push("metadata changed".to_owned());
     }
     held
 }
@@ -137,7 +152,7 @@ pub fn render(changes: &[Change]) {
             ],
         })
         .collect();
-    style::table(&["change", "tag", "field", "detail"], &rows);
+    style::table(&["change", "identity", "definition", "detail"], &rows);
     style::note(&format!("{} change(s)", changes.len()));
 }
 

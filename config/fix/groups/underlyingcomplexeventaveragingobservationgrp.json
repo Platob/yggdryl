@@ -1,0 +1,23 @@
+{
+  "name": "underlyingcomplexeventaveragingobservationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventaveragingobservation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcomplexeventaveragingobservation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingComplexEventAveragingObservations(41713) > 0.",
+    "display": "UnderlyingComplexEventAveragingObservationGrp",
+    "fix:component": "underlyingcomplexeventaveragingobservation",
+    "fix:counter": "41713"
+  }
+}

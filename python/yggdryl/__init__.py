@@ -32,6 +32,7 @@ from .types import (
     PythonMetadata,
     Scalar,
     Timezone,
+    Version,
     field,
 )
 from .types.scalar import scalar
@@ -59,6 +60,7 @@ __all__ = [
     "Statement",
     "TextOptions",
     "Timezone",
+    "Version",
     "Uri",
     "Url",
     "Urn",

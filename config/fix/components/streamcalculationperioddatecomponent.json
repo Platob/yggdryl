@@ -1,0 +1,32 @@
+{
+  "name": "streamcalculationperioddatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streamcalculationperioddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationperioddate"
+        }
+      },
+      {
+        "name": "streamcalculationperioddatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationperioddatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StreamCalculationPeriodDate"
+  }
+}

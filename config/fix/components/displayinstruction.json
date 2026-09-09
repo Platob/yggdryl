@@ -1,0 +1,113 @@
+{
+  "name": "displayinstruction",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "displayqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "displayqty"
+        }
+      },
+      {
+        "name": "secondarydisplayqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondarydisplayqty"
+        }
+      },
+      {
+        "name": "initialdisplayqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "initialdisplayqty"
+        }
+      },
+      {
+        "name": "currentdisplayprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "currentdisplayprice"
+        }
+      },
+      {
+        "name": "displaywhen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "displaywhen"
+        }
+      },
+      {
+        "name": "displaymethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "displaymethod"
+        }
+      },
+      {
+        "name": "displaylowqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "displaylowqty"
+        }
+      },
+      {
+        "name": "displayhighqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "displayhighqty"
+        }
+      },
+      {
+        "name": "displayminincr",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "displayminincr"
+        }
+      },
+      {
+        "name": "refreshqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "refreshqty"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Only to be used in the ExecutionReport",
+    "display": "DisplayInstruction"
+  }
+}

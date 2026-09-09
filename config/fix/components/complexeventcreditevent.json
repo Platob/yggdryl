@@ -1,0 +1,102 @@
+{
+  "name": "complexeventcreditevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventcrediteventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventtype"
+        }
+      },
+      {
+        "name": "complexeventcrediteventvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventvalue"
+        }
+      },
+      {
+        "name": "complexeventcrediteventcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventcurrency"
+        }
+      },
+      {
+        "name": "complexeventcrediteventperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventperiod"
+        }
+      },
+      {
+        "name": "complexeventcrediteventunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventunit"
+        }
+      },
+      {
+        "name": "complexeventcrediteventdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventdaytype"
+        }
+      },
+      {
+        "name": "complexeventcrediteventratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventratesource"
+        }
+      },
+      {
+        "name": "nocomplexeventcrediteventqualifiers",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventcrediteventqualifiers"
+        }
+      },
+      {
+        "name": "complexeventcrediteventqualifiergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventcrediteventqualifiergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ComplexEventCreditEvent"
+  }
+}

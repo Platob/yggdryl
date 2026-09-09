@@ -1,0 +1,52 @@
+{
+  "name": "underlyingsettlratedisruptionfallback",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingsettlratepostponementmaximumdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsettlratepostponementmaximumdays"
+        }
+      },
+      {
+        "name": "underlyingsettlratefallbackratesourcecomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingsettlratefallbackratesourcecomponent"
+        }
+      },
+      {
+        "name": "underlyingsettlratepostponementsurvey",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsettlratepostponementsurvey"
+        }
+      },
+      {
+        "name": "underlyingsettlratepostponementcalculationagent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsettlratepostponementcalculationagent"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingSettlRateDisruptionFallback"
+  }
+}

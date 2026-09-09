@@ -1,0 +1,23 @@
+{
+  "name": "legdividendaccrualpaymentdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdividendaccrualpaymentdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legdividendaccrualpaymentdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegDividendAccrualPaymentDateBusinessCenters(42310) > 0.",
+    "display": "LegDividendAccrualPaymentDateBusinessCenterGrp",
+    "fix:component": "legdividendaccrualpaymentdatebusinesscentercomponent",
+    "fix:counter": "42310"
+  }
+}

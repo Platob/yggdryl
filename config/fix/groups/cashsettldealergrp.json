@@ -1,0 +1,23 @@
+{
+  "name": "cashsettldealergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "cashsettldealercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "cashsettldealercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoCashSettlDealers(40277) > 0.",
+    "display": "CashSettlDealerGrp",
+    "fix:component": "cashsettldealercomponent",
+    "fix:counter": "40277"
+  }
+}

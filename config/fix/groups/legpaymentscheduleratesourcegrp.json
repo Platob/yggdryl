@@ -1,0 +1,23 @@
+{
+  "name": "legpaymentscheduleratesourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentscheduleratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentscheduleratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentScheduleRateSources(40414) > 0.",
+    "display": "LegPaymentScheduleRateSourceGrp",
+    "fix:component": "legpaymentscheduleratesourcecomponent",
+    "fix:counter": "40414"
+  }
+}

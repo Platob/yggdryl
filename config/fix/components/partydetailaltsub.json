@@ -1,0 +1,32 @@
+{
+  "name": "partydetailaltsub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "partydetailaltsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partydetailaltsubid"
+        }
+      },
+      {
+        "name": "partydetailaltsubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partydetailaltsubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PartyDetailAltSub"
+  }
+}

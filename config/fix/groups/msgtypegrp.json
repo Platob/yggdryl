@@ -1,0 +1,23 @@
+{
+  "name": "msgtypegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "msgtypecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "msgtypecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies the number of repeating RefMsgTypes specified",
+    "display": "MsgTypeGrp",
+    "fix:component": "msgtypecomponent",
+    "fix:counter": "384"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "legdividendperiodbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdividendperiodbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legdividendperiodbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegDividendPeriodBusinessCenters(42386) > 0.",
+    "display": "LegDividendPeriodBusinessCenterGrp",
+    "fix:component": "legdividendperiodbusinesscentercomponent",
+    "fix:counter": "42386"
+  }
+}

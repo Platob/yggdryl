@@ -1,0 +1,342 @@
+{
+  "name": "legstream",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamtype"
+        }
+      },
+      {
+        "name": "legstreamxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamxid"
+        }
+      },
+      {
+        "name": "legstreamdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamdesc"
+        }
+      },
+      {
+        "name": "legstreamversion",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamversion"
+        }
+      },
+      {
+        "name": "legstreamversioneffectivedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamversioneffectivedate"
+        }
+      },
+      {
+        "name": "legstreampayside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreampayside"
+        }
+      },
+      {
+        "name": "legstreamreceiveside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamreceiveside"
+        }
+      },
+      {
+        "name": "legstreamnotionalxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamnotionalxidref"
+        }
+      },
+      {
+        "name": "legstreamnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamnotional"
+        }
+      },
+      {
+        "name": "legstreamcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcurrency"
+        }
+      },
+      {
+        "name": "legstreamnotionaldeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamnotionaldeterminationmethod"
+        }
+      },
+      {
+        "name": "legstreamnotionaladjustments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamnotionaladjustments"
+        }
+      },
+      {
+        "name": "legstreamnotionalfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamnotionalfrequencyperiod"
+        }
+      },
+      {
+        "name": "legstreamnotionalfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamnotionalfrequencyunit"
+        }
+      },
+      {
+        "name": "legstreamnotionalcommodityfrequency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamnotionalcommodityfrequency"
+        }
+      },
+      {
+        "name": "legstreamnotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamnotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "legstreamtotalnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamtotalnotional"
+        }
+      },
+      {
+        "name": "legstreamtotalnotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamtotalnotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "legstreamcommodity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legstreamcommodity"
+        }
+      },
+      {
+        "name": "legstreameffectivedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legstreameffectivedate"
+        }
+      },
+      {
+        "name": "legstreamterminationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legstreamterminationdate"
+        }
+      },
+      {
+        "name": "legstreamcalculationperioddates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legstreamcalculationperioddates"
+        }
+      },
+      {
+        "name": "legpaymentstream",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstream"
+        }
+      },
+      {
+        "name": "nolegpaymentschedules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpaymentschedules"
+        }
+      },
+      {
+        "name": "legpaymentschedulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentschedulegrp"
+        }
+      },
+      {
+        "name": "nolegpaymentstubs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpaymentstubs"
+        }
+      },
+      {
+        "name": "legpaymentstubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentstubgrp"
+        }
+      },
+      {
+        "name": "legdeliverystream",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legdeliverystream"
+        }
+      },
+      {
+        "name": "nolegdeliveryschedules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegdeliveryschedules"
+        }
+      },
+      {
+        "name": "legdeliveryschedulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legdeliveryschedulegrp"
+        }
+      },
+      {
+        "name": "legstreamtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamtext"
+        }
+      },
+      {
+        "name": "encodedlegstreamtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegstreamtextlen"
+        }
+      },
+      {
+        "name": "encodedlegstreamtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegstreamtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStream"
+  }
+}

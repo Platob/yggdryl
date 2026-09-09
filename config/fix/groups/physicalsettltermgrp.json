@@ -1,0 +1,23 @@
+{
+  "name": "physicalsettltermgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "physicalsettlterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "physicalsettlterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPhysicalSettlTerms(40204) > 0.",
+    "display": "PhysicalSettlTermGrp",
+    "fix:component": "physicalsettlterm",
+    "fix:counter": "40204"
+  }
+}

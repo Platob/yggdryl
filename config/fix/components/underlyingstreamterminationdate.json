@@ -1,0 +1,103 @@
+{
+  "name": "underlyingstreamterminationdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamterminationdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamterminationdateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingstreamterminationdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamterminationdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingstreamterminationdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingstreamterminationdatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingstreamterminationdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingstreamterminationdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingstreamterminationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamterminationdaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingstreamterminationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamterminationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingstreamterminationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamterminationdateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingstreamterminationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamterminationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingstreamterminationdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamterminationdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument. The specified value would be specific to this instance of the underlying instrument's termination date of the stream.",
+    "display": "UnderlyingStreamTerminationDate"
+  }
+}

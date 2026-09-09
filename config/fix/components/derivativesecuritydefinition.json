@@ -1,0 +1,83 @@
+{
+  "name": "derivativesecuritydefinition",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "derivativeinstrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "derivativeinstrument"
+        }
+      },
+      {
+        "name": "noderivativeinstrattrib",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noderivativeinstrattrib"
+        }
+      },
+      {
+        "name": "derivativeinstrumentattribute",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "derivativeinstrumentattribute"
+        }
+      },
+      {
+        "name": "nomarketsegments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomarketsegments"
+        }
+      },
+      {
+        "name": "marketsegmentgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "marketsegmentgrp"
+        }
+      },
+      {
+        "name": "nosecurityclassifications",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nosecurityclassifications"
+        }
+      },
+      {
+        "name": "securityclassificationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "securityclassificationgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Optional block which can be used to to summarize common attributes shared across a set of option instruments which belong to the same series.",
+    "display": "DerivativeSecurityDefinition"
+  }
+}

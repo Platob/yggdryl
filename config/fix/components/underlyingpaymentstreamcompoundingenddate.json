@@ -1,0 +1,73 @@
+{
+  "name": "underlyingpaymentstreamcompoundingenddate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreamcompoundingenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingenddateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingenddaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingenddaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingenddateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingenddateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingenddateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingenddateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingenddateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingenddateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingenddateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingenddateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when UnderlyingPaymentStreamCompoundingEndDateOffsetUnit(42920) is specified.",
+    "display": "UnderlyingPaymentStreamCompoundingEndDate"
+  }
+}

@@ -61,10 +61,9 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
             // identifier or is refused, never a typo stored as a security.
             ("isin", DataType::Isin, 12),
             // The FIX-facing codes, each at the width it needs rather than
-            // one width for all: a venue's message type is what runs long,
-            // and a state carries two digits of rank before its name.
+            // one width for all: a state carries two digits of rank before
+            // its name.
             ("side", DataType::Side, 4),
-            ("msgtype", DataType::MsgType, 8),
             ("msgdirection", DataType::MsgDirection, 4),
             ("state", DataType::State, 10),
             ("timeinforce", DataType::TimeInForce, 8),
@@ -312,35 +311,14 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     assert.throws(() => DataType.ascii(0), /at least 1 byte, got 0/)
     ```
 
-## A reading wider than the type
+## FIX message definitions
 
-`msgtype` holds eight bytes, which covers every type FIX publishes and most a venue invents. It does not cover the composite keys a bridge writes — `P Report Ack` is twelve, and a ULBridge `ConfigurationPlugin` is nineteen — and such a value cannot simply be truncated, because two keys sharing a prefix would become one message type.
-
-`MsgType::coerce` is the one way a reading becomes a value: what fits is itself, unchanged; what does not is hashed into eight bytes that open with `~`, a byte outside the alphabet and outside every type FIX publishes. The mapping is stable across processes and versions, and one-way — the spelling it came from is kept by whoever registers it, never recovered from the value. `is_synthetic` says which kind a value is.
-
-This is the column's own value rule and not a reader's courtesy: `msgtype` states the ASCII rule and not the width, so a value wider than eight bytes takes the same mapping wherever a value becomes a stored one — `DataType::scalar`, `Field::scalar`, a row, a [capture column](../media/text.md#classifying-each-record) — rather than refusing the row it arrived on. Every other ASCII rule still holds: a non-ASCII byte is refused as it is for every code.
-
-It is also what [`FixRegistry::register_msgtype`](../fix/registry.md#registering-a-message-type) adds to a dictionary's code set, under the name and the description the source gave it.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::types::MsgType;
-
-    // What fits is itself.
-    assert_eq!(MsgType::coerce("D").as_str(), "D");
-    assert!(!MsgType::coerce("D").is_synthetic());
-
-    // What does not is stable, marked, and never two things at once.
-    let held = MsgType::coerce("ConfigurationPlugin");
-    assert_eq!(held, MsgType::coerce("ConfigurationPlugin"));
-    assert_ne!(held, MsgType::coerce("Plugin"));
-    assert!(held.is_synthetic());
-    assert_eq!(held.as_str().len(), 8);
-    assert!(held.as_str().starts_with('~'));
-    ```
-
-Rust only: neither binding exposes the coercion, which a reader reaches through the capture column instead.
+FIX tag 35 and the [capture `msgtype` column](../media/text.md#classifying-each-record)
+store complete `utf8` text, including codes such as `P Report Ack` and
+`ConfigurationPlugin`. The [FIX registry](../fix/registry.md) owns `MsgType`:
+an immutable message Struct definition obtained through registry lookup. Its
+wire code stays intact; message definitions have no generic datatype or ASCII
+field helper.
 
 ## Declared vocabulary and generated enum
 
@@ -606,7 +584,6 @@ the wire value rather than a name for it, exactly as `side` is.
 - `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES`, `MICS` listings, `prebuilt()` in either binding; `"Exchange"` -> `MICS`.
 - `from_logical_name("tenor")` (registered, no listing) -> an empty enum.
 - JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so an ASCII column arrives as stored bytes; declare `utf8` to read text.
-- `MsgType::coerce` on a spelling past eight bytes -> a `~`-marked synthesized value; `DataType::MsgType.scalar` on the same spelling -> refused, because a stored value is held to the width and only the coercion decides what a wide reading becomes.
 - A wire code never folds: `A` is `PendingNew` and `a` names no state, because they are different FIX codes and a folded lookup would answer the wrong state for one of them.
 - A name folds: `DoneForDay`, `done_for_day`, `DONE FOR DAY` and a bridge's `DoneDay` are one spelling, `80DONEDAY`.
 - A stored value names itself, so resolving one twice is resolving it once.

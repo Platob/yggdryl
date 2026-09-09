@@ -1,0 +1,23 @@
+{
+  "name": "ratesourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "ratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "ratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoRateSource(1445) > 0",
+    "display": "RateSource",
+    "fix:component": "ratesourcecomponent",
+    "fix:counter": "1445"
+  }
+}

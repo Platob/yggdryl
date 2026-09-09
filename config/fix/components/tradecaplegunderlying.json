@@ -1,0 +1,22 @@
+{
+  "name": "tradecaplegunderlying",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingleginstrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingleginstrument"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TradeCapLegUnderlying"
+  }
+}

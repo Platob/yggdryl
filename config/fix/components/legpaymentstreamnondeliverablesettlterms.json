@@ -1,0 +1,143 @@
+{
+  "name": "legpaymentstreamnondeliverablesettlterms",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamnondeliverablerefcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamnondeliverablerefcurrency"
+        }
+      },
+      {
+        "name": "legpaymentstreamnondeliverablefixingdatesbusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesbusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegpaymentstreamnondeliverablefixingdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpaymentstreamnondeliverablefixingdatebusinesscenters"
+        }
+      },
+      {
+        "name": "legpaymentstreamnondeliverablefixingdatesbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentstreamnondeliverablefixingdatesbusinesscentergrp"
+        }
+      },
+      {
+        "name": "legpaymentstreamnondeliverablefixingdatesrelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesrelativeto"
+        }
+      },
+      {
+        "name": "legpaymentstreamnondeliverablefixingdatesoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreamnondeliverablefixingdatesoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetunit"
+        }
+      },
+      {
+        "name": "legpaymentstreamnondeliverablefixingdatesoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetdaytype"
+        }
+      },
+      {
+        "name": "legpaymentstreamnondeliverablesettlratesourcecomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreamnondeliverablesettlratesourcecomponent"
+        }
+      },
+      {
+        "name": "nolegnondeliverablefixingdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegnondeliverablefixingdates"
+        }
+      },
+      {
+        "name": "legpaymentstreamnondeliverablefixingdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentstreamnondeliverablefixingdategrp"
+        }
+      },
+      {
+        "name": "nolegsettlratefallbacks",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegsettlratefallbacks"
+        }
+      },
+      {
+        "name": "legsettlratedisruptionfallbackgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legsettlratedisruptionfallbackgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the non-deliverable currency's fixing date.",
+    "display": "LegPaymentStreamNonDeliverableSettlTerms"
+  }
+}

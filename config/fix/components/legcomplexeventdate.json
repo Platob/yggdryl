@@ -1,0 +1,52 @@
+{
+  "name": "legcomplexeventdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcomplexeventstartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventstartdate"
+        }
+      },
+      {
+        "name": "legcomplexeventenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventenddate"
+        }
+      },
+      {
+        "name": "nolegcomplexeventtimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegcomplexeventtimes"
+        }
+      },
+      {
+        "name": "legcomplexeventtimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legcomplexeventtimes"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegComplexEventDate"
+  }
+}

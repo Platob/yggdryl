@@ -22,6 +22,7 @@ from .._native import (
     Uri,
     Url,
     Urn,
+    Version,
 )
 from ._classes import _PhysicalUnionValue, _adopt_materialized_schema
 
@@ -155,6 +156,8 @@ def _hint_from_datatype(
     materialize_schema: bool = True,
 ) -> Any:
     kind = dtype.id
+    if kind == "version":
+        return Version
     if kind == "null":
         return type(None)
     if kind == "boolean":

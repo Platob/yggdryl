@@ -1,0 +1,42 @@
+{
+  "name": "underlyingpaymentscheduleratesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentscheduleratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentscheduleratesource"
+        }
+      },
+      {
+        "name": "underlyingpaymentscheduleratesourcetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentscheduleratesourcetype"
+        }
+      },
+      {
+        "name": "underlyingpaymentschedulereferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentschedulereferencepage"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPaymentScheduleRateSource"
+  }
+}

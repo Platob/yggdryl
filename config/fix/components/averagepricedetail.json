@@ -1,0 +1,43 @@
+{
+  "name": "averagepricedetail",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "averagepricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "averagepricetype"
+        }
+      },
+      {
+        "name": "averagepricestarttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "averagepricestarttime"
+        }
+      },
+      {
+        "name": "averagepriceendtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "averagepriceendtime"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if AveragePriceType(2763)=2 (Percent of volume average price) or 0 (Time weighted average price).",
+    "display": "AveragePriceDetail"
+  }
+}

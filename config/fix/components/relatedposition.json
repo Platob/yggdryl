@@ -1,0 +1,42 @@
+{
+  "name": "relatedposition",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "relatedpositionid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedpositionid"
+        }
+      },
+      {
+        "name": "relatedpositionidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedpositionidsource"
+        }
+      },
+      {
+        "name": "relatedpositiondate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedpositiondate"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RelatedPosition"
+  }
+}

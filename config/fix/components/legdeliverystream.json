@@ -1,0 +1,323 @@
+{
+  "name": "legdeliverystream",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdeliverystreamtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamtype"
+        }
+      },
+      {
+        "name": "nolegdeliverystreamcommoditysources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegdeliverystreamcommoditysources"
+        }
+      },
+      {
+        "name": "legdeliverystreamcommoditysourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legdeliverystreamcommoditysourcegrp"
+        }
+      },
+      {
+        "name": "legdeliverystreampipeline",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreampipeline"
+        }
+      },
+      {
+        "name": "legdeliverystreamentrypoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamentrypoint"
+        }
+      },
+      {
+        "name": "legdeliverystreamwithdrawalpoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamwithdrawalpoint"
+        }
+      },
+      {
+        "name": "legdeliverystreamdeliverypoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamdeliverypoint"
+        }
+      },
+      {
+        "name": "legdeliverystreamdeliverypointsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamdeliverypointsource"
+        }
+      },
+      {
+        "name": "legdeliverystreamdeliverypointdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamdeliverypointdesc"
+        }
+      },
+      {
+        "name": "legdeliverystreamdeliveryrestriction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamdeliveryrestriction"
+        }
+      },
+      {
+        "name": "legdeliverystreamdeliverycontingency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamdeliverycontingency"
+        }
+      },
+      {
+        "name": "legdeliverystreamdeliverycontingentpartyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamdeliverycontingentpartyside"
+        }
+      },
+      {
+        "name": "legdeliverystreamdeliveratsourceindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamdeliveratsourceindicator"
+        }
+      },
+      {
+        "name": "legdeliverystreamriskapportionment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamriskapportionment"
+        }
+      },
+      {
+        "name": "legdeliverystreamriskapportionmentsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamriskapportionmentsource"
+        }
+      },
+      {
+        "name": "nolegdeliverystreamcycles",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegdeliverystreamcycles"
+        }
+      },
+      {
+        "name": "legdeliverystreamcyclegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legdeliverystreamcyclegrp"
+        }
+      },
+      {
+        "name": "legdeliverystreamtitletransferlocation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamtitletransferlocation"
+        }
+      },
+      {
+        "name": "legdeliverystreamtitletransfercondition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamtitletransfercondition"
+        }
+      },
+      {
+        "name": "legdeliverystreamimporterofrecord",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamimporterofrecord"
+        }
+      },
+      {
+        "name": "legdeliverystreamnegativetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamnegativetolerance"
+        }
+      },
+      {
+        "name": "legdeliverystreampositivetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreampositivetolerance"
+        }
+      },
+      {
+        "name": "legdeliverystreamtoleranceunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamtoleranceunitofmeasure"
+        }
+      },
+      {
+        "name": "legdeliverystreamtolerancetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamtolerancetype"
+        }
+      },
+      {
+        "name": "legdeliverystreamtoleranceoptionside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamtoleranceoptionside"
+        }
+      },
+      {
+        "name": "legdeliverystreamtotalpositivetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamtotalpositivetolerance"
+        }
+      },
+      {
+        "name": "legdeliverystreamtotalnegativetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamtotalnegativetolerance"
+        }
+      },
+      {
+        "name": "legdeliverystreamnotionalconversionfactor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamnotionalconversionfactor"
+        }
+      },
+      {
+        "name": "legdeliverystreamtransportequipment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamtransportequipment"
+        }
+      },
+      {
+        "name": "legdeliverystreamelectingpartyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamelectingpartyside"
+        }
+      },
+      {
+        "name": "legdeliverystreamrouteorcharter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamrouteorcharter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The LegDeliveryStream component is a subcomponent of the LegStream used to detail the attributes of a physical delivery stream in a swap.",
+    "display": "LegDeliveryStream"
+  }
+}

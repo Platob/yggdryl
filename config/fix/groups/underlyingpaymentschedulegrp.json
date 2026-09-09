@@ -1,0 +1,23 @@
+{
+  "name": "underlyingpaymentschedulegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingpaymentschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingPaymentScheules(40664) > 0.",
+    "display": "UnderlyingPaymentScheduleGrp",
+    "fix:component": "underlyingpaymentschedule",
+    "fix:counter": "40664"
+  }
+}

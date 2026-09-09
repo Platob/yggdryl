@@ -1,0 +1,23 @@
+{
+  "name": "testsystemmodulegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testsystemmodule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "testsystemmodule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTestSystemModules(3049) > 0.",
+    "display": "TestSystemModuleGrp",
+    "fix:component": "testsystemmodule",
+    "fix:counter": "3049"
+  }
+}

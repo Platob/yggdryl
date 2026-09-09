@@ -1,0 +1,23 @@
+{
+  "name": "instrumentscopesecurityaltidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrumentscopesecurityaltidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "instrumentscopesecurityaltidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoInstrumentScopeSecurityAltID > 0.",
+    "display": "InstrumentScopeSecurityAltIDGrp",
+    "fix:component": "instrumentscopesecurityaltidcomponent",
+    "fix:counter": "1540"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "derivativeinstrumentpartysubidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "derivativeinstrumentpartysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinstrumentpartysubid"
+        }
+      },
+      {
+        "name": "derivativeinstrumentpartysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinstrumentpartysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DerivativeInstrumentPartySubID"
+  }
+}

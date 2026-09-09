@@ -1,0 +1,112 @@
+{
+  "name": "matchexception",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "matchexceptiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchexceptiontype"
+        }
+      },
+      {
+        "name": "matchexceptionelementtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchexceptionelementtype"
+        }
+      },
+      {
+        "name": "matchexceptionelementname",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchexceptionelementname"
+        }
+      },
+      {
+        "name": "matchexceptionallocvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchexceptionallocvalue"
+        }
+      },
+      {
+        "name": "matchexceptionconfirmvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchexceptionconfirmvalue"
+        }
+      },
+      {
+        "name": "matchexceptiontolerancevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchexceptiontolerancevalue"
+        }
+      },
+      {
+        "name": "matchexceptiontolerancevaluetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchexceptiontolerancevaluetype"
+        }
+      },
+      {
+        "name": "matchexceptiontext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchexceptiontext"
+        }
+      },
+      {
+        "name": "encodedmatchexceptiontextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedmatchexceptiontextlen"
+        }
+      },
+      {
+        "name": "encodedmatchexceptiontext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedmatchexceptiontext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MatchException"
+  }
+}

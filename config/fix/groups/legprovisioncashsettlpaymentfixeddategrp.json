@@ -1,0 +1,23 @@
+{
+  "name": "legprovisioncashsettlpaymentfixeddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisioncashsettlpaymentfixeddate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprovisioncashsettlpaymentfixeddate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProvisionCashSettlPaymentDates (40473) > 0.",
+    "display": "LegProvisionCashSettlPaymentFixedDateGrp",
+    "fix:component": "legprovisioncashsettlpaymentfixeddate",
+    "fix:counter": "40473"
+  }
+}

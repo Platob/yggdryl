@@ -1,0 +1,23 @@
+{
+  "name": "requestedrisklimittypesgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "requestedrisklimittype",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "requestedrisklimittype"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoRequestedRiskLimitType > 0.",
+    "display": "RequestedRiskLimitTypesGrp",
+    "fix:component": "requestedrisklimittype",
+    "fix:counter": "1668"
+  }
+}

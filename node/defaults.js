@@ -6,7 +6,7 @@
 // core schema behavior.
 const { arrowScalarFromIPC } = require('./values.js')
 
-function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
+function installDefaults({ DataType, Field, Version, NativeDataType, NativeField }) {
   const dtypeDefault = NativeDataType.prototype._defaultJSValueNative
   const dtypeDefaultHint = NativeDataType.prototype._defaultJSHintNative
   const fieldDefault = NativeField.prototype._defaultJSValueNative
@@ -72,6 +72,7 @@ function installDefaults({ DataType, Field, NativeDataType, NativeField }) {
     Object,
     undefined,
     Map,
+    Version,
   ])
 
   function frozenHint(dtype, nullable) {

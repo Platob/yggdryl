@@ -1,0 +1,23 @@
+{
+  "name": "tradepositionqty",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradepositionqtycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "tradepositionqtycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPositions > 0.",
+    "display": "TradePositionQty",
+    "fix:component": "tradepositionqtycomponent",
+    "fix:counter": "702"
+  }
+}

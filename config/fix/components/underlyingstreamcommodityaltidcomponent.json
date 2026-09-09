@@ -1,0 +1,32 @@
+{
+  "name": "underlyingstreamcommodityaltidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamcommodityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommodityaltid"
+        }
+      },
+      {
+        "name": "underlyingstreamcommodityaltidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommodityaltidsource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStreamCommodityAltID"
+  }
+}

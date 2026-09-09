@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprovisionoptionexpirationdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisionoptionexpirationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprovisionoptionexpirationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProvisionOptionExpirationDateBusinessCenters(42186) > 0.",
+    "display": "UnderlyingProvisionOptionExpirationDateBusinessCenterGrp",
+    "fix:component": "underlyingprovisionoptionexpirationdatebusinesscentercomponent",
+    "fix:counter": "42186"
+  }
+}

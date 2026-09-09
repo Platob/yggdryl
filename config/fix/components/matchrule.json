@@ -1,0 +1,52 @@
+{
+  "name": "matchrule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "matchalgorithm",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchalgorithm"
+        }
+      },
+      {
+        "name": "matchtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchtype"
+        }
+      },
+      {
+        "name": "matchruleproductcomplex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchruleproductcomplex"
+        }
+      },
+      {
+        "name": "customerpriority",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "customerpriority"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MatchRule"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "mdstatisticreq",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "mdstatisticid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticid"
+        }
+      },
+      {
+        "name": "mdstatisticparameters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "mdstatisticparameters"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MDStatisticReq"
+  }
+}

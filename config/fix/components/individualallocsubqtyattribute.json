@@ -1,0 +1,32 @@
+{
+  "name": "individualallocsubqtyattribute",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "individualallocsubqtytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "individualallocsubqtytype"
+        }
+      },
+      {
+        "name": "individualallocsubqtyvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "individualallocsubqtyvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "IndividualAllocSubQtyAttribute"
+  }
+}

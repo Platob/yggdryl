@@ -1,0 +1,22 @@
+{
+  "name": "dlvyinstgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "dlvyinst",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "dlvyinst"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DlvyInstGrp",
+    "fix:component": "dlvyinst",
+    "fix:counter": "85"
+  }
+}

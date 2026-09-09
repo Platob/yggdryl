@@ -1,0 +1,52 @@
+{
+  "name": "legadditionalterm",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legadditionaltermconditionprecedentbondindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermconditionprecedentbondindicator"
+        }
+      },
+      {
+        "name": "legadditionaltermdiscrepancyclauseindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermdiscrepancyclauseindicator"
+        }
+      },
+      {
+        "name": "nolegadditionaltermbondrefs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegadditionaltermbondrefs"
+        }
+      },
+      {
+        "name": "legadditionaltermbondrefgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legadditionaltermbondrefgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegAdditionalTerm"
+  }
+}

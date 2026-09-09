@@ -1,0 +1,23 @@
+{
+  "name": "protectiontermgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "protectionterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "protectionterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProtectionTerms(40181) > 0.",
+    "display": "ProtectionTermGrp",
+    "fix:component": "protectionterm",
+    "fix:counter": "40181"
+  }
+}

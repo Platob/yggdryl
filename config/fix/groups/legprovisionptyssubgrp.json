@@ -1,0 +1,23 @@
+{
+  "name": "legprovisionptyssubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisionptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprovisionptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProvisionPartySubIDs(40537) > 0.",
+    "display": "LegProvisionPtysSubGrp",
+    "fix:component": "legprovisionptyssub",
+    "fix:counter": "40537"
+  }
+}

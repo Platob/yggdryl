@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprotectiontermobligationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprotectiontermobligation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprotectiontermobligation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProtectionTermObligations(42087) > 0.",
+    "display": "UnderlyingProtectionTermObligationGrp",
+    "fix:component": "underlyingprotectiontermobligation",
+    "fix:counter": "42087"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "legpaymentschedulefixingday",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentschedulefixingdayofweek",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentschedulefixingdayofweek"
+        }
+      },
+      {
+        "name": "legpaymentschedulefixingdaynumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentschedulefixingdaynumber"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPaymentScheduleFixingDay"
+  }
+}

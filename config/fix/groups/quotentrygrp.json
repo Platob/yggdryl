@@ -1,0 +1,23 @@
+{
+  "name": "quotentrygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quotentry",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "quotentry"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The number of quotes for this Symbol (instrument) (QuoteSet) that follow in this message.",
+    "display": "QuotEntryGrp",
+    "fix:component": "quotentry",
+    "fix:counter": "295"
+  }
+}

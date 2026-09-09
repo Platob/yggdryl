@@ -1,0 +1,23 @@
+{
+  "name": "underlyingcomplexeventratesourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcomplexeventratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingComplexEventRateSources(41732) > 0.",
+    "display": "UnderlyingComplexEventRateSourceGrp",
+    "fix:component": "underlyingcomplexeventratesourcecomponent",
+    "fix:counter": "41732"
+  }
+}

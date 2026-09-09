@@ -1,0 +1,32 @@
+{
+  "name": "tradingservice",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "tradingservicetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingservicetype"
+        }
+      },
+      {
+        "name": "tradingservicedesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingservicedesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TradingService"
+  }
+}

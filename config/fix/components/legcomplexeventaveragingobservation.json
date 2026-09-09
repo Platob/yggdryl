@@ -1,0 +1,32 @@
+{
+  "name": "legcomplexeventaveragingobservation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcomplexeventaveragingobservationnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventaveragingobservationnumber"
+        }
+      },
+      {
+        "name": "legcomplexeventaveragingweight",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventaveragingweight"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegComplexEventAveragingObservation"
+  }
+}

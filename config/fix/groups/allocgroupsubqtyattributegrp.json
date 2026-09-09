@@ -1,0 +1,23 @@
+{
+  "name": "allocgroupsubqtyattributegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "allocgroupsubqtyattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "allocgroupsubqtyattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAllocGroupSubQtyAttributes (2979) > 0.",
+    "display": "AllocGroupSubQtyAttributeGrp",
+    "fix:component": "allocgroupsubqtyattribute",
+    "fix:counter": "2979"
+  }
+}

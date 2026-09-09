@@ -1,0 +1,42 @@
+{
+  "name": "underlyingreturnrateinformationsourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingreturnrateinformationsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnrateinformationsource"
+        }
+      },
+      {
+        "name": "underlyingreturnratereferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratereferencepage"
+        }
+      },
+      {
+        "name": "underlyingreturnratereferencepageheading",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratereferencepageheading"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingReturnRateInformationSource"
+  }
+}

@@ -1,0 +1,502 @@
+{
+  "name": "underlyingcomplexevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventtype"
+        }
+      },
+      {
+        "name": "underlyingcomplexoptpayoutpayside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexoptpayoutpayside"
+        }
+      },
+      {
+        "name": "underlyingcomplexoptpayoutreceiveside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexoptpayoutreceiveside"
+        }
+      },
+      {
+        "name": "underlyingcomplexoptpayoutunderlier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexoptpayoutunderlier"
+        }
+      },
+      {
+        "name": "underlyingcomplexoptpayoutamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexoptpayoutamount"
+        }
+      },
+      {
+        "name": "underlyingcomplexoptpayoutpercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexoptpayoutpercentage"
+        }
+      },
+      {
+        "name": "underlyingcomplexoptpayouttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexoptpayouttime"
+        }
+      },
+      {
+        "name": "underlyingcomplexoptpayoutcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexoptpayoutcurrency"
+        }
+      },
+      {
+        "name": "underlyingcomplexoptpayoutcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexoptpayoutcurrencycodesource"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventprice"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventpricepercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventpricepercentage"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventpriceboundarymethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventpriceboundarymethod"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventpriceboundaryprecision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventpriceboundaryprecision"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventpricetimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventpricetimetype"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcondition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcondition"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventdates"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventdates"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcurrencyone",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcurrencyone"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcurrencyonecodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcurrencyonecodesource"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcurrencytwo",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcurrencytwo"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcurrencytwocodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcurrencytwocodesource"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventquotebasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventquotebasis"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventfixedfxrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventfixedfxrate"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventspotrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventspotrate"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventforwardpoints",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventforwardpoints"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventdeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventdeterminationmethod"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcalculationagent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcalculationagent"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventstrikeprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventstrikeprice"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventstrikefactor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventstrikefactor"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventstrikenumberofoptions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventstrikenumberofoptions"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventratesources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventratesources"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventratesourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventratesourcegrp"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventrelativedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingcomplexeventrelativedate"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventperiods",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventperiods"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventperiodgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventperiodgrp"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventsxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventsxidref"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventnotifyingparty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventnotifyingparty"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventbusinesscenter"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventstandardsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventstandardsources"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventminimumsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventminimumsources"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventcrediteventsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventcrediteventsources"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventsourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventcrediteventsourcegrp"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventcreditevents",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventcreditevents"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventcrediteventgrp"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventfuturespricevaluation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventfuturespricevaluation"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventoptionspricevaluation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventoptionspricevaluation"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventpvfinalpriceelectionfallback",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventpvfinalpriceelectionfallback"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventxid"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventxidref"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEvent"
+  }
+}

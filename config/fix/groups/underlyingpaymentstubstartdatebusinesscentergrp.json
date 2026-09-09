@@ -1,0 +1,23 @@
+{
+  "name": "underlyingpaymentstubstartdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentstubstartdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingpaymentstubstartdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingPaymentStubStartDateBusinessCenters(43000) > 0.",
+    "display": "UnderlyingPaymentStubStartDateBusinessCenterGrp",
+    "fix:component": "underlyingpaymentstubstartdatebusinesscentercomponent",
+    "fix:counter": "43000"
+  }
+}

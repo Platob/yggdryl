@@ -1,0 +1,23 @@
+{
+  "name": "underlyingsecondaryassetgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingsecondaryasset",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingsecondaryasset"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingSecondaryAssetClasses(2080) > 0.",
+    "display": "UnderlyingSecondaryAssetGrp",
+    "fix:component": "underlyingsecondaryasset",
+    "fix:counter": "2080"
+  }
+}

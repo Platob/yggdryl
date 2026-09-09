@@ -1,0 +1,23 @@
+{
+  "name": "legcomplexeventcrediteventqualifiergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventcrediteventqualifiercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcomplexeventcrediteventqualifiercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegComplexEventCreditEventQualifiers(41374) > 0.",
+    "display": "LegComplexEventCreditEventQualifierGrp",
+    "fix:component": "legcomplexeventcrediteventqualifiercomponent",
+    "fix:counter": "41374"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "securityxmlcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "securityxmllen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securityxmllen"
+        }
+      },
+      {
+        "name": "securityxml",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securityxml"
+        }
+      },
+      {
+        "name": "securityxmlschema",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securityxmlschema"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Must be provided if SecurityXML(1185) field is specified and must immediately precede it.",
+    "display": "SecurityXML"
+  }
+}

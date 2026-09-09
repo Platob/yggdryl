@@ -230,7 +230,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::from("1"), Scalar::from("2"), Scalar::Null]),
         ),
         (
-            Field::new("msgtype", DataType::MsgType, true),
+            Field::new("msgtype", DataType::Utf8, true),
             Scalar::from_sequence([Scalar::from("D"), Scalar::from("AE"), Scalar::Null]),
         ),
         (
@@ -262,7 +262,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Field::new("version", DataType::Version, true),
             Scalar::from_sequence([
                 DataType::Version.scalar("1.2.3").unwrap(),
-                DataType::Version.scalar("1.10.0-rc.1").unwrap(),
+                DataType::Version.scalar("1.10.300").unwrap(),
                 Scalar::Null,
             ]),
         ),

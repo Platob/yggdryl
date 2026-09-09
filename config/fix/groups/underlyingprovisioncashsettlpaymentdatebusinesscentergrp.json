@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprovisioncashsettlpaymentdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisioncashsettlpaymentdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprovisioncashsettlpaymentdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProvisionCashSettlPaymentDateBusinessCenters(42180) > 0.",
+    "display": "UnderlyingProvisionCashSettlPaymentDateBusinessCenterGrp",
+    "fix:component": "underlyingprovisioncashsettlpaymentdatebusinesscentercomponent",
+    "fix:counter": "42180"
+  }
+}

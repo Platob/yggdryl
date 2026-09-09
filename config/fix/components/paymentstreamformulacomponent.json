@@ -1,0 +1,73 @@
+{
+  "name": "paymentstreamformulacomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreamformulacurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamformulacurrency"
+        }
+      },
+      {
+        "name": "paymentstreamformulacurrencydeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamformulacurrencydeterminationmethod"
+        }
+      },
+      {
+        "name": "paymentstreamformulareferenceamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamformulareferenceamount"
+        }
+      },
+      {
+        "name": "nopaymentstreamformulas",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentstreamformulas"
+        }
+      },
+      {
+        "name": "paymentstreamformulamathgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentstreamformulamathgrp"
+        }
+      },
+      {
+        "name": "paymentstreamformulaimagecomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "paymentstreamformulaimagecomponent"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "PaymentStreamFormula is a subcomponent of the PaymentStreamFloatingRate component used to report the parameters for determining the floating rate of the stream e.g. for equity swaps.",
+    "display": "PaymentStreamFormula"
+  }
+}

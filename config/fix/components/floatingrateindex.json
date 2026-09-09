@@ -1,0 +1,63 @@
+{
+  "name": "floatingrateindex",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "floatingrateindexid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "floatingrateindexid"
+        }
+      },
+      {
+        "name": "floatingrateindexidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "floatingrateindexidsource"
+        }
+      },
+      {
+        "name": "floatingrateindexcurveunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "floatingrateindexcurveunit"
+        }
+      },
+      {
+        "name": "floatingrateindexcurveperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "floatingrateindexcurveperiod"
+        }
+      },
+      {
+        "name": "floatingrateindexcurvespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "floatingrateindexcurvespread"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when FloatingRateIndexIDSource(2732) is specified.",
+    "display": "FloatingRateIndex"
+  }
+}

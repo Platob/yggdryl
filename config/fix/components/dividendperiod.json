@@ -1,0 +1,222 @@
+{
+  "name": "dividendperiod",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "dividendperiodsequence",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodsequence"
+        }
+      },
+      {
+        "name": "dividendperiodstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodstartdateunadjusted"
+        }
+      },
+      {
+        "name": "dividendperiodenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodenddateunadjusted"
+        }
+      },
+      {
+        "name": "dividendperiodunderlierrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodunderlierrefid"
+        }
+      },
+      {
+        "name": "dividendperiodstrikeprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodstrikeprice"
+        }
+      },
+      {
+        "name": "dividendperiodbusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodbusinessdayconvention"
+        }
+      },
+      {
+        "name": "nodividendperiodbusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nodividendperiodbusinesscenters"
+        }
+      },
+      {
+        "name": "dividendperiodbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "dividendperiodbusinesscentergrp"
+        }
+      },
+      {
+        "name": "dividendperiodvaluationdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodvaluationdateunadjusted"
+        }
+      },
+      {
+        "name": "dividendperiodvaluationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodvaluationdaterelativeto"
+        }
+      },
+      {
+        "name": "dividendperiodvaluationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodvaluationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "dividendperiodvaluationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodvaluationdateoffsetunit"
+        }
+      },
+      {
+        "name": "dividendperiodvaluationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodvaluationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "dividendperiodvaluationdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodvaluationdateadjusted"
+        }
+      },
+      {
+        "name": "dividendperiodpaymentdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodpaymentdateunadjusted"
+        }
+      },
+      {
+        "name": "dividendperiodpaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodpaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "dividendperiodpaymentdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodpaymentdateoffsetperiod"
+        }
+      },
+      {
+        "name": "dividendperiodpaymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodpaymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "dividendperiodpaymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodpaymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "dividendperiodpaymentdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodpaymentdateadjusted"
+        }
+      },
+      {
+        "name": "dividendperiodxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendperiodxid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DividendPeriod"
+  }
+}

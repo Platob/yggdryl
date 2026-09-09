@@ -1,0 +1,32 @@
+{
+  "name": "legfinancingtermsupplement",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legfinancingtermsupplementdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legfinancingtermsupplementdesc"
+        }
+      },
+      {
+        "name": "legfinancingtermsupplementdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legfinancingtermsupplementdate"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegFinancingTermSupplement"
+  }
+}

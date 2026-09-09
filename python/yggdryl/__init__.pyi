@@ -30,6 +30,7 @@ from .types import (
     PythonMetadata as PythonMetadata,
     Scalar as Scalar,
     Timezone as Timezone,
+    Version as Version,
     field as field,
 )
 from .types.scalar import scalar as scalar

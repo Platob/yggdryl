@@ -1,0 +1,23 @@
+{
+  "name": "secondaryassetgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "secondaryasset",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "secondaryasset"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoSecondaryAssetClasses(1976) > 0.",
+    "display": "SecondaryAssetGrp",
+    "fix:component": "secondaryasset",
+    "fix:counter": "1976"
+  }
+}

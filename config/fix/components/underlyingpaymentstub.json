@@ -1,0 +1,322 @@
+{
+  "name": "underlyingpaymentstub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubtype"
+        }
+      },
+      {
+        "name": "underlyingpaymentstublength",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstublength"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubstartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstubstartdate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstubenddate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubrate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubfixedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubfixedamount"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubfixedcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubfixedcurrency"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexsource"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexcurveperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexcurveperiod"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexcurveunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexcurveunit"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexratemultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexratemultiplier"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexratespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexratespread"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexratespreadpositiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexratespreadpositiontype"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexratetreatment"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexcaprate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexcaprate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexcapratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexcapratebuyside"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexcapratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexcapratesellside"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexfloorrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexfloorrate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexfloorratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexfloorratebuyside"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindexfloorratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindexfloorratesellside"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex2",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex2"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex2source",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex2source"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex2curveperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex2curveperiod"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex2curveunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex2curveunit"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex2ratemultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex2ratemultiplier"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex2ratespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex2ratespread"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex2ratespreadpositiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex2ratespreadpositiontype"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex2ratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex2ratetreatment"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex2caprate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex2caprate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubindex2floorrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubindex2floorrate"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPaymentStub"
+  }
+}

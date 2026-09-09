@@ -1,0 +1,32 @@
+{
+  "name": "flexproducteligibility",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "flexproducteligibilityindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "flexproducteligibilityindicator"
+        }
+      },
+      {
+        "name": "flexproducteligibilitycomplex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "flexproducteligibilitycomplex"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "FlexProductEligibility"
+  }
+}

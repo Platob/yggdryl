@@ -1,0 +1,42 @@
+{
+  "name": "cpctyconf",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "ordercapacity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "ordercapacity"
+        }
+      },
+      {
+        "name": "orderrestrictions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderrestrictions"
+        }
+      },
+      {
+        "name": "ordercapacityqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordercapacityqty"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "CpctyConf"
+  }
+}

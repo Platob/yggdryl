@@ -1,0 +1,72 @@
+{
+  "name": "msgtypecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "refmsgtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "refmsgtype"
+        }
+      },
+      {
+        "name": "msgdirection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "msgdirection"
+        }
+      },
+      {
+        "name": "refapplverid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "refapplverid"
+        }
+      },
+      {
+        "name": "refapplextid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "refapplextid"
+        }
+      },
+      {
+        "name": "refcstmapplverid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "refcstmapplverid"
+        }
+      },
+      {
+        "name": "defaultverindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "defaultverindicator"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MsgType"
+  }
+}

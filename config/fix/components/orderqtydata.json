@@ -1,0 +1,63 @@
+{
+  "name": "orderqtydata",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "orderqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderqty"
+        }
+      },
+      {
+        "name": "cashorderqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cashorderqty"
+        }
+      },
+      {
+        "name": "orderpercent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderpercent"
+        }
+      },
+      {
+        "name": "roundingdirection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "roundingdirection"
+        }
+      },
+      {
+        "name": "roundingmodulus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "roundingmodulus"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "One of CashOrderQty, OrderQty, or (for CIV only) OrderPercent is required. Note that unless otherwise specified, only one of CashOrderQty, OrderQty, or OrderPercent should be specified.",
+    "display": "OrderQtyData"
+  }
+}

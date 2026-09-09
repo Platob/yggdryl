@@ -1,0 +1,42 @@
+{
+  "name": "underlyingstreamcommoditysettltime",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamcommoditysettlstart",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlstart"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlend",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlend"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettltimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettltimetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStreamCommoditySettlTime"
+  }
+}

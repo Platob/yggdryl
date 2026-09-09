@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprovisioncashsettlpaymentfixeddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisioncashsettlpaymentfixeddate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprovisioncashsettlpaymentfixeddate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProvisionCashSettlPaymentDates (42099) > 0.",
+    "display": "UnderlyingProvisionCashSettlPaymentFixedDateGrp",
+    "fix:component": "underlyingprovisioncashsettlpaymentfixeddate",
+    "fix:counter": "42099"
+  }
+}

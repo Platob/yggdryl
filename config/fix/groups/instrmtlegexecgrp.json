@@ -1,0 +1,23 @@
+{
+  "name": "instrmtlegexecgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrmtlegexec",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "instrmtlegexec"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of leg executions.",
+    "display": "InstrmtLegExecGrp",
+    "fix:component": "instrmtlegexec",
+    "fix:counter": "555"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "paymentsettlparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentsettlparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentsettlparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentSettlPartyIDs(40233) > 0.",
+    "display": "PaymentSettlParties",
+    "fix:component": "paymentsettlparty",
+    "fix:counter": "40233"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "trdallocgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdalloc",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "trdalloc"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAllocs(78) > 0.",
+    "display": "TrdAllocGrp",
+    "fix:component": "trdalloc",
+    "fix:counter": "78"
+  }
+}

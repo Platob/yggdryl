@@ -1,0 +1,23 @@
+{
+  "name": "underlyingdividendperiodgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdividendperiod",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingdividendperiod"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingDividendPeriods(42862) > 0.",
+    "display": "UnderlyingDividendPeriodGrp",
+    "fix:component": "underlyingdividendperiod",
+    "fix:counter": "42862"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "legstreamcommodityaltidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamcommodityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommodityaltid"
+        }
+      },
+      {
+        "name": "legstreamcommodityaltidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommodityaltidsource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamCommodityAltID"
+  }
+}

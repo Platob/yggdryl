@@ -1,0 +1,293 @@
+{
+  "name": "legpaymentstreamresetdates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamresetdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamresetdaterelativeto"
+        }
+      },
+      {
+        "name": "legpaymentstreamresetdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamresetdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegpaymentstreamresetdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpaymentstreamresetdatebusinesscenters"
+        }
+      },
+      {
+        "name": "legpaymentstreamresetdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentstreamresetdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legpaymentstreamresetfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamresetfrequencyperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreamresetfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamresetfrequencyunit"
+        }
+      },
+      {
+        "name": "legpaymentstreamresetweeklyrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamresetweeklyrollconvention"
+        }
+      },
+      {
+        "name": "legpaymentstreaminitialfixingdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreaminitialfixingdaterelativeto"
+        }
+      },
+      {
+        "name": "legpaymentstreaminitialfixingdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreaminitialfixingdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegpaymentstreaminitialfixingdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpaymentstreaminitialfixingdatebusinesscenters"
+        }
+      },
+      {
+        "name": "legpaymentstreaminitialfixingdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentstreaminitialfixingdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legpaymentstreaminitialfixingdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreaminitialfixingdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreaminitialfixingdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreaminitialfixingdateoffsetunit"
+        }
+      },
+      {
+        "name": "legpaymentstreaminitialfixingdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreaminitialfixingdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legpaymentstreaminitialfixingdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreaminitialfixingdateadjusted"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixingdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfixingdaterelativeto"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixingdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfixingdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegpaymentstreamfixingdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpaymentstreamfixingdatebusinesscenters"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixingdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentstreamfixingdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixingdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfixingdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixingdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfixingdateoffsetunit"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixingdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfixingdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixingdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfixingdateadjusted"
+        }
+      },
+      {
+        "name": "legpaymentstreamratecutoffdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamratecutoffdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreamratecutoffdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamratecutoffdateoffsetunit"
+        }
+      },
+      {
+        "name": "legpaymentstreamratecutoffdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamratecutoffdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "nolegpaymentstreamfixingdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpaymentstreamfixingdates"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixingdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentstreamfixingdategrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the leg payment stream reset dates.",
+    "display": "LegPaymentStreamResetDates"
+  }
+}

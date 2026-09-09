@@ -17,11 +17,15 @@
 //! | aliases | `fix:aliases` | ordered name list | alternate names, highest priority first |
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
 //! | lineage | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version |
-//! | codes | `fix:codes` | canonical JSON, by wire value | the FIX code set this field's values are drawn from |
+//! | codes | `fix:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
+//! | counter | `fix:counter` | `i32` | the wire field counting a group's occurrences |
+//! | component | `fix:component` | name | the component defining a group occurrence |
 //!
-//! Nesting needs no second type: a component is a Struct field whose
-//! children are its members, a repeating group is a List field whose item is
-//! that Struct, and the group's counter tag is the group field's own `fix:tag`.
+//! Scalar wire fields, messages, components and groups are
+//! separate catalog categories. A component or message is a Struct Field;
+//! a group is a List of a non-null component. Its `fix:counter` references a
+//! separate int32 wire field: `NoPartyIDs` is tag 453, while `Parties` contains
+//! `Party` values. Each field keeps its enumeration in `fix:codes` metadata.
 //!
 //! # Identity
 //!
@@ -78,37 +82,16 @@
 //!
 //! # Storage
 //!
-//! A registry reads and writes through one [`IOBase`](crate::IOBase)
-//! folder handle, into two trees plus one branch manifest:
+//! One IOBase folder contains `fields`, `messages`, `components`, `groups`.
+//! Scalar fields use `<tag / 100>.json` arrays; other
+//! categories use `<name>.json` native Field documents. Named branches add
+//! a subfolder.
 //!
-//! ```text
-//! <root>/primitive/<shard>.json
-//! <root>/primitive/<branch>/<shard>.json
-//! <root>/nested/<shard>.json
-//! <root>/nested/<branch>/<shard>.json
-//! <root>/branches.json
-//! ```
-//!
-//! `primitive` holds the fields whose datatype is one scalar value and
-//! `nested` the ones whose datatype carries a subtree - in FIX terms a
-//! component, which is a Struct, and a repeating group, which is a List of
-//! that Struct. `shard = tag / 100` is unchanged inside each tree, each shard
-//! a JSON array of the core field document ordered by canonical identifier,
-//! so a tag reaches exactly one shard by arithmetic and an alternate tag
-//! never fans a field across shards. `branches.json` records optional dialect,
-//! extension-pack and session facts in canonical branch-name order; its
-//! absence means bare branch records.
-//!
-//! Every shard of both trees is loaded on open:
-//! [`FixRegistry::from_handle`] reads standard shards directly under each
-//! tree, then each named branch folder, because a name has no numeric
-//! structure to pick a shard with and a dictionary is small enough that
-//! loading it whole costs less than the machinery of loading it lazily. Both trees are
-//! optional: a dictionary of only scalars writes no `nested/` at all and a
-//! root holding neither loads as the empty registry, which is the laziness
-//! contract of every handle. A non-shard leaf is ignored; a field whose
-//! datatype contradicts its tree and a shard that exists but does not parse
-//! are typed errors naming their URL.
+//! Referenced children persist as Null-typed native Fields carrying
+//! `fix:field`, `fix:component` or `fix:group`. Loading resolves the graph
+//! once into typed fields and rejects missing or cyclic references. Writing
+//! compacts these references again. The optional `branches.json` stores
+//! branch declarations; no parallel layout manifest is needed.
 //!
 //! # The process default
 //!
@@ -168,12 +151,16 @@ mod enrich;
 mod entry;
 mod field;
 mod global;
+mod group_plan;
 mod lifecycle;
 mod lift;
 mod lineage;
+mod messages;
 mod msg;
+mod msgtype;
 // Reading one generic record is not the Arrow surface, so it is not gated
 // with it: a schema-only build keeps `FixCodec::read_record`.
+mod catalog;
 mod record;
 mod registry;
 mod schema;
@@ -193,11 +180,12 @@ pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
-    CRATE_TAG_MIN, DEFAULT_PARTITION_SECONDS, ID_TAG, INSTID_TAG, ISINCODE_TAG, MICCODE_TAG,
-    MSGCTXID_TAG, MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG, PARENTCLORDID_TAG, PARENTORDERID_TAG,
-    PERSISTENTID_TAG, SENDERPLUGINID_TAG, SENDERPLUGINSESSION_TAG, SESSIONID_TAG, STATE_TAG,
-    SYMBOLTICKER_TAG, TARGETPLUGINID_TAG, TARGETPLUGINSESSION_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG,
-    UNIXPARTITION_TAG, VERSION_TAG, fix_crate_fields, is_crate_tag,
+    CRATE_TAG_MAX, CRATE_TAG_MIN, DEFAULT_PARTITION_SECONDS, ID_TAG, INSTID_TAG, ISINCODE_TAG,
+    MICCODE_TAG, MSGCTXID_TAG, MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG, PARENTCLORDID_TAG,
+    PARENTORDERID_TAG, PERSISTENTID_TAG, SENDERPLUGINID_TAG, SENDERSESSIONID_TAG,
+    SENDERSESSIONNAME_TAG, STATE_TAG, SYMBOLTICKER_TAG, TARGETPLUGINID_TAG, TARGETSESSIONID_TAG,
+    TARGETSESSIONNAME_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG, UNIXPARTITION_TAG, VERSION_TAG,
+    fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use document::Words;
@@ -206,11 +194,13 @@ pub use field::FixSpellings;
 pub use lifecycle::FixLifecycle;
 pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
+pub use messages::FixMessages;
 pub use msg::FixMsg;
+pub use msgtype::MsgType;
 pub use registry::{FixFieldIter, FixRegistry};
 pub use ulbridge::{
-    ERROR_TAG, MBEAN_TAG, OPERATION_TAG, SESSIONINTERFACES_TAG, STATUS_TAG, ULBRIDGE_BRANCH,
-    ULBRIDGE_ROWHEADER, ULBRIDGE_TAG_MIN, UlPlugin, UlPlugins, fix_ulbridge_fields,
+    ERROR_TAG, MBEAN_TAG, OPERATION_TAG, STATUS_TAG, ULBRIDGE_BRANCH, ULBRIDGE_ROWHEADER,
+    ULBRIDGE_TAG_MIN, UlPlugin, UlPlugins, fix_ulbridge_fields,
 };
 
 pub use schema::{
@@ -527,6 +517,24 @@ impl FixId {
     /// The exclusive upper bound of FIX's user-defined tag range.
     pub const USER_TAG_MAX: i32 = 40_000;
 
+    /// The first tag a derived definition identity takes.
+    ///
+    /// Components, groups and messages are named rather than tagged on the
+    /// wire, so nothing publishes a tag for them. This block is where the one
+    /// they are given is derived, clear of every published tag: above the
+    /// user-defined range a dialect may take and above
+    /// [`crate::CRATE_TAG_MAX`], which is the last block anything else claims.
+    pub const DEFINITION_TAG_MIN: i32 = 100_000;
+
+    /// One past the last tag a derived definition identity takes.
+    pub const DEFINITION_TAG_MAX: i32 = 1_100_000;
+
+    /// Whether a tag is a derived definition identity.
+    #[must_use]
+    pub const fn is_definition_tag(tag: i32) -> bool {
+        tag >= Self::DEFINITION_TAG_MIN && tag < Self::DEFINITION_TAG_MAX
+    }
+
     /// The identifier of `tag` in the standard branch.
     pub const fn standard(tag: i32) -> Self {
         Self::new(tag, entry::signed(STANDARD_BRANCH_DIGEST))
@@ -622,16 +630,22 @@ impl FixId {
     }
 
     /// The branch/tag admissibility rule without constructing its refusal.
+    ///
+    /// A derived definition tag is admissible on any branch: it names a
+    /// definition this crate derived rather than a tag anyone published, and
+    /// the branch digest already keeps a venue's derivation distinct from the
+    /// standard one at the same number.
     pub(super) fn is_admissible(branch: &FixBranch, tag: i32) -> bool {
-        branch.is_standard() || (Self::USER_TAG_MIN..Self::USER_TAG_MAX).contains(&tag)
+        branch.is_standard()
+            || Self::is_definition_tag(tag)
+            || (Self::USER_TAG_MIN..Self::USER_TAG_MAX).contains(&tag)
     }
 
     /// The identifier one tag and one stored branch digest name.
     ///
     /// Admissibility is [`Self::from_parts`]'s to decide, so this stays
-    /// inside the module: the only callers are the standard branch, whose
-    /// digest is fixed, and an entry, which resolved through that gate
-    /// already.
+    /// inside the module: callers use the fixed standard digest, a resolved
+    /// entry, or a branch/tag pair already checked by `is_admissible`.
     pub(super) const fn new(tag: i32, branch: i32) -> Self {
         Self { tag, branch }
     }

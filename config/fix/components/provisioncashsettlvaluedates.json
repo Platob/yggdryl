@@ -1,0 +1,113 @@
+{
+  "name": "provisioncashsettlvaluedates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "provisioncashsettlvaluetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlvaluetime"
+        }
+      },
+      {
+        "name": "provisioncashsettlvaluetimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlvaluetimebusinesscenter"
+        }
+      },
+      {
+        "name": "provisioncashsettlvaluedatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlvaluedatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "noprovisioncashsettlvaluedatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprovisioncashsettlvaluedatebusinesscenters"
+        }
+      },
+      {
+        "name": "provisioncashsettlvaluedatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "provisioncashsettlvaluedatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "provisioncashsettlvaluedaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlvaluedaterelativeto"
+        }
+      },
+      {
+        "name": "provisioncashsettlvaluedateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlvaluedateoffsetperiod"
+        }
+      },
+      {
+        "name": "provisioncashsettlvaluedateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlvaluedateoffsetunit"
+        }
+      },
+      {
+        "name": "provisioncashsettlvaluedateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlvaluedateoffsetdaytype"
+        }
+      },
+      {
+        "name": "provisioncashsettlvaluedateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlvaluedateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the provisional cash settlement value date.",
+    "display": "ProvisionCashSettlValueDates"
+  }
+}

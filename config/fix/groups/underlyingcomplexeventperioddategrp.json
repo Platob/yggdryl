@@ -1,0 +1,23 @@
+{
+  "name": "underlyingcomplexeventperioddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventperioddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcomplexeventperioddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingComplexEventPeriodDateTimes(41726) > 0.",
+    "display": "UnderlyingComplexEventPeriodDateGrp",
+    "fix:component": "underlyingcomplexeventperioddatecomponent",
+    "fix:counter": "41726"
+  }
+}

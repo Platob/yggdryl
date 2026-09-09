@@ -1,0 +1,42 @@
+{
+  "name": "legsecaltid",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legsecurityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsecurityaltid"
+        }
+      },
+      {
+        "name": "legsecurityaltidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsecurityaltidsource"
+        }
+      },
+      {
+        "name": "legsymbolpositionnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsymbolpositionnumber"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegSecAltID"
+  }
+}

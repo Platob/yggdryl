@@ -1,0 +1,23 @@
+{
+  "name": "complexeventratesourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "complexeventratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoComplexEventRateSources(41013) > 0.",
+    "display": "ComplexEventRateSourceGrp",
+    "fix:component": "complexeventratesourcecomponent",
+    "fix:counter": "41013"
+  }
+}

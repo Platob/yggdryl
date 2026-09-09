@@ -1,0 +1,103 @@
+{
+  "name": "legcashsettldate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcashsettldateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettldateunadjusted"
+        }
+      },
+      {
+        "name": "legcashsettldatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettldatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegcashsettldatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegcashsettldatebusinesscenters"
+        }
+      },
+      {
+        "name": "legcashsettldatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legcashsettldatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legcashsettldaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettldaterelativeto"
+        }
+      },
+      {
+        "name": "legcashsettldateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettldateoffsetperiod"
+        }
+      },
+      {
+        "name": "legcashsettldateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettldateoffsetunit"
+        }
+      },
+      {
+        "name": "legcashsettldateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettldateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legcashsettldateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettldateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in the Instrument component. The specified value would be specific to this instance of the cash settlement provision.",
+    "display": "LegCashSettlDate"
+  }
+}

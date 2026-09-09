@@ -1,0 +1,32 @@
+{
+  "name": "paymentschedulefixingday",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentschedulefixingdayofweek",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdayofweek"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdaynumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdaynumber"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentScheduleFixingDay"
+  }
+}

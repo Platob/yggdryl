@@ -1,0 +1,32 @@
+{
+  "name": "underlyingpaymentstreampricingday",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreampricingdayofweek",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreampricingdayofweek"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreampricingdaynumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreampricingdaynumber"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPaymentStreamPricingDay"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "execcollgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "execcoll",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "execcoll"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Executions for which collateral is required",
+    "display": "ExecCollGrp",
+    "fix:component": "execcoll",
+    "fix:counter": "124"
+  }
+}

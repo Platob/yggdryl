@@ -36,6 +36,7 @@ mod text;
 mod txhash;
 mod types;
 mod uri;
+mod version;
 mod xxhash;
 
 pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
@@ -427,12 +428,18 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<types::cast::PyArrowCastPlan>()?;
     module.add_class::<fix::PyFixBranch>()?;
     module.add_class::<fix::PyFixRegistry>()?;
+    module.add_class::<version::PyVersion>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;
     module.add_class::<fix::PyFixCodec>()?;
     module.add_class::<fix::PyFixLifecycle>()?;
     module.add_class::<fix::PyUlPlugin>()?;
+    module.add_class::<fix::PyUlPlugins>()?;
+    module.add_class::<fix::PyFixMessages>()?;
+    module.add_class::<fix::PyMsgType>()?;
+    module.add_class::<fix::PyMsgTypeIterator>()?;
+    module.add_class::<fix::PyFixDefinitionIterator>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyCodecScalarIterator>()?;
     module.add_class::<PyMimeType>()?;

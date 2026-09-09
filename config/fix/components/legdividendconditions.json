@@ -1,0 +1,263 @@
+{
+  "name": "legdividendconditions",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdividendreinvestmentindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendreinvestmentindicator"
+        }
+      },
+      {
+        "name": "legdividendentitlementevent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendentitlementevent"
+        }
+      },
+      {
+        "name": "legdividendamounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendamounttype"
+        }
+      },
+      {
+        "name": "legdividendunderlierrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendunderlierrefid"
+        }
+      },
+      {
+        "name": "nolegdividendperiods",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegdividendperiods"
+        }
+      },
+      {
+        "name": "legdividendperiodgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legdividendperiodgrp"
+        }
+      },
+      {
+        "name": "legextraordinarydividendpartyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legextraordinarydividendpartyside"
+        }
+      },
+      {
+        "name": "legextraordinarydividendamounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legextraordinarydividendamounttype"
+        }
+      },
+      {
+        "name": "legextraordinarydividendcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legextraordinarydividendcurrency"
+        }
+      },
+      {
+        "name": "legextraordinarydividenddeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legextraordinarydividenddeterminationmethod"
+        }
+      },
+      {
+        "name": "legdividendfxtriggerdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legdividendfxtriggerdate"
+        }
+      },
+      {
+        "name": "legdividendaccrualfloatingrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legdividendaccrualfloatingrate"
+        }
+      },
+      {
+        "name": "legdividendaccrualfixedrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendaccrualfixedrate"
+        }
+      },
+      {
+        "name": "legdividendaccrualpaymentdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legdividendaccrualpaymentdate"
+        }
+      },
+      {
+        "name": "legdividendcompoundingmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendcompoundingmethod"
+        }
+      },
+      {
+        "name": "legdividendnumofindexunits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendnumofindexunits"
+        }
+      },
+      {
+        "name": "legdividendcashpercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendcashpercentage"
+        }
+      },
+      {
+        "name": "legdividendcashequivalentpercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendcashequivalentpercentage"
+        }
+      },
+      {
+        "name": "legnoncashdividendtreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legnoncashdividendtreatment"
+        }
+      },
+      {
+        "name": "legdividendcomposition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendcomposition"
+        }
+      },
+      {
+        "name": "legspecialdividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legspecialdividendsindicator"
+        }
+      },
+      {
+        "name": "legmaterialdividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmaterialdividendsindicator"
+        }
+      },
+      {
+        "name": "legoptionsexchangedividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionsexchangedividendsindicator"
+        }
+      },
+      {
+        "name": "legadditionaldividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaldividendsindicator"
+        }
+      },
+      {
+        "name": "legalldividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legalldividendsindicator"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The LegDividendConditions component is a subcomponent of LegPaymentStream used to specify the conditions' valuations and dates governing the payment of dividends.",
+    "display": "LegDividendConditions"
+  }
+}

@@ -1,0 +1,172 @@
+{
+  "name": "clearingpriceparameter",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "businessdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "businessdaytype"
+        }
+      },
+      {
+        "name": "clearingpriceoffset",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clearingpriceoffset"
+        }
+      },
+      {
+        "name": "vegamultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "vegamultiplier"
+        }
+      },
+      {
+        "name": "annualtradingbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "annualtradingbusinessdays"
+        }
+      },
+      {
+        "name": "totaltradingbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "totaltradingbusinessdays"
+        }
+      },
+      {
+        "name": "tradingbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingbusinessdays"
+        }
+      },
+      {
+        "name": "standardvariance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "standardvariance"
+        }
+      },
+      {
+        "name": "realizedvariance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "realizedvariance"
+        }
+      },
+      {
+        "name": "relatedcloseprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedcloseprice"
+        }
+      },
+      {
+        "name": "riskfreerate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "riskfreerate"
+        }
+      },
+      {
+        "name": "overnightinterestrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "overnightinterestrate"
+        }
+      },
+      {
+        "name": "accumulatedreturnmodifiedvariationmargin",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "accumulatedreturnmodifiedvariationmargin"
+        }
+      },
+      {
+        "name": "discountfactor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "discountfactor"
+        }
+      },
+      {
+        "name": "volatility",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "volatility"
+        }
+      },
+      {
+        "name": "clearingsettlprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clearingsettlprice"
+        }
+      },
+      {
+        "name": "calculationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "calculationmethod"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ClearingPriceParameter"
+  }
+}

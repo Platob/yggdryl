@@ -1,0 +1,23 @@
+{
+  "name": "legcomplexevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcomplexevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegComplexEvents(2218)) > 0.",
+    "display": "LegComplexEvents",
+    "fix:component": "legcomplexevent",
+    "fix:counter": "2218"
+  }
+}

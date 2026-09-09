@@ -9,6 +9,8 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `DataType` | [DataType](../types/datatype.md) |
 | `Field`, `field`, `scalar`, `fields` | [Field](../types/field.md) and this page |
 | `Scalar` | this page and [Scalar](../types/scalar.md) |
+| `Version` | [Numeric versions](../types/text.md#versions) and this page |
+| `fix`, including registry-owned `MsgType` | [FIX registry](../fix/registry.md) |
 | `ArrowValue`, `arrow.SHAPES` | this page and [Values](../arrow/values.md) |
 | `Expression`, `Bound`, `Statement`, `BoundStatement` | [Expression](../expression/index.md) |
 | `Uri`, `Url`, `Urn` | [URI](../uri/index.md) |
@@ -44,7 +46,50 @@ assert str(MediaType("application/json")) == "application/json"
 assert str(Url.from_path("C:/tmp/a.json")) == "file:///C:/tmp/a.json"
 ```
 
-`from_value` is the generic entry point on every wrapper: a native value, a string, a PyArrow value, or a type annotation. `DataType.from_regex(pattern, autotype=True)` reaches the core's named-capture inference.
+`DataType.from_value` and `Field.from_value` accept native values, strings,
+PyArrow values and type annotations. `DataType.from_regex(pattern, autotype=True)`
+reaches the core's named-capture inference.
+
+## Numeric versions
+
+`Version(major, minor=0, patch=0)` holds the native four-byte value: unsigned
+8-bit major and minor, unsigned 16-bit patch. Its parts are read-only. Numeric
+comparison, hashing, copying and pickling preserve the same value. `from_str`
+reads up to three decimal components, and a compact FIX service pack - `5.0SP2`
+is `5.0.2` - case-insensitively. The major and minor are strict; a patch tail
+stating no number folds into the patch rather than raising, so only empty text
+and a bad major or minor raise `ValueError`.
+
+```python
+import copy
+import pickle
+
+from yggdryl import DataType, Scalar, Version, field, scalar
+from yggdryl.text import json
+
+version = Version.from_str("005.0.00300")
+assert version == Version(5, 0, 300)
+assert str(version) == "5.0.300"
+assert Version(5, 0, 2) < Version(5, 0, 10)
+assert hash(Version(5)) == hash(Version.from_str("5.0.0"))
+assert copy.copy(version) == pickle.loads(pickle.dumps(version)) == version
+assert Scalar.from_py(version).as_py() == version
+assert field(Version).dtype == DataType("version")
+
+@scalar(frozen=True)
+class Release:
+    version: Version
+
+decoded = json.loads('{"version":"5.0.300"}', cls=Release)
+assert decoded == Release(version)
+assert type(decoded.version) is Version
+assert field(Release).dtype["version"].dtype == DataType("version")
+```
+
+`VersionField` declares a native `Version` value. Arrow retains canonical
+`Utf8` storage and the `yggdryl.version` extension; reading through `Scalar`
+restores the wrapper. [Version measurements](../types/text.md#performance)
+include the parser, comparison and Scalar boundary.
 
 ## Native `Scalar`
 
@@ -1268,20 +1313,26 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixBranch`, `FixMsg`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `parse_arrow_reader()`, `classify_arrow_array()`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), `ULBRIDGE_BRANCH` (`"ulbridge"`, the branch a bridge's own fields declare), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim. The `fix:` vocabulary is six typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`.
+`yggdryl.fix` carries `FixRegistry`, `FixBranch`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `parse_arrow_reader()`, `classify_arrow_array()`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), `ULBRIDGE_BRANCH` (`"ulbridge"`, the branch a bridge's own fields declare), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim. The `fix:` vocabulary is typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`, and the definition metadata `codes`, `counter`, `component` and `msgtype`.
 
 | Crossing | Rule |
 | --- | --- |
-| keys | an `int` is a tag, a `str` a name or dotted path in the standard branch; a colon-bearing string is a name, never an identifier |
-| branches and identifiers | both cross as `str`, parsed once by the core; neither has a Python class |
+| keys | an `int` is a tag, a `str` a name or dotted path; omitted branches use the core's deterministic best match; a colon-bearing string is a name, never an identifier |
+| branches and identifiers | lookup arguments cross as `str`, parsed once by the core; `FixBranch` carries declared branch metadata |
 | `field.fix.branch`, `field.fix.id` | `""` when the key is absent, `None` exactly when `fix:tag` is absent; assigning `""` removes the key, and assigning a `"tag:branch"` id moves both halves at once |
-| lookups | `field_by_name` and `field_by_path` take the branch after the name it qualifies, defaulting to the standard one; `field_by_tag` means the standard branch |
-| locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; a write creates `primitive/<branch>/` and `nested/<branch>/` |
+| lookups | `field_by_name` and `field_by_path` accept an optional branch restriction; canonical names precede aliases, standard precedes named branches within a tier; `field_by_id("55:")` selects the standard branch exactly |
+| categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata |
+| CRUD | `create_definition`, `definition`, `update_definition`, `remove_definition`; `definitions` iterates one category lazily |
+| locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; category folders contain standard definitions directly and branch definitions under `<branch>/` |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
-| branch digests | `branch_by_bid` / `get_branch_by_bid` take the `int` an arrival entry carries and answer the `FixBranch` it names; only a declared branch resolves |
+| branch digests | `branch_by_digest` / `get_branch_by_digest` take the `int` an arrival entry carries and answer the `FixBranch` it names; only a declared branch resolves |
 | `FixMsg.entries()` | `(tag, bid, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
 | `FixMsg` | immutable: equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry |
+| `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; its wire code remains complete UTF-8 text |
+| `FixCodec` | `transform_line`, `transform_record`, `transform_ulconfig_line` return lazy `FixMessages`; specialized FIX, Ullink and FIXML transforms return one `FixMsg` |
 | `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a `list` out for the reader, one at a time for the lifecycle; `FixLifecycle.alive()` counts the chains no terminal state has closed, and the lifecycle is mutable, so unhashable |
+| output | `FixMsg.into_row(field)` projects a table row; `into_bytes(separator=1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
+| UlPlugin | `UlPlugin.from_json_bytes` / `from_json_scalar` return lazy `UlPlugins`; each selection converts to one flat message with `into_fixmsg` |
 
 [FIX](../fix/index.md) owns resolution, folding, merging, sharding and validation.
 
@@ -1293,7 +1344,7 @@ import pickle
 import pytest
 
 from yggdryl import DataType, Field, IOBase, Url
-from yggdryl.fix import STANDARD_BRANCH, USER_TAG_MAX, USER_TAG_MIN, FixMsg, FixRegistry
+from yggdryl.fix import STANDARD_BRANCH, USER_TAG_MAX, USER_TAG_MIN, FixCodec, FixMsg, FixRegistry, fix_schema
 
 seed = pathlib.Path("config/fix").resolve()
 
@@ -1318,7 +1369,10 @@ with pytest.raises(TypeError, match="int tag or a str name"):
 # malformed one is a ValueError rather than a miss.
 assert STANDARD_BRANCH == "" and (USER_TAG_MIN, USER_TAG_MAX) == (5000, 40000)
 assert registry.field_by_name("SYMBOL").name == "symbol"
-assert registry.field_by_path("NoPartyIDs.PartyID").fix.tag == 448
+assert registry.field_by_path("Parties.PartyID").fix.tag == 448
+assert registry.definition("fields", "NoPartyIDs").dtype == DataType("int32")
+assert registry.definition("groups", "Parties").fix.counter == 453
+assert registry.definition("components", "Party").dtype.kind == "nested"
 assert registry.field_by_id("55:").fix.id == "55:"
 with pytest.raises(ValueError, match="fix branch"):
     registry.field_by_name("symbol", "2cme")
@@ -1357,9 +1411,44 @@ assert hash(message) == hash(FixMsg(root, message.value, registry))
 assert message.branch == STANDARD_BRANCH
 assert message.by_id("55:").as_py() == "AAPL"
 assert message.get_by_id("5001:cme") is None
+
+# Generic intake is lazy even when the source yields one message.
+wire = b"8=FIX.4.4|35=D|55=AAPL|10=0|"
+messages = FixCodec(registry).transform_line(wire)
+parsed = next(messages)
+assert next(messages, None) is None
+assert parsed.into_bytes(ord("|")) == wire
+table_field = fix_schema(registry)
+assert len(parsed.into_row(table_field)) == len(table_field.dtype)
 ```
 
 A `dict` is the obvious Python spelling of a named row, and the declared root is what says so. `FixMsg` reads one as the record its Struct field declares, while a `Map` field keeps its mapping.
+
+Bulk configuration responses stream one flat message per selected plugin. Each
+message retains its selected MBean and source envelope; the fields are directly
+addressable on the message.
+
+```python
+import json
+
+from yggdryl.fix import FixCodec, FixMessages, FixRegistry, UlPlugin
+
+registry = FixRegistry()
+registry.with_ulbridge_fields()
+codec = FixCodec(registry, branch="ulbridge")
+document = [
+    {"request": {"type": "read", "mbean": "bridge:type=Plugin,name=Orders"},
+     "status": 200, "value": {"Name": "Orders"}},
+    {"request": {"type": "read", "mbean": "bridge:type=Plugin,name=Prices"},
+     "status": 200, "value": {"Name": "Prices"}},
+]
+messages = codec.transform_ulconfig_line(json.dumps(document).encode())
+assert isinstance(messages, FixMessages)
+assert [message.by_name("Name").as_py() for message in messages] == ["Orders", "Prices"]
+assert next(messages, None) is None
+selected = next(UlPlugin.from_json_scalar(document))
+assert selected.into_fixmsg(codec).by_name("Name").as_py() == "Orders"
+```
 
 ## Edges
 
@@ -1417,10 +1506,10 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - `apply_arrow_batch` -> retains a stored non-default holder without consuming the state; `force=True` recomputes it.
 - a signed digest holder column -> high-bit results read as negative Python integers, and every digest bit is retained.
 - a `fix:` property on another protocol's view -> `TypeError` naming that view's scheme.
-- an absent registry folder -> loads empty and creates nothing; a retired `records/` folder -> `ValueError`.
+- an absent registry folder -> loads empty and creates nothing.
 - `registry[key]`, `registry.get`, `key in registry`, and `FixMsg[key]` -> the same int-tag or str-name pair.
-- `FixRegistry` -> mutable, so unhashable, and equal by the fields it holds.
-- a registry linked by a `FixMsg` or installed as the process default -> `insert`, `update`, and `remove` raise `ValueError`.
+- `FixRegistry` -> mutable, so unhashable; equality and `stable_hash()` cover all four categories and branch declarations.
+- a registry linked by a `FixMsg`, `MsgType`, live iterator or process default -> mutations raise `ValueError`; copy the registry for independent edits.
 - `remove` -> reaches the standard branch only; `remove_by_id` is how a vendor field leaves.
 - `msg.by_id` / `msg.get_by_id` -> name one dictionary exactly and do not tier; `msg.branch` comes from the root field.
 - iterating a `FixMsg` -> `(name, Scalar)` pairs in the root's declared order; `value` answers a `Scalar`, `field` a `Field`.

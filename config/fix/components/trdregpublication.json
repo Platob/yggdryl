@@ -1,0 +1,32 @@
+{
+  "name": "trdregpublication",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "trdregpublicationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "trdregpublicationtype"
+        }
+      },
+      {
+        "name": "trdregpublicationreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "trdregpublicationreason"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TrdRegPublication"
+  }
+}

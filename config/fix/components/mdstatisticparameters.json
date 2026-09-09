@@ -1,0 +1,423 @@
+{
+  "name": "mdstatisticparameters",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "mdstatistictype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "mdstatistictype"
+        }
+      },
+      {
+        "name": "mdstatisticscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "mdstatisticscope"
+        }
+      },
+      {
+        "name": "mdstatisticsubscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticsubscope"
+        }
+      },
+      {
+        "name": "mdstatisticscopetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticscopetype"
+        }
+      },
+      {
+        "name": "mdstatisticname",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticname"
+        }
+      },
+      {
+        "name": "mdstatisticdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticdesc"
+        }
+      },
+      {
+        "name": "encodedmdstatisticdesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedmdstatisticdesclen"
+        }
+      },
+      {
+        "name": "encodedmdstatisticdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedmdstatisticdesc"
+        }
+      },
+      {
+        "name": "marketdepth",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdepth"
+        }
+      },
+      {
+        "name": "mdstatisticfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticfrequencyperiod"
+        }
+      },
+      {
+        "name": "mdstatisticfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticfrequencyunit"
+        }
+      },
+      {
+        "name": "mdstatisticdelayperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticdelayperiod"
+        }
+      },
+      {
+        "name": "mdstatisticdelayunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticdelayunit"
+        }
+      },
+      {
+        "name": "mdstatisticintervaltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "mdstatisticintervaltype"
+        }
+      },
+      {
+        "name": "mdstatisticintervaltypeunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticintervaltypeunit"
+        }
+      },
+      {
+        "name": "mdstatisticintervalperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticintervalperiod"
+        }
+      },
+      {
+        "name": "mdstatisticintervalunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticintervalunit"
+        }
+      },
+      {
+        "name": "mdstatisticstartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticstartdate"
+        }
+      },
+      {
+        "name": "mdstatisticenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticenddate"
+        }
+      },
+      {
+        "name": "mdstatisticstarttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticstarttime"
+        }
+      },
+      {
+        "name": "mdstatisticendtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticendtime"
+        }
+      },
+      {
+        "name": "mdstatisticratiotype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticratiotype"
+        }
+      },
+      {
+        "name": "nonestedpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonestedpartyids"
+        }
+      },
+      {
+        "name": "nestedparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties"
+        }
+      },
+      {
+        "name": "annualtradingbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "annualtradingbusinessdays"
+        }
+      },
+      {
+        "name": "tradingcapacity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingcapacity"
+        }
+      },
+      {
+        "name": "ordtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordtype"
+        }
+      },
+      {
+        "name": "timeinforce",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "timeinforce"
+        }
+      },
+      {
+        "name": "quotecondition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotecondition"
+        }
+      },
+      {
+        "name": "tradecondition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradecondition"
+        }
+      },
+      {
+        "name": "side",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "side"
+        }
+      },
+      {
+        "name": "tradeinputsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeinputsource"
+        }
+      },
+      {
+        "name": "tradingsessionid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionid"
+        }
+      },
+      {
+        "name": "tradingsessionsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionsubid"
+        }
+      },
+      {
+        "name": "mdorigintype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdorigintype"
+        }
+      },
+      {
+        "name": "mdvaluetier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdvaluetier"
+        }
+      },
+      {
+        "name": "tradsesmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradsesmethod"
+        }
+      },
+      {
+        "name": "mdfeedtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdfeedtype"
+        }
+      },
+      {
+        "name": "exposureduration",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exposureduration"
+        }
+      },
+      {
+        "name": "exposuredurationunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exposuredurationunit"
+        }
+      },
+      {
+        "name": "aggressorindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "aggressorindicator"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Must be set if EncodedMDStatisticDesc(2482) field is specified and must immediately precede it.",
+    "display": "MDStatisticParameters"
+  }
+}

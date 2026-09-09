@@ -1,0 +1,143 @@
+{
+  "name": "underlyingpaymentstreamnondeliverablesettlterms",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreamnondeliverablerefcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamnondeliverablerefcurrency"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamnondeliverablefixingdatesbizdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesbizdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingpaymentstreamnondeliverablefixingdatesbizcenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingpaymentstreamnondeliverablefixingdatesbizcenters"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamnondeliverablefixingdatesrelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesrelativeto"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamnondeliverablefixingdatesoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamnondeliverablefixingdatesoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamnondeliverablefixingdatesoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamnondeliverablesettlratesourcecomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstreamnondeliverablesettlratesourcecomponent"
+        }
+      },
+      {
+        "name": "nounderlyingnondeliverablefixingdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingnondeliverablefixingdates"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamnondeliverablefixingdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingpaymentstreamnondeliverablefixingdategrp"
+        }
+      },
+      {
+        "name": "nounderlyingsettlratefallbacks",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingsettlratefallbacks"
+        }
+      },
+      {
+        "name": "underlyingsettlratedisruptionfallbackgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingsettlratedisruptionfallbackgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument. The specified value would be specific to this instance of the underlying instrument's non-deliverable settlement terms.",
+    "display": "UnderlyingPaymentStreamNonDeliverableSettlTerms"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "entitlementtypegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "entitlementtypecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "entitlementtypecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of Entitlement Types.",
+    "display": "EntitlementTypeGrp",
+    "fix:component": "entitlementtypecomponent",
+    "fix:counter": "2345"
+  }
+}

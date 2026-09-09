@@ -1,0 +1,23 @@
+{
+  "name": "legprotectiontermobligationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprotectiontermobligation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprotectiontermobligation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProtectionTermObligations(41635) > 0.",
+    "display": "LegProtectionTermObligationGrp",
+    "fix:component": "legprotectiontermobligation",
+    "fix:counter": "41635"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "name": "dlvyinst",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "settlinstsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlinstsource"
+        }
+      },
+      {
+        "name": "dlvyinsttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dlvyinsttype"
+        }
+      },
+      {
+        "name": "nosettlpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nosettlpartyids"
+        }
+      },
+      {
+        "name": "settlparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "settlparties"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DlvyInst"
+  }
+}

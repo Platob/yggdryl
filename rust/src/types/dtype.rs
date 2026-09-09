@@ -107,10 +107,6 @@ pub enum DataType {
     Isin,
     /// FIX's side of a trade, four ASCII bytes.
     Side,
-    /// FIX's message type, eight ASCII bytes.
-    ///
-    /// Case-bearing: `A` is Logon and `a` is QuoteStatusRequest.
-    MsgType,
     /// What state one thing is in, eight ASCII bytes.
     ///
     /// A rank character then a name, so the stored bytes sort from the first
@@ -265,7 +261,6 @@ impl DataType {
             Self::Cfi => DataTypeId::Cfi,
             Self::Isin => DataTypeId::Isin,
             Self::Side => DataTypeId::Side,
-            Self::MsgType => DataTypeId::MsgType,
             Self::MsgDirection => DataTypeId::MsgDirection,
             Self::State => DataTypeId::State,
             Self::TimeInForce => DataTypeId::TimeInForce,
@@ -564,12 +559,11 @@ fn dtype_rank(value: &DataType) -> u8 {
         // rank moves: this ordering is total, not a wire contract, and a
         // renumbering would change how every unrelated pair sorts.
         DataType::Side => 53,
-        DataType::MsgType => 54,
-        DataType::MsgDirection => 55,
-        DataType::State => 56,
-        DataType::TimeInForce => 57,
-        DataType::Url => 58,
-        DataType::Isin => 59,
+        DataType::MsgDirection => 54,
+        DataType::State => 55,
+        DataType::TimeInForce => 56,
+        DataType::Url => 57,
+        DataType::Isin => 58,
     }
 }
 

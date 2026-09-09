@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::media::IORecordOptions;
-use yggdryl::{FixBatchReader, FixCodec, FixDedup, FixOptions};
+use yggdryl::{FixBatchReader, FixCodec, FixDedup, FixOptions, FixRegistry};
 
 use super::seed;
 
@@ -67,12 +67,48 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 .sum::<usize>()
         });
     });
+    let config_registry = Arc::new(FixRegistry::new().with_ulbridge_fields().unwrap());
+    let config = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=*,plugin-type=FIX,type=Plugin","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=Plugin":{"Name":"A"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B"}},"status":200}"#;
+    let config_rows = FixBatchReader::from_rows(
+        Arc::clone(&config_registry),
+        [Ok(config.to_vec())],
+        FixOptions::new(),
+    )
+    .unwrap()
+    .map(|batch| batch.unwrap().num_rows())
+    .sum::<usize>();
+    assert_eq!(config_rows, 2);
+    group.throughput(Throughput::Elements(2));
+    group.bench_function("bulk_config_drain", |bencher| {
+        bencher.iter(|| {
+            FixBatchReader::from_rows(
+                Arc::clone(&config_registry),
+                [Ok(config.to_vec())],
+                FixOptions::new(),
+            )
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum::<usize>()
+        });
+    });
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("bulk_config_first", |bencher| {
+        bencher.iter(|| {
+            let mut options = FixOptions::new();
+            options.batch_row_size = Some(1);
+            FixBatchReader::from_rows(Arc::clone(&config_registry), [Ok(config.to_vec())], options)
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+        });
+    });
     group.finish();
 
     // The digest alone, which the dedup and the column both pay.
     let reader = FixCodec::new(Arc::clone(&registry));
     let message = reader
-        .transform_line(b"8=FIX.4.4|9=176|35=D|49=SENDER|56=TARGET|34=7|11=ORDER-1|55=AAPL|54=1|38=100|44=12.5|10=203|", false)
+        .transform_fix_line(b"8=FIX.4.4|9=176|35=D|49=SENDER|56=TARGET|34=7|11=ORDER-1|55=AAPL|54=1|38=100|44=12.5|10=203|", false)
         .expect("a readable row");
     let mut group = criterion.benchmark_group("fix/digest");
     group.bench_function("message", |bencher| {

@@ -1,0 +1,62 @@
+{
+  "name": "legcomplexeventschedule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcomplexeventschedulestartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventschedulestartdate"
+        }
+      },
+      {
+        "name": "legcomplexeventscheduleenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventscheduleenddate"
+        }
+      },
+      {
+        "name": "legcomplexeventschedulefrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventschedulefrequencyperiod"
+        }
+      },
+      {
+        "name": "legcomplexeventschedulefrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventschedulefrequencyunit"
+        }
+      },
+      {
+        "name": "legcomplexeventschedulerollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventschedulerollconvention"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegComplexEventSchedule"
+  }
+}

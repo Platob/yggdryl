@@ -1,0 +1,123 @@
+{
+  "name": "underlyingprovisionoptionexpirationdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisionoptionexpirationdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexpirationdateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexpirationdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexpirationdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingprovisionoptionexpirationdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprovisionoptionexpirationdatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexpirationdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprovisionoptionexpirationdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexpirationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexpirationdaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexpirationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexpirationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexpirationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexpirationdateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexpirationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexpirationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexpirationdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexpirationdateadjusted"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexpirationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexpirationtime"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexpirationtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexpirationtimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the busienss day convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument. The specified value would be specific to this instance of the provisional option expiration date.",
+    "display": "UnderlyingProvisionOptionExpirationDate"
+  }
+}

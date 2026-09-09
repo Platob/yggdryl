@@ -1,0 +1,22 @@
+{
+  "name": "streamfirstperiodstartdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streamfirstperiodstartdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamfirstperiodstartdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StreamFirstPeriodStartDateBusinessCenter"
+  }
+}

@@ -1,0 +1,193 @@
+{
+  "name": "legdividendaccrualfloatingrate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdividendfloatingrateindex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfloatingrateindex"
+        }
+      },
+      {
+        "name": "legdividendfloatingrateindexcurveperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfloatingrateindexcurveperiod"
+        }
+      },
+      {
+        "name": "legdividendfloatingrateindexcurveunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfloatingrateindexcurveunit"
+        }
+      },
+      {
+        "name": "legdividendfloatingratemultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfloatingratemultiplier"
+        }
+      },
+      {
+        "name": "legdividendfloatingratespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfloatingratespread"
+        }
+      },
+      {
+        "name": "legdividendfloatingratespreadpositiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfloatingratespreadpositiontype"
+        }
+      },
+      {
+        "name": "legdividendfloatingratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfloatingratetreatment"
+        }
+      },
+      {
+        "name": "legdividendcaprate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendcaprate"
+        }
+      },
+      {
+        "name": "legdividendcapratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendcapratebuyside"
+        }
+      },
+      {
+        "name": "legdividendcapratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendcapratesellside"
+        }
+      },
+      {
+        "name": "legdividendfloorrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfloorrate"
+        }
+      },
+      {
+        "name": "legdividendfloorratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfloorratebuyside"
+        }
+      },
+      {
+        "name": "legdividendfloorratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfloorratesellside"
+        }
+      },
+      {
+        "name": "legdividendinitialrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendinitialrate"
+        }
+      },
+      {
+        "name": "legdividendfinalrateroundingdirection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfinalrateroundingdirection"
+        }
+      },
+      {
+        "name": "legdividendfinalrateprecision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfinalrateprecision"
+        }
+      },
+      {
+        "name": "legdividendaveragingmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendaveragingmethod"
+        }
+      },
+      {
+        "name": "legdividendnegativeratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendnegativeratetreatment"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when LegDividendFloatingRateIndexCurveUnit(42314) is specified.",
+    "display": "LegDividendAccrualFloatingRate"
+  }
+}

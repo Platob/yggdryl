@@ -1,0 +1,132 @@
+{
+  "name": "positionamountdatacomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "posamttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posamttype"
+        }
+      },
+      {
+        "name": "posamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posamt"
+        }
+      },
+      {
+        "name": "posamtstreamdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posamtstreamdesc"
+        }
+      },
+      {
+        "name": "positioncurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "positioncurrency"
+        }
+      },
+      {
+        "name": "positioncurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "positioncurrencycodesource"
+        }
+      },
+      {
+        "name": "positionfxrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "positionfxrate"
+        }
+      },
+      {
+        "name": "positionfxratecalc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "positionfxratecalc"
+        }
+      },
+      {
+        "name": "posamtreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posamtreason"
+        }
+      },
+      {
+        "name": "posamtmarketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posamtmarketsegmentid"
+        }
+      },
+      {
+        "name": "posamtmarketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posamtmarketid"
+        }
+      },
+      {
+        "name": "posamtprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posamtprice"
+        }
+      },
+      {
+        "name": "posamtpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posamtpricetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PositionAmountData"
+  }
+}

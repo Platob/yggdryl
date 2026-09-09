@@ -1,0 +1,32 @@
+{
+  "name": "disclosureinstructioncomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "disclosuretype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "disclosuretype"
+        }
+      },
+      {
+        "name": "disclosureinstruction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "disclosureinstruction"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DisclosureInstruction"
+  }
+}

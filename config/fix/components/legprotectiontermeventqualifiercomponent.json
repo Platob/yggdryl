@@ -1,0 +1,22 @@
+{
+  "name": "legprotectiontermeventqualifiercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprotectiontermeventqualifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventqualifier"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProtectionTermEventQualifier"
+  }
+}

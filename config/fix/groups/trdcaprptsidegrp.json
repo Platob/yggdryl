@@ -1,0 +1,23 @@
+{
+  "name": "trdcaprptsidegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdcaprptside",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "trdcaprptside"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoSides(552) > 0.",
+    "display": "TrdCapRptSideGrp",
+    "fix:component": "trdcaprptside",
+    "fix:counter": "552"
+  }
+}

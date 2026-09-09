@@ -11,10 +11,11 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
+use yggdryl::FixCodec;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
-use yggdryl::types::{MsgDirection, MsgType};
+use yggdryl::types::MsgDirection;
 use yggdryl::{IOMedia, MimeType, Url};
 
 /// How many capture lines one measured run reads.
@@ -128,7 +129,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| MimeType::infer_bytes(black_box(line)));
         });
         group.bench_function(format!("msgtype/{label}"), |bencher| {
-            bencher.iter(|| MsgType::infer_bytes(black_box(line)));
+            bencher.iter(|| FixCodec::infer_msgtype_bytes(black_box(line)));
         });
         group.bench_function(format!("direction/{label}"), |bencher| {
             bencher.iter(|| MsgDirection::infer_bytes(black_box(line)));
