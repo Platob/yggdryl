@@ -18,6 +18,7 @@
     "description": "Number of Position Amount entries",
     "display": "LegPositionAmountData",
     "fix:component": "legpositionamountdatacomponent",
-    "fix:counter": "1586"
+    "fix:counter": "1586",
+    "fix:tag": "602743"
   }
 }

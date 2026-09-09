@@ -279,6 +279,7 @@
   "metadata": {
     "description": "MsgType = DJ",
     "display": "MassOrder",
-    "fix:msgtype": "DJ"
+    "fix:msgtype": "DJ",
+    "fix:tag": "732130"
   }
 }

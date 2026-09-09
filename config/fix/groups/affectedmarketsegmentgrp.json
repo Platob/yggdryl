@@ -18,6 +18,7 @@
     "description": "Required when NoAffectedMarketSegments(1791) > 0.",
     "display": "AffectedMarketSegmentGrp",
     "fix:component": "affectedmarketsegment",
-    "fix:counter": "1791"
+    "fix:counter": "1791",
+    "fix:tag": "282496"
   }
 }

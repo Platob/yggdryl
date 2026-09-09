@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PosUndInstrmt"
+    "display": "PosUndInstrmt",
+    "fix:tag": "865506"
   }
 }

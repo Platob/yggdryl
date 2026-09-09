@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegInstrumentParty"
+    "display": "LegInstrumentParty",
+    "fix:tag": "460596"
   }
 }

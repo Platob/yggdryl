@@ -78,6 +78,7 @@
   "nullable": false,
   "metadata": {
     "description": "LegOptionExerciseMakeWholeProvision is a subcomponent of the LegOptionExercise component used to specify the set of rules of maintaining balance when an option is exercised.",
-    "display": "LegOptionExerciseMakeWholeProvision"
+    "display": "LegOptionExerciseMakeWholeProvision",
+    "fix:tag": "312387"
   }
 }

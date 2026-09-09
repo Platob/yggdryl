@@ -18,6 +18,7 @@
     "description": "Number of strike price entries",
     "display": "InstrmtStrkPxGrp",
     "fix:component": "instrmtstrkpx",
-    "fix:counter": "428"
+    "fix:counter": "428",
+    "fix:tag": "347386"
   }
 }

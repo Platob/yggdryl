@@ -188,6 +188,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when DividendFloatingRateIndexCurveUnit(42220) is specified.",
-    "display": "DividendAccrualFloatingRate"
+    "display": "DividendAccrualFloatingRate",
+    "fix:tag": "618956"
   }
 }

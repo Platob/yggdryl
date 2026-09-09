@@ -18,6 +18,7 @@
     "description": "Required if NoSettlementAmounts > 0.",
     "display": "SettlementAmountGrp",
     "fix:component": "settlementamountcomponent",
-    "fix:counter": "1700"
+    "fix:counter": "1700",
+    "fix:tag": "1078036"
   }
 }

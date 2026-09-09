@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrumentParty"
+    "display": "InstrumentParty",
+    "fix:tag": "1072912"
   }
 }

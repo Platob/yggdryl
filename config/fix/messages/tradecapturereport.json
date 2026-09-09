@@ -2029,6 +2029,7 @@
   "metadata": {
     "description": "MsgType = AE",
     "display": "TradeCaptureReport",
-    "fix:msgtype": "AE"
+    "fix:msgtype": "AE",
+    "fix:tag": "162094"
   }
 }

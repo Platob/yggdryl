@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "AuctionTypeRule"
+    "display": "AuctionTypeRule",
+    "fix:tag": "452181"
   }
 }

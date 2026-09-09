@@ -18,6 +18,7 @@
     "description": "Required if NoLegs(555) > 0.",
     "display": "LegQuotStatGrp",
     "fix:component": "legquotstat",
-    "fix:counter": "555"
+    "fix:counter": "555",
+    "fix:tag": "449087"
   }
 }

@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentScheduleFixingDateBusinessCenter"
+    "display": "LegPaymentScheduleFixingDateBusinessCenter",
+    "fix:tag": "263155"
   }
 }

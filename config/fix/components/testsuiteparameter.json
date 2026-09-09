@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TestSuiteParameter"
+    "display": "TestSuiteParameter",
+    "fix:tag": "714131"
   }
 }

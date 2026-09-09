@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentScheduleFixingDays(41161) > 0.",
     "display": "PaymentScheduleFixingDayGrp",
     "fix:component": "paymentschedulefixingday",
-    "fix:counter": "41161"
+    "fix:counter": "41161",
+    "fix:tag": "644735"
   }
 }

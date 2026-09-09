@@ -18,6 +18,7 @@
     "description": "Required if NoLegProvisionPartySubIDs(40537) > 0.",
     "display": "LegProvisionPtysSubGrp",
     "fix:component": "legprovisionptyssub",
-    "fix:counter": "40537"
+    "fix:counter": "40537",
+    "fix:tag": "613685"
   }
 }

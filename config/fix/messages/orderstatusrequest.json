@@ -179,6 +179,7 @@
   "metadata": {
     "description": "MsgType = H",
     "display": "OrderStatusRequest",
-    "fix:msgtype": "H"
+    "fix:msgtype": "H",
+    "fix:tag": "426679"
   }
 }

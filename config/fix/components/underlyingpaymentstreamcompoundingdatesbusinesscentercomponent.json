@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStreamCompoundingDatesBusinessCenter"
+    "display": "UnderlyingPaymentStreamCompoundingDatesBusinessCenter",
+    "fix:tag": "366623"
   }
 }

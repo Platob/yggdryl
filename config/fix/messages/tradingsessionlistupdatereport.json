@@ -69,6 +69,7 @@
   "metadata": {
     "description": "MsgType = BS",
     "display": "TradingSessionListUpdateReport",
-    "fix:msgtype": "BS"
+    "fix:msgtype": "BS",
+    "fix:tag": "323972"
   }
 }

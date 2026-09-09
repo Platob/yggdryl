@@ -87,6 +87,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ApplIDRequestAck"
+    "display": "ApplIDRequestAck",
+    "fix:tag": "770958"
   }
 }

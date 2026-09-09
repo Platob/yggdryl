@@ -18,6 +18,7 @@
     "description": "Required when NoSides(552) > 0.",
     "display": "TrdCapRptAckSideGrp",
     "fix:component": "trdcaprptackside",
-    "fix:counter": "552"
+    "fix:counter": "552",
+    "fix:tag": "1060926"
   }
 }

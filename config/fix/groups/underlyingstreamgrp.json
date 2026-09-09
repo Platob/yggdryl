@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingStreams(40540) > 0.",
     "display": "UnderlyingStreamGrp",
     "fix:component": "underlyingstream",
-    "fix:counter": "40540"
+    "fix:counter": "40540",
+    "fix:tag": "699318"
   }
 }

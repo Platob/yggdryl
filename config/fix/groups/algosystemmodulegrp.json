@@ -18,6 +18,7 @@
     "description": "Required if NoAlgoSystemModules(3025) > 0.",
     "display": "AlgoSystemModuleGrp",
     "fix:component": "algosystemmodule",
-    "fix:counter": "3025"
+    "fix:counter": "3025",
+    "fix:tag": "795983"
   }
 }

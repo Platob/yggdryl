@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProtectionTermEventNewsSource"
+    "display": "UnderlyingProtectionTermEventNewsSource",
+    "fix:tag": "140600"
   }
 }

@@ -107,6 +107,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RateSource"
+    "display": "RateSource",
+    "fix:tag": "702377"
   }
 }

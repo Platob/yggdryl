@@ -18,6 +18,7 @@
     "description": "Required if NoNoMandatoryClearingJurisdictions(41312) > 0.",
     "display": "MandatoryClearingJurisdictionGrp",
     "fix:component": "mandatoryclearingjurisdictioncomponent",
-    "fix:counter": "41312"
+    "fix:counter": "41312",
+    "fix:tag": "634536"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoTrdRegPublications(2668) > 0.",
     "display": "TrdRegPublicationGrp",
     "fix:component": "trdregpublication",
-    "fix:counter": "2668"
+    "fix:counter": "2668",
+    "fix:tag": "703468"
   }
 }

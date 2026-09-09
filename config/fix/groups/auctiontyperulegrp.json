@@ -18,6 +18,7 @@
     "description": "Required if NoAuctionTypeRules(2548) > 0.",
     "display": "AuctionTypeRuleGrp",
     "fix:component": "auctiontyperule",
-    "fix:counter": "2548"
+    "fix:counter": "2548",
+    "fix:tag": "100972"
   }
 }

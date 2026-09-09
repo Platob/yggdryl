@@ -118,6 +118,7 @@
   "nullable": false,
   "metadata": {
     "description": "If specified, the disruption event should be specified in LegMarketDisruptionEventGrp.",
-    "display": "LegMarketDisruption"
+    "display": "LegMarketDisruption",
+    "fix:tag": "255772"
   }
 }

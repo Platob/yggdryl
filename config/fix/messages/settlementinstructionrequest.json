@@ -219,6 +219,7 @@
   "metadata": {
     "description": "MsgType = AV",
     "display": "SettlementInstructionRequest",
-    "fix:msgtype": "AV"
+    "fix:msgtype": "AV",
+    "fix:tag": "723222"
   }
 }

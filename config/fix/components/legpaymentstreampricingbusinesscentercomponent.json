@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentStreamPricingBusinessCenter"
+    "display": "LegPaymentStreamPricingBusinessCenter",
+    "fix:tag": "481917"
   }
 }

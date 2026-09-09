@@ -18,6 +18,7 @@
     "description": "Number of registration details in this message (number of repeating groups to follow)",
     "display": "RgstDtlsGrp",
     "fix:component": "rgstdtl",
-    "fix:counter": "473"
+    "fix:counter": "473",
+    "fix:tag": "696576"
   }
 }

@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentScheduleInterimExchangeDateBusinessCenter"
+    "display": "UnderlyingPaymentScheduleInterimExchangeDateBusinessCenter",
+    "fix:tag": "117149"
   }
 }

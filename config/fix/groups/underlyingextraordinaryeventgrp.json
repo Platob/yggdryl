@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingExtraordinaryEvents(42884) > 0.",
     "display": "UnderlyingExtraordinaryEventGrp",
     "fix:component": "underlyingextraordinaryevent",
-    "fix:counter": "42884"
+    "fix:counter": "42884",
+    "fix:tag": "477677"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoEntitlements(1773) > 0.",
     "display": "EntitlementGrp",
     "fix:component": "entitlement",
-    "fix:counter": "1773"
+    "fix:counter": "1773",
+    "fix:tag": "538217"
   }
 }

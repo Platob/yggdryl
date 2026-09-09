@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingOptionExpirationDates(41856) > 0.",
     "display": "UnderlyingOptionExerciseExpirationDateGrp",
     "fix:component": "underlyingoptionexerciseexpirationdatecomponent",
-    "fix:counter": "41856"
+    "fix:counter": "41856",
+    "fix:tag": "329406"
   }
 }

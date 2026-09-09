@@ -337,6 +337,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "Stream"
+    "display": "Stream",
+    "fix:tag": "666236"
   }
 }

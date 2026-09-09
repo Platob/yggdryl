@@ -18,6 +18,7 @@
     "description": "Number of applications",
     "display": "ApplIDRequestAckGrp",
     "fix:component": "applidrequestack",
-    "fix:counter": "1351"
+    "fix:counter": "1351",
+    "fix:tag": "854288"
   }
 }

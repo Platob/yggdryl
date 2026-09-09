@@ -138,6 +138,7 @@
   "nullable": false,
   "metadata": {
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the non-deliverable currency's fixing date.",
-    "display": "LegPaymentStreamNonDeliverableSettlTerms"
+    "display": "LegPaymentStreamNonDeliverableSettlTerms",
+    "fix:tag": "596166"
   }
 }

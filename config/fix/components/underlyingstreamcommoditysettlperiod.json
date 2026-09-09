@@ -157,6 +157,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamCommoditySettlPeriod"
+    "display": "UnderlyingStreamCommoditySettlPeriod",
+    "fix:tag": "921258"
   }
 }

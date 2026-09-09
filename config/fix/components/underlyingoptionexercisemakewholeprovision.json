@@ -78,6 +78,7 @@
   "nullable": false,
   "metadata": {
     "description": "UnderlyingOptionExerciseMakeWholeProvision is a subcomponent of the UnderlyingOptionExercise component used to specify the set of rules of maintaining balance when an option is exercised.",
-    "display": "UnderlyingOptionExerciseMakeWholeProvision"
+    "display": "UnderlyingOptionExerciseMakeWholeProvision",
+    "fix:tag": "1023833"
   }
 }

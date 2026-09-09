@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegReturnRateInformationSource"
+    "display": "LegReturnRateInformationSource",
+    "fix:tag": "579959"
   }
 }

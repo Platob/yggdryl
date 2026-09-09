@@ -129,6 +129,7 @@
   "metadata": {
     "description": "MsgType = EQ",
     "display": "MarketDataAck",
-    "fix:msgtype": "EQ"
+    "fix:msgtype": "EQ",
+    "fix:tag": "626627"
   }
 }

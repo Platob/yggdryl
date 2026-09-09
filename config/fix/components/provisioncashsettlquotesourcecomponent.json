@@ -28,6 +28,7 @@
   "nullable": false,
   "metadata": {
     "description": "The ProvisionCashSettlQuoteSource is a subcomponent of the ProvisionGrp component used to specify the reference source for currency or rate quote for cash settlement purposes.",
-    "display": "ProvisionCashSettlQuoteSource"
+    "display": "ProvisionCashSettlQuoteSource",
+    "fix:tag": "556638"
   }
 }

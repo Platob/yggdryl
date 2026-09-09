@@ -18,6 +18,7 @@
     "description": "Required if NoInstrmtMatchSides(1889) > 0.",
     "display": "InstrmtMatchSideGrp",
     "fix:component": "instrmtmatchside",
-    "fix:counter": "1889"
+    "fix:counter": "1889",
+    "fix:tag": "1066062"
   }
 }

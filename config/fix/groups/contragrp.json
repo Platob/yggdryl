@@ -18,6 +18,7 @@
     "description": "Number of ContraBrokers repeating group instances.",
     "display": "ContraGrp",
     "fix:component": "contra",
-    "fix:counter": "382"
+    "fix:counter": "382",
+    "fix:tag": "303389"
   }
 }

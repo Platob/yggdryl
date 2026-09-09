@@ -18,6 +18,7 @@
     "description": "Required except where SettlInstMode is 5=Reject SSI request",
     "display": "SettlInstGrp",
     "fix:component": "settlinst",
-    "fix:counter": "778"
+    "fix:counter": "778",
+    "fix:tag": "1017008"
   }
 }

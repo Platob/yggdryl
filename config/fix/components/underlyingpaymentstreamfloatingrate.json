@@ -888,6 +888,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when UnderlyingPaymentStreamRateIndexIDSource(43093) is specified.",
-    "display": "UnderlyingPaymentStreamFloatingRate"
+    "display": "UnderlyingPaymentStreamFloatingRate",
+    "fix:tag": "406668"
   }
 }

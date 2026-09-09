@@ -118,6 +118,7 @@
   "nullable": false,
   "metadata": {
     "description": "Amount (signed) added to the peg for a pegged order in the context of the PegOffsetType",
-    "display": "PegInstructions"
+    "display": "PegInstructions",
+    "fix:tag": "466790"
   }
 }

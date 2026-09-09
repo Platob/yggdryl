@@ -18,6 +18,7 @@
     "description": "Allows trading rules to be expressed by trading session",
     "display": "TradingSessionRulesGrp",
     "fix:component": "tradingsessionrule",
-    "fix:counter": "1309"
+    "fix:counter": "1309",
+    "fix:tag": "397339"
   }
 }

@@ -167,6 +167,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SecurityRiskMetric"
+    "display": "SecurityRiskMetric",
+    "fix:tag": "474749"
   }
 }

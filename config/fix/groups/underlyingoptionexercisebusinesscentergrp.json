@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingOptionExerciseBusinessCenters(41820) > 0.",
     "display": "UnderlyingOptionExerciseBusinessCenterGrp",
     "fix:component": "underlyingoptionexercisebusinesscentercomponent",
-    "fix:counter": "41820"
+    "fix:counter": "41820",
+    "fix:tag": "591601"
   }
 }

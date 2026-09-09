@@ -55,7 +55,7 @@ SEED = REPO / "config" / "fix"
 # fields, which ``FixRegistry()`` seeds and :func:`fix_crate_fields` lists -
 # twenty standard fields, one tag block from 65000.
 CRATE_TAG_MIN = 65000
-CRATED = 19
+CRATED = 20
 CRATE_TAGS = list(range(CRATE_TAG_MIN, CRATE_TAG_MIN + CRATED))
 
 # One Ullink CBlock in the shape a production file has: a vocabulary of a
@@ -1343,7 +1343,7 @@ def test_a_reader_fills_what_the_line_implied_and_leaves_the_wire_alone(
     # under that source the crate's `isincode` column and the country its
     # prefix names.
     line = b"8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|"
-    filled = reader.transform_line(line, True)
+    filled = next(reader.transform_line(line, True))
     assert filled.by_tag(22).as_py() == "4"
     assert filled.by_tag(65013).as_py() == "US0378331005"
     assert filled.by_tag(470).as_py() == "US"
@@ -1351,18 +1351,18 @@ def test_a_reader_fills_what_the_line_implied_and_leaves_the_wire_alone(
     assert filled.by_tag(59).as_py() == "0"
 
     # Without the flag the line states none of them.
-    bare = reader.transform_line(line)
+    bare = next(reader.transform_line(line))
     assert bare.get_by_tag(22) is None
     assert bare.get_by_tag(65013) is None
     assert bare.get_by_tag(470) is None
 
     # Only the row was filled: the wire comes back byte for byte, and a second
     # pass changes nothing.
-    assert filled.to_bytes(ord("|")) == line
+    assert filled.into_bytes(ord("|")) == line
     assert reader.enrich_fixmsg(filled) == filled
 
     # A value no standard closes answers nothing rather than a guess.
-    opaque = reader.transform_line(b"8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|", True)
+    opaque = next(reader.transform_line(b"8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|", True))
     assert opaque.get_by_tag(22) is None
     assert opaque.get_by_tag(65013) is None
 
@@ -1662,6 +1662,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "instid",
         "id",
         "persistentid",
+        "targetsessionid",
     ]
     assert [field.display for field in fields.values()] == [
         "MsgHash",
@@ -1683,6 +1684,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "InstId",
         "Id",
         "PersistentId",
+        "TargetSessionId",
     ]
     assert [field.fix.tag for field in fields.values()] == CRATE_TAGS
     assert all(field.fix.branch == STANDARD_BRANCH for field in fields.values())
@@ -1766,7 +1768,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
 
     # The header in rank order whatever the input order, the body, the
     # trailer, and the crate's own `timestamp` closing the message.
-    message = reader.transform_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|")
+    message = next(reader.transform_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|"))
     assert _root_names(message) == [
         "beginstring",
         "bodylength",
@@ -1796,14 +1798,16 @@ def test_every_built_message_carries_its_version_and_its_clock(
     # The stamp is a child and never an entry: the wire re-emits byte for
     # byte, and nothing the row added is in the arrival record.
     wire = b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=000|"
-    order = reader.transform_line(wire)
-    assert order.to_bytes(ord("|")) == wire
+    order = next(reader.transform_line(wire))
+    assert order.into_bytes(ord("|")) == wire
     assert {tag for tag, _, _, _ in order.entries()} == {8, 35, 11, 55, 54, 38, 10}
 
     # The message's own clocks, in decreasing exactness: TransactTime(60)
     # outranks SendingTime(52), and a sub-second clock still has a partition.
-    clocked = reader.transform_line(
-        b"8=FIX.4.4|35=8|52=20260102-09:30:00.500|60=20260102-09:29:59.250|10=0|"
+    clocked = next(
+        reader.transform_line(
+            b"8=FIX.4.4|35=8|52=20260102-09:30:00.500|60=20260102-09:29:59.250|10=0|"
+        )
     )
     instant = dt.datetime(2026, 1, 2, 9, 29, 59, 250000, tzinfo=dt.timezone.utc)
     stamped = clocked.market_timestamp()
@@ -1820,7 +1824,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
     assert _root_names(stated)[-1] == "timestamp"
     assert stated.by_tag(8).as_py().startswith("FIX.")
     assert {tag for tag, _, _, _ in stated.entries()} == {55}
-    assert not stated.to_bytes(ord("|")).startswith(b"8=")
+    assert not stated.into_bytes(ord("|")).startswith(b"8=")
 
     # A bridge frame and a FIXML row are built the same way.
     bridge = reader.transform_ullink_line(b"|#SYMBOL=TTF|#SIDE=1|")
@@ -2067,7 +2071,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     life = FixLifecycle(seed)
     stamped: list[FixMsg] = []
     for line in LIFE:
-        stamped.append(life.fill(reader.transform_line(line)))
+        stamped.append(life.fill(next(reader.transform_line(line))))
         # Alive from the first message to the fill that ends it.
         assert life.alive() == int(len(stamped) < len(LIFE))
 
@@ -2093,13 +2097,13 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
 
     # Nothing here is an entry: the wire re-emits byte for byte.
     for line, message in zip(LIFE, stamped):
-        assert message.to_bytes(ord("|")) == line
+        assert message.into_bytes(ord("|")) == line
 
     # The identifier a venue reuses tomorrow opens a new chain rather than
     # joining yesterday's, which ended: dated by its own clock, it is another
     # identity.
     tomorrow = LIFE[0].replace(b"20260102", b"20260103")
-    again = life.fill(reader.transform_line(tomorrow))
+    again = life.fill(next(reader.transform_line(tomorrow)))
     assert _identity(again, PERSISTENTID_TAG) != chains[0]
     assert life.alive() == 1
     life.clear()
@@ -2107,7 +2111,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     assert repr(life) == "FixLifecycle(0 alive)"
     # The same line at the same instant is the same chain identity, which is
     # what makes two reads of one capture agree.
-    replayed = life.fill(reader.transform_line(LIFE[0]))
+    replayed = life.fill(next(reader.transform_line(LIFE[0])))
     assert _identity(replayed, PERSISTENTID_TAG) == chains[0]
     assert _identity(replayed, ID_TAG) == ids[0]
 
@@ -2118,7 +2122,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
 
 def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> None:
     reader = FixCodec(seed)
-    heartbeat = reader.transform_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|")
+    heartbeat = next(reader.transform_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|"))
     # The codec runs one lifecycle over any iterable, a generator included.
     stamped = reader.lifecycle(held for held in [heartbeat])
     assert len(stamped) == 1
@@ -2132,7 +2136,7 @@ def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> 
     # stated, and the epoch where the message states no clock at all.
     sent = _identity(held, ID_TAG)
     assert sent is not None and int.from_bytes(sent[:8], "big") == 1_767_348_930_000_000
-    (undated,) = reader.lifecycle([reader.transform_line(b"8=FIX.4.4|35=0|10=0|")])
+    (undated,) = reader.lifecycle([next(reader.transform_line(b"8=FIX.4.4|35=0|10=0|"))])
     undated_id = _identity(undated, ID_TAG)
     assert undated_id is not None and undated_id[:8] == bytes(8)
 
@@ -2151,7 +2155,7 @@ def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
     life = FixLifecycle(seed)
 
     def identity(line: bytes) -> bytes | None:
-        return _identity(life.fill(reader.transform_line(line)), INSTID_TAG)
+        return _identity(life.fill(next(reader.transform_line(line))), INSTID_TAG)
 
     # An ISIN outranks a symbol, so the same security under two symbols is
     # one instrument, and case is not a difference.
@@ -2174,7 +2178,7 @@ def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
 
 def test_a_stamped_stream_read_again_keeps_what_it_carries(seed: FixRegistry) -> None:
     reader = FixCodec(seed)
-    once = reader.lifecycle(reader.transform_line(line) for line in LIFE)
+    once = reader.lifecycle(next(reader.transform_line(line)) for line in LIFE)
     twice = reader.lifecycle(once)
     for first, second in zip(once, twice):
         for tag in (INSTID_TAG, ID_TAG, PERSISTENTID_TAG):

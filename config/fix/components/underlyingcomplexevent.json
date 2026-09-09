@@ -497,6 +497,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEvent"
+    "display": "UnderlyingComplexEvent",
+    "fix:tag": "845367"
   }
 }

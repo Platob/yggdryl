@@ -78,6 +78,7 @@
   "nullable": false,
   "metadata": {
     "description": "Optional block which can be used to to summarize common attributes shared across a set of option instruments which belong to the same series.",
-    "display": "DerivativeSecurityDefinition"
+    "display": "DerivativeSecurityDefinition",
+    "fix:tag": "142042"
   }
 }

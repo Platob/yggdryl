@@ -18,6 +18,7 @@
     "description": "Required when NoTargetPartySubIDs(2433) > 0.",
     "display": "TargetPtysSubGrp",
     "fix:component": "targetptyssub",
-    "fix:counter": "2433"
+    "fix:counter": "2433",
+    "fix:tag": "1004831"
   }
 }

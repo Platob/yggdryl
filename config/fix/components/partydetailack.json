@@ -87,6 +87,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyDetailAck"
+    "display": "PartyDetailAck",
+    "fix:tag": "827108"
   }
 }

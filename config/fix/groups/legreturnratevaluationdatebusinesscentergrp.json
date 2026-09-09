@@ -18,6 +18,7 @@
     "description": "Required if NoLegReturnRateValuationDateBusinessCenters(42569) > 0.",
     "display": "LegReturnRateValuationDateBusinessCenterGrp",
     "fix:component": "legreturnratevaluationdatebusinesscentercomponent",
-    "fix:counter": "42569"
+    "fix:counter": "42569",
+    "fix:tag": "306168"
   }
 }

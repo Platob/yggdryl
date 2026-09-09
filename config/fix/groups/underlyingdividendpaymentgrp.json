@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingDividendPayments (42855) > 0.",
     "display": "UnderlyingDividendPaymentGrp",
     "fix:component": "underlyingdividendpayment",
-    "fix:counter": "42855"
+    "fix:counter": "42855",
+    "fix:tag": "1078779"
   }
 }

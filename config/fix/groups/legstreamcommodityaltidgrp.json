@@ -18,6 +18,7 @@
     "description": "Required if NoLegStreamCommodityAltIDs(41674) > 0.",
     "display": "LegStreamCommodityAltIDGrp",
     "fix:component": "legstreamcommodityaltidcomponent",
-    "fix:counter": "41674"
+    "fix:counter": "41674",
+    "fix:tag": "749996"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoLegSettlMethodElectionDateBusinessCenters(42581) > 0.",
     "display": "LegSettlMethodElectionDateBusinessCenterGrp",
     "fix:component": "legsettlmethodelectiondatebusinesscentercomponent",
-    "fix:counter": "42581"
+    "fix:counter": "42581",
+    "fix:tag": "869723"
   }
 }

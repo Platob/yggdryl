@@ -18,6 +18,7 @@
     "description": "Must be 1 or 2",
     "display": "SideCrossOrdCxlGrp",
     "fix:component": "sidecrossordcxl",
-    "fix:counter": "552"
+    "fix:counter": "552",
+    "fix:tag": "532253"
   }
 }

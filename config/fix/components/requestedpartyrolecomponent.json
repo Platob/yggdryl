@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RequestedPartyRole"
+    "display": "RequestedPartyRole",
+    "fix:tag": "680437"
   }
 }

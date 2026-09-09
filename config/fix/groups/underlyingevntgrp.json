@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingEvents(1982) > 0.",
     "display": "UnderlyingEvntGrp",
     "fix:component": "underlyingevnt",
-    "fix:counter": "1981"
+    "fix:counter": "1981",
+    "fix:tag": "593463"
   }
 }

@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentScheduleRateSource"
+    "display": "PaymentScheduleRateSource",
+    "fix:tag": "384348"
   }
 }

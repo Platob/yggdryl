@@ -447,6 +447,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdInstrmtLeg"
+    "display": "TrdInstrmtLeg",
+    "fix:tag": "863896"
   }
 }

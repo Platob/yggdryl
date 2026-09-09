@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ReturnRateValuationDateBusinessCenter"
+    "display": "ReturnRateValuationDateBusinessCenter",
+    "fix:tag": "477959"
   }
 }

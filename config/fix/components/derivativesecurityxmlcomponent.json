@@ -38,6 +38,7 @@
   "nullable": false,
   "metadata": {
     "description": "Must be set if DerivativeSecurityXML(1283) field is specified and must immediately precede it.",
-    "display": "DerivativeSecurityXML"
+    "display": "DerivativeSecurityXML",
+    "fix:tag": "252421"
   }
 }

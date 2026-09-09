@@ -18,6 +18,7 @@
     "description": "Number of underlyings",
     "display": "UndInstrmtGrp",
     "fix:component": "undinstrmt",
-    "fix:counter": "711"
+    "fix:counter": "711",
+    "fix:tag": "524175"
   }
 }

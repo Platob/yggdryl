@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TradeCapLegUnderlying"
+    "display": "TradeCapLegUnderlying",
+    "fix:tag": "1064424"
   }
 }

@@ -118,6 +118,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when LegComplexEventDateOffsetUnit(41392) is specified.",
-    "display": "LegComplexEventRelativeDate"
+    "display": "LegComplexEventRelativeDate",
+    "fix:tag": "523163"
   }
 }

@@ -188,6 +188,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required if UnderlyingPaymentStreamCompoundingRateIndexCurveUnit(42925) is specified.",
-    "display": "UnderlyingPaymentStreamCompoundingFloatingRate"
+    "display": "UnderlyingPaymentStreamCompoundingFloatingRate",
+    "fix:tag": "669093"
   }
 }

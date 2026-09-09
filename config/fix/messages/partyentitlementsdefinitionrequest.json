@@ -109,6 +109,7 @@
   "metadata": {
     "description": "MsgType = DA",
     "display": "PartyEntitlementsDefinitionRequest",
-    "fix:msgtype": "DA"
+    "fix:msgtype": "DA",
+    "fix:tag": "509202"
   }
 }

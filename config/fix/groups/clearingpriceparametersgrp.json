@@ -18,6 +18,7 @@
     "description": "Number of parameter sets.",
     "display": "ClearingPriceParametersGrp",
     "fix:component": "clearingpriceparameter",
-    "fix:counter": "2580"
+    "fix:counter": "2580",
+    "fix:tag": "790583"
   }
 }

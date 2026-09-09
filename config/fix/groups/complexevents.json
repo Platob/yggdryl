@@ -18,6 +18,7 @@
     "description": "Required if NoComplexEvents(1483) > 0.",
     "display": "ComplexEvents",
     "fix:component": "complexevent",
-    "fix:counter": "1483"
+    "fix:counter": "1483",
+    "fix:tag": "847681"
   }
 }

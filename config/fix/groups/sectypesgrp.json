@@ -18,6 +18,7 @@
     "description": "Required if NoSecurityTypes > 0",
     "display": "SecTypesGrp",
     "fix:component": "sectype",
-    "fix:counter": "558"
+    "fix:counter": "558",
+    "fix:tag": "747506"
   }
 }

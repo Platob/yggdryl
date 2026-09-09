@@ -108,6 +108,7 @@
   "nullable": false,
   "metadata": {
     "description": "Mutually exclusive with LegPaymentStreamFixedAmount(40327).",
-    "display": "LegPaymentStreamFixedRate"
+    "display": "LegPaymentStreamFixedRate",
+    "fix:tag": "561335"
   }
 }

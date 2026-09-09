@@ -18,6 +18,7 @@
     "description": "Required if NoLegStreams(40241) > 0.",
     "display": "LegStreamGrp",
     "fix:component": "legstream",
-    "fix:counter": "40241"
+    "fix:counter": "40241",
+    "fix:tag": "965815"
   }
 }

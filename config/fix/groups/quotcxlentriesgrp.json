@@ -18,6 +18,7 @@
     "description": "The number of securities (instruments) whose quotes are to be canceled",
     "display": "QuotCxlEntriesGrp",
     "fix:component": "quotcxlentry",
-    "fix:counter": "295"
+    "fix:counter": "295",
+    "fix:tag": "302496"
   }
 }

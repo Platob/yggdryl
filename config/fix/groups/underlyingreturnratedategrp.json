@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingReturnRateDates(43008) > 0.",
     "display": "UnderlyingReturnRateDateGrp",
     "fix:component": "underlyingreturnratedate",
-    "fix:counter": "43008"
+    "fix:counter": "43008",
+    "fix:tag": "342782"
   }
 }

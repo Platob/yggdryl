@@ -57,8 +57,48 @@ fn document() -> String {
              \t\t\t</tag-constraint>\n"
         ));
     }
+    body.push_str("\t\t</grammar>\n\t</grammar-binding>\n\t<normalization-binding>\n\t\t<normalization type=\"inbound\">\n");
+    for index in 0..TAGS {
+        let tag = 5_000 + index;
+        let name = if index == 0 {
+            "NOVENDORENTRIES".to_owned()
+        } else {
+            format!("VENDOR{index:05}")
+        };
+        // The common case by far: a spelling the tag already answers to,
+        // which the pass has to resolve and drop rather than store.
+        body.push_str(&format!(
+            "\t\t\t<tag-normalization tag-name=\"{name}\" part=\"body\">\n\
+             \t\t\t\t<mapping-expression>\n\
+             \t\t\t\t\t<expression value=\"${tag}\" />\n\
+             \t\t\t\t</mapping-expression>\n\
+             \t\t\t</tag-normalization>\n"
+        ));
+        // A lookup names nothing, and is what a real binding writes beside it.
+        body.push_str(&format!(
+            "\t\t\t<tag-normalization tag-name=\"{name}CODE\" part=\"body\">\n\
+             \t\t\t\t<mapping-condition>\n\
+             \t\t\t\t\t<expression value=\"${tag} = &quot;4&quot;\" />\n\
+             \t\t\t\t</mapping-condition>\n\
+             \t\t\t\t<mapping-expression>\n\
+             \t\t\t\t\t<expression value=\"lookup(&quot;Set&quot;, ${tag})\" />\n\
+             \t\t\t\t</mapping-expression>\n\
+             \t\t\t</tag-normalization>\n"
+        ));
+        // And one in ten is a spelling the tag does not answer to, so the
+        // measured pass writes as well as reads.
+        if index % 10 == 0 {
+            body.push_str(&format!(
+                "\t\t\t<tag-normalization tag-name=\"{name}_ALT\" part=\"body\">\n\
+                 \t\t\t\t<mapping-expression>\n\
+                 \t\t\t\t\t<expression value=\"${tag}\" />\n\
+                 \t\t\t\t</mapping-expression>\n\
+                 \t\t\t</tag-normalization>\n"
+            ));
+        }
+    }
     body.push_str(
-        "\t\t</grammar>\n\t</grammar-binding>\n\t<reject-binding />\n</cplugin-configuration>\n",
+        "\t\t</normalization>\n\t</normalization-binding>\n\t<reject-binding />\n</cplugin-configuration>\n",
     );
     body
 }
@@ -92,11 +132,23 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .get_group_by_counter(counter)
             .is_some()
     );
+    // The normalization binding spells every tag, and only the spelling the
+    // tag does not already answer to is stored beside its name.
+    assert_eq!(
+        registry
+            .field(counter)
+            .unwrap()
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        ["NOVENDORENTRIES_ALT"]
+    );
 
     let mut group = criterion.benchmark_group("fix/cblock");
     group.throughput(Throughput::Bytes(body.len() as u64));
-    // The whole parse: skip unrelated children, build the vocabulary, then
-    // bind the message and its group from the resolved fields.
+    // The whole parse: skip unrelated children, build the vocabulary, bind
+    // the message and its group from the resolved fields, then resolve every
+    // name the normalization binding spells against the finished vocabulary.
     group.bench_function("parse", |bencher| {
         bencher.iter(|| {
             FixRegistry::from_cfb_file(black_box(&handle), Some(black_box(&branch)))

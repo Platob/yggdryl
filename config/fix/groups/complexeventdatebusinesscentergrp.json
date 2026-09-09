@@ -18,6 +18,7 @@
     "description": "Required if NoComplexEventDateBuisinessCenters(41018) > 0.",
     "display": "ComplexEventDateBusinessCenterGrp",
     "fix:component": "complexeventdatebusinesscentercomponent",
-    "fix:counter": "41018"
+    "fix:counter": "41018",
+    "fix:tag": "237639"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPaymentScheduleFixingDateBusinessCenters(40966) > 0.",
     "display": "UnderlyingPaymentScheduleFixingDateBusinessCenterGrp",
     "fix:component": "underlyingpaymentschedulefixingdatebusinesscentercomponent",
-    "fix:counter": "40966"
+    "fix:counter": "40966",
+    "fix:tag": "577608"
   }
 }

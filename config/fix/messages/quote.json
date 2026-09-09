@@ -1229,6 +1229,7 @@
   "metadata": {
     "description": "MsgType = S",
     "display": "Quote",
-    "fix:msgtype": "S"
+    "fix:msgtype": "S",
+    "fix:tag": "449484"
   }
 }

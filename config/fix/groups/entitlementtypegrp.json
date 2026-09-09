@@ -18,6 +18,7 @@
     "description": "Number of Entitlement Types.",
     "display": "EntitlementTypeGrp",
     "fix:component": "entitlementtypecomponent",
-    "fix:counter": "2345"
+    "fix:counter": "2345",
+    "fix:tag": "918553"
   }
 }

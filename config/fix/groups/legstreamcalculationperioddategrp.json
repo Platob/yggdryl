@@ -18,6 +18,7 @@
     "description": "Required if NoLegStreamCalculationPeriodDates(41638) > 0.",
     "display": "LegStreamCalculationPeriodDateGrp",
     "fix:component": "legstreamcalculationperioddatecomponent",
-    "fix:counter": "41638"
+    "fix:counter": "41638",
+    "fix:tag": "662171"
   }
 }

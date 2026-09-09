@@ -1313,7 +1313,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixBranch`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `parse_arrow_reader()`, `classify_arrow_array()`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), `ULBRIDGE_BRANCH` (`"ulbridge"`, the branch a bridge's own fields declare), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim. The `fix:` vocabulary is typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`, and the definition metadata `codes`, `counter`, `component` and `msgtype`.
+`yggdryl.fix` carries `FixRegistry`, `FixBranch`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `parse_arrow_reader()`, `classify_arrow_array()`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), `ULBRIDGE_BRANCH` (`"ulbridge"`, the branch a bridge's own fields declare), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim for a scalar field. The `fix:` vocabulary is typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`, and the definition metadata `codes`, `counter`, `component` and `msgtype`.
 
 | Crossing | Rule |
 | --- | --- |
@@ -1321,7 +1321,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | branches and identifiers | lookup arguments cross as `str`, parsed once by the core; `FixBranch` carries declared branch metadata |
 | `field.fix.branch`, `field.fix.id` | `""` when the key is absent, `None` exactly when `fix:tag` is absent; assigning `""` removes the key, and assigning a `"tag:branch"` id moves both halves at once |
 | lookups | `field_by_name` and `field_by_path` accept an optional branch restriction; canonical names precede aliases, standard precedes named branches within a tier; `field_by_id("55:")` selects the standard branch exactly |
-| categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata |
+| categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
 | CRUD | `create_definition`, `definition`, `update_definition`, `remove_definition`; `definitions` iterates one category lazily |
 | locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; category folders contain standard definitions directly and branch definitions under `<branch>/` |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |

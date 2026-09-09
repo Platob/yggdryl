@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "MarginReqmtInqQual"
+    "display": "MarginReqmtInqQual",
+    "fix:tag": "326788"
   }
 }

@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDeliveryScheduleSettlDay"
+    "display": "LegDeliveryScheduleSettlDay",
+    "fix:tag": "469252"
   }
 }

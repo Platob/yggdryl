@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentScheduleRateSources(40868) > 0.",
     "display": "PaymentScheduleRateSourceGrp",
     "fix:component": "paymentscheduleratesourcecomponent",
-    "fix:counter": "40868"
+    "fix:counter": "40868",
+    "fix:tag": "851817"
   }
 }

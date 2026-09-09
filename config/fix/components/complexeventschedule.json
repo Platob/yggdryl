@@ -57,6 +57,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ComplexEventSchedule"
+    "display": "ComplexEventSchedule",
+    "fix:tag": "103396"
   }
 }

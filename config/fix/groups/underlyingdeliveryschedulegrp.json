@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingDeliverySchedules(41756) > 0.",
     "display": "UnderlyingDeliveryScheduleGrp",
     "fix:component": "underlyingdeliveryschedule",
-    "fix:counter": "41756"
+    "fix:counter": "41756",
+    "fix:tag": "1062097"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoSettlMethodElectionDateBusinessCenters(42775) > 0.",
     "display": "SettlMethodElectionDateBusinessCenterGrp",
     "fix:component": "settlmethodelectiondatebusinesscentercomponent",
-    "fix:counter": "42775"
+    "fix:counter": "42775",
+    "fix:tag": "786950"
   }
 }

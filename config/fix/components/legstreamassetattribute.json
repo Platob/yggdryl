@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamAssetAttribute"
+    "display": "LegStreamAssetAttribute",
+    "fix:tag": "228132"
   }
 }

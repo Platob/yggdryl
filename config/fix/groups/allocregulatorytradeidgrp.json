@@ -18,6 +18,7 @@
     "description": "Required if NoAllocRegulatoryTradeIDs(1908) > 0.",
     "display": "AllocRegulatoryTradeIDGrp",
     "fix:component": "allocregulatorytradeidcomponent",
-    "fix:counter": "1908"
+    "fix:counter": "1908",
+    "fix:tag": "184658"
   }
 }

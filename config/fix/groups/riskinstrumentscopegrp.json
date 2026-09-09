@@ -18,6 +18,7 @@
     "description": "Required when NoRiskInstrumentScopes > 0.",
     "display": "RiskInstrumentScopeGrp",
     "fix:component": "riskinstrumentscope",
-    "fix:counter": "1534"
+    "fix:counter": "1534",
+    "fix:tag": "916336"
   }
 }

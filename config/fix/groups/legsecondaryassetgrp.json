@@ -18,6 +18,7 @@
     "description": "Required if NoLegSecondaryAssetClasses(2076) > 0.",
     "display": "LegSecondaryAssetGrp",
     "fix:component": "legsecondaryasset",
-    "fix:counter": "2076"
+    "fix:counter": "2076",
+    "fix:tag": "834577"
   }
 }

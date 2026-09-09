@@ -337,6 +337,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ReturnRate"
+    "display": "ReturnRate",
+    "fix:tag": "358162"
   }
 }

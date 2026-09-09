@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentStreamPricingBusinessCenters(41192) > 0.",
     "display": "PaymentStreamPricingBusinessCenterGrp",
     "fix:component": "paymentstreampricingbusinesscentercomponent",
-    "fix:counter": "41192"
+    "fix:counter": "41192",
+    "fix:tag": "1005972"
   }
 }

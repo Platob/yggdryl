@@ -117,6 +117,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "OrdAlloc"
+    "display": "OrdAlloc",
+    "fix:tag": "171733"
   }
 }

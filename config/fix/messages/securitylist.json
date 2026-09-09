@@ -239,6 +239,7 @@
   "metadata": {
     "description": "MsgType = y (lowercase Y)",
     "display": "SecurityList",
-    "fix:msgtype": "y"
+    "fix:msgtype": "y",
+    "fix:tag": "164224"
   }
 }

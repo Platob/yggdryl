@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ComplexEventDate"
+    "display": "ComplexEventDate",
+    "fix:tag": "202379"
   }
 }

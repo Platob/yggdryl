@@ -1229,6 +1229,7 @@
   "metadata": {
     "description": "MsgType = AS",
     "display": "AllocationReport",
-    "fix:msgtype": "AS"
+    "fix:msgtype": "AS",
+    "fix:tag": "591464"
   }
 }

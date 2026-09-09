@@ -18,6 +18,7 @@
     "description": "Indicates number of strategy parameters",
     "display": "StrategyParametersGrp",
     "fix:component": "strategyparameter",
-    "fix:counter": "957"
+    "fix:counter": "957",
+    "fix:tag": "877753"
   }
 }

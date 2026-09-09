@@ -18,6 +18,7 @@
     "description": "Identifies the type of party relationship requested. Required if NoPartyRelationships > 0.",
     "display": "PartyRelationshipGrp",
     "fix:component": "partyrelationshipcomponent",
-    "fix:counter": "1514"
+    "fix:counter": "1514",
+    "fix:tag": "601056"
   }
 }

@@ -909,6 +909,7 @@
   "metadata": {
     "description": "MsgType = AJ",
     "display": "QuoteResponse",
-    "fix:msgtype": "AJ"
+    "fix:msgtype": "AJ",
+    "fix:tag": "576238"
   }
 }

@@ -28,6 +28,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when LegPaymentStreamFormulaImage(42452) is specified.",
-    "display": "LegPaymentStreamFormulaImage"
+    "display": "LegPaymentStreamFormulaImage",
+    "fix:tag": "300494"
   }
 }

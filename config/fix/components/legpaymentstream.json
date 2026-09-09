@@ -348,6 +348,7 @@
   "nullable": false,
   "metadata": {
     "description": "May be used to specify a count method not listed in LegPaymentStreamDayCount(40283).",
-    "display": "LegPaymentStream"
+    "display": "LegPaymentStream",
+    "fix:tag": "799194"
   }
 }

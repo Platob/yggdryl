@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "CollateralReinvestment"
+    "display": "CollateralReinvestment",
+    "fix:tag": "1032740"
   }
 }

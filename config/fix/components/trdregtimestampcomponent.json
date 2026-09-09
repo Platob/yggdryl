@@ -127,6 +127,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdRegTimestamp"
+    "display": "TrdRegTimestamp",
+    "fix:tag": "111648"
   }
 }

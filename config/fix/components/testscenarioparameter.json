@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TestScenarioParameter"
+    "display": "TestScenarioParameter",
+    "fix:tag": "247022"
   }
 }

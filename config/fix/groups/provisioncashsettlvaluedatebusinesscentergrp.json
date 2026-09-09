@@ -18,6 +18,7 @@
     "description": "Required if NoProvisionCashSettlValueDatBusinessCenters(40953) > 0.",
     "display": "ProvisionCashSettlValueDateBusinessCenterGrp",
     "fix:component": "provisioncashsettlvaluedatebusinesscentercomponent",
-    "fix:counter": "40953"
+    "fix:counter": "40953",
+    "fix:tag": "756078"
   }
 }

@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyDetailAltID"
+    "display": "PartyDetailAltID",
+    "fix:tag": "1088906"
   }
 }

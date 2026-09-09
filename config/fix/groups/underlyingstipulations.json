@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingStips(887) > 0.",
     "display": "UnderlyingStipulations",
     "fix:component": "underlyingstipulation",
-    "fix:counter": "887"
+    "fix:counter": "887",
+    "fix:tag": "849873"
   }
 }

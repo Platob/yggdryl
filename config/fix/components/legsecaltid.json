@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegSecAltID"
+    "display": "LegSecAltID",
+    "fix:tag": "103018"
   }
 }

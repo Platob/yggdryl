@@ -217,6 +217,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "DividendPeriod"
+    "display": "DividendPeriod",
+    "fix:tag": "790923"
   }
 }

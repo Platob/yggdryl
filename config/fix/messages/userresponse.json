@@ -89,6 +89,7 @@
   "metadata": {
     "description": "MsgType = BF",
     "display": "UserResponse",
-    "fix:msgtype": "BF"
+    "fix:msgtype": "BF",
+    "fix:tag": "987389"
   }
 }

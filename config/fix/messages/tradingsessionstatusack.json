@@ -89,6 +89,7 @@
   "metadata": {
     "description": "MsgType = ES",
     "display": "TradingSessionStatusAck",
-    "fix:msgtype": "ES"
+    "fix:msgtype": "ES",
+    "fix:tag": "144031"
   }
 }

@@ -99,6 +99,7 @@
   "metadata": {
     "description": "MsgType = AH",
     "display": "RFQRequest",
-    "fix:msgtype": "AH"
+    "fix:msgtype": "AH",
+    "fix:tag": "265036"
   }
 }

@@ -1106,6 +1106,12 @@ export type JsField = Field
  * name/value text, or pairs a caller already has. Each redirects to the core
  * method of the same name, so nothing here decides a dialect, a version or a
  * separator - it only carries what JavaScript said across.
+ *
+ * Every message it builds opens with `beginstring` - the wire's own, else
+ * the version the message was read at - and closes with the crate's
+ * `timestamp`: the first clock the message carries, else the epoch. Neither
+ * is an entry unless the line carried it, so `toBytes` re-emits the line
+ * byte for byte.
  */
 export declare class FixCodec {
   /** Open a reader over one dictionary, or over the process default. */
@@ -1139,6 +1145,17 @@ export declare class FixCodec {
    * a stated value is never replaced.
    */
   enrichFixmsg(message: FixMsg): FixMsg
+  /**
+   * Stamps an array of messages with the identities it implies, in order.
+   *
+   * One `FixLifecycle` over the whole array: each message gets its
+   * `instid`, its `id` and - where it carries an order identifier - the
+   * `persistentid` of the chain that identifier reaches, and a terminal
+   * state closes the chain. The array is the stream, so the chain a
+   * message joins depends on the messages before it; a stream longer than
+   * one array is fed to one `FixLifecycle` instead.
+   */
+  lifecycle(messages: Array<FixMsg>): Array<FixMsg>
   /** A cheap clone: the dictionary is shared and the pins are copied. */
   clone(): FixCodec
   /** How this reader renders: the dictionary it reads against. */
@@ -1180,6 +1197,48 @@ export declare class FixFieldIterator {
 
 }
 export type JsFixFieldIterator = FixFieldIterator
+
+/**
+ * The state a stream of messages has reached, one chain per order alive.
+ *
+ * Built once per stream, over one dictionary or the process default, and fed
+ * every message in order through `fill`, which stamps the three identities
+ * the stream implies: `instid`, the instrument; `id`, the message, sorting by
+ * the market's own clock; `persistentid`, the order chain that every message
+ * sharing one of its identifiers carries. A terminal state closes the chain
+ * and forgets its identifiers, so what is held is the orders still alive.
+ * `FixCodec.lifecycle` runs one of these over an array.
+ */
+export declare class FixLifecycle {
+  /**
+   * A stream with no order alive yet.
+   *
+   * The three columns are the registry's own crate fields, which every
+   * registry this package builds holds.
+   */
+  constructor(registry?: FixRegistry | undefined | null)
+  /**
+   * Stamps one message with its three identities and moves the chain it
+   * belongs to along.
+   *
+   * A stated value is never overwritten: a message already carrying an
+   * `id` keeps it, and one carrying a `persistentid` joins nothing new,
+   * which is what makes a second pass over a stamped stream a no-op. Only
+   * the row is stamped: the arrival record is what the wire carried, so
+   * `toBytes` re-emits the received line either way.
+   */
+  fill(message: FixMsg): FixMsg
+  /**
+   * How many orders are alive: opened by a message and not yet closed by
+   * a terminal state.
+   */
+  get alive(): number
+  /** Forgets every chain, as a new session or a new day would. */
+  clear(): void
+  /** How this stream renders: the orders alive in it. */
+  toString(): string
+}
+export type JsFixLifecycle = FixLifecycle
 
 /** A native fallible cursor; the JavaScript loader supplies `Symbol.iterator`. */
 export declare class FixMessages {
@@ -1287,7 +1346,14 @@ export declare class FixMsg {
   digest(): Buffer
   /** One instrument symbol that is the same across venues, or `null`. */
   symbolTicker(): JsScalar | null
-  /** The timestamp a capture is ordered by, or `null`. */
+  /**
+   * The timestamp a capture is ordered by, or `null`.
+   *
+   * The crate's `timestamp` child every built message closes with: the
+   * first clock the message carries, else the epoch - so a message the
+   * reader built always answers, and only a message built by hand without
+   * that child does not.
+   */
   marketTimestamp(): JsScalar | null
   /** The partition that timestamp falls in, in whole seconds. */
   unixPartition(seconds: number): JsScalar | null
@@ -1320,8 +1386,10 @@ export declare class FixMsg {
    * This message as the fixed row a table holds.
    *
    * `schema` is the fixed root `fixSchema` builds: every column is filled by
-   * the tag its name spells, and a column no tag names answers null because
-   * it is the capture's rather than the message's.
+   * the tag its field carries - never by its spelling - so a message that
+   * carried nothing at a column answers null there rather than shifting its
+   * neighbours, and a column no tag names answers null because it is the
+   * capture's rather than the message's.
    */
   intoRow(schema: JsField): JsScalar
   /** Re-emit this message on the wire, separated by `separator`. */
@@ -1389,7 +1457,16 @@ export declare class FixRegistry {
   msgtypes(): MsgTypeIterator
   /** Add native scalar `ULBridge` fields atomically. */
   withUlbridgeFields(): void
-  /** The empty registry. */
+  /**
+   * A registry holding nothing but this crate's own fields.
+   *
+   * Every registry starts here: the twenty standard fields from tag 65000
+   * that `fixCrateFields` lists - the digest, the clock and its partition,
+   * the session a message states, the bridge's message context, the
+   * plugin sessions a line moved between and the identities a lifecycle
+   * pass stamps - are what a row is typed by, so a dictionary loaded from
+   * a store, built from fields or left alone holds them alike.
+   */
   constructor()
   /**
    * Build a registry by inserting `fields` in order.
@@ -1402,9 +1479,12 @@ export declare class FixRegistry {
    *
    * `location` is an `IOBase` handle, a `Url`, or the string naming one, run
    * through the coercion every folder-shaped entry point uses. A folder that
-   * is not there loads as the empty registry and is not created; a shard
-   * that does not parse, and a root still holding the retired `records/`
-   * layout, throw with the URL named.
+   * is not there loads as a new registry - the crate's own fields and
+   * nothing else - and is not created; a stored copy of one of the crate's
+   * own fields, a standard field from 65000 up, is read past, because the
+   * crate's own definition is the one that types a row. A shard that does
+   * not parse, and a root still holding the retired `records/` layout,
+   * throw with the URL named.
    */
   static fromHandle(location: LocationInput): FixRegistry
   /**
@@ -1420,22 +1500,27 @@ export declare class FixRegistry {
    */
   static fromCfbFile(location: LocationInput, branch?: string | undefined | null): [FixRegistry, Array<Field>]
   /**
-   * Add the fields this crate defines on its own branch.
+   * Register a full wire code and borrow its immutable message definition.
    *
-   * A dictionary that has them can type a `msghash` or `timestamp` column
-   * from the registry like any other. One that does not is unchanged:
-   * nothing in reading a message needs them, because every one of them is a
-   * fact about the capture rather than about the wire.
+   * A type the code set does not have is added to it rather than rejected,
+   * and the value it takes is the core's: itself where it fits, a stable
+   * synthesized value where it does not. `name` is the symbolic name the
+   * set files it under, with the spelling kept as an alias when the two
+   * differ, and `description` is the source's own wording. Idempotent and
+   * enriching: a type already spelled answers its value, gains a spelling
+   * the set did not answer to and a description it did not have, and keeps
+   * everything it already held.
    */
-  withCrateFields(): void
-  /** Register a full wire code and borrow its immutable message definition. */
   registerMsgtype(spelling: string, name?: string | undefined | null, description?: string | undefined | null): MsgType
   /**
    * Write every populated shard under `<location>/<tree>/<branch>`, removing
-   * the shards, branch folders and trees no field populates any more.
+   * the shards, branch folders and trees no field populates any more. The
+   * crate's own fields - the standard fields from 65000 up - are never
+   * written: they are the crate's rather than the store's, and every
+   * registry holds them already.
    */
   writeInto(location: LocationInput): void
-  /** How many fields are registered. */
+  /** How many fields are held, the crate's own twenty among them. */
   get size(): number
   /**
    * The field a canonical or alternate identifier names, or `null`.
@@ -3898,15 +3983,15 @@ export declare class TxHasher {
 export type JsTxHasher = TxHasher
 
 /** One selected configuration; its shared source response remains native. */
-export declare class Ulconfig {
+export declare class UlPlugin {
   /** Construct from a selected `ObjectName`, attributes, and source response. */
   constructor(mbean: string | null, attributes: Scalar, envelope: Scalar)
   /** Parse and validate a response before returning its lazy configurations. */
-  static fromJsonBytes(body: Buffer): JsUlconfigs
+  static fromJsonBytes(body: Buffer): JsUlPlugins
   /** Validate a native response and iterate its selected configurations. */
-  static fromJsonScalar(document: JsScalar): JsUlconfigs
+  static fromJsonScalar(document: JsScalar): JsUlPlugins
   /** Recover one configuration from a flat native message. */
-  static fromFixmsg(message: JsFixMsg): Ulconfig
+  static fromFixmsg(message: JsFixMsg): UlPlugin
   /** Convert this selected configuration to one flat native message. */
   intoFixmsg(codec: JsFixCodec, enrich?: boolean | undefined | null): JsFixMsg
   /** The selected actual `ObjectName`, when present. */
@@ -3930,13 +4015,13 @@ export declare class Ulconfig {
   /** Shares the complete source response, which may contain sibling values. */
   asEnvelope(): JsScalar
   /** Compare the complete native values. */
-  equals(other: Ulconfig): boolean
+  equals(other: UlPlugin): boolean
   /** Deterministic hash bits from the native value. */
   stableHash(): bigint
   /** Clone the native value, retaining shared backing. */
-  clone(): Ulconfig
+  clone(): UlPlugin
 }
-export type JsUlconfig = Ulconfig
+export type JsUlPlugin = UlPlugin
 
 /**
  * A lazy iterator of validated native configurations.
@@ -3947,10 +4032,10 @@ export type JsUlconfig = Ulconfig
  * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
  * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
  */
-export declare class Ulconfigs {
+export declare class UlPlugins {
 
 }
-export type JsUlconfigs = Ulconfigs
+export type JsUlPlugins = UlPlugins
 
 /** A normalized URI backed by the validated Rust core. */
 export declare class Uri {
@@ -4535,7 +4620,18 @@ export interface FixCodecOptions {
   nullValues?: Array<string>
 }
 
-/** The fields this crate defines on its own branch, in tag order. */
+/**
+ * The twenty fields this crate defines, in tag order: standard fields from
+ * 65000 up, above every tag FIX or a venue publishes.
+ *
+ * The digest, the version read at, the ticker, the clock and its partition,
+ * the parent identifiers, the session the message states, the bridge's
+ * message context, the plugins and plugin sessions a line moved between, the
+ * ISIN, MIC and order state a row derives, and the instrument, message and
+ * order-chain identities a lifecycle pass stamps. Every registry already
+ * holds them, so this is the listing a schema or a document walks rather than
+ * something a caller registers.
+ */
 export declare function fixCrateFields(): Array<JsField>
 
 /**
@@ -4543,8 +4639,9 @@ export declare function fixCrateFields(): Array<JsField>
  *
  * Header, the fields a consumer reads, the groups worth persisting whole, the
  * trailer, this crate's own derived facts, and the two lists that close every
- * row. Columns are named by tag, because a tag is the one name a field has in
- * every version and every dialect.
+ * row. Columns are spelled by the dictionary's folded canonical names -
+ * `msgtype`, never `35` - so a row reads the way a message reads; the tag
+ * stays each column's identity, on its `fix:tag`, and is what fills it.
  */
 export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
 
@@ -4553,9 +4650,14 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
  *
  * `carrier` is a capture's own root - where a line was read from, which line
  * it was, what stamped it - and its columns lead the row, because that is what
- * a monitor orders and joins on. A carried column whose name a FIX column
- * already takes is dropped rather than renamed: the FIX column is the one a
- * reader spelling it means.
+ * a monitor orders and joins on. A carried column whose folded name a FIX
+ * column already takes - `senderSessionId` and `sendersessionid` are one name - is dropped
+ * rather than renamed: the FIX column is the one a reader spelling it means,
+ * and `sendersessionid` means the session the message itself states. A bridge's own
+ * session instance is captured as `sessionUid` for that reason and leads the
+ * row beside `threadId` and `level`, while its `plugin` capture fills the
+ * plugin session the line's direction names: the sender's for a line it
+ * sent, the target's for one it received.
  */
 export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsField
 

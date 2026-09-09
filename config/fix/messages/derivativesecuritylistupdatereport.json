@@ -159,6 +159,7 @@
   "metadata": {
     "description": "MsgType = BR",
     "display": "DerivativeSecurityListUpdateReport",
-    "fix:msgtype": "BR"
+    "fix:msgtype": "BR",
+    "fix:tag": "892323"
   }
 }

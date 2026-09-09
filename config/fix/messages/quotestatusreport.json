@@ -1069,6 +1069,7 @@
   "metadata": {
     "description": "MsgType = AI",
     "display": "QuoteStatusReport",
-    "fix:msgtype": "AI"
+    "fix:msgtype": "AI",
+    "fix:tag": "729973"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Indicates number of individual execution or trade entries. Absence indicates that no individual execution or trade entries are included. Primarily used to support step-outs.",
     "display": "ExecAllocGrp",
     "fix:component": "execalloc",
-    "fix:counter": "124"
+    "fix:counter": "124",
+    "fix:tag": "132719"
   }
 }

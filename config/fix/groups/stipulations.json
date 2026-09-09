@@ -18,6 +18,7 @@
     "description": "Required if NoStipulations(232) > 0.",
     "display": "Stipulations",
     "fix:component": "stipulation",
-    "fix:counter": "232"
+    "fix:counter": "232",
+    "fix:tag": "799968"
   }
 }

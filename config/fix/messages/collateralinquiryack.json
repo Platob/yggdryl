@@ -419,6 +419,7 @@
   "metadata": {
     "description": "MsgType = BG",
     "display": "CollateralInquiryAck",
-    "fix:msgtype": "BG"
+    "fix:msgtype": "BG",
+    "fix:tag": "656331"
   }
 }

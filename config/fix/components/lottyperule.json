@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LotTypeRule"
+    "display": "LotTypeRule",
+    "fix:tag": "245094"
   }
 }

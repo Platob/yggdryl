@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyRelationship"
+    "display": "PartyRelationship",
+    "fix:tag": "682418"
   }
 }

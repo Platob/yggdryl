@@ -18,6 +18,7 @@
     "description": "Specifies the number of repeating CompId's",
     "display": "CompIDStatGrp",
     "fix:component": "compidstat",
-    "fix:counter": "936"
+    "fix:counter": "936",
+    "fix:tag": "790377"
   }
 }

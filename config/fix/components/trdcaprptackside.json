@@ -967,6 +967,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdCapRptAckSide"
+    "display": "TrdCapRptAckSide",
+    "fix:tag": "668146"
   }
 }

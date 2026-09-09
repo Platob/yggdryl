@@ -18,6 +18,7 @@
     "description": "Required if NoSettlRateFallbacks(40085) > 0.",
     "display": "SettlRateDisruptionFallbackGrp",
     "fix:component": "settlratedisruptionfallback",
-    "fix:counter": "40085"
+    "fix:counter": "40085",
+    "fix:tag": "1069611"
   }
 }

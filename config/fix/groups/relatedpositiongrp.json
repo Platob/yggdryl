@@ -18,6 +18,7 @@
     "description": "Required if NoRelatedPositions(1861) > 0.",
     "display": "RelatedPositionGrp",
     "fix:component": "relatedposition",
-    "fix:counter": "1861"
+    "fix:counter": "1861",
+    "fix:tag": "474326"
   }
 }

@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "OrderAttribute"
+    "display": "OrderAttribute",
+    "fix:tag": "816370"
   }
 }

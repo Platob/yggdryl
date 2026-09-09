@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStipulation"
+    "display": "LegStipulation",
+    "fix:tag": "304410"
   }
 }

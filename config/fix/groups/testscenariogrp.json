@@ -18,6 +18,7 @@
     "description": "Required if NoTestScenarios(3028) > 0.",
     "display": "TestScenarioGrp",
     "fix:component": "testscenario",
-    "fix:counter": "3028"
+    "fix:counter": "3028",
+    "fix:tag": "266324"
   }
 }

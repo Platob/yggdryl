@@ -557,6 +557,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdMatchSide"
+    "display": "TrdMatchSide",
+    "fix:tag": "371869"
   }
 }

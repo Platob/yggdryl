@@ -119,6 +119,7 @@
   "metadata": {
     "description": "MsgType = BW",
     "display": "ApplicationMessageRequest",
-    "fix:msgtype": "BW"
+    "fix:msgtype": "BW",
+    "fix:tag": "992453"
   }
 }

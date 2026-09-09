@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingAssetAttributes(2312) > 0.",
     "display": "UnderlyingAssetAttributeGrp",
     "fix:component": "underlyingassetattribute",
-    "fix:counter": "2312"
+    "fix:counter": "2312",
+    "fix:tag": "791581"
   }
 }

@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDividendAccrualPaymentDateBusinessCenter"
+    "display": "UnderlyingDividendAccrualPaymentDateBusinessCenter",
+    "fix:tag": "977733"
   }
 }

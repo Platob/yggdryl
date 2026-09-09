@@ -18,6 +18,7 @@
     "description": "Number of usernames",
     "display": "UsernameGrp",
     "fix:component": "usernamecomponent",
-    "fix:counter": "809"
+    "fix:counter": "809",
+    "fix:tag": "621463"
   }
 }

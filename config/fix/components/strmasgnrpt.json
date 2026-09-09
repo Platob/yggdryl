@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StrmAsgnRpt"
+    "display": "StrmAsgnRpt",
+    "fix:tag": "687989"
   }
 }

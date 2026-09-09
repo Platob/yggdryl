@@ -18,6 +18,7 @@
     "description": "Identifies the type of party role requested. Required if NoRequestedPartyRoles > 0.",
     "display": "RequestedPartyRoleGrp",
     "fix:component": "requestedpartyrolecomponent",
-    "fix:counter": "1508"
+    "fix:counter": "1508",
+    "fix:tag": "868272"
   }
 }

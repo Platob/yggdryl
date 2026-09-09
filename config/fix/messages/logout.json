@@ -69,6 +69,7 @@
   "metadata": {
     "description": "MsgType = 5",
     "display": "Logout",
-    "fix:msgtype": "5"
+    "fix:msgtype": "5",
+    "fix:tag": "769988"
   }
 }

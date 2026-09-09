@@ -1039,6 +1039,7 @@
   "metadata": {
     "description": "MsgType = BM",
     "display": "AllocationInstructionAlert",
-    "fix:msgtype": "BM"
+    "fix:msgtype": "BM",
+    "fix:tag": "454673"
   }
 }

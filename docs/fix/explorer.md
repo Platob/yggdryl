@@ -24,7 +24,7 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    assert_eq!(registry.len(), 6_222);
+    assert_eq!(registry.len(), 6_223);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.definition(FixCategory::Groups, "parties", None)?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
@@ -43,7 +43,7 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
     from yggdryl.fix import FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    assert len(registry) == 6_222
+    assert len(registry) == 6_223
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.definition("groups", "parties")
     assert parties.fix.counter == 453
@@ -63,7 +63,7 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
     const { fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    assert.equal(registry.size, 6_222)
+    assert.equal(registry.size, 6_223)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.definition('groups', 'parties')
     assert.equal(parties.fix.counter, 453)
@@ -89,7 +89,7 @@ Search `453` to see the scalar counter and group definitions that reference it. 
 This section searches the generated native catalog and needs JavaScript.
 </div>
 
-Codes appear inside their owning field's detail panel. A group has a `fix:counter` reference; it does not take the counter's tag or scalar datatype. Different message contexts remain separate definitions.
+Codes appear inside their owning field's detail panel. A group carries the `fix:tag` derived from its own name, beside a `fix:counter` reference; it does not take the counter's tag or scalar datatype. Different message contexts remain separate definitions.
 
 ## The capture row
 

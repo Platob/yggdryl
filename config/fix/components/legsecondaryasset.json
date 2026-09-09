@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegSecondaryAsset"
+    "display": "LegSecondaryAsset",
+    "fix:tag": "967917"
   }
 }

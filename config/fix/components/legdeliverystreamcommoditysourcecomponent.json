@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDeliveryStreamCommoditySource"
+    "display": "LegDeliveryStreamCommoditySource",
+    "fix:tag": "472012"
   }
 }

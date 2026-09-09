@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingReturnRatePrices(43064) > 0.",
     "display": "UnderlyingReturnRatePriceGrp",
     "fix:component": "underlyingreturnratepricecomponent",
-    "fix:counter": "43064"
+    "fix:counter": "43064",
+    "fix:tag": "560392"
   }
 }

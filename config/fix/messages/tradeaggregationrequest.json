@@ -199,6 +199,7 @@
   "metadata": {
     "description": "MsgType = DW",
     "display": "TradeAggregationRequest",
-    "fix:msgtype": "DW"
+    "fix:msgtype": "DW",
+    "fix:tag": "474335"
   }
 }

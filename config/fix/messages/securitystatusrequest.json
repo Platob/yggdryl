@@ -229,6 +229,7 @@
   "metadata": {
     "description": "MsgType = e (lowercase E)",
     "display": "SecurityStatusRequest",
-    "fix:msgtype": "e"
+    "fix:msgtype": "e",
+    "fix:tag": "929186"
   }
 }

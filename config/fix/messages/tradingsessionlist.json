@@ -69,6 +69,7 @@
   "metadata": {
     "description": "MsgType = BJ",
     "display": "TradingSessionList",
-    "fix:msgtype": "BJ"
+    "fix:msgtype": "BJ",
+    "fix:tag": "205003"
   }
 }

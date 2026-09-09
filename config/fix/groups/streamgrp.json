@@ -18,6 +18,7 @@
     "description": "Required if NoStreams(40049) > 0.",
     "display": "StreamGrp",
     "fix:component": "stream",
-    "fix:counter": "40049"
+    "fix:counter": "40049",
+    "fix:tag": "504476"
   }
 }

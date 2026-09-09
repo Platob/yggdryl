@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingCashSettlDealers(42039) > 0.",
     "display": "UnderlyingCashSettlDealerGrp",
     "fix:component": "underlyingcashsettldealercomponent",
-    "fix:counter": "42039"
+    "fix:counter": "42039",
+    "fix:tag": "869859"
   }
 }

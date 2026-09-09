@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PayCollect"
+    "display": "PayCollect",
+    "fix:tag": "887353"
   }
 }

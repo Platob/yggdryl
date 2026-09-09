@@ -18,6 +18,7 @@
     "description": "Conditionally required when NoTradingServices(3134) > 0.",
     "display": "TradingServiceGrp",
     "fix:component": "tradingservice",
-    "fix:counter": "3134"
+    "fix:counter": "3134",
+    "fix:tag": "257543"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoProvisionOptionExerciseBusinessCenters(40954) > 0.",
     "display": "ProvisionOptionExerciseBusinessCenterGrp",
     "fix:component": "provisionoptionexercisebusinesscentercomponent",
-    "fix:counter": "40954"
+    "fix:counter": "40954",
+    "fix:tag": "307265"
   }
 }

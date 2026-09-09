@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventCreditEventSource"
+    "display": "UnderlyingComplexEventCreditEventSource",
+    "fix:tag": "933667"
   }
 }

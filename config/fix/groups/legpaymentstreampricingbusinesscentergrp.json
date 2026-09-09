@@ -18,6 +18,7 @@
     "description": "Required if NoLegPaymentStreamPricingBusinessCentrers(41561) > 0.",
     "display": "LegPaymentStreamPricingBusinessCenterGrp",
     "fix:component": "legpaymentstreampricingbusinesscentercomponent",
-    "fix:counter": "41561"
+    "fix:counter": "41561",
+    "fix:tag": "321899"
   }
 }

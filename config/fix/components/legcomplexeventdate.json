@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventDate"
+    "display": "LegComplexEventDate",
+    "fix:tag": "192524"
   }
 }

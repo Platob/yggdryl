@@ -18,6 +18,7 @@
     "description": "Repeating group below should contain unique combinations of TargetPartyID, TargetPartyIDSource, and TargetPartyRole.",
     "display": "TargetParties",
     "fix:component": "targetparty",
-    "fix:counter": "1461"
+    "fix:counter": "1461",
+    "fix:tag": "1057391"
   }
 }

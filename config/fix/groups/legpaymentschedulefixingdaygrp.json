@@ -18,6 +18,7 @@
     "description": "Required if NoLegPaymentScheduleFixingDays(41530) > 0.",
     "display": "LegPaymentScheduleFixingDayGrp",
     "fix:component": "legpaymentschedulefixingday",
-    "fix:counter": "41530"
+    "fix:counter": "41530",
+    "fix:tag": "898248"
   }
 }

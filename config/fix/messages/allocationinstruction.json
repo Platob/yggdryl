@@ -1109,6 +1109,7 @@
   "metadata": {
     "description": "MsgType = J",
     "display": "AllocationInstruction",
-    "fix:msgtype": "J"
+    "fix:msgtype": "J",
+    "fix:tag": "424150"
   }
 }

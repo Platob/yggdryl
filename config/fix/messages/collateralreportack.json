@@ -149,6 +149,7 @@
   "metadata": {
     "description": "MsgType = DQ",
     "display": "CollateralReportAck",
-    "fix:msgtype": "DQ"
+    "fix:msgtype": "DQ",
+    "fix:tag": "544404"
   }
 }

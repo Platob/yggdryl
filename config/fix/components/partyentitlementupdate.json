@@ -77,6 +77,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyEntitlementUpdate"
+    "display": "PartyEntitlementUpdate",
+    "fix:tag": "210562"
   }
 }

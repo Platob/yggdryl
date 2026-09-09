@@ -18,6 +18,7 @@
     "description": "Required if NoLegDeliveryScheduleSettlDays(41422) > 0.",
     "display": "LegDeliveryScheduleSettlDayGrp",
     "fix:component": "legdeliveryschedulesettldaycomponent",
-    "fix:counter": "41422"
+    "fix:counter": "41422",
+    "fix:tag": "861092"
   }
 }

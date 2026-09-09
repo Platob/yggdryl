@@ -18,6 +18,7 @@
     "description": "Required if NoRegulatoryTradeIDs(1907) > 0.",
     "display": "RegulatoryTradeIDGrp",
     "fix:component": "regulatorytradeidcomponent",
-    "fix:counter": "1907"
+    "fix:counter": "1907",
+    "fix:tag": "911928"
   }
 }

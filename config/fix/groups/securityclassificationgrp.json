@@ -18,6 +18,7 @@
     "description": "Conditionally required if NoSecurityClassifications > 0.",
     "display": "SecurityClassificationGrp",
     "fix:component": "securityclassification",
-    "fix:counter": "1582"
+    "fix:counter": "1582",
+    "fix:tag": "740358"
   }
 }

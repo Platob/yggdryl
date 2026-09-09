@@ -18,6 +18,7 @@
     "description": "Specifies the capacity of the firm executing the order(s)",
     "display": "CpctyConfGrp",
     "fix:component": "cpctyconf",
-    "fix:counter": "862"
+    "fix:counter": "862",
+    "fix:tag": "596785"
   }
 }

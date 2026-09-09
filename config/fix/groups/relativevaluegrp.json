@@ -18,6 +18,7 @@
     "description": "Required if NoRelativeValues(2529) > 0.",
     "display": "RelativeValueGrp",
     "fix:component": "relativevaluecomponent",
-    "fix:counter": "2529"
+    "fix:counter": "2529",
+    "fix:tag": "172587"
   }
 }

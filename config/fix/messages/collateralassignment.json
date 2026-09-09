@@ -669,6 +669,7 @@
   "metadata": {
     "description": "MsgType = AY",
     "display": "CollateralAssignment",
-    "fix:msgtype": "AY"
+    "fix:msgtype": "AY",
+    "fix:tag": "720980"
   }
 }

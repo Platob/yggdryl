@@ -279,6 +279,7 @@
   "metadata": {
     "description": "MsgType = EJ",
     "display": "AlgoCertificateReport",
-    "fix:msgtype": "EJ"
+    "fix:msgtype": "EJ",
+    "fix:tag": "955976"
   }
 }

@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCalculationPeriodBusinessCenter"
+    "display": "LegStreamCalculationPeriodBusinessCenter",
+    "fix:tag": "621338"
   }
 }

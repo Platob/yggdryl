@@ -18,6 +18,7 @@
     "description": "Required if NoPartyRiskLimits(1677) > 0.",
     "display": "PartyRiskLimitsAckGrp",
     "fix:component": "partyrisklimitsack",
-    "fix:counter": "1677"
+    "fix:counter": "1677",
+    "fix:tag": "1036264"
   }
 }

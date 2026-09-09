@@ -38,6 +38,7 @@
   "nullable": false,
   "metadata": {
     "description": "Required when trailer contains signature. Note: Not to be included within SecureData field",
-    "display": "StandardTrailer"
+    "display": "StandardTrailer",
+    "fix:tag": "170342"
   }
 }

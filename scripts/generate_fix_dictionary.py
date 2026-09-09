@@ -848,6 +848,103 @@ def version_key(version: str) -> tuple[int, int, int]:
     return major, minor, patch
 
 
+# The block a named definition's derived tag is taken from, and the XXH32 the
+# core derives it with. Kept in step with `FixId::DEFINITION_TAG_MIN` and
+# `FixId::DEFINITION_TAG_MAX` in rust/src/fix/mod.rs: a document this writes is
+# loaded by that core, and a tag outside the block is refused.
+DEFINITION_TAG_MIN = 100_000
+DEFINITION_TAG_MAX = 1_100_000
+
+_MASK = 0xFFFF_FFFF
+_PRIME32 = (2654435761, 2246822519, 3266489917, 668265263, 374761393)
+
+
+def _rotl32(value: int, count: int) -> int:
+    return ((value << count) | (value >> (32 - count))) & _MASK
+
+
+def _xxh32_round(acc: int, lane: int) -> int:
+    return (_rotl32((acc + lane * _PRIME32[1]) & _MASK, 13) * _PRIME32[0]) & _MASK
+
+
+def xxh32(data: bytes) -> int:
+    """XXH32 of `data` at seed zero.
+
+    Spelled here rather than imported: this script is the dictionary's own
+    build step and runs on the standard library alone. The core's
+    `yggdryl::xxhash::Xxh32` is the same function, which is what lets a tag
+    derived here equal the tag the core would derive for the same name.
+    """
+    one, two, three, four, five = _PRIME32
+    size = len(data)
+    at = 0
+    if size >= 16:
+        first, second = (one + two) & _MASK, two
+        third, fourth = 0, (-one) & _MASK
+        while at + 16 <= size:
+            first = _xxh32_round(first, int.from_bytes(data[at : at + 4], "little"))
+            second = _xxh32_round(second, int.from_bytes(data[at + 4 : at + 8], "little"))
+            third = _xxh32_round(third, int.from_bytes(data[at + 8 : at + 12], "little"))
+            fourth = _xxh32_round(fourth, int.from_bytes(data[at + 12 : at + 16], "little"))
+            at += 16
+        held = (
+            _rotl32(first, 1) + _rotl32(second, 7) + _rotl32(third, 12) + _rotl32(fourth, 18)
+        ) & _MASK
+    else:
+        held = five
+    held = (held + size) & _MASK
+    while at + 4 <= size:
+        held = (held + int.from_bytes(data[at : at + 4], "little") * three) & _MASK
+        held = (_rotl32(held, 17) * four) & _MASK
+        at += 4
+    while at < size:
+        held = (held + data[at] * five) & _MASK
+        held = (_rotl32(held, 11) * one) & _MASK
+        at += 1
+    held ^= held >> 15
+    held = (held * two) & _MASK
+    held ^= held >> 13
+    held = (held * three) & _MASK
+    held ^= held >> 16
+    return held
+
+
+def assign_definition_tags(catalog: dict[str, list[dict[str, Any]]]) -> None:
+    """Give every component, group and message a tag of its own.
+
+    Only wire fields have a tag the specification publishes; a named definition
+    has none, so one is derived from its name into a block nothing else claims.
+    XXH32 of the name places it, and a slot already taken is stepped past,
+    wrapping, so a name is always registrable. The core derives the same tag
+    the same way, and keeps a tag a document already states rather than
+    deriving a second one - so writing them here is what makes the identity the
+    dictionary's rather than each reader's.
+
+    Assignment walks the categories in the core's own load order and each
+    category by name, so the tag a definition gets depends on the dictionary
+    and not on the order a source file happened to list it in.
+    """
+    span = DEFINITION_TAG_MAX - DEFINITION_TAG_MIN
+    taken = {
+        int(field["metadata"]["fix:tag"])
+        for field in catalog["fields"]
+        if "fix:tag" in field.get("metadata", {})
+    }
+    for category in ("components", "groups", "messages"):
+        for field in sorted(catalog[category], key=lambda held: held["name"]):
+            start = xxh32(field["name"].encode()) % span
+            for step in range(span):
+                tag = DEFINITION_TAG_MIN + (start + step) % span
+                if tag not in taken:
+                    break
+            else:
+                raise ValueError(f"no free derived tag for {field['name']!r}")
+            taken.add(tag)
+            metadata = field.setdefault("metadata", {})
+            metadata["fix:tag"] = str(tag)
+            field["metadata"] = dict(sorted(metadata.items()))
+
+
 def render_tree(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
     """Render native Field documents with compact references between owners."""
     shards: dict[int, list[dict[str, Any]]] = {}
@@ -1003,6 +1100,7 @@ def main() -> int:
         raise SystemExit(f"unmapped FIX datatypes: {', '.join(unmapped)}")
 
     catalog = build(parsed)
+    assign_definition_tags(catalog)
     documents = render_tree(catalog)
     written = {name: hashlib.sha256(text.encode()).hexdigest() for name, text in documents.items()}
     manifest = {

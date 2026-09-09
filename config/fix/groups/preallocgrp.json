@@ -18,6 +18,7 @@
     "description": "Number of repeating groups for pre-trade allocation",
     "display": "PreAllocGrp",
     "fix:component": "prealloc",
-    "fix:counter": "78"
+    "fix:counter": "78",
+    "fix:tag": "662961"
   }
 }

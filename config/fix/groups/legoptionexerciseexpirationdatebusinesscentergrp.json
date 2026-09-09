@@ -18,6 +18,7 @@
     "description": "Required if NoLegOptionExerciseExpirationDateBusinessCenters(41515) > 0.",
     "display": "LegOptionExerciseExpirationDateBusinessCenterGrp",
     "fix:component": "legoptionexerciseexpirationdatebusinesscentercomponent",
-    "fix:counter": "41515"
+    "fix:counter": "41515",
+    "fix:tag": "290182"
   }
 }

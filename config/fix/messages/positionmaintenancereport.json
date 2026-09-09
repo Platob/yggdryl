@@ -649,6 +649,7 @@
   "metadata": {
     "description": "MsgType = AM",
     "display": "PositionMaintenanceReport",
-    "fix:msgtype": "AM"
+    "fix:msgtype": "AM",
+    "fix:tag": "169627"
   }
 }

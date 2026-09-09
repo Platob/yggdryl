@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingReturnRateFXConversions(43030) > 0.",
     "display": "UnderlyingReturnRateFXConversionGrp",
     "fix:component": "underlyingreturnratefxconversion",
-    "fix:counter": "43030"
+    "fix:counter": "43030",
+    "fix:tag": "450377"
   }
 }

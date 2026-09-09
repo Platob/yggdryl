@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamFirstPeriodStartDateBusinessCenter"
+    "display": "LegStreamFirstPeriodStartDateBusinessCenter",
+    "fix:tag": "724654"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoLegPaymentStreamPaymentDates(41589) > 0.",
     "display": "LegPaymentStreamPaymentDateGrp",
     "fix:component": "legpaymentstreampaymentdatecomponent",
-    "fix:counter": "41589"
+    "fix:counter": "41589",
+    "fix:tag": "612595"
   }
 }

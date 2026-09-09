@@ -18,6 +18,7 @@
     "description": "Required if NoComplexEventCreditEventQualifiers(41005) > 0.",
     "display": "ComplexEventCreditEventQualifierGrp",
     "fix:component": "complexeventcrediteventqualifiercomponent",
-    "fix:counter": "41005"
+    "fix:counter": "41005",
+    "fix:tag": "928111"
   }
 }

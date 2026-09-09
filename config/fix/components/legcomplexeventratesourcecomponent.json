@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventRateSource"
+    "display": "LegComplexEventRateSource",
+    "fix:tag": "111506"
   }
 }

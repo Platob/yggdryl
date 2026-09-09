@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventAveragingObservation"
+    "display": "UnderlyingComplexEventAveragingObservation",
+    "fix:tag": "448605"
   }
 }

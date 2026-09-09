@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentScheduleInterimExchangeDateBusinessCenter"
+    "display": "LegPaymentScheduleInterimExchangeDateBusinessCenter",
+    "fix:tag": "1094349"
   }
 }

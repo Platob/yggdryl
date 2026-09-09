@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RelatedTrade"
+    "display": "RelatedTrade",
+    "fix:tag": "909958"
   }
 }

@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ClrInst"
+    "display": "ClrInst",
+    "fix:tag": "766334"
   }
 }

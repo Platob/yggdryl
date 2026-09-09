@@ -107,6 +107,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TestStep"
+    "display": "TestStep",
+    "fix:tag": "970465"
   }
 }

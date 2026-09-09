@@ -149,6 +149,7 @@
   "metadata": {
     "description": "MsgType = BX",
     "display": "ApplicationMessageRequestAck",
-    "fix:msgtype": "BX"
+    "fix:msgtype": "BX",
+    "fix:tag": "980290"
   }
 }

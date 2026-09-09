@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "QuoteAttribute"
+    "display": "QuoteAttribute",
+    "fix:tag": "641653"
   }
 }

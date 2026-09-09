@@ -18,6 +18,7 @@
     "description": "Required if NoOptionExerciseExpirationDateBusinessCenters(41140) > 0.",
     "display": "OptionExerciseExpirationDateBusinessCenterGrp",
     "fix:component": "optionexerciseexpirationdatebusinesscentercomponent",
-    "fix:counter": "41140"
+    "fix:counter": "41140",
+    "fix:tag": "804054"
   }
 }

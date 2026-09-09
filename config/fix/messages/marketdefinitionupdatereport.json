@@ -439,6 +439,7 @@
   "metadata": {
     "description": "MsgType = BV",
     "display": "MarketDefinitionUpdateReport",
-    "fix:msgtype": "BV"
+    "fix:msgtype": "BV",
+    "fix:tag": "192483"
   }
 }

@@ -359,6 +359,7 @@
   "metadata": {
     "description": "MsgType = DK",
     "display": "MassOrderAck",
-    "fix:msgtype": "DK"
+    "fix:msgtype": "DK",
+    "fix:tag": "288135"
   }
 }

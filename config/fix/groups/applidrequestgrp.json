@@ -18,6 +18,7 @@
     "description": "Specifies number of application id occurrences",
     "display": "ApplIDRequestGrp",
     "fix:component": "applidrequest",
-    "fix:counter": "1351"
+    "fix:counter": "1351",
+    "fix:tag": "772833"
   }
 }

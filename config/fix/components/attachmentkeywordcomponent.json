@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "AttachmentKeyword"
+    "display": "AttachmentKeyword",
+    "fix:tag": "603252"
   }
 }

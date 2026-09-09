@@ -18,6 +18,7 @@
     "description": "Indicates number of orders to be combined for allocation. If order(s) were manually delivered set to 1 (one).Required when AllocNoOrdersType = 1",
     "display": "OrdAllocGrp",
     "fix:component": "ordalloc",
-    "fix:counter": "73"
+    "fix:counter": "73",
+    "fix:tag": "626252"
   }
 }

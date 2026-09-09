@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "FinancingTermSupplement"
+    "display": "FinancingTermSupplement",
+    "fix:tag": "343034"
   }
 }

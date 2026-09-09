@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingStreamCommodityAltIDs(41990) > 0.",
     "display": "UnderlyingStreamCommodityAltIDGrp",
     "fix:component": "underlyingstreamcommodityaltidcomponent",
-    "fix:counter": "41990"
+    "fix:counter": "41990",
+    "fix:tag": "444689"
   }
 }

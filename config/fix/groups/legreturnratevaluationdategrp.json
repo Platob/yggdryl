@@ -18,6 +18,7 @@
     "description": "Required if NoLegReturnRateValuationDates(42571) > 0.",
     "display": "LegReturnRateValuationDateGrp",
     "fix:component": "legreturnratevaluationdatecomponent",
-    "fix:counter": "42571"
+    "fix:counter": "42571",
+    "fix:tag": "929998"
   }
 }

@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "NestedInstrumentAttribute"
+    "display": "NestedInstrumentAttribute",
+    "fix:tag": "672971"
   }
 }

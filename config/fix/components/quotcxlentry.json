@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "QuotCxlEntry"
+    "display": "QuotCxlEntry",
+    "fix:tag": "519313"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Number of leg executions.",
     "display": "InstrmtLegExecGrp",
     "fix:component": "instrmtlegexec",
-    "fix:counter": "555"
+    "fix:counter": "555",
+    "fix:tag": "958314"
   }
 }

@@ -89,6 +89,7 @@
   "metadata": {
     "description": "MsgType = ER",
     "display": "SecurityStatusAck",
-    "fix:msgtype": "ER"
+    "fix:msgtype": "ER",
+    "fix:tag": "528708"
   }
 }

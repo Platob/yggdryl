@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PriceQualifier"
+    "display": "PriceQualifier",
+    "fix:tag": "784443"
   }
 }

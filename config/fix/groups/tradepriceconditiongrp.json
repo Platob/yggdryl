@@ -18,6 +18,7 @@
     "description": "Required if NoTradePriceConditions(1838) > 0.",
     "display": "TradePriceConditionGrp",
     "fix:component": "tradepriceconditioncomponent",
-    "fix:counter": "1838"
+    "fix:counter": "1838",
+    "fix:tag": "1086595"
   }
 }

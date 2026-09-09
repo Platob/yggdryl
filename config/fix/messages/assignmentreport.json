@@ -399,6 +399,7 @@
   "metadata": {
     "description": "MsgType = AW",
     "display": "AssignmentReport",
-    "fix:msgtype": "AW"
+    "fix:msgtype": "AW",
+    "fix:tag": "228230"
   }
 }

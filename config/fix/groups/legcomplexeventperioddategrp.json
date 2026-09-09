@@ -18,6 +18,7 @@
     "description": "Required if NoLegComplexEventPeriodDateTimes(41376) > 0.",
     "display": "LegComplexEventPeriodDateGrp",
     "fix:component": "legcomplexeventperioddatecomponent",
-    "fix:counter": "41376"
+    "fix:counter": "41376",
+    "fix:tag": "195002"
   }
 }

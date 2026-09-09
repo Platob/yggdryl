@@ -93,7 +93,7 @@ def test_reference_properties_refuse_other_protocols_and_frozen_fields(
     setattr(field.fix, property_name, value)
     root = Field("row", DataType.from_fields([field]), nullable=False)
     row_type = root.into_dataclass(name=f"FrozenFix{property_name}")
-    frozen = row_type.field().dtype[0]
+    frozen = row_type.into_field().dtype[0]
     before = frozen.into_json()
     for replacement in (value, None):
         with pytest.raises(TypeError, match="read-only"):

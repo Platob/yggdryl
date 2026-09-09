@@ -238,6 +238,7 @@
   "nullable": false,
   "metadata": {
     "description": "Specifies price tick rules for the security.",
-    "display": "BaseTradingRules"
+    "display": "BaseTradingRules",
+    "fix:tag": "419982"
   }
 }

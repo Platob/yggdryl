@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDeliveryStreamCommoditySource"
+    "display": "UnderlyingDeliveryStreamCommoditySource",
+    "fix:tag": "236280"
   }
 }

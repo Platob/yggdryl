@@ -329,6 +329,7 @@
   "metadata": {
     "description": "MsgType = AN",
     "display": "RequestForPositions",
-    "fix:msgtype": "AN"
+    "fix:msgtype": "AN",
+    "fix:tag": "635355"
   }
 }

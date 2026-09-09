@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyDetailsUpdate"
+    "display": "PartyDetailsUpdate",
+    "fix:tag": "121601"
   }
 }

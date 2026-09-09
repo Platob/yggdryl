@@ -359,6 +359,7 @@
   "metadata": {
     "description": "MsgType = AT",
     "display": "AllocationReportAck",
-    "fix:msgtype": "AT"
+    "fix:msgtype": "AT",
+    "fix:tag": "971168"
   }
 }

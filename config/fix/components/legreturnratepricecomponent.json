@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegReturnRatePrice"
+    "display": "LegReturnRatePrice",
+    "fix:tag": "302596"
   }
 }

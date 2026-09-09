@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegCashSettlDateBusinessCenter"
+    "display": "LegCashSettlDateBusinessCenter",
+    "fix:tag": "590424"
   }
 }

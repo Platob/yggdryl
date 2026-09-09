@@ -209,6 +209,7 @@
   "metadata": {
     "description": "MsgType = q (lowercase Q)",
     "display": "OrderMassCancelRequest",
-    "fix:msgtype": "q"
+    "fix:msgtype": "q",
+    "fix:tag": "495019"
   }
 }

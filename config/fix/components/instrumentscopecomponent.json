@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrumentScope"
+    "display": "InstrumentScope",
+    "fix:tag": "1093262"
   }
 }

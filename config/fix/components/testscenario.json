@@ -227,6 +227,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TestScenario"
+    "display": "TestScenario",
+    "fix:tag": "642873"
   }
 }

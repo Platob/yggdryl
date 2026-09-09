@@ -57,6 +57,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "Contra"
+    "display": "Contra",
+    "fix:tag": "531526"
   }
 }

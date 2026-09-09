@@ -18,6 +18,7 @@
     "description": "Required if NoPositions > 1",
     "display": "PositionQty",
     "fix:component": "positionqtycomponent",
-    "fix:counter": "702"
+    "fix:counter": "702",
+    "fix:tag": "558218"
   }
 }

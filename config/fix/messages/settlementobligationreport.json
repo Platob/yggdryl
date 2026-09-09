@@ -139,6 +139,7 @@
   "metadata": {
     "description": "MsgType = BQ",
     "display": "SettlementObligationReport",
-    "fix:msgtype": "BQ"
+    "fix:msgtype": "BQ",
+    "fix:tag": "156588"
   }
 }

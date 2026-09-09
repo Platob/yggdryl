@@ -299,6 +299,7 @@
   "metadata": {
     "description": "MsgType = CJ",
     "display": "MarginRequirementReport",
-    "fix:msgtype": "CJ"
+    "fix:msgtype": "CJ",
+    "fix:tag": "545047"
   }
 }

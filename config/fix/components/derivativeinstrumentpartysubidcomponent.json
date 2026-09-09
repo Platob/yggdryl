@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeInstrumentPartySubID"
+    "display": "DerivativeInstrumentPartySubID",
+    "fix:tag": "1049874"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentStreamResetDateBusinessCenters(40948) > 0.",
     "display": "PaymentStreamResetDateBusinessCenterGrp",
     "fix:component": "paymentstreamresetdatebusinesscentercomponent",
-    "fix:counter": "40948"
+    "fix:counter": "40948",
+    "fix:tag": "411088"
   }
 }

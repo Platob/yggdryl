@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "NotAffectedMarketSegment"
+    "display": "NotAffectedMarketSegment",
+    "fix:tag": "991150"
   }
 }

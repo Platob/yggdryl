@@ -18,6 +18,7 @@
     "description": "Required if NoProvisionPartyIDs(40174) > 0.",
     "display": "ProvisionParties",
     "fix:component": "provisionparty",
-    "fix:counter": "40174"
+    "fix:counter": "40174",
+    "fix:tag": "968436"
   }
 }

@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamCommoditySettlTime"
+    "display": "StreamCommoditySettlTime",
+    "fix:tag": "371721"
   }
 }

@@ -48,6 +48,7 @@
   "nullable": false,
   "metadata": {
     "description": "Identifies the application with which a message is associated. Used only if application sequencing is in effect.",
-    "display": "ApplicationSequenceControl"
+    "display": "ApplicationSequenceControl",
+    "fix:tag": "187021"
   }
 }

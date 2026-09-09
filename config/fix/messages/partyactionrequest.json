@@ -189,6 +189,7 @@
   "metadata": {
     "description": "MsgType = DH",
     "display": "PartyActionRequest",
-    "fix:msgtype": "DH"
+    "fix:msgtype": "DH",
+    "fix:tag": "817448"
   }
 }

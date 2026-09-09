@@ -18,6 +18,7 @@
     "description": "Required if NoNonDeliverableFixingDates(40825) > 0.",
     "display": "PaymentStreamNonDeliverableFixingDateGrp",
     "fix:component": "paymentstreamnondeliverablefixingdate",
-    "fix:counter": "40825"
+    "fix:counter": "40825",
+    "fix:tag": "482327"
   }
 }

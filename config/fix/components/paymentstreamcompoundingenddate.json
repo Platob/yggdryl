@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when PaymentStreamCompoundingEndDateOffsetUnit(42625) is specified.",
-    "display": "PaymentStreamCompoundingEndDate"
+    "display": "PaymentStreamCompoundingEndDate",
+    "fix:tag": "803870"
   }
 }

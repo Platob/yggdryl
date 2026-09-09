@@ -18,6 +18,7 @@
     "description": "Required if NoLegProvisionCashSettlPaymentDates (40473) > 0.",
     "display": "LegProvisionCashSettlPaymentFixedDateGrp",
     "fix:component": "legprovisioncashsettlpaymentfixeddate",
-    "fix:counter": "40473"
+    "fix:counter": "40473",
+    "fix:tag": "901649"
   }
 }

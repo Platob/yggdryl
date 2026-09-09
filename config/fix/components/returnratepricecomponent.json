@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ReturnRatePrice"
+    "display": "ReturnRatePrice",
+    "fix:tag": "404989"
   }
 }

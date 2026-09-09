@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDividendPeriodBusinessCenter"
+    "display": "LegDividendPeriodBusinessCenter",
+    "fix:tag": "339952"
   }
 }

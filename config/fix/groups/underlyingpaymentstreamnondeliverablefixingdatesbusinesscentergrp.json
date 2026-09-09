@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPaymentStreamNonDeliverableFixingDatesBizCenters(40968) > 0.",
     "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesBusinessCenterGrp",
     "fix:component": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscentercomponent",
-    "fix:counter": "40968"
+    "fix:counter": "40968",
+    "fix:tag": "627576"
   }
 }

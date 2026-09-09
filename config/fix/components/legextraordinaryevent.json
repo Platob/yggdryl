@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegExtraordinaryEvent"
+    "display": "LegExtraordinaryEvent",
+    "fix:tag": "1076730"
   }
 }

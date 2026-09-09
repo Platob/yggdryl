@@ -157,6 +157,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "QuotReqLeg"
+    "display": "QuotReqLeg",
+    "fix:tag": "653326"
   }
 }

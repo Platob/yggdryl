@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPaymentStreamPricingDays(41944) > 0.",
     "display": "UnderlyingPaymentStreamPricingDayGrp",
     "fix:component": "underlyingpaymentstreampricingday",
-    "fix:counter": "41944"
+    "fix:counter": "41944",
+    "fix:tag": "1090073"
   }
 }

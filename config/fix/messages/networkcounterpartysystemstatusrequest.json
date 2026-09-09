@@ -69,6 +69,7 @@
   "metadata": {
     "description": "MsgType = BC",
     "display": "NetworkCounterpartySystemStatusRequest",
-    "fix:msgtype": "BC"
+    "fix:msgtype": "BC",
+    "fix:tag": "955202"
   }
 }

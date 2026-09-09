@@ -18,6 +18,7 @@
     "description": "Required if NoAllocs(78) > 0.",
     "display": "TrdAllocGrp",
     "fix:component": "trdalloc",
-    "fix:counter": "78"
+    "fix:counter": "78",
+    "fix:tag": "808796"
   }
 }

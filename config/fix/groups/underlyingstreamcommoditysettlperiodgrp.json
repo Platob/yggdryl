@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingStreamCommoditySettlPeriods(42002) > 0.",
     "display": "UnderlyingStreamCommoditySettlPeriodGrp",
     "fix:component": "underlyingstreamcommoditysettlperiod",
-    "fix:counter": "42002"
+    "fix:counter": "42002",
+    "fix:tag": "101170"
   }
 }

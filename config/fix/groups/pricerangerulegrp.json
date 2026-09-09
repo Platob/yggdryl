@@ -18,6 +18,7 @@
     "description": "Required if NoPriceRangeRules(2550) > 0.",
     "display": "PriceRangeRuleGrp",
     "fix:component": "pricerangerule",
-    "fix:counter": "2550"
+    "fix:counter": "2550",
+    "fix:tag": "272317"
   }
 }

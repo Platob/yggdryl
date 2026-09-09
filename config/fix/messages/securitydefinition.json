@@ -429,6 +429,7 @@
   "metadata": {
     "description": "MsgType = d (lowercase D)",
     "display": "SecurityDefinition",
-    "fix:msgtype": "d"
+    "fix:msgtype": "d",
+    "fix:tag": "800165"
   }
 }

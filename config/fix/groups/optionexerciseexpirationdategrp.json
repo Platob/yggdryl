@@ -18,6 +18,7 @@
     "description": "Required if NoOptionExpirationDates(41152) > 0.",
     "display": "OptionExerciseExpirationDateGrp",
     "fix:component": "optionexerciseexpirationdatecomponent",
-    "fix:counter": "41152"
+    "fix:counter": "41152",
+    "fix:tag": "795700"
   }
 }

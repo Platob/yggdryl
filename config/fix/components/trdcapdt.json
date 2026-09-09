@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdCapDt"
+    "display": "TrdCapDt",
+    "fix:tag": "1045003"
   }
 }

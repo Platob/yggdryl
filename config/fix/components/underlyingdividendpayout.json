@@ -48,6 +48,7 @@
   "nullable": false,
   "metadata": {
     "description": "UnderlyingDividendPayout is a subcomponent of UnderlyingInstrument used to specify the dividend or coupon payout parameters of an equity or bond underlier.",
-    "display": "UnderlyingDividendPayout"
+    "display": "UnderlyingDividendPayout",
+    "fix:tag": "1041497"
   }
 }

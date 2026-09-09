@@ -18,6 +18,7 @@
     "description": "Required when NoPartyDetailAltID > 0.",
     "display": "PartyDetailAltIDGrp",
     "fix:component": "partydetailaltidcomponent",
-    "fix:counter": "1516"
+    "fix:counter": "1516",
+    "fix:tag": "936996"
   }
 }

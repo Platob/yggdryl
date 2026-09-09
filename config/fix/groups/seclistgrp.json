@@ -18,6 +18,7 @@
     "description": "Specifies the number of repeating symbols (instruments) specified",
     "display": "SecListGrp",
     "fix:component": "seclist",
-    "fix:counter": "146"
+    "fix:counter": "146",
+    "fix:tag": "217699"
   }
 }

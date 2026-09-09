@@ -419,6 +419,7 @@
   "metadata": {
     "description": "MsgType = AL",
     "display": "PositionMaintenanceRequest",
-    "fix:msgtype": "AL"
+    "fix:msgtype": "AL",
+    "fix:tag": "340518"
   }
 }

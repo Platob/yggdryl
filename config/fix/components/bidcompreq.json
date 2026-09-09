@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "BidCompReq"
+    "display": "BidCompReq",
+    "fix:tag": "122072"
   }
 }

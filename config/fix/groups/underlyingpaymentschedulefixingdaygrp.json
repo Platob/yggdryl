@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPaymentScheduleFixingDays(41878) > 0.",
     "display": "UnderlyingPaymentScheduleFixingDayGrp",
     "fix:component": "underlyingpaymentschedulefixingday",
-    "fix:counter": "41878"
+    "fix:counter": "41878",
+    "fix:tag": "770733"
   }
 }

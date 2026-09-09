@@ -18,6 +18,7 @@
     "description": "Code to represent the type of instrument attribute",
     "display": "NestedInstrumentAttribute",
     "fix:component": "nestedinstrumentattributecomponent",
-    "fix:counter": "1312"
+    "fix:counter": "1312",
+    "fix:tag": "943736"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoStreamCalculationPeriodDates(41241) > 0.",
     "display": "StreamCalculationPeriodDateGrp",
     "fix:component": "streamcalculationperioddatecomponent",
-    "fix:counter": "41241"
+    "fix:counter": "41241",
+    "fix:tag": "572253"
   }
 }

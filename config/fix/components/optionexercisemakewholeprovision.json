@@ -78,6 +78,7 @@
   "nullable": false,
   "metadata": {
     "description": "OptionExerciseMakeWholeProvision is a subcomponent of the OptionExercise component used to specify the set of rules of maintaining balance when an option is exercised.",
-    "display": "OptionExerciseMakeWholeProvision"
+    "display": "OptionExerciseMakeWholeProvision",
+    "fix:tag": "630362"
   }
 }

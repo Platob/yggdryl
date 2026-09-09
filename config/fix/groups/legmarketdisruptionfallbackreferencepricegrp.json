@@ -18,6 +18,7 @@
     "description": "Required if NoLegMarketDisruptionFallbackReferencePrices(41471) > 0.",
     "display": "LegMarketDisruptionFallbackReferencePriceGrp",
     "fix:component": "legmarketdisruptionfallbackreferenceprice",
-    "fix:counter": "41471"
+    "fix:counter": "41471",
+    "fix:tag": "480331"
   }
 }

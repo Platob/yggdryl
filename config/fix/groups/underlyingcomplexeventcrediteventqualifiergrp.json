@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingComplexEventCreditEventQualifiers(41724) > 0.",
     "display": "UnderlyingComplexEventCreditEventQualifierGrp",
     "fix:component": "underlyingcomplexeventcrediteventqualifiercomponent",
-    "fix:counter": "41724"
+    "fix:counter": "41724",
+    "fix:tag": "608613"
   }
 }

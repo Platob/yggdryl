@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentScheduleFixingDay"
+    "display": "UnderlyingPaymentScheduleFixingDay",
+    "fix:tag": "1005041"
   }
 }

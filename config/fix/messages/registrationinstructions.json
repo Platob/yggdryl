@@ -189,6 +189,7 @@
   "metadata": {
     "description": "MsgType = o (lowercase O)",
     "display": "RegistrationInstructions",
-    "fix:msgtype": "o"
+    "fix:msgtype": "o",
+    "fix:tag": "619440"
   }
 }

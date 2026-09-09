@@ -29,6 +29,14 @@ def member(kind: str, identifier: int, required: bool = False) -> dict:
     return {"kind": kind, "id": identifier, "required": required}
 
 
+def definition_tags(catalog: dict) -> dict:
+    return {
+        field["name"]: int(field["metadata"]["fix:tag"])
+        for category in ("components", "groups", "messages")
+        for field in catalog[category]
+    }
+
+
 class FixCatalogGeneration(unittest.TestCase):
     def setUp(self) -> None:
         self.fields = [
@@ -161,6 +169,69 @@ class FixCatalogGeneration(unittest.TestCase):
         invalid["groups"]["Parties"]["tag"] = 448
         with self.assertRaisesRegex(ValueError, "counter 448 must be an int32 field"):
             GENERATOR.build_catalog(invalid, self.fields)
+
+    def test_stdlib_xxh32_answers_the_published_digests(self) -> None:
+        # XXH32 at seed zero, spelled as literals: the script carries the hash
+        # itself so that it needs no third-party package, and neither may the
+        # vectors it is held to. The last two are sixteen bytes and longer, so
+        # they run the four-lane path; the rest only the tail.
+        for data, digest in [
+            (b"", 46947589),
+            (b"a", 1426945110),
+            (b"abc", 852579327),
+            (b"parties", 2241109321),
+            (b"abcdefghijklmnop", 2637007714),
+            (b"Nobody inspects the spammish repetition", 3794352943),
+        ]:
+            with self.subTest(data=data):
+                self.assertEqual(digest, GENERATOR.xxh32(data))
+
+    def test_named_definitions_take_a_derived_tag_of_their_own(self) -> None:
+        catalog = GENERATOR.build_catalog(self.latest, self.fields)
+        GENERATOR.assign_definition_tags(catalog)
+        tags = definition_tags(catalog)
+        self.assertEqual(
+            {"party": 780527, "ptyssub": 1003725, "parties": 209321, "ptyssubgrp": 605533, "newordersingle": 244936},
+            tags,
+        )
+        for name, tag in tags.items():
+            with self.subTest(name=name):
+                self.assertEqual(tag, GENERATOR.DEFINITION_TAG_MIN + GENERATOR.xxh32(name.encode()) % 1_000_000)
+                self.assertGreaterEqual(tag, GENERATOR.DEFINITION_TAG_MIN)
+                self.assertLess(tag, GENERATOR.DEFINITION_TAG_MAX)
+        self.assertEqual(len(tags), len(set(tags.values())))
+
+    def test_a_derived_tag_already_taken_steps_to_the_next_free_one(self) -> None:
+        self.fields.append(wire_field("housekeeping", 209321))  # the tag "parties" derives for itself
+        catalog = GENERATOR.build_catalog(self.latest, self.fields)
+        GENERATOR.assign_definition_tags(catalog)
+        tags = definition_tags(catalog)
+        self.assertEqual(209322, tags["parties"])
+        self.assertNotIn(209321, tags.values())
+        self.assertEqual(244936, tags["newordersingle"])
+        self.assertEqual(len(tags), len(set(tags.values())))
+
+    def test_two_names_on_one_slot_are_placed_in_name_order(self) -> None:
+        # No two names in the shipped dictionary derive the same slot, so the
+        # probe between definitions is only reachable through a built pair:
+        # "axf" and "dyc" both start at 777529. The earlier name keeps it
+        # whichever order the source listed the two in.
+        self.assertEqual(GENERATOR.xxh32(b"axf") % 1_000_000, GENERATOR.xxh32(b"dyc") % 1_000_000)
+        listed = {"fields": [], "components": [], "groups": [{"name": "dyc"}, {"name": "axf"}], "messages": []}
+        GENERATOR.assign_definition_tags(listed)
+        self.assertEqual({"axf": 777529, "dyc": 777530}, definition_tags(listed))
+        reversed_listing = {"fields": [], "components": [], "groups": [{"name": "axf"}, {"name": "dyc"}], "messages": []}
+        GENERATOR.assign_definition_tags(reversed_listing)
+        self.assertEqual(definition_tags(listed), definition_tags(reversed_listing))
+
+    def test_equal_dictionaries_derive_equal_tags(self) -> None:
+        first = GENERATOR.build_catalog(copy.deepcopy(self.latest), copy.deepcopy(self.fields))
+        second = GENERATOR.build_catalog(copy.deepcopy(self.latest), copy.deepcopy(self.fields))
+        for category in ("components", "groups", "messages"):
+            second[category].reverse()  # the name places a definition, not the order a source listed it in
+        GENERATOR.assign_definition_tags(first)
+        GENERATOR.assign_definition_tags(second)
+        self.assertEqual(definition_tags(first), definition_tags(second))
 
     def test_native_documents_replace_retired_trees(self) -> None:
         catalog = GENERATOR.build_catalog(self.latest, self.fields)

@@ -99,6 +99,7 @@
   "metadata": {
     "description": "MsgType = DT",
     "display": "CrossRequestAck",
-    "fix:msgtype": "DT"
+    "fix:msgtype": "DT",
+    "fix:tag": "906013"
   }
 }

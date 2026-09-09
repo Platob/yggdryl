@@ -18,6 +18,7 @@
     "description": "Required if NoLegPaymentStubStartDateBusinessCenters(42504) > 0.",
     "display": "LegPaymentStubStartDateBusinessCenterGrp",
     "fix:component": "legpaymentstubstartdatebusinesscentercomponent",
-    "fix:counter": "42504"
+    "fix:counter": "42504",
+    "fix:tag": "460678"
   }
 }

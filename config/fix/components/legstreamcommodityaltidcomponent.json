@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCommodityAltID"
+    "display": "LegStreamCommodityAltID",
+    "fix:tag": "174268"
   }
 }

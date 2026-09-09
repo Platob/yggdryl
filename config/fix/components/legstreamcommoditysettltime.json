@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCommoditySettlTime"
+    "display": "LegStreamCommoditySettlTime",
+    "fix:tag": "127100"
   }
 }

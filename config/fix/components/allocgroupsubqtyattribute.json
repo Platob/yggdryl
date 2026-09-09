@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "AllocGroupSubQtyAttribute"
+    "display": "AllocGroupSubQtyAttribute",
+    "fix:tag": "868921"
   }
 }

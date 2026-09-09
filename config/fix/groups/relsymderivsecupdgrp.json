@@ -18,6 +18,7 @@
     "description": "If provided, then Instrument occurrence has explicitly changed",
     "display": "RelSymDerivSecUpdGrp",
     "fix:component": "relsymderivsecupd",
-    "fix:counter": "146"
+    "fix:counter": "146",
+    "fix:tag": "1057104"
   }
 }

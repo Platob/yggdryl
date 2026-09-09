@@ -18,6 +18,7 @@
     "description": "Required when NoSecurityRiskMetrics(2995) > 0.",
     "display": "SecurityRiskMetricGrp",
     "fix:component": "securityriskmetric",
-    "fix:counter": "2995"
+    "fix:counter": "2995",
+    "fix:tag": "860483"
   }
 }

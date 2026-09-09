@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDividendAccrualPaymentDateBusinessCenter"
+    "display": "LegDividendAccrualPaymentDateBusinessCenter",
+    "fix:tag": "821703"
   }
 }

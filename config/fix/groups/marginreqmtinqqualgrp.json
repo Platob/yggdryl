@@ -18,6 +18,7 @@
     "description": "Number of qualifier entries",
     "display": "MarginReqmtInqQualGrp",
     "fix:component": "marginreqmtinqqual",
-    "fix:counter": "1636"
+    "fix:counter": "1636",
+    "fix:tag": "689938"
   }
 }

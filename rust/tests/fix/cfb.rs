@@ -206,6 +206,127 @@ const SELLSIDE: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 </cplugin-configuration>
 "#;
 
+/// A file whose normalization binding spells its tags the way the corpus
+/// does: the shape a production `.cfb` writes, nested groups included, over a
+/// vocabulary where some tags are named and some are not.
+const NORMALIZED: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.BuySideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="BLPFIX" sendercompid="OURDESK">
+	<vocabulary>
+		<vocabulary-tag name="602" alt="LegSecurityID" type="string" />
+		<vocabulary-tag name="603" alt="LegSecurityIDSource" type="string" />
+		<vocabulary-tag name="604" alt="NoLegSecurityAltID" type="integer" />
+		<vocabulary-tag name="605" alt="LegSecurityAltID" type="string" />
+		<vocabulary-tag name="608" type="string" />
+		<vocabulary-tag name="609" type="string" />
+		<vocabulary-tag name="22830" type="string" />
+		<vocabulary-tag name="22831" type="string" />
+		<vocabulary-tag name="22832" type="string" />
+		<vocabulary-tag name="22833" alt="VenueSym" type="string" />
+		<vocabulary-tag name="22834" type="string" />
+	</vocabulary>
+	<normalization-binding>
+		<normalization type="inbound">
+			<tag-normalization tag-name="LEGSECURITYID" part="body">
+				<mapping-expression>
+					<expression value="$602" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="LEGSECURITYIDSOURCE" part="body">
+				<mapping-expression>
+					<expression value="lookup(&quot;SecurityIDSource&quot;, $603)" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="LEGISINCODE" part="body">
+				<mapping-condition>
+					<expression value="$603 = &quot;4&quot;" />
+				</mapping-condition>
+				<mapping-expression>
+					<expression value="$602" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="LEGEXCHANGECODE" part="body">
+				<mapping-condition>
+					<expression value="$603 = &quot;8&quot;" />
+				</mapping-condition>
+				<mapping-expression>
+					<expression value="$602" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="NOLEGSECURITYALTID" part="body">
+				<mapping-expression>
+					<expression value="$604" />
+				</mapping-expression>
+			</tag-normalization>
+			<normalization type="inbound" rg-name="NOLEGSECURITYALTID" rg-context="604">
+				<tag-normalization tag-name="LegSecurityAltId" part="body">
+					<mapping-expression>
+						<expression value="$605" />
+					</mapping-expression>
+				</tag-normalization>
+				<tag-normalization tag-name="EXCLUDEDDEALERS" part="body">
+					<mapping-expression>
+						<expression value="$22830" />
+					</mapping-expression>
+				</tag-normalization>
+				<condition-expression />
+			</normalization>
+			<tag-normalization tag-name="LEGCFICODE" part="body">
+				<mapping-expression>
+					<expression value="$608 " />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="LEGSECURITYTYPE" part="body">
+				<mapping-expression>
+					<expression value="lookup(&quot;SecurityType&quot;, $609) " />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="EXCLUDED_DEALERS" part="body">
+				<mapping-expression>
+					<expression value="$22830" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="EXCLUDEDDEALERS" part="body">
+				<mapping-expression>
+					<expression value="$22831" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="BUILT" part="body">
+				<mapping-expression>
+					<expression value="$22830" />
+					<expression value="$22831" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="VENUESYM" part="body">
+				<mapping-expression>
+					<expression value="$22832" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="LEGSECURITYID" part="body">
+				<mapping-expression>
+					<expression value="$22834" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="" part="body">
+				<mapping-expression>
+					<expression value="$22832" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="UNDECLARED" part="body">
+				<mapping-expression>
+					<expression value="$999" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="COMMA,SPELLING" part="body">
+				<mapping-expression>
+					<expression value="$22832" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="NOTHING" part="body" />
+		</normalization>
+	</normalization-binding>
+</cplugin-configuration>
+"#;
+
 /// One document behind a handle, the way the store cases build them.
 fn handle(body: &str) -> impl IOBase {
     named_handle(body, "one.cfb")
@@ -1379,4 +1500,197 @@ fn reading_a_cblock_in_whole_is_one_mutation() {
     assert!(error.to_string().contains("float32"), "{error}");
     assert_eq!(seeded, before, "neither the branch nor a field arrived");
     assert!(seeded.branch_named("bloomberg").is_none());
+}
+
+#[test]
+fn a_normalization_spells_a_tag_and_the_vocabulary_keeps_its_name() {
+    let (registry, _) = parse(NORMALIZED);
+
+    // A tag its `vocabulary-tag` gave no `alt` is named by its own decimal
+    // tag, and the normalization is the only place the file says what it is
+    // called - which is the whole of what reading the binding is worth.
+    let held = registry.field_by_tag(22830).expect("the unnamed tag");
+    assert_eq!(held.name(), "22830", "the vocabulary keeps the name");
+    assert_eq!(
+        registry
+            .get_field_by_name("ExcludedDealers", Some(&branch()))
+            .map(Field::name),
+        Some("22830"),
+        "and the spelling reaches it as an alias",
+    );
+
+    // A separator-bearing spelling is a spelling the tag does not answer to
+    // without one, so it is stored beside the first and resolves too.
+    assert_eq!(
+        registry
+            .get_field_by_name("EXCLUDED_DEALERS", Some(&branch()))
+            .map(Field::name),
+        Some("22830"),
+    );
+    assert_eq!(
+        held.as_fix().aliases().collect::<Vec<_>>(),
+        ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
+        "in the order the file spelled them",
+    );
+}
+
+#[test]
+fn a_name_a_tag_already_answers_to_is_not_stored_a_second_time() {
+    let (registry, _) = parse(NORMALIZED);
+
+    // Resolution folds ASCII case, so `LEGSECURITYID` already reaches the tag
+    // the vocabulary spelled `LegSecurityID`. Most of a real binding is this.
+    let held = registry.field_by_tag(602).expect("LegSecurityID");
+    assert_eq!(held.name(), "legsecurityid");
+    assert_eq!(held.as_fix().aliases().collect::<Vec<_>>(), [] as [&str; 0]);
+    assert!(registry.get_field_by_name("LEGSECURITYID", None).is_some());
+
+    // The same, spelled with the file's own casing inside a nested group.
+    let alt = registry.field_by_tag(605).expect("LegSecurityAltID");
+    assert_eq!(alt.as_fix().aliases().collect::<Vec<_>>(), [] as [&str; 0]);
+}
+
+#[test]
+fn only_an_unconditional_reference_to_one_tag_is_a_name_for_it() {
+    let (registry, _) = parse(NORMALIZED);
+
+    // A condition makes the name conditional, and a name that means a tag
+    // only when another tag holds a value is not another spelling of it.
+    for conditional in ["LEGISINCODE", "LEGEXCHANGECODE"] {
+        assert!(
+            registry.get_field_by_name(conditional, None).is_none(),
+            "{conditional} is $602 only under a condition",
+        );
+    }
+
+    // A lookup decodes a value rather than naming a tag, and this layer holds
+    // no evaluator to say what the decoded value would be. Tag 603 is reached
+    // by the name its own `vocabulary-tag` gave it and by nothing this added.
+    assert_eq!(
+        registry
+            .field_by_tag(603)
+            .expect("LegSecurityIDSource")
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        [] as [&str; 0],
+        "a lookup names nothing",
+    );
+    // Tag 609 was given no `alt`, so a lookup naming it leaves it unreachable
+    // by any spelling but its own tag.
+    assert!(
+        registry
+            .get_field_by_name("LEGSECURITYTYPE", None)
+            .is_none()
+    );
+    assert_eq!(registry.field_by_tag(609).expect("609").name(), "609");
+
+    // Two expressions under one mapping are a construction, not a mapping.
+    assert!(registry.get_field_by_name("BUILT", None).is_none());
+
+    // One expression that is a bare reference still is one, trailing space
+    // and all: a CBlock leaves the space it wrapped an attribute with. Tag
+    // 608 is FIX's own, so the spelling lands in the standard branch with it.
+    assert_eq!(
+        registry
+            .get_field_by_name("LEGCFICODE", None)
+            .map(Field::name),
+        Some("608"),
+    );
+
+    // `rg-name` names a repeating group and never the counter beside it; the
+    // binding spells that counter plainly in its own `tag-normalization`.
+    assert_eq!(
+        registry.field_by_tag(604).expect("the counter").name(),
+        "nolegsecurityaltid",
+    );
+}
+
+#[test]
+fn a_spelling_that_cannot_be_answered_is_dropped_and_never_refused() {
+    let (registry, roots) = parse(NORMALIZED);
+    assert!(roots.is_empty(), "the file binds no grammar");
+
+    // A spelling another tag already answers to would resolve to neither, so
+    // the second claim goes exactly as a map entry's second claim does.
+    assert_eq!(
+        registry
+            .get_field_by_name("EXCLUDEDDEALERS", Some(&branch()))
+            .map(Field::name),
+        Some("22830"),
+        "the first claim keeps it",
+    );
+    assert_eq!(
+        registry
+            .field_by_tag(22831)
+            .expect("the second claimant")
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        [] as [&str; 0],
+    );
+
+    // A spelling another tag in the same branch answers to canonically goes
+    // too: a canonical name always wins a lookup, so the alias would be a
+    // spelling stored where nothing could ever reach it.
+    assert_eq!(
+        registry
+            .field_by_tag(22832)
+            .expect("the tag spelled as another")
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        [] as [&str; 0],
+    );
+    assert_eq!(
+        registry
+            .get_field_by_name("VENUESYM", Some(&branch()))
+            .map(Field::name),
+        Some("venuesym"),
+    );
+
+    // A branch is what scopes that: a CBlock's standard tags land in the
+    // standard branch and its user-range tags in the named one, so a venue
+    // tag may be spelled with a name FIX already publishes without either
+    // losing it. The standard dictionary is still what an unqualified name
+    // reaches.
+    assert_eq!(
+        registry
+            .field_by_tag(22834)
+            .expect("the venue tag spelled as a standard one")
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        ["LEGSECURITYID"],
+    );
+    assert_eq!(
+        registry
+            .get_field_by_name("LEGSECURITYID", None)
+            .map(Field::name),
+        Some("legsecurityid"),
+        "the standard tag keeps the unqualified spelling",
+    );
+
+    // An empty `tag-name`, a comma the stored list is rendered with, a tag
+    // the vocabulary never declared, and a mapping that maps nothing: each
+    // drops its own name and none of them refuses the document.
+    assert!(registry.get_field_by_name("COMMA,SPELLING", None).is_none());
+    assert!(registry.get_field_by_name("UNDECLARED", None).is_none());
+    assert!(registry.get_field_by_name("NOTHING", None).is_none());
+    assert!(registry.get_field_by_tag(999).is_none());
+}
+
+#[test]
+fn both_doors_carry_the_names_a_normalization_spelled() {
+    let fields =
+        FixField::from_cfb_file(&handle(NORMALIZED), Some("bloomberg")).expect("a readable CBlock");
+    let held = fields
+        .iter()
+        .find(|field| field.name() == "22830")
+        .expect("the unnamed tag");
+    assert_eq!(
+        held.as_fix().aliases().collect::<Vec<_>>(),
+        ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
+        "the vocabulary door carries them too",
+    );
 }

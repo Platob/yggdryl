@@ -217,6 +217,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDividendPeriod"
+    "display": "LegDividendPeriod",
+    "fix:tag": "507502"
   }
 }

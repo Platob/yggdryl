@@ -18,6 +18,7 @@
     "description": "Required if NoLegNonDeliverableFixingDates(40367) > 0.",
     "display": "LegPaymentStreamNonDeliverableFixingDateGrp",
     "fix:component": "legpaymentstreamnondeliverablefixingdate",
-    "fix:counter": "40367"
+    "fix:counter": "40367",
+    "fix:tag": "613701"
   }
 }

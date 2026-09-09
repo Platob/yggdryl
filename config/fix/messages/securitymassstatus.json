@@ -229,6 +229,7 @@
   "metadata": {
     "description": "MsgType = CO",
     "display": "SecurityMassStatus",
-    "fix:msgtype": "CO"
+    "fix:msgtype": "CO",
+    "fix:tag": "835895"
   }
 }

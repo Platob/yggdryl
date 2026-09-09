@@ -148,6 +148,7 @@
   "nullable": false,
   "metadata": {
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified values would be specific to the option exercise expiration date.",
-    "display": "LegOptionExerciseExpiration"
+    "display": "LegOptionExerciseExpiration",
+    "fix:tag": "987927"
   }
 }

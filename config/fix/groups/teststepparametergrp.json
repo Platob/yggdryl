@@ -18,6 +18,7 @@
     "description": "Required if NoTestStepParameters(3045) > 0.",
     "display": "TestStepParameterGrp",
     "fix:component": "teststepparameter",
-    "fix:counter": "3045"
+    "fix:counter": "3045",
+    "fix:tag": "243092"
   }
 }

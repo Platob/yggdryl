@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamCalculationPeriodDate"
+    "display": "UnderlyingStreamCalculationPeriodDate",
+    "fix:tag": "996636"
   }
 }

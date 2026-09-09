@@ -18,6 +18,7 @@
     "description": "Number of entries following. Conditionally required when MDUpdateAction = New(0) and MDEntryType = Bid(0) or Offer(1).",
     "display": "SecSizesGrp",
     "fix:component": "secsize",
-    "fix:counter": "1177"
+    "fix:counter": "1177",
+    "fix:tag": "500584"
   }
 }

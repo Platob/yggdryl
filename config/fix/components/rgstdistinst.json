@@ -87,6 +87,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RgstDistInst"
+    "display": "RgstDistInst",
+    "fix:tag": "345666"
   }
 }

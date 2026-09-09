@@ -76,6 +76,9 @@ fn the_committed_dictionary_answers_the_worked_case_end_to_end() {
 fn every_generated_name_is_folded_and_no_two_collide() {
     let registry = seed();
     let scalar_names: BTreeSet<_> = registry.iter().map(Field::name).collect();
+    // Across every category, not within one: a derived tag is the definition's
+    // identity in the whole catalog.
+    let mut derived_tags = BTreeSet::new();
     for category in FixCategory::ALL {
         let mut seen = BTreeSet::new();
         for field in registry.definitions(category) {
@@ -92,7 +95,22 @@ fn every_generated_name_is_folded_and_no_two_collide() {
                     !scalar_names.contains(name),
                     "{category}/{name} collides with a wire field"
                 );
-                assert_eq!(field.as_fix().tag().expect("valid tag"), None);
+                // Every named definition carries a tag of its own, derived
+                // into the block nothing published claims, and no two share
+                // one - the `seen` set below proves the names, this the tags.
+                let derived = field
+                    .as_fix()
+                    .tag()
+                    .expect("valid tag")
+                    .expect("a derived definition tag");
+                assert!(
+                    yggdryl::FixId::is_definition_tag(derived),
+                    "{category}/{name} tag {derived}"
+                );
+                assert!(
+                    derived_tags.insert(derived),
+                    "{category}/{name} repeats derived tag {derived}"
+                );
             } else {
                 assert!(!field.dtype().is_nested(), "wire field {name} is nested");
             }
@@ -166,7 +184,11 @@ fn a_repeating_group_has_a_scalar_counter_and_a_separately_named_component() {
     assert_eq!(parties.name(), "parties");
     assert_eq!(parties.display(), Some("Parties"));
     assert_eq!(parties.as_fix().counter().unwrap(), Some(453));
-    assert_eq!(parties.as_fix().tag().unwrap(), None);
+    // The counter it heads is the published 453; its own identity is derived,
+    // and the two are never the same number.
+    let derived = parties.as_fix().tag().unwrap().expect("a derived tag");
+    assert!(yggdryl::FixId::is_definition_tag(derived), "{derived}");
+    assert_ne!(derived, 453);
     let DataType::List(item) = parties.dtype() else {
         panic!("a list, got {}", parties.dtype());
     };

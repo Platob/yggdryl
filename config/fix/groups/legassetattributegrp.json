@@ -18,6 +18,7 @@
     "description": "Required if NoLegAssetAttributes(2308) > 0.",
     "display": "LegAssetAttributeGrp",
     "fix:component": "legassetattribute",
-    "fix:counter": "2308"
+    "fix:counter": "2308",
+    "fix:tag": "902200"
   }
 }

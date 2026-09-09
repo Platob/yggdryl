@@ -18,6 +18,7 @@
     "description": "Required if NoProvisionCashSettlPaymentDates (40171) > 0.",
     "display": "ProvisionCashSettlPaymentFixedDateGrp",
     "fix:component": "provisioncashsettlpaymentfixeddate",
-    "fix:counter": "40171"
+    "fix:counter": "40171",
+    "fix:tag": "1080450"
   }
 }

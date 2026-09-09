@@ -18,6 +18,7 @@
     "description": "Required if NoTestGatewayDetails(3092)>0.",
     "display": "TestGatewayDetailGrp",
     "fix:component": "testgatewaydetail",
-    "fix:counter": "3092"
+    "fix:counter": "3092",
+    "fix:tag": "874133"
   }
 }

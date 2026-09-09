@@ -18,6 +18,7 @@
     "description": "Used if BidType=\"Disclosed\"",
     "display": "BidCompReqGrp",
     "fix:component": "bidcompreq",
-    "fix:counter": "420"
+    "fix:counter": "420",
+    "fix:tag": "450322"
   }
 }

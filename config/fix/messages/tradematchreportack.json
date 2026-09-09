@@ -129,6 +129,7 @@
   "metadata": {
     "description": "MsgType = DD",
     "display": "TradeMatchReportAck",
-    "fix:msgtype": "DD"
+    "fix:msgtype": "DD",
+    "fix:tag": "756028"
   }
 }

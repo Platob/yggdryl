@@ -129,6 +129,7 @@
   "metadata": {
     "description": "MsgType = j (lowercase J)",
     "display": "BusinessMessageReject",
-    "fix:msgtype": "j"
+    "fix:msgtype": "j",
+    "fix:tag": "345093"
   }
 }

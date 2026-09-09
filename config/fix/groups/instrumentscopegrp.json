@@ -18,6 +18,7 @@
     "description": "Required when NoInstrumentScopes > 0.",
     "display": "InstrumentScopeGrp",
     "fix:component": "instrumentscopecomponent",
-    "fix:counter": "1656"
+    "fix:counter": "1656",
+    "fix:tag": "1061462"
   }
 }

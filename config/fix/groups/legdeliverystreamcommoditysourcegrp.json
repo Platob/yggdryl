@@ -18,6 +18,7 @@
     "description": "Required if NoLegDeliveryStreamCommoditySources(41460) > 0.",
     "display": "LegDeliveryStreamCommoditySourceGrp",
     "fix:component": "legdeliverystreamcommoditysourcecomponent",
-    "fix:counter": "41460"
+    "fix:counter": "41460",
+    "fix:tag": "1084911"
   }
 }

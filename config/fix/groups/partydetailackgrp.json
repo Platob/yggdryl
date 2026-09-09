@@ -18,6 +18,7 @@
     "description": "Required if NoPartyUpdates(1676) > 0.",
     "display": "PartyDetailAckGrp",
     "fix:component": "partydetailack",
-    "fix:counter": "1676"
+    "fix:counter": "1676",
+    "fix:tag": "607149"
   }
 }

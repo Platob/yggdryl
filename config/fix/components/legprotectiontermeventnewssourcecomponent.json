@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProtectionTermEventNewsSource"
+    "display": "LegProtectionTermEventNewsSource",
+    "fix:tag": "630463"
   }
 }

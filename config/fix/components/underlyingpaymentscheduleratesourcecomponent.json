@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentScheduleRateSource"
+    "display": "UnderlyingPaymentScheduleRateSource",
+    "fix:tag": "435043"
   }
 }

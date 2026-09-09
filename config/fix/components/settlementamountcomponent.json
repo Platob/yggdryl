@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlementAmount"
+    "display": "SettlementAmount",
+    "fix:tag": "371730"
   }
 }

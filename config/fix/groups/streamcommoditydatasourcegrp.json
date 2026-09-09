@@ -18,6 +18,7 @@
     "description": "Required if NoStreamCommodityDataSources(41280) > 0.",
     "display": "StreamCommodityDataSourceGrp",
     "fix:component": "streamcommoditydatasource",
-    "fix:counter": "41280"
+    "fix:counter": "41280",
+    "fix:tag": "555171"
   }
 }

@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStreamPricingDate"
+    "display": "UnderlyingPaymentStreamPricingDate",
+    "fix:tag": "128479"
   }
 }

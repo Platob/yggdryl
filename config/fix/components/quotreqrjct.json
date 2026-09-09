@@ -467,6 +467,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "QuotReqRjct"
+    "display": "QuotReqRjct",
+    "fix:tag": "206147"
   }
 }

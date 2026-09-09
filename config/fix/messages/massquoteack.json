@@ -269,6 +269,7 @@
   "metadata": {
     "description": "MsgType = b (lowercase B)",
     "display": "MassQuoteAck",
-    "fix:msgtype": "b"
+    "fix:msgtype": "b",
+    "fix:tag": "185574"
   }
 }

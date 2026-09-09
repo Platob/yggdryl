@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCommoditySettlBusinessCenter"
+    "display": "LegStreamCommoditySettlBusinessCenter",
+    "fix:tag": "677884"
   }
 }

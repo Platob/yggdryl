@@ -57,6 +57,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "EntitlementAttrib"
+    "display": "EntitlementAttrib",
+    "fix:tag": "1025970"
   }
 }

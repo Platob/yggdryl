@@ -337,6 +337,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingReturnRate"
+    "display": "UnderlyingReturnRate",
+    "fix:tag": "302587"
   }
 }

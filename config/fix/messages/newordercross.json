@@ -719,6 +719,7 @@
   "metadata": {
     "description": "MsgType = s (lowercase S)",
     "display": "NewOrderCross",
-    "fix:msgtype": "s"
+    "fix:msgtype": "s",
+    "fix:tag": "898316"
   }
 }

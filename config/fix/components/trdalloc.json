@@ -377,6 +377,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdAlloc"
+    "display": "TrdAlloc",
+    "fix:tag": "517903"
   }
 }

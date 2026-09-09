@@ -158,6 +158,7 @@
   "nullable": false,
   "metadata": {
     "description": "Must be set if EncodedLegExerciseDesc (41483) field is specified and must immediately precede it.",
-    "display": "LegOptionExercise"
+    "display": "LegOptionExercise",
+    "fix:tag": "762849"
   }
 }

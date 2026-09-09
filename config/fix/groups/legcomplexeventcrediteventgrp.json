@@ -18,6 +18,7 @@
     "description": "Required if NoLegComplexEventCreditEvents(41366) > 0.",
     "display": "LegComplexEventCreditEventGrp",
     "fix:component": "legcomplexeventcreditevent",
-    "fix:counter": "41366"
+    "fix:counter": "41366",
+    "fix:tag": "831370"
   }
 }

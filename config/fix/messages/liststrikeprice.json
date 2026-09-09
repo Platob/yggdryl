@@ -79,6 +79,7 @@
   "metadata": {
     "description": "MsgType = m (lowercase M)",
     "display": "ListStrikePrice",
-    "fix:msgtype": "m"
+    "fix:msgtype": "m",
+    "fix:tag": "869150"
   }
 }

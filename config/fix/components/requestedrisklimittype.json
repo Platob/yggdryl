@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RequestedRiskLimitType"
+    "display": "RequestedRiskLimitType",
+    "fix:tag": "671967"
   }
 }

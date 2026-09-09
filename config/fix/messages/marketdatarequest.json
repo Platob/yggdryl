@@ -249,6 +249,7 @@
   "metadata": {
     "description": "MsgType = V",
     "display": "MarketDataRequest",
-    "fix:msgtype": "V"
+    "fix:msgtype": "V",
+    "fix:tag": "108215"
   }
 }

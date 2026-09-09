@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingDividendPeriods(42862) > 0.",
     "display": "UnderlyingDividendPeriodGrp",
     "fix:component": "underlyingdividendperiod",
-    "fix:counter": "42862"
+    "fix:counter": "42862",
+    "fix:tag": "844678"
   }
 }

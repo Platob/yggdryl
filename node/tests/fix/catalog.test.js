@@ -74,7 +74,9 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
     assert.equal(registry.getDefinition(category, name), null)
     assert.equal(registry.removeDefinition(category, name), null)
   }
-  assert.equal(registry.size, 0)
+  // Only the crate's own fields are left: they seed every registry and
+  // are never a definition a caller can remove.
+  assert.equal(registry.size, fix.crateFields().length)
 })
 
 test('inline codes and the complete native catalog survive snapshots', () => {
@@ -163,7 +165,10 @@ test('numeric counters remain int32 beside message-scoped occurrence lists', () 
   assert.equal(values.length, 1)
   const value = values[0]
   assert.equal(registry.field(453).dtype.toString(), 'int32')
-  assert.equal(registry.definition('groups', 'Parties').fix.tag, null)
+  // A named definition carries a derived tag of its own now, taken from the
+  // block above every published tag (FixId::DEFINITION_TAG_MIN..MAX).
+  const parties = registry.definition('groups', 'Parties').fix.tag
+  assert.ok(parties >= 100_000 && parties < 1_100_000, `derived definition tag, got ${parties}`)
   assert.equal(value.byTag(453).asJs(), 2)
   assert.equal(value.byPath('Parties.0.PartyID').asJs(), 'ONE')
   assert.equal(value.byPath('Parties.1.PartyID').asJs(), 'TWO')
@@ -238,7 +243,9 @@ test('bulk message streams preserve flat configuration rows and fuse', () => {
   assert.equal(typeof values[0].stableHash(), 'bigint')
 })
 
-for (const [method, vocabulary] of [['withCrateFields', fix.crateFields], ['withUlbridgeFields', fix.ulbridgeFields]]) {
+// Only `ulbridge` is registered on request: the crate's own fields seed every
+// registry, so there is no `withCrateFields` left to refuse.
+for (const [method, vocabulary] of [['withUlbridgeFields', fix.ulbridgeFields]]) {
   test(`${method} refuses atomically with a named catalog present`, () => {
     const registry = catalog()
     const conflict = vocabulary().at(-1)

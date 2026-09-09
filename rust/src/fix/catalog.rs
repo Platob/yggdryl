@@ -524,19 +524,30 @@ impl FixRegistry {
         // stored reference restates and no loaded one carries.
         field = canonical_occurrences(field, true)?;
         let branch = field.as_fix().branch()?;
-        if field.as_fix().tag()?.is_none() {
-            let tag = match self.get_definition(category, field.name(), Some(&branch)) {
-                // An update keeps the identity the definition already has:
-                // a derived tag is stable for the definition, not for the
-                // registry it was derived against.
-                Some(stored) => match stored.as_fix().tag()? {
-                    Some(tag) => tag,
-                    None => self.derived_definition_tag(field.name())?,
-                },
-                None => self.derived_definition_tag(field.name())?,
-            };
-            field.as_fix_mut().set_tag(tag)?;
-        }
+        // An update keeps the identity the definition already has: a derived
+        // tag is stable for the definition, not for the registry it was
+        // derived against.
+        let held = self
+            .get_definition(category, field.name(), Some(&branch))
+            .and_then(|stored| stored.as_fix().tag().ok().flatten());
+        let own = match field.as_fix().tag()? {
+            // A tag outside the block is nobody's to hold. It is kept as
+            // stated so `validate_definition` below refuses it by name rather
+            // than this quietly deriving something else over it.
+            Some(tag) if !FixId::is_definition_tag(tag) => Some(tag),
+            // Its own tag, or one nothing else answers to, is kept: a stored
+            // dictionary states the identity and a reader does not overrule it.
+            // A tag another definition already holds is not this one's to take,
+            // however it arrived - a definition cloned under a second name
+            // carries the first one's - so that case derives afresh.
+            Some(tag) => (held == Some(tag) || !self.definition_tag_in_use(tag)).then_some(tag),
+            None => held,
+        };
+        let tag = match own {
+            Some(tag) => tag,
+            None => self.derived_definition_tag(field.name())?,
+        };
+        field.as_fix_mut().set_tag(tag)?;
         self.validate_definition(category, &field)?;
         self.check_branch(&branch)?;
         if let Some(stored) = self.get_definition(category, field.name(), Some(&branch)) {
@@ -689,7 +700,7 @@ impl FixRegistry {
     ///
     /// Returns [`Error::InvalidRecord`] when every slot in the block is
     /// taken, which needs a million definitions in one registry.
-    fn derived_definition_tag(&self, name: &str) -> Result<i32> {
+    pub(super) fn derived_definition_tag(&self, name: &str) -> Result<i32> {
         let span = FixId::DEFINITION_TAG_MAX - FixId::DEFINITION_TAG_MIN;
         let mut hasher = crate::xxhash::Xxh32::new();
         hasher.write_bytes(name.as_bytes());
@@ -713,22 +724,21 @@ impl FixRegistry {
     pub(super) fn validate_definition(&self, category: FixCategory, field: &Field) -> Result<()> {
         if category != FixCategory::Fields {
             validate_name(field)?;
-        }
-        if category != FixCategory::Fields
-            && let Some(tag) = field.as_fix().tag()?
-            && !FixId::is_definition_tag(tag)
-        {
-            return Err(Error::InvalidRecord {
-                path: field.name().into(),
-                reason: crate::text::expected_got(
-                    "a named FIX definition's derived tag",
-                    format_args!(
-                        "tag {tag} outside [{}, {})",
-                        FixId::DEFINITION_TAG_MIN,
-                        FixId::DEFINITION_TAG_MAX
-                    ),
-                ),
-            });
+            if let Some(tag) = field.as_fix().tag()? {
+                if !FixId::is_definition_tag(tag) {
+                    return Err(Error::InvalidRecord {
+                        path: field.name().into(),
+                        reason: crate::text::expected_got(
+                            "a named FIX definition's derived tag",
+                            format_args!(
+                                "tag {tag} outside [{}, {})",
+                                FixId::DEFINITION_TAG_MIN,
+                                FixId::DEFINITION_TAG_MAX
+                            ),
+                        ),
+                    });
+                }
+            }
         }
         match category {
             FixCategory::Fields if field.dtype().is_nested() => {
@@ -868,8 +878,28 @@ impl FixRegistry {
         for field in self.iter() {
             self.validate_definition(FixCategory::Fields, field)?;
         }
+        // Per-definition first, then the property no single definition can
+        // state: a derived tag identifies one definition in the whole catalog,
+        // so two definitions holding one tag is a catalog defect even though
+        // each is well formed on its own.
+        let mut derived: HashMap<i32, &str> = HashMap::new();
         for entry in self.catalog.all() {
             self.validate_definition(entry.category, &entry.field)?;
+            let name = entry.field.name();
+            let tag = entry
+                .field
+                .as_fix()
+                .tag()?
+                .ok_or_else(|| Error::absent(super::field::TAG_KEY, name))?;
+            if let Some(held) = derived.insert(tag, name)
+                && held != name
+            {
+                return Err(Error::conflict(
+                    "one FIX definition per derived tag",
+                    "two definitions on one tag",
+                    format_args!("{held:?} and {name:?} both hold {tag}"),
+                ));
+            }
         }
         Ok(())
     }

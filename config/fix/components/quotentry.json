@@ -337,6 +337,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "QuotEntry"
+    "display": "QuotEntry",
+    "fix:tag": "1017441"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingComplexEvents(2045) > 0.",
     "display": "UnderlyingComplexEvents",
     "fix:component": "underlyingcomplexevent",
-    "fix:counter": "2045"
+    "fix:counter": "2045",
+    "fix:tag": "667496"
   }
 }

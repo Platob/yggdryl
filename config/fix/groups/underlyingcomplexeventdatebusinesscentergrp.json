@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingComplexEventDateBusinessCenters(41737) > 0.",
     "display": "UnderlyingComplexEventDateBusinessCenterGrp",
     "fix:component": "underlyingcomplexeventdatebusinesscentercomponent",
-    "fix:counter": "41737"
+    "fix:counter": "41737",
+    "fix:tag": "587958"
   }
 }

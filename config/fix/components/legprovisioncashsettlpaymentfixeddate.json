@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProvisionCashSettlPaymentFixedDate"
+    "display": "LegProvisionCashSettlPaymentFixedDate",
+    "fix:tag": "710804"
   }
 }
