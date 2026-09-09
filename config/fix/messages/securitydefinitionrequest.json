@@ -329,6 +329,7 @@
   "metadata": {
     "description": "MsgType = c (lowercase C)",
     "display": "SecurityDefinitionRequest",
-    "fix:msgtype": "c"
+    "fix:msgtype": "c",
+    "fix:tag": "235157"
   }
 }

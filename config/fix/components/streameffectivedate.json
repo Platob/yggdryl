@@ -98,6 +98,7 @@
   "nullable": false,
   "metadata": {
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the effective date of the stream.",
-    "display": "StreamEffectiveDate"
+    "display": "StreamEffectiveDate",
+    "fix:tag": "632692"
   }
 }

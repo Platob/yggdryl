@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SecLstUpdRelSymsLeg"
+    "display": "SecLstUpdRelSymsLeg",
+    "fix:tag": "974933"
   }
 }

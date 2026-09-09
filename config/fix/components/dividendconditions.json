@@ -258,6 +258,7 @@
   "nullable": false,
   "metadata": {
     "description": "The DividendConditions component is a subcomponent of PaymentStream used to specify the conditions' valuations and dates governing the payment of dividends.",
-    "display": "DividendConditions"
+    "display": "DividendConditions",
+    "fix:tag": "731392"
   }
 }

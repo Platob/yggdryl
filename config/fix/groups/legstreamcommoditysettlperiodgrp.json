@@ -18,6 +18,7 @@
     "description": "Required if NoLegStreamCommoditySettlPeriods(41686) > 0.",
     "display": "LegStreamCommoditySettlPeriodGrp",
     "fix:component": "legstreamcommoditysettlperiod",
-    "fix:counter": "41686"
+    "fix:counter": "41686",
+    "fix:tag": "758006"
   }
 }

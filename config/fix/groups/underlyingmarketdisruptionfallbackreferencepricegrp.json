@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingMarketDisruptionFallbackReferencePrices (41868) > 0.",
     "display": "UnderlyingMarketDisruptionFallbackReferencePriceGrp",
     "fix:component": "underlyingmarketdisruptionfallbackreferenceprice",
-    "fix:counter": "41868"
+    "fix:counter": "41868",
+    "fix:tag": "420284"
   }
 }

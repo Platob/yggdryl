@@ -129,6 +129,7 @@
   "metadata": {
     "description": "MsgType = CT",
     "display": "PartyRiskLimitsDefinitionRequestAck",
-    "fix:msgtype": "CT"
+    "fix:msgtype": "CT",
+    "fix:tag": "485987"
   }
 }

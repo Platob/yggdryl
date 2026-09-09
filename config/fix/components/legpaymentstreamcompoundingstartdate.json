@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when LegPaymentStreamCompoundingStartDateOffsetUnit(42448) is specified.",
-    "display": "LegPaymentStreamCompoundingStartDate"
+    "display": "LegPaymentStreamCompoundingStartDate",
+    "fix:tag": "461934"
   }
 }

@@ -89,6 +89,7 @@
   "metadata": {
     "description": "MsgType = CE",
     "display": "StreamAssignmentReportACK",
-    "fix:msgtype": "CE"
+    "fix:msgtype": "CE",
+    "fix:tag": "654808"
   }
 }

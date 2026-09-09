@@ -18,6 +18,7 @@
     "description": "Required if NoQuoteAttributes(2706) > 0.",
     "display": "QuoteAttributeGrp",
     "fix:component": "quoteattribute",
-    "fix:counter": "2706"
+    "fix:counter": "2706",
+    "fix:tag": "976470"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoContractualDefinitions(40040) > 0.",
     "display": "FinancingContractualDefinitionGrp",
     "fix:component": "financingcontractualdefinition",
-    "fix:counter": "40040"
+    "fix:counter": "40040",
+    "fix:tag": "494237"
   }
 }

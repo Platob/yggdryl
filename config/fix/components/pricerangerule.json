@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PriceRangeRule"
+    "display": "PriceRangeRule",
+    "fix:tag": "199839"
   }
 }

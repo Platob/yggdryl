@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingLegSecurityAltID"
+    "display": "UnderlyingLegSecurityAltID",
+    "fix:tag": "650401"
   }
 }

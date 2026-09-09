@@ -159,6 +159,7 @@
   "metadata": {
     "description": "MsgType = AF",
     "display": "OrderMassStatusRequest",
-    "fix:msgtype": "AF"
+    "fix:msgtype": "AF",
+    "fix:tag": "1085293"
   }
 }

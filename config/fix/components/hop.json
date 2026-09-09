@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "Hop"
+    "display": "Hop",
+    "fix:tag": "595740"
   }
 }

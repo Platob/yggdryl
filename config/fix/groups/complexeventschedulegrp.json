@@ -18,6 +18,7 @@
     "description": "Required if NoComplexEventSchedules(41031) > 0.",
     "display": "ComplexEventScheduleGrp",
     "fix:component": "complexeventschedule",
-    "fix:counter": "41031"
+    "fix:counter": "41031",
+    "fix:tag": "778363"
   }
 }

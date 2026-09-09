@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ReturnRateValuationDate"
+    "display": "ReturnRateValuationDate",
+    "fix:tag": "279968"
   }
 }

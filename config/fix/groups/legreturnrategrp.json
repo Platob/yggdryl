@@ -18,6 +18,7 @@
     "description": "Required if NoLegReturnRates(42534) > 0.",
     "display": "LegReturnRateGrp",
     "fix:component": "legreturnrate",
-    "fix:counter": "42534"
+    "fix:counter": "42534",
+    "fix:tag": "623530"
   }
 }

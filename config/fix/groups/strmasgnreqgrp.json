@@ -18,6 +18,7 @@
     "description": "Stream Assignment Requests.",
     "display": "StrmAsgnReqGrp",
     "fix:component": "strmasgnreq",
-    "fix:counter": "1499"
+    "fix:counter": "1499",
+    "fix:tag": "1044479"
   }
 }

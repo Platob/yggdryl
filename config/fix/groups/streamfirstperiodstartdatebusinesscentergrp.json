@@ -18,6 +18,7 @@
     "description": "Required if NoStreamFirstPeriodStartDateBusinessCenters(40959) > 0.",
     "display": "StreamFirstPeriodStartDateBusinessCenterGrp",
     "fix:component": "streamfirstperiodstartdatebusinesscentercomponent",
-    "fix:counter": "40959"
+    "fix:counter": "40959",
+    "fix:tag": "359316"
   }
 }

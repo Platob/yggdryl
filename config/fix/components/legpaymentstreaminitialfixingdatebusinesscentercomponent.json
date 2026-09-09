@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentStreamInitialFixingDateBusinessCenter"
+    "display": "LegPaymentStreamInitialFixingDateBusinessCenter",
+    "fix:tag": "907128"
   }
 }

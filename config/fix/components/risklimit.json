@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RiskLimit"
+    "display": "RiskLimit",
+    "fix:tag": "186489"
   }
 }

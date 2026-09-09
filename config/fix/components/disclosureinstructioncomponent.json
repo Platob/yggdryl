@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "DisclosureInstruction"
+    "display": "DisclosureInstruction",
+    "fix:tag": "711536"
   }
 }

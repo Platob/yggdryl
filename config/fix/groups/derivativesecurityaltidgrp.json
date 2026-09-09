@@ -17,6 +17,7 @@
   "metadata": {
     "display": "DerivativeSecurityAltIDGrp",
     "fix:component": "derivativesecurityaltidcomponent",
-    "fix:counter": "1218"
+    "fix:counter": "1218",
+    "fix:tag": "273110"
   }
 }

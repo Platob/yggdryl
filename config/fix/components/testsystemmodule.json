@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TestSystemModule"
+    "display": "TestSystemModule",
+    "fix:tag": "360017"
   }
 }

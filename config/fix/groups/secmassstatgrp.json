@@ -18,6 +18,7 @@
     "description": "Number of exceptions with a trading status different from SecurityMassTradingStatus (1679).",
     "display": "SecMassStatGrp",
     "fix:component": "secmassstat",
-    "fix:counter": "146"
+    "fix:counter": "146",
+    "fix:tag": "511024"
   }
 }

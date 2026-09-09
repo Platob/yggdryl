@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrmtLeg"
+    "display": "InstrmtLeg",
+    "fix:tag": "520248"
   }
 }

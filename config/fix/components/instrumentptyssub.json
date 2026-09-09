@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrumentPtysSub"
+    "display": "InstrumentPtysSub",
+    "fix:tag": "451959"
   }
 }

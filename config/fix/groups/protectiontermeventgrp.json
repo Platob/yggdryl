@@ -18,6 +18,7 @@
     "description": "Required if NoProtectionTermEvents(40191) > 0.",
     "display": "ProtectionTermEventGrp",
     "fix:component": "protectiontermevent",
-    "fix:counter": "40191"
+    "fix:counter": "40191",
+    "fix:tag": "717550"
   }
 }

@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "description": "The YieldData component block conveys yield information for a given Fixed Income security.",
-    "display": "YieldData"
+    "display": "YieldData",
+    "fix:tag": "214346"
   }
 }

@@ -318,6 +318,7 @@
   "nullable": false,
   "metadata": {
     "description": "FIX session profile (Always unencrypted, must be first field in message)",
-    "display": "StandardHeader"
+    "display": "StandardHeader",
+    "fix:tag": "1058991"
   }
 }

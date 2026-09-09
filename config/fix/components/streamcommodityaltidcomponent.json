@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamCommodityAltID"
+    "display": "StreamCommodityAltID",
+    "fix:tag": "135538"
   }
 }

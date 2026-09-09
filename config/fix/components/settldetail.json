@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlDetail"
+    "display": "SettlDetail",
+    "fix:tag": "573341"
   }
 }

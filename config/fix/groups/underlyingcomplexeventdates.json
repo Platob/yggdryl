@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingComplexEventDates(2054) > 0.",
     "display": "UnderlyingComplexEventDates",
     "fix:component": "underlyingcomplexeventdate",
-    "fix:counter": "2053"
+    "fix:counter": "2053",
+    "fix:tag": "893145"
   }
 }

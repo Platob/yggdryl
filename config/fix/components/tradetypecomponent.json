@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TradeType"
+    "display": "TradeType",
+    "fix:tag": "1058812"
   }
 }

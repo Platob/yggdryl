@@ -1369,6 +1369,7 @@
   "metadata": {
     "description": "MsgType = AC",
     "display": "MultilegOrderCancelReplace",
-    "fix:msgtype": "AC"
+    "fix:msgtype": "AC",
+    "fix:tag": "968044"
   }
 }

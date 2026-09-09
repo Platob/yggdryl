@@ -179,6 +179,7 @@
   "metadata": {
     "description": "MsgType = DX",
     "display": "TradeAggregationReport",
-    "fix:msgtype": "DX"
+    "fix:msgtype": "DX",
+    "fix:tag": "978335"
   }
 }

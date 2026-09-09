@@ -18,6 +18,7 @@
     "description": "Alternative Market Data Source",
     "display": "MDRjctGrp",
     "fix:component": "mdrjct",
-    "fix:counter": "816"
+    "fix:counter": "816",
+    "fix:tag": "553809"
   }
 }

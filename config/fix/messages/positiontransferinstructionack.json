@@ -209,6 +209,7 @@
   "metadata": {
     "description": "MsgType = DM",
     "display": "PositionTransferInstructionAck",
-    "fix:msgtype": "DM"
+    "fix:msgtype": "DM",
+    "fix:tag": "541024"
   }
 }

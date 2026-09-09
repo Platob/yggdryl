@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentStreamInitialFixindDateBusinessCenters(40949) > 0.",
     "display": "PaymentStreamInitialFixingDateBusinessCenterGrp",
     "fix:component": "paymentstreaminitialfixingdatebusinesscentercomponent",
-    "fix:counter": "40949"
+    "fix:counter": "40949",
+    "fix:tag": "285288"
   }
 }

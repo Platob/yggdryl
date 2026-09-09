@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentSettlPartySubIDs(40238) > 0.",
     "display": "PaymentSettlPtysSubGrp",
     "fix:component": "paymentsettlptyssub",
-    "fix:counter": "40238"
+    "fix:counter": "40238",
+    "fix:tag": "940630"
   }
 }

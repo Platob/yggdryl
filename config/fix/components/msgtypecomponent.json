@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "MsgType"
+    "display": "MsgType",
+    "fix:tag": "470822"
   }
 }

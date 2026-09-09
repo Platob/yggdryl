@@ -18,6 +18,7 @@
     "description": "Amount to pay in order to receive the underlying instrument.",
     "display": "UnderlyingAmount",
     "fix:component": "underlyingamountcomponent",
-    "fix:counter": "984"
+    "fix:counter": "984",
+    "fix:tag": "1018631"
   }
 }

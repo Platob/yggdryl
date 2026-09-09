@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ExpirationQty"
+    "display": "ExpirationQty",
+    "fix:tag": "401656"
   }
 }

@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamCommodityDataSource"
+    "display": "UnderlyingStreamCommodityDataSource",
+    "fix:tag": "958843"
   }
 }

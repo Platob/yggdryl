@@ -48,6 +48,7 @@
   "nullable": false,
   "metadata": {
     "description": "LegDateAdjustment is a subcomponent within the InstrumentLeg component. It is used to specify date adjustment parameters and rules. The date adjustments specified here applies to all adjustable dates for the instrument leg, unless specifically overridden elsewhere in the respective specified components further within the InstrumentLeg component.",
-    "display": "LegDateAdjustment"
+    "display": "LegDateAdjustment",
+    "fix:tag": "335507"
   }
 }

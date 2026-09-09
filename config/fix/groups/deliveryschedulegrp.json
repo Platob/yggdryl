@@ -18,6 +18,7 @@
     "description": "Required if NoDeliverySchedules(41037) > 0.",
     "display": "DeliveryScheduleGrp",
     "fix:component": "deliveryschedule",
-    "fix:counter": "41037"
+    "fix:counter": "41037",
+    "fix:tag": "494817"
   }
 }

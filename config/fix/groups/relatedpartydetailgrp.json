@@ -18,6 +18,7 @@
     "description": "Required if NoRelatedPartyDetails > 0.",
     "display": "RelatedPartyDetailGrp",
     "fix:component": "relatedpartydetail",
-    "fix:counter": "1562"
+    "fix:counter": "1562",
+    "fix:tag": "125404"
   }
 }

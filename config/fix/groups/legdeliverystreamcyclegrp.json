@@ -18,6 +18,7 @@
     "description": "Required if NoLegDeliveryStreamCycles(41456) > 0.",
     "display": "LegDeliveryStreamCycleGrp",
     "fix:component": "legdeliverystreamcycle",
-    "fix:counter": "41456"
+    "fix:counter": "41456",
+    "fix:tag": "819408"
   }
 }

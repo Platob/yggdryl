@@ -119,6 +119,7 @@
   "metadata": {
     "description": "MsgType = Y",
     "display": "MarketDataRequestReject",
-    "fix:msgtype": "Y"
+    "fix:msgtype": "Y",
+    "fix:tag": "173600"
   }
 }

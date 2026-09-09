@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCommoditySettlDay"
+    "display": "LegStreamCommoditySettlDay",
+    "fix:tag": "154307"
   }
 }

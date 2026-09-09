@@ -109,6 +109,7 @@
   "metadata": {
     "description": "MsgType = CS",
     "display": "PartyRiskLimitsDefinitionRequest",
-    "fix:msgtype": "CS"
+    "fix:msgtype": "CS",
+    "fix:tag": "832009"
   }
 }

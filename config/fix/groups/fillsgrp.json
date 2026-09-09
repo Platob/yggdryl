@@ -18,6 +18,7 @@
     "description": "Specifies the number of partial fills included in this Execution Report",
     "display": "FillsGrp",
     "fix:component": "fill",
-    "fix:counter": "1362"
+    "fix:counter": "1362",
+    "fix:tag": "820703"
   }
 }

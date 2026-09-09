@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentStreamNonDeliverableFixingDate"
+    "display": "PaymentStreamNonDeliverableFixingDate",
+    "fix:tag": "205723"
   }
 }

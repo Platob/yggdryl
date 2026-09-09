@@ -137,6 +137,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrmtStrkPx"
+    "display": "InstrmtStrkPx",
+    "fix:tag": "132613"
   }
 }

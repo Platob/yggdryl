@@ -329,6 +329,7 @@
   "metadata": {
     "description": "MsgType = F",
     "display": "OrderCancelRequest",
-    "fix:msgtype": "F"
+    "fix:msgtype": "F",
+    "fix:tag": "803010"
   }
 }

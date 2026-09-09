@@ -48,6 +48,7 @@
   "nullable": false,
   "metadata": {
     "description": "UnderlyingDateAdjustment is a subcomponent within the UnderlyingInstrument component. It is used to specify date adjustment parameters and rules. The date adjustments specified here applies to all adjustable dates for the underlying instrument, unless specifically overridden in the respective specified components further within the UnderlyingInstrument component.",
-    "display": "UnderlyingDateAdjustment"
+    "display": "UnderlyingDateAdjustment",
+    "fix:tag": "533187"
   }
 }

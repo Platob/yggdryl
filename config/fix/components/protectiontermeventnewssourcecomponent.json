@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ProtectionTermEventNewsSource"
+    "display": "ProtectionTermEventNewsSource",
+    "fix:tag": "415590"
   }
 }

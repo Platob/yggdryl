@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingSettlMethodElectionDateBusinessCenter"
+    "display": "UnderlyingSettlMethodElectionDateBusinessCenter",
+    "fix:tag": "708860"
   }
 }

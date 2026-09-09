@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingDeliveryScheduleSettlDays(41770) > 0.",
     "display": "UnderlyingDeliveryScheduleSettlDayGrp",
     "fix:component": "underlyingdeliveryschedulesettldaycomponent",
-    "fix:counter": "41770"
+    "fix:counter": "41770",
+    "fix:tag": "931678"
   }
 }

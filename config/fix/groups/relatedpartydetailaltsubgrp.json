@@ -18,6 +18,7 @@
     "description": "Required when NoRelatedPartyDetailAltSubIDs > 0.",
     "display": "RelatedPartyDetailAltSubGrp",
     "fix:component": "relatedpartydetailaltsub",
-    "fix:counter": "1572"
+    "fix:counter": "1572",
+    "fix:tag": "551324"
   }
 }

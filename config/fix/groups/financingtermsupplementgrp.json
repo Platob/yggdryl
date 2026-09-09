@@ -18,6 +18,7 @@
     "description": "Required if NoFinancingTermSupplements(40046) > 0.",
     "display": "FinancingTermSupplementGrp",
     "fix:component": "financingtermsupplement",
-    "fix:counter": "40046"
+    "fix:counter": "40046",
+    "fix:tag": "746088"
   }
 }

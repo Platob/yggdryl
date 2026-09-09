@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStubEndDateBusinessCenter"
+    "display": "UnderlyingPaymentStubEndDateBusinessCenter",
+    "fix:tag": "738773"
   }
 }

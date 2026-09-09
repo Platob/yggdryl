@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingDeliveryScheduleSettlTimes(41773) > 0.",
     "display": "UnderlyingDeliveryScheduleSettlTimeGrp",
     "fix:component": "underlyingdeliveryschedulesettltime",
-    "fix:counter": "41773"
+    "fix:counter": "41773",
+    "fix:tag": "268662"
   }
 }

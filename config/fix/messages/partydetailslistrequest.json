@@ -159,6 +159,7 @@
   "metadata": {
     "description": "MsgType = CF",
     "display": "PartyDetailsListRequest",
-    "fix:msgtype": "CF"
+    "fix:msgtype": "CF",
+    "fix:tag": "270673"
   }
 }

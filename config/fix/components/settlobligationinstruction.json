@@ -207,6 +207,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlObligationInstruction"
+    "display": "SettlObligationInstruction",
+    "fix:tag": "559300"
   }
 }

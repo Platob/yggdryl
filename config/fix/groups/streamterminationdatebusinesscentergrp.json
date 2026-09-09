@@ -18,6 +18,7 @@
     "description": "Required if NoStreamTerminationDateBusinessCenters(40961) > 0.",
     "display": "StreamTerminationDateBusinessCenterGrp",
     "fix:component": "streamterminationdatebusinesscentercomponent",
-    "fix:counter": "40961"
+    "fix:counter": "40961",
+    "fix:tag": "901076"
   }
 }

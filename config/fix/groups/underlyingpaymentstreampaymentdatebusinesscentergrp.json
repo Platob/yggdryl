@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPaymentStreamPaymentDateBusinessCenters(40969) > 0.",
     "display": "UnderlyingPaymentStreamPaymentDateBusinessCenterGrp",
     "fix:component": "underlyingpaymentstreampaymentdatebusinesscentercomponent",
-    "fix:counter": "40969"
+    "fix:counter": "40969",
+    "fix:tag": "1017682"
   }
 }

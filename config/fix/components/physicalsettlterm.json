@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PhysicalSettlTerm"
+    "display": "PhysicalSettlTerm",
+    "fix:tag": "1074179"
   }
 }

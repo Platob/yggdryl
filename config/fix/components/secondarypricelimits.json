@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SecondaryPriceLimits"
+    "display": "SecondaryPriceLimits",
+    "fix:tag": "460176"
   }
 }

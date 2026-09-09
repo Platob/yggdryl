@@ -18,6 +18,7 @@
     "description": "Required if NoReturnRateValuationDateBusinessCenters(42770) > 0.",
     "display": "ReturnRateValuationDateBusinessCenterGrp",
     "fix:component": "returnratevaluationdatebusinesscentercomponent",
-    "fix:counter": "42770"
+    "fix:counter": "42770",
+    "fix:tag": "811431"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoEntitlementAttrib(1777) > 0.",
     "display": "EntitlementAttribGrp",
     "fix:component": "entitlementattrib",
-    "fix:counter": "1777"
+    "fix:counter": "1777",
+    "fix:tag": "754928"
   }
 }

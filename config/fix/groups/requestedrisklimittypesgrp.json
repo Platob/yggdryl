@@ -18,6 +18,7 @@
     "description": "Required if NoRequestedRiskLimitType > 0.",
     "display": "RequestedRiskLimitTypesGrp",
     "fix:component": "requestedrisklimittype",
-    "fix:counter": "1668"
+    "fix:counter": "1668",
+    "fix:tag": "878988"
   }
 }

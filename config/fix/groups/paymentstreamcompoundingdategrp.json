@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentStreamCompoundingDates(42606) > 0.",
     "display": "PaymentStreamCompoundingDateGrp",
     "fix:component": "paymentstreamcompoundingdatecomponent",
-    "fix:counter": "42606"
+    "fix:counter": "42606",
+    "fix:tag": "1065651"
   }
 }

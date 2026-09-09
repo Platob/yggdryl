@@ -41,13 +41,15 @@
 //!
 //! `part` (so a `header` constraint and a `body` constraint sit as siblings
 //! in one flat struct), `activated`, `read-only`, `ref`, `checkordering`,
-//! `rg-name` beyond naming its group, `condition` and every `expression`,
+//! `rg-name` beyond naming its group, `condition` and every `expression`
+//! beyond the one tag a mapping refers to,
 //! `regexp`, `domain`, every range and sentinel, every validity element,
 //! `merge-mode` (so a file patching a base configuration is read standalone),
 //! a `message-type`'s `supported` and `rejection`, `history`, `cvs-revision`,
-//! the root's `description`, `normalization-binding`, `reject-binding`,
-//! `flow-filter-binding`, `options`, `noe-normalization-binding`, and
-//! the root's own `version`, `date` and `logs`.
+//! the root's `description`, `normalization-binding` beyond the names it
+//! spells, `reject-binding`, `flow-filter-binding`, `options`,
+//! `noe-normalization-binding`, and the root's own `version`, `date` and
+//! `logs`.
 //!
 //! A CBlock's generic numeric types may disagree with the FIX dictionary.
 //! For example, its `float` resolves to float32 while FIX `AvgPx` is float64.
@@ -69,6 +71,43 @@
 //! `description` children describe it, escaped or in a CDATA section, and two
 //! of them are two sentences: a sibling's text, and a validity child's own
 //! `description`, are that element's.
+//!
+//! # What a normalization spells a tag with
+//!
+//! A `vocabulary-tag` states what a tag *is*; a `normalization-binding`
+//! states, over and over, what this counterparty *calls* it. Only the second
+//! half is read, and only where the file states it plainly: a
+//! `tag-normalization` whose mapping is one bare `$602` and nothing else says
+//! that its `tag-name` is another spelling of tag 602, so the spelling is
+//! added to that tag as an alias. The vocabulary keeps the name.
+//!
+//! Everything else in the binding is read past, because everything else is a
+//! computation this layer has no evaluator for. `lookup("SecurityIDSource",
+//! $603)` decodes a value rather than naming a tag. A `mapping-condition`
+//! makes the name conditional, and a name that means a tag only sometimes is
+//! not another spelling of it: `LEGISINCODE` is `$602` under `$603 = "4"` and
+//! `LEGEXCHANGECODE` is the same `$602` under `$603 = "8"`, so taking either
+//! would give tag 602 two names it answers to unconditionally and neither of
+//! them what the file said. Two expressions under one mapping are a
+//! construction and name nothing either. Neither is `rg-name`, which names a
+//! repeating group rather than the counter tag beside it - and a binding that
+//! nests one spells that counter plainly in its own `tag-normalization`
+//! anyway. `noe-normalization-binding` keeps its own name for the same
+//! reason it keeps everything else: nothing says it spells a tag the way this
+//! one does.
+//!
+//! Most of what a real binding spells is a name the tag already answers to,
+//! and those add nothing: resolution folds ASCII case, so a
+//! `tag-name="LEGSECURITYID"` over a tag the vocabulary spelled
+//! `LegSecurityID` is a spelling that already resolves. What is left is what
+//! this is worth reading for - a tag whose `vocabulary-tag` declared no `alt`
+//! is named by its own decimal tag, and the normalization is then the only
+//! place the file says what it is called.
+//!
+//! No name is refused. A tag outside the vocabulary, a spelling another tag
+//! already answers to, a spelling the core could not store: each drops that
+//! one name, because a binding otherwise read past is not a place to refuse a
+//! dictionary from.
 //!
 //! # Every message type the file names
 //!
@@ -128,6 +167,7 @@ use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
+use crate::types::normalized;
 use crate::{DataType, Error, Field, FixField, IOBase, Result, Url, Version};
 
 use super::{FixBranch, FixCode, FixId, FixRegistry, MSGTYPE_TAG};
@@ -286,6 +326,25 @@ struct Parse<'doc> {
     values: std::collections::HashMap<SmolStr, usize>,
     spellings: std::collections::HashMap<String, usize>,
     roots: Vec<Field>,
+    /// The names the normalization bindings spell for a tag, in declaration
+    /// order.
+    ///
+    /// Collected rather than attached as they arrive, for the reason the
+    /// message types are: a normalization is checked against the whole
+    /// vocabulary - the tag it names, what that tag is already called, and
+    /// what every other tag answers to - and a file is free to spell one
+    /// before it declares the other.
+    named: Vec<Spelled>,
+}
+
+/// One name a `tag-normalization` stated for a tag.
+struct Spelled {
+    tag: i32,
+    /// The name as the file spelled it, which is the spelling stored.
+    name: String,
+    /// The byte the reader had reached, so a refusal names this element
+    /// rather than the end of the file.
+    position: usize,
 }
 
 /// One `vocabulary-tag` as the file declared it.
@@ -318,6 +377,7 @@ impl<'doc> Parse<'doc> {
             values: std::collections::HashMap::new(),
             spellings: std::collections::HashMap::new(),
             roots: Vec::new(),
+            named: Vec::new(),
         }
     }
 
@@ -448,6 +508,8 @@ impl<'doc> Parse<'doc> {
                     {
                         let name = local_name(&element);
                         self.read_msgtype_mappings(&name)?;
+                    } else if is_named(&element, b"normalization-binding") {
+                        self.read_normalization_binding()?;
                     } else {
                         // Skipped siblings are routinely deep and text-bearing,
                         // so this counts depth rather than assuming a child set.
@@ -464,7 +526,8 @@ impl<'doc> Parse<'doc> {
             }
             buffer.clear();
         }
-        self.attach_msgtypes()
+        self.attach_msgtypes()?;
+        self.attach_names()
     }
 
     /// Reads the branch record the root element carries.
@@ -1073,6 +1136,251 @@ impl<'doc> Parse<'doc> {
         })
     }
 
+    /// Reads every `tag-normalization` a `normalization-binding` states, for
+    /// the names it spells its tags with.
+    ///
+    /// A binding nests: a repeating group's members sit inside a
+    /// `normalization` of their own, and that one sits beside its siblings
+    /// rather than under them. Depth is counted rather than assumed, and a
+    /// `tag-normalization` is read wherever it appears, because a name a
+    /// group's member is spelled with is that member's name.
+    ///
+    /// Everything else the binding holds is read past. `type` is not read at
+    /// either level - the corpus writes a message type there and writes a
+    /// direction there - because a name is a name whichever way the file was
+    /// binding it, and reading the attribute would only make this parser
+    /// choose between two readings it has no evaluator to check.
+    fn read_normalization_binding(&mut self) -> Result<()> {
+        let mut buffer = Vec::new();
+        let mut depth = 0_usize;
+        loop {
+            let event = self
+                .reader
+                .read_event_into(&mut buffer)
+                .map_err(|error| self.malformed(&error.to_string()))?;
+            match event {
+                Event::Eof => return Err(self.unclosed("normalization-binding")),
+                Event::Start(element) if is_named(&element, b"tag-normalization") => {
+                    // Owned because the mapping is read before the attribute
+                    // is, and reading it moves the reader off this element.
+                    let element = element.into_owned();
+                    let mapped = self.read_mapping()?;
+                    self.push_spelling(&element, mapped)?;
+                }
+                // One that closes on itself maps nothing, so it names nothing.
+                Event::Empty(_) => {}
+                Event::Start(_) => depth += 1,
+                Event::End(element) => {
+                    if is_named(&element, b"normalization-binding") && depth == 0 {
+                        break;
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+            buffer.clear();
+        }
+        Ok(())
+    }
+
+    /// The tag one `tag-normalization` states its name for, where it states
+    /// one and computes nothing.
+    ///
+    /// A `mapping-condition` is what makes a mapping conditional, and a name
+    /// that means a tag only when another tag holds a particular value is not
+    /// another spelling of it: `LEGISINCODE` is `$602` under `$603 = "4"` and
+    /// `LEGEXCHANGECODE` is the same `$602` under `$603 = "8"`, so taking
+    /// either as a name for tag 602 would give that tag two names it answers
+    /// to unconditionally and neither of them what the file said. A
+    /// conditional mapping therefore names nothing here.
+    ///
+    /// Two expressions name nothing either. One is a mapping and several are
+    /// a construction, and this layer holds no evaluator to say what the
+    /// construction would come to.
+    fn read_mapping(&mut self) -> Result<Option<i32>> {
+        let mut buffer = Vec::new();
+        let mut depth = 0_usize;
+        // The two facts a mapping is read for. `mapping` counts the
+        // expressions under `mapping-expression` so a second one is a
+        // construction rather than a replacement of the first.
+        let mut conditional = false;
+        let mut mapping = 0_usize;
+        let mut mapped = None;
+        // Where in the element the reader is: only a `mapping-expression`'s
+        // own `expression` maps, and a `mapping-condition` carries the same
+        // element name for the opposite purpose.
+        let mut mapping_at = None;
+        loop {
+            let event = self
+                .reader
+                .read_event_into(&mut buffer)
+                .map_err(|error| self.malformed(&error.to_string()))?;
+            let element = match &event {
+                Event::Start(element) | Event::Empty(element) => Some(element),
+                _ => None,
+            };
+            if let Some(element) = element {
+                if is_named(element, b"mapping-condition") {
+                    // An empty one states no condition, exactly as an empty
+                    // `condition-expression` does.
+                    conditional |= matches!(event, Event::Start(_));
+                } else if is_named(element, b"mapping-expression")
+                    && mapping_at.is_none()
+                    && matches!(event, Event::Start(_))
+                {
+                    // One that closes on itself holds no expression, so there
+                    // is no level under it for one to be read at.
+                    mapping_at = Some(depth);
+                } else if is_named(element, b"expression")
+                    && mapping_at.is_some_and(|at| at + 1 == depth)
+                {
+                    mapping += 1;
+                    if mapping == 1 {
+                        mapped = self
+                            .attribute(element, "value")?
+                            .as_deref()
+                            .and_then(referenced);
+                    }
+                }
+            }
+            match event {
+                Event::Eof => return Err(self.unclosed("tag-normalization")),
+                Event::Start(_) => depth += 1,
+                Event::End(_) if depth == 0 => break,
+                Event::End(_) => {
+                    depth -= 1;
+                    if mapping_at == Some(depth) {
+                        mapping_at = None;
+                    }
+                }
+                _ => {}
+            }
+            buffer.clear();
+        }
+        Ok(mapped.filter(|_| !conditional && mapping == 1))
+    }
+
+    /// One `tag-normalization` as a name its tag is spelled with.
+    ///
+    /// An absent or empty `tag-name` says nothing, exactly as an absent map
+    /// entry attribute does, and a mapping that names no single tag has no
+    /// tag to spell - both drop the element rather than refuse the file,
+    /// because a binding this parser otherwise reads past is not a place to
+    /// refuse a whole dictionary from.
+    fn push_spelling(&mut self, element: &BytesStart<'_>, tag: Option<i32>) -> Result<()> {
+        let name = self
+            .attribute(element, "tag-name")?
+            .map(|held| held.trim().to_owned())
+            .filter(|held| !held.is_empty());
+        let (Some(tag), Some(name)) = (tag, name) else {
+            return Ok(());
+        };
+        self.named.push(Spelled {
+            tag,
+            name,
+            position: self.position(),
+        });
+        Ok(())
+    }
+
+    /// Attaches every name a normalization spelled to the tag it spelled it
+    /// for.
+    ///
+    /// The vocabulary owns what a tag is called and this only adds spellings
+    /// beside it, so every name arrives as an alias and none replaces a name.
+    /// Which is the whole of what it is worth reading for: a `vocabulary-tag`
+    /// declaring no `alt` is named by its own decimal tag, and the
+    /// normalization is then the only place the file says what that tag is
+    /// called.
+    ///
+    /// Four names are dropped rather than stored, and none of them is a
+    /// defect in the file:
+    ///
+    /// - one the tag already answers to. A name resolves through ASCII case,
+    ///   so `LEGSECURITYID` already reaches a tag the vocabulary spelled
+    ///   `LegSecurityID` and an alias for it would store a spelling that
+    ///   resolves without one. Most of a real binding is this case.
+    /// - one the tag already carries as an alias, because a file spells a tag
+    ///   in as many normalizations as it maps the tag in.
+    /// - one another tag in the same branch already answers to, canonically
+    ///   or as an alias. Two fields one spelling reaches resolve to neither,
+    ///   so the second claim is dropped exactly as a map entry's second claim
+    ///   on one name is - and a dictionary that refuses the whole file over
+    ///   it would refuse a document nothing is wrong with.
+    /// - one carrying the separator a stored alias list is rendered with,
+    ///   which is the one spelling the core cannot hold.
+    ///
+    /// A branch is what scopes the third: a CBlock's standard tags land in
+    /// the standard branch and its user-range tags in the named one, so two
+    /// tags may share a spelling across the two without either losing it.
+    ///
+    /// The two tests fold differently, and the dictionary is why. What a tag
+    /// *already answers to* is decided by ASCII case, because that is what
+    /// resolution rechecks a name with - so `LEG_SECURITY_ID` is a spelling
+    /// tag 602 does not answer to and is worth storing even where
+    /// `LEGSECURITYID` is not. What is *already claimed* is decided by the
+    /// whole fold, separators included, because that is what the alias index
+    /// keys on: two spellings one key reaches are one claim however they are
+    /// punctuated, and the second would be refused rather than shadowed.
+    fn attach_names(&mut self) -> Result<()> {
+        if self.named.is_empty() {
+            return Ok(());
+        }
+        // Indexed rather than scanned, for the reason the vocabulary is: a
+        // real binding spells thousands of names against a vocabulary of
+        // thousands, and a scan per name is the parse squared.
+        let mut claimed: std::collections::HashMap<(bool, String), usize> =
+            std::collections::HashMap::new();
+        for (at, held) in self.vocabulary.iter().enumerate() {
+            let venue = !self.owner(held.tag).is_standard();
+            let field = &held.field;
+            for spelling in [field.name(), spelled(field)] {
+                claimed.insert((venue, normalized(spelling)), at);
+            }
+            for alias in field.as_fix().aliases() {
+                claimed.insert((venue, normalized(alias)), at);
+            }
+        }
+        for held in std::mem::take(&mut self.named) {
+            let Spelled {
+                tag,
+                name,
+                position,
+            } = held;
+            let Some(at) = self.positions.get(&tag).copied() else {
+                continue;
+            };
+            if name.contains(',') {
+                continue;
+            }
+            let key = (!self.owner(tag).is_standard(), normalized(&name));
+            if claimed.get(&key).is_some_and(|held| *held != at) {
+                continue;
+            }
+            let field = &mut self.vocabulary[at].field;
+            if name.eq_ignore_ascii_case(field.name()) || name.eq_ignore_ascii_case(spelled(field))
+            {
+                continue;
+            }
+            let mut aliases: Vec<SmolStr> = field.as_fix().aliases().map(SmolStr::new).collect();
+            if aliases.iter().any(|held| name.eq_ignore_ascii_case(held)) {
+                continue;
+            }
+            aliases.push(SmolStr::new(&name));
+            field.as_fix_mut().set_aliases(&aliases).map_err(|error| {
+                refusal(
+                    position,
+                    format_smolstr!(
+                        "tag {tag} spelled {:?}: {error}",
+                        elide_to(&name, ERROR_TEXT_LIMIT)
+                    ),
+                )
+            })?;
+            claimed.insert(key, at);
+        }
+        Ok(())
+    }
+
     /// Reads one `grammar-binding` into one message root.
     ///
     /// The root is a non-null struct named by the binding's `type` verbatim,
@@ -1523,6 +1831,26 @@ fn refusal(position: usize, reason: SmolStr) -> Error {
 /// in what the reader answers - only the space in front of it, which goes.
 fn spelling(element: &BytesStart<'_>) -> String {
     format!("<{}>", String::from_utf8_lossy(element).trim_end())
+}
+
+/// The tag one mapping expression refers to, where it refers to one and
+/// computes nothing.
+///
+/// `$602` is tag 602 and is the whole expression, so the name it is mapped to
+/// is another spelling of that tag. Every other form mentions a tag without
+/// being its name: `lookup("SecurityIDSource", $603)` decodes the value tag
+/// 603 carries, `$603 = "4"` tests it, and a bare word refers to something
+/// this file names elsewhere. None of them is a tag, and this layer holds no
+/// evaluator to say what they would come to.
+///
+/// Trimmed, because a CBlock leaves the space it wrapped an attribute with -
+/// `value="$609 "` is tag 609 written by an editor.
+fn referenced(value: &str) -> Option<i32> {
+    let held = value.trim().strip_prefix('$')?;
+    if held.is_empty() || !held.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    held.parse().ok()
 }
 
 /// The wire value one declared message type carries.

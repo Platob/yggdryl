@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingComplexEventPeriodDateTimes(41726) > 0.",
     "display": "UnderlyingComplexEventPeriodDateGrp",
     "fix:component": "underlyingcomplexeventperioddatecomponent",
-    "fix:counter": "41726"
+    "fix:counter": "41726",
+    "fix:tag": "1045232"
   }
 }

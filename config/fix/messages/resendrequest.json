@@ -49,6 +49,7 @@
   "metadata": {
     "description": "MsgType = 2",
     "display": "ResendRequest",
-    "fix:msgtype": "2"
+    "fix:msgtype": "2",
+    "fix:tag": "438212"
   }
 }

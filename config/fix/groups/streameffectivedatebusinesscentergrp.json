@@ -18,6 +18,7 @@
     "description": "Required if NoStreamEffectiveDateBusinessCenters(40960) > 0.",
     "display": "StreamEffectiveDateBusinessCenterGrp",
     "fix:component": "streameffectivedatebusinesscentercomponent",
-    "fix:counter": "40960"
+    "fix:counter": "40960",
+    "fix:tag": "261815"
   }
 }

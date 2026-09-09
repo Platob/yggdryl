@@ -18,6 +18,7 @@
     "description": "Required when NoInstrumentScopeSecurityAltID > 0.",
     "display": "InstrumentScopeSecurityAltIDGrp",
     "fix:component": "instrumentscopesecurityaltidcomponent",
-    "fix:counter": "1540"
+    "fix:counter": "1540",
+    "fix:tag": "265445"
   }
 }

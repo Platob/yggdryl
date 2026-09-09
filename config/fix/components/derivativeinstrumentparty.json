@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeInstrumentParty"
+    "display": "DerivativeInstrumentParty",
+    "fix:tag": "493050"
   }
 }

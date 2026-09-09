@@ -18,6 +18,7 @@
     "description": "Repeating group below should contain unique combinations of Nested3PartyID, Nested3PartyIDSource, and Nested3PartyRole",
     "display": "NestedParties3",
     "fix:component": "nestedparty3",
-    "fix:counter": "948"
+    "fix:counter": "948",
+    "fix:tag": "944194"
   }
 }

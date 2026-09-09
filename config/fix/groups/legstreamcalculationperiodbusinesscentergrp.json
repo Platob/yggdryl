@@ -18,6 +18,7 @@
     "description": "Required if NoLegStreamCalculationPeriodBusinessCenters(40940) > 0.",
     "display": "LegStreamCalculationPeriodBusinessCenterGrp",
     "fix:component": "legstreamcalculationperiodbusinesscentercomponent",
-    "fix:counter": "40940"
+    "fix:counter": "40940",
+    "fix:tag": "358915"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Repeating group below should contain unique combinations of LegInstrumentPartyID(2255), LegInstrumentPartyIDSource(2256) and LegInstrumentPartyRole(2257).",
     "display": "LegInstrumentParties",
     "fix:component": "leginstrumentparty",
-    "fix:counter": "2254"
+    "fix:counter": "2254",
+    "fix:tag": "290834"
   }
 }

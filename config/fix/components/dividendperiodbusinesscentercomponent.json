@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "DividendPeriodBusinessCenter"
+    "display": "DividendPeriodBusinessCenter",
+    "fix:tag": "662642"
   }
 }

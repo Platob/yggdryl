@@ -49,6 +49,7 @@
   "metadata": {
     "description": "MsgType = DZ",
     "display": "PayManagementRequestAck",
-    "fix:msgtype": "DZ"
+    "fix:msgtype": "DZ",
+    "fix:tag": "763407"
   }
 }

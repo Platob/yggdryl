@@ -248,6 +248,7 @@
   "nullable": false,
   "metadata": {
     "description": "May be used to identify the trade via the known Confirmation(35=AK) message.",
-    "display": "SettlTradeDetails"
+    "display": "SettlTradeDetails",
+    "fix:tag": "1036155"
   }
 }

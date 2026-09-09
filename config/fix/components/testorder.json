@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TestOrder"
+    "display": "TestOrder",
+    "fix:tag": "108569"
   }
 }

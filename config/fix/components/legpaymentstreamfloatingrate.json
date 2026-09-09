@@ -888,6 +888,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when LegPaymentStreamRateIndexIDSource(43089) is specified.",
-    "display": "LegPaymentStreamFloatingRate"
+    "display": "LegPaymentStreamFloatingRate",
+    "fix:tag": "275514"
   }
 }

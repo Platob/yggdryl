@@ -18,6 +18,7 @@
     "description": "Required if NoTradeAllocAmts(1844) > 0.",
     "display": "TradeAllocAmtGrp",
     "fix:component": "tradeallocamtcomponent",
-    "fix:counter": "1844"
+    "fix:counter": "1844",
+    "fix:tag": "926984"
   }
 }

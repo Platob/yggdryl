@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TargetParty"
+    "display": "TargetParty",
+    "fix:tag": "797786"
   }
 }

@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StatsInd"
+    "display": "StatsInd",
+    "fix:tag": "816239"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoStreamCommodityAltIDs(41277) > 0.",
     "display": "StreamCommodityAltIDGrp",
     "fix:component": "streamcommodityaltidcomponent",
-    "fix:counter": "41277"
+    "fix:counter": "41277",
+    "fix:tag": "961234"
   }
 }

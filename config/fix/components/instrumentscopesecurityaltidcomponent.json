@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrumentScopeSecurityAltID"
+    "display": "InstrumentScopeSecurityAltID",
+    "fix:tag": "956709"
   }
 }

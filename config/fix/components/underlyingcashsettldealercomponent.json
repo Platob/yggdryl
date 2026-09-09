@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingCashSettlDealer"
+    "display": "UnderlyingCashSettlDealer",
+    "fix:tag": "386201"
   }
 }

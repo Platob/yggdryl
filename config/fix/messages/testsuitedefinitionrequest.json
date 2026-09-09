@@ -209,6 +209,7 @@
   "metadata": {
     "description": "MsgType = EL",
     "display": "TestSuiteDefinitionRequest",
-    "fix:msgtype": "EL"
+    "fix:msgtype": "EL",
+    "fix:tag": "371736"
   }
 }

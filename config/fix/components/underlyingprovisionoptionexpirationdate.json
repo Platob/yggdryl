@@ -118,6 +118,7 @@
   "nullable": false,
   "metadata": {
     "description": "When specified, this overrides the busienss day convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument. The specified value would be specific to this instance of the provisional option expiration date.",
-    "display": "UnderlyingProvisionOptionExpirationDate"
+    "display": "UnderlyingProvisionOptionExpirationDate",
+    "fix:tag": "455885"
   }
 }

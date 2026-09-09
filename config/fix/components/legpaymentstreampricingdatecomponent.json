@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentStreamPricingDate"
+    "display": "LegPaymentStreamPricingDate",
+    "fix:tag": "498649"
   }
 }

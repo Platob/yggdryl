@@ -18,6 +18,7 @@
     "description": "Number of limit amount occurrences.",
     "display": "LimitAmts",
     "fix:component": "limitamtcomponent",
-    "fix:counter": "1630"
+    "fix:counter": "1630",
+    "fix:tag": "544399"
   }
 }

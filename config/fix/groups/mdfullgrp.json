@@ -18,6 +18,7 @@
     "description": "Number of entries following.",
     "display": "MDFullGrp",
     "fix:component": "mdfull",
-    "fix:counter": "268"
+    "fix:counter": "268",
+    "fix:tag": "746229"
   }
 }

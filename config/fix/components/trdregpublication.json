@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdRegPublication"
+    "display": "TrdRegPublication",
+    "fix:tag": "867614"
   }
 }

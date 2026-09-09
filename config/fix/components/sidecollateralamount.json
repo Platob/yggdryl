@@ -177,6 +177,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SideCollateralAmount"
+    "display": "SideCollateralAmount",
+    "fix:tag": "417014"
   }
 }

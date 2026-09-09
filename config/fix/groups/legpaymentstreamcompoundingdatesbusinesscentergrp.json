@@ -18,6 +18,7 @@
     "description": "Required if NoLegPaymentStreamCompoundingDatesBusinessCenters(42419) > 0.",
     "display": "LegPaymentStreamCompoundingDatesBusinessCenterGrp",
     "fix:component": "legpaymentstreamcompoundingdatesbusinesscentercomponent",
-    "fix:counter": "42419"
+    "fix:counter": "42419",
+    "fix:tag": "679160"
   }
 }

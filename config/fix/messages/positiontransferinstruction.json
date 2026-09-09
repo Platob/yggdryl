@@ -289,6 +289,7 @@
   "metadata": {
     "description": "MsgType = DL",
     "display": "PositionTransferInstruction",
-    "fix:msgtype": "DL"
+    "fix:msgtype": "DL",
+    "fix:tag": "351138"
   }
 }

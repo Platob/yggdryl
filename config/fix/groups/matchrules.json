@@ -18,6 +18,7 @@
     "description": "Required if NoMatchRules(1235) > 0.",
     "display": "MatchRules",
     "fix:component": "matchrule",
-    "fix:counter": "1235"
+    "fix:counter": "1235",
+    "fix:tag": "108286"
   }
 }

@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamCalculationPeriodBusinessCenter"
+    "display": "UnderlyingStreamCalculationPeriodBusinessCenter",
+    "fix:tag": "958525"
   }
 }

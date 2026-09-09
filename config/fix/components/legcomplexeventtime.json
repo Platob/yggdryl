@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventTime"
+    "display": "LegComplexEventTime",
+    "fix:tag": "750520"
   }
 }

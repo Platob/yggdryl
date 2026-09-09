@@ -18,6 +18,7 @@
     "description": "Required if NoReturnRateFXConversions(42731) > 0.",
     "display": "ReturnRateFXConversionGrp",
     "fix:component": "returnratefxconversion",
-    "fix:counter": "42731"
+    "fix:counter": "42731",
+    "fix:tag": "327598"
   }
 }

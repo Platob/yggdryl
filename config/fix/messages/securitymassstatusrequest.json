@@ -109,6 +109,7 @@
   "metadata": {
     "description": "MsgType = CN",
     "display": "SecurityMassStatusRequest",
-    "fix:msgtype": "CN"
+    "fix:msgtype": "CN",
+    "fix:tag": "995544"
   }
 }

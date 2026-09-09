@@ -99,6 +99,7 @@
   "metadata": {
     "description": "MsgType = EM",
     "display": "TestSuiteDefinitionRequestAck",
-    "fix:msgtype": "EM"
+    "fix:msgtype": "EM",
+    "fix:tag": "1056207"
   }
 }

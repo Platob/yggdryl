@@ -149,6 +149,7 @@
   "metadata": {
     "description": "MsgType = EP",
     "display": "TestActionReport",
-    "fix:msgtype": "EP"
+    "fix:msgtype": "EP",
+    "fix:tag": "948265"
   }
 }

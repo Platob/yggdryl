@@ -118,6 +118,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when UnderlyingComplexEventDateOffsetUnit(41742) is specified.",
-    "display": "UnderlyingComplexEventRelativeDate"
+    "display": "UnderlyingComplexEventRelativeDate",
+    "fix:tag": "966005"
   }
 }

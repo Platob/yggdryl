@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentStreamPricingDates(41593) > 0.",
     "display": "LegPaymentStreamPricingDateGrp",
     "fix:component": "legpaymentstreampricingdatecomponent",
-    "fix:counter": "41593"
+    "fix:counter": "41593",
+    "fix:tag": "1012726"
   }
 }

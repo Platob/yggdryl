@@ -159,6 +159,7 @@
   "metadata": {
     "description": "MsgType = g (lowercase G)",
     "display": "TradingSessionStatusRequest",
-    "fix:msgtype": "g"
+    "fix:msgtype": "g",
+    "fix:tag": "1065670"
   }
 }

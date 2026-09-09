@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TradePositionQty"
+    "display": "TradePositionQty",
+    "fix:tag": "202639"
   }
 }

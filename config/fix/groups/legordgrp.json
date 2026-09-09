@@ -18,6 +18,7 @@
     "description": "Required if NoLegs(555) > 0.",
     "display": "LegOrdGrp",
     "fix:component": "legord",
-    "fix:counter": "555"
+    "fix:counter": "555",
+    "fix:tag": "968102"
   }
 }

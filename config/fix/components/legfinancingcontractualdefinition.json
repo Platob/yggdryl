@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegFinancingContractualDefinition"
+    "display": "LegFinancingContractualDefinition",
+    "fix:tag": "229307"
   }
 }

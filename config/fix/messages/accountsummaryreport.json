@@ -239,6 +239,7 @@
   "metadata": {
     "description": "MsgType = CQ",
     "display": "AccountSummaryReport",
-    "fix:msgtype": "CQ"
+    "fix:msgtype": "CQ",
+    "fix:tag": "339355"
   }
 }

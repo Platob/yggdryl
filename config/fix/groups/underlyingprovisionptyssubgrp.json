@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingProvisionPartySubIDs(42177) > 0.",
     "display": "UnderlyingProvisionPtysSubGrp",
     "fix:component": "underlyingprovisionptyssub",
-    "fix:counter": "42177"
+    "fix:counter": "42177",
+    "fix:tag": "796447"
   }
 }

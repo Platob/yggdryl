@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "OptionExerciseExpirationDate"
+    "display": "OptionExerciseExpirationDate",
+    "fix:tag": "926470"
   }
 }

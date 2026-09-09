@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingOptionExerciseBusinessCenter"
+    "display": "UnderlyingOptionExerciseBusinessCenter",
+    "fix:tag": "821767"
   }
 }

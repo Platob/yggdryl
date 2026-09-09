@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "description": "Required if AllocSettlInstType = 1 or 2",
-    "display": "SettlInstructionsData"
+    "display": "SettlInstructionsData",
+    "fix:tag": "663706"
   }
 }

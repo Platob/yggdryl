@@ -229,6 +229,7 @@
   "metadata": {
     "description": "MsgType = EH",
     "display": "AlgoCertificateRequest",
-    "fix:msgtype": "EH"
+    "fix:msgtype": "EH",
+    "fix:tag": "130290"
   }
 }

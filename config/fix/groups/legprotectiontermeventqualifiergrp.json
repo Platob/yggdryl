@@ -18,6 +18,7 @@
     "description": "Required if NoLegProtectionTermEventQualifiers(41633) > 0.",
     "display": "LegProtectionTermEventQualifierGrp",
     "fix:component": "legprotectiontermeventqualifiercomponent",
-    "fix:counter": "41633"
+    "fix:counter": "41633",
+    "fix:tag": "202554"
   }
 }

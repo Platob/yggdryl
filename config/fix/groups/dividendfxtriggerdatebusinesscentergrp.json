@@ -18,6 +18,7 @@
     "description": "Required if NoDividendFXTriggerDateBusinessCenters(42272) > 0.",
     "display": "DividendFXTriggerDateBusinessCenterGrp",
     "fix:component": "dividendfxtriggerdatebusinesscentercomponent",
-    "fix:counter": "42272"
+    "fix:counter": "42272",
+    "fix:tag": "147672"
   }
 }

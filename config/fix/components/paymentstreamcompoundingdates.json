@@ -178,6 +178,7 @@
   "nullable": false,
   "metadata": {
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to payment stream compounding dates.",
-    "display": "PaymentStreamCompoundingDates"
+    "display": "PaymentStreamCompoundingDates",
+    "fix:tag": "616157"
   }
 }

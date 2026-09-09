@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentSchedules(40828) > 0.",
     "display": "PaymentScheduleGrp",
     "fix:component": "paymentschedule",
-    "fix:counter": "40828"
+    "fix:counter": "40828",
+    "fix:tag": "436419"
   }
 }

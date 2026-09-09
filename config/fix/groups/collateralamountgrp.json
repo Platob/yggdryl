@@ -18,6 +18,7 @@
     "description": "Required if NoCollateralAmounts(1703) > 0.",
     "display": "CollateralAmountGrp",
     "fix:component": "collateralamount",
-    "fix:counter": "1703"
+    "fix:counter": "1703",
+    "fix:tag": "485329"
   }
 }

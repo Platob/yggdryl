@@ -179,6 +179,7 @@
   "metadata": {
     "description": "MsgType = CV",
     "display": "PartyEntitlementsReport",
-    "fix:msgtype": "CV"
+    "fix:msgtype": "CV",
+    "fix:tag": "1084522"
   }
 }

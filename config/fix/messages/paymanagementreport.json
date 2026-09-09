@@ -279,6 +279,7 @@
   "metadata": {
     "description": "MsgType = EA",
     "display": "PayManagementReport",
-    "fix:msgtype": "EA"
+    "fix:msgtype": "EA",
+    "fix:tag": "673100"
   }
 }

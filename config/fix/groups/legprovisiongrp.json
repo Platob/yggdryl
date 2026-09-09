@@ -18,6 +18,7 @@
     "description": "Required if NoLegProvisions(40448) > 0.",
     "display": "LegProvisionGrp",
     "fix:component": "legprovision",
-    "fix:counter": "40448"
+    "fix:counter": "40448",
+    "fix:tag": "1009372"
   }
 }

@@ -209,6 +209,7 @@
   "metadata": {
     "description": "MsgType = u (lowercase U)",
     "display": "CrossOrderCancelRequest",
-    "fix:msgtype": "u"
+    "fix:msgtype": "u",
+    "fix:tag": "109341"
   }
 }

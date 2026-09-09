@@ -378,6 +378,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when LegStreamCommoditySecurityIDSource(41651) is specified.",
-    "display": "LegStreamCommodity"
+    "display": "LegStreamCommodity",
+    "fix:tag": "571976"
   }
 }

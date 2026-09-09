@@ -18,6 +18,7 @@
     "description": "Number of Distribution instructions in this message (number of repeating groups to follow)",
     "display": "RgstDistInstGrp",
     "fix:component": "rgstdistinst",
-    "fix:counter": "510"
+    "fix:counter": "510",
+    "fix:tag": "377394"
   }
 }

@@ -157,6 +157,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDeliverySchedule"
+    "display": "UnderlyingDeliverySchedule",
+    "fix:tag": "962436"
   }
 }

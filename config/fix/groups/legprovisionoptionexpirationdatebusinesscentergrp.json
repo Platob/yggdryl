@@ -18,6 +18,7 @@
     "description": "Required if NoLegProvisionOptionExpirationDateBusinessCenters(40937) > 0.",
     "display": "LegProvisionOptionExpirationDateBusinessCenterGrp",
     "fix:component": "legprovisionoptionexpirationdatebusinesscentercomponent",
-    "fix:counter": "40937"
+    "fix:counter": "40937",
+    "fix:tag": "425218"
   }
 }

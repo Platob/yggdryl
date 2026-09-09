@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "OrderAggregation"
+    "display": "OrderAggregation",
+    "fix:tag": "883544"
   }
 }

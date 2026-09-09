@@ -18,6 +18,7 @@
     "description": "Required if NoAllocCommissions(2653) > 0.",
     "display": "AllocCommissionDataGrp",
     "fix:component": "alloccommissiondata",
-    "fix:counter": "2653"
+    "fix:counter": "2653",
+    "fix:tag": "545842"
   }
 }

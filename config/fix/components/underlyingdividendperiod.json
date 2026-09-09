@@ -217,6 +217,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDividendPeriod"
+    "display": "UnderlyingDividendPeriod",
+    "fix:tag": "396238"
   }
 }

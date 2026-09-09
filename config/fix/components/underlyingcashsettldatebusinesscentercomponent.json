@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingCashSettlDateBusinessCenter"
+    "display": "UnderlyingCashSettlDateBusinessCenter",
+    "fix:tag": "747382"
   }
 }

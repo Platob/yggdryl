@@ -317,6 +317,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentStub"
+    "display": "PaymentStub",
+    "fix:tag": "1072305"
   }
 }

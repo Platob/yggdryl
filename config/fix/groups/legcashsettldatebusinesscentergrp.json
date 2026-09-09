@@ -18,6 +18,7 @@
     "description": "Required if NoLegCashSettlDateBusinessCenters(42306) > 0.",
     "display": "LegCashSettlDateBusinessCenterGrp",
     "fix:component": "legcashsettldatebusinesscentercomponent",
-    "fix:counter": "42306"
+    "fix:counter": "42306",
+    "fix:tag": "740563"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoLegProvisionCashSettlPaymentDateBusinessCenters(40934) > 0.",
     "display": "LegProvisionCashSettlPaymentDateBusinessCenterGrp",
     "fix:component": "legprovisioncashsettlpaymentdatebusinesscentercomponent",
-    "fix:counter": "40934"
+    "fix:counter": "40934",
+    "fix:tag": "693540"
   }
 }

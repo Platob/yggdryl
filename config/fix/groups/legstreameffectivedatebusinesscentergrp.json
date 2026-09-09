@@ -18,6 +18,7 @@
     "description": "Required if NoLegStreamEffectiveDateBusinessCenters(40942) > 0.",
     "display": "LegStreamEffectiveDateBusinessCenterGrp",
     "fix:component": "legstreameffectivedatebusinesscentercomponent",
-    "fix:counter": "40942"
+    "fix:counter": "40942",
+    "fix:tag": "234214"
   }
 }

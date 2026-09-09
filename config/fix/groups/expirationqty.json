@@ -18,6 +18,7 @@
     "description": "Required if NoExpiration > 1",
     "display": "ExpirationQty",
     "fix:component": "expirationqtycomponent",
-    "fix:counter": "981"
+    "fix:counter": "981",
+    "fix:tag": "1058738"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPaymentStreamCompoundingDates(42901) > 0.",
     "display": "UnderlyingPaymentStreamCompoundingDateGrp",
     "fix:component": "underlyingpaymentstreamcompoundingdatecomponent",
-    "fix:counter": "42901"
+    "fix:counter": "42901",
+    "fix:tag": "663215"
   }
 }

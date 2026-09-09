@@ -18,6 +18,7 @@
     "description": "Number of legs that make up the Security",
     "display": "InstrmtLegSecListGrp",
     "fix:component": "instrmtlegseclist",
-    "fix:counter": "555"
+    "fix:counter": "555",
+    "fix:tag": "365197"
   }
 }

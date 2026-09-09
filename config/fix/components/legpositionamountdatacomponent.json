@@ -57,6 +57,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPositionAmountData"
+    "display": "LegPositionAmountData",
+    "fix:tag": "734496"
   }
 }

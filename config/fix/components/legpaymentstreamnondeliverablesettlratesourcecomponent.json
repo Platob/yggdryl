@@ -28,6 +28,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when LegPaymentStreamNonDeliverableSettlRateSource(40087) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
-    "display": "LegPaymentStreamNonDeliverableSettlRateSource"
+    "display": "LegPaymentStreamNonDeliverableSettlRateSource",
+    "fix:tag": "893529"
   }
 }

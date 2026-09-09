@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TransactionAttribute"
+    "display": "TransactionAttribute",
+    "fix:tag": "426931"
   }
 }

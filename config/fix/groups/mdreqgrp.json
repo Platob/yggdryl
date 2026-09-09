@@ -18,6 +18,7 @@
     "description": "Number of MDEntryType fields requested.",
     "display": "MDReqGrp",
     "fix:component": "mdreq",
-    "fix:counter": "267"
+    "fix:counter": "267",
+    "fix:tag": "940857"
   }
 }

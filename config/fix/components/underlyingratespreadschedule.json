@@ -38,6 +38,7 @@
   "nullable": false,
   "metadata": {
     "description": "UnderlyingRateSpreadSchedule is a subcomponent of UnderlyingInstrument used to specify the rate spread schedule for a basket underlier.",
-    "display": "UnderlyingRateSpreadSchedule"
+    "display": "UnderlyingRateSpreadSchedule",
+    "fix:tag": "198985"
   }
 }

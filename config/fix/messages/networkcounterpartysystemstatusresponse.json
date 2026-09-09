@@ -89,6 +89,7 @@
   "metadata": {
     "description": "MsgType = BD",
     "display": "NetworkCounterpartySystemStatusResponse",
-    "fix:msgtype": "BD"
+    "fix:msgtype": "BD",
+    "fix:tag": "1031705"
   }
 }

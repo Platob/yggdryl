@@ -18,6 +18,7 @@
     "description": "Required if NoLegPhysicalSettlTerms(41599) > 0.",
     "display": "LegPhysicalSettlTermGrp",
     "fix:component": "legphysicalsettlterm",
-    "fix:counter": "41599"
+    "fix:counter": "41599",
+    "fix:tag": "703881"
   }
 }

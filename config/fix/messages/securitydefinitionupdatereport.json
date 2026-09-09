@@ -389,6 +389,7 @@
   "metadata": {
     "description": "MsgType = BP",
     "display": "SecurityDefinitionUpdateReport",
-    "fix:msgtype": "BP"
+    "fix:msgtype": "BP",
+    "fix:tag": "290192"
   }
 }

@@ -139,6 +139,7 @@
   "metadata": {
     "description": "MsgType = EC",
     "display": "SettlementStatusRequest",
-    "fix:msgtype": "EC"
+    "fix:msgtype": "EC",
+    "fix:tag": "936216"
   }
 }

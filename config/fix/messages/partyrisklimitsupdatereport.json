@@ -169,6 +169,7 @@
   "metadata": {
     "description": "MsgType = CR",
     "display": "PartyRiskLimitsUpdateReport",
-    "fix:msgtype": "CR"
+    "fix:msgtype": "CR",
+    "fix:tag": "1053028"
   }
 }

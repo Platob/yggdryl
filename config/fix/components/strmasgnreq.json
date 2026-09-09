@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StrmAsgnReq"
+    "display": "StrmAsgnReq",
+    "fix:tag": "922475"
   }
 }

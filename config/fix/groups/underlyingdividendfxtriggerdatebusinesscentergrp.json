@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingDividendFXTriggerDateBusinessCenters(42853) > 0.",
     "display": "UnderlyingDividendFXTriggerDateBusinessCenterGrp",
     "fix:component": "underlyingdividendfxtriggerdatebusinesscentercomponent",
-    "fix:counter": "42853"
+    "fix:counter": "42853",
+    "fix:tag": "332903"
   }
 }

@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "FlexProductEligibility"
+    "display": "FlexProductEligibility",
+    "fix:tag": "745150"
   }
 }

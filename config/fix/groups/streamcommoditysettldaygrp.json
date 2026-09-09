@@ -18,6 +18,7 @@
     "description": "Required if NoStreamCommoditySettlDays(41283) > 0.",
     "display": "StreamCommoditySettlDayGrp",
     "fix:component": "streamcommoditysettldaycomponent",
-    "fix:counter": "41283"
+    "fix:counter": "41283",
+    "fix:tag": "591118"
   }
 }

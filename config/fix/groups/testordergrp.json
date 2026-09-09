@@ -18,6 +18,7 @@
     "description": "Required if NoTestOrders(3082) > 0.",
     "display": "TestOrderGrp",
     "fix:component": "testorder",
-    "fix:counter": "3082"
+    "fix:counter": "3082",
+    "fix:tag": "118455"
   }
 }

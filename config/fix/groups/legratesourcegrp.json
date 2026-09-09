@@ -18,6 +18,7 @@
     "description": "Required if NoLegRateSources(3116) > 0.",
     "display": "LegRateSource",
     "fix:component": "legratesourcecomponent",
-    "fix:counter": "3116"
+    "fix:counter": "3116",
+    "fix:tag": "633137"
   }
 }

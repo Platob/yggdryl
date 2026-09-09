@@ -381,8 +381,11 @@ def test_version_is_numeric_with_an_arrow_string_projection() -> None:
     arrow = field.into_arrow()
     assert arrow.type == pa.string()
     assert Field.from_arrow(arrow) == field
+    # A tail states no number and folds into the patch rather than failing, so
+    # the projection refuses on the major it cannot read, not on the tail.
+    assert field.cast_arrow_array(pa.array(["5.0+"])).to_pylist() == [str(Version.from_str("5.0+"))]
     with pytest.raises(ValueError, match="version"):
-        field.cast_arrow_array(pa.array(["5.0+"]))
+        field.cast_arrow_array(pa.array(["FIX.5.0"]))
 
 
 def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:

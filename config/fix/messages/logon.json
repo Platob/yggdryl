@@ -279,6 +279,7 @@
   "metadata": {
     "description": "MsgType = A",
     "display": "Logon",
-    "fix:msgtype": "A"
+    "fix:msgtype": "A",
+    "fix:tag": "936186"
   }
 }

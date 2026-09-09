@@ -168,6 +168,7 @@
   "nullable": false,
   "metadata": {
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the leg payment stream.",
-    "display": "LegPaymentStreamPaymentDates"
+    "display": "LegPaymentStreamPaymentDates",
+    "fix:tag": "688236"
   }
 }

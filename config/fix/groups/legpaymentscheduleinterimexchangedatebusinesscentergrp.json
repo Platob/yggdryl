@@ -18,6 +18,7 @@
     "description": "Required if NoLegPaymentScheduleInterimExchangeDateBusinessCenters(40928) > 0.",
     "display": "LegPaymentScheduleInterimExchangeDateBusinessCenterGrp",
     "fix:component": "legpaymentscheduleinterimexchangedatebusinesscenter",
-    "fix:counter": "40928"
+    "fix:counter": "40928",
+    "fix:tag": "628939"
   }
 }

@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ProtectionTermEventQualifier"
+    "display": "ProtectionTermEventQualifier",
+    "fix:tag": "374903"
   }
 }

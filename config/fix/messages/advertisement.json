@@ -319,6 +319,7 @@
   "metadata": {
     "description": "MsgType = 7",
     "display": "Advertisement",
-    "fix:msgtype": "7"
+    "fix:msgtype": "7",
+    "fix:tag": "544641"
   }
 }

@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when LegPaymentStreamFinalPricePaymentDateOffsetUnit(42456) is specified.",
-    "display": "LegPaymentStreamFinalPricePaymentDate"
+    "display": "LegPaymentStreamFinalPricePaymentDate",
+    "fix:tag": "398126"
   }
 }

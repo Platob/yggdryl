@@ -188,6 +188,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when LegDividendFloatingRateIndexCurveUnit(42314) is specified.",
-    "display": "LegDividendAccrualFloatingRate"
+    "display": "LegDividendAccrualFloatingRate",
+    "fix:tag": "277672"
   }
 }

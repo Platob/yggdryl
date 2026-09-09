@@ -18,6 +18,7 @@
     "description": "Required if NoLegs(555) > 0.",
     "display": "QuotReqLegsGrp",
     "fix:component": "quotreqleg",
-    "fix:counter": "555"
+    "fix:counter": "555",
+    "fix:tag": "858634"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoValueChecks(1868) > 0.",
     "display": "ValueChecksGrp",
     "fix:component": "valuecheck",
-    "fix:counter": "1868"
+    "fix:counter": "1868",
+    "fix:tag": "353060"
   }
 }

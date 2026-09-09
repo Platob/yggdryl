@@ -18,6 +18,7 @@
     "description": "Required if NoLegStreamTerminationDateBusinessCenters(40943) > 0.",
     "display": "LegStreamTerminationDateBusinessCenterGrp",
     "fix:component": "legstreamterminationdatebusinesscentercomponent",
-    "fix:counter": "40943"
+    "fix:counter": "40943",
+    "fix:tag": "678441"
   }
 }

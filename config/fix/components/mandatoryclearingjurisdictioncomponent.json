@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "MandatoryClearingJurisdiction"
+    "display": "MandatoryClearingJurisdiction",
+    "fix:tag": "579070"
   }
 }

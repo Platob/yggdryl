@@ -127,6 +127,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RiskLimitType"
+    "display": "RiskLimitType",
+    "fix:tag": "768117"
   }
 }

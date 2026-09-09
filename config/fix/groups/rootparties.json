@@ -18,6 +18,7 @@
     "description": "Repeating group below should contain unique combinations of RootPartyID, RootPartyIDSource, and RootPartyRole",
     "display": "RootParties",
     "fix:component": "rootparty",
-    "fix:counter": "1116"
+    "fix:counter": "1116",
+    "fix:tag": "705191"
   }
 }

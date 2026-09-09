@@ -18,6 +18,7 @@
     "description": "Required if NoLegFinancingTermSupplements(42200) > 0.",
     "display": "LegFinancingTermSupplementGrp",
     "fix:component": "legfinancingtermsupplement",
-    "fix:counter": "42200"
+    "fix:counter": "42200",
+    "fix:tag": "874145"
   }
 }

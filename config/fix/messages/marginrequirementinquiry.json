@@ -199,6 +199,7 @@
   "metadata": {
     "description": "MsgType = CH",
     "display": "MarginRequirementInquiry",
-    "fix:msgtype": "CH"
+    "fix:msgtype": "CH",
+    "fix:tag": "505789"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoLegBusinessCenters(40923) > 0.",
     "display": "LegBusinessCenterGrp",
     "fix:component": "legbusinesscentercomponent",
-    "fix:counter": "40923"
+    "fix:counter": "40923",
+    "fix:tag": "122659"
   }
 }

@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventCreditEventQualifier"
+    "display": "LegComplexEventCreditEventQualifier",
+    "fix:tag": "311304"
   }
 }

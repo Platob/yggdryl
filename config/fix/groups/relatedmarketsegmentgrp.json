@@ -18,6 +18,7 @@
     "description": "Number of market segments.",
     "display": "RelatedMarketSegmentGrp",
     "fix:component": "relatedmarketsegment",
-    "fix:counter": "2545"
+    "fix:counter": "2545",
+    "fix:tag": "351350"
   }
 }

@@ -69,6 +69,7 @@
   "metadata": {
     "description": "MsgType = l (lowercase L)",
     "display": "BidResponse",
-    "fix:msgtype": "l"
+    "fix:msgtype": "l",
+    "fix:tag": "1009512"
   }
 }

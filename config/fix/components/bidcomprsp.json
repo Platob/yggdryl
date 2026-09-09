@@ -157,6 +157,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "BidCompRsp"
+    "display": "BidCompRsp",
+    "fix:tag": "972640"
   }
 }

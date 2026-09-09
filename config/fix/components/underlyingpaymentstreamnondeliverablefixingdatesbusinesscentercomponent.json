@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesBusinessCenter"
+    "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesBusinessCenter",
+    "fix:tag": "626868"
   }
 }

@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ComplexEventPeriodDate"
+    "display": "ComplexEventPeriodDate",
+    "fix:tag": "562774"
   }
 }

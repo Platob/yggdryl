@@ -2290,7 +2290,7 @@ pub(crate) fn fix_ulbridge_fields() -> PyResult<Vec<PyField>> {
         .map_err(value_error)
 }
 
-/// The vocabulary one Ullink `CBlock` declares, in declaration order./// The vocabulary one Ullink `CBlock` declares, in declaration order.
+/// The vocabulary one Ullink `CBlock` declares, in declaration order.
 ///
 /// The dictionary half of `FixRegistry.from_cfb_file`, answered on its own: every
 /// field carries the `fix:tag` and `fix:branch` that key it and whatever code

@@ -158,7 +158,7 @@ test('Version field defaults and hints expose the native value with Arrow string
 test('generic MsgType datatype and field helpers are retired', () => {
   assert.equal('msgtype' in fields, false)
   assert.equal(enums.dataTypeIds.includes('msgtype'), false)
-  assert.equal(enums.dataTypeIds.length, 60)
+  assert.equal(enums.dataTypeIds.length, 61)
   assert.equal(enums.dataTypeIds.indexOf('url'), 59)
   assert.throws(() => new DataType('msgtype'))
   assert.throws(() => new Field('code', 'msgtype'))

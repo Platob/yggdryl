@@ -39,6 +39,7 @@
   "metadata": {
     "description": "MsgType = 1",
     "display": "TestRequest",
-    "fix:msgtype": "1"
+    "fix:msgtype": "1",
+    "fix:tag": "411962"
   }
 }

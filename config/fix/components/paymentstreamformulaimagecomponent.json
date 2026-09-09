@@ -28,6 +28,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when PaymentStreamFormulaImage(42653) is specified.",
-    "display": "PaymentStreamFormulaImage"
+    "display": "PaymentStreamFormulaImage",
+    "fix:tag": "348911"
   }
 }

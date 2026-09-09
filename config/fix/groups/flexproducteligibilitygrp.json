@@ -18,6 +18,7 @@
     "description": "Required if NoFlexProductEligibilities(2560) > 0.",
     "display": "FlexProductEligibilityGrp",
     "fix:component": "flexproducteligibility",
-    "fix:counter": "2560"
+    "fix:counter": "2560",
+    "fix:tag": "521462"
   }
 }

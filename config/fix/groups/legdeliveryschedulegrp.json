@@ -18,6 +18,7 @@
     "description": "Required if NoLegDeliverySchedules(41408) > 0.",
     "display": "LegDeliveryScheduleGrp",
     "fix:component": "legdeliveryschedule",
-    "fix:counter": "41408"
+    "fix:counter": "41408",
+    "fix:tag": "850564"
   }
 }

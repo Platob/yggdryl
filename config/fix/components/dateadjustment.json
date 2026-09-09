@@ -48,6 +48,7 @@
   "nullable": false,
   "metadata": {
     "description": "DateAdjustment is a subcomponent in the Instrument component. It is used to specify date adjustment parameters and rules. The date adjustments specified here applies to all adjustable dates for the instrument, unless specifically overridden in the respective specified components elsewhere.",
-    "display": "DateAdjustment"
+    "display": "DateAdjustment",
+    "fix:tag": "614339"
   }
 }

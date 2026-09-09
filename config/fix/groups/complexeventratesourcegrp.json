@@ -18,6 +18,7 @@
     "description": "Required if NoComplexEventRateSources(41013) > 0.",
     "display": "ComplexEventRateSourceGrp",
     "fix:component": "complexeventratesourcecomponent",
-    "fix:counter": "41013"
+    "fix:counter": "41013",
+    "fix:tag": "137424"
   }
 }

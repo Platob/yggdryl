@@ -109,6 +109,7 @@
   "metadata": {
     "description": "MsgType = CB",
     "display": "UserNotification",
-    "fix:msgtype": "CB"
+    "fix:msgtype": "CB",
+    "fix:tag": "339296"
   }
 }

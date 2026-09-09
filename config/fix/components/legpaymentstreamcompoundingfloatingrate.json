@@ -188,6 +188,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required if LegPaymentStreamCompoundingRateIndexCurveUnit(42429) is specified.",
-    "display": "LegPaymentStreamCompoundingFloatingRate"
+    "display": "LegPaymentStreamCompoundingFloatingRate",
+    "fix:tag": "1070402"
   }
 }

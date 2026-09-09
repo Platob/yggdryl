@@ -18,6 +18,7 @@
     "description": "Required if NoTestSystemModules(3049) > 0.",
     "display": "TestSystemModuleGrp",
     "fix:component": "testsystemmodule",
-    "fix:counter": "3049"
+    "fix:counter": "3049",
+    "fix:tag": "582389"
   }
 }

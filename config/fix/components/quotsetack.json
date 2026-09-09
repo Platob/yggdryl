@@ -107,6 +107,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "QuotSetAck"
+    "display": "QuotSetAck",
+    "fix:tag": "641195"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Specifies the number of repeating lines of text specified",
     "display": "LinesOfTextGrp",
     "fix:component": "linesoftextcomponent",
-    "fix:counter": "33"
+    "fix:counter": "33",
+    "fix:tag": "803592"
   }
 }

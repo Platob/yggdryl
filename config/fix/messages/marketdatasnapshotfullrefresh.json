@@ -409,6 +409,7 @@
   "metadata": {
     "description": "MsgType = W",
     "display": "MarketDataSnapshotFullRefresh",
-    "fix:msgtype": "W"
+    "fix:msgtype": "W",
+    "fix:tag": "222197"
   }
 }

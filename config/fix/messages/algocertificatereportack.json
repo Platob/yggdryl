@@ -89,6 +89,7 @@
   "metadata": {
     "description": "MsgType = EK",
     "display": "AlgoCertificateReportAck",
-    "fix:msgtype": "EK"
+    "fix:msgtype": "EK",
+    "fix:tag": "1011229"
   }
 }

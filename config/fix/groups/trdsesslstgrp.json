@@ -18,6 +18,7 @@
     "description": "Identifier for Trading Session",
     "display": "TrdSessLstGrp",
     "fix:component": "trdsesslst",
-    "fix:counter": "386"
+    "fix:counter": "386",
+    "fix:tag": "157934"
   }
 }

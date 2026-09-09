@@ -18,6 +18,7 @@
     "description": "Required if NoAttachments(2104) > 0.",
     "display": "AttachmentGrp",
     "fix:component": "attachment",
-    "fix:counter": "2104"
+    "fix:counter": "2104",
+    "fix:tag": "823902"
   }
 }

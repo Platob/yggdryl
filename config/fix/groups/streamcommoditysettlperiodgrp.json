@@ -18,6 +18,7 @@
     "description": "Required if NoStreamCommoditySettlPeriods(41289) > 0.",
     "display": "StreamCommoditySettlPeriodGrp",
     "fix:component": "streamcommoditysettlperiod",
-    "fix:counter": "41289"
+    "fix:counter": "41289",
+    "fix:tag": "236929"
   }
 }

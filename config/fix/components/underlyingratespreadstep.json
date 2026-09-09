@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingRateSpreadStep"
+    "display": "UnderlyingRateSpreadStep",
+    "fix:tag": "322198"
   }
 }

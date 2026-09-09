@@ -418,6 +418,7 @@
   "nullable": false,
   "metadata": {
     "description": "In the case of quotes can be mapped to QuoteMsgID(1166) of a single Quote(MsgType=S) or QuoteID(117) of a MassQuote(MsgType=i).",
-    "display": "TradeReportOrderDetail"
+    "display": "TradeReportOrderDetail",
+    "fix:tag": "479593"
   }
 }

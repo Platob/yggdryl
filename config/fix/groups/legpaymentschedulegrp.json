@@ -18,6 +18,7 @@
     "description": "Required if NoLegPaymentSchedules(40374) > 0.",
     "display": "LegPaymentScheduleGrp",
     "fix:component": "legpaymentschedule",
-    "fix:counter": "40374"
+    "fix:counter": "40374",
+    "fix:tag": "196992"
   }
 }

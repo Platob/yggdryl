@@ -49,6 +49,7 @@
   "metadata": {
     "description": "MsgType = n (lowercase N)",
     "display": "XMLnonFIX",
-    "fix:msgtype": "n"
+    "fix:msgtype": "n",
+    "fix:tag": "360641"
   }
 }

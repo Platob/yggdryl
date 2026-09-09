@@ -419,6 +419,7 @@
   "metadata": {
     "description": "MsgType = h (lowercase H)",
     "display": "TradingSessionStatus",
-    "fix:msgtype": "h"
+    "fix:msgtype": "h",
+    "fix:tag": "932324"
   }
 }

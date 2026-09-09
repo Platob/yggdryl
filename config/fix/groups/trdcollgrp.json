@@ -18,6 +18,7 @@
     "description": "Trades for which collateral is required",
     "display": "TrdCollGrp",
     "fix:component": "trdcoll",
-    "fix:counter": "897"
+    "fix:counter": "897",
+    "fix:tag": "618363"
   }
 }

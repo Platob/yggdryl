@@ -28,6 +28,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when LegSettlRateFallbackRateSource(40366) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
-    "display": "LegSettlRateFallbackRateSource"
+    "display": "LegSettlRateFallbackRateSource",
+    "fix:tag": "157623"
   }
 }

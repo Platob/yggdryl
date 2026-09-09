@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentScheduleFixingDay"
+    "display": "LegPaymentScheduleFixingDay",
+    "fix:tag": "423648"
   }
 }

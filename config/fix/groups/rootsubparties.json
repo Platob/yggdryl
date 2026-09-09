@@ -18,6 +18,7 @@
     "description": "Repeating group of RootParty sub-identifiers.",
     "display": "RootSubParties",
     "fix:component": "rootsubparty",
-    "fix:counter": "1120"
+    "fix:counter": "1120",
+    "fix:tag": "473702"
   }
 }

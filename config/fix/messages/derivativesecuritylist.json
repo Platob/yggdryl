@@ -179,6 +179,7 @@
   "metadata": {
     "description": "MsgType = AA",
     "display": "DerivativeSecurityList",
-    "fix:msgtype": "AA"
+    "fix:msgtype": "AA",
+    "fix:tag": "623843"
   }
 }

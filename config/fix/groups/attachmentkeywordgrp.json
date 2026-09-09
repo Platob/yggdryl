@@ -18,6 +18,7 @@
     "description": "Required if NoAttachmentKeywords(2113) > 0.",
     "display": "AttachmentKeywordGrp",
     "fix:component": "attachmentkeywordcomponent",
-    "fix:counter": "2113"
+    "fix:counter": "2113",
+    "fix:tag": "133990"
   }
 }

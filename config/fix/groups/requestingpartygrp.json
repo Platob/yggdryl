@@ -18,6 +18,7 @@
     "description": "Required when NoRequestingPartyIDs > 0.",
     "display": "RequestingPartyGrp",
     "fix:component": "requestingparty",
-    "fix:counter": "1657"
+    "fix:counter": "1657",
+    "fix:tag": "927334"
   }
 }

@@ -157,6 +157,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "DeliverySchedule"
+    "display": "DeliverySchedule",
+    "fix:tag": "1020673"
   }
 }

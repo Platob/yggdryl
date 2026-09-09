@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "AdditionalTerm"
+    "display": "AdditionalTerm",
+    "fix:tag": "207305"
   }
 }

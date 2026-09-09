@@ -157,6 +157,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamCommoditySettlPeriod"
+    "display": "StreamCommoditySettlPeriod",
+    "fix:tag": "714545"
   }
 }

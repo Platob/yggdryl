@@ -18,6 +18,7 @@
     "description": "Required if NoPayments(40212) > 0.",
     "display": "PaymentGrp",
     "fix:component": "payment",
-    "fix:counter": "40212"
+    "fix:counter": "40212",
+    "fix:tag": "318108"
   }
 }

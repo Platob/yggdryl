@@ -237,6 +237,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegCashSettlTerm"
+    "display": "LegCashSettlTerm",
+    "fix:tag": "1092082"
   }
 }

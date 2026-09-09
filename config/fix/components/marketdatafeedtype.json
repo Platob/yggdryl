@@ -117,6 +117,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "MarketDataFeedType"
+    "display": "MarketDataFeedType",
+    "fix:tag": "129212"
   }
 }

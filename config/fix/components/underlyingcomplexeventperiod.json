@@ -87,6 +87,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventPeriod"
+    "display": "UnderlyingComplexEventPeriod",
+    "fix:tag": "193979"
   }
 }

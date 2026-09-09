@@ -159,6 +159,7 @@
   "metadata": {
     "description": "MsgType = AG",
     "display": "QuoteRequestReject",
-    "fix:msgtype": "AG"
+    "fix:msgtype": "AG",
+    "fix:tag": "1016263"
   }
 }

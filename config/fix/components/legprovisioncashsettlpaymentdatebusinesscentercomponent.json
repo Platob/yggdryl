@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProvisionCashSettlPaymentDateBusinessCenter"
+    "display": "LegProvisionCashSettlPaymentDateBusinessCenter",
+    "fix:tag": "900997"
   }
 }

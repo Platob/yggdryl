@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamEffectiveDateBusinessCenter"
+    "display": "UnderlyingStreamEffectiveDateBusinessCenter",
+    "fix:tag": "843776"
   }
 }

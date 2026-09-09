@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "NewsRef"
+    "display": "NewsRef",
+    "fix:tag": "348060"
   }
 }

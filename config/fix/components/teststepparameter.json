@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TestStepParameter"
+    "display": "TestStepParameter",
+    "fix:tag": "889631"
   }
 }

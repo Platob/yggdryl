@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStreamPaymentDate"
+    "display": "UnderlyingPaymentStreamPaymentDate",
+    "fix:tag": "973505"
   }
 }

@@ -139,6 +139,7 @@
   "metadata": {
     "description": "MsgType = T",
     "display": "SettlementInstructions",
-    "fix:msgtype": "T"
+    "fix:msgtype": "T",
+    "fix:tag": "936330"
   }
 }

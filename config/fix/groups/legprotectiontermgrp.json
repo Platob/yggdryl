@@ -18,6 +18,7 @@
     "description": "Required if NoLegProtectionTerms(41616) > 0.",
     "display": "LegProtectionTermGrp",
     "fix:component": "legprotectionterm",
-    "fix:counter": "41616"
+    "fix:counter": "41616",
+    "fix:tag": "477238"
   }
 }

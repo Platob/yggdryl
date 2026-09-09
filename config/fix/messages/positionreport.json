@@ -939,6 +939,7 @@
   "metadata": {
     "description": "MsgType = AP",
     "display": "PositionReport",
-    "fix:msgtype": "AP"
+    "fix:msgtype": "AP",
+    "fix:tag": "313256"
   }
 }

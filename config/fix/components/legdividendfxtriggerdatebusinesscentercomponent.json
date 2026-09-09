@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDividendFXTriggerDateBusinessCenter"
+    "display": "LegDividendFXTriggerDateBusinessCenter",
+    "fix:tag": "273648"
   }
 }

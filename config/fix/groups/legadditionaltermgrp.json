@@ -18,6 +18,7 @@
     "description": "Required if NoLegAdditionalTerms(41335) > 0.",
     "display": "LegAdditionalTermGrp",
     "fix:component": "legadditionalterm",
-    "fix:counter": "41335"
+    "fix:counter": "41335",
+    "fix:tag": "1002785"
   }
 }

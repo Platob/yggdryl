@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingStreamCalculationPeriodBusinessCenters(40973) > 0.",
     "display": "UnderlyingStreamCalculationPeriodBusinessCenterGrp",
     "fix:component": "underlyingstreamcalculationperiodbusinesscentercomponent",
-    "fix:counter": "40973"
+    "fix:counter": "40973",
+    "fix:tag": "692028"
   }
 }

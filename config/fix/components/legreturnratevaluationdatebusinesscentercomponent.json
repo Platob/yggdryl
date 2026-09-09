@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegReturnRateValuationDateBusinessCenter"
+    "display": "LegReturnRateValuationDateBusinessCenter",
+    "fix:tag": "407817"
   }
 }

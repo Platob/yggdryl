@@ -18,6 +18,7 @@
     "description": "Required if NoTestMeasures(3052) > 0.",
     "display": "TestMeasureGrp",
     "fix:component": "testmeasure",
-    "fix:counter": "3052"
+    "fix:counter": "3052",
+    "fix:tag": "289179"
   }
 }

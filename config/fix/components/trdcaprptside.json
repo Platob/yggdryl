@@ -1247,6 +1247,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdCapRptSide"
+    "display": "TrdCapRptSide",
+    "fix:tag": "905222"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Number of Position Amount entries",
     "display": "PositionAmountData",
     "fix:component": "positionamountdatacomponent",
-    "fix:counter": "753"
+    "fix:counter": "753",
+    "fix:tag": "567840"
   }
 }

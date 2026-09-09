@@ -18,6 +18,7 @@
     "description": "Required if NoProtectionTerms(40181) > 0.",
     "display": "ProtectionTermGrp",
     "fix:component": "protectionterm",
-    "fix:counter": "40181"
+    "fix:counter": "40181",
+    "fix:tag": "672759"
   }
 }

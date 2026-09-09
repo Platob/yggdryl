@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegReturnRateValuationDate"
+    "display": "LegReturnRateValuationDate",
+    "fix:tag": "1004952"
   }
 }

@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PriceMovement"
+    "display": "PriceMovement",
+    "fix:tag": "613015"
   }
 }

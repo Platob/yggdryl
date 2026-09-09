@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SecurityClassification"
+    "display": "SecurityClassification",
+    "fix:tag": "435721"
   }
 }

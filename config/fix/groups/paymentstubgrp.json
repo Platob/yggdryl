@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentStubs(40872) > 0.",
     "display": "PaymentStubGrp",
     "fix:component": "paymentstub",
-    "fix:counter": "40872"
+    "fix:counter": "40872",
+    "fix:tag": "285342"
   }
 }

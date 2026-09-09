@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingReturnRateValuationDateBusinessCenters(43069) > 0.",
     "display": "UnderlyingReturnRateValuationDateBusinessCenterGrp",
     "fix:component": "underlyingreturnratevaluationdatebusinesscentercomponent",
-    "fix:counter": "43069"
+    "fix:counter": "43069",
+    "fix:tag": "693233"
   }
 }

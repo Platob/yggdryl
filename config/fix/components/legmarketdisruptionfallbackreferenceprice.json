@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegMarketDisruptionFallbackReferencePrice"
+    "display": "LegMarketDisruptionFallbackReferencePrice",
+    "fix:tag": "922895"
   }
 }

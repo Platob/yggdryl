@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TestMeasure"
+    "display": "TestMeasure",
+    "fix:tag": "879969"
   }
 }

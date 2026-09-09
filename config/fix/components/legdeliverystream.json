@@ -318,6 +318,7 @@
   "nullable": false,
   "metadata": {
     "description": "The LegDeliveryStream component is a subcomponent of the LegStream used to detail the attributes of a physical delivery stream in a swap.",
-    "display": "LegDeliveryStream"
+    "display": "LegDeliveryStream",
+    "fix:tag": "439498"
   }
 }

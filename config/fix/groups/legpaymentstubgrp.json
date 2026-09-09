@@ -18,6 +18,7 @@
     "description": "Required if NoLegPaymentStubs(40418) > 0.",
     "display": "LegPaymentStubGrp",
     "fix:component": "legpaymentstub",
-    "fix:counter": "40418"
+    "fix:counter": "40418",
+    "fix:tag": "587529"
   }
 }

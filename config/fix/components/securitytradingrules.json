@@ -58,6 +58,7 @@
   "nullable": false,
   "metadata": {
     "description": "This block contains the base trading rules",
-    "display": "SecurityTradingRules"
+    "display": "SecurityTradingRules",
+    "fix:tag": "750047"
   }
 }

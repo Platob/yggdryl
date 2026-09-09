@@ -349,6 +349,7 @@
   "metadata": {
     "description": "MsgType = DN",
     "display": "PositionTransferReport",
-    "fix:msgtype": "DN"
+    "fix:msgtype": "DN",
+    "fix:tag": "327302"
   }
 }

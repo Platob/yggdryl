@@ -258,6 +258,7 @@
   "nullable": false,
   "metadata": {
     "description": "Can be used to specify FX tenors.",
-    "display": "InstrumentScope"
+    "display": "InstrumentScope",
+    "fix:tag": "515527"
   }
 }

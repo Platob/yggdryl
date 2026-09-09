@@ -18,6 +18,7 @@
     "description": "Required if NoAllocGroupSubQtyAttributes (2979) > 0.",
     "display": "AllocGroupSubQtyAttributeGrp",
     "fix:component": "allocgroupsubqtyattribute",
-    "fix:counter": "2979"
+    "fix:counter": "2979",
+    "fix:tag": "223213"
   }
 }

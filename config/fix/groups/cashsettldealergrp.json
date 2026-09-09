@@ -18,6 +18,7 @@
     "description": "Required if NoCashSettlDealers(40277) > 0.",
     "display": "CashSettlDealerGrp",
     "fix:component": "cashsettldealercomponent",
-    "fix:counter": "40277"
+    "fix:counter": "40277",
+    "fix:tag": "591908"
   }
 }

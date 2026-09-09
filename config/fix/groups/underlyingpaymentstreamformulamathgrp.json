@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPaymentStreamFormulas(42981) > 0",
     "display": "UnderlyingPaymentStreamFormulaMathGrp",
     "fix:component": "underlyingpaymentstreamformulamath",
-    "fix:counter": "42981"
+    "fix:counter": "42981",
+    "fix:tag": "267320"
   }
 }

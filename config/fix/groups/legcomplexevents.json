@@ -18,6 +18,7 @@
     "description": "Required if NoLegComplexEvents(2218)) > 0.",
     "display": "LegComplexEvents",
     "fix:component": "legcomplexevent",
-    "fix:counter": "2218"
+    "fix:counter": "2218",
+    "fix:tag": "484582"
   }
 }

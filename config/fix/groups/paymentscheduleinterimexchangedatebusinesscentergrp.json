@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentScheduleInterimExchangeDateBusinessCenters(40945) > 0.",
     "display": "PaymentScheduleInterimExchangeDateBusinessCenterGrp",
     "fix:component": "paymentscheduleinterimexchangedatebusinesscenter",
-    "fix:counter": "40945"
+    "fix:counter": "40945",
+    "fix:tag": "360742"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Specifies the number of repeating TradingSessionIDs",
     "display": "TrdgSesGrp",
     "fix:component": "trdgse",
-    "fix:counter": "386"
+    "fix:counter": "386",
+    "fix:tag": "338152"
   }
 }

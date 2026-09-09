@@ -28,6 +28,7 @@
   "nullable": false,
   "metadata": {
     "description": "The LegProvisionCashSettlQuoteSource is a subcomponent of the LEgProvisionGrp component used to specify the reference source for currency or rate quote for cash settlement purposes.",
-    "display": "LegProvisionCashSettlQuoteSource"
+    "display": "LegProvisionCashSettlQuoteSource",
+    "fix:tag": "279130"
   }
 }

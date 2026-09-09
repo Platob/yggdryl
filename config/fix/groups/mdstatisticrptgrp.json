@@ -18,6 +18,7 @@
     "description": "Required if NoMDStatistics(2474) > 0.",
     "display": "MDStatisticRptGrp",
     "fix:component": "mdstatisticrpt",
-    "fix:counter": "2474"
+    "fix:counter": "2474",
+    "fix:tag": "312190"
   }
 }

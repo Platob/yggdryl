@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "NstdPtys4Sub"
+    "display": "NstdPtys4Sub",
+    "fix:tag": "743001"
   }
 }

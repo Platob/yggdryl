@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "IndexRollMonth"
+    "display": "IndexRollMonth",
+    "fix:tag": "774464"
   }
 }

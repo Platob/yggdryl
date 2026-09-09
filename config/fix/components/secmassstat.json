@@ -177,6 +177,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SecMassStat"
+    "display": "SecMassStat",
+    "fix:tag": "568071"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoLegProvisionOptionExerciseFixedDates(40495) > 0.",
     "display": "LegProvisionOptionExerciseFixedDateGrp",
     "fix:component": "legprovisionoptionexercisefixeddatecomponent",
-    "fix:counter": "40495"
+    "fix:counter": "40495",
+    "fix:tag": "891484"
   }
 }

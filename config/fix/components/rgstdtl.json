@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RgstDtl"
+    "display": "RgstDtl",
+    "fix:tag": "666878"
   }
 }

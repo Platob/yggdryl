@@ -18,6 +18,7 @@
     "description": "Number of bid repeating groups",
     "display": "BidCompRspGrp",
     "fix:component": "bidcomprsp",
-    "fix:counter": "420"
+    "fix:counter": "420",
+    "fix:tag": "653496"
   }
 }

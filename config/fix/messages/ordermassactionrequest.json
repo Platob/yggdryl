@@ -299,6 +299,7 @@
   "metadata": {
     "description": "MsgType = CA",
     "display": "OrderMassActionRequest",
-    "fix:msgtype": "CA"
+    "fix:msgtype": "CA",
+    "fix:tag": "806153"
   }
 }

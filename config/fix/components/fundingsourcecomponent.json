@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "FundingSource"
+    "display": "FundingSource",
+    "fix:tag": "508510"
   }
 }

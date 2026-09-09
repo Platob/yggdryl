@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStreamInitialFixingDateBusinessCenter"
+    "display": "UnderlyingPaymentStreamInitialFixingDateBusinessCenter",
+    "fix:tag": "1020209"
   }
 }

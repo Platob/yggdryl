@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingMarketDisruptionEvents(41864) > 0.",
     "display": "UnderlyingMarketDisruptionEventGrp",
     "fix:component": "underlyingmarketdisruptioneventcomponent",
-    "fix:counter": "41864"
+    "fix:counter": "41864",
+    "fix:tag": "1073095"
   }
 }

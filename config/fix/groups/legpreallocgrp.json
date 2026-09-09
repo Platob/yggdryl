@@ -18,6 +18,7 @@
     "description": "Only used for specific lot trades.",
     "display": "LegPreAllocGrp",
     "fix:component": "legprealloc",
-    "fix:counter": "670"
+    "fix:counter": "670",
+    "fix:tag": "626237"
   }
 }

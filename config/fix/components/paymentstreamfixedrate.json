@@ -108,6 +108,7 @@
   "nullable": false,
   "metadata": {
     "description": "Mutually exclusive with PaymentStreamFixedAmount(40785).",
-    "display": "PaymentStreamFixedRate"
+    "display": "PaymentStreamFixedRate",
+    "fix:tag": "1082448"
   }
 }

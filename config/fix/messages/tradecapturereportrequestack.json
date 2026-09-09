@@ -259,6 +259,7 @@
   "metadata": {
     "description": "MsgType = AQ",
     "display": "TradeCaptureReportRequestAck",
-    "fix:msgtype": "AQ"
+    "fix:msgtype": "AQ",
+    "fix:tag": "977882"
   }
 }

@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDeliveryScheduleSettlTime"
+    "display": "LegDeliveryScheduleSettlTime",
+    "fix:tag": "386823"
   }
 }

@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentStreamFixingDate"
+    "display": "PaymentStreamFixingDate",
+    "fix:tag": "159379"
   }
 }

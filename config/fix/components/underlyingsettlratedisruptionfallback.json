@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingSettlRateDisruptionFallback"
+    "display": "UnderlyingSettlRateDisruptionFallback",
+    "fix:tag": "739619"
   }
 }

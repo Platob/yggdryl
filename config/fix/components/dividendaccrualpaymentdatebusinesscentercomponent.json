@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "DividendAccrualPaymentDateBusinessCenter"
+    "display": "DividendAccrualPaymentDateBusinessCenter",
+    "fix:tag": "627624"
   }
 }

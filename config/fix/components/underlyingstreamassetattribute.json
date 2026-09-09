@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamAssetAttribute"
+    "display": "UnderlyingStreamAssetAttribute",
+    "fix:tag": "411058"
   }
 }

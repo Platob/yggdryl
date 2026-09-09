@@ -38,6 +38,7 @@
   "nullable": false,
   "metadata": {
     "description": "Must be provided if LegSecurityXML(1872) field is specified and must immediately precede it.",
-    "display": "LegSecurityXML"
+    "display": "LegSecurityXML",
+    "fix:tag": "617791"
   }
 }

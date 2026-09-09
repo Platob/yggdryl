@@ -127,6 +127,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PositionAmountData"
+    "display": "PositionAmountData",
+    "fix:tag": "597286"
   }
 }

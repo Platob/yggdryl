@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentScheduleRateSource"
+    "display": "LegPaymentScheduleRateSource",
+    "fix:tag": "630061"
   }
 }

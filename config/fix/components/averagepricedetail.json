@@ -38,6 +38,7 @@
   "nullable": false,
   "metadata": {
     "description": "Required if AveragePriceType(2763)=2 (Percent of volume average price) or 0 (Time weighted average price).",
-    "display": "AveragePriceDetail"
+    "display": "AveragePriceDetail",
+    "fix:tag": "433012"
   }
 }

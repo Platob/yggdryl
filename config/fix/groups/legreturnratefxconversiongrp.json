@@ -18,6 +18,7 @@
     "description": "Required if NoLegReturnRateFXConversions(42530) > 0.",
     "display": "LegReturnRateFXConversionGrp",
     "fix:component": "legreturnratefxconversion",
-    "fix:counter": "42530"
+    "fix:counter": "42530",
+    "fix:tag": "345121"
   }
 }

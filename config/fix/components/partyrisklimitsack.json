@@ -137,6 +137,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyRiskLimitsAck"
+    "display": "PartyRiskLimitsAck",
+    "fix:tag": "503581"
   }
 }

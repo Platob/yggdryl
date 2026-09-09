@@ -189,6 +189,7 @@
   "metadata": {
     "description": "MsgType = BO",
     "display": "ContraryIntentionReport",
-    "fix:msgtype": "BO"
+    "fix:msgtype": "BO",
+    "fix:tag": "968560"
   }
 }

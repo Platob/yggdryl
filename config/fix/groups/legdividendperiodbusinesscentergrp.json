@@ -18,6 +18,7 @@
     "description": "Required if NoLegDividendPeriodBusinessCenters(42386) > 0.",
     "display": "LegDividendPeriodBusinessCenterGrp",
     "fix:component": "legdividendperiodbusinesscentercomponent",
-    "fix:counter": "42386"
+    "fix:counter": "42386",
+    "fix:tag": "1001457"
   }
 }

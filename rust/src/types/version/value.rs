@@ -198,24 +198,21 @@ fn patch_of(tail: &str) -> u16 {
         return 0;
     }
     let digits = match tail.as_bytes() {
-        [b'.', rest @ ..] => Some(rest),
-        [b'S' | b's', b'P' | b'p', rest @ ..] => Some(rest),
-        _ => None,
+        [b'.', rest @ ..] => rest,
+        [b'S' | b's', b'P' | b'p', rest @ ..] => rest,
+        _ => return hashed_patch(tail),
     };
-    if let Some(digits) = digits
-        && !digits.is_empty()
-        && digits.iter().all(u8::is_ascii_digit)
-    {
-        let mut value = 0_u32;
-        for byte in digits {
-            value = value * 10 + u32::from(byte - b'0');
-            if value > u32::from(u16::MAX) {
-                return hashed_patch(tail);
-            }
-        }
-        return value as u16;
+    if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
+        return hashed_patch(tail);
     }
-    hashed_patch(tail)
+    let mut value = 0_u32;
+    for byte in digits {
+        value = value * 10 + u32::from(byte - b'0');
+        if value > u32::from(u16::MAX) {
+            return hashed_patch(tail);
+        }
+    }
+    value as u16
 }
 
 /// A tail no number can be read from, folded into the patch's sixteen bits.

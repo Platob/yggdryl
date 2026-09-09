@@ -159,6 +159,7 @@
   "metadata": {
     "description": "MsgType = BL",
     "display": "AdjustedPositionReport",
-    "fix:msgtype": "BL"
+    "fix:msgtype": "BL",
+    "fix:tag": "231397"
   }
 }

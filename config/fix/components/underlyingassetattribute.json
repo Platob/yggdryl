@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingAssetAttribute"
+    "display": "UnderlyingAssetAttribute",
+    "fix:tag": "595375"
   }
 }

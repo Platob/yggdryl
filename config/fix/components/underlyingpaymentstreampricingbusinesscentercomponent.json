@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStreamPricingBusinessCenter"
+    "display": "UnderlyingPaymentStreamPricingBusinessCenter",
+    "fix:tag": "508994"
   }
 }

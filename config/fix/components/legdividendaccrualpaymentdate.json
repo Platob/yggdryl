@@ -98,6 +98,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when LegDividendAccrualPaymentDateOffsetUnit(42332) is specified.",
-    "display": "LegDividendAccrualPaymentDate"
+    "display": "LegDividendAccrualPaymentDate",
+    "fix:tag": "655412"
   }
 }

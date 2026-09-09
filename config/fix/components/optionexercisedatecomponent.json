@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "OptionExerciseDate"
+    "display": "OptionExerciseDate",
+    "fix:tag": "353285"
   }
 }

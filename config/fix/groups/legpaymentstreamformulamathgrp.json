@@ -18,6 +18,7 @@
     "description": "Required if NoLegPaymentStreamFormulas(42485) > 0.",
     "display": "LegPaymentStreamFormulaMathGrp",
     "fix:component": "legpaymentstreamformulamath",
-    "fix:counter": "42485"
+    "fix:counter": "42485",
+    "fix:tag": "304247"
   }
 }

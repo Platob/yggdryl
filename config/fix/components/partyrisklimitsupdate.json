@@ -87,6 +87,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyRiskLimitsUpdate"
+    "display": "PartyRiskLimitsUpdate",
+    "fix:tag": "701692"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Executions for which collateral is required",
     "display": "ExecCollGrp",
     "fix:component": "execcoll",
-    "fix:counter": "124"
+    "fix:counter": "124",
+    "fix:tag": "328918"
   }
 }

@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegMarketDisruptionEvent"
+    "display": "LegMarketDisruptionEvent",
+    "fix:tag": "255924"
   }
 }

@@ -147,6 +147,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProtectionTerm"
+    "display": "LegProtectionTerm",
+    "fix:tag": "661063"
   }
 }

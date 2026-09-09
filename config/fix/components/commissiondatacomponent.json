@@ -167,6 +167,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "CommissionData"
+    "display": "CommissionData",
+    "fix:tag": "266580"
   }
 }

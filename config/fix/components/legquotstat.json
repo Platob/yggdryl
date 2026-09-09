@@ -137,6 +137,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegQuotStat"
+    "display": "LegQuotStat",
+    "fix:tag": "490112"
   }
 }

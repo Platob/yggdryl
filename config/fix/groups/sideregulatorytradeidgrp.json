@@ -18,6 +18,7 @@
     "description": "Required if NoSideRegulatoryTradeIDs(1971) > 0.",
     "display": "SideRegulatoryTradeIDGrp",
     "fix:component": "sideregulatorytradeidcomponent",
-    "fix:counter": "1971"
+    "fix:counter": "1971",
+    "fix:tag": "1035352"
   }
 }

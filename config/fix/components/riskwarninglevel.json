@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RiskWarningLevel"
+    "display": "RiskWarningLevel",
+    "fix:tag": "608685"
   }
 }

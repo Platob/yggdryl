@@ -229,6 +229,7 @@
   "metadata": {
     "description": "MsgType = R",
     "display": "QuoteRequest",
-    "fix:msgtype": "R"
+    "fix:msgtype": "R",
+    "fix:tag": "231968"
   }
 }

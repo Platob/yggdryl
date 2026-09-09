@@ -18,6 +18,7 @@
     "description": "Required if NoLegSettlRateFallbacks(40902) > 0.",
     "display": "LegSettlRateDisruptionFallbackGrp",
     "fix:component": "legsettlratedisruptionfallback",
-    "fix:counter": "40902"
+    "fix:counter": "40902",
+    "fix:tag": "588401"
   }
 }

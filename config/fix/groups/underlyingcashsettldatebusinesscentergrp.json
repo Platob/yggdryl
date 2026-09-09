@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingCashSettlDateBusinessCenters(42788) > 0.",
     "display": "UnderlyingCashSettlDateBusinessCenterGrp",
     "fix:component": "underlyingcashsettldatebusinesscentercomponent",
-    "fix:counter": "42788"
+    "fix:counter": "42788",
+    "fix:tag": "858823"
   }
 }

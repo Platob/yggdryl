@@ -18,6 +18,7 @@
     "description": "Required if NoOptionExerciseDates(41137) > 0.",
     "display": "OptionExerciseDateGrp",
     "fix:component": "optionexercisedatecomponent",
-    "fix:counter": "41137"
+    "fix:counter": "41137",
+    "fix:tag": "295338"
   }
 }

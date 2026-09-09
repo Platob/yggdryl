@@ -79,6 +79,7 @@
   "metadata": {
     "description": "MsgType = CD",
     "display": "StreamAssignmentReport",
-    "fix:msgtype": "CD"
+    "fix:msgtype": "CD",
+    "fix:tag": "917016"
   }
 }

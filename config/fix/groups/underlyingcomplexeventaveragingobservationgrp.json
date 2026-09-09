@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingComplexEventAveragingObservations(41713) > 0.",
     "display": "UnderlyingComplexEventAveragingObservationGrp",
     "fix:component": "underlyingcomplexeventaveragingobservation",
-    "fix:counter": "41713"
+    "fix:counter": "41713",
+    "fix:tag": "1098005"
   }
 }

@@ -158,6 +158,7 @@
   "nullable": false,
   "metadata": {
     "description": "The date payment calculations are made. This may be earlier than the date in ClearingBusinessDate(715).",
-    "display": "PostTradePayment"
+    "display": "PostTradePayment",
+    "fix:tag": "650745"
   }
 }

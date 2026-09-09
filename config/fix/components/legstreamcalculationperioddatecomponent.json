@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCalculationPeriodDate"
+    "display": "LegStreamCalculationPeriodDate",
+    "fix:tag": "1071689"
   }
 }

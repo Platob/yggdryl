@@ -18,6 +18,7 @@
     "description": "Number of news item references",
     "display": "NewsRefGrp",
     "fix:component": "newsref",
-    "fix:counter": "1475"
+    "fix:counter": "1475",
+    "fix:tag": "589780"
   }
 }

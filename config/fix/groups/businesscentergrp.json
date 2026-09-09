@@ -18,6 +18,7 @@
     "description": "Required if NoBusinessCenters(40278) > 0.",
     "display": "BusinessCenterGrp",
     "fix:component": "businesscentercomponent",
-    "fix:counter": "40278"
+    "fix:counter": "40278",
+    "fix:tag": "168739"
   }
 }

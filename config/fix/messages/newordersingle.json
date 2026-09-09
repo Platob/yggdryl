@@ -1609,6 +1609,7 @@
   "metadata": {
     "description": "MsgType = D",
     "display": "NewOrderSingle",
-    "fix:msgtype": "D"
+    "fix:msgtype": "D",
+    "fix:tag": "244936"
   }
 }

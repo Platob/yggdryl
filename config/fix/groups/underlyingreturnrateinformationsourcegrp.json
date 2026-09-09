@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingReturnRateInformationSources(43060) > 0.",
     "display": "UnderlyingReturnRateInformationSourceGrp",
     "fix:component": "underlyingreturnrateinformationsourcecomponent",
-    "fix:counter": "43060"
+    "fix:counter": "43060",
+    "fix:tag": "760646"
   }
 }
