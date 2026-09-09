@@ -35,6 +35,60 @@ mod schema;
 #[path = "fix/store.rs"]
 mod store;
 
+/// What a reader warned about while it ran, on this thread alone.
+///
+/// A CBlock is read best-effort, so what it drops is a warning rather than a
+/// return value and the tests that pin a drop have to read the log. `log` is
+/// process-global and this suite is threaded, so the records are buffered per
+/// thread and every other thread's are ignored - which is what lets a warning
+/// be asserted without the isolation a process-global fixture needs.
+mod warned {
+    use std::cell::RefCell;
+    use std::sync::Once;
+
+    thread_local! {
+        static HELD: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+    }
+
+    struct Sink;
+
+    impl log::Log for Sink {
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            metadata.level() <= log::Level::Warn
+        }
+
+        fn log(&self, record: &log::Record<'_>) {
+            if !self.enabled(record.metadata()) {
+                return;
+            }
+            HELD.with_borrow_mut(|held| {
+                if let Some(held) = held.as_mut() {
+                    held.push(record.args().to_string());
+                }
+            });
+        }
+
+        fn flush(&self) {}
+    }
+
+    static SINK: Sink = Sink;
+    static INSTALLED: Once = Once::new();
+
+    /// Runs `body`, answering what it warned about beside what it answered.
+    pub fn during<T>(body: impl FnOnce() -> T) -> (T, Vec<String>) {
+        INSTALLED.call_once(|| {
+            // Another logger may already own the process; the buffer is then
+            // empty and the assertions say so rather than the install failing.
+            drop(log::set_logger(&SINK));
+            log::set_max_level(log::LevelFilter::Warn);
+        });
+        HELD.with_borrow_mut(|held| *held = Some(Vec::new()));
+        let answered = body();
+        let warnings = HELD.with_borrow_mut(Option::take).unwrap_or_default();
+        (answered, warnings)
+    }
+}
+
 /// Immutable seed fixtures share parsing and compiled plans within this binary.
 fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
     static REGISTRY: std::sync::OnceLock<std::sync::Arc<yggdryl::FixRegistry>> =
