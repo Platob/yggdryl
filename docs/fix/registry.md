@@ -387,6 +387,8 @@ Scalar `update` merges the same identifier: incoming scalar metadata wins, alias
 
 Rust and Python expose `merge_with`, `add_fields`, and `add_cfb_file` as atomic native folds. `from_cfb_file` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and inline enum codes; the [CLI](cli.md) exposes ingestion and synchronization.
 
+A CBlock's `normalization-binding` is read for the names it spells its tags with, and for nothing else. A `tag-normalization` whose mapping is one bare `$602` says its `tag-name` is another spelling of tag 602, so that spelling joins the field as an alias while the `vocabulary-tag` keeps the name. A conditional mapping, a `lookup`, and a mapping built from several expressions each name nothing: this layer holds no evaluator. Most of a real binding spells names a tag already answers to - resolution folds ASCII case - so the pass pays where a `vocabulary-tag` declared no `alt` and the tag is otherwise reachable only by its own number. No name is refused: one the vocabulary never declared, one another tag in the same branch already answers to, or one the core could not store drops on its own.
+
 `merge_with` combines another registry and its dialect declarations; `add_fields` folds a scalar field iterable; `add_cfb_file` parses a CBlock, folds its vocabulary, and records the declared numeric FIX version and source branch aliases. These operations report added/merged counts only after the entire staged fold succeeds. CBlock byte, element, and content failures cross each binding as native located errors.
 
 ## Registering a message type
