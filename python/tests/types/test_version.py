@@ -74,7 +74,7 @@ def test_a_patch_tail_stating_no_number_folds_instead_of_failing(text):
     assert parsed.major == 1 or parsed.major == 5
     # The same tail always reads as the same version.
     assert parsed == Version.from_str(text)
-    assert DataType("version").scalar(text).value == parsed
+    assert DataType("version").scalar(text).as_py() == parsed
 
 
 def test_unlike_patch_tails_read_as_unlike_versions():
@@ -152,7 +152,7 @@ def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
     assert not hasattr(types, "msgtype")
     assert not hasattr(types, "MsgTypeField")
     assert "msgtype" not in enums.DATA_TYPE_IDS
-    assert len(enums.DATA_TYPE_IDS) == 60
+    assert len(enums.DATA_TYPE_IDS) == 61
     assert enums.DATA_TYPE_IDS.index("url") == 59
     with pytest.raises(ValueError):
         DataType("msgtype")
@@ -184,4 +184,4 @@ def test_version_annotations_and_generated_dataclasses_keep_the_native_type():
     restored = json.loads('{"version":"5.0.300"}', cls=generated)
     assert type(restored.version) is Version
     assert restored.version == value.version
-    assert generated.field() is root
+    assert generated.into_field() is root
