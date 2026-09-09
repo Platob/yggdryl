@@ -94,7 +94,9 @@ This section renders `assets/fix.json` and needs JavaScript.
 - A numeric frame states its group members flat, and the dictionary's declaration is what folds them back: the group's first declared member opens an occurrence, a member the occurrence already holds opens the next, and a tag the group does not declare closes it. A bridge frame's indexed keys state the occurrences outright, and the same counter holds them either way. A count the members do not meet is reported rather than repaired, and an ambiguous group context needs a message definition to select the layout.
 - A tag that merely arrived twice is two values, not a group of one: only a counter states a count.
 - A value that will not type is null in the row and still exactly as it arrived in the entries, ready for emission; the refusal is an anomaly, never an error.
-- A key no dictionary names is kept under its own spelling and its arrival value. Nothing is dropped for being unexplained.
+- A key the dictionary does not name is looked for in the message it arrived in before it is kept unexplained: the message root's own children for a flat key, the occurrence's declared members for a packed one. A dialect that spelled one name over two tags has named neither of them in the dictionary, and this is where its own grammar says which of them a key means.
+- A row a data field carries is a message of its own type and is read against it. A bridge writes a whole trade capture into a `35=UL` frame's `XmlData`, and `UL` says nothing about the groups that row nests or the spellings its dialect gave two tags; the frame's own statements stay the frame's.
+- A key nothing names at all is kept under its own spelling and its arrival value. Nothing is dropped for being unexplained.
 - Bulk and wildcard configuration input yields all selected configurations; empty answers yield none. A conversion error propagates and fuses the cursor.
 - The page reads text; the package reads bytes. A frame whose bytes are not text — a `data` field carrying binary — decodes lossily here and is the package's to read properly.
 

@@ -8,7 +8,8 @@ use yggdryl::holder::local::Folder;
 use yggdryl::holder::Buffer;
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
 use yggdryl::{
-    DataType, Error, Field, FixBranch, FixCategory, FixField, FixId, FixRegistry, IOBase, Version,
+    DataType, Error, Field, FixBranch, FixCategory, FixCodec, FixField, FixId, FixRegistry, IOBase,
+    Version,
 };
 
 /// A CBlock in the exact shape a production file has: the same element order,
@@ -1371,10 +1372,9 @@ fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
 }
 
 #[test]
-fn both_doors_refuse_a_file_that_names_one_field_twice() {
+fn a_spelling_two_tags_share_names_neither_of_them() {
     // Two tags whose `alt` folds to one name, both outside the user range and
-    // so both in the standard branch. The dictionary build is what catches it,
-    // which is why the vocabulary door builds one and throws it away.
+    // so both in the standard branch, which is where a name contends.
     let clashing = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary>
@@ -1382,21 +1382,63 @@ fn both_doors_refuse_a_file_that_names_one_field_twice() {
 		<vocabulary-tag name="3044" alt="Price" type="float" />
 	</vocabulary>
 </cplugin-configuration>"#;
-    let refused = FixRegistry::from_cfb_file(&handle(clashing), Some(&branch())).unwrap_err();
-    // The core's conflict, behind the declaration that raised it: a file this
-    // dictionary cannot be built from is a refusal of the file, located in it.
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(clashing), Some(&branch())).expect("a readable CBlock");
+    // Each named by its own decimal - the identity a tag declaring no `alt`
+    // already takes - and each keeping what the file called it.
+    for tag in [44, 3044] {
+        let field = registry.field_by_tag(tag).expect("a declared tag");
+        assert_eq!(field.name(), tag.to_string());
+        assert_eq!(field.display(), Some("Price"));
+    }
+    // And the spelling names neither, in either branch.
+    assert!(registry.get_field_by_name("Price", None).is_none());
     assert!(
-        refused.to_string().contains("tag 3044 \"price\""),
-        "{refused}"
+        registry
+            .get_field_by_name("Price", Some(&branch()))
+            .is_none()
     );
-    assert!(
-        refused.to_string().contains("existing fix field"),
-        "{refused}"
-    );
-    let also = FixField::from_cfb_file(&handle(clashing), Some("bloomberg")).unwrap_err();
-    assert_eq!(also.to_string(), refused.to_string());
 
-    // Same tag twice under two spellings is the other half of that check.
+    // The vocabulary door reads the same file the same way.
+    let fields =
+        FixField::from_cfb_file(&handle(clashing), Some("bloomberg")).expect("a readable CBlock");
+    let named: Vec<&str> = fields.iter().map(Field::name).collect();
+    assert_eq!(named, ["44", "3044"]);
+
+    // A spelling that is another tag's own decimal contends with that tag's
+    // identity, so it names neither either - and the tag it named keeps the
+    // spelling nothing contends.
+    let numbered = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="3044" type="float" />
+		<vocabulary-tag name="3044" alt="LastPx" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(numbered), Some(&branch())).expect("a readable CBlock");
+    assert_eq!(registry.field_by_tag(44).unwrap().name(), "44");
+    assert_eq!(registry.field_by_tag(44).unwrap().display(), Some("3044"));
+    assert_eq!(registry.field_by_tag(3044).unwrap().name(), "lastpx");
+
+    // Two branches are two namespaces, so a venue's own spelling of a name
+    // FIX already has is not contended by it.
+    let branched = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Price" type="float" />
+		<vocabulary-tag name="20044" alt="Price" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(branched), Some(&branch())).expect("a readable CBlock");
+    assert_eq!(registry.field_by_tag(44).unwrap().name(), "price");
+    assert_eq!(registry.field_by_tag(20044).unwrap().name(), "price");
+}
+
+#[test]
+fn both_doors_refuse_a_file_that_declares_one_tag_twice() {
+    // Same tag twice under two spellings: one identity, two definitions.
     let doubled = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary>
@@ -1692,5 +1734,165 @@ fn both_doors_carry_the_names_a_normalization_spelled() {
         held.as_fix().aliases().collect::<Vec<_>>(),
         ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
         "the vocabulary door carries them too",
+    );
+}
+
+/// The shape a real FX trade-capture dialect has where one spelling is two
+/// tags: `HedgeCurrency` at the top of the message is the currency the hedge
+/// settles in, and `HedgeCurrency` inside `NoHedgeGroups` is the one each
+/// hedge leg is quoted in. Both are declared, both are bound, and the
+/// grammar is the only place the file says which is which.
+const HEDGED: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.BuySideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="TRTNFX" sendercompid="OURDESK">
+	<message-types>
+		<message-type value="AE Inbound" description="Trade Capture Report" supported="true" />
+	</message-types>
+	<inbound-message-type-mappings>
+		<entry key="tradecapturereport" value="AE Inbound" />
+	</inbound-message-type-mappings>
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" read-only="true" />
+		<vocabulary-tag name="11020" alt="NoHedgeGroups" type="integer" read-only="false" />
+		<vocabulary-tag name="11021" alt="HedgeSettlDate" type="utc-date" read-only="false" />
+		<vocabulary-tag name="11022" alt="HedgeSide" type="string" read-only="false" />
+		<vocabulary-tag name="11023" alt="HedgeQty" type="float" read-only="false" />
+		<vocabulary-tag name="11024" alt="HedgeCurrency" type="string" read-only="false" />
+		<vocabulary-tag name="11025" alt="HedgeCurrency" type="string" read-only="false" />
+		<vocabulary-tag name="11026" alt="HedgePrice" type="float" read-only="false" />
+		<vocabulary-tag name="11027" alt="HedgeVenueTransID" type="string" read-only="false" />
+		<vocabulary-tag name="11033" alt="TR_FixingCenter" type="string" read-only="false" />
+	</vocabulary>
+	<grammar-binding type="AE Inbound">
+		<grammar checkordering="false">
+			<tag-constraint name="35" activated="true" read-only="true" part="header" required="true" />
+			<tag-constraint name="11025" activated="true" read-only="false" part="body" required="false" />
+			<tag-constraint name="11033" activated="true" read-only="false" part="body" required="false" />
+			<grammar checkordering="false">
+				<tag-constraint name="11020" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11024" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11026" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11023" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11021" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11022" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11027" activated="true" read-only="false" part="body" required="false" />
+			</grammar>
+		</grammar>
+	</grammar-binding>
+</cplugin-configuration>
+"#;
+
+#[test]
+fn a_message_resolves_the_spelling_two_of_its_tags_share() {
+    let (registry, roots) = parse(HEDGED);
+
+    // Neither tag is named by the spelling both declared, and the tag that
+    // declared one nothing contends keeps it.
+    assert_eq!(registry.field_by_tag(11024).unwrap().name(), "11024");
+    assert_eq!(registry.field_by_tag(11025).unwrap().name(), "11025");
+    assert_eq!(
+        registry.field_by_tag(11024).unwrap().display(),
+        Some("HedgeCurrency")
+    );
+    assert_eq!(
+        registry.field_by_tag(11033).unwrap().name(),
+        "tr_fixingcenter"
+    );
+    assert!(
+        registry
+            .get_field_by_name("HedgeCurrency", Some(&branch()))
+            .is_none(),
+        "a spelling two tags share names neither",
+    );
+
+    // The message says which is which: the file bound one tag per constraint,
+    // so the spelling survives at each level it was bound at.
+    let root = &roots[0];
+    assert!(
+        children(root).contains(&"hedgecurrency"),
+        "{:?}",
+        children(root)
+    );
+    let group = root
+        .get_field_by_path("hedgegroups")
+        .expect("the hedge group");
+    let DataType::List(item) = group.dtype() else {
+        panic!("a list, got {}", group.dtype());
+    };
+    let members: Vec<&str> = item.fields().iter().map(Field::name).collect();
+    assert!(members.contains(&"hedgecurrency"), "{members:?}");
+
+    // And a bridge row of that message type reaches both tags: the flat key
+    // through the message's own children, the packed one through the members
+    // of the group it arrived in.
+    let reader = FixCodec::new(Arc::new(registry)).with_branch(&branch());
+    let row: &[u8] = b"MSGTYPE=tradecapturereport|HEDGECURRENCY=USD|TR_FIXINGCENTER=LN\
+|NOHEDGEGROUPS=1|NOHEDGEGROUPS[0]=HEDGESETTLDATE=20260818\x04\x03HEDGECURRENCY=XAU\x04\x03";
+    let message = <FixCodec as super::OneMessage>::one_line(&reader, row, false)
+        .expect("the bridge row builds");
+    assert_eq!(message.by_tag(11025).unwrap().as_str(), Some("USD"));
+    assert_eq!(message.by_tag(11033).unwrap().as_str(), Some("LN"));
+    let occurrences = message
+        .by_name("hedgegroups")
+        .expect("the hedge group")
+        .as_sequence()
+        .expect("its occurrences")
+        .to_vec();
+    assert_eq!(occurrences.len(), 1);
+    let held = message
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 11020)
+        .expect("the counter pair");
+    let member_tags: Vec<i32> = held.children().iter().map(yggdryl::FixEntry::tag).collect();
+    assert_eq!(member_tags, [11021, 11024], "the group's own HedgeCurrency");
+}
+
+#[test]
+fn the_captures_trade_capture_frame_reads_against_the_dialect_that_declares_it() {
+    // The line the bridge log fixture carries, read against the dialect whose
+    // vocabulary spells `HedgeCurrency` twice. The frame says `35=UL`; the row
+    // inside its `XmlData` says what it is, and that is the type its keys
+    // resolve against - which is the whole of how a shared spelling reaches
+    // the tag the file bound it at.
+    let logged = include_str!("ulbridge.log")
+        .lines()
+        .find(|line| line.contains("MSGTYPE=tradecapturereport"))
+        .expect("the trade capture frame");
+    let (registry, _) = parse(HEDGED);
+    let reader = FixCodec::new(Arc::new(registry)).with_branch(&branch());
+    let message = <FixCodec as super::OneMessage>::one_line(&reader, logged.as_bytes(), false)
+        .expect("the captured frame builds");
+
+    // The frame's own type stays the frame's.
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("UL"));
+
+    // The hedge the payload packs is this dialect's group, typed by it: the
+    // currency is the group's own tag and not the one the top of the message
+    // binds under the same spelling.
+    let hedge = message
+        .as_field()
+        .get_field_by_path("hedgegroups")
+        .expect("the hedge group");
+    let DataType::List(item) = hedge.dtype() else {
+        panic!("a list, got {}", hedge.dtype());
+    };
+    let currency = item.fields().first().expect("its first member");
+    assert_eq!(currency.name(), "hedgecurrency");
+    assert_eq!(currency.as_fix().tag().unwrap(), Some(11024));
+    let held = message
+        .by_name("hedgegroups")
+        .expect("the hedge group")
+        .as_sequence()
+        .expect("its occurrences")
+        .to_vec();
+    assert_eq!(
+        held[0].as_sequence().expect("its members")[0].as_str(),
+        Some("XAU")
+    );
+    // Typed by the vocabulary rather than kept as text, which is what says
+    // the dialect and not the fallback answered.
+    assert_eq!(
+        item.field("hedgeqty").expect("HedgeQty").dtype(),
+        &DataType::Float32
     );
 }

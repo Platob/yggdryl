@@ -286,6 +286,9 @@ pub(super) struct Builder<'registry> {
     /// frame with no counter, which is most of them, so the fast path
     /// reads one empty vector.
     open: Vec<OpenGroup>,
+    /// The type the line's own frame stated, kept while a row nested inside
+    /// one of its data fields is read against its own.
+    framed: Option<&'registry super::MsgType>,
 }
 
 /// One repeating group a numeric frame has opened and not yet closed.
@@ -326,6 +329,7 @@ impl<'registry> Builder<'registry> {
             recorded: Vec::with_capacity(capacity),
             outer: None,
             open: Vec::new(),
+            framed: None,
         }
     }
 
@@ -442,13 +446,25 @@ impl<'registry> Builder<'registry> {
 
     /// Opens the reading of a row nested inside one of the line's data
     /// fields: what follows fills the row and records nothing.
-    pub(super) fn begin_nested(&mut self) {
+    ///
+    /// The row is a message of its own type, so it is read against that type
+    /// rather than against the frame's. A bridge writes a whole trade capture
+    /// into a `35=UL` frame's `XmlData`, and `UL` says nothing about the
+    /// groups that row nests or the spellings its dialect gave two tags. The
+    /// line's own type is restored by [`Builder::end_nested`], and a row that
+    /// declares none keeps it throughout.
+    pub(super) fn begin_nested(&mut self, message: Option<&'registry super::MsgType>) {
         self.outer = Some(self.slots.len());
+        self.framed = self.message;
+        if message.is_some() {
+            self.message = message;
+        }
     }
 
     /// Closes the nested reading.
     pub(super) fn end_nested(&mut self) {
         self.outer = None;
+        self.message = self.framed;
     }
 
     /// Whether the line itself already built a child of this name, which a
@@ -605,15 +621,34 @@ impl<'registry> Builder<'registry> {
     /// readable through the field's [lineage](super::lineage). One the
     /// dictionary does not know is kept under the key's own folded spelling
     /// as nullable text, because a venue sends fields no dictionary has.
-    fn field_for(&self, key: &str) -> (Field, i32, bool) {
-        match self.resolve(key) {
-            Some((known, tag)) => (stated(known), tag, true),
-            None => {
-                let name = folded_name(key);
-                let tag = super::field::parse_tag(key).unwrap_or(0);
-                (DataType::Utf8.nullable_field(name), tag, false)
-            }
+    /// A dialect that spelled one name over two tags is why `scope` is
+    /// passed: a dictionary indexes a name once per branch, so such a
+    /// spelling names neither tag there, and the message the row declares is
+    /// what says which one it meant. `scope` is the children of the level
+    /// the key arrived at - the message root for a flat key, the occurrence's
+    /// own members for a grouped one - and it is read only where the
+    /// dictionary answered nothing, so an unambiguous name costs no scan.
+    fn field_for(&self, key: &str, scope: &[Field]) -> (Field, i32, bool) {
+        if let Some((known, tag)) = self.resolve(key) {
+            return (stated(known), tag, true);
         }
+        if let Some(declared) = in_scope(scope, key) {
+            let tag = declared.as_fix().tag().ok().flatten().unwrap_or(0);
+            return (stated(declared), tag, true);
+        }
+        let name = folded_name(key);
+        let tag = super::field::parse_tag(key).unwrap_or(0);
+        (DataType::Utf8.nullable_field(name), tag, false)
+    }
+
+    /// The children of the message this row declared, which a key resolves
+    /// against when the dictionary holds no name for it.
+    ///
+    /// Empty for a row whose type resolves to no message definition, which is
+    /// every row a dialect declares no grammar for.
+    fn scope(&self) -> &'registry [Field] {
+        self.message
+            .map_or(&[], |message| message.as_field().fields())
     }
 
     /// Types one value under one field, translating its code first.
@@ -738,7 +773,7 @@ impl<'registry> Builder<'registry> {
                 ),
             }
         } else {
-            self.field_for(key)
+            self.field_for(key, self.scope())
         };
         if self.shadowed(field.name()) {
             return;
@@ -852,7 +887,7 @@ impl<'registry> Builder<'registry> {
             slot.values[occurrence] = Scalar::from(text);
             return;
         }
-        let (field, tag, known) = self.field_for(name);
+        let (field, tag, known) = self.field_for(name, self.scope());
         if self.shadowed(field.name()) {
             return;
         }
@@ -958,7 +993,11 @@ impl<'registry> Builder<'registry> {
         } else if let Some((field, tag)) = self.counter(leaf) {
             (field, tag, true)
         } else {
-            let (field, tag, _) = self.field_for(leaf);
+            // The occurrence's own members are the level this leaf arrived
+            // at, so a spelling the dictionary shares between two tags
+            // resolves to the one this group declares.
+            let scope = member_fields(&levels.last().expect("a level").0);
+            let (field, tag, _) = self.field_for(leaf, scope);
             (field, tag, false)
         };
         let value = if leaf.is_empty() || nested_counter {
@@ -1567,6 +1606,25 @@ fn stated(known: &Field) -> Field {
     let mut field = known.clone();
     field.set_nullable(false);
     field
+}
+
+/// The child of one declared level that a key names, when it names one.
+///
+/// Folded exactly as the dictionary folds a name, so a key resolves the same
+/// way whichever of the two answered it. Only a scalar child answers: a
+/// nested level is addressed by its own located key and never by a leaf.
+fn in_scope<'held>(scope: &'held [Field], key: &str) -> Option<&'held Field> {
+    scope
+        .iter()
+        .find(|held| !held.dtype().is_nested() && crate::types::folds_equal(held.name(), key))
+}
+
+/// The members one repeating group declares, as a level a key resolves in.
+fn member_fields(group: &Field) -> &[Field] {
+    match group.dtype() {
+        DataType::List(item) | DataType::LargeList(item) => item.fields(),
+        _ => &[],
+    }
 }
 
 /// The tags one repeating group declares as its direct members, the first

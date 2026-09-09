@@ -51,6 +51,15 @@ use crate::{DataType, Error, Field, Result, Scalar, Version};
 use super::build::{Builder, RowExtras, root_name};
 use super::{FixBranch, FixMessages, FixMsg, FixRegistry};
 
+/// One bridge row split into its pairs, beside the message type it declared.
+///
+/// Every key is borrowed from the row except a packed occurrence's, which is
+/// rendered under the path the builder nests by and so has to be built.
+type BridgeRow<'registry, 'body> = (
+    Option<&'registry super::MsgType>,
+    Vec<(Cow<'body, [u8]>, &'body [u8])>,
+);
+
 /// What separates the members packed inside one bridge group occurrence.
 ///
 /// ULLINK writes EOT then ETX. A bridge relaying into a FIX session writes the
@@ -467,7 +476,7 @@ impl FixCodec {
 
     /// [`Self::transform_ullink_line`], with what the row stated beside its row.
     fn ullink_with(&self, body: &[u8], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
-        let resolved = self.ullink_pairs(body);
+        let (_, resolved) = self.ullink_pairs(body);
         let pairs: Vec<(&[u8], &[u8])> = resolved
             .iter()
             .map(|(key, value)| (key.as_ref(), *value))
@@ -480,7 +489,15 @@ impl FixCodec {
     ///
     /// Shared by the bridge-row reader and the frame reader, which meets a
     /// bridge row inside a data field and reads it by exactly these rules.
-    fn ullink_pairs<'body>(&self, body: &'body [u8]) -> Vec<(Cow<'body, [u8]>, &'body [u8])> {
+    ///
+    /// Answers the message the row declares beside the pairs, because the
+    /// splitting already resolved it: a group is split by the members the
+    /// row's own type declares, and a caller reading the row into a frame
+    /// needs the same answer to resolve the row's own spellings.
+    fn ullink_pairs<'registry, 'body>(
+        &'registry self,
+        body: &'body [u8],
+    ) -> BridgeRow<'registry, 'body> {
         let separator = line::ullink_separator(body);
         // The whole row is split before any `#` is judged, because the bare
         // twin that keeps one may arrive on either side of it. The segments
@@ -547,7 +564,7 @@ impl FixCodec {
                 _ => resolved.push((Cow::Borrowed(key), value)),
             }
         }
-        resolved
+        (message, resolved)
     }
 
     /// One occurrence's member pairs rendered under its path, sub-groups
@@ -918,8 +935,9 @@ impl FixCodec {
             // A row inside a data field is a reading of that field's value,
             // not a second arrival: it fills the row and records no entry,
             // so the arrival record and the wire it re-emits stay exact.
-            builder.begin_nested();
-            for (key, value) in self.ullink_pairs(row) {
+            let (declared, pairs) = self.ullink_pairs(row);
+            builder.begin_nested(declared);
+            for (key, value) in pairs {
                 if self.is_absent(value) {
                     continue;
                 }

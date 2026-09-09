@@ -72,6 +72,32 @@
 //! of them are two sentences: a sibling's text, and a validity child's own
 //! `description`, are that element's.
 //!
+//! # A spelling two tags share
+//!
+//! A real dialect spells one `alt` over two tags. `TRTN_FX_TradeCapture`
+//! declares `HedgeCurrency` twice, once for the currency a hedge settles in
+//! and once for the currency it is quoted in, and the two are different
+//! fields with different tags. A dictionary indexes a name per branch, so
+//! that spelling cannot name both there - and picking either would give a
+//! reader a `HedgeCurrency` the file never said was the one.
+//!
+//! So it names neither. A tag whose `alt` another tag also declares, and a
+//! tag whose `alt` is another tag's own decimal, are named by their own
+//! decimal - the identity a tag declaring no `alt` already takes - and keep
+//! the declared spelling as their `display`. That leaves every tag named,
+//! always, and it is the same reading the normalization section below
+//! applies to a name that means a tag only sometimes.
+//!
+//! What restores the spelling is the message. A `tag-constraint` names one
+//! tag, so a message root, a component and a group each carry the spelling at
+//! the one place the file made it unambiguous, and a reader resolving a key
+//! against the message it arrived in reaches the tag the file meant. That is
+//! what [`FixCodec`](super::FixCodec) does with a bridge row's `MSGTYPE`: the
+//! dictionary answers nothing for a shared spelling, and the message the row
+//! declares answers with the tag it bound. Two constraints of one grammar
+//! carrying one spelling are still two children, numbered as duplicate
+//! constraints already are.
+//!
 //! # What a normalization spells a tag with
 //!
 //! A `vocabulary-tag` states what a tag *is*; a `normalization-binding`
@@ -526,8 +552,81 @@ impl<'doc> Parse<'doc> {
             }
             buffer.clear();
         }
+        self.settle_names()?;
         self.attach_msgtypes()?;
         self.attach_names()
+    }
+
+    /// Settles what each declared tag is named, once the whole file is read.
+    ///
+    /// A spelling that does not name exactly one tag names none of them. A
+    /// tag whose `alt` another tag also declares, and a tag whose `alt` is
+    /// another tag's own decimal, are therefore named by their own decimal -
+    /// the same identity a tag declaring no `alt` already takes - and keep
+    /// the declared spelling as their `display`, so nothing the file said is
+    /// lost and [`spelled`] still answers what the counterparty calls them.
+    ///
+    /// Contended per branch, because a name is unique per branch: a venue's
+    /// own 11024 and FIX's 44 never contend, and [`Parse::owner`] is what
+    /// decides which of the two a tag lands in.
+    ///
+    /// Every tag is left named, always. A tag that keeps its spelling holds
+    /// one no other tag claims and that is no other tag's decimal; a tag that
+    /// falls back holds its own decimal, which names one tag by construction.
+    ///
+    /// Run once the document is read, so it settles the dictionary alone. A
+    /// `tag-constraint` resolves its tag against the vocabulary while the
+    /// grammar is read, and a message root's children therefore keep the
+    /// spelling - which is exactly where a spelling two tags share is still
+    /// unambiguous, because the file bound one tag per constraint.
+    fn settle_names(&mut self) -> Result<()> {
+        // `None` where two tags claim one spelling: the ambiguity idiom this
+        // crate keeps for every scoped index.
+        let mut claimed: std::collections::HashMap<(bool, SmolStr), Option<i32>> =
+            std::collections::HashMap::new();
+        let mut decimals: std::collections::HashMap<(bool, SmolStr), i32> =
+            std::collections::HashMap::new();
+        for held in &self.vocabulary {
+            let venue = !self.owner(held.tag).is_standard();
+            claimed
+                .entry((venue, SmolStr::new(held.field.name())))
+                .and_modify(|held_tag| {
+                    if *held_tag != Some(held.tag) {
+                        *held_tag = None;
+                    }
+                })
+                .or_insert(Some(held.tag));
+            decimals.insert((venue, format_smolstr!("{}", held.tag)), held.tag);
+        }
+        for at in 0..self.vocabulary.len() {
+            let tag = self.vocabulary[at].tag;
+            let key = (
+                !self.owner(tag).is_standard(),
+                SmolStr::new(self.vocabulary[at].field.name()),
+            );
+            let contended = claimed.get(&key).is_some_and(Option::is_none)
+                || decimals.get(&key).is_some_and(|held| *held != tag);
+            if !contended {
+                continue;
+            }
+            let position = self.vocabulary[at].position;
+            let spelling = SmolStr::new(spelled(&self.vocabulary[at].field));
+            let named = format_smolstr!("{tag}");
+            let field = &mut self.vocabulary[at].field;
+            if spelling != named {
+                field.set_display(spelling.as_str()).map_err(|error| {
+                    refusal(
+                        position,
+                        format_smolstr!(
+                            "tag {tag} spelling {:?}: {error}",
+                            elide_to(&spelling, ERROR_TEXT_LIMIT)
+                        ),
+                    )
+                })?;
+            }
+            field.set_name(named);
+        }
+        Ok(())
     }
 
     /// Reads the branch record the root element carries.
@@ -2014,12 +2113,14 @@ impl Named for quick_xml::events::BytesEnd<'_> {
 /// How a CBlock spells one field: the `alt` its `vocabulary-tag` declared, or
 /// the tag itself where it declared none.
 ///
-/// The fallback is an identity rather than a guess, and [`Parse::push_tag`]
-/// is what makes it one: it stores `display` exactly when the `alt` differs
-/// from its own lower-case form, and names the field that same lower-case
-/// form - so no `display` means the name already *is* the declared spelling.
-/// That coupling is load-bearing, because [`Parse::decodes`] orients a map by
-/// comparing its name against this.
+/// The fallback is an identity rather than a guess, and the two writers of a
+/// name are what make it one. [`Parse::push_tag`] stores `display` exactly
+/// when the `alt` differs from its own lower-case form and names the field
+/// that same lower-case form; [`Parse::settle_names`] stores `display`
+/// whenever it takes a contended spelling out of a name. Either way a
+/// `display` is the declared spelling and no `display` means the name already
+/// *is* it. That coupling is load-bearing, because [`Parse::decodes`] orients
+/// a map by comparing its name against this.
 fn spelled(field: &Field) -> &str {
     field.display().unwrap_or_else(|| field.name()).trim()
 }
