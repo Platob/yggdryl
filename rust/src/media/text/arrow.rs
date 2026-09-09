@@ -662,7 +662,7 @@ impl<R: Read> Records<R> {
     }
 }
 
-fn parse_capture(
+pub(crate) fn parse_capture(
     value: &str,
     dtype: &DataType,
     timezone: Option<&Timezone>,

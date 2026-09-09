@@ -155,7 +155,10 @@ pub(crate) fn render_cell(value: &[u8], dialect: &Dialect, output: &mut Vec<u8>)
 
 /// Return whether a rendered cell must be quoted to read back unchanged.
 fn needs_quoting(value: &[u8], quote: u8, dialect: &Dialect) -> bool {
-    let terminator = dialect.linesep.as_ref().map_or(b"\n".as_slice(), LineSep::as_bytes);
+    let terminator = dialect
+        .linesep
+        .as_ref()
+        .map_or(b"\n".as_slice(), LineSep::as_bytes);
     if value.first().is_some_and(|byte| *byte == quote) {
         return true;
     }

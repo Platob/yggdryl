@@ -46,6 +46,7 @@
 //! ```
 
 pub mod avro;
+pub mod csv;
 #[cfg(feature = "iceberg")]
 pub mod iceberg;
 #[cfg(not(feature = "iceberg"))]
@@ -104,6 +105,8 @@ pub enum Media {
     Avro(crate::media::avro::Avro<Holder>),
     /// Plain-text rows under one retained flat configuration.
     Text(crate::media::text::Text<Holder>),
+    /// Delimited-text rows, positionally addressable.
+    Csv(crate::media::csv::Csv<Holder>),
 }
 
 #[cfg(feature = "arrow")]
@@ -142,9 +145,13 @@ impl Media {
         if base == &MimeType::PLAIN_TEXT {
             return Ok(Self::Text(crate::media::text::Text::new(handle)));
         }
+        if base == &MimeType::CSV {
+            return Ok(Self::Csv(crate::media::csv::Csv::new(handle)));
+        }
         Err(Error::IncompatibleSchema(format!(
             "expected a media type with an implementation in this build \
-             (application/vnd.apache.arrow.stream{}, application/avro, text/plain), got {base}",
+             (application/vnd.apache.arrow.stream{}, application/avro, text/plain, text/csv), \
+             got {base}",
             if cfg!(feature = "parquet") {
                 ", application/vnd.apache.parquet"
             } else {
@@ -174,6 +181,11 @@ impl Media {
         Self::Text(crate::media::text::Text::new(handle))
     }
 
+    /// Hold delimited-text record media over a handle.
+    pub fn csv(handle: Holder) -> Self {
+        Self::Csv(crate::media::csv::Csv::new(handle))
+    }
+
     /// Return this media with an explicit canonical schema.
     #[must_use]
     pub fn with_field(self, field: Field) -> Self {
@@ -183,6 +195,7 @@ impl Media {
             Self::Parquet(parquet) => Self::Parquet(parquet.with_field(field)),
             Self::Avro(avro) => Self::Avro(avro.with_field(field)),
             Self::Text(text) => Self::Text(text.with_field(field)),
+            Self::Csv(csv) => Self::Csv(csv.with_field(field)),
         }
     }
 
@@ -198,6 +211,7 @@ impl Media {
             Self::Parquet(inner) => inner.handle(),
             Self::Avro(inner) => inner.handle(),
             Self::Text(inner) => inner.handle(),
+            Self::Csv(inner) => inner.handle(),
         }
     }
 
@@ -214,6 +228,7 @@ impl Media {
             Self::Parquet(inner) => inner.into_handle(),
             Self::Avro(inner) => inner.into_handle(),
             Self::Text(inner) => inner.into_handle(),
+            Self::Csv(inner) => inner.into_handle(),
         }
     }
 
@@ -225,6 +240,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Csv(csv) => csv,
         }
     }
 
@@ -236,6 +252,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Csv(csv) => csv,
         }
     }
 
@@ -252,6 +269,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Csv(csv) => csv,
         }
     }
 
@@ -263,6 +281,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Csv(csv) => csv,
         }
     }
 }

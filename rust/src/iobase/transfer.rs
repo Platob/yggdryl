@@ -953,6 +953,7 @@ pub(crate) fn leaf_reader(
         }
         RecordOptions::Avro(avro) => crate::media::avro::read_batch_reader(handle, declared, avro)?,
         RecordOptions::Text(text) => crate::media::text::arrow::read_arrow_reader(handle, text)?,
+        RecordOptions::Csv(csv) => crate::media::csv::read_arrow_reader(handle, csv)?,
     };
     match declared {
         Some(field) => Ok(crate::arrow::cast_reader(
@@ -976,6 +977,7 @@ pub(crate) fn leaf_row_size(
         RecordOptions::Parquet(parquet) => crate::media::parquet::row_size(handle, parquet),
         RecordOptions::Avro(avro) => crate::media::avro::row_size(handle, avro),
         RecordOptions::Text(text) => crate::media::text::arrow::row_size(handle, text),
+        RecordOptions::Csv(csv) => crate::media::csv::row_size(handle, csv),
     }
 }
 
@@ -1000,6 +1002,9 @@ pub(crate) fn leaf_field(
         RecordOptions::Parquet(parquet) => Ok(crate::media::parquet::read_field(handle, parquet)?),
         RecordOptions::Avro(avro) => Ok(crate::media::avro::read_field(handle, avro)?),
         RecordOptions::Text(text) => text.source_field(),
+        // The header names the columns and the cells type them, so the shape a
+        // CSV resource stores is read from its own bytes like any other.
+        RecordOptions::Csv(csv) => crate::media::csv::read_field(handle, csv),
     }
 }
 
@@ -1025,6 +1030,9 @@ pub(crate) fn leaf_writer(
         }
         RecordOptions::Text(text) => {
             crate::media::text::arrow::write_arrow_reader(handle, batches, text)?;
+        }
+        RecordOptions::Csv(csv) => {
+            crate::media::csv::overwrite_arrow_reader(handle, batches, csv)?;
         }
     }
     Ok(())
@@ -1117,6 +1125,11 @@ fn append_leaf(
     // with no reason to re-parse what is already there.
     if let RecordOptions::Text(text) = options {
         return crate::media::text::arrow::append_arrow_reader(handle, incoming, text);
+    }
+    // Delimited rows append natively too: the stored header decides the cell
+    // order, so nothing already written has to be read back and re-encoded.
+    if let RecordOptions::Csv(csv) = options {
+        return crate::media::csv::append_arrow_reader(handle, incoming, csv);
     }
     let target = target_field(handle, &incoming, options)?;
     append_leaf_onto(handle, incoming, options, &target)

@@ -71,6 +71,25 @@ impl Default for Inference {
     }
 }
 
+/// Return whether a column of this datatype is read from cells directly.
+///
+/// The set is exactly what the shared text-to-value conversion implements. A
+/// declared column outside it is read as text and converted by the shared cast,
+/// which is the crate's one answer for a datatype an encoding cannot spell.
+pub(crate) const fn is_read_dtype(dtype: &DataType) -> bool {
+    matches!(
+        dtype,
+        DataType::Utf8
+            | DataType::Boolean
+            | DataType::Int64
+            | DataType::Float64
+            | DataType::Date32
+            | DataType::Time32(_)
+            | DataType::Time64(_)
+            | DataType::DateTime64 { .. }
+    )
+}
+
 /// Name the datatype one cell's bytes are.
 ///
 /// The ladder is narrowest first, so `7` is an integer rather than a double
@@ -107,7 +126,10 @@ fn numeric_dtype(text: &str) -> Option<DataType> {
     if digits.bytes().all(|byte| byte.is_ascii_digit()) {
         // A whole number too wide for the column is text, because widening it
         // to a double would drop digits the file spelled out.
-        return Some(text.parse::<i64>().map_or(DataType::Utf8, |_| DataType::Int64));
+        return Some(
+            text.parse::<i64>()
+                .map_or(DataType::Utf8, |_| DataType::Int64),
+        );
     }
     text.parse::<f64>()
         .ok()

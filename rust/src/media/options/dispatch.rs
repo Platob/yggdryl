@@ -12,6 +12,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.name(),
             Self::Avro(options) => options.name(),
             Self::Text(options) => options.name(),
+            Self::Csv(options) => options.name(),
         }
     }
 
@@ -22,6 +23,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_name(name),
             Self::Avro(options) => options.set_name(name),
             Self::Text(options) => options.set_name(name),
+            Self::Csv(options) => options.set_name(name),
         }
     }
 
@@ -32,6 +34,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.dtype(),
             Self::Avro(options) => options.dtype(),
             Self::Text(options) => options.dtype(),
+            Self::Csv(options) => options.dtype(),
         }
     }
 
@@ -42,6 +45,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_dtype(dtype),
             Self::Avro(options) => options.set_dtype(dtype),
             Self::Text(options) => options.set_dtype(dtype),
+            Self::Csv(options) => options.set_dtype(dtype),
         }
     }
 
@@ -52,6 +56,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.metadata(),
             Self::Avro(options) => options.metadata(),
             Self::Text(options) => options.metadata(),
+            Self::Csv(options) => options.metadata(),
         }
     }
 
@@ -62,6 +67,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_metadata(metadata),
             Self::Avro(options) => options.set_metadata(metadata),
             Self::Text(options) => options.set_metadata(metadata),
+            Self::Csv(options) => options.set_metadata(metadata),
         }
     }
 
@@ -72,6 +78,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.safe(),
             Self::Avro(options) => options.safe(),
             Self::Text(options) => options.safe(),
+            Self::Csv(options) => options.safe(),
         }
     }
 
@@ -82,6 +89,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_safe(safe),
             Self::Avro(options) => options.set_safe(safe),
             Self::Text(options) => options.set_safe(safe),
+            Self::Csv(options) => options.set_safe(safe),
         }
     }
 
@@ -92,6 +100,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.batch_row_size(),
             Self::Avro(options) => options.batch_row_size(),
             Self::Text(options) => options.batch_row_size(),
+            Self::Csv(options) => options.batch_row_size(),
         }
     }
 
@@ -102,6 +111,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_batch_row_size(batch_row_size),
             Self::Avro(options) => options.set_batch_row_size(batch_row_size),
             Self::Text(options) => options.set_batch_row_size(batch_row_size),
+            Self::Csv(options) => options.set_batch_row_size(batch_row_size),
         }
     }
 
@@ -112,6 +122,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.max_row_size(),
             Self::Avro(options) => options.max_row_size(),
             Self::Text(options) => options.max_row_size(),
+            Self::Csv(options) => options.max_row_size(),
         }
     }
 
@@ -122,6 +133,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_max_row_size(max_row_size),
             Self::Avro(options) => options.set_max_row_size(max_row_size),
             Self::Text(options) => options.set_max_row_size(max_row_size),
+            Self::Csv(options) => options.set_max_row_size(max_row_size),
         }
     }
 
@@ -132,6 +144,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.max_byte_size(),
             Self::Avro(options) => options.max_byte_size(),
             Self::Text(options) => options.max_byte_size(),
+            Self::Csv(options) => options.max_byte_size(),
         }
     }
 
@@ -142,6 +155,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_max_byte_size(max_byte_size),
             Self::Avro(options) => options.set_max_byte_size(max_byte_size),
             Self::Text(options) => options.set_max_byte_size(max_byte_size),
+            Self::Csv(options) => options.set_max_byte_size(max_byte_size),
         }
     }
 
@@ -152,6 +166,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.commit_row_size(),
             Self::Avro(options) => options.commit_row_size(),
             Self::Text(options) => options.commit_row_size(),
+            Self::Csv(options) => options.commit_row_size(),
         }
     }
 
@@ -162,6 +177,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_commit_row_size(commit_row_size),
             Self::Avro(options) => options.set_commit_row_size(commit_row_size),
             Self::Text(options) => options.set_commit_row_size(commit_row_size),
+            Self::Csv(options) => options.set_commit_row_size(commit_row_size),
         }
     }
 
@@ -172,6 +188,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.level(),
             Self::Avro(options) => options.level(),
             Self::Text(options) => options.level(),
+            Self::Csv(options) => options.level(),
         }
     }
 
@@ -182,6 +199,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_level(level),
             Self::Avro(options) => options.set_level(level),
             Self::Text(options) => options.set_level(level),
+            Self::Csv(options) => options.set_level(level),
         }
     }
 
@@ -192,6 +210,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.merge_by_names(),
             Self::Avro(options) => options.merge_by_names(),
             Self::Text(options) => options.merge_by_names(),
+            Self::Csv(options) => options.merge_by_names(),
         }
     }
 
@@ -202,6 +221,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_merge_by_names(merge_by_names),
             Self::Avro(options) => options.set_merge_by_names(merge_by_names),
             Self::Text(options) => options.set_merge_by_names(merge_by_names),
+            Self::Csv(options) => options.set_merge_by_names(merge_by_names),
         }
     }
 
@@ -212,6 +232,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.select_by_names(),
             Self::Avro(options) => options.select_by_names(),
             Self::Text(options) => options.select_by_names(),
+            Self::Csv(options) => options.select_by_names(),
         }
     }
 
@@ -222,6 +243,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_select_by_names(select_by_names),
             Self::Avro(options) => options.set_select_by_names(select_by_names),
             Self::Text(options) => options.set_select_by_names(select_by_names),
+            Self::Csv(options) => options.set_select_by_names(select_by_names),
         }
     }
 
@@ -232,6 +254,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.filter_partitions(),
             Self::Avro(options) => options.filter_partitions(),
             Self::Text(options) => options.filter_partitions(),
+            Self::Csv(options) => options.filter_partitions(),
         }
     }
 
@@ -242,6 +265,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_filter_partitions(filter_partitions),
             Self::Avro(options) => options.set_filter_partitions(filter_partitions),
             Self::Text(options) => options.set_filter_partitions(filter_partitions),
+            Self::Csv(options) => options.set_filter_partitions(filter_partitions),
         }
     }
 }
@@ -268,5 +292,11 @@ impl From<crate::media::avro::AvroOptions> for RecordOptions {
 impl From<crate::media::text::TextOptions> for RecordOptions {
     fn from(value: crate::media::text::TextOptions) -> Self {
         Self::Text(Box::new(value))
+    }
+}
+
+impl From<crate::media::csv::CsvOptions> for RecordOptions {
+    fn from(value: crate::media::csv::CsvOptions) -> Self {
+        Self::Csv(Box::new(value))
     }
 }

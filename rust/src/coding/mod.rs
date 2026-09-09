@@ -324,6 +324,9 @@ impl<H: IOBase> crate::IOMedia for Coding<H> {
             crate::media::RecordOptions::Text(text) => {
                 crate::media::text::arrow::read_owned_arrow_reader(owned, text)?
             }
+            crate::media::RecordOptions::Csv(csv) => {
+                crate::media::csv::read_owned_arrow_reader(owned, csv)?
+            }
             _ => return crate::IOMedia::read_arrow_reader(&owned, options),
         };
         Self::shape_owned_arrow_reader(reader, options)

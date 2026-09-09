@@ -102,8 +102,8 @@ fn each_explicit_variant_owns_options_over_an_unnamed_buffer() {
 
 #[test]
 fn an_unimplemented_encoding_is_named_rather_than_guessed() {
-    let message = Media::open(handle("trades.csv")).unwrap_err().to_string();
-    assert!(message.contains("text/csv"), "{message}");
+    let message = Media::open(handle("trades.orc")).unwrap_err().to_string();
+    assert!(message.contains("orc"), "{message}");
 }
 
 #[test]
@@ -149,6 +149,7 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
             Media::Parquet(parquet) => parquet.options_mut().set_commit_row_size(Some(1)),
             Media::Avro(avro) => avro.options_mut().set_commit_row_size(Some(1)),
             Media::Text(text) => text.options_mut().set_commit_row_size(Some(1)),
+            Media::Csv(csv) => csv.options_mut().set_commit_row_size(Some(1)),
         }
 
         let options = media.record_options().unwrap();

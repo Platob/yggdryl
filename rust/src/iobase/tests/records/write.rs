@@ -12,9 +12,14 @@ fn the_handles_media_type_picks_the_record_encoding() {
         RecordOptions::Parquet(_)
     ));
 
+    assert!(matches!(
+        handle("t.csv").record_options().unwrap(),
+        RecordOptions::Csv(_)
+    ));
+
     // An encoding with no implementation is named rather than guessed.
-    let message = handle("t.csv").record_options().unwrap_err().to_string();
-    assert!(message.contains("text/csv"), "{message}");
+    let message = handle("t.orc").record_options().unwrap_err().to_string();
+    assert!(message.contains("orc"), "{message}");
 }
 
 #[test]

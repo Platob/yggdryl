@@ -3,10 +3,13 @@
 use smol_str::{SmolStr, format_smolstr};
 
 #[cfg(feature = "arrow")]
+use crate::Field;
+#[cfg(feature = "arrow")]
 use crate::media::IORecordOptions;
 use crate::media::text::LineSep;
-use crate::{DataType, Error, Field, Level, Metadata, Result, Timezone};
+use crate::{DataType, Error, Level, Metadata, Result, Timezone};
 
+#[cfg(feature = "arrow")]
 use super::scan::Dialect;
 
 /// Rows sampled to infer a column's datatype when the caller declares none.
@@ -368,6 +371,7 @@ impl CsvOptions {
     }
 
     /// Build the byte-level dialect the scanner and renderer both read.
+    #[cfg(feature = "arrow")]
     pub(crate) fn dialect(&self) -> Dialect {
         Dialect {
             separator: self.separator,
@@ -380,6 +384,7 @@ impl CsvOptions {
     }
 
     /// Return the terminator a write ends each record with.
+    #[cfg(feature = "arrow")]
     pub(crate) fn output_linesep(&self) -> &[u8] {
         self.linesep.as_ref().map_or(b"\n", LineSep::as_bytes)
     }
@@ -441,11 +446,13 @@ impl IORecordOptions for CsvOptions {
 }
 
 /// The column name a headerless resource gives its `index`-th cell.
+#[cfg(feature = "arrow")]
 pub(crate) fn positional_name(index: usize) -> SmolStr {
     format_smolstr!("column_{}", index + 1)
 }
 
 /// Build the canonical root Field from column fields under one root name.
+#[cfg(feature = "arrow")]
 pub(crate) fn root_field(name: &SmolStr, fields: Vec<Field>) -> Result<Field> {
     Ok(DataType::from_fields(fields)?.required_field(name.clone()))
 }

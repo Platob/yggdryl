@@ -1287,6 +1287,27 @@ pub trait IOBase: Send + IOMedia {
         crate::media::text::Text::new(self).with_options(options)
     }
 
+    /// Consume this handle into delimited-text record media.
+    ///
+    /// The wrapper is lazy. Its retained
+    /// [`CsvOptions`](crate::media::csv::CsvOptions) become the defaults for
+    /// the ordinary [`IOMedia`] record methods, and it adds the positional row
+    /// and cell surface a delimited resource can answer.
+    fn into_csv(self) -> crate::media::csv::Csv<Self>
+    where
+        Self: Sized,
+    {
+        crate::media::csv::Csv::new(self)
+    }
+
+    /// Consume this handle into delimited-text record media with options.
+    fn into_csv_with(self, options: crate::media::csv::CsvOptions) -> crate::media::csv::Csv<Self>
+    where
+        Self: Sized,
+    {
+        crate::media::csv::Csv::new(self).with_options(options)
+    }
+
     /// Borrow a streaming writer positioned at `offset`.
     fn writer_at(&mut self, offset: u64) -> Writer<'_>
     where
