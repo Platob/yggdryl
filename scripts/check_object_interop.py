@@ -12,7 +12,7 @@ implementation, cross-checked by the reference client:
    ``YGGDRYL_S3_ENDPOINT`` already points at - and the exchange bucket made;
 2. ``boto3`` writes objects under ``from-boto3/``, including the keys that a
    URL, a signature, and a key each spell differently;
-3. ``cargo test --features object --test interop object::`` writes its own objects
+3. ``cargo test --features object --test interop object::aws::`` writes its own objects
    under ``from-rust/`` and reads back what ``boto3`` wrote. Its reading half
    prints ``SKIPPED`` when the external objects are missing, and this driver
    fails on that word, so a skipped half can never read as a pass;
@@ -329,7 +329,7 @@ def run_cargo(endpoint: str, provisioned: bool) -> str:
         "object",
         "--test",
         "interop",
-        "object::",
+        "object::aws::",
         "--",
         "--nocapture",
         "--test-threads=1",
