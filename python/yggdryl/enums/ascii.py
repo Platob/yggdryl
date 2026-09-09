@@ -70,18 +70,6 @@ _RESERVED_MEMBER_NAMES = frozenset(
 )
 
 
-def _reserved_member_error(
-    module: str, qualname: str, names: Iterable[str]
-) -> TypeError:
-    """The one message every shadowed class API name is refused with."""
-
-    shadowed = ", ".join(sorted(names))
-    return TypeError(
-        f"{module}.{qualname} reserves {shadowed} for its class API; name the "
-        "member for its value instead"
-    )
-
-
 class _AsciiCodeMeta(enum.EnumMeta):
     """Refuse a vocabulary member spelled as one of the class API names.
 
@@ -100,10 +88,11 @@ class _AsciiCodeMeta(enum.EnumMeta):
     ) -> _AsciiCodeMeta:
         shadowed = _RESERVED_MEMBER_NAMES.intersection(classdict._member_names)
         if shadowed:
-            raise _reserved_member_error(
-                classdict.get("__module__", "<unknown>"),
-                classdict.get("__qualname__", name),
-                shadowed,
+            module = classdict.get("__module__", "<unknown>")
+            qualname = classdict.get("__qualname__", name)
+            raise TypeError(
+                f"{module}.{qualname} reserves {', '.join(sorted(shadowed))} "
+                "for its class API; name the member for its value instead"
             )
         return super().__new__(metacls, name, bases, classdict, **options)
 
