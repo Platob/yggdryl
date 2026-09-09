@@ -316,7 +316,10 @@ impl Inner {
             connections: AtomicUsize::new(0),
             count: AtomicUsize::new(0),
             request_ids: AtomicUsize::new(0),
-            store: Mutex::new(Store::default()),
+            store: Mutex::new(Store {
+                address: address.to_string(),
+                ..Store::default()
+            }),
             log: Mutex::new(Vec::new()),
         }
     }
@@ -356,7 +359,11 @@ impl Inner {
     /// Answer one parsed request and record it.
     fn handle(&self, request: &mut Request) -> Response {
         let body_len = request.body.len();
-        let (bucket, key) = self.resolve(request);
+        let dialect = Dialect::of(request);
+        let (bucket, key) = match dialect {
+            Dialect::Aws => self.resolve(request),
+            _ => self.resolve_dialect(dialect, request),
+        };
         let mut response = self.answer(request, bucket.as_deref(), key.as_deref());
         let region = bucket
             .as_deref()
@@ -376,10 +383,19 @@ impl Inner {
         if let Some(failure) = self.injected_failure() {
             return failure;
         }
-        if let Some(refusal) = self.refusal(request, bucket) {
-            return refusal;
+        match Dialect::of(request) {
+            Dialect::Aws => {
+                if let Some(refusal) = self.refusal(request, bucket) {
+                    return refusal;
+                }
+                self.store().dispatch(request, bucket, key)
+            }
+            // The other two authorize differently, and what this server checks
+            // is that the request is *shaped* right; the interop drivers are
+            // where a signature meets an implementation that did not write it.
+            Dialect::Google => self.store().dispatch_google(request, bucket, key),
+            Dialect::Azure => self.store().dispatch_azure(request, bucket, key),
         }
-        self.store().dispatch(request, bucket, key)
     }
 
     /// The bucket and key the request addresses: virtual-hosted when the
@@ -554,6 +570,23 @@ struct Store {
     cut: Option<(usize, usize)>,
     /// Upload ids handed out so far.
     next_upload: usize,
+    /// The address this server answers at, which a resumable session's
+    /// location has to spell in full.
+    address: String,
+    /// Chunks staged by the other two dialects, by the name each gives one:
+    /// a session for Google, a blob for Azure.
+    staged: HashMap<String, Staged>,
+}
+
+/// Bytes staged under one name, waiting to be assembled.
+struct Staged {
+    /// The container the object lands in.
+    bucket: String,
+    /// The key the object lands at.
+    key: String,
+    /// The chunks, in the order they are assembled: by zero-padded start
+    /// offset for a resumable session, by block id for a staged blob.
+    chunks: BTreeMap<String, Vec<u8>>,
 }
 
 impl Default for Store {
@@ -567,6 +600,8 @@ impl Default for Store {
             role_expiry: DEFAULT_ROLE_EXPIRY.to_owned(),
             cut: None,
             next_upload: 0,
+            address: String::new(),
+            staged: HashMap::new(),
         }
     }
 }
@@ -2913,4 +2948,665 @@ mod tests {
             ["1", "2"]
         );
     }
+}
+
+// -- The other two stores, on the same objects ------------------------------
+//
+// A fake written from the same reading of an API as the client can agree with
+// it and both be wrong, which is why the interop drivers exist. What this
+// substrate is for is the other half: that a change to the backend still sends
+// what it sent, and still costs what it cost. So one store answers all three
+// dialects over one set of objects, and a test can write with one and read with
+// another.
+
+/// Which store's REST API a request is speaking.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Dialect {
+    /// Amazon S3, which is every request carrying no other store's marker.
+    Aws,
+    /// Google Cloud Storage's JSON API.
+    Google,
+    /// Azure Blob Storage.
+    Azure,
+}
+
+impl Dialect {
+    /// The dialect `request` is written in.
+    ///
+    /// Google names itself in the path and Azure in a version header no other
+    /// store sends; anything else is S3, the dialect with no marker of its own.
+    fn of(request: &Request) -> Self {
+        if request.path.starts_with("/storage/v1")
+            || request.path.starts_with("/upload/storage/v1")
+            || request.path.starts_with("/batch/storage/v1")
+            || request.path.starts_with("/resumable/")
+        {
+            return Self::Google;
+        }
+        if request.header("x-ms-version").is_some() {
+            return Self::Azure;
+        }
+        Self::Aws
+    }
+}
+
+/// The account every Azure request this server answers addresses.
+pub const AZURE_ACCOUNT: &str = "devstoreaccount1";
+/// The key it is signed with: Azurite's published development key, which is a
+/// constant rather than a secret.
+pub const AZURE_KEY: &str =
+    "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
+/// The instant every Google resource states, matching the S3 one.
+const GOOGLE_UPDATED: &str = "2020-01-01T00:00:00.000Z";
+
+impl Inner {
+    /// The container and key a Google or Azure request addresses.
+    fn resolve_dialect(
+        &self,
+        dialect: Dialect,
+        request: &Request,
+    ) -> (Option<String>, Option<String>) {
+        let path = percent_decode(&request.path);
+        match dialect {
+            Dialect::Aws => self.resolve(request),
+            Dialect::Google => {
+                // `/storage/v1/b/{bucket}/o/{key}`, where the key is one
+                // segment with every separator escaped, so it decodes whole.
+                let Some(rest) = path
+                    .strip_prefix("/upload/storage/v1/b/")
+                    .or_else(|| path.strip_prefix("/storage/v1/b/"))
+                else {
+                    return (None, None);
+                };
+                let (bucket, rest) = rest.split_once('/').unwrap_or((rest, ""));
+                let key = rest
+                    .strip_prefix("o/")
+                    .map(str::to_owned)
+                    .filter(|key| !key.is_empty())
+                    // An upload names the object in the query, not the path.
+                    .or_else(|| request.query("name").map(str::to_owned));
+                (non_empty(bucket), key)
+            }
+            Dialect::Azure => {
+                // The account is a path segment here, because this server is
+                // not reached at `{account}.blob.core.windows.net`.
+                let rest = path.trim_start_matches('/');
+                let rest = rest
+                    .strip_prefix(AZURE_ACCOUNT)
+                    .map_or(rest, |rest| rest.trim_start_matches('/'));
+                let (container, key) = rest.split_once('/').unwrap_or((rest, ""));
+                (non_empty(container), non_empty(key))
+            }
+        }
+    }
+}
+
+impl Store {
+    /// Route one Google request to its operation.
+    fn dispatch_google(
+        &mut self,
+        request: &mut Request,
+        bucket: Option<&str>,
+        key: Option<&str>,
+    ) -> Response {
+        // A resumable session is a path this server handed out, so it is
+        // matched before anything else.
+        if let Some(session) = request.path.strip_prefix("/resumable/") {
+            let session = session.to_owned();
+            return match request.method.as_str() {
+                "DELETE" => {
+                    self.staged.remove(&session);
+                    Response::new(499)
+                }
+                _ => self.google_chunk(&session, request),
+            };
+        }
+        if request.path == "/batch/storage/v1" {
+            return self.google_batch(request);
+        }
+        if request.path == "/storage/v1/b" && request.method == "POST" {
+            return self.google_create_bucket(request);
+        }
+        let Some(bucket) = bucket.map(str::to_owned) else {
+            return invalid_request();
+        };
+        let uploading = request.path.starts_with("/upload/storage/v1");
+        let key = key.map(str::to_owned);
+        match (request.method.as_str(), key) {
+            ("POST", Some(key)) if uploading => self.google_insert(&bucket, &key, request),
+            ("GET", None) if request.path.ends_with("/o") => self.google_list(&bucket, request),
+            ("GET", None) => self.google_head_bucket(&bucket),
+            ("DELETE", None) => match self.delete_bucket(&bucket).status {
+                status if status < 300 => Response::new(204),
+                _ => google_error(404, "notFound", "The specified bucket does not exist."),
+            },
+            ("GET", Some(key)) if request.query("alt") == Some("media") => {
+                self.get_object(&bucket, &key, request)
+            }
+            ("GET", Some(key)) => self.google_object(&bucket, &key),
+            ("DELETE", Some(key)) => {
+                self.delete_object(&bucket, &key);
+                Response::new(204)
+            }
+            _ => invalid_request(),
+        }
+    }
+
+    /// `GET /storage/v1/b/{bucket}` - the bucket resource.
+    fn google_head_bucket(&self, bucket: &str) -> Response {
+        if self.buckets.contains_key(bucket) {
+            google_json(
+                200,
+                &format!("{{\"kind\":\"storage#bucket\",\"name\":\"{bucket}\"}}"),
+            )
+        } else {
+            google_error(404, "notFound", "The specified bucket does not exist.")
+        }
+    }
+
+    /// `POST /storage/v1/b?project=` - create the bucket the body names.
+    fn google_create_bucket(&mut self, request: &Request) -> Response {
+        if request.query("project").is_none() {
+            return google_error(400, "required", "Required parameter: project");
+        }
+        let Some(name) = json_string(&request.body, "name") else {
+            return google_error(400, "required", "Required parameter: name");
+        };
+        if self.buckets.contains_key(&name) {
+            return google_error(409, "conflict", "You already own this bucket.");
+        }
+        self.buckets.insert(name.clone(), BTreeMap::new());
+        google_json(
+            200,
+            &format!("{{\"kind\":\"storage#bucket\",\"name\":\"{name}\"}}"),
+        )
+    }
+
+    /// `GET /storage/v1/b/{bucket}/o/{key}` - the object resource.
+    fn google_object(&self, bucket: &str, key: &str) -> Response {
+        match self
+            .buckets
+            .get(bucket)
+            .and_then(|objects| objects.get(key))
+        {
+            Some(object) => google_json(200, &render_google_object(bucket, key, object)),
+            None => google_error(404, "notFound", "No such object."),
+        }
+    }
+
+    /// `POST /upload/storage/v1/b/{bucket}/o` - a whole write, or a session.
+    fn google_insert(&mut self, bucket: &str, key: &str, request: &mut Request) -> Response {
+        if !self.buckets.contains_key(bucket) {
+            return google_error(404, "notFound", "The specified bucket does not exist.");
+        }
+        match request.query("uploadType") {
+            Some("resumable") => {
+                self.next_upload += 1;
+                let session = format!("s{}", self.next_upload);
+                let location = format!("http://{}/resumable/{session}", self.address);
+                self.staged.insert(
+                    session,
+                    Staged {
+                        bucket: bucket.to_owned(),
+                        key: key.to_owned(),
+                        chunks: BTreeMap::new(),
+                    },
+                );
+                Response::new(200).with_header("Location", &location)
+            }
+            Some("multipart") => {
+                let Some((metadata, bytes)) = split_related(&request.body) else {
+                    return google_error(400, "invalid", "Malformed multipart body.");
+                };
+                let content_type = json_string(&metadata, "contentType");
+                self.google_store(bucket, key, bytes, content_type)
+            }
+            // `uploadType=media` carries the bytes and nothing else.
+            _ => {
+                let bytes = std::mem::take(&mut request.body);
+                let content_type = request.header("content-type").map(str::to_owned);
+                self.google_store(bucket, key, bytes, content_type)
+            }
+        }
+    }
+
+    /// Store one object and answer its resource.
+    fn google_store(
+        &mut self,
+        bucket: &str,
+        key: &str,
+        bytes: Vec<u8>,
+        content_type: Option<String>,
+    ) -> Response {
+        let object = Object::new(bytes, content_type, Encryption::None);
+        let rendered = render_google_object(bucket, key, &object);
+        self.buckets
+            .entry(bucket.to_owned())
+            .or_default()
+            .insert(key.to_owned(), object);
+        google_json(200, &rendered)
+    }
+
+    /// `PUT /resumable/{session}` - one chunk of a session.
+    fn google_chunk(&mut self, session: &str, request: &mut Request) -> Response {
+        let Some(staged) = self.staged.get_mut(session) else {
+            return google_error(404, "notFound", "No such upload session.");
+        };
+        let range = request.header("content-range").unwrap_or("").to_owned();
+        let range = range.trim_start_matches("bytes ");
+        let (span, total) = range.split_once('/').unwrap_or(("", "*"));
+        let start: u64 = span
+            .split_once('-')
+            .and_then(|(start, _)| start.parse().ok())
+            .unwrap_or(0);
+        let bytes = std::mem::take(&mut request.body);
+        staged.chunks.insert(format!("{start:020}"), bytes);
+        let held: usize = staged.chunks.values().map(Vec::len).sum();
+        if !total.parse::<usize>().is_ok_and(|total| held >= total) {
+            return Response::new(308)
+                .with_header("Range", &format!("bytes=0-{}", held.saturating_sub(1)));
+        }
+        let (bucket, key) = (staged.bucket.clone(), staged.key.clone());
+        let assembled: Vec<u8> = staged.chunks.values().flatten().copied().collect();
+        self.staged.remove(session);
+        self.google_store(&bucket, &key, assembled, None)
+    }
+
+    /// `GET /storage/v1/b/{bucket}/o` - one listing page.
+    fn google_list(&self, bucket: &str, request: &Request) -> Response {
+        let Some(objects) = self.buckets.get(bucket) else {
+            return google_error(404, "notFound", "The specified bucket does not exist.");
+        };
+        let page = scan(objects, &page_query(request, "pageToken", "maxResults"));
+        google_json(200, &render_google_listing(bucket, &page))
+    }
+
+    /// `POST /batch/storage/v1` - a batch of embedded requests.
+    fn google_batch(&mut self, request: &Request) -> Response {
+        let body = String::from_utf8_lossy(&request.body).into_owned();
+        let mut answers = String::new();
+        for line in body.lines() {
+            let Some(rest) = line.strip_prefix("DELETE ") else {
+                continue;
+            };
+            let path = rest.split_whitespace().next().unwrap_or("");
+            let path = percent_decode(path.split('?').next().unwrap_or(""));
+            let rest = path.strip_prefix("/storage/v1/b/").unwrap_or("");
+            let (bucket, rest) = rest.split_once('/').unwrap_or((rest, ""));
+            let key = rest.strip_prefix("o/").unwrap_or("");
+            let removed = self
+                .buckets
+                .get_mut(bucket)
+                .and_then(|objects| objects.remove(key))
+                .is_some();
+            answers.push_str("--batchresponse\r\nContent-Type: application/http\r\n\r\n");
+            answers.push_str(if removed {
+                "HTTP/1.1 204 No Content\r\n\r\n"
+            } else {
+                "HTTP/1.1 404 Not Found\r\n\r\n"
+            });
+        }
+        answers.push_str("--batchresponse--");
+        Response::new(200)
+            .with_header("Content-Type", "multipart/mixed; boundary=batchresponse")
+            .with_body(answers.into_bytes())
+    }
+
+    /// Route one Azure request to its operation.
+    fn dispatch_azure(
+        &mut self,
+        request: &mut Request,
+        container: Option<&str>,
+        key: Option<&str>,
+    ) -> Response {
+        let Some(container) = container.map(str::to_owned) else {
+            return invalid_request();
+        };
+        let is_container = request.query("restype") == Some("container");
+        let comp = request.query("comp").map(str::to_owned);
+        let key = key.map(str::to_owned);
+        match (request.method.as_str(), key) {
+            ("PUT", None) if is_container => self.azure_create_container(&container),
+            ("GET", None) if is_container && comp.as_deref() == Some("list") => {
+                self.azure_list(&container, request)
+            }
+            ("GET" | "HEAD", None) if is_container => self.azure_head_container(&container),
+            ("DELETE", None) if is_container => match self.delete_bucket(&container).status {
+                status if status < 300 => Response::new(202),
+                _ => azure_error(404, "ContainerNotFound"),
+            },
+            ("POST", None) if comp.as_deref() == Some("batch") => {
+                self.azure_batch(&container, request)
+            }
+            ("PUT", Some(key)) if comp.as_deref() == Some("block") => {
+                self.azure_put_block(&container, &key, request)
+            }
+            ("PUT", Some(key)) if comp.as_deref() == Some("blocklist") => {
+                self.azure_put_block_list(&container, &key, request)
+            }
+            ("PUT", Some(key)) => {
+                if !self.buckets.contains_key(&container) {
+                    return azure_error(404, "ContainerNotFound");
+                }
+                let bytes = std::mem::take(&mut request.body);
+                let content_type = request.header("content-type").map(str::to_owned);
+                let object = Object::new(bytes, content_type, Encryption::None);
+                let etag = object.etag.clone();
+                self.buckets
+                    .entry(container.clone())
+                    .or_default()
+                    .insert(key, object);
+                Response::new(201)
+                    .with_header("ETag", &etag)
+                    .with_header("Last-Modified", LAST_MODIFIED_HTTP)
+            }
+            ("DELETE", Some(key)) => {
+                let held = self
+                    .buckets
+                    .get_mut(&container)
+                    .and_then(|objects| objects.remove(&key));
+                match held {
+                    Some(_) => Response::new(202),
+                    None => azure_error(404, "BlobNotFound"),
+                }
+            }
+            ("GET" | "HEAD", Some(key)) => {
+                // Azure states a range in a header of its own.
+                if let Some(range) = request.header("x-ms-range").map(str::to_owned) {
+                    request.headers.push(("range".to_owned(), range));
+                }
+                self.get_object(&container, &key, request)
+            }
+            _ => invalid_request(),
+        }
+    }
+
+    /// `PUT /{container}?restype=container`.
+    fn azure_create_container(&mut self, container: &str) -> Response {
+        if self.buckets.contains_key(container) {
+            return azure_error(409, "ContainerAlreadyExists");
+        }
+        self.buckets.insert(container.to_owned(), BTreeMap::new());
+        Response::new(201)
+    }
+
+    /// `GET /{container}?restype=container`.
+    fn azure_head_container(&self, container: &str) -> Response {
+        if self.buckets.contains_key(container) {
+            Response::new(200)
+        } else {
+            azure_error(404, "ContainerNotFound")
+        }
+    }
+
+    /// `PUT /{container}/{blob}?comp=block&blockid=`.
+    fn azure_put_block(&mut self, container: &str, key: &str, request: &mut Request) -> Response {
+        let Some(id) = request.query("blockid").map(str::to_owned) else {
+            return azure_error(400, "InvalidQueryParameterValue");
+        };
+        let staged = self
+            .staged
+            .entry(format!("{container}/{key}"))
+            .or_insert_with(|| Staged {
+                bucket: container.to_owned(),
+                key: key.to_owned(),
+                chunks: BTreeMap::new(),
+            });
+        // Every id of one blob has to be the same length, which is exactly
+        // what the service refuses when it is not.
+        if staged.chunks.keys().any(|held| held.len() != id.len()) {
+            return azure_error(400, "InvalidBlockId");
+        }
+        staged.chunks.insert(id, std::mem::take(&mut request.body));
+        Response::new(201)
+    }
+
+    /// `PUT /{container}/{blob}?comp=blocklist`.
+    fn azure_put_block_list(
+        &mut self,
+        container: &str,
+        key: &str,
+        request: &mut Request,
+    ) -> Response {
+        let Some(staged) = self.staged.remove(&format!("{container}/{key}")) else {
+            return azure_error(400, "InvalidBlockList");
+        };
+        let document = String::from_utf8_lossy(&request.body).into_owned();
+        let mut assembled = Vec::new();
+        for id in elements(&document, "Latest") {
+            match staged.chunks.get(id) {
+                Some(bytes) => assembled.extend_from_slice(bytes),
+                None => return azure_error(400, "InvalidBlockList"),
+            }
+        }
+        let content_type = request.header("x-ms-blob-content-type").map(str::to_owned);
+        let object = Object::new(assembled, content_type, Encryption::None);
+        let etag = object.etag.clone();
+        self.buckets
+            .entry(container.to_owned())
+            .or_default()
+            .insert(key.to_owned(), object);
+        Response::new(201)
+            .with_header("ETag", &etag)
+            .with_header("Last-Modified", LAST_MODIFIED_HTTP)
+    }
+
+    /// `GET /{container}?restype=container&comp=list`.
+    fn azure_list(&self, container: &str, request: &Request) -> Response {
+        let Some(objects) = self.buckets.get(container) else {
+            return azure_error(404, "ContainerNotFound");
+        };
+        let page = scan(objects, &page_query(request, "marker", "maxresults"));
+        Response::xml(200, &render_azure_listing(container, &page))
+    }
+
+    /// `POST /{container}?restype=container&comp=batch`.
+    fn azure_batch(&mut self, container: &str, request: &Request) -> Response {
+        let body = String::from_utf8_lossy(&request.body).into_owned();
+        let mut answers = String::new();
+        for line in body.lines() {
+            let Some(rest) = line.strip_prefix("DELETE ") else {
+                continue;
+            };
+            let path = percent_decode(rest.split_whitespace().next().unwrap_or(""));
+            let path = path.trim_start_matches('/');
+            let path = path
+                .strip_prefix(AZURE_ACCOUNT)
+                .map_or(path, |rest| rest.trim_start_matches('/'));
+            let Some((named, key)) = path.split_once('/') else {
+                continue;
+            };
+            if named != container {
+                continue;
+            }
+            let removed = self
+                .buckets
+                .get_mut(container)
+                .and_then(|objects| objects.remove(key))
+                .is_some();
+            answers.push_str("--batchresponse\r\nContent-Type: application/http\r\n\r\n");
+            answers.push_str(if removed {
+                "HTTP/1.1 202 Accepted\r\n\r\n"
+            } else {
+                "HTTP/1.1 404 Not Found\r\n\r\n"
+            });
+        }
+        answers.push_str("--batchresponse--");
+        Response::new(202)
+            .with_header("Content-Type", "multipart/mixed; boundary=batchresponse")
+            .with_body(answers.into_bytes())
+    }
+}
+
+/// One listing page's query, in whichever dialect's names it arrived under.
+fn page_query<'a>(request: &'a Request, token: &str, max: &str) -> ListQuery<'a> {
+    let token = request.query(token);
+    ListQuery {
+        prefix: request.query("prefix").unwrap_or(""),
+        delimiter: request
+            .query("delimiter")
+            .filter(|delimiter| !delimiter.is_empty()),
+        start_after: None,
+        token,
+        after: token,
+        max_keys: request
+            .query(max)
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(DEFAULT_MAX_KEYS),
+        encode: false,
+    }
+}
+
+/// One `Object` as Google's JSON resource, with the string-typed 64-bit
+/// fields that shape a reader.
+fn render_google_object(bucket: &str, key: &str, object: &Object) -> String {
+    format!(
+        "{{\"kind\":\"storage#object\",\"bucket\":\"{bucket}\",\"name\":\"{}\",\
+         \"size\":\"{}\",\"generation\":\"1\",\"metageneration\":\"1\",\
+         \"updated\":\"{GOOGLE_UPDATED}\",\"etag\":\"{}\",\"contentType\":\"{}\"}}",
+        escape_json(key),
+        object.bytes.len(),
+        escape_json(trim_quotes(&object.etag)),
+        object
+            .content_type
+            .as_deref()
+            .unwrap_or(DEFAULT_CONTENT_TYPE),
+    )
+}
+
+/// One page as Google's `storage#objects`.
+fn render_google_listing(bucket: &str, page: &Page<'_>) -> String {
+    let items: Vec<String> = page
+        .contents
+        .iter()
+        .map(|(key, object)| render_google_object(bucket, key, object))
+        .collect();
+    let prefixes: Vec<String> = page
+        .prefixes
+        .iter()
+        .map(|prefix| format!("\"{}\"", escape_json(prefix)))
+        .collect();
+    let mut document = format!(
+        "{{\"kind\":\"storage#objects\",\"items\":[{}],\"prefixes\":[{}]",
+        items.join(","),
+        prefixes.join(",")
+    );
+    if let Some(next) = &page.next {
+        document.push_str(&format!(",\"nextPageToken\":\"{}\"", escape_json(next)));
+    }
+    document.push('}');
+    document
+}
+
+/// One page as Azure's `EnumerationResults`.
+fn render_azure_listing(container: &str, page: &Page<'_>) -> String {
+    let mut document = format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <EnumerationResults ContainerName=\"{container}\"><Blobs>"
+    );
+    for (key, object) in &page.contents {
+        document.push_str(&format!(
+            "<Blob><Name>{}</Name><Properties>\
+             <Last-Modified>{LAST_MODIFIED_HTTP}</Last-Modified><Etag>{}</Etag>\
+             <Content-Length>{}</Content-Length><Content-Type>{}</Content-Type>\
+             <BlobType>BlockBlob</BlobType></Properties></Blob>",
+            escape_text(key),
+            escape_text(trim_quotes(&object.etag)),
+            object.bytes.len(),
+            object
+                .content_type
+                .as_deref()
+                .unwrap_or(DEFAULT_CONTENT_TYPE),
+        ));
+    }
+    for prefix in &page.prefixes {
+        document.push_str(&format!(
+            "<BlobPrefix><Name>{}</Name></BlobPrefix>",
+            escape_text(prefix)
+        ));
+    }
+    document.push_str("</Blobs>");
+    match &page.next {
+        Some(next) => document.push_str(&format!("<NextMarker>{}</NextMarker>", escape_text(next))),
+        None => document.push_str("<NextMarker />"),
+    }
+    document.push_str("</EnumerationResults>");
+    document
+}
+
+/// A Google error document, whose code a client reads out of `errors[].reason`.
+fn google_error(status: u16, reason: &str, message: &str) -> Response {
+    google_json(
+        status,
+        &format!(
+            "{{\"error\":{{\"code\":{status},\"message\":\"{}\",\
+             \"errors\":[{{\"domain\":\"global\",\"reason\":\"{reason}\",\
+             \"message\":\"{}\"}}]}}}}",
+            escape_json(message),
+            escape_json(message)
+        ),
+    )
+}
+
+/// A Google JSON answer.
+fn google_json(status: u16, document: &str) -> Response {
+    Response::new(status)
+        .with_header("Content-Type", "application/json; charset=UTF-8")
+        .with_body(document.as_bytes().to_vec())
+}
+
+/// An Azure refusal, which is the same `<Error>` document S3 answers.
+fn azure_error(status: u16, code: &str) -> Response {
+    Response::error(status, code, "The request could not be completed.", &[])
+}
+
+/// The metadata part and the byte part of a `multipart/related` body.
+fn split_related(body: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
+    let boundary_end = find(body, b"\r\n")?;
+    let boundary = &body[..boundary_end];
+    let mut parts = Vec::new();
+    let mut cursor = 0;
+    while let Some(next) = find(&body[cursor..], boundary) {
+        let start = cursor + next + boundary.len();
+        let end = find(&body[start..], boundary).map_or(body.len(), |offset| start + offset);
+        if end > start {
+            parts.push(&body[start..end]);
+        }
+        cursor = end;
+        if end == body.len() {
+            break;
+        }
+    }
+    let after_headers = |part: &[u8]| find(part, b"\r\n\r\n").map_or(0, |offset| offset + 4);
+    let first = parts.first()?;
+    let metadata = first[after_headers(first)..].to_vec();
+    let second = parts.get(1)?;
+    let mut content = second[after_headers(second)..].to_vec();
+    // Only the CRLF the framing added is removed; the value's own bytes stay
+    // exactly as they were sent.
+    if content.ends_with(b"\r\n") {
+        content.truncate(content.len() - 2);
+    }
+    Some((metadata, content))
+}
+
+/// The offset of `needle` in `haystack`.
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+/// One string field of a flat JSON object, read without a parser.
+fn json_string(body: &[u8], name: &str) -> Option<String> {
+    let text = std::str::from_utf8(body).ok()?;
+    let marker = format!("\"{name}\":\"");
+    let start = text.find(&marker)? + marker.len();
+    let end = text[start..].find('"')? + start;
+    Some(text[start..end].to_owned())
+}
+
+/// The two characters a JSON string cannot carry raw.
+fn escape_json(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }

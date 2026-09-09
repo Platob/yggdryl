@@ -2190,9 +2190,16 @@ fn shared_agent() -> &'static ureq::Agent {
 /// phase, the bound is free.
 fn build_agent(options: &ObjectOptions) -> ureq::Agent {
     let mut builder = ureq::Agent::config_builder()
-            // Statuses are read, never raised: S3 says what it means in the
-            // status and an XML body, and this client maps both itself.
+            // Statuses are read, never raised: a store says what it means in
+            // the status and a document, and this client maps both itself.
             .http_status_as_error(false)
+            // Nor is a 3xx a redirect to follow. The one redirect that matters
+            // - a bucket answering with the region it is in - is handled here,
+            // where the signing region can be corrected; and Google's resumable
+            // upload answers 308 for its own reasons, which is not a redirect
+            // at all and has no location to follow.
+            .max_redirects(0)
+            .max_redirects_will_error(false)
             .timeout_connect(Some(options.connect_timeout()))
             .timeout_send_request(Some(options.timeout()))
             .timeout_recv_response(Some(options.timeout()))
