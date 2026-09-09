@@ -266,6 +266,12 @@ impl Client {
                 ),
             ))
         })?;
+        // One credential pair serves all three stores, and on Azure it is an
+        // account name and a shared key - but only when a caller handed it
+        // over. A pair swept out of the environment arrived under an `AWS_`
+        // name, so it names an account at another store, and addressing Azure
+        // with it would send a request to a host nobody asked for.
+        let handed = options.credentials().cloned();
         // Everything the environment names, under whatever the caller sets
         // for it, so one vocabulary covers a property map and a process
         // environment rather than each knob being wired up separately.
@@ -279,7 +285,7 @@ impl Client {
         // A shape this store does not have is refused here rather than
         // silently dropped or discovered from the store on the first write.
         options.encryption().validate(provider)?;
-        let endpoint = Self::endpoint_of(provider, url, &options)?;
+        let endpoint = Self::endpoint_of(provider, url, &options, handed.as_ref())?;
         // The account the endpoint settled on is what a shared-key signature
         // names, so it is read back rather than resolved a second time.
         let endpoint_account = endpoint.account.clone();
@@ -324,11 +330,11 @@ impl Client {
             azure: super::azure::auth::Authorization::new(
                 options.azure(),
                 endpoint_account.as_deref(),
-                options
-                    .credentials()
+                handed
+                    .as_ref()
                     .map(super::aws::credentials::Credentials::access_key_id),
-                options
-                    .credentials()
+                handed
+                    .as_ref()
                     .map(super::aws::credentials::Credentials::secret_access_key),
                 options.anonymous(),
             )?,
@@ -383,12 +389,43 @@ impl Client {
         self.provider.max_delete_batch()
     }
 
+    /// The Azure storage account a location addresses, if any.
+    ///
+    /// Three places name one, in the order a caller means them: the Azure
+    /// options, the location itself, and a credential pair the caller handed
+    /// over - which on Azure is an account name and a shared key. `handed` is
+    /// only what the caller set, never what the environment answered, because
+    /// an ambient pair arrived under an `AWS_` name and names an account at
+    /// another store. Every other store leaves this empty: only Azure writes
+    /// an account into its host.
+    pub(super) fn azure_account(
+        provider: Provider,
+        url: &Url,
+        options: &ObjectOptions,
+        handed: Option<&Credentials>,
+    ) -> Option<String> {
+        if !matches!(provider, Provider::Azure) {
+            return None;
+        }
+        options
+            .azure()
+            .account()
+            .map(str::to_owned)
+            .or_else(|| url.account().map(str::to_owned))
+            .or_else(|| handed.map(|handed| handed.access_key_id().to_owned()))
+    }
+
     /// The endpoint the URL and options name.
     ///
     /// The order is the same for every store - an explicit endpoint, then the
     /// URL's own, then the environment, then the store's published host - and
     /// only the last two steps know which store this is.
-    fn endpoint_of(provider: Provider, url: &Url, options: &ObjectOptions) -> Result<Endpoint> {
+    fn endpoint_of(
+        provider: Provider,
+        url: &Url,
+        options: &ObjectOptions,
+        handed: Option<&Credentials>,
+    ) -> Result<Endpoint> {
         // An explicitly configured endpoint wins: it is a deliberate choice
         // about where the store is, where a URL only says which object. The
         // URL's own endpoint comes next, ahead of the environment, because it
@@ -400,17 +437,7 @@ impl Client {
             .then(|| Self::ambient_endpoint(provider, options))
             .flatten()
             .or_else(|| options.azure().endpoint().map(str::to_owned));
-        let account = options
-            .azure()
-            .account()
-            .map(str::to_owned)
-            .or_else(|| url.account().map(str::to_owned))
-            .or_else(|| {
-                options
-                    .credentials()
-                    .filter(|_| matches!(provider, Provider::Azure))
-                    .map(|credentials| credentials.access_key_id().to_owned())
-            });
+        let account = Self::azure_account(provider, url, options, handed);
         let named = explicit.or(from_url).or(ambient);
         let (scheme, host, port) = match named {
             Some(endpoint) => Self::split_endpoint(&endpoint)?,

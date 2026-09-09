@@ -54,7 +54,7 @@ fn batch() -> RecordBatch {
 }
 
 pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("s3_records");
+    let mut group = criterion.benchmark_group("object_records");
     group.throughput(Throughput::Elements(ROWS as u64));
 
     let store = store();

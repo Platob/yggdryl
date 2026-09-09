@@ -53,7 +53,7 @@ Results live beside the method they measure. Each page's Performance section nam
     cargo bench --bench xxhash
     cargo bench --bench txhash
     cargo bench --bench fix
-    cargo bench --bench holder --features "parquet s3"
+    cargo bench --bench holder --features "parquet object"
     cargo bench --bench media --features "parquet iceberg"
     ```
 

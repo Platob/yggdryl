@@ -21,7 +21,7 @@ Every storage implementation is reached through the positional `IOBase` contract
 | key | value |
 | --- | --- |
 | Owns | one enum over every `IOBase` implementation |
-| Variants | one in memory, three local, three foreign, three on S3, four wrapping another `Holder` |
+| Variants | one in memory, three local, three foreign, three on object stores, four wrapping another `Holder` |
 | `Holder::local` | `Holder::Path`, the unresolved role |
 | `buffer` / `folder` / `file` | commit to a role |
 | Lazy | construction touches no filesystem; a role resolves only when an operation needs it |

@@ -10,7 +10,7 @@
 use crate::holder::object::Provider;
 use crate::{IOBase, IOFolder, IOKind};
 
-use super::{BUCKET, file_on, folder_on, options_for, payload, store};
+use super::{BUCKET, ObjectOptions, file_on, folder_on, options_for, payload, store};
 
 /// Every store, so a test that has nothing store-specific to say runs on all
 /// three rather than on whichever one was written first.
@@ -228,4 +228,143 @@ fn a_missing_object_reads_empty_and_a_missing_container_is_named_in_the_refusal(
         assert_eq!(handle.size(), 0, "{provider}");
         assert!(!handle.exists(), "{provider}");
     }
+}
+
+#[test]
+fn every_operation_costs_what_the_contract_says_on_every_store() {
+    // The cost model is the contract this backend exists for, so it is a
+    // number a test asserts rather than a number a comment claims. Each handle
+    // gets its own client, so its counters describe its own operation.
+    let store = store();
+    for provider in EVERY {
+        let key = format!("lake/{}-cost.bin", provider.service());
+
+        let mut written = file_on(&store, provider, &key);
+        written.write_all_bytes(&payload(64)).expect("a write");
+        assert_eq!(
+            written.stats().requests,
+            1,
+            "a whole write is one request on {provider}"
+        );
+
+        let read = file_on(&store, provider, &key);
+        assert_eq!(read.read_range_bytes(8, 16).expect("a range").len(), 16);
+        assert_eq!(
+            read.stats().requests,
+            1,
+            "a ranged read is one request on {provider}"
+        );
+        // A closed handle keeps nothing it was told, because a length is only
+        // true of the moment it was stated: asking is a fresh metadata read.
+        assert_eq!(read.size(), 64, "{provider}");
+        assert_eq!(
+            read.stats().requests,
+            2,
+            "a closed handle asks the store again on {provider}"
+        );
+
+        // An open scope did ask for a coherent view, so the total the ranged
+        // answer stated is kept and asking for it costs nothing more.
+        let mut scoped = file_on(&store, provider, &key);
+        scoped.open().expect("an open");
+        assert_eq!(scoped.read_range_bytes(8, 16).expect("a range").len(), 16);
+        assert_eq!(scoped.size(), 64, "{provider}");
+        assert_eq!(
+            scoped.stats().requests,
+            2,
+            "an open and a read, and the size came free on {provider}"
+        );
+
+        let whole = file_on(&store, provider, &key);
+        assert_eq!(whole.read_all_bytes().expect("a read").len(), 64);
+        assert_eq!(
+            whole.stats().requests,
+            1,
+            "a whole read is one request on {provider}"
+        );
+
+        let mut removed = file_on(&store, provider, &key);
+        removed.remove(false).expect("a removal");
+        assert_eq!(
+            removed.stats().requests,
+            1,
+            "a removal is one request on {provider}, issued without a probe"
+        );
+    }
+}
+
+#[test]
+fn a_chunked_upload_costs_what_its_own_protocol_costs() {
+    // Three protocols, three request counts, and each is the store's own:
+    // `parts + 2` where an upload is created and completed, `chunks + 1` where
+    // a session is opened and then filled, `blocks + 1` where blocks are
+    // staged and then committed. One part size serves all three - 5 MiB is at
+    // Amazon's floor and inside everyone's ceiling - so the same fifteen
+    // mebibytes is three pieces everywhere and only the protocol differs.
+    let store = store();
+    let bytes = payload(15 * 1024 * 1024);
+    for (provider, expected, why) in [
+        (Provider::Aws, 5, "create, three parts, complete"),
+        (Provider::Google, 4, "one session, three chunks"),
+        (Provider::Azure, 4, "three blocks, one commit"),
+    ] {
+        let key = format!("lake/{}-chunks.bin", provider.service());
+        let url = super::location_on(provider, &key);
+        let client = std::sync::Arc::new(
+            crate::holder::object::client::Client::new(
+                &url,
+                options_for(&store, provider)
+                    .with_part_size(5 * 1024 * 1024)
+                    .with_multipart_threshold(1024 * 1024),
+            )
+            .expect("a client"),
+        );
+        let mut handle = crate::holder::object::File::new(client, url).expect("an object handle");
+        handle.write_all_bytes(&bytes).expect("a write");
+        assert_eq!(handle.stats().requests, expected, "{provider}: {why}");
+        assert_eq!(
+            store.get(BUCKET, &key).expect("the object").len(),
+            bytes.len(),
+            "{provider}"
+        );
+    }
+}
+
+#[test]
+fn a_location_reports_the_spelling_it_was_handed_on_every_store() {
+    // Azure writes its container into the authority, ahead of the account's
+    // own host, so a handle that dropped that half would report a location
+    // naming a different container than the one it was handed. Nothing here
+    // contacts a store.
+    let quiet = || ObjectOptions::default().with_environment(false);
+    for scheme in ["az", "abfs", "abfss", "wasb", "wasbs"] {
+        let spelled = format!("{scheme}://trades@lake.dfs.core.windows.net/year=2026/part.parquet");
+        let handle = super::super::file_with(&spelled, quiet()).expect("an object handle");
+        assert_eq!(handle.bucket(), "trades", "{scheme}");
+        assert_eq!(handle.key(), "year=2026/part.parquet", "{scheme}");
+        assert_eq!(handle.url().to_string(), spelled, "{scheme}");
+    }
+
+    // Keys spelled into a location build the client and are never reported
+    // back - and on Azure the container written beside them survives that,
+    // because only the password half was ever the secret.
+    let keyed = super::super::file_with(
+        "s3://AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI@s3.us-east-1.amazonaws.com/trades/lake/part.bin",
+        quiet(),
+    )
+    .expect("an object handle");
+    assert_eq!(
+        keyed.url().to_string(),
+        "s3://s3.us-east-1.amazonaws.com/trades/lake/part.bin"
+    );
+    let azure = super::super::file_with(
+        "abfss://trades:signature@lake.dfs.core.windows.net/part.bin",
+        quiet(),
+    )
+    .expect("an object handle");
+    assert_eq!(
+        azure.url().to_string(),
+        "abfss://trades@lake.dfs.core.windows.net/part.bin"
+    );
+    assert_eq!(azure.bucket(), "trades");
 }

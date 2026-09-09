@@ -6,7 +6,7 @@
 
 | Page | Purpose |
 | --- | --- |
-| [URI](index.md) | This page: canonical `Uri`, parsing, hash locking, credentials, S3 |
+| [URI](index.md) | This page: canonical `Uri`, parsing, hash locking, credentials, object stores |
 | [Path](path.md) | Segments, compound filenames, media type, `std::path` bridge, navigation |
 | [URL and URN](url-urn.md) | The narrowed `Url` and `Urn` forms; what the scheme decides |
 | [Query parameters](parameters.md) | The query read and written as its `key=value` pairs |
@@ -27,8 +27,11 @@
 | Hash lock | Python: the first `hash(...)` freezes that wrapper; a later setter raises `TypeError` |
 | Stable hash | `stable_hash()` / `stableHash()` compute only; never lock |
 | Credentials | Userinfo splits at its first colon; later colons stay in the password |
-| S3 authority | First component ending `.com` / `.io`, carrying a port, an IP literal, or `localhost` is a hostname, else the bucket; AWS hosts expose `region` |
-| S3 key | `key()` is the path below the bucket as spelled - escapes and trailing slash kept, `""` at the root |
+| Store authority | First component ending `.com` / `.io`, carrying a port, an IP literal, or `localhost` is a hostname, else the container; recognized AWS and Google hosts expose `region` |
+| Store container | `bucket()` is the container on all three - a bucket on `s3:`/`gs:`, a container on `az:` - read from the hostname where the host names one, and from Azure's user position where the Hadoop spellings write it |
+| Store account | `account()` is Azure's storage account, read from `container@account.host` or from the account's own host; `None` everywhere else |
+| Store endpoint | `store_endpoint()` is the host and explicit port to address, with a virtual-hosted container removed; `is_virtual_hosted()` says whether the container was written into the hostname |
+| Store key | `key()` is the path below the container as spelled - escapes and trailing slash kept, `""` at the root |
 
 ## Use
 
@@ -173,9 +176,11 @@ editable.set_extension("parquet")
 assert editable != url
 ```
 
-## Credentials and S3 locations
+## Credentials and store locations
 
-Both are read off the authority without a network request.
+Both are read off the authority without a network request. Ten schemes name the
+three object stores - `s3`/`s3a`/`s3n`, `gs`/`gcs`, and
+`az`/`abfs`/`abfss`/`wasb`/`wasbs` - and one set of accessors reads them all.
 
 === "Rust"
 
@@ -198,6 +203,20 @@ Both are read off the authority without a network request.
     assert_eq!(local.hostname(), Some("localhost"));
     assert_eq!(local.bucket(), Some("trades"));
     assert_eq!(local.key(), Some("lake/"));
+
+    // Google names its bucket the same two ways, and the endpoint answers
+    // without the virtual-hosted half.
+    let google = Uri::from_str("gs://trades.storage.googleapis.com/lake/part.parquet")?;
+    assert_eq!(google.bucket(), Some("trades"));
+    assert_eq!(google.store_endpoint(), Some("storage.googleapis.com"));
+    assert!(google.is_virtual_hosted());
+
+    // Azure writes the container in the user position, ahead of the account's
+    // own host, so one location says both.
+    let azure = Uri::from_str("abfss://lake@trades.dfs.core.windows.net/part.parquet")?;
+    assert_eq!(azure.bucket(), Some("lake"));
+    assert_eq!(azure.account(), Some("trades"));
+    assert_eq!(azure.key(), Some("part.parquet"));
     ```
 
 === "Python"
@@ -215,6 +234,13 @@ Both are read off the authority without a network request.
 
     local = Uri("s3://localhost:9000/trades/lake/")
     assert (local.hostname, local.bucket, local.key) == ("localhost", "trades", "lake/")
+
+    google = Uri("gs://trades.storage.googleapis.com/lake/part.parquet")
+    assert (google.bucket, google.store_endpoint) == ("trades", "storage.googleapis.com")
+    assert google.is_virtual_hosted()
+
+    azure = Uri("abfss://lake@trades.dfs.core.windows.net/part.parquet")
+    assert (azure.bucket, azure.account, azure.key) == ("lake", "trades", "part.parquet")
     ```
 
 === "JavaScript"
@@ -234,6 +260,13 @@ Both are read off the authority without a network request.
 
     const local = Uri.from('s3://localhost:9000/trades/lake/')
     assert.deepEqual([local.hostname, local.bucket, local.key], ['localhost', 'trades', 'lake/'])
+
+    const google = Uri.from('gs://trades.storage.googleapis.com/lake/part.parquet')
+    assert.deepEqual([google.bucket, google.storeEndpoint], ['trades', 'storage.googleapis.com'])
+    assert.ok(google.isVirtualHosted())
+
+    const azure = Uri.from('abfss://lake@trades.dfs.core.windows.net/part.parquet')
+    assert.deepEqual([azure.bucket, azure.account, azure.key], ['lake', 'trades', 'part.parquet'])
     ```
 
 ## Edges
@@ -267,5 +300,5 @@ Both are read off the authority without a network request.
 
     ```bash
     node --test node/tests/uri/uri.test.js
-    node --test --test-name-pattern="canonical components|credentials and S3|scheme-less|rejects malformed" node/tests/uri/uri.test.js
+    node --test --test-name-pattern="canonical components|credentials and object store|scheme-less|rejects malformed" node/tests/uri/uri.test.js
     ```

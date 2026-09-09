@@ -315,8 +315,8 @@ impl Uri {
         // store does and no container name can be mistaken for.
         let attached = authority
             .filter(|_| self.scheme.is_az())
-            .and_then(|authority| authority.as_str().rsplit_once('@'))
-            .map(|(container, _)| container);
+            .and_then(Authority::user)
+            .filter(|container| !container.is_empty());
         // A port is something no container name carries, so it names the
         // endpoint before any suffix rule runs.
         if let Some(authority) = authority.filter(|authority| authority.port().is_some()) {

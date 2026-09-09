@@ -57,7 +57,7 @@ test('generic URI path joining is variadic, normalized, and immutable', () => {
   assert.throws(() => base.joinPath(7), TypeError)
 })
 
-test('credentials and S3 locations are parsed by the native core', () => {
+test('credentials and object store locations are parsed by the native core', () => {
   const credentials = Uri.fromString(
     'https://user:pass:word@[2001:db8::1]:8443/archive/data.parquet',
   )
@@ -101,6 +101,29 @@ test('credentials and S3 locations are parsed by the native core', () => {
   assert.equal(local.hostname, 'localhost')
   assert.equal(local.bucket, 'market-data')
   assert.equal(local.key, 'lake/part.parquet')
+
+  // The endpoint is what a request is addressed to, without a container the
+  // hostname carries, and `isVirtualHosted` says which spelling was used.
+  assert.equal(endpoint.storeEndpoint, 's3.dualstack.eu-west-3.amazonaws.com')
+  assert.ok(endpoint.isVirtualHosted())
+  assert.equal(local.storeEndpoint, 'localhost:9000')
+  assert.ok(!local.isVirtualHosted())
+  assert.equal(bucket.storeEndpoint, null)
+
+  // Google names a bucket the same two ways S3 does.
+  const google = Uri.fromString('gs://market-data.storage.googleapis.com/data.parquet')
+  assert.equal(google.bucket, 'market-data')
+  assert.equal(google.storeEndpoint, 'storage.googleapis.com')
+  assert.equal(google.account, null)
+
+  // Azure writes the container in the user position, ahead of the account's
+  // own host, so one location names both.
+  const azure = Uri.fromString('abfss://lake@trades.dfs.core.windows.net/part.parquet')
+  assert.equal(azure.bucket, 'lake')
+  assert.equal(azure.account, 'trades')
+  assert.equal(azure.storeEndpoint, 'trades.dfs.core.windows.net')
+  assert.equal(azure.key, 'part.parquet')
+  assert.equal(credentials.account, null)
 })
 
 test('fromPath normalizes Windows drives and UNC shares as file URIs', () => {

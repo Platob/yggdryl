@@ -17,9 +17,9 @@ container, `File` one object.
 | Lazy | Constructing touches nothing; credentials, tokens, region, and endpoint resolve on the first request |
 | Addressing | Virtual-hosted on AWS, path style elsewhere or when the bucket holds a dot; Google's JSON API and Azure always path style; `with_path_style` overrides |
 | Absence | A missing object reads empty and sizes zero; a delete of nothing succeeds; a refusal is `Error::Remote` |
-| Credentials | One pair serves all three: an access key on S3, an HMAC key on Google, an account name and shared key on Azure |
+| Credentials | One pair serves all three: an access key on S3, an HMAC key on Google, an account name and shared key on Azure - a pair the caller hands over, never one swept out of the environment under another store's name |
 | Identity | S3 walks the AWS chain or trades it for an STS role; Google walks Application Default Credentials; Azure signs, carries a SAS, or holds an Entra ID token |
-| Secrets | Keys written into a location sign the request and are stripped from the URL the handle reports |
+| Secrets | A `user:password` written into a location signs the request and never appears in the URL a handle reports; user information without a password is a name, not a key - it is where Azure's Hadoop spellings write the container - and it stays |
 | Pooling | One connection serves many requests; a ranged read drains its body so it stays reusable |
 | Retry | Full jitter over a doubling window, a token budget so a failing store is not hammered, and `Retry-After` where the store sends one |
 | Recovery | A stream cut part way through resumes from the byte it stopped at, not from the beginning |
@@ -67,8 +67,9 @@ key spelled with a trailing slash is a directory marker, and it lists once, as
 the container it names.
 
 A **ranged read learns the object's length** from the `Content-Range` it comes
-back with, so a scan that reads and then asks the size pays nothing for the
-answer.
+back with, so an open scope that reads and then asks the size pays nothing for
+the answer. A closed handle asks again, because a length is only true of the
+moment the store stated it.
 
 ## Which store answers
 
@@ -140,7 +141,7 @@ three role classes, in whichever vocabulary the caller already has.
 
     const part = new IOBase('s3://trades/lake/year=2026/part.parquet')
     const footer = part.readRangeBytes(part.size - 8, 8)
-    const blob = new IOBase('az://lake/year=2026/part.parquet')
+    const blob = new IOBase('abfss://lake@trades.dfs.core.windows.net/part.parquet')
     ```
 
 ## Naming an object
@@ -175,8 +176,10 @@ handle reports the spelling it was handed, so a location written by another
 tool survives the round trip through a child, a listing, or a log.
 
 Azure has two location shapes, and both are read: `az://container/blob` leaves
-the account to configuration, and the Hadoop form attaches the container to the
-account's own host.
+the account to configuration - name it with `AzureOptions::with_account`, an
+`adls.account-name` property, or `AZURE_STORAGE_ACCOUNT_NAME`, and a location
+with none is refused rather than sent somewhere - and the Hadoop form attaches
+the container to the account's own host, which says both at once.
 
 ```rust
 use yggdryl::holder::object;
@@ -617,7 +620,7 @@ what decides that, and it is held by the accounting tests above.
 Regenerate with:
 
 ```console
-cargo bench --bench holder --features object -- s3_ --noplot
+cargo bench --bench holder --features object -- object_ --noplot
 ```
 
 ## Checked against a real store

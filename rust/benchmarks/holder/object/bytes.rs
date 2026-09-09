@@ -19,7 +19,7 @@ use super::{BUCKET, PAYLOAD, baseline, baseline_path, location, options, payload
 const FOOTER: usize = 8 * 1024;
 
 pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("s3_bytes");
+    let mut group = criterion.benchmark_group("object_bytes");
     group.throughput(Throughput::Bytes(PAYLOAD as u64));
 
     let store = store();

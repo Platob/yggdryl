@@ -72,9 +72,9 @@ impl Authorization {
             return Ok(Self::Sas(token.to_owned()));
         }
         // A generic credential pair is Azure's shared key only when it names
-        // this account: an ambient `AWS_SECRET_ACCESS_KEY` swept out of the
-        // environment is a key for another store, and taking it here would
-        // refuse the client over a value that was never meant for it.
+        // this account: a caller who set keys for another store and then named
+        // an account of their own meant the account, and signing with those
+        // keys would refuse every request over a value never meant for here.
         let paired = key.filter(|_| {
             account
                 .is_some_and(|account| account.eq_ignore_ascii_case(account_id.unwrap_or_default()))

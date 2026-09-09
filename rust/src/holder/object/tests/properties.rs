@@ -1,15 +1,20 @@
 //! Reading a property map written in somebody else's vocabulary.
 //!
-//! A caller reaching S3 through this crate starts from a PyIceberg catalog's
-//! properties, from PyArrow's `S3FileSystem` arguments, or from the AWS
-//! environment variable names - three vocabularies for one set of knobs. What
-//! these check is that each of the three lands on the same knob, that a value
-//! that will not parse is heard here rather than at the store, and that a
-//! knob this client cannot honor is refused rather than dropped.
+//! A caller reaching a store through this crate starts from a PyIceberg
+//! catalog's properties, from PyArrow's `S3FileSystem` arguments, or from each
+//! store's own environment variable names - many vocabularies for one set of
+//! knobs. What these check is that each of them lands on the same knob, that a
+//! name two stores share reaches both, that a value which will not parse is
+//! heard here rather than at the store, and that a knob this client cannot
+//! honor is refused rather than dropped.
 
 use std::time::Duration;
 
-use crate::holder::object::{AssumedRole, Encryption, ObjectOptions};
+use crate::Url;
+use crate::holder::object::client::Client;
+use crate::holder::object::{
+    AssumedRole, AzureOptions, Credentials, Encryption, ObjectOptions, Provider,
+};
 
 #[test]
 fn a_pyiceberg_catalogs_properties_reach_every_knob_they_name() {
@@ -324,6 +329,82 @@ fn what_a_caller_set_wins_over_what_the_environment_says() {
         .under(&ambient);
     assert!(anonymous.anonymous());
     assert!(anonymous.credentials().is_none());
+}
+
+#[test]
+fn a_pair_the_environment_answered_never_names_an_azure_account() {
+    // One credential pair serves all three stores, so on Azure a pair a caller
+    // handed over is an account name and a shared key. A pair the environment
+    // answered is not: it arrived under an `AWS_` name, so letting it name an
+    // account would address `<that access key id>.blob.core.windows.net` and
+    // sign with a secret meant for somewhere else, purely because the process
+    // happened to hold keys for another store.
+    let handed = Credentials::new("devstoreaccount1", "a2V5");
+    let url = Url::from_str("az://trades/lake/part.bin").expect("a location");
+    assert_eq!(
+        Client::azure_account(
+            Provider::Azure,
+            &url,
+            &ObjectOptions::default(),
+            Some(&handed)
+        ),
+        Some("devstoreaccount1".to_owned())
+    );
+
+    // The same pair sitting in the options, with nothing handed over, is what
+    // the environment sweep leaves behind - and it names nothing.
+    let ambient = ObjectOptions::default().with_credentials(handed.clone());
+    assert_eq!(
+        Client::azure_account(Provider::Azure, &url, &ambient, None),
+        None
+    );
+
+    // The options and the location both outrank a pair either way.
+    let named =
+        ObjectOptions::default().with_azure(AzureOptions::default().with_account("trading"));
+    assert_eq!(
+        Client::azure_account(Provider::Azure, &url, &named, Some(&handed)),
+        Some("trading".to_owned())
+    );
+    let attached =
+        Url::from_str("az://trades@lake.blob.core.windows.net/part.bin").expect("a location");
+    assert_eq!(
+        Client::azure_account(
+            Provider::Azure,
+            &attached,
+            &ObjectOptions::default(),
+            Some(&handed)
+        ),
+        Some("lake".to_owned())
+    );
+
+    // Only Azure writes an account into its host, so the other two never read
+    // one out of a pair that is theirs to begin with.
+    for provider in [Provider::Aws, Provider::Google] {
+        let url = Url::from_str(&format!(
+            "{}://trades/lake/part.bin",
+            provider.scheme().as_str()
+        ))
+        .expect("a location");
+        assert_eq!(
+            Client::azure_account(provider, &url, &ObjectOptions::default(), Some(&handed)),
+            None,
+            "{provider}"
+        );
+    }
+
+    // And with no account anywhere - which is what a process holding only
+    // another store's keys now has - the refusal names where to put one rather
+    // than sending the request to whichever host a stray key spelled.
+    let Err(refusal) = Client::new(&url, ObjectOptions::default().with_environment(false)) else {
+        panic!("an unaddressable location is refused");
+    };
+    assert!(
+        refusal
+            .to_string()
+            .contains("expected an Azure storage account"),
+        "{refusal}"
+    );
 }
 
 #[test]

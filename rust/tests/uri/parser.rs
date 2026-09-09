@@ -183,6 +183,13 @@ fn azure_locations_read_containers_from_the_authority_and_accounts_from_the_host
     assert_eq!(wasbs.account(), Some("trades"));
     assert_eq!(wasbs.key(), Some("part"));
 
+    // The container is the user position, so anything written after a colon is
+    // a password and not part of the name.
+    let keyed = Uri::from_str("abfss://lake:secret@trades.dfs.core.windows.net/part").unwrap();
+    assert_eq!(keyed.bucket(), Some("lake"));
+    assert_eq!(keyed.user(), Some("lake"));
+    assert_eq!(keyed.password(), Some("secret"));
+
     // A bare account host leaves the container to the first path part.
     let hosted = Uri::from_str("az://trades.blob.core.windows.net/lake/part").unwrap();
     assert_eq!(hosted.account(), Some("trades"));

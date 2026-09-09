@@ -14,7 +14,7 @@ use yggdryl::IOBase;
 use super::{LEAVES, baseline, baseline_path, location, options, runtime, store, tree};
 
 pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("s3_listing");
+    let mut group = criterion.benchmark_group("object_listing");
 
     let store = store();
     tree(&store, "lake", LEAVES);

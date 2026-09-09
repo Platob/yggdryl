@@ -387,16 +387,33 @@ fn encode_key_path(key: &str) -> String {
 ///
 /// A URL is what a handle reports, logs, and puts in an error, so a secret a
 /// caller spelled into one is used to build the client and then never rendered
-/// again.
+/// again. A password is what makes user information a credential - it is the
+/// half a client signs with, and the half worth hiding - so user information
+/// without one is a name and stays: `abfss://trades@lake.dfs.core.windows.net`
+/// writes Azure's container there, and a handle that dropped it would report a
+/// location naming a different container than the one it was handed.
 fn without_credentials(url: Url) -> Url {
-    if url.user().is_none() {
+    if url.password().is_none() {
         return url;
     }
     let authority = url.authority().as_str();
-    let Some((_, host)) = authority.rsplit_once('@') else {
+    let Some((user, host)) = authority.rsplit_once('@') else {
         return url;
     };
-    let rebuilt = format!("{}://{host}{}", url.scheme().as_str(), url.path().as_str());
+    // Only Azure reads the user position as a name rather than as a key, so it
+    // is the only place anything there is worth keeping.
+    let kept = match url.scheme().is_az() {
+        true => match user.split_once(':') {
+            Some((container, _)) if !container.is_empty() => format!("{container}@"),
+            _ => String::new(),
+        },
+        false => String::new(),
+    };
+    let rebuilt = format!(
+        "{}://{kept}{host}{}",
+        url.scheme().as_str(),
+        url.path().as_str()
+    );
     Url::from_str(&rebuilt).unwrap_or(url)
 }
 
