@@ -116,6 +116,9 @@ pub(crate) fn write_batch<W: Write>(
     batch: &RecordBatch,
     layout: RowLayout,
 ) -> Result<()> {
+    // This is the one path that writes an element name without reaching it
+    // through `write_element`, so it is the one path that has to ask.
+    wire::check_name(row)?;
     let names = column_names(batch);
     let rows = crate::arrow::batch_to_value(batch)?;
     let rows = rows.as_sequence().ok_or_else(|| Error::InvalidRecord {

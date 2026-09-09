@@ -89,10 +89,12 @@ pub const TEXT_KEY: &str = "#text";
 
 /// Maximum element nesting accepted by the XML parser.
 ///
-/// Caller limits may choose any smaller depth. The reader keeps its open
-/// elements on its own stack rather than on the native one, so this ceiling
-/// bounds memory rather than recursion.
-pub const MAX_PARSER_DEPTH: usize = 1_024;
+/// Caller limits may choose any smaller depth. This implementation ceiling
+/// keeps an adversarial explicit limit from turning nesting into stack
+/// exhaustion: the reader keeps its own open elements on its own stack, but
+/// everything that later walks the decoded value - a cast, a digest, dropping
+/// it - recurses.
+pub const MAX_PARSER_DEPTH: usize = 384;
 
 /// Decode one XML document from byte-like content into the shared `Scalar`, a
 /// `Record` naming the document element.
@@ -124,10 +126,10 @@ pub fn from_xml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar> {
 /// answering the shared `Scalar`.
 ///
 /// This is the inferring entry point over [`from_bytes_with_field`]: it
-/// coerces `input` exactly as [`from_xml_scalar`] does - content, never a path
-/// - and redirects, so `field` types the character data XML carries, orders
-/// the element into the field's declaration order and validates there under
-/// default [`Limits`]. Explicit limits go through
+/// coerces `input` exactly as [`from_xml_scalar`] does - content, never a
+/// path - and redirects, so `field` types the character data XML carries,
+/// orders the element into the field's declaration order and validates there
+/// under default [`Limits`]. Explicit limits go through
 /// [`from_bytes_with_field_and_limits`].
 ///
 /// ```

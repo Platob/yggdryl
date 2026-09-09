@@ -12,5 +12,7 @@ mod structured;
 mod toml;
 #[path = "text/value.rs"]
 mod value;
+#[path = "text/xml.rs"]
+mod xml;
 #[path = "text/yaml.rs"]
 mod yaml;

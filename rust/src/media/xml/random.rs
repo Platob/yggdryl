@@ -158,11 +158,7 @@ fn open_document<H: IOBase + ?Sized>(
         start
     };
     patch(handle, RowSpan { start, end }, &rendered)?;
-    index.opened(
-        &root,
-        start + content_end as u64,
-        start + rendered.len() as u64,
-    );
+    index.opened(&root, start + content_end as u64, handle.size());
     Ok(())
 }
 

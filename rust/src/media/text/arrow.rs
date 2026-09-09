@@ -211,7 +211,6 @@ impl Drop for BoundStream {
     }
 }
 
-/// The owned, thread-safe form of [`NonemptyDecodedReader`].
 /// One parsed physical line with still-textual named captures.
 struct RawRow {
     index: u64,

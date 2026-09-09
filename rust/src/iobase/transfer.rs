@@ -1056,8 +1056,12 @@ pub(crate) fn stored_field(
     if matches!(options, RecordOptions::Text(_)) {
         return Ok(None);
     }
-    let mut probe = RecordOptions::for_mime_type(&options.mime_type())?;
-    probe.set_name(smol_str::SmolStr::new(options.name()));
+    // The probe is these options without the declared schema, not a fresh
+    // default: an encoding whose options describe the *wire* - which element
+    // an XML row is written as - would otherwise be asked what it stores while
+    // being told to look somewhere else.
+    let mut probe = options.clone();
+    probe.take_field();
     Ok(Some(leaf_field(handle, &probe)?))
 }
 
@@ -1143,6 +1147,12 @@ fn append_leaf_onto(
 ) -> Result<()> {
     use crate::media::IORecordOptions;
 
+    // An XML document appends natively. The rows reaching here are already
+    // shaped onto the stored field, so completing them is done and the stored
+    // rows have no reason to be read back only to be written out again.
+    if let RecordOptions::Xml(xml) = options {
+        return crate::media::xml::append_arrow_reader(handle, incoming, xml);
+    }
     let mut rewrite = options.clone();
     rewrite.set_field(target.clone());
     let current = if handle.is_empty() {

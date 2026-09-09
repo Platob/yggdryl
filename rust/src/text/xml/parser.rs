@@ -42,11 +42,7 @@ pub(crate) fn parse(input: &str, limits: Limits) -> Result<Scalar> {
             .read_event()
             .map_err(|error| protocol(error, position))?
         {
-            Event::Decl(declaration) => {
-                version = declaration
-                    .xml_version()
-                    .map_err(|error| protocol(error, position))?;
-            }
+            Event::Decl(declaration) => version = declared_version(&declaration, position)?,
             Event::Start(start) => {
                 if stack.is_empty() && document.is_some() {
                     return Err(second_root(position));
@@ -243,8 +239,13 @@ impl State {
     }
 
     /// Account for one element opening at `depth` levels of open ancestors.
+    ///
+    /// The caller's limit bounds the value; [`MAX_PARSER_DEPTH`](super::MAX_PARSER_DEPTH)
+    /// bounds the caller. A decoded value is walked recursively by everything
+    /// downstream - dropping it included - so a limit chosen larger than this
+    /// implementation's own ceiling is refused rather than obeyed.
     pub(crate) fn enter(&mut self, depth: usize, position: usize) -> Result<()> {
-        if depth.saturating_add(1) > self.limits.max_depth() {
+        if depth.saturating_add(1) > self.limits.max_depth().min(super::MAX_PARSER_DEPTH) {
             return Err(Error::Codec {
                 format: FORMAT,
                 position,
@@ -308,6 +309,36 @@ pub(crate) fn resolve(reference: &str, position: usize) -> Result<SmolStr> {
             ),
         }),
     }
+}
+
+/// Read the version one XML declaration states, and refuse an encoding this
+/// codec would have to transcode.
+///
+/// The bytes reaching a parser are UTF-8 by contract. A declaration naming
+/// another encoding describes bytes that are not the ones being read, so it is
+/// reported rather than ignored - reading a `windows-1252` document as UTF-8
+/// answers text nobody wrote.
+pub(crate) fn declared_version(
+    declaration: &quick_xml::events::BytesDecl<'_>,
+    position: usize,
+) -> Result<XmlVersion> {
+    if let Some(encoding) = declaration.encoding() {
+        let encoding = encoding.map_err(|error| protocol(error, position))?;
+        let encoding = name_text(&encoding, position)?;
+        if !encoding.eq_ignore_ascii_case("utf-8") && !encoding.eq_ignore_ascii_case("utf8") {
+            return Err(Error::Codec {
+                format: FORMAT,
+                position,
+                reason: crate::text::expected_got(
+                    "a document declaring utf-8, which is what this codec reads",
+                    crate::text::elide_display(&encoding),
+                ),
+            });
+        }
+    }
+    declaration
+        .xml_version()
+        .map_err(|error| protocol(error, position))
 }
 
 /// Borrow one name the tokenizer answers in the source's own bytes.

@@ -98,7 +98,7 @@ fn filled(value: Scalar, input: &[u8], format: Format, loading: &Loading) -> Res
         value
     };
     match loading.field() {
-        Some(field) => field.from_natural_value(value),
+        Some(field) => under_field(value, format, field),
         None => Ok(value),
     }
 }
@@ -133,7 +133,7 @@ pub fn from_utf8_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Scalar> {
-    field.from_natural_value(from_utf8_with_limits(input, format, limits)?)
+    under_field(from_utf8_with_limits(input, format, limits)?, format, field)
 }
 
 /// Decode one value from UTF-8 under `loading`.
@@ -172,7 +172,11 @@ pub fn from_bytes_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Scalar> {
-    field.from_natural_value(from_bytes_with_limits(input, format, limits)?)
+    under_field(
+        from_bytes_with_limits(input, format, limits)?,
+        format,
+        field,
+    )
 }
 
 /// Decode one value from bytes under `loading`.
@@ -215,7 +219,11 @@ pub fn from_reader_with_field_and_limits<R: Read>(
     field: &Field,
     limits: Limits,
 ) -> Result<Scalar> {
-    field.from_natural_value(from_reader_with_limits(reader, format, limits)?)
+    under_field(
+        from_reader_with_limits(reader, format, limits)?,
+        format,
+        field,
+    )
 }
 
 /// Decode one value from a reader under `loading`.
@@ -223,7 +231,7 @@ pub fn from_reader_with<R: Read>(reader: R, format: Format, loading: &Loading) -
     if loading.placeholders().is_none() {
         let value = from_reader_with_limits(reader, format, loading.limits())?;
         return match loading.field() {
-            Some(field) => field.from_natural_value(value),
+            Some(field) => under_field(value, format, field),
             None => Ok(value),
         };
     }
@@ -270,7 +278,11 @@ pub fn from_bytes_all_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_bytes_all_with_limits(input, format, limits)?, field)
+    apply_field(
+        from_bytes_all_with_limits(input, format, limits)?,
+        format,
+        field,
+    )
 }
 
 /// Decode all values from UTF-8.
@@ -305,7 +317,11 @@ pub fn from_utf8_all_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_utf8_all_with_limits(input, format, limits)?, field)
+    apply_field(
+        from_utf8_all_with_limits(input, format, limits)?,
+        format,
+        field,
+    )
 }
 
 /// Decode all values from a reader.
@@ -344,7 +360,11 @@ pub fn from_reader_all_with_field_and_limits<R: Read>(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_reader_all_with_limits(reader, format, limits)?, field)
+    apply_field(
+        from_reader_all_with_limits(reader, format, limits)?,
+        format,
+        field,
+    )
 }
 
 /// Lazily decode values from a borrowed reader.
@@ -383,7 +403,10 @@ pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(
     field: &'a Field,
     limits: Limits,
 ) -> ScalarIter<'a> {
-    from_reader_iter_with_limits(reader, format, limits).with_field(field)
+    match format {
+        Format::Xml => xml::from_reader_iter_with_field_and_limits(reader, field, limits),
+        _ => from_reader_iter_with_limits(reader, format, limits).with_field(field),
+    }
 }
 
 /// Encode one value to bytes.
@@ -563,7 +586,7 @@ pub fn from_utf8_inferred_with_limits(input: &str, limits: Limits) -> Result<(Fo
 /// Infer and decode UTF-8 under `field` without parsing twice.
 pub fn from_utf8_inferred_with_field(input: &str, field: &Field) -> Result<(Format, Scalar)> {
     let (format, value) = from_utf8_inferred(input)?;
-    Ok((format, field.from_natural_value(value)?))
+    Ok((format, under_field(value, format, field)?))
 }
 
 /// Infer and decode one byte document without parsing it twice.
@@ -585,7 +608,7 @@ pub fn from_bytes_inferred_with_limits(input: &[u8], limits: Limits) -> Result<(
 /// Infer and decode bytes under `field` without parsing twice.
 pub fn from_bytes_inferred_with_field(input: &[u8], field: &Field) -> Result<(Format, Scalar)> {
     let (format, value) = from_bytes_inferred(input)?;
-    Ok((format, field.from_natural_value(value)?))
+    Ok((format, under_field(value, format, field)?))
 }
 
 fn infer_utf8_impl(input: &str, limits: Limits) -> Result<(Format, Scalar)> {
@@ -641,10 +664,27 @@ fn is_empty_or_comment_only(input: &[u8]) -> bool {
     })
 }
 
-pub(crate) fn apply_field(values: Vec<Scalar>, field: &Field) -> Result<Vec<Scalar>> {
+/// Interpret one decoded document under `field`, as `format` spells it.
+///
+/// Every format but XML hands the field exactly what it decoded. XML decodes
+/// the one-entry record its document element names, and a field types what
+/// that element *holds* rather than the name the wire gave it, so the one
+/// unwrapping lives here instead of at every entry point that takes a field.
+pub(crate) fn under_field(value: Scalar, format: Format, field: &Field) -> Result<Scalar> {
+    match format {
+        Format::Xml => field.from_natural_value(xml::content(value)),
+        _ => field.from_natural_value(value),
+    }
+}
+
+pub(crate) fn apply_field(
+    values: Vec<Scalar>,
+    format: Format,
+    field: &Field,
+) -> Result<Vec<Scalar>> {
     values
         .into_iter()
-        .map(|value| field.from_natural_value(value))
+        .map(|value| under_field(value, format, field))
         .collect()
 }
 

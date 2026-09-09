@@ -13,7 +13,9 @@ use smol_str::SmolStr;
 
 use crate::text::Limits;
 use crate::text::xml::TEXT_KEY;
-use crate::text::xml::parser::{Element, State, name_text, position, protocol, resolve};
+use crate::text::xml::parser::{
+    Element, State, declared_version, name_text, position, protocol, resolve,
+};
 use crate::types::Nested;
 use crate::{Result, Scalar};
 
@@ -95,9 +97,7 @@ impl<R: Read> Rows<R> {
                 .map_err(|error| protocol(error, position))?;
             match event {
                 Event::Decl(declaration) => {
-                    self.version = declaration
-                        .xml_version()
-                        .map_err(|error| protocol(error, position))?;
+                    self.version = declared_version(&declaration, position)?;
                 }
                 Event::Start(start) => {
                     if self.skipping > 0 {

@@ -33,6 +33,16 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         | DataType::FixedSizeBinary(_)
         | DataType::LargeBinary
         | DataType::BinaryView => binary(value, field),
+        DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
+        | DataType::Int64
+        | DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64 => integer(value, field),
+        DataType::Float16 | DataType::Float32 | DataType::Float64 => floating(value, field),
+        DataType::Boolean => boolean(value, field),
         DataType::Geometry(_) | DataType::Geography(_) => geospatial(value, field),
         DataType::Date32
         | DataType::Date64
@@ -154,6 +164,70 @@ fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar>
             .map(|(key, value)| Ok((prepare(key, key_field)?, prepare(value, value_field)?)))
             .collect::<Result<Vec<_>>>()?,
     )
+}
+
+/// Read one integer a document spells rather than types.
+///
+/// A format with integer literals hands one over already typed and it passes
+/// through here untouched. A format that carries only text - XML, and every
+/// column a delimited file holds - spells it, and the declared field is what
+/// says to read those digits as a number. The exact width is applied by the
+/// canonical value contract afterwards, so this only has to answer whether the
+/// text is an integer at all.
+fn integer(value: Scalar, field: &Field) -> Result<Scalar> {
+    let Some(text) = value.as_str() else {
+        return Ok(value);
+    };
+    let text = text.trim();
+    if let Some(negative) = text.strip_prefix('-') {
+        return negative
+            .parse::<i128>()
+            .ok()
+            .and_then(|magnitude| magnitude.checked_neg())
+            .map(Scalar::from)
+            .ok_or_else(|| expected_text(field));
+    }
+    text.trim_start_matches('+')
+        .parse::<u128>()
+        .map(Scalar::from)
+        .map_err(|_| expected_text(field))
+}
+
+/// Read one floating-point value a document spells rather than types.
+///
+/// The accepted spellings are the ones the codecs write: a decimal or
+/// exponential literal, `inf`, `-inf`, and `NaN`.
+fn floating(value: Scalar, field: &Field) -> Result<Scalar> {
+    let Some(text) = value.as_str() else {
+        return Ok(value);
+    };
+    text.trim()
+        .parse::<f64>()
+        .map(Scalar::from)
+        .map_err(|_| expected_text(field))
+}
+
+/// Read one boolean a document spells rather than types.
+///
+/// `true` and `false` in any case, plus the `1` and `0` an XML schema's
+/// boolean lexical space also admits.
+fn boolean(value: Scalar, field: &Field) -> Result<Scalar> {
+    let Some(text) = value.as_str() else {
+        return Ok(value);
+    };
+    let text = text.trim();
+    if text.eq_ignore_ascii_case("true") || text == "1" {
+        return Ok(Scalar::from(true));
+    }
+    if text.eq_ignore_ascii_case("false") || text == "0" {
+        return Ok(Scalar::from(false));
+    }
+    Err(expected_text(field))
+}
+
+/// Name the datatype whose text spelling was expected.
+fn expected_text(field: &Field) -> Error {
+    invalid(field, format_smolstr!("expected {} text", field.dtype()))
 }
 
 fn binary(value: Scalar, field: &Field) -> Result<Scalar> {

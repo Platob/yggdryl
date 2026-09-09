@@ -138,8 +138,11 @@ where
         writer.write_all(b"\"")?;
     }
 
-    let children =
-        entries.filter(|(key, _)| !key.starts_with(ATTRIBUTE_PREFIX) && *key != TEXT_KEY);
+    // A child whose value is an empty sequence writes no element, so it is not
+    // a child here either: an element holding only those closes itself.
+    let children = entries.filter(|(key, value)| {
+        !key.starts_with(ATTRIBUTE_PREFIX) && *key != TEXT_KEY && !is_empty_sequence(value)
+    });
     if own_text.is_none() && children.clone().next().is_none() {
         writer.write_all(b"/>")?;
         return Ok(());
@@ -199,6 +202,14 @@ fn write_child<W: Write>(
         write_element(writer, name, value, layout, depth)?;
     }
     Ok(())
+}
+
+/// Return whether a value writes no element at all.
+fn is_empty_sequence(value: &Scalar) -> bool {
+    match value {
+        Scalar::Nested(Nested::Sequence(values)) => values.as_slice().is_empty(),
+        _ => false,
+    }
 }
 
 fn write_units<W: Write>(writer: &mut W, unit: &[u8], count: usize) -> Result<()> {
@@ -310,7 +321,12 @@ fn write_escaped<W: Write>(writer: &mut W, value: &str, escaping: Escaping) -> R
             // Carriage return is normalized away everywhere, in content too.
             '\r' => "&#13;",
             '\t' | '\n' => continue,
-            character if (character as u32) < 0x20 => {
+            // U+FFFE and U+FFFF are not XML characters and no reference can
+            // spell them, so a value holding one has no document to be written
+            // into rather than one another parser would reject.
+            character
+                if (character as u32) < 0x20 || matches!(character, '\u{fffe}' | '\u{ffff}') =>
+            {
                 return Err(Error::Codec {
                     format: FORMAT,
                     position: index,
@@ -322,11 +338,11 @@ fn write_escaped<W: Write>(writer: &mut W, value: &str, escaping: Escaping) -> R
             }
             _ => continue,
         };
-        writer.write_all(value[written..index].as_bytes())?;
+        writer.write_all(&value.as_bytes()[written..index])?;
         writer.write_all(replacement.as_bytes())?;
         written = index + character.len_utf8();
     }
-    writer.write_all(value[written..].as_bytes())?;
+    writer.write_all(&value.as_bytes()[written..])?;
     Ok(())
 }
 

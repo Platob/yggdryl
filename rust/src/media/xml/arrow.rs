@@ -131,29 +131,36 @@ fn list_item(dtype: &DataType) -> Option<&Field> {
     }
 }
 
-/// Narrow the stored shape to the columns a declared field names.
+/// Restate a declared field as the shape the wire actually carries.
 ///
-/// A projection can only drop columns, so the datatypes stay the stored ones -
-/// text, because that is what an element carries - and the declared types are
-/// reached by the one cast every encoding's read is finished by. A declared
-/// column the document does not store is left to that cast to fill.
-fn projected(stored: &Field, declared: &Field) -> Result<Field> {
-    let (Some(held), Some(wanted)) = (stored.dtype().as_fields(), declared.dtype().as_fields())
-    else {
-        return Ok(stored.clone());
-    };
-    let mut fields = Vec::with_capacity(wanted.len());
-    for field in wanted {
-        if let Some(child) = held
-            .iter()
-            .find(|child| child.name().eq_ignore_ascii_case(field.name()))
-        {
-            fields.push(child.clone());
-        }
+/// A declared field is a projection and a cast, not a description of what is
+/// stored: an element carries text, so the rows are built as text under the
+/// declared names and finished by the one cast every encoding's read ends
+/// with. Everything a row can leave out is nullable here, because an element
+/// a document omits is a column that is absent rather than a document that is
+/// wrong; the declared nullability is what the cast then enforces.
+fn textual(declared: &Field) -> Result<Field> {
+    fn shape(field: &Field) -> Result<Field> {
+        let dtype = match field.dtype() {
+            DataType::Struct(fields) => {
+                DataType::from_fields(fields.iter().map(shape).collect::<Result<Vec<_>>>()?)?
+            }
+            DataType::List(item)
+            | DataType::ListView(item)
+            | DataType::LargeList(item)
+            | DataType::LargeListView(item)
+            | DataType::FixedSizeList(item, _) => DataType::list(shape(item)?),
+            _ => DataType::Utf8,
+        };
+        Ok(Field::new(field.name(), dtype, true))
     }
+
+    let Some(fields) = declared.dtype().as_fields() else {
+        return Ok(Field::new(declared.name(), DataType::Utf8, true));
+    };
     Ok(Field::new(
         declared.name(),
-        DataType::from_fields(fields)?,
+        DataType::from_fields(fields.iter().map(shape).collect::<Result<Vec<_>>>()?)?,
         false,
     ))
 }
@@ -183,10 +190,9 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     declared: Option<&Field>,
     options: &XmlOptions,
 ) -> Result<BatchReader> {
-    let stored = read_stored_field(handle, options)?;
     let field = match declared {
-        Some(declared) => projected(&stored, declared)?,
-        None => stored,
+        Some(declared) => textual(declared)?,
+        None => read_stored_field(handle, options)?,
     };
     let rows = Rows::new(owned_source(handle)?, options);
     read_rows(field, rows, options.batch_row_size())
@@ -207,11 +213,10 @@ pub(crate) fn read_range_batch_reader<H: IOBase + ?Sized>(
     offset: u64,
     count: usize,
 ) -> Result<BatchReader> {
-    let stored = read_stored_field(handle, options)?;
     let declared = options.field();
     let field = match declared.as_ref() {
-        Some(declared) => projected(&stored, declared)?,
-        None => stored,
+        Some(declared) => textual(declared)?,
+        None => read_stored_field(handle, options)?,
     };
     let rows = super::random::read_range_scalars(handle, index, offset, count)?;
     let reader = read_rows(field, rows.into_iter().map(Ok), options.batch_row_size())?;
@@ -248,6 +253,10 @@ where
 
 /// Replace this document with every row the reader yields.
 ///
+/// A stored document keeps its own document and row element names, because
+/// replacing a document's rows is not renaming the document; a declared
+/// [`root`](XmlOptions::root) or [`row`](XmlOptions::row) is what changes them.
+///
 /// # Errors
 ///
 /// Returns an encoding or write failure.
@@ -256,6 +265,7 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
     batches: BatchReader,
     options: &XmlOptions,
 ) -> Result<()> {
+    let (root, row) = stored_names(handle, options)?;
     let mut encoded = Vec::new();
     {
         let mut encoder = handle
@@ -264,8 +274,8 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
         writer::write_document(
             &mut encoder,
             batches,
-            options.write_root(),
-            options.write_row(),
+            &root,
+            &row,
             RowLayout::from(options.formatting()),
         )?;
         encoder.finish()?;
@@ -342,7 +352,14 @@ fn document_end<H: IOBase + ?Sized>(handle: &H, root: &str) -> Result<Option<u64
             if rest[..close].trim() != root || !rest[close + 1..].trim().is_empty() {
                 return Ok(None);
             }
-            return Ok(Some(start + offset as u64));
+            // The whitespace that only introduced the end tag goes with it, so
+            // an append writes its own layout instead of stacking a blank line
+            // on every one before it.
+            let kept = bytes[..offset]
+                .iter()
+                .rposition(|byte| !matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
+                .map_or(0, |index| index + 1);
+            return Ok(Some(start + kept as u64));
         }
         if start == 0 || window >= u64::from(u32::MAX) {
             return Ok(None);

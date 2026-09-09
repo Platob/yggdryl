@@ -619,3 +619,145 @@ fn options_of_another_encoding_are_refused_by_name() {
         .to_string();
     assert!(error.contains("XML record options"), "{error}");
 }
+
+/// One text column named `a`, which is what a hand-written document holds.
+fn text_field() -> Field {
+    DataType::from_fields([DataType::Utf8.nullable_field("a")])
+        .unwrap()
+        .required_field("row")
+}
+
+fn text_reader(values: Vec<&str>) -> crate::arrow::BatchReader {
+    let arrow = crate::arrow::arrow_schema_from_field(&text_field()).unwrap();
+    let batch = RecordBatch::try_new(
+        Arc::clone(&arrow),
+        vec![Arc::new(StringArray::from(values))],
+    )
+    .unwrap();
+    crate::arrow::batch_reader(arrow, [batch])
+}
+
+#[test]
+fn a_record_append_keeps_the_document_it_was_given() {
+    let mut media = stored(
+        "catalog.xml",
+        "<catalog>\n  <item><a>1</a></item>\n</catalog>",
+    )
+    .with_field(text_field());
+    let options = media.record_options().unwrap();
+    media
+        .append_arrow_reader(text_reader(vec!["z"]), &options)
+        .unwrap();
+
+    // The stored document keeps its own names, keeps its stored row, and gains
+    // exactly one element: the append is not a rewrite under other names.
+    assert_eq!(
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
+        "<catalog>\n  <item><a>1</a></item>\n  <item><a>z</a></item>\n</catalog>"
+    );
+    assert_eq!(media.row_size().unwrap(), 2);
+}
+
+#[test]
+fn a_record_overwrite_keeps_the_document_it_was_given() {
+    let mut media = stored(
+        "catalog.xml",
+        "<catalog>\n  <item><a>1</a></item>\n</catalog>",
+    )
+    .with_field(text_field());
+    let options = media.record_options().unwrap();
+    media
+        .overwrite_arrow_reader(text_reader(vec!["z"]), &options)
+        .unwrap();
+    assert_eq!(
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
+        "<catalog>\n  <item><a>z</a></item>\n</catalog>"
+    );
+}
+
+#[test]
+fn a_declared_row_element_survives_the_stored_shape_probe() {
+    let mut media = stored(
+        "trades.xml",
+        "<rows>\n  <meta><generated>x</generated></meta>\n  <row><a>1</a></row>\n</rows>",
+    )
+    .with_options(
+        XmlOptions::new()
+            .with_row("row")
+            .unwrap()
+            .with_field(text_field()),
+    );
+    let options = media.record_options().unwrap();
+    media
+        .append_arrow_reader(text_reader(vec!["z"]), &options)
+        .unwrap();
+
+    // The element beside the rows is not the row shape, and it is still there.
+    assert_eq!(
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
+        "<rows>\n  <meta><generated>x</generated></meta>\n  <row><a>1</a></row>\n  \
+         <row><a>z</a></row>\n</rows>"
+    );
+    assert_eq!(media.row_size().unwrap(), 2);
+}
+
+#[test]
+fn repeated_appends_do_not_stack_layout_between_the_rows() {
+    let mut media = Xml::new(handle("trades.xml")).with_field(text_field());
+    let options = media.record_options().unwrap();
+    media
+        .overwrite_arrow_reader(text_reader(vec!["1"]), &options)
+        .unwrap();
+    for value in ["2", "3", "4"] {
+        media
+            .append_arrow_reader(text_reader(vec![value]), &options)
+            .unwrap();
+    }
+    assert_eq!(
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
+        "<rows>\n  <row><a>1</a></row>\n  <row><a>2</a></row>\n  \
+         <row><a>3</a></row>\n  <row><a>4</a></row>\n</rows>"
+    );
+    assert_eq!(media.row_size().unwrap(), 4);
+}
+
+#[test]
+fn a_declared_read_answers_without_scanning_for_a_shape() {
+    // A declared field is a projection: the column it does not name is not
+    // read, and the one the document does not store is filled by the cast.
+    let media = stored(
+        "trades.xml",
+        "<rows><row><a>1</a><b>x</b></row><row><a>2</a></row></rows>",
+    )
+    .with_field(
+        DataType::from_fields([
+            DataType::Int64.nullable_field("a"),
+            DataType::Utf8.nullable_field("c"),
+        ])
+        .unwrap()
+        .required_field("row"),
+    );
+    let batches = collected(&media);
+    assert_eq!(
+        column(&batches, "a"),
+        vec![Scalar::from(1_i64), Scalar::from(2_i64)]
+    );
+    assert_eq!(column(&batches, "c"), vec![Scalar::Null, Scalar::Null]);
+    assert_eq!(batches[0].schema().fields().len(), 2);
+}
