@@ -3128,6 +3128,12 @@
         "ordstatus",
         "utf8",
         ""
+      ],
+      [
+        "5.0SP2",
+        "ordstatus",
+        "state",
+        ""
       ]
     ]
   },
@@ -6829,6 +6835,12 @@
         "4.1",
         "exectype",
         "utf8",
+        ""
+      ],
+      [
+        "5.0SP2",
+        "exectype",
+        "state",
         ""
       ]
     ]

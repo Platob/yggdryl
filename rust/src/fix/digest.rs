@@ -53,27 +53,42 @@
 //! This crate's own derived fields are excluded too, for the plainer reason
 //! that a value cannot cover itself: the digest is one of them.
 
+use std::sync::LazyLock;
+
 use crate::digest::DigestAlgorithm;
 
 use super::msg::FixMsg;
 use super::{MSGTYPE_TAG, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 
-/// Whether one tag belongs to the envelope rather than the message.
+/// Every tag the digest leaves out, sorted once.
 ///
-/// The envelope is the standard header and the standard trailer, whole, less
-/// the one tag in them that says what the message is.
-fn is_envelope(tag: i32) -> bool {
-    if tag == MSGTYPE_TAG {
-        return false;
-    }
-    STANDARD_HEADER_TAGS.contains(&tag)
-        || STANDARD_TRAILER_TAGS.contains(&tag)
-        // A value cannot cover itself, and every derived field is computed
-        // from this one or beside it.
-        || super::fix_crate_fields()
+/// The standard header and the standard trailer, whole, less the one tag in
+/// them that says what the message is - and this crate's own fields, because
+/// a value cannot cover itself and every derived field is computed from this
+/// one or beside it. Read into one table on first use: the crate fields' tags
+/// live in their metadata, and reading them back per entry per message cost
+/// more than the digest itself.
+static ENVELOPE_TAGS: LazyLock<Vec<i32>> = LazyLock::new(|| {
+    let mut tags: Vec<i32> = STANDARD_HEADER_TAGS
+        .iter()
+        .chain(STANDARD_TRAILER_TAGS.iter())
+        .copied()
+        .filter(|tag| *tag != MSGTYPE_TAG)
+        .collect();
+    tags.extend(
+        super::fix_crate_fields()
             .unwrap_or_default()
             .iter()
-            .any(|field| field.as_fix().tag().ok().flatten() == Some(tag))
+            .filter_map(|field| field.as_fix().tag().ok().flatten()),
+    );
+    tags.sort_unstable();
+    tags.dedup();
+    tags
+});
+
+/// Whether one tag belongs to the envelope rather than the message.
+fn is_envelope(tag: i32) -> bool {
+    ENVELOPE_TAGS.binary_search(&tag).is_ok()
 }
 
 impl FixMsg {

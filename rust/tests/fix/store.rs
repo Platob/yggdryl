@@ -180,9 +180,13 @@ fn shards_round_trip_through_a_temporary_folder() {
     assert!(error.to_string().contains("2bad"), "{error}");
     std::fs::remove_dir_all(root.join("primitive").join("2bad")).unwrap();
 
-    // An absent folder loads as the empty registry.
+    // An absent folder loads as a new registry: the crate's own fields and
+    // nothing else.
     let absent = Folder::new(root.join("absent")).unwrap();
-    assert!(FixRegistry::from_handle(&absent).unwrap().is_empty());
+    assert_eq!(
+        FixRegistry::from_handle(&absent).unwrap(),
+        FixRegistry::new()
+    );
     assert!(!root.join("absent").exists(), "loading creates nothing");
 
     // A root written by the retired single-folder layout is not absence: it
@@ -264,10 +268,13 @@ fn both_trees_round_trip_and_a_field_that_changes_nestedness_moves_file() {
     assert_eq!(shard_files(&root, "nested", ""), ["10.json", "4.json"]);
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
-    assert_eq!(reloaded.len(), 4);
+    assert_eq!(reloaded.len(), 4 + super::crated());
     assert_eq!(
         reloaded.iter().map(Field::name).collect::<Vec<_>>(),
         ["Price", "Symbol", "NoPartyIDs", "Instrument"]
+            .into_iter()
+            .chain(super::crate_names())
+            .collect::<Vec<_>>()
     );
 
     // A field whose datatype turns nested moves tree, and the file it left
@@ -439,10 +446,13 @@ fn two_branches_write_their_own_shards_and_a_dropped_one_disappears() {
         shard_files(&root, "primitive", "cme"),
         ["50.json", "90.json"]
     );
+    // The crate's own branch is never a store's to write: every registry
+    // holds it from construction.
+    assert!(!root.join("primitive").join("yggdryl").exists());
 
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
-    assert_eq!(reloaded.len(), 3);
+    assert_eq!(reloaded.len(), 3 + super::crated());
     assert_eq!(reloaded.field_by_tag(55).unwrap().name(), "Symbol");
     assert_eq!(
         reloaded
@@ -482,7 +492,7 @@ fn two_branches_write_their_own_shards_and_a_dropped_one_disappears() {
     assert_eq!(shard_files(&root, "primitive", ""), ["0.json"]);
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded, registry);
-    assert_eq!(reloaded.len(), 1);
+    assert_eq!(reloaded.len(), 1 + super::crated());
 
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -508,6 +518,7 @@ fn the_branch_manifest_is_optional_canonical_and_session_aware() {
     assert!(text.contains("\"version\": \"4.4\""), "{text}");
     assert!(!text.contains("compid"), "{text}");
     assert!(text.contains("\"cmegroup\""), "{text}");
+    assert!(!text.contains("yggdryl"), "{text}");
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded.branch_named("CME"), Some(&branch));
     // Every declared spelling survives the round trip and reaches the one

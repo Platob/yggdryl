@@ -116,6 +116,7 @@ enum DataTypeRef<'a> {
     Currency {},
     Mic {},
     Cfi {},
+    Isin {},
     Side {},
     #[serde(rename = "msgtype")]
     MsgType {},
@@ -254,6 +255,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Currency => Self::Currency {},
             D::Mic => Self::Mic {},
             D::Cfi => Self::Cfi {},
+            D::Isin => Self::Isin {},
             D::Side => Self::Side {},
             D::MsgType => Self::MsgType {},
             D::MsgDirection => Self::MsgDirection {},
@@ -375,6 +377,7 @@ enum DataTypeValue {
     Currency {},
     Mic {},
     Cfi {},
+    Isin {},
     Side {},
     #[serde(rename = "msgtype")]
     MsgType {},
@@ -498,6 +501,7 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Currency {} => Self::Currency,
             DataTypeValue::Mic {} => Self::Mic,
             DataTypeValue::Cfi {} => Self::Cfi,
+            DataTypeValue::Isin {} => Self::Isin,
             DataTypeValue::Side {} => Self::Side,
             DataTypeValue::MsgType {} => Self::MsgType,
             DataTypeValue::MsgDirection {} => Self::MsgDirection,
@@ -631,6 +635,7 @@ impl DataType {
             D::Currency => tag("currency"),
             D::Mic => tag("mic"),
             D::Cfi => tag("cfi"),
+            D::Isin => tag("isin"),
             D::Side => tag("side"),
             D::MsgType => tag("msgtype"),
             D::MsgDirection => tag("msgdirection"),
@@ -872,6 +877,7 @@ impl DataType {
             "currency" => Self::Currency,
             "mic" => Self::Mic,
             "cfi" => Self::Cfi,
+            "isin" => Self::Isin,
             "side" => Self::Side,
             "msgtype" => Self::MsgType,
             // `direction` was this datatype's first spelling; a schema

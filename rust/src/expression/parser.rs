@@ -1458,6 +1458,7 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         | D::Currency
         | D::Mic
         | D::Cfi
+        | D::Isin
         | D::Uuid
         | D::Version => Scalar::from(SmolStr::new(text)),
         D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_) => Scalar::from(

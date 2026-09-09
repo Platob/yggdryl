@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::holder::local::Folder;
+use yggdryl::types::State;
 use yggdryl::{DataType, FixCodec, FixEntry, FixRegistry, Scalar, Version};
 
 fn registry() -> Arc<FixRegistry> {
@@ -447,9 +448,18 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
         .iter()
         .map(yggdryl::Field::name)
         .collect();
+    // The header in rank order, the body, the trailer, and the crate's own
+    // clock closing the message.
     assert_eq!(
         names,
-        ["beginstring", "bodylength", "msgtype", "symbol", "checksum"],
+        [
+            "beginstring",
+            "bodylength",
+            "msgtype",
+            "symbol",
+            "checksum",
+            "timestamp"
+        ],
         "{names:?}"
     );
 }
@@ -517,14 +527,16 @@ fn a_version_never_renames_or_retypes_the_column_a_tag_lands_in() {
 }
 
 #[test]
-fn a_numeric_frame_carrying_a_repeating_group_reads_and_only_its_counter_counts() {
+fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
     let reader = reader();
-    // A numeric frame states its group members flat, so the occurrences the
-    // bridge's indexed keys build are not there to build: the counter keeps
-    // the group's own shape and holds nothing, and each member is as many
-    // values as arrived. Retyping the counter to the `NumInGroup` its lineage
-    // dates would collapse that shape and refuse the whole frame.
-    let row = "8=FIX.4.4|35=D|55=AAPL|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|10=000|";
+    // A numeric frame states no structure: the counter arrives and its
+    // members follow. The dictionary's declaration is what says where one
+    // occurrence ends and the next begins - the first declared member opens
+    // an occurrence, a member the occurrence already holds opens the next,
+    // and a tag the group does not declare closes it - so the frame lands in
+    // the shape a bridge's indexed keys would have built.
+    let row =
+        "8=FIX.4.4|35=D|55=AAPL|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|54=1|10=000|";
     let message = reader.transform_line(row.as_bytes(), false).unwrap();
 
     let field = message
@@ -535,29 +547,143 @@ fn a_numeric_frame_carrying_a_repeating_group_reads_and_only_its_counter_counts(
         panic!("the group's own shape, got {}", field.dtype());
     };
     assert!(item.dtype().is_nested(), "a List of `item` Structs");
-    assert!(
-        message
-            .by_tag(453)
-            .unwrap()
-            .as_sequence()
-            .unwrap()
-            .is_empty()
-    );
-    assert_eq!(
-        message.by_tag(452).unwrap().as_sequence().unwrap().len(),
-        2,
-        "a member arrived twice, so it is two values"
-    );
+    let occurrences = message.by_tag(453).unwrap().as_sequence().unwrap();
+    assert_eq!(occurrences.len(), 2, "one occurrence per delimiter");
+    let ids: Vec<&str> = occurrences
+        .iter()
+        .map(|occurrence| occurrence.as_sequence().unwrap()[0].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["BUYSIDE", "VENUE"]);
+    // A member lives in its occurrence and nowhere else: nothing is flat at
+    // the root, and the field after the group is the order's own again.
+    assert!(message.by_tag(448).is_err(), "no flat party id");
+    assert!(message.by_tag(452).is_err(), "no flat party role");
+    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("1"));
+    assert!(message.anomalies().next().is_none(), "the count is met");
+    // The entries keep the arrival: each member is a child of the counter.
+    let counter = message
+        .entries()
+        .iter()
+        .find(|entry| entry.key() == "453")
+        .expect("the counter's entry");
+    assert_eq!(counter.children().len(), 6);
+}
 
-    // One anomaly, and it is the counter's: a member that merely arrived
-    // twice states no count, so `PartyRole=1` is a role and not a group of
-    // one.
+#[test]
+fn a_counter_a_numeric_frame_states_twice_at_one_level_appends_to_its_group() {
+    let reader = reader();
+    // A dictionary that does not nest one group inside another reads a
+    // frame that does as two statements of the inner counter at one level.
+    // Nothing is lost for it: the second counter appends to what the first
+    // gathered, and the miscount says the group holds more than one
+    // counter stated.
+    let row = "8=FIX.4.4|35=x|320=R1|146=2|55=AAPL|454=1|455=US0378331005|456=4|55=MSFT|454=2|455=US5949181045|456=4|455=MSFT.O|456=5|10=0|";
+    let message = reader.transform_line(row.as_bytes(), false).unwrap();
+    let alternates = message.by_tag(454).unwrap().as_sequence().unwrap();
+    let ids: Vec<&str> = alternates
+        .iter()
+        .map(|occurrence| occurrence.as_sequence().unwrap()[0].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["US0378331005", "US5949181045", "MSFT.O"]);
     let anomalies: Vec<String> = message.anomalies().map(|held| held.to_string()).collect();
-    assert_eq!(
-        anomalies,
-        ["nopartyids (453) states 2 occurrences and holds 0"],
+    assert!(
+        anomalies
+            .iter()
+            .any(|held| held == "nosecurityaltid (454) states 2 occurrences and holds 3"),
         "{anomalies:?}"
     );
+}
+
+#[test]
+fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
+    // A dictionary declaring one group inside another reads the inner
+    // counter as a member: it opens its group inside the occurrence being
+    // filled, the members that follow fill that group first, and a member of
+    // the outer group closes it.
+    let mut sub_id = DataType::Utf8.nullable_field("partysubid");
+    sub_id.as_fix_mut().set_tag(523).unwrap();
+    let mut sub_type = DataType::Int32.nullable_field("partysubidtype");
+    sub_type.as_fix_mut().set_tag(803).unwrap();
+    let sub_item = DataType::from_fields([sub_id.clone(), sub_type.clone()])
+        .unwrap()
+        .required_field("item");
+    let mut subs = DataType::list(sub_item).nullable_field("nopartysubids");
+    subs.as_fix_mut().set_tag(802).unwrap();
+    let mut party_id = DataType::Utf8.nullable_field("partyid");
+    party_id.as_fix_mut().set_tag(448).unwrap();
+    let mut role = DataType::Int32.nullable_field("partyrole");
+    role.as_fix_mut().set_tag(452).unwrap();
+    let item = DataType::from_fields([party_id.clone(), role.clone(), subs.clone()])
+        .unwrap()
+        .required_field("item");
+    let mut parties = DataType::list(item).nullable_field("nopartyids");
+    parties.as_fix_mut().set_tag(453).unwrap();
+    let mut symbol = DataType::Utf8.nullable_field("symbol");
+    symbol.as_fix_mut().set_tag(55).unwrap();
+    // As the generated dictionary does, every member is also a field of its
+    // own by tag: the item declares the shape, the tag resolves the member.
+    let registry = Arc::new(
+        FixRegistry::from_fields([parties, subs, party_id, role, sub_id, sub_type, symbol])
+            .unwrap(),
+    );
+
+    let row = "35=D|55=AAPL|453=2|448=A|452=1|802=2|523=S1|803=1|523=S2|803=2|448=B|452=3|10=0|";
+    let message = FixCodec::new(registry)
+        .transform_line(row.as_bytes(), false)
+        .unwrap();
+    let occurrences = message.by_tag(453).unwrap().as_sequence().unwrap();
+    assert_eq!(occurrences.len(), 2);
+    let first = occurrences[0].as_sequence().unwrap();
+    assert_eq!(first[0].as_str(), Some("A"));
+    let subs = first[2]
+        .as_sequence()
+        .expect("the nested group in the first occurrence");
+    let sub_ids: Vec<&str> = subs
+        .iter()
+        .map(|occurrence| occurrence.as_sequence().unwrap()[0].as_str().unwrap())
+        .collect();
+    assert_eq!(sub_ids, ["S1", "S2"]);
+    let second = occurrences[1].as_sequence().unwrap();
+    assert_eq!(second[0].as_str(), Some("B"));
+    assert!(second[2].is_null(), "the second party stated no sub-ids");
+    assert!(
+        message.by_tag(802).is_err(),
+        "the inner counter is no root column"
+    );
+    assert!(message.anomalies().next().is_none());
+}
+
+#[test]
+fn a_state_code_is_read_through_the_name_its_field_gives_it() {
+    let reader = reader();
+    // `D` is one letter in two code sets: Restated as an `ExecType`, which
+    // leaves the order replaced, and AcceptedForBidding as an `OrdStatus`,
+    // which is an acknowledgement. The column reads the name the field gives
+    // the code, so each lands where its own specification puts it.
+    let restated = reader
+        .transform_line(b"8=FIX.4.4|35=8|150=D|10=0|", true)
+        .unwrap();
+    assert_eq!(
+        restated.by_tag(150).unwrap().as_str(),
+        Some(State::from_spelling("Restated").unwrap().as_str())
+    );
+    // The derived state follows the typed column, not the letter.
+    assert_eq!(
+        restated.by_tag(yggdryl::STATE_TAG).unwrap().as_str(),
+        Some(State::from_spelling("Restated").unwrap().as_str())
+    );
+    let bidding = reader
+        .transform_line(b"8=FIX.4.4|35=8|39=D|10=0|", true)
+        .unwrap();
+    assert_eq!(
+        bidding.by_tag(39).unwrap().as_str(),
+        Some(State::from_spelling("AcceptedForBidding").unwrap().as_str())
+    );
+    // A code both sets spell alike reads alike, whichever field carries it.
+    let new = reader
+        .transform_line(b"8=FIX.4.4|35=8|39=0|150=0|10=0|", false)
+        .unwrap();
+    assert_eq!(new.by_tag(39).unwrap(), new.by_tag(150).unwrap());
 }
 
 #[test]
@@ -580,13 +706,19 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
         .unwrap();
 
     for message in [&by_tag, &by_name] {
-        let columns = message
+        let columns: Vec<&str> = message
             .as_field()
             .dtype()
             .as_fields()
             .expect("a struct root")
-            .len();
-        assert_eq!(columns, 2, "msgtype and the group, and nothing beside them");
+            .iter()
+            .map(yggdryl::Field::name)
+            .collect();
+        assert_eq!(
+            columns,
+            ["beginstring", "msgtype", "nopartyids", "timestamp"],
+            "msgtype and the group, beside the two children every message has"
+        );
         let occurrences = message.by_tag(453).unwrap().as_sequence().unwrap();
         assert_eq!(occurrences.len(), 2);
         assert!(message.anomalies().next().is_none());
@@ -640,10 +772,17 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
         .iter()
         .map(yggdryl::Field::name)
         .collect();
-    assert_eq!(names, ["msgtype", "nolinesoftext"], "{names:?}");
+    assert_eq!(
+        names,
+        ["beginstring", "msgtype", "nolinesoftext", "timestamp"],
+        "{names:?}"
+    );
     // One group, one column: the counter and its members reach one slot.
     assert_eq!(message.by_tag(33).unwrap().as_sequence().unwrap().len(), 2);
-    let group = &message.as_field().fields()[1];
+    let group = message
+        .as_field()
+        .field("nolinesoftext")
+        .expect("the group column");
     assert_eq!(
         group.as_fix().name_at("4.2".parse().unwrap()),
         Some("linesoftext"),
@@ -905,9 +1044,13 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
 /// so a clock field typed as text is read through FIX's own spelling. A
 /// `TZTimeOnly` is a legal reading of that spelling and never a moment a
 /// capture happened at, so a dateless value contributes nothing and the
-/// ladder keeps walking.
+/// ladder keeps walking - to the epoch itself, where a message with no clock
+/// at all is stamped, which sorts first and visibly rather than among the
+/// rows of whatever day it was read on.
 #[test]
 fn a_dateless_clock_never_becomes_the_capture_instant() {
+    use yggdryl::{TimeUnit, Timezone};
+
     // A dictionary narrow enough to type the clock as text is what reaches
     // the reading at all: a full one has already made it an instant.
     let mut narrow = FixRegistry::new();
@@ -922,12 +1065,19 @@ fn a_dateless_clock_never_becomes_the_capture_instant() {
             .market_timestamp()
     };
 
-    assert_eq!(clocked("07:39:12.123+05:30"), Scalar::Null);
-    // A dated one is answered as the spelling the clock column casts, which
-    // is what this derivation exists to produce.
+    let instant = |count: i64| {
+        Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).expect("a nanosecond count")
+    };
+    assert_eq!(
+        clocked("07:39:12.123+05:30"),
+        instant(0),
+        "the epoch, never the epoch day"
+    );
+    // A dated one is the instant the clock column holds, which is what this
+    // derivation exists to produce.
     assert_eq!(
         clocked("20240102-10:15:30.000"),
-        Scalar::from("2024-01-02T10:15:30.000Z"),
+        instant(1_704_190_530_000_000_000),
     );
 }
 

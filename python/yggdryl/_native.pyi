@@ -536,8 +536,8 @@ class Scalar:
         "null", "boolean", "i8", "i16", "i32", "i64", "u8", "u16", "u32",
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
         "d256", "string", "large_utf8", "utf8_view", "ascii", "fixed_ascii",
-        "country", "currency", "mic", "cfi", "uuid", "version", "enum", "bytes",
-        "fixed_size_binary", "large_binary", "binary_view", "geospatial",
+        "country", "currency", "mic", "cfi", "isin", "uuid", "version", "enum",
+        "bytes", "fixed_size_binary", "large_binary", "binary_view", "geospatial",
         "geography", "date32", "date64", "time32", "time64", "datetime64",
         "duration32", "duration64", "interval", "sequence", "mapping", "record",
     ]: ...
@@ -4273,6 +4273,12 @@ class FixRegistry:
     best match. Absence is a ``KeyError`` carrying the native message, a refusal a
     ``ValueError``. The registry is mutable, so it is unhashable, and a mutation
     raises ``ValueError`` while a message or the process default shares it.
+
+    Every registry holds this crate's own fields from construction - the
+    nineteen standard fields from tag 65000 that ``fix_crate_fields`` lists, so
+    ``FixRegistry()`` is those and the standard branch they are on - and
+    ``len`` counts them beside whatever was inserted or loaded; a store never
+    writes them.
     """
 
     def __init__(self) -> None: ...
@@ -4295,7 +4301,6 @@ class FixRegistry:
         branch: str | None = None,
         aliases: Sequence[str] | None = None,
     ) -> tuple[int, int]: ...
-    def with_crate_fields(self) -> None: ...
     def with_ulbridge_fields(self) -> None: ...
     def register_msgtype(
         self,
@@ -4362,6 +4367,12 @@ class FixMsg:
     the root's own order - and ``registry`` defaults to the process one. The
     message is immutable: it hashes, pickles, copies and compares by the
     schema and the value it carries, against that registry.
+
+    A message ``FixCodec`` built opens with ``beginstring`` - the wire's own,
+    else the version it was read at - and closes with the crate's
+    ``timestamp``, so ``market_timestamp`` answers for it and ``to_row`` fills
+    both columns. Neither is an entry unless the wire sent it, so ``to_bytes``
+    re-emits the line byte for byte.
     """
 
     def __init__(
@@ -4419,11 +4430,15 @@ class FixCodec:
 
     """One dictionary, reading captured lines into messages.
 
-    Every entry point redirects to the core reader of the same name: ``text``
-    and ``bytes`` take a captured line whatever it is wrapped in, ``fixtext`` a
-    numeric frame with the separator stated, ``ultext`` a bridge frame whose
-    keys are names, and ``pairs`` what a caller already split. A branch and a
-    version cross as ``str`` and are parsed once at the boundary.
+    Every entry point redirects to the core reader of the same name:
+    ``transform_line`` takes a captured line whatever it is wrapped in,
+    ``transform_fix_line`` a numeric frame with the separator stated,
+    ``transform_ullink_line`` a bridge frame whose keys are names,
+    ``transform_fixml_line`` a FIXML row, ``transform_ulconfig_line`` a bridge
+    configuration document, and ``transform_pairs`` what a caller already
+    split. Each builds a message that opens with ``beginstring`` and closes
+    with the crate's ``timestamp``. A branch and a version cross as ``str``
+    and are parsed once at the boundary.
     """
 
     def __init__(
@@ -4459,8 +4474,29 @@ class FixCodec:
     ) -> FixMsg: ...
     def enrich_fixmsg(self, message: FixMsg) -> FixMsg: ...
     def enrich_fixmsgs(self, messages: Sequence[FixMsg]) -> list[FixMsg]: ...
+    def lifecycle(self, messages: Iterable[FixMsg]) -> list[FixMsg]: ...
     def __copy__(self) -> FixCodec: ...
     def __deepcopy__(self, memo: Any) -> FixCodec: ...
+    def __repr__(self) -> str: ...
+
+class FixLifecycle:
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+
+    """The state a stream of messages has reached, one chain per order alive.
+
+    Built once per stream over a registry - the process default when none is
+    given - and fed every message in order through ``fill``, which stamps the
+    crate's ``instid``, ``id`` and ``persistentid`` columns: the instrument,
+    the message and the order chain the message's identifiers reach. A
+    terminal state closes the chain, so ``alive`` counts the orders still
+    open and ``clear`` forgets them all. A stated value is never overwritten
+    and the entries are untouched. Mutable, so unhashable.
+    """
+
+    def __init__(self, registry: FixRegistry | None = None) -> None: ...
+    def fill(self, message: FixMsg) -> FixMsg: ...
+    def alive(self) -> int: ...
+    def clear(self) -> None: ...
     def __repr__(self) -> str: ...
 
 class UlPlugin:
@@ -4537,6 +4573,8 @@ def fix_parse_arrow_reader(
     direction: str | None = None,
     null_values: list[str] | None = None,
     dedup: bool = False,
+    enrich: bool = False,
+    lifecycle: bool = False,
     batch_row_size: int | None = None,
     batch_byte_size: int | None = None,
 ) -> pyarrow.RecordBatchReader: ...

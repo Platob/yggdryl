@@ -24,6 +24,7 @@
 | Codes | `fix:codes` carries a field's vocabulary; any spelling of a member reaches its wire value through three tiers, and an unresolved one falls through |
 | Inference | Classifying a line is transport, not FIX: `MimeType`, `MsgType` and `Direction` each answer for themselves, with no dictionary |
 | Default | `global()` resolves once, on the first call, reading the environment once; every later call answers the same `Arc` |
+| Crate fields | `new()` holds this crate's [nineteen fields](capture.md#the-crates-own-columns), standard tags from 65000, before anything is inserted, so every registry - loaded, built or left empty - resolves `timestamp` and `sessionid`; a [store](store.md) never writes them and reads past a stored copy |
 | Bindings | Python `yggdryl.fix.FixRegistry`, `global_registry`, `install_global_registry`, `fix_cfb_fields`, and `FixRegistry.merge_with` / `add_fields` / `add_cfb_file`; JavaScript `fix.FixRegistry`, `fix.globalRegistry`, `fix.installGlobalRegistry` |
 
 ## Use
@@ -33,7 +34,7 @@ A name or alias in any ASCII case answers the canonical field, and a tag with no
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixId, FixKey, FixBranch, FixRegistry};
+    use yggdryl::{DataType, FixId, FixKey, FixBranch, FixRegistry, fix_crate_fields};
 
     let standard = FixBranch::STANDARD;
     let cme = FixBranch::from_str("cme")?;
@@ -77,7 +78,7 @@ A name or alias in any ASCII case answers the canonical field, and a tag with no
     assert!(error.is_conflict(), "{error}");
     assert!(error.to_string().contains("in branch"), "{error}");
     assert!(error.to_string().contains("held by Symbol"), "{error}");
-    assert_eq!(registry.len(), 3);
+    assert_eq!(registry.len(), 3 + fix_crate_fields()?.len(), "three inserted, plus the crate's own");
 
     // A merge keeps what only the stored field declared and adds the rest.
     let mut incoming = DataType::Utf8.nullable_field("SYMBOL");
@@ -94,11 +95,11 @@ A name or alias in any ASCII case answers the canonical field, and a tag with no
     assert!(registry.update(widened).is_err());
     assert_eq!(registry.field_by_tag(55)?.dtype(), &DataType::Utf8);
 
-    // Iteration is tag-major, then by branch digest.
-    assert_eq!(
-        registry.iter().map(|field| field.name()).collect::<Vec<_>>(),
-        ["Price", "SYMBOL", "Symbol"],
-    );
+    // Iteration is tag-major, then by branch digest; the crate's own fields
+    // follow on their branch.
+    let names: Vec<&str> = registry.iter().map(|field| field.name()).collect();
+    assert_eq!(&names[..3], ["Price", "SYMBOL", "Symbol"]);
+    assert_eq!(names[3], "msghash");
     assert_eq!(registry.remove("sym").map(|field| field.name().to_owned()), Some("SYMBOL".into()));
     assert!(registry.get_field_by_tag(65).is_none());
     assert_eq!(registry.remove(venue_id).map(|field| field.name().to_owned()), Some("Symbol".into()));
@@ -110,7 +111,7 @@ A name or alias in any ASCII case answers the canonical field, and a tag with no
     import pytest
 
     from yggdryl import DataType, Field
-    from yggdryl.fix import STANDARD_BRANCH, FixRegistry
+    from yggdryl.fix import STANDARD_BRANCH, FixRegistry, fix_crate_fields
 
 
     def fix_field(name: str, dtype: str, identifier: str, *aliases: str) -> Field:
@@ -152,7 +153,7 @@ A name or alias in any ASCII case answers the canonical field, and a tag with no
     with pytest.raises(ValueError, match="held by Symbol") as conflict:
         registry.insert(fix_field("SymbolSfx", "utf8", "65:", "ticker"))
     assert 'branch \\"\\"' in str(conflict.value)
-    assert len(registry) == 3
+    assert len(registry) == 3 + len(fix_crate_fields()), "three inserted, plus the crate's own"
 
     # A merge keeps what only the stored field declared and adds the rest.
     incoming = fix_field("SYMBOL", "utf8", "55:", "Sym")
@@ -166,12 +167,11 @@ A name or alias in any ASCII case answers the canonical field, and a tag with no
         registry.update(fix_field("Symbol", "large_utf8", "55:"))
     assert registry.field_by_tag(55).dtype == DataType("utf8")
 
-    # Iteration is tag-major, then by branch digest.
-    assert [field.fix.id for field in registry] == [
-        "44:",
-        "55:",
-        "5055:cme",
-    ]
+    # Iteration is tag-major, then by branch digest; the crate's own fields
+    # follow on their branch.
+    ids = [field.fix.id for field in registry]
+    assert ids[:3] == ["44:", "55:", "5055:cme"]
+    assert ids[3:] == [field.fix.id for field in fix_crate_fields()]
     assert registry.remove("sym").name == "SYMBOL"
     assert registry.get_field_by_tag(65) is None
     ```
@@ -218,7 +218,7 @@ A name or alias in any ASCII case answers the canonical field, and a tag with no
       () => registry.insert(fixField('SymbolSfx', 'utf8', '65:', 'ticker')),
       /held by Symbol/,
     )
-    assert.equal(registry.size, 3)
+    assert.equal(registry.size, 3 + fix.crateFields().length, "three inserted, plus the crate's own")
 
     // A merge keeps what only the stored field declared and adds the rest.
     const incoming = fixField('SYMBOL', 'utf8', '55:', 'Sym')
@@ -231,17 +231,17 @@ A name or alias in any ASCII case answers the canonical field, and a tag with no
     assert.throws(() => registry.update(fixField('Symbol', 'large_utf8', '55:')))
     assert.ok(registry.fieldByTag(55).dtype.equals(DataType.from('utf8')))
 
-    // Iteration is tag-major, then by branch digest.
-    assert.deepEqual(
-      [...registry].map((field) => field.fix.id),
-      ['44:', '55:', '5055:cme'],
-    )
+    // Iteration is tag-major, then by branch digest; the crate's own fields
+    // follow on their branch.
+    const ids = [...registry].map((field) => field.fix.id)
+    assert.deepEqual(ids.slice(0, 3), ['44:', '55:', '5055:cme'])
+    assert.deepEqual(ids.slice(3), fix.crateFields().map((field) => field.fix.id))
     assert.equal(registry.remove('sym').name, 'SYMBOL')
     assert.equal(registry.getFieldByTag(65), null)
     // `remove` reads a string as a standard name, so a vendor field leaves by
     // its identifier.
     assert.equal(registry.removeById('5055:cme').name, 'Symbol')
-    assert.equal(registry.size, 1)
+    assert.equal(registry.size, 1 + fix.crateFields().length)
     ```
 
 ## Tiers
@@ -686,7 +686,7 @@ A description keeps its words and loses its layout: a CBlock wraps a long one ov
     assert!(error.to_string().contains("utf8"), "{error}");
     // The fold is one mutation, so a refusal leaves the dictionary as it was.
     assert_eq!(registry, before);
-    assert_eq!(registry.len(), 3);
+    assert_eq!(registry.len(), 3 + yggdryl::fix_crate_fields()?.len());
     ```
 
 === "Python"
@@ -697,7 +697,7 @@ A description keeps its words and loses its layout: a CBlock wraps a long one ov
 
     import pytest
 
-    from yggdryl.fix import FixRegistry, fix_cfb_fields
+    from yggdryl.fix import FixRegistry, fix_cfb_fields, fix_crate_fields
 
     workspace = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-fix-cfb-"))
 
@@ -751,7 +751,7 @@ A description keeps its words and loses its layout: a CBlock wraps a long one ov
         registry.add_fields(fix_cfb_fields(retyped))
     # The fold is one mutation, so a refusal leaves the dictionary as it was.
     assert registry.field_by_tag(55).dtype.id == "utf8"
-    assert len(registry) == 3
+    assert len(registry) == 3 + len(fix_crate_fields())
     ```
 
 ## Registering a message type
@@ -779,9 +779,9 @@ An Ullink CBlock declares its message types three ways — the `message-types` l
 | 1 | the registry passed to `FixRegistry::install_global` | next step |
 | 2 | the folder `YGGDRYL_FIX_REGISTRY` names, a URL or a bare path, through the [local backend](../holder/backends/local.md) | error: a set variable must name an existing directory |
 | 3 | `~/.config/fix` through `Folder::config`; skipped with no `HOME` or `USERPROFILE` | next step: a machine with no dictionary is an ordinary first run |
-| 4 | the empty registry | |
+| 4 | `FixRegistry::new()`: the crate's own fields and nothing else | |
 
-A malformed shard or a scheme without a backend is an error from `global()`, never the empty registry, and the next call retries. The repository's own `config/fix` is not in the order: nothing walks up from the working directory.
+A malformed shard or a scheme without a backend is an error from `global()`, never the bare registry, and the next call retries. The repository's own `config/fix` is not in the order: nothing walks up from the working directory.
 
 === "Rust"
 
@@ -1039,7 +1039,7 @@ This is also what keeps the reading right: these documents spell `send-test-requ
 - `remove` with a path -> never a match; it takes a tag, an identifier or a name, and a bare one means the standard branch.
 - Primitive and nested fields share one identity space; a repeating group claiming a scalar's tag, name, alternate tag or alias -> the same conflict as between two scalars.
 - `install_global` after `global()` has resolved -> typed conflict (`already resolved` in the bindings); the value every caller saw cannot change.
-- `YGGDRYL_FIX_REGISTRY` set to a missing directory -> error from `global()`, where an absent `~/.config/fix` is the empty registry.
+- `YGGDRYL_FIX_REGISTRY` set to a missing directory -> error from `global()`, where an absent `~/.config/fix` is `FixRegistry::new()`, the crate's own fields alone.
 - A tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` in a named branch -> refused ([FIX](index.md)); inside it a vendor field is also reachable by its `FixId` or a branch-qualified name.
 - `branch_named` with a spelling one branch declares as an alias and another holds as its canonical name -> the canonical one; the exact spelling is answered before any alias is tried.
 - An alias equal to the branch's own name, or repeated -> refused; a spelling that already reaches a dictionary is not a second way to reach it.
@@ -1127,26 +1127,26 @@ Tier 1 addresses the record it wants rather than parsing every code it passes, w
 
 ### Classifying a capture
 
-`fix/classify`, over a `.log` handle read as records - 4,000 lines cycling the five shapes, of which the bridge configuration documents are most of the bytes. Release build, one Windows x86_64 host; the baseline is the same read with the three classification columns off, which is the only honest comparison because it is the same work minus the readings.
+`fix/classify`, over a `.log` handle read as records - 4,000 lines cycling the five shapes, of which the bridge configuration documents are most of the bytes. Release build, one Linux x86_64 container; the baseline is the same read with the three classification columns off, which is the only honest comparison because it is the same work minus the readings.
 
 | case | median | per row | against the plain read |
 | --- | --- | --- | --- |
-| `read_arrow_reader`, no classification | 11.4 ms | 2.84 us | - |
-| the same with `mimetype`, `msgtype` and `direction` | 76.8 ms | 19.2 us | 6.8x |
+| `read_arrow_reader`, no classification | 4.89 ms | 1.22 us | - |
+| the same with `mimetype`, `msgtype` and `direction` | 15.2 ms | 3.8 us | 3.1x |
 
 The three readings on their own, one line each:
 
 | shape | bytes | `mimetype` | `msgtype` | `direction` |
 | --- | --- | --- | --- | --- |
-| framed FIX with prose either side | 85 | 1.54 us | 1.53 us | 835 ns |
-| a bare tag stream | 64 | 1.47 us | 1.26 us | 475 ns |
-| a bridge row keyed by name | 78 | 906 ns | 814 ns | 530 ns |
-| a sentence nothing matches | 52 | 1.15 us | 1.12 us | 2.15 us |
-| a bridge configuration document | 840 | 16.4 us | 16.3 us | 5.27 us |
+| framed FIX with prose either side | 85 | 609 ns | 575 ns | 367 ns |
+| a bare tag stream | 64 | 574 ns | 566 ns | 235 ns |
+| a bridge row keyed by name | 78 | 432 ns | 421 ns | 205 ns |
+| a sentence nothing matches | 52 | 102 ns | 76.8 ns | 1.15 us |
+| a bridge configuration document | 840 | 1.38 us | 1.37 us | 1.11 us |
 
 The scan is linear in the line, so a document is a long line rather than a different kind of work. The one asymmetry is the sentence: with no frame to bound the prose, a direction is read against the whole of it - which is exactly what a document does *not* pay, because its bound is where the object opens.
 
-Classification is opt-in per column for that reason. A capture that only needs rows pays the 2.84 us; one that needs to know what each line is pays the reading over the bytes it has.
+Classification is opt-in per column for that reason. A capture that only needs rows pays the 1.22 us; one that needs to know what each line is pays the reading over the bytes it has.
 
 Regenerate with:
 

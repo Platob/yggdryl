@@ -11,6 +11,7 @@ fn registered() -> Vec<(&'static str, DataType)> {
         ("mic", DataType::Mic),
         ("exchange", DataType::Mic),
         ("cfi", DataType::Cfi),
+        ("isin", DataType::Isin),
         ("side", DataType::Side),
         ("msgtype", DataType::MsgType),
         ("msgdirection", DataType::MsgDirection),
@@ -203,12 +204,14 @@ fn the_shared_base_type_spellings_keep_their_grammar_meaning() {
 
 #[test]
 fn an_unregistered_name_is_refused_by_both_entry_points() {
-    let error = DataType::from_logical_name("isin").unwrap_err().to_string();
+    let error = DataType::from_logical_name("sedol")
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("currency"), "{error}");
-    assert!(error.contains("\"isin\""), "{error}");
+    assert!(error.contains("\"sedol\""), "{error}");
     // The grammar reports an unregistered word as unknown.
-    let error = "isin".parse::<DataType>().unwrap_err().to_string();
-    assert!(error.contains("unknown datatype \"isin\""), "{error}");
+    let error = "sedol".parse::<DataType>().unwrap_err().to_string();
+    assert!(error.contains("unknown datatype \"sedol\""), "{error}");
 }
 
 /// A registered name is inert everywhere but the grammar: it adds no

@@ -212,7 +212,8 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         | DataType::Country
         | DataType::Currency
         | DataType::Mic
-        | DataType::Cfi => plain("string"),
+        | DataType::Cfi
+        | DataType::Isin => plain("string"),
         // Avro's `uuid` annotates a string with the hyphenated spelling,
         // which is what a UUID value already is.
         DataType::Uuid => logical("string", "uuid"),
@@ -290,6 +291,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                     | DataType::Currency
                     | DataType::Mic
                     | DataType::Cfi
+                    | DataType::Isin
             ) {
                 return Err(unspellable(dtype));
             }

@@ -16,10 +16,11 @@
 //!
 //! Because ULBridge is not FIX and is not this crate. The specification
 //! publishes no `PrimaryHost`, so putting one on the standard branch would
-//! say it does; this crate did not invent it either, so the
-//! [crate branch](super::CRATE_BRANCH) is not its home. It is a vendor's
-//! dictionary, which is exactly what a [`FixBranch`] is for - and being a
-//! branch is also what lets a venue keep its own 20001 without colliding.
+//! say it does; this crate did not invent it either, so the crate's own
+//! tags above [`CRATE_TAG_MIN`](super::CRATE_TAG_MIN) are not its home. It
+//! is a vendor's dictionary, which is exactly what a [`FixBranch`] is for -
+//! and being a branch is also what lets a venue keep its own 20001 without
+//! colliding.
 //!
 //! A reader pins it with [`FixCodec::with_branch`](super::FixCodec), and the
 //! names FIX publishes still resolve, because a name is looked for in the
@@ -98,6 +99,58 @@ const SESSIONINTERFACES_NAME: &str = "SessionInterfaces";
 
 /// The name one occurrence's own ObjectName member carries.
 const SESSIONINTERFACE_NAME: &str = "SessionInterface";
+
+/// The row header a bridge writes in front of every line of its log.
+///
+/// A clock, a thread bracket, the plugin that wrote the line and its level,
+/// which is what a text read frames a bridge log with. The bracket is the
+/// line's own statement about the message it handled: the thread that wrote
+/// it always, and - on a line handling one message - the session, the
+/// message context and the sequence number, separated as the bridge writes
+/// them. Those three are optional as a whole, so a line that carries only
+/// the thread still frames and leaves them null rather than failing the row.
+///
+/// Every capture is named for what it does. `timestamp` is the row's clock,
+/// so it stamps the message; `msgCtxId` fills the crate's own
+/// [`MsgCtxId`](super::MSGCTXID_TAG); `seqNum` fills `MsgSeqNum(34)`,
+/// through the bridge's own spellings of standard fields; `plugin` names the plugin
+/// session that logged the line, which fills
+/// [`SenderPluginSession`](super::SENDERPLUGINSESSION_TAG) for a line it
+/// sent and [`TargetPluginSession`](super::TARGETPLUGINSESSION_TAG) for one
+/// it received; `sessionUid` is the bridge's own session instance, not the
+/// message's session, so it leads the row as the capture's own column beside
+/// `threadId` and `level` and leaves [`SessionId`](super::SESSIONID_TAG) to
+/// what the message itself states.
+///
+/// ```
+/// # fn main() -> yggdryl::Result<()> {
+/// let options = yggdryl::media::text::TextOptions::new()
+///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
+/// let captures = options.source_field()?;
+/// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
+/// assert!(names.ends_with(&["timestamp", "threadId", "sessionUid", "msgCtxId", "seqNum", "plugin", "level"]));
+/// assert_eq!(captures.field("seqNum")?.dtype(), &yggdryl::DataType::Int64);
+/// # Ok(())
+/// # }
+/// ```
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<sessionUid>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
+
+/// The standard tag one of the bridge's own capture spellings fills.
+///
+/// A bridge writes `seqNum` in its thread bracket where FIX says
+/// `MsgSeqNum`, and a capture named as the bridge spells it should still
+/// land on FIX's own tag. Folded, like every name here, so `SEQNUM` and
+/// `seqnum` are one spelling.
+#[must_use]
+pub(super) fn capture_tag(name: &str) -> Option<i32> {
+    CAPTURE_SPELLINGS
+        .iter()
+        .find(|(spelling, _)| crate::types::folds_equal(spelling, name))
+        .map(|(_, tag)| *tag)
+}
+
+/// The bridge's own spellings of standard fields, beside the tags they fill.
+const CAPTURE_SPELLINGS: [(&str, i32); 1] = [("seqnum", 34)];
 
 /// This dictionary, built once.
 fn branch() -> Result<FixBranch> {
@@ -537,11 +590,14 @@ fn push_occurrence(
     name: Option<&str>,
     attributes: &Scalar,
 ) {
+    // The occurrence is spelled once and every member's key copies it.
+    let index = occurrence.to_string();
     let mut push = |member: &[u8], value: Vec<u8>| {
-        let mut key = Vec::with_capacity(member.len() + 24);
+        let mut key =
+            Vec::with_capacity(SESSIONINTERFACES_NAME.len() + index.len() + member.len() + 3);
         key.extend_from_slice(SESSIONINTERFACES_NAME.as_bytes());
         key.push(b'[');
-        key.extend_from_slice(occurrence.to_string().as_bytes());
+        key.extend_from_slice(index.as_bytes());
         key.extend_from_slice(b"].");
         key.extend_from_slice(member);
         pairs.push((key, value));
@@ -918,6 +974,17 @@ impl super::FixCodec {
     /// Returns [`Error::Parse`](crate::Error) naming the byte position when
     /// the document is not JSON, and the builder's refusal otherwise.
     pub fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> Result<super::FixMsg> {
+        self.ulconfig_with(body, super::build::RowExtras::NONE, enrich)
+    }
+
+    /// [`Self::transform_ulconfig_line`], with what the row stated beside
+    /// its document.
+    pub(super) fn ulconfig_with(
+        &self,
+        body: &[u8],
+        extras: super::build::RowExtras<'_>,
+        enrich: bool,
+    ) -> Result<super::FixMsg> {
         // The document as the line carries it: a transport writes a timestamp
         // in front of one and sometimes a duration behind it, and the reader
         // that classified the line already knows where both stop. A body that
@@ -931,6 +998,6 @@ impl super::FixCodec {
             .iter()
             .map(|(key, value)| (key.as_slice(), value.as_slice()))
             .collect();
-        self.build_pairs(&pairs, enrich)
+        self.build_pairs_with(&pairs, extras, enrich)
     }
 }

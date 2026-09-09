@@ -256,7 +256,7 @@ fn a_direction_is_read_in_front_of_the_payload_and_never_inside_it() {
 }
 
 #[test]
-fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
+fn the_crate_carries_fields_of_its_own_on_the_standard_branch_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
     assert_eq!(
@@ -269,6 +269,18 @@ fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
             "unixpartition",
             "parentclordid",
             "parentorderid",
+            "sessionid",
+            "msgctxid",
+            "senderpluginid",
+            "targetpluginid",
+            "senderpluginsession",
+            "targetpluginsession",
+            "isincode",
+            "miccode",
+            "state",
+            "instid",
+            "id",
+            "persistentid",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -282,6 +294,18 @@ fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
             Some("UnixPartition"),
             Some("ParentClOrdID"),
             Some("ParentOrderID"),
+            Some("SessionId"),
+            Some("MsgCtxId"),
+            Some("SenderPluginId"),
+            Some("TargetPluginId"),
+            Some("SenderPluginSession"),
+            Some("TargetPluginSession"),
+            Some("ISINCode"),
+            Some("MICCode"),
+            Some("State"),
+            Some("InstId"),
+            Some("Id"),
+            Some("PersistentId"),
         ],
     );
 
@@ -291,25 +315,56 @@ fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
         held[0].dtype(),
         &DataType::fixed_size_binary(16).expect("a width")
     );
+    // The columns a message answers from what it said are typed as the thing
+    // they hold, not as the text a venue spelled it in; the three identities
+    // a stream stamps are sixteen bytes each, as the digest is.
+    assert_eq!(held[13].dtype(), &DataType::Isin);
+    assert_eq!(held[14].dtype(), &DataType::Mic);
+    assert_eq!(held[15].dtype(), &DataType::State);
+    for identity in &held[16..19] {
+        assert_eq!(
+            identity.dtype(),
+            &DataType::fixed_size_binary(16).expect("a width")
+        );
+    }
 
-    // Every one carries a tag, on this crate's branch: same tags a venue's
-    // own could be, and different identities.
-    for field in held {
+    // Every one is a standard field from 65000 up: one tag block, on the
+    // branch every dictionary resolves through, so a bridge row spelling
+    // `SESSIONID` or `ULFROMSESSIONNAME` reaches it by name.
+    for (at, field) in held.iter().enumerate() {
         let view = field.as_fix();
         let tag = view.tag().unwrap().expect("a tag");
         let id = view.id().unwrap().expect("an identity");
-        assert_ne!(id, FixId::standard(tag), "not the standard branch");
-        assert_eq!(view.branch().unwrap().name(), yggdryl::CRATE_BRANCH);
+        assert_eq!(tag, yggdryl::CRATE_TAG_MIN + i32::try_from(at).unwrap());
+        assert_eq!(id, FixId::standard(tag), "the standard branch");
+        assert!(yggdryl::is_crate_tag(tag));
     }
+    assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
+    assert_eq!(yggdryl::MSGHASH_TAG, 65_000);
+    assert_eq!(yggdryl::STATE_TAG, 65_015);
+    assert_eq!(yggdryl::PERSISTENTID_TAG, 65_018);
+    assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
+    let sessions = &held[11..13];
+    assert_eq!(
+        sessions
+            .iter()
+            .map(|field| field.as_fix().aliases().collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        [vec!["ULFromSessionName"], vec!["ULToSessionName"]]
+    );
 
     // `MsgDirection` is FIX's own, so it is not invented here.
     assert!(!names.contains(&"msgdirection"));
     assert_eq!(yggdryl::MSGDIRECTION_TAG, 385);
 
-    // A dictionary that has them resolves them like any other field.
+    // Every registry holds them from construction, and inserting them again
+    // replaces rather than collides.
+    assert_eq!(FixRegistry::new().len(), held.len());
     let registry = FixRegistry::from_fields(held.iter().cloned())
-        .expect("the crate's own fields make a dictionary")
-        .with_crate_fields()
-        .expect("adding what is already there is not a collision");
+        .expect("the crate's own fields insert into a registry already holding them");
     assert_eq!(registry.len(), held.len());
+    for field in held {
+        let id = field.as_fix().id().unwrap().expect("an identity");
+        assert_eq!(registry.field_by_id(id).unwrap().name(), field.name());
+    }
 }

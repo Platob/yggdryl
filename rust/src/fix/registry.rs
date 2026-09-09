@@ -245,7 +245,7 @@ pub(super) fn is_nested(field: &Field) -> bool {
 }
 
 /// FIX field definitions resolved by identity or folded name.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct FixRegistry {
     fields: Vec<Field>,
     ids: Index<FixId>,
@@ -259,10 +259,40 @@ pub struct FixRegistry {
     resettle_newest: bool,
 }
 
+impl Default for FixRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FixRegistry {
-    /// The empty registry.
+    /// A registry holding nothing but this crate's own fields.
+    ///
+    /// Every registry starts here: the fields this crate defines - the
+    /// digest, the clock, the partition, the bridge's session and context -
+    /// are what a row is typed by, so a dictionary loaded from a store,
+    /// built from fields or left empty holds them alike. Inserting them into
+    /// nothing cannot collide, and a build failure of the crate's own fields
+    /// is a defect [`fix_crate_fields`](super::fix_crate_fields) reports;
+    /// here it leaves the registry without them rather than unable to exist.
+    #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        let mut registry = Self {
+            fields: Vec::new(),
+            ids: Index::default(),
+            alternate_ids: Index::default(),
+            names: Index::default(),
+            aliases: Index::default(),
+            positions_by_id: Vec::new(),
+            branches: BranchTable::default(),
+            branch_order: Vec::new(),
+            newest: None,
+            resettle_newest: false,
+        };
+        for field in super::fix_crate_fields().unwrap_or_default() {
+            let _ = registry.insert(field.clone());
+        }
+        registry
     }
 
     /// Builds a registry by inserting `fields` in order.
@@ -828,6 +858,18 @@ impl FixRegistry {
         let mut added = 0_usize;
         let mut merged = 0_usize;
         for field in fields {
+            // The crate's own fields are every dictionary's, so folding
+            // them is folding a field onto itself: neither added nor merged,
+            // and never a source's to redefine.
+            if field
+                .as_fix()
+                .tag()
+                .ok()
+                .flatten()
+                .is_some_and(super::is_crate_tag)
+            {
+                continue;
+            }
             if self
                 .canonical_position_by_id(canonical_id(&field)?)
                 .is_some()
@@ -1296,8 +1338,15 @@ mod tests {
         let held = tagged("Held", 1);
         let incoming = tagged("Incoming", 2);
         let mut registry = FixRegistry::from_fields([held.clone()]).unwrap();
+        // The crate's own fields sit in front of it, so its position is
+        // found rather than assumed to be the first.
+        let at = registry
+            .fields
+            .iter()
+            .position(|field| field.name() == held.name())
+            .expect("the held field");
         let collided = name_digest(&FixBranch::STANDARD, incoming.name(), NAME_SEED);
-        registry.names.insert(collided, 0);
+        registry.names.insert(collided, at);
 
         assert!(
             registry

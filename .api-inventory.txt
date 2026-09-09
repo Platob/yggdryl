@@ -172,7 +172,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
 
 ### yggdryl::root::datatype_id  [rust\src\datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 55] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
+  pub const ALL: [Self; 62] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8
@@ -589,6 +589,48 @@ pub struct FixRegistry
   pub struct FixFieldIter<'registry>
   impl<'registry> Iterator for FixFieldIter<'registry>  (Item = &'registry Field; also DoubleEndedIterator, ExactSizeIterator and FusedIterator)
 
+### yggdryl::fix::crated  [rust\src\fix\crated.rs]
+pub const CRATE_TAG_MIN: i32 = 65_000;
+pub const MSGHASH_TAG: i32 = 65_000;
+pub const VERSION_TAG: i32 = 65_001;
+pub const SYMBOLTICKER_TAG: i32 = 65_002;
+pub const TIMESTAMP_TAG: i32 = 65_003;
+pub const UNIXPARTITION_TAG: i32 = 65_004;
+pub const PARENTCLORDID_TAG: i32 = 65_005;
+pub const PARENTORDERID_TAG: i32 = 65_006;
+pub const SESSIONID_TAG: i32 = 65_007;
+pub const MSGCTXID_TAG: i32 = 65_008;
+pub const SENDERPLUGINID_TAG: i32 = 65_009;
+pub const TARGETPLUGINID_TAG: i32 = 65_010;
+pub const SENDERPLUGINSESSION_TAG: i32 = 65_011;
+pub const TARGETPLUGINSESSION_TAG: i32 = 65_012;
+pub const ISINCODE_TAG: i32 = 65_013;
+pub const MICCODE_TAG: i32 = 65_014;
+pub const STATE_TAG: i32 = 65_015;
+pub const INSTID_TAG: i32 = 65_016;
+pub const ID_TAG: i32 = 65_017;
+pub const PERSISTENTID_TAG: i32 = 65_018;
+pub const TIMESTAMP_NAME: &str = "timestamp";
+pub const MSGDIRECTION_TAG: i32 = 385;
+pub const MSGTYPE_TAG: i32 = 35;
+pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
+pub const fn is_crate_tag(tag: i32) -> bool  (a standard tag from CRATE_TAG_MIN up)
+pub fn fix_crate_fields() -> Result<&'static [Field]>  (nineteen standard fields in tag order; every FixRegistry holds them from construction and no store writes them)
+impl FixRegistry
+  pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<MsgType>
+
+### yggdryl::fix::lifecycle  [rust\src\fix\lifecycle.rs]
+pub struct FixLifecycle  (re-exported at the crate root; one order stream's state: the chains still alive, keyed by every identifier they were seen under)
+  pub fn new(registry: Arc<FixRegistry>) -> Self
+  pub fn alive(&self) -> usize
+  pub fn clear(&mut self)
+  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (stamps instid, id and persistentid, never over a stated value; a terminal state closes the chain)
+impl FixCodec
+  pub fn lifecycle<'codec, I>(&'codec self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + 'codec where I: IntoIterator<Item = FixMsg>, I::IntoIter: 'codec
+impl FixOptions  (the arrow read; `enrich: bool` and `lifecycle: bool` are public fields, both off by default)
+  pub const fn with_enrich(mut self, enrich: bool) -> Self
+  pub const fn with_lifecycle(mut self, lifecycle: bool) -> Self
+
 ### yggdryl::fix::schema  [rust\src\fix\schema.rs]
 pub const HEADER_TAGS: [i32; 24]
 pub const TRAILER_TAGS: [i32; 3]
@@ -599,8 +641,10 @@ pub const UNMAPPED_COLUMN: &str = "nounmappedfixentries";
 pub fn fix_schema_tags() -> Vec<i32>
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>
+pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize>
+pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>
 impl FixMsg
-  pub fn to_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits)
+  pub fn to_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its folded name and filled by its field's tag, so `schema.index_of("msgtype")` is where the type sits)
   pub fn symbol_ticker(&self) -> Scalar
   pub fn market_timestamp(&self) -> Scalar
   pub fn unix_partition(&self, seconds: i64) -> Scalar
@@ -618,6 +662,7 @@ pub const OPERATION_TAG: i32 = 20_002;
 pub const STATUS_TAG: i32 = 20_003;
 pub const ERROR_TAG: i32 = 20_004;
 pub const SESSIONINTERFACES_TAG: i32 = 20_005;
+pub const ULBRIDGE_ROWHEADER: &str  (the row header a bridge log writes: timestamp, threadId with optional sessionUid, msgCtxId and seqNum, plugin, level)
 pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
 impl FixRegistry
   pub fn with_ulbridge_fields(mut self) -> Result<Self>
@@ -2055,11 +2100,12 @@ pub fn ascii(width: i32) -> Result<Self>
   pub fn iter(&self) -> impl Iterator<Item = (&str, &str)>
   pub fn member_name(value: &str) -> SmolStr
   pub fn into_members(&self, width: &DataType) -> Result<Vec<(SmolStr, i128)>>
-pub const CODES: &'static [(&'static str, DataType, i32)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6)];
+pub const CODES: &'static [(&'static str, DataType, i32)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("side", DataType::Side, 4), ("msgtype", DataType::MsgType, 8), ("msgdirection", DataType::MsgDirection, 4), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8)];
   pub const fn country() -> Self
   pub const fn currency() -> Self
   pub const fn mic() -> Self
   pub const fn cfi() -> Self
+  pub const fn isin() -> Self
   pub const fn code_name(&self) -> Option<&'static str>
   pub const fn is_code(&self) -> bool
 
@@ -2068,11 +2114,24 @@ pub trait AsciiValue: ScalarValue
   const WIDTH: Option<i32>;
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
-  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi, Side, MsgType, MsgDirection
-  pub fn new(value: impl AsRef<str>) -> Result<Self>  // FixedAscii::new(value, width)
+  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi, Isin, Side, MsgType, MsgDirection, State, TimeInForce
+  pub fn new(value: impl AsRef<str>) -> Result<Self>  // FixedAscii::new(value, width); Isin::new folds case and checks the closing digit
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
   pub const fn width(&self) -> i32  // FixedAscii only
+  pub fn prefix(&self) -> &str  // Isin only
+  pub fn nsin(&self) -> &str  // Isin only
+  pub fn check_digit(&self) -> u8  // Isin only
+  pub fn is_valid(text: &str) -> bool  // Isin only
+  pub fn closing_digit(body: &str) -> Option<u8>  // Isin only
+  pub fn is_canonical(text: &str) -> bool  // Isin only: valid, upper-case, no folding needed
+  pub fn read(spelling: &str) -> Result<Self>  // State only: a rank, a code or a name, refused when unknown
+  pub fn from_spelling(spelling: &str) -> Option<Self>  // State only
+  pub fn rank(&self) -> Option<u8>  // State only
+  pub fn is_live(&self) -> bool  // State only
+  pub fn is_done(&self) -> bool  // State only
+  pub fn is_cancelled(&self) -> bool  // State only
+  pub fn is_failed(&self) -> bool  // State only
   pub const SYNTHETIC_MARK: u8 = b'~';  // MsgType only
   pub fn coerce(spelling: &str) -> Self  // MsgType only
   pub fn is_synthetic(&self) -> bool  // MsgType only
@@ -2238,6 +2297,7 @@ pub type NullField = TypedField<scalar::Null>;
   pub type CurrencyField = TypedField<ascii::Currency>;
   pub type MicField = TypedField<ascii::Mic>;
   pub type CfiField = TypedField<ascii::Cfi>;
+  pub type IsinField = TypedField<ascii::Isin>;
   pub type ListField = TypedField<nested::List>;
   pub type ListViewField = TypedField<nested::ListView>;
   pub type FixedSizeListField = TypedField<nested::FixedSizeList>;
@@ -2867,7 +2927,7 @@ pub struct TypedScalar<K: FieldType = AnyType>
   pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
-  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, UuidScalar, VersionScalar included)
+  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, IsinScalar, UuidScalar, VersionScalar included)
 pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
   pub struct TypedField<K: FieldType>

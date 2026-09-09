@@ -478,15 +478,16 @@ def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:
     assert DataType("float") == DataType("float32")
 
     with pytest.raises(ValueError, match="currency"):
-        DataType.from_logical_name("isin")
+        DataType.from_logical_name("sedol")
     with pytest.raises(ValueError, match="at least 1 byte, got 0"):
         DataType.ascii(0)
 
 
 def test_a_registered_code_is_its_own_datatype() -> None:
-    # ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, and ISO 10962
-    # six: each is a datatype storing exactly that, not a name over a width.
-    # The four are the registrations whose name answers a type of its own.
+    # ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, ISO 10962 six
+    # and ISO 6166 twelve: each is a datatype storing exactly that, not a name
+    # over a width. The five are the registrations whose name answers a type
+    # of its own.
     currency = DataType.from_logical_name("Currency")
     assert currency == DataType("currency")
     assert DataType.logical_names()["currency"] == currency
@@ -500,7 +501,13 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     assert DataType(" CURRENCY ") == currency
     assert eval(repr(currency), {"DataType": DataType}) == currency
 
-    for name, width in [("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6)]:
+    for name, width in [
+        ("country", 2),
+        ("currency", 3),
+        ("mic", 4),
+        ("cfi", 6),
+        ("isin", 12),
+    ]:
         dtype = DataType(name)
         assert (dtype.id, dtype.ascii_width, dtype.kind) == (name, width, "ascii")
 
@@ -510,7 +517,22 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     with pytest.raises(ValueError, match="at most 2 bytes"):
         DataType("country").ascii_packed("USD")
     with pytest.raises(ValueError, match="unknown datatype"):
-        DataType("isin")
+        DataType("sedol")
+
+    # An ISIN is closed by its own check digit: a spelling one digit off is a
+    # typo and is refused rather than stored as a security, and lower case
+    # folds to the upper case it spells because the check digit cannot tell
+    # the two apart.
+    isin = DataType("isin")
+    apple = isin.scalar("us0378331005")
+    assert apple.as_py() == "US0378331005"
+    assert apple.kind == "isin"
+    assert pickle.loads(pickle.dumps(apple)) == apple
+    assert isin.ascii_packed("US0378331005") == DataType.ascii(12).ascii_packed("US0378331005")
+    with pytest.raises(ValueError, match="check digit does not close"):
+        isin.scalar("US0378331006")
+    with pytest.raises(ValueError, match="expected twelve characters"):
+        isin.scalar("US037833100")
 
 
 def test_a_registered_code_carries_its_identity_across_arrow() -> None:
@@ -675,8 +697,10 @@ def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
     # A registered name with no prebuilt listing answers an enum of no
     # members, and one that is no registration at all is refused.
     assert len(AsciiEnum.from_logical_name("tenor")) == 0
+    # An open identifier space has no listing to prebuild either.
+    assert len(AsciiEnum.from_logical_name("isin")) == 0
     with pytest.raises(ValueError, match="currency"):
-        AsciiEnum.from_logical_name("isin")
+        AsciiEnum.from_logical_name("sedol")
 
 
 def test_an_enum_member_name_is_the_one_rule_both_runtimes_apply() -> None:

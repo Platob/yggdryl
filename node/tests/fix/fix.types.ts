@@ -7,6 +7,7 @@ import {
   fix,
   type FixMsg,
   type FixCodec,
+  type FixLifecycle,
   type FixRegistry,
   type FixValueInput,
   type LocationInput,
@@ -22,7 +23,7 @@ const standardBranch: string = fix.STANDARD_BRANCH
 const userTagMin: number = fix.USER_TAG_MIN
 const userTagMax: number = fix.USER_TAG_MAX
 const registryClass: typeof FixRegistry = fix.FixRegistry
-const empty: FixRegistry = new fix.FixRegistry()
+const seeded: FixRegistry = new fix.FixRegistry()
 const built: FixRegistry = fix.FixRegistry.fromFields([field, field])
 const location: LocationInput = url
 const loaded: FixRegistry = fix.FixRegistry.fromHandle(location)
@@ -31,7 +32,7 @@ const fromHandle: FixRegistry = fix.FixRegistry.fromHandle(handle)
 loaded.writeInto(handle)
 
 void registryClass
-void empty
+void seeded
 void built
 void fromString
 void fromHandle
@@ -226,12 +227,38 @@ const fromBytes: FixMsg = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|
 const fromFrame: FixMsg = reader.transformFixLine(Buffer.from('8=FIX.4.4'), 1)
 const fromBridge: FixMsg = reader.transformUllinkLine(Buffer.from('#SYMBOL=TTF'))
 const fromPairs: FixMsg = reader.transformPairs([['55', 'AAPL']])
+const enriched: FixMsg = reader.enrichFixmsg(fromText)
 const readerCopy: FixCodec = reader.clone()
 
-// The fixed row is a schema, and a column is the name its tag spells.
+// The lifecycle is a class over one dictionary, or over the process default,
+// and the reader runs one over an array.
+const lifeClass: typeof FixLifecycle = fix.FixLifecycle
+const life: FixLifecycle = new fix.FixLifecycle(loaded)
+const defaultLife: FixLifecycle = new fix.FixLifecycle()
+const stamped: FixMsg = life.fill(fromText)
+const alive: number = life.alive
+const lifeRendered: string = life.toString()
+life.clear()
+const stream: FixMsg[] = reader.lifecycle([fromText, stamped])
+
+void enriched
+void lifeClass
+void defaultLife
+void alive
+void lifeRendered
+void stream
+
+// @ts-expect-error a lifecycle stamps messages, never lines
+life.fill(Buffer.from('8=FIX.4.4|35=0|10=0|'))
+// @ts-expect-error the stream is an array of messages
+reader.lifecycle(fromText)
+// @ts-expect-error alive is read, never set
+life.alive = 0
+
+// The fixed row is a schema, and a column is the folded name of its field.
 const fixedSchema: Field = fix.schema(loaded, 'FixMessage')
 const carried: Field = fix.schemaCarrying(field, fixedSchema)
-const at: number | null = fixedSchema.indexOf('35')
+const at: number | null = fixedSchema.indexOf('msgtype')
 const fixedRow: Scalar = fromText.toRow(fixedSchema)
 const fixedSchemaTags: number[] = fix.schemaTags()
 const crateFields: Field[] = fix.crateFields()

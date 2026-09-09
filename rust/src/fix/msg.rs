@@ -2,7 +2,7 @@
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use smol_str::SmolStr;
 
@@ -103,6 +103,18 @@ pub struct FixMsg {
     /// An index, not a second fact: it is derived from `field` alone and both
     /// are replaced together.
     tags: Vec<(i32, usize)>,
+    /// Where a tag no child declares still lands, resolved on the first miss
+    /// and kept.
+    ///
+    /// [`Self::get_by_tag`] has two fallbacks past the index above - the
+    /// child named as the dictionary names the tag, and the child named by
+    /// the tag's decimal spelling - and each costs a dictionary probe and a
+    /// scan of the children. A fixed row asks for eighty columns a message
+    /// mostly lacks, so the misses are the common case: they are answered
+    /// once, for every tag either fallback can reach, and then by a binary
+    /// search. Derived from the field, the branch and the registry alone,
+    /// and derived lazily, so a message nobody projects pays nothing for it.
+    fallback: OnceLock<Vec<(i32, usize)>>,
     field: Field,
     value: Scalar,
 }
@@ -176,23 +188,19 @@ impl FixMsg {
     /// the root is not a Struct field, or when the value violates it, naming
     /// the path of the first value that does not fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
-        let declared = field.as_fix().branch()?;
-        let branch = registry
-            .branch_named(declared.name())
-            .cloned()
-            .unwrap_or(declared);
+        // The root's own dialect is read before its value is checked: a root
+        // that misstates its branch is refused as such, whatever it holds.
+        field.as_fix().branch()?;
         let value = field.canonicalize_value(value)?;
-        Ok(Self {
-            registry,
-            entries: Vec::new(),
-            branch,
-            tags: tag_positions(&field),
-            field,
-            value,
-        })
+        let tags = tag_positions(&field);
+        Self::resolved(registry, field, value, Vec::new(), tags)
     }
 
     /// Builds a message a reader already resolved, entries and all.
+    ///
+    /// The value is checked and canonicalized exactly as
+    /// [`Self::with_registry`] checks one; the reader's own build takes
+    /// [`Self::from_built`], because what it built needs neither.
     ///
     /// # Errors
     ///
@@ -208,6 +216,54 @@ impl FixMsg {
         Ok(built)
     }
 
+    /// Builds the message the one builder finished, checking nothing twice.
+    ///
+    /// Every value in the row went through the contract of the field it
+    /// lands under, so the row is canonical by construction, and the builder
+    /// resolved each child's tag on the way in - re-checking either would be
+    /// a second reading of what `scalar` already answered.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the root's `fix:branch` is malformed.
+    pub(super) fn from_built(
+        registry: Arc<FixRegistry>,
+        built: super::build::Built,
+    ) -> Result<Self> {
+        let super::build::Built {
+            field,
+            value,
+            entries,
+            tags,
+        } = built;
+        Self::resolved(registry, field, value, entries, tags)
+    }
+
+    /// One message from parts already proven: the branch is read off the
+    /// root and enriched from the registry, and nothing else is derived yet.
+    fn resolved(
+        registry: Arc<FixRegistry>,
+        field: Field,
+        value: Scalar,
+        entries: Vec<FixEntry>,
+        tags: Vec<(i32, usize)>,
+    ) -> Result<Self> {
+        let declared = field.as_fix().branch()?;
+        let branch = registry
+            .branch_named(declared.name())
+            .cloned()
+            .unwrap_or(declared);
+        Ok(Self {
+            registry,
+            entries,
+            branch,
+            tags,
+            fallback: OnceLock::new(),
+            field,
+            value,
+        })
+    }
+
     /// Returns what arrived, in arrival order, untranslated.
     #[must_use]
     pub fn entries(&self) -> &[FixEntry] {
@@ -219,6 +275,70 @@ impl FixMsg {
     /// What a rebuild needs: the entries are what arrived and are carried
     /// through unchanged, so moving them costs nothing where cloning a whole
     /// capture's worth would.
+    /// This message with more children, each carrying a value already typed
+    /// by its field.
+    ///
+    /// Appended rather than inserted in tag order: the row's existing
+    /// positions are what every reader that already holds it addresses by,
+    /// and a derived field is found by tag rather than by position. The
+    /// root keeps its own metadata, the entries are carried through
+    /// untouched - what arrived on the line is not changed by what the row
+    /// now says about it - and the tag index grows by the children added
+    /// rather than being rebuilt, so a stamp costs the children it adds and
+    /// not a second reading of every child already there.
+    ///
+    /// The values are the caller's contract: each is what its field's
+    /// `scalar` answered, so nothing is canonicalized twice.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the children do not make a
+    /// root, which two children of one name would provoke.
+    pub(super) fn appended_many(self, extra: Vec<(Field, Scalar)>) -> Result<Self> {
+        if extra.is_empty() {
+            return Ok(self);
+        }
+        let Self {
+            registry,
+            entries,
+            branch,
+            mut tags,
+            fallback: _,
+            mut field,
+            value,
+        } = self;
+        let mut members: Vec<Field> = field
+            .dtype()
+            .as_fields()
+            .map(<[Field]>::to_vec)
+            .unwrap_or_default();
+        let mut values: Vec<Scalar> = value
+            .as_sequence()
+            .map(<[Scalar]>::to_vec)
+            .unwrap_or_default();
+        members.reserve(extra.len());
+        values.reserve(extra.len());
+        for (child, held) in extra {
+            let index = members.len();
+            if let Ok(Some(tag)) = child.as_fix().tag() {
+                let at = tags.partition_point(|(known, _)| *known < tag);
+                tags.insert(at, (tag, index));
+            }
+            members.push(child);
+            values.push(held);
+        }
+        field.set_dtype(crate::DataType::from_fields(members)?)?;
+        Ok(Self {
+            registry,
+            entries,
+            branch,
+            tags,
+            fallback: OnceLock::new(),
+            field,
+            value: Scalar::from_sequence(values),
+        })
+    }
+
     pub(super) fn into_entries(self) -> Vec<FixEntry> {
         self.entries
     }
@@ -325,19 +445,74 @@ impl FixMsg {
         // The message's own children answer first, by the tag they carry -
         // one hash-free binary search over the index resolved at construction,
         // where the dictionary tiers below are a probe per branch. A field a
-        // dictionary never explained carries no tag and falls through to them.
+        // dictionary never explained carries no tag and falls through to
+        // them, through the table of every tag they can reach.
         if let Some(index) = self.index_of_tag(tag) {
             return self.value.get(index);
         }
-        let index = match self.known_by_tag(tag) {
+        let fallback = self.fallback.get_or_init(|| self.fallback_positions());
+        let at = fallback
+            .binary_search_by_key(&tag, |(held, _)| *held)
+            .ok()?;
+        self.value.get(fallback[at].1)
+    }
+
+    /// The child a tag reaches past the index: the one named as the
+    /// dictionary names the tag, else the one named by the tag's decimal
+    /// spelling.
+    fn fallback_index(&self, tag: i32) -> Option<usize> {
+        match self.known_by_tag(tag) {
             Some(known) => self.field.index_of(known.name()),
             None => {
                 let mut rendered = Decimal::default();
                 rendered.render(tag)?;
                 self.field.index_of(rendered.as_str())
             }
-        }?;
-        self.value.get(index)
+        }
+    }
+
+    /// Every tag either fallback reaches, beside the child it reaches,
+    /// tag-major.
+    ///
+    /// A tag lands on a child through the dictionary's name for it, so a
+    /// child's candidates are the tags of the fields the dictionary holds
+    /// under that child's name - in this message's branch and in the
+    /// standard one, canonical and alternate alike - plus the tag the name
+    /// itself spells. Each candidate is then read through the fallback
+    /// itself, so the table holds exactly what the fallback answers and
+    /// nothing it does not. A tag the index answers is left out, because
+    /// the index answers first.
+    fn fallback_positions(&self) -> Vec<(i32, usize)> {
+        let Some(children) = self.field.dtype().as_fields() else {
+            return Vec::new();
+        };
+        let mut held = Vec::new();
+        let mut candidates: Vec<i32> = Vec::new();
+        for (index, child) in children.iter().enumerate() {
+            let name = child.name();
+            candidates.extend(super::field::parse_tag(name));
+            let mut known = Vec::with_capacity(2);
+            if !self.branch.is_standard() {
+                known.extend(self.registry.get_field_by_name(name, Some(&self.branch)));
+            }
+            known.extend(
+                self.registry
+                    .get_field_by_name(name, Some(&FixBranch::STANDARD)),
+            );
+            for field in known {
+                let view = field.as_fix();
+                candidates.extend(view.tag().ok().flatten());
+                candidates.extend(view.tags().unwrap_or_default());
+            }
+            for tag in candidates.drain(..) {
+                if self.index_of_tag(tag).is_none() && self.fallback_index(tag) == Some(index) {
+                    held.push((tag, index));
+                }
+            }
+        }
+        held.sort_unstable();
+        held.dedup();
+        held
     }
 
     /// The root child carrying one tag, by that child's own declaration.

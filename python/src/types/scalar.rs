@@ -22,7 +22,7 @@ use pyo3::{IntoPyObjectExt, PyTypeInfo};
 use yggdryl::arrow::{
     array_from_value, array_to_value, batch_from_value, batch_to_value, scalar_array, scalar_value,
 };
-use yggdryl::types::ascii::{Ascii, AsciiFamily, Cfi, Country, Currency, FixedAscii, Mic};
+use yggdryl::types::ascii::{Ascii, AsciiFamily, Cfi, Country, Currency, FixedAscii, Isin, Mic};
 use yggdryl::types::bytes::{BinaryView, Bytes, FixedSizeBinary, LargeBinary};
 use yggdryl::types::decimal::{Decimal, Decimal32, Decimal64};
 use yggdryl::types::geospatial::{Geography, Geometry, Geospatial};
@@ -376,6 +376,11 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "cfi",
             Some(PyString::new(py, value.as_str()).into_any().unbind()),
         ),
+        Scalar::Ascii(AsciiFamily::Isin(value)) => tagged_pickle_state(
+            py,
+            "isin",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
         Scalar::Ascii(AsciiFamily::Side(value)) => tagged_pickle_state(
             py,
             "side",
@@ -669,6 +674,9 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "cfi" => Cfi::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Ascii(AsciiFamily::Cfi(value)))
+            .map_err(value_error),
+        "isin" => Isin::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Ascii(AsciiFamily::Isin(value)))
             .map_err(value_error),
         "side" => yggdryl::types::Side::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Ascii(AsciiFamily::Side(value)))

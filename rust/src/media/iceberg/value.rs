@@ -80,6 +80,7 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
             | DataType::Currency
             | DataType::Mic
             | DataType::Cfi
+            | DataType::Isin
             | DataType::Uuid
             | DataType::Binary
             | DataType::LargeBinary
@@ -132,7 +133,8 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         | DataType::Country
         | DataType::Currency
         | DataType::Mic
-        | DataType::Cfi => OfficialDatum::string(value.as_str()?),
+        | DataType::Cfi
+        | DataType::Isin => OfficialDatum::string(value.as_str()?),
         // An identifier is a `uuid` datum, built from the sixteen bytes the
         // canonical spelling parses to.
         DataType::Uuid => {
@@ -199,7 +201,8 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
             | DataType::Country
             | DataType::Currency
             | DataType::Mic
-            | DataType::Cfi,
+            | DataType::Cfi
+            | DataType::Isin,
             OfficialPrimitiveLiteral::String(value),
         ) => Scalar::from(value.as_str()),
         (DataType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
@@ -256,7 +259,8 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
         | DataType::Country
         | DataType::Currency
         | DataType::Mic
-        | DataType::Cfi => OfficialPrimitiveType::String,
+        | DataType::Cfi
+        | DataType::Isin => OfficialPrimitiveType::String,
         DataType::Uuid => OfficialPrimitiveType::Uuid,
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
             OfficialPrimitiveType::Binary

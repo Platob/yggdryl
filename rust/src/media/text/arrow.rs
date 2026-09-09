@@ -68,6 +68,9 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
 ) -> Result<BatchReader> {
     options.require_framing_rowheader()?;
     let field = options.source_field()?;
+    // The options own the capture types independently of the fixed columns
+    // around them, including a consumed `mtime` capture that has no separate
+    // schema column.
     let capture_dtypes = options.capture_dtypes();
     let codings = handle.media_type().encodings().to_vec();
     let source: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
@@ -944,7 +947,10 @@ impl<R: Read> Records<R> {
         }
         // Classification is one shallow scan over bytes the reader already
         // holds, and every column it fills is a fact about the line rather
-        // than about the protocol inside it.
+        // than about the protocol inside it. One scan answers both readings,
+        // so a capture asking for both pays for one.
+        let classified = (self.raw.options.parse_mimetype || self.raw.options.parse_msgtype)
+            .then(|| crate::mime_type::line::classify(&row.body));
         if self.raw.options.parse_direction {
             entries.push((
                 SmolStr::new_static("direction"),
@@ -958,13 +964,19 @@ impl<R: Read> Records<R> {
         if self.raw.options.parse_mimetype {
             entries.push((
                 SmolStr::new_static("mimetype"),
-                Scalar::from(crate::MimeType::infer_bytes(&row.body).as_str()),
+                Scalar::from(
+                    classified
+                        .as_ref()
+                        .map_or(crate::MimeType::OCTET_STREAM, |held| held.0.clone())
+                        .as_str(),
+                ),
             ));
         }
         if self.raw.options.parse_msgtype {
             entries.push((
                 SmolStr::new_static("msgtype"),
-                crate::types::MsgType::infer_bytes(&row.body)
+                classified
+                    .and_then(|held| held.1)
                     .and_then(|value| std::str::from_utf8(value).ok())
                     // Coerced, because the column is the type and a reading
                     // wider than it - a bridge's `ConfigurationPlugin`, a

@@ -62,6 +62,7 @@ from yggdryl.types import (
     CfiField,
     CountryField,
     CurrencyField,
+    IsinField,
     MicField,
     DenseUnionField,
     FixedSizeListField,
@@ -382,13 +383,15 @@ typed_mic: MicField = types.mic("venue")
 typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
 typed_cfi: CfiField = types.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
+typed_isin: IsinField = types.isin("instrument")
+typed_isin_kind: Literal["isin"] = typed_isin.dtype.id
 typed_uuid: UuidField = types.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
 typed_ascii_default_scalar: Scalar = typed_ascii.dtype.default_scalar()
-typed_ascii_isin: FixedAsciiField = types.fixed_ascii("isin", 12)
+typed_ascii_sedol: FixedAsciiField = types.fixed_ascii("sedol", 7)
 # Reading one is the generic conversion, so it lands as ``object``.
-typed_ascii_isin_value: object = typed_ascii_isin.default_scalar().as_py()
+typed_ascii_sedol_value: object = typed_ascii_sedol.default_scalar().as_py()
 ascii_member_name: str = AsciiEnum.member_name("n/a")
 
 
@@ -1195,6 +1198,8 @@ fix_parsed: pa.RecordBatchReader = fix.parse_arrow_reader(
     "body",
     version="FIX.4.4",
     dedup=True,
+    enrich=True,
+    lifecycle=True,
 )
 
 fix_root: Field = Field(
@@ -1255,6 +1260,13 @@ fix_read_bytes: fix.FixMsg = fix_reader.transform_line(b"8=FIX.4.4|35=D|10=0|")
 fix_read_frame: fix.FixMsg = fix_reader.transform_fix_line(b"8=FIX.4.4", 1)
 fix_read_bridge: fix.FixMsg = fix_reader.transform_ullink_line(b"#SYMBOL=TTF")
 fix_read_pairs: fix.FixMsg = fix_reader.transform_pairs([("55", "AAPL")])
+fix_read_filled: list[fix.FixMsg] = fix_reader.enrich_fixmsgs([fix_read_text])
+fix_read_stamped: list[fix.FixMsg] = fix_reader.lifecycle(iter([fix_read_text]))
+fix_life: fix.FixLifecycle = fix.FixLifecycle(fix_registry_from_fields)
+fix_life_default: fix.FixLifecycle = fix.FixLifecycle()
+fix_life_filled: fix.FixMsg = fix_life.fill(fix_read_text)
+fix_life_alive: int = fix_life.alive()
+fix_life.clear()
 
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_fixed_tags: list[int] = fix.fix_schema_tags()
@@ -1269,7 +1281,7 @@ fix_ingested: tuple[int, int] = fix_registry_from_fields.add_cfb_file(
     Path("cblocks") / "bloomberg.cfb", "bloomberg", ["blp"]
 )
 fix_carried_schema: Field = fix.fix_schema_carrying(fix_root, fix_fixed_schema)
-fix_column_at: int | None = fix_fixed_schema.index_of("35")
+fix_column_at: int | None = fix_fixed_schema.index_of("msgtype")
 fix_fixed_row: Scalar = fix_read_text.to_row(fix_fixed_schema)
 
 fix_global: fix.FixRegistry = fix.global_registry()

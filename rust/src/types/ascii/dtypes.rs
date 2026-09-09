@@ -49,6 +49,8 @@ pub enum AsciiType {
     Mic,
     /// ISO 10962 classification code.
     Cfi,
+    /// ISO 6166 international securities identification number.
+    Isin,
 }
 
 impl AsciiType {
@@ -61,6 +63,7 @@ impl AsciiType {
             Self::Currency => DataTypeId::Currency,
             Self::Mic => DataTypeId::Mic,
             Self::Cfi => DataTypeId::Cfi,
+            Self::Isin => DataTypeId::Isin,
         }
     }
 
@@ -82,6 +85,7 @@ impl From<AsciiType> for DataType {
             AsciiType::Currency => Self::Currency,
             AsciiType::Mic => Self::Mic,
             AsciiType::Cfi => Self::Cfi,
+            AsciiType::Isin => Self::Isin,
         }
     }
 }
@@ -97,6 +101,7 @@ impl TryFrom<&DataType> for AsciiType {
             DataType::Currency => Ok(Self::Currency),
             DataType::Mic => Ok(Self::Mic),
             DataType::Cfi => Ok(Self::Cfi),
+            DataType::Isin => Ok(Self::Isin),
             other => Err(Error::InvalidDataType {
                 kind: "ascii",
                 reason: format_smolstr!("expected an ASCII datatype, got {other}"),
@@ -116,6 +121,9 @@ pub(crate) const MIC_EXTENSION_NAME: &str = "yggdryl.mic";
 
 /// The Arrow extension name of the classification code.
 pub(crate) const CFI_EXTENSION_NAME: &str = "yggdryl.cfi";
+
+/// The Arrow extension name of the securities identification number.
+pub(crate) const ISIN_EXTENSION_NAME: &str = "yggdryl.isin";
 
 /// The Arrow extension name of FIX's side of a trade.
 pub(crate) const SIDE_EXTENSION_NAME: &str = "yggdryl.side";
@@ -144,6 +152,12 @@ pub(crate) const MIC_WIDTH: usize = 4;
 /// The storage width of ISO 10962's classification code.
 pub(crate) const CFI_WIDTH: usize = 6;
 
+/// The storage width of an ISO 6166 securities identification number.
+///
+/// Two letters of prefix, nine of national number and one check digit:
+/// twelve, which the standard fixes and the check digit closes.
+pub(crate) const ISIN_WIDTH: usize = 12;
+
 /// The storage width of FIX's side of a trade.
 ///
 /// The standard's values are one character and a venue's are not going to be
@@ -165,10 +179,10 @@ pub(crate) const DIRECTION_WIDTH: usize = 4;
 
 /// The storage width of a thing's state.
 ///
-/// A rank character and up to seven name bytes. Eight because the rank has to
-/// leave room for a name a person can read, and because widening later would
-/// change a discriminant, which is a wire contract.
-pub(crate) const STATE_WIDTH: usize = 8;
+/// Two decimal digits of rank and up to eight name bytes. Ten because the
+/// rank has to leave room for a name a person can read, and because widening
+/// later would change a discriminant, which is a wire contract.
+pub(crate) const STATE_WIDTH: usize = 10;
 
 /// The storage width of how long an order stands.
 ///
@@ -186,6 +200,7 @@ impl DataType {
         ("currency", DataType::Currency, CURRENCY_WIDTH as i32),
         ("mic", DataType::Mic, MIC_WIDTH as i32),
         ("cfi", DataType::Cfi, CFI_WIDTH as i32),
+        ("isin", DataType::Isin, ISIN_WIDTH as i32),
         ("side", DataType::Side, SIDE_WIDTH as i32),
         ("msgtype", DataType::MsgType, MSGTYPE_WIDTH as i32),
         (
@@ -258,6 +273,20 @@ impl DataType {
         Self::Cfi
     }
 
+    /// Creates ISO 6166's twelve-character securities identification number.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// assert_eq!(DataType::isin(), DataType::Isin);
+    /// assert_eq!(DataType::isin().to_string(), "isin");
+    /// assert_eq!(DataType::isin().ascii_width(), Some(12));
+    /// ```
+    #[must_use]
+    pub const fn isin() -> Self {
+        Self::Isin
+    }
+
     /// The canonical name of a registered code, `None` for every other type.
     ///
     /// This is the code's identity: it names the datatype, and the Arrow
@@ -276,6 +305,7 @@ impl DataType {
             Self::Currency => Some("currency"),
             Self::Mic => Some("mic"),
             Self::Cfi => Some("cfi"),
+            Self::Isin => Some("isin"),
             Self::Side => Some("side"),
             Self::MsgType => Some("msgtype"),
             Self::MsgDirection => Some("msgdirection"),
@@ -306,6 +336,7 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
         DataType::Currency => Some(CURRENCY_EXTENSION_NAME),
         DataType::Mic => Some(MIC_EXTENSION_NAME),
         DataType::Cfi => Some(CFI_EXTENSION_NAME),
+        DataType::Isin => Some(ISIN_EXTENSION_NAME),
         DataType::Side => Some(SIDE_EXTENSION_NAME),
         DataType::MsgType => Some(MSGTYPE_EXTENSION_NAME),
         DataType::MsgDirection => Some(DIRECTION_EXTENSION_NAME),
@@ -326,6 +357,7 @@ pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
         CURRENCY_EXTENSION_NAME => DataType::Currency,
         MIC_EXTENSION_NAME => DataType::Mic,
         CFI_EXTENSION_NAME => DataType::Cfi,
+        ISIN_EXTENSION_NAME => DataType::Isin,
         SIDE_EXTENSION_NAME => DataType::Side,
         MSGTYPE_EXTENSION_NAME => DataType::MsgType,
         DIRECTION_EXTENSION_NAME => DataType::MsgDirection,
@@ -371,6 +403,7 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Currency => code_text::<CURRENCY_WIDTH>(bytes),
         DataType::Mic => code_text::<MIC_WIDTH>(bytes),
         DataType::Cfi => code_text::<CFI_WIDTH>(bytes),
+        DataType::Isin => code_text::<ISIN_WIDTH>(bytes),
         DataType::Side => code_text::<SIDE_WIDTH>(bytes),
         DataType::MsgType => code_text::<MSGTYPE_WIDTH>(bytes),
         DataType::MsgDirection => code_text::<DIRECTION_WIDTH>(bytes),
@@ -445,6 +478,7 @@ impl DataType {
             Self::Currency => Some(CURRENCY_WIDTH as i32),
             Self::Mic => Some(MIC_WIDTH as i32),
             Self::Cfi => Some(CFI_WIDTH as i32),
+            Self::Isin => Some(ISIN_WIDTH as i32),
             Self::Side => Some(SIDE_WIDTH as i32),
             Self::MsgType => Some(MSGTYPE_WIDTH as i32),
             Self::MsgDirection => Some(DIRECTION_WIDTH as i32),

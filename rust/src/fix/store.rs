@@ -286,6 +286,13 @@ impl FixRegistry {
         for value in fields {
             let field = Field::from_value(value.clone())?;
             let id = canonical_id(&field)?;
+            // The crate's own tags are never a store's to define: every
+            // registry holds the crate's definition from construction, and a
+            // copy an older store wrote is read past rather than allowed to
+            // replace it.
+            if branch.is_standard() && super::is_crate_tag(id.tag()) {
+                continue;
+            }
             if shard_of(id.tag()) != shard {
                 return Err(Error::InvalidRecord {
                     path: field.name().into(),
@@ -344,6 +351,13 @@ impl FixRegistry {
         for field in self {
             let id = canonical_id(field)?;
             let branch = field.as_fix().branch()?;
+            // The crate's own fields are the crate's rather than the store's:
+            // every registry holds them from construction, so a store that
+            // wrote them would only hand them back to a reader that already
+            // had them.
+            if branch.is_standard() && super::is_crate_tag(id.tag()) {
+                continue;
+            }
             shards
                 .entry((tree_of(field), branch, shard_of(id.tag())))
                 .or_default()

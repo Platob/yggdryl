@@ -9,11 +9,11 @@ A capture already in Arrow is read where it sits: `FixBatchReader::from_column` 
 | Owns | `FixBatchReader::from_rows` and `::from_column`, `FixOptions`, `FixMsg::from_record`, `classify_arrow_array`, `write_fix`, `DEFAULT_PAYLOAD_COLUMN`, `SOH` |
 | Returns | `BatchReader`, the one type every encoding in the crate returns; Python gets a `pyarrow.RecordBatchReader` |
 | Schema | answered before the first row is read, from the options and the [dictionary](registry.md) alone, never from the data |
-| Order | the source's own columns lead the row, the [fixed columns](capture.md#the-columns-are-the-tags) follow |
-| Clash | a carried column whose name a FIX column takes is dropped, never renamed and never duplicated |
+| Order | the source's own columns lead the row, the [fixed columns](capture.md#the-columns-are-the-folded-names) follow |
+| Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | a row in is a row out, so a batch joins back to its source by position; `dedup` is the one exception |
 | Refuses | nothing a row's content can do; the `Result` is for I/O and for options that do not make a root field |
-| Per row | `branch`, `beginstring`, `sep` and `direction` are parameters read from the row, and are still carried into it |
+| Per row | `branch`, `beginstring`, `sep`, `direction` and `timestamp` are parameters read from the row; any other column named after a field fills it where the message did not state it |
 | Lazy | one batch is pulled, its rows built, and it is dropped; the source is never concatenated |
 | Classify | `classify_arrow_array` builds no message and resolves nothing against a dictionary |
 | Bindings | Rust and Python (`parse_arrow_reader`, `classify_arrow_array`); no JavaScript binding |
@@ -74,6 +74,7 @@ One column of frames in, batches out, the capture's own columns still in front o
 === "Python"
 
     ```python
+    from datetime import datetime, timezone
     from pathlib import Path
 
     import pyarrow as pa
@@ -83,11 +84,18 @@ One column of frames in, batches out, the capture's own columns still in front o
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
 
     # A capture shaped the way a log reader shapes one: where the line was
-    # read from, which line it was, and the frame itself.
+    # read from, which line it was, the clock and the session its header
+    # stated, and the frame itself.
+    clocks = [
+        datetime(2026, 8, 21, 10, 30, 0, 415655, tzinfo=timezone.utc),
+        datetime(2026, 8, 21, 10, 30, 1, 2000, tzinfo=timezone.utc),
+    ]
     capture = pa.table(
         {
             "url": ["file:///capture.log"] * 2,
             "rownum": pa.array([7, 8], pa.int64()),
+            "timestamp": pa.array(clocks, pa.timestamp("us", "UTC")),
+            "sessionId": pa.array(["0123abcd", None], pa.utf8()),
             "body": pa.array(
                 [
                     b"recv 8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|",
@@ -100,18 +108,23 @@ One column of frames in, batches out, the capture's own columns still in front o
 
     read = parse_arrow_reader(capture, registry, "body", version="FIX.4.4")
 
-    # The schema is answered before a row is read: the capture leads it, the
-    # tags follow, and the two lists close it.
+    # The schema is answered before a row is read: the capture leads it, less
+    # the two columns named after FIX columns, the fixed columns follow, and
+    # the two lists close it.
     columns = [field.name for field in read.schema]
     assert columns[:3] == ["url", "rownum", "body"]
     assert columns[-2:] == ["nofixentries", "nounmappedfixentries"]
 
     held = read.read_all()
     assert held.num_rows == 2, "a row in is a row out"
-    assert held.column("55").to_pylist() == ["AAPL", "MSFT"]
+    assert held.column("symbol").to_pylist() == ["AAPL", "MSFT"]
     assert held.column("url")[0].as_py() == "file:///capture.log"
     # The verb in front of the frame beats the option that named a default.
-    assert held.column("385").to_pylist() == [b"RECV", b"SENT"]
+    assert held.column("msgdirection").to_pylist() == [b"RECV", b"SENT"]
+    # The row's clock stamps the message, and a capture named after a field
+    # fills it - where the row stated one.
+    assert held.column("timestamp").cast(pa.timestamp("us", "UTC")).to_pylist() == clocks
+    assert held.column("sessionid").to_pylist() == ["0123abcd", None]
     ```
 
 ## The source's columns lead the row
@@ -131,14 +144,16 @@ Where a line was read from is what a monitor orders and joins on, so the source'
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
 | `direction` | `with_direction` | `SENT` | the direction a line that states none of its own took — no verb in front of its payload, and no [document saying which half it is](registry.md#a-direction-is-the-verb-in-front-of-the-payload) |
 | `dedup` | `with_dedup` | `false` | whether an adjacent republication is dropped |
+| `enrich` | `with_enrich` | `false` | whether each message is [filled with what it implies](capture.md) before it lands |
+| `lifecycle` | `with_lifecycle` | `false` | whether each message is stamped with the [identities the stream implies](lifecycle.md): one `FixLifecycle` runs over the whole read, so a row's `persistentid` depends on the rows before it |
 
 `name` names the root, and is `fix` unless it is set.
 
-Python spells them as keywords on `parse_arrow_reader`, under the same names, with the payload column as the third positional argument and `separator` as the byte's integer value. A `registry` of `None` links the [process-wide default](registry.md#one-default-registry-per-process), and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
+Python spells them as keywords on `parse_arrow_reader`, under the same names - `dedup`, `enrich` and `lifecycle` as booleans - with the payload column as the third positional argument and `separator` as the byte's integer value. A `registry` of `None` links the [process-wide default](registry.md#one-default-registry-per-process), and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
 
 ## A column is the caller speaking per row
 
-One column carries the bytes; five more supply, per row, arguments the byte readers already take per call.
+One column carries the bytes; five more supply, per row, arguments the byte readers already take per call, and every other column is offered to the message by name.
 
 | Column | Supplies |
 | --- | --- |
@@ -147,10 +162,50 @@ One column carries the bytes; five more supply, per row, arguments the byte read
 | `beginstring` | the source version |
 | `sep` | the separator |
 | `direction` | the direction, stated |
+| `timestamp` | the row's own clock, which [stamps the message](capture.md#every-message-is-dated-and-versioned) ahead of any clock the frame carries |
+| any other column named after a field | that field, where the message did not state it |
 
 A column is the caller speaking per row and an option is the caller speaking per stream, so a column outranks the option and both outrank what the frame infers: a row whose `beginstring` says `FIX.4.2` is read at 4.2 whatever the stream was pinned to, and its values translate through the code spellings 4.2 declares. A column absent, null or empty is silence, never an instruction and never an error.
 
-Each one is still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
+A fill is named the way a key is: a column whose folded name resolves in the message's branch, then the standard one, then any dictionary the registry holds - so a `sessionId` capture reaches the crate's own `sessionid` - and last through the bridge's own spellings of standard fields, `seqNum` reaching `MsgSeqNum(34)`. It is row-only: never an entry, so it is not in `nofixentries`, not re-emitted by `write_fix` and not in `msghash`; a value the field cannot hold fills nothing rather than a null; and a column named by a tag's digits fills nothing, because a name is what reaches a field. Which columns fill is decided once, from the schema and the dictionary, rather than per row.
+
+`branch`, `sep` and `direction` are still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. `beginstring` and `timestamp` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided, and its `timestamp` column holds what a `timestamp` column stated. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
+
+### A bridge log names what it fills
+
+`yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text.md#row-schema) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level - with every capture named for what it fills. Rust names the constant; the regex is the same text, ending in one space, in any binding's `rowheader`.
+
+```text
+^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<sessionUid>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) 
+```
+
+| Capture | Typed as | In a batch read |
+| --- | --- | --- |
+| `timestamp` | datetime | the row's clock, so the message's `timestamp` |
+| `threadId` | int64 | the capture's own column, leading the row |
+| `sessionUid` | utf8, nullable | the bridge's own session instance, carried in front; `sessionid` (65007) stays what the message states |
+| `msgCtxId` | utf8, nullable | fills `msgctxid` (65008) |
+| `seqNum` | int64, nullable | fills `msgseqnum` (34) where the frame did not carry it; carried in front too, since no FIX column is named `seqnum` |
+| `plugin` | utf8 | carried in front, and a parameter: fills `senderpluginsession` (65011) for a line the row says was sent and `targetpluginsession` (65012) for one it received |
+| `level` | utf8 | the capture's own column |
+
+The session uid, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
+
+The plugin is the one capture read as a parameter rather than as a fill by name: with the row's direction - stated in its `direction` column, else read off the line's verb, else sent, which is what a session's own log means by silence - it fills the plugin session the line moved from or to. A bridge row that spells `ULFROMSESSIONNAME` or `ULTOSESSIONNAME` itself keeps its own statement, because a fill never overrides a value the message stated.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::media::text::TextOptions;
+    use yggdryl::{DataType, ULBRIDGE_ROWHEADER};
+
+    let options = TextOptions::new().try_with_rowheader(ULBRIDGE_ROWHEADER)?;
+    let captures = options.source_field()?;
+    let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
+    assert!(names.ends_with(&["timestamp", "threadId", "sessionUid", "msgCtxId", "seqNum", "plugin", "level"]));
+    // Typed from the pattern before a byte is read.
+    assert_eq!(captures.field("seqNum")?.dtype(), &DataType::Int64);
+    ```
 
 ## A row in is a row out
 
@@ -245,13 +300,50 @@ The classifying stage and the parsing one therefore cannot disagree: they are th
 ## Edges
 
 - A frame the reader cannot read is a row with nothing in it, so the count still matches the capture's.
-- A carried column whose name a FIX column takes is dropped rather than renamed: two columns of one name is not a schema.
-- A `direction` column is read as a parameter *and* carried, so a row shows both the value supplied and the direction read, in tag `385`.
+- A carried column whose folded name a FIX column takes is dropped in front rather than renamed - two columns of one name is not a schema - and what it stated lands in that FIX column.
+- A `direction` column is read as a parameter *and* carried, so a row shows both the value supplied and the direction read, in `msgdirection` (385); the two are different names, so both are present.
+- A `timestamp` column is the row's clock: it stamps the message, and a row stating none leaves the message to its own clocks, else the epoch.
+- A fill never overrides what the frame stated: a `seqNum` capture beside a frame carrying `34=` leaves `msgseqnum` to the frame.
+- A fill is row-only: never an entry, never in `nofixentries`, never re-emitted by `write_fix`, never in `msghash`.
 - `classify_arrow_array` takes `Binary`, `LargeBinary`, `Utf8` and `LargeUtf8`; another column type is refused naming what it got.
 - A null payload row classifies as `application/octet-stream`, with no message type and the default direction.
 - Python takes one `pyarrow.Array`; a `ChunkedArray` is refused, and `combine_chunks()` hands over the one array it holds.
 - Python's `direction="unknown"` is the third answer: null, rather than a side the capture never stated.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single row.
+
+## Performance
+
+`fix/pipeline`, the whole path a desk takes over a bridge's own log: 2,400 lines that interleave the twelve shapes such a log actually holds - a Jolokia exchange whose answer is a configuration document, framed FIX either side of a plugin's prose, a bridge row keyed by name, and the sentences a bridge writes between them - so a per-line figure is per line of a real capture rather than of one shape. Release build, one Linux x86_64 container; the codec pinned to the bridge's dialect.
+
+| stage | median | per line |
+| --- | --- | --- |
+| the text reader, the row header framed | 12.4 ms | 5.19 us |
+| the same with `mimetype`, `msgtype` and `direction` | 20.9 ms | 8.72 us |
+| the text reader, then every body through `transform_line` | 135 ms | 56.3 us |
+| the framed bodies through the codec alone | 44.9 ms | 18.7 us |
+| `from_codec` over the text reader's batches, into fixed rows | 109 ms | 45.6 us |
+
+The text stage is a fifth of the whole and the codec two fifths; the rest is the row landing in Arrow. Reading every body through `transform_line` and then batching costs twice what classifying and the codec cost together, which is the batch reader's whole reason to exist: it reads the text reader's batches straight into fixed rows and never builds a message it then has to place.
+
+`fix/pipeline_stages` splits the batch path over the same messages, so where a row's cost goes is a number rather than an argument. Every row pays the first four; a row pays for enrichment and the lifecycle only when the [options](#the-options-are-the-readers-arguments-per-stream) ask for them.
+
+| stage | median | per message |
+| --- | --- | --- |
+| `to_row`, the message read against the fixed schema | 8.5 ms | 3.54 us |
+| the row canonicalized against the schema | 18.1 ms | 7.55 us |
+| the rows into one `RecordBatch` | 26.6 ms | 11.1 us |
+| `digest`, the message's identity | 722 us | 301 ns |
+| `enrich_fixmsg`, the rules that fill what a message implies | 26.5 ms | 11 us |
+| `lifecycle`, the stamp that joins a message to its order's life | 16.3 ms | 6.78 us |
+| the `nofixentries` columns | 3.06 ms | 1.27 us |
+
+A message read against the fixed schema costs less than canonicalizing the row it produces, because the tags a schema's columns answer for are remembered from one row to the next: a schema is a metadata read per column, and the same schema serves a whole capture. The digest is a hash over the arrival record and nothing else. Enrichment is the rule table walked once, most of it lookups that answer nothing on a message that stated everything; the lifecycle is two digests and a chain lookup.
+
+Regenerate with:
+
+```bash
+cargo bench -p yggdryl --bench fix -- "fix/pipeline"
+```
 
 ## Commands
 

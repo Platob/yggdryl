@@ -15,6 +15,7 @@ define_field_types!(CountryType, "country", crate::DataType::Country);
 define_field_types!(CurrencyType, "currency", crate::DataType::Currency);
 define_field_types!(MicType, "mic", crate::DataType::Mic);
 define_field_types!(CfiType, "cfi", crate::DataType::Cfi);
+define_field_types!(IsinType, "isin", crate::DataType::Isin);
 define_field_types!(SideType, "side", crate::DataType::Side);
 define_field_types!(MsgTypeType, "msgtype", crate::DataType::MsgType);
 define_field_types!(MsgDirectionType, "direction", crate::DataType::MsgDirection);
@@ -33,6 +34,8 @@ pub type CurrencyField = TypedField<CurrencyType>;
 pub type MicField = TypedField<MicType>;
 /// A CFI-typed field: ISO 10962's instrument classification.
 pub type CfiField = TypedField<CfiType>;
+/// An ISIN-typed field: ISO 6166's securities identification number.
+pub type IsinField = TypedField<IsinType>;
 /// A side-typed field: FIX's side of a trade.
 pub type SideField = TypedField<SideType>;
 /// A message-type-typed field: FIX's `MsgType`.

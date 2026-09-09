@@ -74,6 +74,7 @@ import {
   DataFile,
   FixMsg,
   FixCodec,
+  FixLifecycle,
   FixRegistry,
   IcebergOptions,
   ManifestFile,
@@ -98,6 +99,7 @@ export type {
   DataFile,
   FixMsg,
   FixCodec,
+  FixLifecycle,
   FixRegistry,
   IcebergOptions,
   ManifestFile,
@@ -207,6 +209,7 @@ export type DataTypeId =
   | 'currency'
   | 'mic'
   | 'cfi'
+  | 'isin'
   | 'uuid'
   | 'version'
   | 'url'
@@ -285,6 +288,7 @@ interface DataTypeKindById {
   currency: 'ascii'
   mic: 'ascii'
   cfi: 'ascii'
+  isin: 'ascii'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -603,6 +607,8 @@ export type CurrencyField = FieldOf<'currency', string>
 export type MicField = FieldOf<'mic', string>
 /** ISO 10962, the six-character instrument classification. */
 export type CfiField = FieldOf<'cfi', string>
+/** ISO 6166, the twelve-character securities identifier closed by its check digit. */
+export type IsinField = FieldOf<'isin', string>
 export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
 export type ListViewField<V = unknown> = FieldOf<
   'list_view',
@@ -851,6 +857,7 @@ export interface FieldsNamespace {
   currency(name: string, options?: FieldOptions): CurrencyField
   mic(name: string, options?: FieldOptions): MicField
   cfi(name: string, options?: FieldOptions): CfiField
+  isin(name: string, options?: FieldOptions): IsinField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -1343,6 +1350,10 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'cfi', string, N, O>
+  isin<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'isin', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -2793,23 +2804,44 @@ export interface Fix {
   /** One dictionary, reading captured lines into messages. */
   readonly FixCodec: typeof FixCodec
   /**
+   * The state a stream of messages has reached, one chain per order alive:
+   * `fill` stamps each message with its instrument, its own identity and
+   * the order chain it belongs to, `alive` counts the chains a terminal
+   * state has not closed, and `clear` forgets them all.
+   */
+  readonly FixLifecycle: typeof FixLifecycle
+  /**
    * The fixed root every message answers as, built from one dictionary.
    *
-   * Columns are named by tag, because a tag is the one name a field has in
-   * every version and every dialect, so `schema.indexOf('35')` is where the
-   * message type sits.
+   * Columns are spelled by the dictionary's folded canonical names, so
+   * `schema.indexOf('msgtype')` is where the message type sits; the tag stays
+   * each column's identity, on its `fix:tag`, and is what fills it.
    */
   schema(registry?: FixRegistry | null, name?: string | null): Field
   /**
    * The fixed root behind a capture's own columns, which lead the row.
    *
-   * A carried column whose name a FIX column already takes is dropped rather
-   * than renamed: the FIX column is the one a reader spelling it means.
+   * A carried column whose folded name a FIX column already takes -
+   * `sessionId` and `sessionid` are one name - is dropped rather than
+   * renamed: the FIX column is the one a reader spelling it means, and
+   * `sessionid` means the session the message itself states. A bridge's own
+   * session instance is captured as `sessionUid` for that reason and leads
+   * the row, while its `plugin` capture fills the plugin session the line's
+   * direction names: the sender's for a line it sent, the target's for one
+   * it received.
    */
   schemaCarrying(carrier: Field, read: Field): Field
   /** One row's columns, in order, as tags. */
   schemaTags(): number[]
-  /** The fields this crate defines on its own branch, in tag order. */
+  /**
+   * The nineteen fields this crate defines, in tag order: standard fields
+   * from 65000 up, above every tag FIX or a venue publishes - the digest,
+   * the clock and its partition, the session a message states, the bridge's
+   * message context, the plugins and plugin sessions a line moved between,
+   * the ISIN, MIC and order state a row derives, and the instrument, message
+   * and order-chain identities a lifecycle pass stamps. Every registry holds
+   * them from construction.
+   */
   crateFields(): Field[]
   /** The process-wide registry, loading it on the first call. */
   globalRegistry(): FixRegistry
