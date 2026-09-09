@@ -7,7 +7,7 @@
 //! reads as a refusal rather than as bytes.
 
 use super::{BUCKET, file, file_with, options, payload, store};
-use crate::holder::s3::{CustomerKey, Encryption, KmsKey, S3Options};
+use crate::holder::object::{CustomerKey, Encryption, KmsKey, ObjectOptions};
 use crate::{Error, IOBase};
 
 /// The 32 bytes `AES256` takes, and nothing anyone would use twice.
@@ -247,7 +247,7 @@ fn an_unusable_customer_key_is_refused_before_anything_is_sent() {
 fn a_customer_key_is_never_rendered() {
     let key = CustomerKey::new(&customer_key()).expect("a key");
     let encoded = key.encoded().to_owned();
-    let options = S3Options::default().with_encryption(Encryption::Customer(key));
+    let options = ObjectOptions::default().with_encryption(Encryption::Customer(key));
 
     let rendered = format!("{options:?}");
     assert!(rendered.contains("<redacted>"), "{rendered}");

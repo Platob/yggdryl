@@ -1,13 +1,9 @@
-//! The subset of S3's XML this backend reads and writes.
+//! The subset of Amazon S3's XML this dialect reads and writes.
 //!
 //! S3 answers listings, bulk deletes, multipart uploads, and every failure
 //! with small documents of a fixed shape, and takes three equally small ones
-//! as request bodies. That is narrow enough for a deterministic scanner -
-//! elements by local name in document order, the declaration, comments,
-//! CDATA, the five named entities and numeric character references - to
-//! cover without an XML dependency. Attributes (the `xmlns` on every root)
-//! are skipped, namespace prefixes are dropped so names match locally,
-//! unknown elements are ignored, and anything malformed is an [`XmlError`].
+//! as request bodies. The reader is [`crate::holder::object::xml`]; this module
+//! names the elements and nothing else.
 //!
 //! Keys and prefixes are percent-decoded only when the page carries
 //! `<EncodingType>url</EncodingType>`. S3 then applies form-encoding rules -
@@ -15,75 +11,8 @@
 //! over its UTF-8 bytes - so both are undone, as botocore (`unquote_plus`)
 //! and the Java SDK (`URLDecoder`) do.
 
-use std::fmt;
-
-/// Nesting past which a scan stops. S3's deepest document is four levels,
-/// so this bounds recursion on a hostile body without touching a real one.
-const MAX_DEPTH: usize = 32;
-
-/// A body that is not the document it was expected to be: malformed XML, a
-/// different root, or a required element missing or unreadable.
-#[derive(Debug)]
-pub(crate) struct XmlError(pub(crate) String);
-
-impl fmt::Display for XmlError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for XmlError {}
-
-/// One `<Contents>` entry of a listing.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ObjectSummary {
-    /// The object key, percent-decoded when the page says
-    /// `<EncodingType>url</EncodingType>`.
-    pub(crate) key: String,
-    /// The object size in bytes.
-    pub(crate) size: u64,
-    /// The `ETag` as given, quotes included.
-    pub(crate) etag: Option<String>,
-    /// The `LastModified` timestamp as given.
-    pub(crate) last_modified: Option<String>,
-}
-
-/// One page of `ListObjectsV2`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ListPage {
-    /// The objects in document order, which is key order.
-    pub(crate) objects: Vec<ObjectSummary>,
-    /// The `CommonPrefixes`, decoded like keys.
-    pub(crate) prefixes: Vec<String>,
-    /// Whether another page follows.
-    pub(crate) is_truncated: bool,
-    /// The token that fetches the next page; absent on the last one.
-    pub(crate) next_continuation_token: Option<String>,
-}
-
-/// The fields of an `<Error>` document.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ErrorBody {
-    /// The error code (`NoSuchKey`, `AccessDenied`, ...); empty when absent.
-    pub(crate) code: String,
-    /// The human-readable message; empty when absent.
-    pub(crate) message: String,
-    /// The `RequestId` S3 stamps for support.
-    pub(crate) request_id: Option<String>,
-    /// The `Resource` the failure names, when it names one.
-    pub(crate) resource: Option<String>,
-}
-
-/// One `<Error>` entry of a `<DeleteResult>`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DeleteFailure {
-    /// The key that was not deleted.
-    pub(crate) key: String,
-    /// The error code.
-    pub(crate) code: String,
-    /// The human-readable message.
-    pub(crate) message: String,
-}
+use super::super::answer::{DeleteFailure, ErrorBody, ListPage, ObjectSummary};
+use super::super::xml::{Element, XmlError, escape_text, parse_document, parse_root};
 
 /// Read one `ListObjectsV2` page.
 ///
@@ -134,7 +63,7 @@ pub(crate) fn parse_list_objects(xml: &[u8]) -> Result<ListPage, XmlError> {
 pub(crate) fn parse_error(xml: &[u8]) -> Option<ErrorBody> {
     let root = parse_document(xml)
         .ok()
-        .filter(|root| root.name == "Error")?;
+        .filter(|root| root.name() == "Error")?;
     Some(error_body(&root))
 }
 
@@ -160,7 +89,7 @@ pub(crate) fn parse_upload_id(xml: &[u8]) -> Result<String, XmlError> {
 /// with an `<Error>` body: that is an `Err` carrying `code: message`.
 pub(crate) fn parse_complete_multipart(xml: &[u8]) -> Result<Option<String>, XmlError> {
     let root = parse_document(xml)?;
-    match root.name.as_str() {
+    match root.name() {
         "CompleteMultipartUploadResult" => Ok(root.child_text("ETag").map(str::to_owned)),
         "Error" => {
             let error = error_body(&root);
@@ -259,22 +188,6 @@ pub(crate) fn render_complete_multipart(parts: &[(u32, String)]) -> String {
     xml
 }
 
-/// Escape `& < > " '` for element text.
-pub(crate) fn escape_text(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for character in text.chars() {
-        match character {
-            '&' => escaped.push_str("&amp;"),
-            '<' => escaped.push_str("&lt;"),
-            '>' => escaped.push_str("&gt;"),
-            '"' => escaped.push_str("&quot;"),
-            '\'' => escaped.push_str("&apos;"),
-            other => escaped.push(other),
-        }
-    }
-    escaped
-}
-
 /// The fields of one `<Error>` element; an absent code or message reads as
 /// empty rather than failing, since the document still says something went
 /// wrong.
@@ -327,285 +240,6 @@ fn hex_byte(pair: &[u8]) -> Option<u8> {
 /// One scanned element: its local name, the character data directly inside
 /// it (entities and CDATA resolved, whitespace kept, since a key may start
 /// or end with a space), and its children in document order.
-#[derive(Debug, Default)]
-struct Element {
-    /// The tag name without any namespace prefix.
-    name: String,
-    /// The element's own character data, children excluded.
-    text: String,
-    /// Child elements in document order.
-    children: Vec<Element>,
-}
-
-impl Element {
-    /// The first child named `name`.
-    fn child(&self, name: &str) -> Option<&Element> {
-        self.children.iter().find(|child| child.name == name)
-    }
-
-    /// Every child named `name`, in document order.
-    fn children<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a Element> + 'a {
-        self.children.iter().filter(move |child| child.name == name)
-    }
-
-    /// The text of the first child named `name`.
-    fn child_text(&self, name: &str) -> Option<&str> {
-        self.child(name).map(|child| child.text.as_str())
-    }
-
-    /// The text of the first child named `name`, whose absence is an error.
-    fn required(&self, name: &str) -> Result<&str, XmlError> {
-        self.child_text(name)
-            .ok_or_else(|| XmlError(format!("<{}> without <{name}>", self.name)))
-    }
-}
-
-/// The root of `xml`, which must be named `expected`.
-fn parse_root(xml: &[u8], expected: &str) -> Result<Element, XmlError> {
-    let root = parse_document(xml)?;
-    if root.name == expected {
-        Ok(root)
-    } else {
-        Err(XmlError(format!(
-            "expected <{expected}>, found <{}>",
-            root.name
-        )))
-    }
-}
-
-/// The root element of `xml`: prolog and trailing comments allowed, a byte
-/// order mark tolerated, anything else outside the root refused.
-fn parse_document(xml: &[u8]) -> Result<Element, XmlError> {
-    let text = std::str::from_utf8(xml).map_err(|error| XmlError(format!("not UTF-8: {error}")))?;
-    let mut scanner = Scanner {
-        text: text.strip_prefix('\u{FEFF}').unwrap_or(text),
-        at: 0,
-    };
-    scanner.skip_misc()?;
-    if !scanner.starts_with("<") {
-        return Err(scanner.error("expected the root element"));
-    }
-    let root = scanner.element(0)?;
-    scanner.skip_misc()?;
-    if scanner.at < scanner.text.len() {
-        return Err(scanner.error("content after the root element"));
-    }
-    Ok(root)
-}
-
-/// The cursor of one scan; `at` is always on a character boundary because
-/// it only ever lands after ASCII markup.
-struct Scanner<'a> {
-    /// The whole document.
-    text: &'a str,
-    /// The byte offset of the next unread character.
-    at: usize,
-}
-
-impl<'a> Scanner<'a> {
-    /// What is left to scan.
-    fn rest(&self) -> &'a str {
-        &self.text[self.at..]
-    }
-
-    fn starts_with(&self, token: &str) -> bool {
-        self.rest().starts_with(token)
-    }
-
-    /// An error naming where the scan stopped.
-    fn error(&self, message: impl fmt::Display) -> XmlError {
-        XmlError(format!("{message} at byte {}", self.at))
-    }
-
-    /// Advance past `token` or fail.
-    fn expect(&mut self, token: &str) -> Result<(), XmlError> {
-        if !self.starts_with(token) {
-            return Err(self.error(format!("expected `{token}`")));
-        }
-        self.at += token.len();
-        Ok(())
-    }
-
-    /// The text up to the next `marker`, which is consumed too.
-    fn take_until(&mut self, marker: &str, what: &str) -> Result<&'a str, XmlError> {
-        let rest = self.rest();
-        let end = rest
-            .find(marker)
-            .ok_or_else(|| self.error(format!("unterminated {what}")))?;
-        self.at += end + marker.len();
-        Ok(&rest[..end])
-    }
-
-    fn skip_whitespace(&mut self) {
-        let skipped = self
-            .rest()
-            .bytes()
-            .take_while(|byte| is_space(*byte))
-            .count();
-        self.at += skipped;
-    }
-
-    /// Skip whitespace, comments, and processing instructions (the XML
-    /// declaration is one), which may surround the root.
-    fn skip_misc(&mut self) -> Result<(), XmlError> {
-        loop {
-            self.skip_whitespace();
-            if self.starts_with("<?") {
-                self.at += 2;
-                self.take_until("?>", "processing instruction")?;
-            } else if self.starts_with("<!--") {
-                self.at += 4;
-                self.take_until("-->", "comment")?;
-            } else {
-                return Ok(());
-            }
-        }
-    }
-
-    /// The name under the cursor: everything up to whitespace or markup.
-    fn name(&mut self) -> Result<&'a str, XmlError> {
-        let rest = self.rest();
-        let end = rest
-            .bytes()
-            .position(|byte| {
-                is_space(byte) || matches!(byte, b'/' | b'>' | b'<' | b'=' | b'"' | b'\'')
-            })
-            .unwrap_or(rest.len());
-        if end == 0 {
-            return Err(self.error("expected a name"));
-        }
-        self.at += end;
-        Ok(&rest[..end])
-    }
-
-    /// Skip one `name="value"` pair. The value is skipped as a quoted unit so
-    /// a `>` inside it does not end the tag.
-    fn attribute(&mut self) -> Result<(), XmlError> {
-        self.name()?;
-        self.skip_whitespace();
-        self.expect("=")?;
-        self.skip_whitespace();
-        let quote = match self.rest().as_bytes().first() {
-            Some(b'"') => "\"",
-            Some(b'\'') => "'",
-            _ => return Err(self.error("expected a quoted attribute value")),
-        };
-        self.at += 1;
-        self.take_until(quote, "attribute value")?;
-        Ok(())
-    }
-
-    /// The element whose `<` is under the cursor, with everything inside it.
-    fn element(&mut self, depth: usize) -> Result<Element, XmlError> {
-        if depth > MAX_DEPTH {
-            return Err(self.error(format!("elements nested deeper than {MAX_DEPTH}")));
-        }
-        self.at += 1;
-        let full_name = self.name()?;
-        let mut element = Element {
-            name: full_name.rsplit(':').next().unwrap_or(full_name).to_owned(),
-            ..Element::default()
-        };
-        loop {
-            self.skip_whitespace();
-            if self.starts_with("/>") {
-                self.at += 2;
-                return Ok(element);
-            }
-            if self.starts_with(">") {
-                self.at += 1;
-                break;
-            }
-            self.attribute()?;
-        }
-        loop {
-            if self.starts_with("</") {
-                self.at += 2;
-                let closing = self.name()?;
-                if closing != full_name {
-                    return Err(self.error(format!("<{full_name}> closed by </{closing}>")));
-                }
-                self.skip_whitespace();
-                self.expect(">")?;
-                return Ok(element);
-            }
-            if self.starts_with("<![CDATA[") {
-                self.at += 9;
-                element
-                    .text
-                    .push_str(self.take_until("]]>", "CDATA section")?);
-            } else if self.starts_with("<!--") {
-                self.at += 4;
-                self.take_until("-->", "comment")?;
-            } else if self.starts_with("<?") {
-                self.at += 2;
-                self.take_until("?>", "processing instruction")?;
-            } else if self.starts_with("<") {
-                let child = self.element(depth + 1)?;
-                element.children.push(child);
-            } else if self.rest().is_empty() {
-                return Err(self.error(format!("<{full_name}> never closed")));
-            } else {
-                let rest = self.rest();
-                let end = rest.find('<').unwrap_or(rest.len());
-                decode_entities(&rest[..end], &mut element.text)
-                    .map_err(|message| self.error(message))?;
-                self.at += end;
-            }
-        }
-    }
-}
-
-/// XML's own whitespace set, narrower than ASCII's.
-fn is_space(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
-}
-
-/// Append `raw` character data to `out` with the five named entities and
-/// numeric character references resolved. Anything else after `&` is the
-/// error text.
-fn decode_entities(raw: &str, out: &mut String) -> Result<(), String> {
-    let mut rest = raw;
-    while let Some(start) = rest.find('&') {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 1..];
-        let end = after.find(';').ok_or_else(|| {
-            format!(
-                "unterminated reference `&{}`",
-                after.chars().take(8).collect::<String>()
-            )
-        })?;
-        let reference = &after[..end];
-        let character = match reference {
-            "amp" => Some('&'),
-            "lt" => Some('<'),
-            "gt" => Some('>'),
-            "quot" => Some('"'),
-            "apos" => Some('\''),
-            _ => character_reference(reference),
-        };
-        out.push(character.ok_or_else(|| format!("unknown reference `&{reference};`"))?);
-        rest = &after[end + 1..];
-    }
-    out.push_str(rest);
-    Ok(())
-}
-
-/// The character `#NNN` or `#xHH` names, when it names one XML allows.
-fn character_reference(reference: &str) -> Option<char> {
-    let (digits, radix) = match reference.strip_prefix("#x") {
-        Some(hex) => (hex, 16),
-        None => (reference.strip_prefix('#')?, 10),
-    };
-    if digits.is_empty() || !digits.bytes().all(|byte| char::from(byte).is_digit(radix)) {
-        return None;
-    }
-    u32::from_str_radix(digits, radix)
-        .ok()
-        .and_then(char::from_u32)
-        .filter(|character| *character != '\0')
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

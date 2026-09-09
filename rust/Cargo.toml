@@ -30,11 +30,12 @@ parquet = ["arrow", "dep:bytes", "dep:parquet", "dep:snap"]
 # its Rust 1.94/Arrow 58 stack stays private. Public records use Yggdryl's
 # Arrow 59/IOBase path, and schema-only builds do not compile this feature.
 iceberg = ["arrow", "parquet", "dep:iceberg-official", "dep:uuid"]
-# Amazon S3 objects behind `IOBase`. Not default: the signed HTTPS client and
-# its TLS stack are a cost a local or schema-only consumer never pays. The
-# protocol is spoken directly - SigV4 over a synchronous HTTP/1.1 client - so
-# no SDK, runtime, or async executor rides in.
-s3 = ["dep:hmac", "dep:md-5", "dep:sha2", "dep:ureq"]
+# Object stores behind `IOBase`: Amazon S3, Google Cloud Storage, Azure Blob
+# Storage. Not default: the signed HTTPS client and its TLS stack are a cost a
+# local or schema-only consumer never pays. Every protocol is spoken directly -
+# SigV4, OAuth 2.0 bearer tokens, and Azure Shared Key over a synchronous
+# HTTP/1.1 client - so no SDK, runtime, or async executor rides in.
+object = ["dep:hmac", "dep:md-5", "dep:sha2", "dep:ureq"]
 
 [dependencies]
 arrow-array = { workspace = true, optional = true }

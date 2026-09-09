@@ -29,7 +29,7 @@ const METADATA_TIMEOUT: Duration = Duration::from_secs(1);
 /// The secret never appears in `Debug` output or in an error.
 ///
 /// ```
-/// use yggdryl::holder::s3::Credentials;
+/// use yggdryl::holder::object::Credentials;
 ///
 /// let keys = Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
 /// assert_eq!(keys.access_key_id(), "AKIAIOSFODNN7EXAMPLE");
@@ -77,7 +77,7 @@ impl Credentials {
     }
 
     /// The secret, for the signer alone.
-    pub(super) fn secret_access_key(&self) -> &str {
+    pub(crate) fn secret_access_key(&self) -> &str {
         &self.secret_access_key
     }
 
@@ -116,7 +116,7 @@ impl std::fmt::Debug for Credentials {
 }
 
 /// What the client consults when it needs a credential set.
-pub(super) enum CredentialSource {
+pub(crate) enum CredentialSource {
     /// Requests go unsigned.
     Anonymous,
     /// One set, given explicitly or read from the URL.
@@ -138,13 +138,13 @@ pub(super) enum CredentialSource {
 }
 
 /// The chain plus the set it last found, refreshed before expiry.
-pub(super) struct CredentialCache {
+pub(crate) struct CredentialCache {
     source: CredentialSource,
     cached: Mutex<Option<Credentials>>,
 }
 
 impl CredentialCache {
-    pub(super) const fn new(source: CredentialSource) -> Self {
+    pub(crate) const fn new(source: CredentialSource) -> Self {
         Self {
             source,
             cached: Mutex::new(None),
@@ -162,7 +162,7 @@ impl CredentialCache {
     ///
     /// Returns a metadata service's transport failure only when it answered
     /// and then failed; a service that is not there is silence, not failure.
-    pub(super) fn resolve(
+    pub(crate) fn resolve(
         &self,
         agent: &ureq::Agent,
         now: SystemTime,
@@ -240,7 +240,7 @@ fn from_environment() -> Option<Credentials> {
 }
 
 /// A non-empty environment variable.
-pub(super) fn variable(name: &str) -> Option<String> {
+pub(crate) fn variable(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
         .map(|value| value.trim().to_owned())
@@ -400,7 +400,7 @@ fn parse_metadata_credentials(body: &[u8], source: &str) -> Result<Credentials> 
 /// Fractional seconds are accepted and ignored. Anything else - an offset,
 /// a date alone - is not a time this reads, and answers `None` so the set is
 /// treated as long-lived rather than expiring at a guessed instant.
-pub(super) fn parse_iso8601_utc(text: &str) -> Option<SystemTime> {
+pub(crate) fn parse_iso8601_utc(text: &str) -> Option<SystemTime> {
     let text = text.trim().strip_suffix('Z')?;
     let (date, time) = text.split_once('T')?;
     let mut date = date.split('-');

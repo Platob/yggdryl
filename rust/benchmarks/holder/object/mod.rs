@@ -5,7 +5,7 @@
 //! two implementations rather than two networks. That is also what makes the
 //! comparison a protocol check: a leg that measured faster by skipping a
 //! request would fail the accounting assertions in
-//! `holder::s3::tests::accounting`, and one that spoke a dialect the store
+//! `holder::object::tests::accounting`, and one that spoke a dialect the store
 //! does not would not complete at all.
 //!
 //! `object_store` is async, so its legs pay for a current-thread runtime to
@@ -17,12 +17,12 @@ pub(crate) mod bytes;
 pub(crate) mod listing;
 pub(crate) mod records;
 
-#[path = "../../../src/holder/s3/tests/server.rs"]
+#[path = "../../../src/holder/object/tests/server.rs"]
 pub(crate) mod server;
 
 use object_store::aws::{AmazonS3, AmazonS3Builder};
 use server::FakeS3;
-use yggdryl::holder::s3::{Credentials, S3Options};
+use yggdryl::holder::object::{Credentials, ObjectOptions};
 
 /// The bucket every fixture writes into.
 pub(crate) const BUCKET: &str = "bench";
@@ -50,8 +50,8 @@ pub(crate) fn store() -> FakeS3 {
 }
 
 /// Options addressing `store`, consulting nothing outside the benchmark.
-pub(crate) fn options(store: &FakeS3) -> S3Options {
-    S3Options::default()
+pub(crate) fn options(store: &FakeS3) -> ObjectOptions {
+    ObjectOptions::default()
         .with_environment(false)
         .with_endpoint(store.endpoint())
         .with_region("us-east-1")

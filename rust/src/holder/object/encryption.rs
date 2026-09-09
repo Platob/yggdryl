@@ -21,22 +21,22 @@ const AES256_KEY_LENGTH: usize = 32;
 ///
 /// The last row is what shapes this type. A key the store never keeps has to
 /// be presented again on every read, so the choice belongs to the client
-/// rather than to one write - which is why it is an [`S3Options`] knob and not
+/// rather than to one write - which is why it is an [`ObjectOptions`] knob and not
 /// an argument.
 ///
-/// [`S3Options`]: super::S3Options
+/// [`ObjectOptions`]: super::ObjectOptions
 ///
 /// ```
-/// use yggdryl::holder::s3::{Encryption, KmsKey, S3Options};
+/// use yggdryl::holder::object::{Encryption, KmsKey, ObjectOptions};
 ///
 /// // The bucket's own default, which is what most callers want.
-/// assert!(matches!(S3Options::default().encryption(), Encryption::Default));
+/// assert!(matches!(ObjectOptions::default().encryption(), Encryption::Default));
 ///
 /// // A named KMS key, with an encryption context and S3 Bucket Keys on.
 /// let key = KmsKey::new("arn:aws:kms:eu-west-1:1234:key/abcd")
 ///     .with_context(r#"{"desk":"power"}"#)
 ///     .with_bucket_key(true);
-/// let options = S3Options::default().with_encryption(Encryption::Kms(key));
+/// let options = ObjectOptions::default().with_encryption(Encryption::Kms(key));
 /// assert!(matches!(options.encryption(), Encryption::Kms(_)));
 /// ```
 #[derive(Clone, Default)]

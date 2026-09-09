@@ -12,7 +12,7 @@ use pyo3::types::PyType;
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::Buffered;
-use yggdryl::holder::s3::S3Options;
+use yggdryl::holder::object::ObjectOptions;
 
 use crate::iobase::PyIOBase;
 use crate::value_error;
@@ -307,8 +307,8 @@ fn s3_holder(
     location: &Bound<'_, PyAny>,
     key: Option<&Bound<'_, PyAny>>,
     options: Option<&Bound<'_, pyo3::types::PyDict>>,
-    from_url: impl FnOnce(&str, S3Options) -> yggdryl::Result<Holder>,
-    from_key: impl FnOnce(&str, &str, S3Options) -> yggdryl::Result<Holder>,
+    from_url: impl FnOnce(&str, ObjectOptions) -> yggdryl::Result<Holder>,
+    from_key: impl FnOnce(&str, &str, ObjectOptions) -> yggdryl::Result<Holder>,
 ) -> PyResult<PyClassInitializer<PyIOBase>> {
     let first = crate::uri::path_string_from_value(location)?;
     let options = s3_options(options)?;
@@ -330,9 +330,9 @@ fn s3_holder(
 /// and the AWS environment's names are all read; anything else is ignored, so
 /// a catalog's properties can be handed over whole. Values are taken as their
 /// text, so `True` and `30` are as good as `"true"` and `"30"`.
-fn s3_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<S3Options> {
+fn s3_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<ObjectOptions> {
     let Some(options) = options else {
-        return Ok(S3Options::default());
+        return Ok(ObjectOptions::default());
     };
     let mut properties: Vec<(String, String)> = Vec::with_capacity(options.len());
     for (name, value) in options {
@@ -343,7 +343,7 @@ fn s3_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<S3Op
     }
     // Nothing is contacted, so a value that will not parse is an argument
     // error rather than a store's refusal.
-    S3Options::from_properties(properties).map_err(value_error)
+    ObjectOptions::from_properties(properties).map_err(value_error)
 }
 
 #[pymethods]
@@ -367,9 +367,9 @@ impl PyS3Path {
             location,
             key,
             options,
-            yggdryl::holder::s3::located_with,
+            yggdryl::holder::object::located_with,
             |bucket, key, options| {
-                yggdryl::holder::s3::path_at_with(bucket, key, options).map(Holder::S3Path)
+                yggdryl::holder::object::path_at_with(bucket, key, options).map(Holder::ObjectPath)
             },
         )?
         .add_subclass(Self))
@@ -392,9 +392,9 @@ impl PyS3File {
             location,
             key,
             options,
-            |url, options| yggdryl::holder::s3::file_with(url, options).map(Holder::S3File),
+            |url, options| yggdryl::holder::object::file_with(url, options).map(Holder::ObjectFile),
             |bucket, key, options| {
-                yggdryl::holder::s3::file_at_with(bucket, key, options).map(Holder::S3File)
+                yggdryl::holder::object::file_at_with(bucket, key, options).map(Holder::ObjectFile)
             },
         )?
         .add_subclass(Self))
@@ -417,9 +417,12 @@ impl PyS3Folder {
             location,
             key,
             options,
-            |url, options| yggdryl::holder::s3::folder_with(url, options).map(Holder::S3Folder),
+            |url, options| {
+                yggdryl::holder::object::folder_with(url, options).map(Holder::ObjectFolder)
+            },
             |bucket, key, options| {
-                yggdryl::holder::s3::folder_at_with(bucket, key, options).map(Holder::S3Folder)
+                yggdryl::holder::object::folder_at_with(bucket, key, options)
+                    .map(Holder::ObjectFolder)
             },
         )?
         .add_subclass(Self))

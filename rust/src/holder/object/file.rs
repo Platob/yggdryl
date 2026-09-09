@@ -2,7 +2,8 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use super::client::{Client, ObjectMeta};
+use super::answer::ObjectMeta;
+use super::client::Client;
 use super::folder::Folder;
 use crate::holder::Holder;
 use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Url};
@@ -735,7 +736,7 @@ impl IOBase for File {
         let parent = self.url.parent()?;
         Folder::new(self.client.clone(), parent)
             .ok()
-            .map(Holder::S3Folder)
+            .map(Holder::ObjectFolder)
     }
 
     fn clear(&mut self) -> Result<()> {

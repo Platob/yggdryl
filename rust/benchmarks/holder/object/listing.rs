@@ -18,7 +18,7 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
 
     let store = store();
     tree(&store, "lake", LEAVES);
-    let lake = yggdryl::holder::s3::folder_with(&location("lake/"), options(&store))
+    let lake = yggdryl::holder::object::folder_with(&location("lake/"), options(&store))
         .expect("a prefix handle");
     let runtime = runtime();
     let external = baseline(&store);

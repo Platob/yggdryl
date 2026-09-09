@@ -24,7 +24,7 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
     let store = store();
     let bytes = payload(PAYLOAD);
     store.put(BUCKET, "bench/read.bin", &bytes);
-    let handle = yggdryl::holder::s3::file_with(&location("bench/read.bin"), options(&store))
+    let handle = yggdryl::holder::object::file_with(&location("bench/read.bin"), options(&store))
         .expect("an object handle");
     let runtime = runtime();
     let external = baseline(&store);
@@ -123,12 +123,12 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
     // policy rather than confusing them.
     group.bench_function("write_all/yggdryl", |bencher| {
         let mut target =
-            yggdryl::holder::s3::file_with(&location("bench/write.bin"), options(&store))
+            yggdryl::holder::object::file_with(&location("bench/write.bin"), options(&store))
                 .expect("an object handle");
         bencher.iter(|| target.write_all_bytes(black_box(&bytes)).expect("a write"));
     });
     group.bench_function("write_all/yggdryl_unsigned_payload", |bencher| {
-        let mut target = yggdryl::holder::s3::file_with(
+        let mut target = yggdryl::holder::object::file_with(
             &location("bench/write-unsigned.bin"),
             options(&store).with_payload_signing(false),
         )

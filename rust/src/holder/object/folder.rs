@@ -313,10 +313,9 @@ impl Entry {
 fn hold(client: &Arc<Client>, root: &Url, relative: &str, entry: &Entry) -> Result<Holder> {
     let child = root.joinpath(&super::encode_key_path(relative))?;
     match entry {
-        Entry::Prefix { .. } => Folder::new(client.clone(), child).map(Holder::S3Folder),
-        Entry::Object { size, .. } => {
-            File::new(client.clone(), child).map(|file| Holder::S3File(file.with_known_size(*size)))
-        }
+        Entry::Prefix { .. } => Folder::new(client.clone(), child).map(Holder::ObjectFolder),
+        Entry::Object { size, .. } => File::new(client.clone(), child)
+            .map(|file| Holder::ObjectFile(file.with_known_size(*size))),
     }
 }
 
@@ -436,7 +435,7 @@ impl IOBase for Folder {
         let parent = self.url.parent()?;
         Self::new(self.client.clone(), parent)
             .ok()
-            .map(Holder::S3Folder)
+            .map(Holder::ObjectFolder)
     }
 
     /// Resolve a descendant without asking the store anything.
@@ -447,9 +446,9 @@ impl IOBase for Folder {
     fn child_by_path(&self, name: &str) -> Result<Holder> {
         let url = self.url.joinpath(name)?;
         if url.has_trailing_slash() {
-            return Self::new(self.client.clone(), url).map(Holder::S3Folder);
+            return Self::new(self.client.clone(), url).map(Holder::ObjectFolder);
         }
-        super::Path::new(self.client.clone(), url).map(Holder::S3Path)
+        super::Path::new(self.client.clone(), url).map(Holder::ObjectPath)
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> Listing {

@@ -7,7 +7,7 @@
 //! stopped talking to the store at all is equally worth catching.
 
 use super::{BUCKET, file, folder, location, path, payload, store};
-use crate::holder::s3::{File, Folder};
+use crate::holder::object::{File, Folder};
 use crate::{IOBase, IOKind};
 
 #[test]
@@ -18,7 +18,7 @@ fn building_a_handle_costs_nothing() {
     let file = File::new(client.clone(), location("lake/part.parquet")).expect("a handle");
     let folder = Folder::new(client.clone(), location("lake/")).expect("a handle");
     let path =
-        crate::holder::s3::Path::new(client, location("lake/part.parquet")).expect("a handle");
+        crate::holder::object::Path::new(client, location("lake/part.parquet")).expect("a handle");
 
     // Not one request between the three of them, per the laziness contract.
     assert_eq!(store.request_count(), 0);

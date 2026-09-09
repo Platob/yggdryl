@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use server::FakeS3;
 
-use super::{Credentials, File, Folder, Path, S3Options, client::Client};
+use super::{Credentials, File, Folder, ObjectOptions, Path, client::Client};
 use crate::Url;
 
 /// The bucket every fixture writes into.
@@ -34,8 +34,8 @@ fn store() -> FakeS3 {
 }
 
 /// Options that reach `store` and consult nothing outside the test.
-fn options(store: &FakeS3) -> S3Options {
-    S3Options::default()
+fn options(store: &FakeS3) -> ObjectOptions {
+    ObjectOptions::default()
         .with_environment(false)
         .with_endpoint(store.endpoint())
         .with_region("us-east-1")
@@ -57,7 +57,7 @@ fn file(store: &FakeS3, key: &str) -> File {
 /// The object `key`, under options a test tightened.
 ///
 /// The options already name the endpoint, so the store is not passed again.
-fn file_with(key: &str, options: S3Options) -> File {
+fn file_with(key: &str, options: ObjectOptions) -> File {
     let url = location(key);
     let client = Arc::new(Client::new(&url, options).expect("a client"));
     File::new(client, url).expect("an object handle")

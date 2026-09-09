@@ -6,7 +6,7 @@
 //! unhappy ones, come back as the typed results the crate's contracts name.
 
 use super::{BUCKET, file, folder, location, options, path, payload, store};
-use crate::holder::s3::{Credentials, File, S3Options};
+use crate::holder::object::{Credentials, File, ObjectOptions};
 use crate::{Error, IOBase, IOKind};
 
 #[test]
@@ -40,7 +40,10 @@ fn every_request_carries_a_signature_over_the_headers_it_names() {
         .find(|(name, _)| name == "x-amz-content-sha256")
         .map(|(_, value)| value.clone())
         .expect("a payload hash");
-    assert_eq!(payload_hash, crate::holder::s3::sign::sha256_hex(b"PAR1"));
+    assert_eq!(
+        payload_hash,
+        crate::holder::object::sigv4::sha256_hex(b"PAR1")
+    );
 }
 
 #[test]
@@ -295,7 +298,7 @@ fn an_anonymous_client_signs_nothing() {
     store.put(BUCKET, "lake/part.parquet", b"PAR1");
     let handle = super::file_with(
         "lake/part.parquet",
-        S3Options::default()
+        ObjectOptions::default()
             .with_environment(false)
             .with_endpoint(store.endpoint())
             .with_path_style(true)
@@ -324,7 +327,7 @@ fn credentials_written_into_a_location_are_used_and_then_never_rendered() {
     let client = std::sync::Arc::new(
         super::Client::new(
             &url,
-            S3Options::default()
+            ObjectOptions::default()
                 .with_environment(false)
                 .with_endpoint(store.endpoint())
                 .with_region("us-east-1")
@@ -455,10 +458,10 @@ fn a_glob_descends_its_fixed_prefix_rather_than_the_whole_bucket() {
 
 #[test]
 fn a_location_naming_no_bucket_is_refused_before_anything_is_built() {
-    let error = crate::holder::s3::file("file:///tmp/part.parquet").expect_err("a refusal");
+    let error = crate::holder::object::file("file:///tmp/part.parquet").expect_err("a refusal");
     assert!(error.to_string().contains("naming a bucket"), "{error}");
     // The credential and endpoint knobs are equally unusable without one.
-    crate::holder::s3::folder("https://example.com/x").expect_err("a refusal");
+    crate::holder::object::folder("https://example.com/x").expect_err("a refusal");
 }
 
 #[test]
@@ -470,7 +473,7 @@ fn every_s3_url_spelling_reaches_the_same_object() {
     for scheme in ["s3", "s3a", "s3n"] {
         let url = format!("{scheme}://{BUCKET}/lake/{scheme}.bin");
         let mut handle =
-            crate::holder::s3::file_with(&url, options(&store)).expect("an object handle");
+            crate::holder::object::file_with(&url, options(&store)).expect("an object handle");
         handle.write_all_bytes(b"AAPL").expect("a write");
 
         assert_eq!(handle.bucket(), BUCKET);
@@ -485,7 +488,7 @@ fn every_s3_url_spelling_reaches_the_same_object() {
 
         // A prefix and a location resolve over the same store just as well.
         let prefix = format!("{scheme}://{BUCKET}/lake/");
-        let listed = crate::holder::s3::folder_with(&prefix, options(&store))
+        let listed = crate::holder::object::folder_with(&prefix, options(&store))
             .expect("a prefix handle")
             .ls(false, false)
             .filter_map(|entry| entry.ok())
@@ -493,7 +496,7 @@ fn every_s3_url_spelling_reaches_the_same_object() {
             .collect::<Vec<_>>();
         assert!(listed.contains(&url), "{listed:?}");
         assert_eq!(
-            crate::holder::s3::located_with(&url, options(&store))
+            crate::holder::object::located_with(&url, options(&store))
                 .expect("a location")
                 .kind(),
             IOKind::File
@@ -505,7 +508,7 @@ fn every_s3_url_spelling_reaches_the_same_object() {
     store.require_access_key(Some("SOMEONEELSE"));
     for scheme in ["s3", "s3a", "s3n"] {
         let url = format!("{scheme}://{BUCKET}/lake/{scheme}.bin");
-        let refused = crate::holder::s3::file_with(&url, options(&store))
+        let refused = crate::holder::object::file_with(&url, options(&store))
             .expect("an object handle")
             .read_all_bytes()
             .expect_err("a refusal");
@@ -521,7 +524,7 @@ fn every_s3_url_spelling_reaches_the_same_object() {
 
 #[test]
 fn options_clamp_what_s3_will_not_accept_rather_than_refusing_it() {
-    let bounded = S3Options::default()
+    let bounded = ObjectOptions::default()
         .with_part_size(1)
         .with_list_page_size(50_000)
         .with_max_attempts(0);
@@ -531,13 +534,13 @@ fn options_clamp_what_s3_will_not_accept_rather_than_refusing_it() {
 
     // A bare host becomes an https endpoint, and a trailing slash is dropped.
     assert_eq!(
-        S3Options::default()
+        ObjectOptions::default()
             .with_endpoint("s3.example.io/")
             .endpoint(),
         Some("https://s3.example.io")
     );
     // Asking for anonymous access drops any credentials that were set.
-    let anonymous = S3Options::default()
+    let anonymous = ObjectOptions::default()
         .with_credentials(Credentials::new("a", "b"))
         .with_anonymous(true);
     assert!(anonymous.credentials().is_none());
@@ -600,7 +603,7 @@ fn a_write_signs_its_payload_over_http_and_leaves_it_unsigned_over_tls() {
             .iter()
             .find(|(name, _)| name == "x-amz-content-sha256")
             .map(|(_, value)| value.as_str()),
-        Some(crate::holder::s3::sign::sha256_hex(b"AAPL,187.23").as_str()),
+        Some(crate::holder::object::sigv4::sha256_hex(b"AAPL,187.23").as_str()),
     );
 
     // Asking for the other policy sends the literal S3 accepts instead, which
@@ -628,9 +631,9 @@ fn a_write_signs_its_payload_over_http_and_leaves_it_unsigned_over_tls() {
     );
 
     // The policy an unset value picks follows the endpoint's scheme.
-    let over_tls = S3Options::default().with_endpoint("https://s3.example.io");
+    let over_tls = ObjectOptions::default().with_endpoint("https://s3.example.io");
     assert!(!over_tls.signs_payload("https"));
-    assert!(S3Options::default().signs_payload("http"));
+    assert!(ObjectOptions::default().signs_payload("http"));
     assert!(over_tls.with_payload_signing(true).signs_payload("https"));
 }
 
@@ -673,7 +676,7 @@ fn an_empty_value_is_one_put_however_low_the_multipart_threshold() {
     let options = options(&store).with_multipart_threshold(0);
     let url = location("lake/empty.bin");
     let client = std::sync::Arc::new(
-        crate::holder::s3::client::Client::new(&url, options).expect("a client"),
+        crate::holder::object::client::Client::new(&url, options).expect("a client"),
     );
     let mut handle = File::new(client, url).expect("an object handle");
 
@@ -701,7 +704,7 @@ fn is_exchange(request: &super::server::Recorded) -> bool {
 fn a_named_role_is_traded_for_a_session_once_and_signs_everything_after() {
     let store = store();
     store.put(BUCKET, "lake/part.bin", &payload(64));
-    let role = crate::holder::s3::AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
+    let role = crate::holder::object::AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
         .with_session_name("power-desk")
         .with_external_id("desk-42")
         // STS is a host of its own on AWS; the fixture shares this one.
@@ -776,8 +779,9 @@ fn a_lapsed_session_is_traded_again_rather_than_signed_with() {
     // Every session comes back already expired, which is the refresh path
     // without waiting an hour for it.
     store.expire_roles(true);
-    let role = crate::holder::s3::AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
-        .with_endpoint(store.endpoint());
+    let role =
+        crate::holder::object::AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
+            .with_endpoint(store.endpoint());
     let handle = super::file_with("lake/part.bin", options(&store).with_assumed_role(role));
 
     store.clear_requests();
@@ -804,9 +808,9 @@ fn a_bucket_lifecycle_this_client_may_not_perform_costs_no_request() {
     };
     let url = crate::Url::from_str("s3://ledger/").expect("a location");
     let client = std::sync::Arc::new(
-        crate::holder::s3::client::Client::new(&url, refusing()).expect("a client"),
+        crate::holder::object::client::Client::new(&url, refusing()).expect("a client"),
     );
-    let mut ledger = crate::holder::s3::Folder::new(client, url).expect("a prefix handle");
+    let mut ledger = crate::holder::object::Folder::new(client, url).expect("a prefix handle");
 
     store.clear_requests();
     let refused = ledger.create().expect_err("a refusal");

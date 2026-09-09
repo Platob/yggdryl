@@ -16,7 +16,7 @@
 //! meant to write are not there, and the driver fails on that word, so a
 //! skipped half can never read as a pass.
 
-use yggdryl::holder::s3::{Credentials, S3Options};
+use yggdryl::holder::object::{Credentials, ObjectOptions};
 use yggdryl::{IOBase, IOKind};
 
 /// The bucket both sides exchange through.
@@ -39,10 +39,10 @@ fn endpoint() -> Option<String> {
 }
 
 /// Options addressing that endpoint with the credentials the driver set.
-fn options() -> S3Options {
+fn options() -> ObjectOptions {
     let access = std::env::var("AWS_ACCESS_KEY_ID").unwrap_or_else(|_| "minioadmin".to_owned());
     let secret = std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_else(|_| "minioadmin".to_owned());
-    S3Options::default()
+    ObjectOptions::default()
         .with_environment(false)
         .with_endpoint(endpoint().expect("an endpoint"))
         .with_region(std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_owned()))
@@ -57,13 +57,13 @@ fn options() -> S3Options {
 /// Reached by raw name rather than by location, because that is what these
 /// keys are: `a b/spaced.txt` is an ordinary key and not a URL, and the point
 /// of the exercise is that both sides address the same object by it.
-fn object(key: &str) -> yggdryl::holder::s3::File {
-    yggdryl::holder::s3::file_at_with(BUCKET, key, options()).expect("an object handle")
+fn object(key: &str) -> yggdryl::holder::object::File {
+    yggdryl::holder::object::file_at_with(BUCKET, key, options()).expect("an object handle")
 }
 
 /// The prefix `key` names in the exchange bucket.
-fn prefix(key: &str) -> yggdryl::holder::s3::Folder {
-    yggdryl::holder::s3::folder_at_with(BUCKET, key, options()).expect("a prefix handle")
+fn prefix(key: &str) -> yggdryl::holder::object::Folder {
+    yggdryl::holder::object::folder_at_with(BUCKET, key, options()).expect("a prefix handle")
 }
 
 /// The keys this half writes, with the bytes each holds.
@@ -142,7 +142,7 @@ fn objects_written_here_are_readable_here_and_by_boto3() {
 
     // A multipart upload, which is a different code path on every store.
     let large = vec![b'y'; 12 * 1024 * 1024];
-    let mut big = yggdryl::holder::s3::file_at_with(
+    let mut big = yggdryl::holder::object::file_at_with(
         BUCKET,
         &format!("{FROM_RUST}/multipart.bin"),
         options().with_multipart_threshold(5 * 1024 * 1024),
@@ -248,13 +248,13 @@ fn exchange_key() -> Vec<u8> {
 #[test]
 fn the_encryption_headers_are_what_botocore_computes() {
     let customer =
-        yggdryl::holder::s3::Encryption::customer(&exchange_key()).expect("a 32-byte key");
+        yggdryl::holder::object::Encryption::customer(&exchange_key()).expect("a 32-byte key");
     for (name, value) in customer.write_headers() {
         println!("SSE-C {name} {value}");
     }
 
-    let kms = yggdryl::holder::s3::Encryption::Kms(
-        yggdryl::holder::s3::KmsKey::new(KMS_KEY_ID)
+    let kms = yggdryl::holder::object::Encryption::Kms(
+        yggdryl::holder::object::KmsKey::new(KMS_KEY_ID)
             .with_context(KMS_CONTEXT)
             .with_bucket_key(true),
     );

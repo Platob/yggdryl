@@ -6,9 +6,9 @@
 
 use std::time::Duration;
 
-use super::credentials::Credentials;
+use super::aws::credentials::Credentials;
+use super::aws::sts::AssumedRole;
 use super::encryption::Encryption;
-use super::sts::AssumedRole;
 
 /// Part size when nothing else is said: 16 MiB, well above S3's 5 MiB floor.
 const DEFAULT_PART_SIZE: u64 = 16 * 1024 * 1024;
@@ -54,9 +54,9 @@ const DEFAULT_ENVIRONMENT_PREFIXES: [&str; 2] = ["AWS_", "YGGDRYL_S3_"];
 /// ```
 /// use std::time::Duration;
 ///
-/// use yggdryl::holder::s3::{Credentials, S3Options};
+/// use yggdryl::holder::object::{Credentials, ObjectOptions};
 ///
-/// let options = S3Options::default()
+/// let options = ObjectOptions::default()
 ///     .with_endpoint("http://localhost:9000")
 ///     .with_region("us-east-1")
 ///     .with_credentials(Credentials::new("minioadmin", "minioadmin"))
@@ -68,12 +68,12 @@ const DEFAULT_ENVIRONMENT_PREFIXES: [&str; 2] = ["AWS_", "YGGDRYL_S3_"];
 /// assert_eq!(options.path_style(), Some(true));
 /// // Part sizes are clamped to what S3 accepts rather than refused.
 /// assert_eq!(
-///     S3Options::default().with_part_size(1).part_size(),
+///     ObjectOptions::default().with_part_size(1).part_size(),
 ///     5 * 1024 * 1024
 /// );
 /// ```
 #[derive(Clone)]
-pub struct S3Options {
+pub struct ObjectOptions {
     endpoint: Option<String>,
     region: Option<String>,
     credentials: Option<Credentials>,
@@ -97,7 +97,7 @@ pub struct S3Options {
     metadata: Vec<(String, String)>,
 }
 
-impl Default for S3Options {
+impl Default for ObjectOptions {
     fn default() -> Self {
         Self {
             endpoint: None,
@@ -128,7 +128,7 @@ impl Default for S3Options {
     }
 }
 
-impl S3Options {
+impl ObjectOptions {
     /// Address the store at `endpoint`, a URL such as `https://s3.example.io`
     /// or `http://localhost:9000`.
     ///
@@ -508,10 +508,10 @@ fn header_name(name: &str) -> String {
     }
 }
 
-impl std::fmt::Debug for S3Options {
+impl std::fmt::Debug for ObjectOptions {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("S3Options")
+            .debug_struct("ObjectOptions")
             .field("endpoint", &self.endpoint)
             .field("region", &self.region)
             // `Credentials` redacts its own secret.

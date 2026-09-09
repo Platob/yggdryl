@@ -8,8 +8,8 @@
 
 use std::time::{Duration, SystemTime};
 
+use super::super::sigv4::{self, Signer};
 use super::credentials::Credentials;
-use super::sign::{self, Signer};
 use crate::{Error, Result};
 
 /// The STS API version every request names.
@@ -31,12 +31,12 @@ const DEFAULT_SESSION_NAME: &str = "yggdryl";
 /// ```
 /// use std::time::Duration;
 ///
-/// use yggdryl::holder::s3::{AssumedRole, S3Options};
+/// use yggdryl::holder::object::{AssumedRole, ObjectOptions};
 ///
 /// let role = AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
 ///     .with_session_name("power-desk")
 ///     .with_duration(Duration::from_secs(3600));
-/// let options = S3Options::default().with_assumed_role(role);
+/// let options = ObjectOptions::default().with_assumed_role(role);
 /// assert_eq!(
 ///     options.assumed_role().map(AssumedRole::role_arn),
 ///     Some("arn:aws:iam::123456789012:role/lake-reader")
@@ -157,7 +157,7 @@ impl AssumedRole {
 ///
 /// Returns STS's refusal, the transport's failure, or an answer that does not
 /// carry a credential set.
-pub(super) fn assume(
+pub(crate) fn assume(
     agent: &ureq::Agent,
     base: &Credentials,
     role: &AssumedRole,
@@ -193,10 +193,10 @@ pub(super) fn assume(
         "/",
         &query,
         &[],
-        sign::EMPTY_PAYLOAD_SHA256,
+        sigv4::EMPTY_PAYLOAD_SHA256,
         now,
     );
-    let url = format!("{scheme}://{host}/?{}", sign::canonical_query(&query));
+    let url = format!("{scheme}://{host}/?{}", sigv4::canonical_query(&query));
     let mut request = agent.get(&url);
     for (name, value) in &signed {
         request = request.header(name, value);

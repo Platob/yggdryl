@@ -11,20 +11,20 @@ use super::credentials::{Credentials, variable};
 
 /// What one profile says about the store.
 #[derive(Debug, Default)]
-pub(super) struct Profile {
+pub(crate) struct Profile {
     /// The key pair the credentials file holds, with its session token.
-    pub(super) credentials: Option<Credentials>,
+    pub(crate) credentials: Option<Credentials>,
     /// The `region` the configuration file names.
-    pub(super) region: Option<String>,
+    pub(crate) region: Option<String>,
     /// The `endpoint_url` the configuration file names.
-    pub(super) endpoint_url: Option<String>,
+    pub(crate) endpoint_url: Option<String>,
 }
 
 /// Read `profile` - or `AWS_PROFILE`, or `default` - from both files.
 ///
 /// A file that is missing or unreadable contributes nothing: the shared files
 /// are optional on every machine, and a profile nobody wrote is not an error.
-pub(super) fn load(profile: Option<&str>) -> Profile {
+pub(crate) fn load(profile: Option<&str>) -> Profile {
     let name = profile
         .map(str::to_owned)
         .or_else(|| variable("AWS_PROFILE"))
@@ -58,7 +58,7 @@ pub(super) fn load(profile: Option<&str>) -> Profile {
 }
 
 /// Only the key pair of `profile`.
-pub(super) fn credentials(profile: Option<&str>) -> Option<Credentials> {
+pub(crate) fn credentials(profile: Option<&str>) -> Option<Credentials> {
     load(profile).credentials
 }
 

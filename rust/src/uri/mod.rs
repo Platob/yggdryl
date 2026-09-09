@@ -32,7 +32,7 @@ pub use extensions::Extensions;
 pub(crate) use hive::hive_partitions_of;
 pub use parameters::Parameters;
 pub(crate) use parser::percent_decode;
-#[cfg(feature = "s3")]
+#[cfg(feature = "object")]
 pub(crate) use parser::percent_encode_segment;
 pub use path::{Parents, PathSegments, UriParents, UriPath};
 pub use url::{Url, UrlParents};

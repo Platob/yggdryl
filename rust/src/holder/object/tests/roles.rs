@@ -255,7 +255,7 @@ fn a_generic_location_writes_itself_into_being_as_an_object() {
 fn a_holder_walks_a_store_through_one_type() {
     let store = store();
     store.put(BUCKET, "lake/year=2026/part.parquet", b"PAR1");
-    let root = crate::holder::Holder::S3Folder(folder(&store, ""));
+    let root = crate::holder::Holder::ObjectFolder(folder(&store, ""));
 
     assert!(root.is_container());
     assert_eq!(root.kind(), IOKind::Directory);
@@ -266,7 +266,7 @@ fn a_holder_walks_a_store_through_one_type() {
     assert_eq!(entries.len(), 3, "two containers and the leaf");
     let leaf = entries.last().expect("the leaf");
     assert_eq!(leaf.read_all_bytes().expect("the object"), b"PAR1");
-    assert!(matches!(leaf, crate::holder::Holder::S3File(_)));
+    assert!(matches!(leaf, crate::holder::Holder::ObjectFile(_)));
 
     // Resolving down the tree stays in one type the whole way.
     let child = root

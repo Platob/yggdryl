@@ -438,7 +438,7 @@ impl IOBase for Path {
         let parent = self.url.parent()?;
         Folder::new(self.client.clone(), parent)
             .ok()
-            .map(Holder::S3Folder)
+            .map(Holder::ObjectFolder)
     }
 
     /// Name a descendant without asking the store anything.

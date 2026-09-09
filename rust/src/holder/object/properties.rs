@@ -14,13 +14,13 @@
 
 use std::time::Duration;
 
-use super::credentials::Credentials;
+use super::aws::credentials::Credentials;
+use super::aws::sts::AssumedRole;
 use super::encryption::{CustomerKey, Encryption, KmsKey};
-use super::options::S3Options;
-use super::sts::AssumedRole;
+use super::options::ObjectOptions;
 use crate::{Error, Result};
 
-impl S3Options {
+impl ObjectOptions {
     /// Read the knobs `properties` names, in whichever vocabulary it uses.
     ///
     /// Explicit calls still win where they say the same thing, because this
@@ -51,10 +51,10 @@ impl S3Options {
     /// client does not do.
     ///
     /// ```
-    /// use yggdryl::holder::s3::S3Options;
+    /// use yggdryl::holder::object::ObjectOptions;
     ///
     /// // A PyIceberg catalog's properties, most of which are not about S3.
-    /// let options = S3Options::default().with_properties([
+    /// let options = ObjectOptions::default().with_properties([
     ///     ("warehouse", "s3://trades/lake"),
     ///     ("s3.endpoint", "http://localhost:9000"),
     ///     ("s3.access-key-id", "minioadmin"),
@@ -68,7 +68,7 @@ impl S3Options {
     /// assert_eq!(options.path_style(), Some(true));
     ///
     /// // PyArrow's argument names, for the same knobs.
-    /// let options = S3Options::default().with_properties([
+    /// let options = ObjectOptions::default().with_properties([
     ///     ("endpoint_override", "localhost:9000"),
     ///     ("scheme", "http"),
     ///     ("access_key", "minioadmin"),
@@ -352,7 +352,7 @@ struct Parts {
 
 impl Parts {
     /// Assemble what was collected onto `options`.
-    fn apply(self, mut options: S3Options) -> Result<S3Options> {
+    fn apply(self, mut options: ObjectOptions) -> Result<ObjectOptions> {
         if let Some(region) = self.region.as_ref().or(self.default_region.as_ref()) {
             options = options.with_region(region);
         }

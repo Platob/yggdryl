@@ -66,7 +66,7 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
         if encoding == "parquet" && !cfg!(feature = "parquet") {
             continue;
         }
-        let mut handle = yggdryl::holder::s3::file_with(&location(name), options(&store))
+        let mut handle = yggdryl::holder::object::file_with(&location(name), options(&store))
             .expect("an object handle");
         let record_options = handle.record_options().expect("an implemented encoding");
         handle
@@ -88,7 +88,7 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
 
         // The same read on an opened handle, where the metadata questions the
         // encoding asks are answered from the scope rather than the store.
-        let mut opened = yggdryl::holder::s3::file_with(&location(name), options(&store))
+        let mut opened = yggdryl::holder::object::file_with(&location(name), options(&store))
             .expect("an object handle");
         opened.open().expect("an open");
         group.bench_function(format!("read_opened/{encoding}"), |bencher| {
@@ -105,7 +105,7 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
         });
 
         group.bench_function(format!("overwrite/{encoding}"), |bencher| {
-            let mut target = yggdryl::holder::s3::file_with(
+            let mut target = yggdryl::holder::object::file_with(
                 &location(&format!("bench/write.{encoding}")),
                 options(&store),
             )

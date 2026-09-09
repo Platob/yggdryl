@@ -44,7 +44,7 @@
 //!
 //! ```no_run
 //! use yggdryl::IOBase;
-//! use yggdryl::holder::s3;
+//! use yggdryl::holder::object;
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! // Credentials, region, and endpoint resolve the way the AWS tools resolve
@@ -59,12 +59,12 @@
 //! ```
 //!
 //! A store that is not AWS - MinIO, Ceph, an S3-compatible gateway - is named
-//! by its endpoint, either in the location itself or through [`S3Options`]:
+//! by its endpoint, either in the location itself or through [`ObjectOptions`]:
 //!
 //! ```
-//! use yggdryl::holder::s3::{Credentials, S3Options};
+//! use yggdryl::holder::object::{Credentials, ObjectOptions};
 //!
-//! let options = S3Options::default()
+//! let options = ObjectOptions::default()
 //!     .with_endpoint("http://localhost:9000")
 //!     .with_credentials(Credentials::new("minioadmin", "minioadmin"))
 //!     .with_region("us-east-1");
@@ -76,27 +76,25 @@ use std::sync::Arc;
 use crate::holder::Holder;
 use crate::{Error, Result, Url};
 
+mod answer;
+pub mod aws;
 mod client;
-mod credentials;
 mod encryption;
 mod file;
 mod folder;
 mod options;
 mod path;
-mod profile;
 mod properties;
-mod sign;
-mod sts;
+mod sigv4;
 mod xml;
 
+pub use aws::{AssumedRole, Credentials};
 pub use client::StatsSnapshot;
-pub use credentials::Credentials;
 pub use encryption::{CustomerKey, Encryption, KmsKey};
 pub use file::File;
 pub use folder::Folder;
-pub use options::S3Options;
+pub use options::ObjectOptions;
 pub use path::Path;
-pub use sts::AssumedRole;
 
 use client::Client;
 
@@ -109,7 +107,7 @@ use client::Client;
 ///
 /// Returns a refusal when `url` is not an S3 location naming a bucket.
 pub fn located(url: &str) -> Result<Holder> {
-    located_with(url, S3Options::default())
+    located_with(url, ObjectOptions::default())
 }
 
 /// Hold the S3 resource `url` names, configured by `options`.
@@ -117,10 +115,10 @@ pub fn located(url: &str) -> Result<Holder> {
 /// # Errors
 ///
 /// Returns a refusal when `url` is not an S3 location naming a bucket.
-pub fn located_with(url: &str, options: S3Options) -> Result<Holder> {
+pub fn located_with(url: &str, options: ObjectOptions) -> Result<Holder> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
-    Path::new(client, url).map(Holder::S3Path)
+    Path::new(client, url).map(Holder::ObjectPath)
 }
 
 /// Hold the object `url` names, whether or not it exists yet.
@@ -129,7 +127,7 @@ pub fn located_with(url: &str, options: S3Options) -> Result<Holder> {
 ///
 /// Returns a refusal when `url` is not an S3 location naming a bucket.
 pub fn file(url: &str) -> Result<File> {
-    file_with(url, S3Options::default())
+    file_with(url, ObjectOptions::default())
 }
 
 /// Hold the object `url` names, configured by `options`.
@@ -137,7 +135,7 @@ pub fn file(url: &str) -> Result<File> {
 /// # Errors
 ///
 /// Returns a refusal when `url` is not an S3 location naming a bucket.
-pub fn file_with(url: &str, options: S3Options) -> Result<File> {
+pub fn file_with(url: &str, options: ObjectOptions) -> Result<File> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
     File::new(client, url)
@@ -149,7 +147,7 @@ pub fn file_with(url: &str, options: S3Options) -> Result<File> {
 ///
 /// Returns a refusal when `url` is not an S3 location naming a bucket.
 pub fn folder(url: &str) -> Result<Folder> {
-    folder_with(url, S3Options::default())
+    folder_with(url, ObjectOptions::default())
 }
 
 /// Hold the prefix or bucket `url` names, configured by `options`.
@@ -157,7 +155,7 @@ pub fn folder(url: &str) -> Result<Folder> {
 /// # Errors
 ///
 /// Returns a refusal when `url` is not an S3 location naming a bucket.
-pub fn folder_with(url: &str, options: S3Options) -> Result<Folder> {
+pub fn folder_with(url: &str, options: ObjectOptions) -> Result<Folder> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
     Folder::new(client, url)
@@ -171,7 +169,7 @@ pub fn folder_with(url: &str, options: S3Options) -> Result<Folder> {
 /// holding a location rather than a name reaches for [`file()`].
 ///
 /// ```
-/// use yggdryl::holder::s3;
+/// use yggdryl::holder::object;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let handle = s3::file_at("trades", "lake/a b/part.parquet")?;
@@ -189,7 +187,7 @@ pub fn folder_with(url: &str, options: S3Options) -> Result<Folder> {
 ///
 /// Returns a refusal when `bucket` is empty or cannot form a location.
 pub fn file_at(bucket: &str, key: &str) -> Result<File> {
-    file_at_with(bucket, key, S3Options::default())
+    file_at_with(bucket, key, ObjectOptions::default())
 }
 
 /// Hold the object `key` names in `bucket`, configured by `options`.
@@ -197,7 +195,7 @@ pub fn file_at(bucket: &str, key: &str) -> Result<File> {
 /// # Errors
 ///
 /// Returns a refusal when `bucket` is empty or cannot form a location.
-pub fn file_at_with(bucket: &str, key: &str, options: S3Options) -> Result<File> {
+pub fn file_at_with(bucket: &str, key: &str, options: ObjectOptions) -> Result<File> {
     let url = key_url(bucket, key)?;
     let client = Arc::new(Client::new(&url, options)?);
     File::new(client, url)
@@ -211,7 +209,7 @@ pub fn file_at_with(bucket: &str, key: &str, options: S3Options) -> Result<File>
 ///
 /// Returns a refusal when `bucket` is empty or cannot form a location.
 pub fn folder_at(bucket: &str, key: &str) -> Result<Folder> {
-    folder_at_with(bucket, key, S3Options::default())
+    folder_at_with(bucket, key, ObjectOptions::default())
 }
 
 /// Hold the prefix `key` names in `bucket`, configured by `options`.
@@ -219,7 +217,7 @@ pub fn folder_at(bucket: &str, key: &str) -> Result<Folder> {
 /// # Errors
 ///
 /// Returns a refusal when `bucket` is empty or cannot form a location.
-pub fn folder_at_with(bucket: &str, key: &str, options: S3Options) -> Result<Folder> {
+pub fn folder_at_with(bucket: &str, key: &str, options: ObjectOptions) -> Result<Folder> {
     let url = key_url(bucket, key)?;
     let client = Arc::new(Client::new(&url, options)?);
     Folder::new(client, url)
@@ -233,7 +231,7 @@ pub fn folder_at_with(bucket: &str, key: &str, options: S3Options) -> Result<Fol
 ///
 /// Returns a refusal when `bucket` is empty or cannot form a location.
 pub fn path_at(bucket: &str, key: &str) -> Result<Path> {
-    path_at_with(bucket, key, S3Options::default())
+    path_at_with(bucket, key, ObjectOptions::default())
 }
 
 /// Hold the S3 resource `key` names in `bucket`, configured by `options`.
@@ -241,7 +239,7 @@ pub fn path_at(bucket: &str, key: &str) -> Result<Path> {
 /// # Errors
 ///
 /// Returns a refusal when `bucket` is empty or cannot form a location.
-pub fn path_at_with(bucket: &str, key: &str, options: S3Options) -> Result<Path> {
+pub fn path_at_with(bucket: &str, key: &str, options: ObjectOptions) -> Result<Path> {
     let url = key_url(bucket, key)?;
     let client = Arc::new(Client::new(&url, options)?);
     Path::new(client, url)

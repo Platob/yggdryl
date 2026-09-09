@@ -9,11 +9,11 @@
 
 use std::time::Duration;
 
-use crate::holder::s3::{AssumedRole, Encryption, S3Options};
+use crate::holder::object::{AssumedRole, Encryption, ObjectOptions};
 
 #[test]
 fn a_pyiceberg_catalogs_properties_reach_every_knob_they_name() {
-    let options = S3Options::from_properties([
+    let options = ObjectOptions::from_properties([
         // Most of a catalog's properties have nothing to do with a store.
         ("type", "rest"),
         ("uri", "https://catalog.example.io"),
@@ -45,7 +45,7 @@ fn a_pyiceberg_catalogs_properties_reach_every_knob_they_name() {
 
 #[test]
 fn pyarrows_arguments_reach_the_same_knobs_by_their_own_names() {
-    let options = S3Options::from_properties([
+    let options = ObjectOptions::from_properties([
         ("endpoint_override", "localhost:9000"),
         ("scheme", "http"),
         ("access_key", "minioadmin"),
@@ -71,7 +71,7 @@ fn pyarrows_arguments_reach_the_same_knobs_by_their_own_names() {
 
 #[test]
 fn the_aws_environment_names_are_the_same_knobs_again() {
-    let options = S3Options::from_properties([
+    let options = ObjectOptions::from_properties([
         ("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"),
         ("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI"),
         ("AWS_REGION", "us-east-1"),
@@ -96,7 +96,7 @@ fn a_catalogs_bearer_token_is_never_read_as_a_session_token() {
     // `token` is a REST catalog's OAuth token, and reading it as an AWS
     // session token would sign every request with a credential set that is
     // half right - which fails at the store, far from the cause.
-    let options = S3Options::from_properties([
+    let options = ObjectOptions::from_properties([
         ("token", "an-oauth-bearer-token"),
         ("s3.access-key-id", "minioadmin"),
         ("s3.secret-access-key", "minioadmin-secret"),
@@ -110,7 +110,7 @@ fn a_catalogs_bearer_token_is_never_read_as_a_session_token() {
 
 #[test]
 fn a_role_is_assembled_from_the_properties_that_describe_it() {
-    let options = S3Options::from_properties([
+    let options = ObjectOptions::from_properties([
         ("s3.role-arn", "arn:aws:iam::123456789012:role/lake-reader"),
         ("s3.role-session-name", "power-desk"),
         ("external_id", "desk-42"),
@@ -130,7 +130,7 @@ fn a_role_is_assembled_from_the_properties_that_describe_it() {
     assert_eq!(role.endpoint(), Some("https://sts.eu-west-1.amazonaws.com"));
 
     // A duration outside what STS issues is clamped rather than refused.
-    let options = S3Options::from_properties([("role_arn", "arn:x"), ("role_duration", "60")])
+    let options = ObjectOptions::from_properties([("role_arn", "arn:x"), ("role_duration", "60")])
         .expect("readable properties");
     assert_eq!(
         options.assumed_role().map(AssumedRole::duration),
@@ -140,10 +140,10 @@ fn a_role_is_assembled_from_the_properties_that_describe_it() {
 
 #[test]
 fn the_sse_properties_name_each_of_the_three_kinds() {
-    let managed = S3Options::from_properties([("s3.sse.type", "AES256")]).expect("properties");
+    let managed = ObjectOptions::from_properties([("s3.sse.type", "AES256")]).expect("properties");
     assert!(matches!(managed.encryption(), Encryption::Managed));
 
-    let kms = S3Options::from_properties([
+    let kms = ObjectOptions::from_properties([
         ("s3.sse.type", "aws:kms"),
         ("s3.sse.key", "arn:aws:kms:eu-west-1:1234:key/abcd"),
         ("sse.context", r#"{"desk":"power"}"#),
@@ -159,7 +159,7 @@ fn the_sse_properties_name_each_of_the_three_kinds() {
 
     // `AES256` is what SSE-S3 is called and what a customer key's algorithm
     // is called; a key alongside it is what tells the two apart.
-    let customer = S3Options::from_properties([
+    let customer = ObjectOptions::from_properties([
         ("s3.sse.type", "AES256"),
         ("s3.sse.key", "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw="),
         ("s3.sse.md5", "N+iD0sgzzGlyEXJzCNck5w=="),
@@ -169,7 +169,7 @@ fn the_sse_properties_name_each_of_the_three_kinds() {
 
     // And nothing said is nothing done.
     assert!(
-        S3Options::from_properties([("s3.sse.type", "none")])
+        ObjectOptions::from_properties([("s3.sse.type", "none")])
             .expect("properties")
             .encryption()
             .is_default()
@@ -185,7 +185,7 @@ fn a_value_that_will_not_parse_is_heard_here_rather_than_at_the_store() {
         ("part_size", "big", "byte count"),
         ("s3.sse.type", "rot13", "sse type"),
     ] {
-        let refused = S3Options::from_properties([(name, value)]).expect_err("a refusal");
+        let refused = ObjectOptions::from_properties([(name, value)]).expect_err("a refusal");
         assert!(
             refused.to_string().contains(expected),
             "{name}={value}: {refused}"
@@ -193,7 +193,7 @@ fn a_value_that_will_not_parse_is_heard_here_rather_than_at_the_store() {
     }
 
     // A customer key whose MD5 does not match it is the same story.
-    let refused = S3Options::from_properties([
+    let refused = ObjectOptions::from_properties([
         ("s3.sse.type", "sse-c"),
         ("s3.sse.key", "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw="),
         ("s3.sse.md5", "AAAAAAAAAAAAAAAAAAAAAA=="),
@@ -204,13 +204,13 @@ fn a_value_that_will_not_parse_is_heard_here_rather_than_at_the_store() {
 
 #[test]
 fn a_knob_this_client_cannot_honor_is_refused_rather_than_dropped() {
-    let refused = S3Options::from_properties([("s3.signer.uri", "https://signer.example.io")])
+    let refused = ObjectOptions::from_properties([("s3.signer.uri", "https://signer.example.io")])
         .expect_err("a refusal");
     assert!(refused.to_string().contains("does not do"), "{refused}");
 
     // Whereas a knob about something that is not this store is simply not
     // this store's business.
-    let options = S3Options::from_properties([
+    let options = ObjectOptions::from_properties([
         ("adls.account-name", "trades"),
         ("gcs.project-id", "trades"),
         ("py-io-impl", "pyiceberg.io.pyarrow.PyArrowFileIO"),
@@ -222,7 +222,7 @@ fn a_knob_this_client_cannot_honor_is_refused_rather_than_dropped() {
 
 #[test]
 fn sizes_may_carry_the_unit_a_configuration_file_writes_them_with() {
-    let options = S3Options::from_properties([
+    let options = ObjectOptions::from_properties([
         ("part_size", "8MiB"),
         ("multipart_threshold", "32 MB"),
         ("list_page_size", "500"),
@@ -242,7 +242,7 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
     // without this test setting a variable of its own - which it could not do
     // in a crate that denies unsafe code, and should not do to a process it
     // shares with every other test.
-    let found = S3Options::default()
+    let found = ObjectOptions::default()
         .with_environment_prefixes(["PAT"])
         .environment_properties();
     assert!(
@@ -254,7 +254,7 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
 
     // The longest matching prefix wins, so a specific spelling is not eaten by
     // a general one.
-    let found = S3Options::default()
+    let found = ObjectOptions::default()
         .with_environment_prefixes(["PA", "PAT"])
         .environment_properties();
     assert!(found.iter().any(|(name, _)| name == "H"), "{found:?}");
@@ -262,18 +262,18 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
     // And nothing at all when the environment is shut off, whatever the
     // prefixes say.
     assert!(
-        S3Options::default()
+        ObjectOptions::default()
             .with_environment(false)
             .with_environment_prefix("PAT")
             .environment_properties()
             .is_empty()
     );
     assert_eq!(
-        S3Options::default().environment_prefixes(),
+        ObjectOptions::default().environment_prefixes(),
         ["AWS_".to_owned(), "YGGDRYL_S3_".to_owned()]
     );
     assert_eq!(
-        S3Options::default()
+        ObjectOptions::default()
             .with_environment_prefix("TRADING_S3_")
             .environment_prefixes()
             .len(),
@@ -283,7 +283,7 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
 
 #[test]
 fn what_a_caller_set_wins_over_what_the_environment_says() {
-    let ambient = S3Options::from_properties([
+    let ambient = ObjectOptions::from_properties([
         ("endpoint", "https://ambient.example.io"),
         ("region", "us-east-1"),
         ("access_key_id", "AMBIENT"),
@@ -295,7 +295,7 @@ fn what_a_caller_set_wins_over_what_the_environment_says() {
     ])
     .expect("readable properties");
 
-    let explicit = S3Options::default()
+    let explicit = ObjectOptions::default()
         .with_region("eu-west-1")
         .with_max_attempts(2)
         .under(&ambient);
@@ -314,14 +314,16 @@ fn what_a_caller_set_wins_over_what_the_environment_says() {
     assert!(!explicit.bucket_creation());
 
     // An anonymous client stays anonymous, whatever keys are lying about.
-    let anonymous = S3Options::default().with_anonymous(true).under(&ambient);
+    let anonymous = ObjectOptions::default()
+        .with_anonymous(true)
+        .under(&ambient);
     assert!(anonymous.anonymous());
     assert!(anonymous.credentials().is_none());
 }
 
 #[test]
 fn the_service_specific_endpoint_and_region_names_win() {
-    let options = S3Options::from_properties([
+    let options = ObjectOptions::from_properties([
         ("AWS_ENDPOINT_URL", "https://generic.example.io"),
         ("AWS_ENDPOINT_URL_S3", "https://s3.example.io"),
         ("AWS_DEFAULT_REGION", "us-east-1"),

@@ -13,11 +13,12 @@ use std::time::{Duration, SystemTime};
 
 use base64::Engine as _;
 
-use super::credentials::{CredentialCache, CredentialSource, Credentials, variable};
+use super::answer::{ListPage, ObjectMeta};
+use super::aws::credentials::{CredentialCache, CredentialSource, Credentials, variable};
+use super::aws::xml;
 use super::encryption::Encryption;
-use super::options::S3Options;
-use super::sign::{self, Signer};
-use super::xml;
+use super::options::ObjectOptions;
+use super::sigv4::{self, Signer};
 use crate::{Error, Result, Url};
 
 /// The region assumed when nothing names one; also the signing region for the
@@ -44,17 +45,6 @@ const RETRY_REFUND: i64 = 1;
 /// The service name in every credential scope.
 const SERVICE: &str = "s3";
 
-/// What one S3 request answered about an object.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(super) struct ObjectMeta {
-    /// The object's byte length.
-    pub(super) size: u64,
-    /// The entity tag, quotes included, when the store gave one.
-    pub(super) etag: Option<String>,
-    /// The stored `Content-Type`, when the store gave one.
-    pub(super) content_type: Option<String>,
-}
-
 /// How many requests of each shape have gone out.
 ///
 /// Counted rather than timed, because the number of round trips is the thing
@@ -74,7 +64,7 @@ pub(super) struct Stats {
 /// A reading of an S3 client's request counters at one instant.
 ///
 /// ```
-/// use yggdryl::holder::s3::StatsSnapshot;
+/// use yggdryl::holder::object::StatsSnapshot;
 ///
 /// // Nothing has gone out, so every count is zero.
 /// assert_eq!(StatsSnapshot::default().requests, 0);
@@ -167,9 +157,9 @@ impl Endpoint {
 
     /// The request path for `bucket` and a raw `key`.
     fn path(&self, bucket: &str, key: &str) -> String {
-        let key = sign::encode_key(key);
+        let key = sigv4::encode_key(key);
         if self.path_style {
-            let bucket = sign::encode_key(bucket);
+            let bucket = sigv4::encode_key(bucket);
             if key.is_empty() {
                 format!("/{bucket}")
             } else {
@@ -305,7 +295,7 @@ pub(super) struct Client {
     credentials: CredentialCache,
     /// The signer for the current key and region, rebuilt when either changes.
     signer: Mutex<Option<(String, String, Arc<Signer>)>>,
-    options: S3Options,
+    options: ObjectOptions,
     stats: Stats,
     /// What is left to spend on retries.
     retries: RetryBudget,
@@ -324,7 +314,7 @@ impl Client {
     ///
     /// Returns a refusal when the URL names no bucket, or when an endpoint
     /// cannot be read as a location.
-    pub(super) fn new(url: &Url, options: S3Options) -> Result<Self> {
+    pub(super) fn new(url: &Url, options: ObjectOptions) -> Result<Self> {
         // Everything the environment names, under whatever the caller sets
         // for it, so one vocabulary covers a property map and a process
         // environment rather than each knob being wired up separately.
@@ -380,7 +370,7 @@ impl Client {
     /// A client whose transport matches the defaults shares one process-wide
     /// agent, so many handles against one store share connections rather than
     /// each opening its own.
-    fn agent(options: &S3Options) -> ureq::Agent {
+    fn agent(options: &ObjectOptions) -> ureq::Agent {
         if !options.has_custom_transport() {
             return shared_agent().clone();
         }
@@ -388,14 +378,14 @@ impl Client {
     }
 
     /// The endpoint the URL and options name.
-    fn endpoint_of(url: &Url, options: &S3Options) -> Result<Endpoint> {
+    fn endpoint_of(url: &Url, options: &ObjectOptions) -> Result<Endpoint> {
         let configured = options.endpoint().map(str::to_owned).or_else(|| {
             options
                 .reads_environment()
                 .then(|| {
                     variable("AWS_ENDPOINT_URL_S3")
                         .or_else(|| variable("AWS_ENDPOINT_URL"))
-                        .or_else(|| super::profile::load(options.profile()).endpoint_url)
+                        .or_else(|| super::aws::profile::load(options.profile()).endpoint_url)
                 })
                 .flatten()
         });
@@ -483,7 +473,7 @@ impl Client {
     }
 
     /// The signing region the URL and options name.
-    fn region_of(url: &Url, options: &S3Options) -> String {
+    fn region_of(url: &Url, options: &ObjectOptions) -> String {
         options
             .region()
             .map(str::to_owned)
@@ -494,7 +484,7 @@ impl Client {
                     .then(|| {
                         variable("AWS_REGION")
                             .or_else(|| variable("AWS_DEFAULT_REGION"))
-                            .or_else(|| super::profile::load(options.profile()).region)
+                            .or_else(|| super::aws::profile::load(options.profile()).region)
                     })
                     .flatten()
             })
@@ -533,7 +523,7 @@ impl Client {
         self.options.encryption()
     }
 
-    pub(super) const fn options(&self) -> &S3Options {
+    pub(super) const fn options(&self) -> &ObjectOptions {
         &self.options
     }
 
@@ -675,7 +665,7 @@ impl Client {
         let now = SystemTime::now();
         let host = self.endpoint.host_header(&request.bucket);
         let path = self.endpoint.path(&request.bucket, &request.key);
-        let query = sign::canonical_query(&request.query);
+        let query = sigv4::canonical_query(&request.query);
         let target = if query.is_empty() {
             format!("{}://{host}{path}", self.endpoint.scheme)
         } else {
@@ -689,11 +679,11 @@ impl Client {
                 // Hashing a large body costs more than the rest of the request
                 // put together, so it is only done where it buys something.
                 let payload = if request.body.is_empty() {
-                    sign::EMPTY_PAYLOAD_SHA256.to_owned()
+                    sigv4::EMPTY_PAYLOAD_SHA256.to_owned()
                 } else if self.options.signs_payload(&self.endpoint.scheme) {
-                    sign::sha256_hex(request.body)
+                    sigv4::sha256_hex(request.body)
                 } else {
-                    sign::UNSIGNED_PAYLOAD.to_owned()
+                    sigv4::UNSIGNED_PAYLOAD.to_owned()
                 };
                 headers.extend(signer.sign(
                     request.method,
@@ -817,7 +807,7 @@ impl Client {
         let now = SystemTime::now();
         let host = self.endpoint.host_header(&request.bucket);
         let path = self.endpoint.path(&request.bucket, &request.key);
-        let query = sign::canonical_query(&request.query);
+        let query = sigv4::canonical_query(&request.query);
         let target = if query.is_empty() {
             format!("{}://{host}{path}", self.endpoint.scheme)
         } else {
@@ -831,7 +821,7 @@ impl Client {
                 &path,
                 &request.query,
                 &request.headers,
-                sign::EMPTY_PAYLOAD_SHA256,
+                sigv4::EMPTY_PAYLOAD_SHA256,
                 now,
             )),
             Ok(None) => {}
@@ -1321,7 +1311,7 @@ impl Client {
         delimiter: Option<&str>,
         continuation: Option<&str>,
         max_keys: u16,
-    ) -> Result<xml::ListPage> {
+    ) -> Result<ListPage> {
         let mut request = Request::new("GET", "ListObjectsV2", bucket, "")
             .query("list-type", "2")
             .query("max-keys", max_keys.to_string())
@@ -1614,7 +1604,7 @@ const MAX_DOCUMENT: u64 = 32 * 1024 * 1024;
 /// The process-wide connection pool, shared by every default-configured client.
 fn shared_agent() -> &'static ureq::Agent {
     static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
-    AGENT.get_or_init(|| build_agent(&S3Options::default()))
+    AGENT.get_or_init(|| build_agent(&ObjectOptions::default()))
 }
 
 /// Build an agent for `options`.
@@ -1624,7 +1614,7 @@ fn shared_agent() -> &'static ureq::Agent {
 /// stops answering - but a global deadline is re-checked around every read and
 /// write, which costs more per request than the whole of signing one. Per
 /// phase, the bound is free.
-fn build_agent(options: &S3Options) -> ureq::Agent {
+fn build_agent(options: &ObjectOptions) -> ureq::Agent {
     let mut builder = ureq::Agent::config_builder()
             // Statuses are read, never raised: S3 says what it means in the
             // status and an XML body, and this client maps both itself.
@@ -1910,15 +1900,15 @@ mod tests {
         Answer, Client, DEFAULT_REGION, Endpoint, backoff, bucket_region_of, total_of_content_range,
     };
     use crate::Url;
-    use crate::holder::s3::S3Options;
+    use crate::holder::object::ObjectOptions;
 
     fn url(text: &str) -> Url {
         Url::from_str(text).expect("a valid location")
     }
 
     /// Options that consult nothing outside the test.
-    fn sealed() -> S3Options {
-        S3Options::default().with_environment(false)
+    fn sealed() -> ObjectOptions {
+        ObjectOptions::default().with_environment(false)
     }
 
     #[test]
@@ -2000,7 +1990,7 @@ mod tests {
 
         let explicit = Client::new(
             &url("s3://key:s3cr3t@trades/part.parquet"),
-            sealed().with_credentials(crate::holder::s3::Credentials::new("other", "secret")),
+            sealed().with_credentials(crate::holder::object::Credentials::new("other", "secret")),
         )
         .expect("a client");
         let signer = explicit
