@@ -168,7 +168,7 @@
     "metadata": {
       "description": "Indicates whether this message is the last report message in response to a request message, e.g. OrderMassStatusRequest(35=AF), TradeCaptureReportRequest(35=AD).",
       "display": "LastRptRequested",
-      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"NotLastMessage\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Not last message\"},{\"value\":\"Y\",\"name\":\"LastMessage\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Last message\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"NotLastMessage\",\"since\":\"4.4\",\"sort\":1,\"aliases\":[\"No\"],\"doc\":\"Not last message\"},{\"value\":\"Y\",\"name\":\"LastMessage\",\"since\":\"4.4\",\"sort\":2,\"aliases\":[\"Yes\"],\"doc\":\"Last message\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"lastrptrequested\",\"type\":{\"type\":\"boolean\"}}]}",
       "fix:tag": "912"
     }

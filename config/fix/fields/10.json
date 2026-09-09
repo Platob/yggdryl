@@ -384,7 +384,7 @@
     "metadata": {
       "description": "Identifies the broker-dealer department that first took the order.",
       "display": "ReceivedDeptID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"receiveddeptid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"receiveddeptid\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0.2\",\"ep\":135,\"deprecated\":true}]}",
       "fix:tag": "1030"
     }
   },
@@ -411,7 +411,7 @@
     "metadata": {
       "description": "Identifies the class or source of the order handling instruction values. Scope of this will apply to both CustOrderHandlingInst(1031) and DeskOrderHandlingInst(1035).",
       "display": "OrderHandlingInstSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FINRAOATS\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"FINRA OATS\"},{\"value\":\"2\",\"name\":\"FIAExecutionSourceCode\",\"since\":\"5.0.2\",\"ep\":133,\"sort\":2,\"doc\":\"FIA Execution Source Code\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FINRAOATS\",\"since\":\"4.4\",\"sort\":1,\"aliases\":[\"Nasdoats\"],\"doc\":\"FINRA OATS\"},{\"value\":\"2\",\"name\":\"FIAExecutionSourceCode\",\"since\":\"5.0.2\",\"ep\":133,\"sort\":2,\"doc\":\"FIA Execution Source Code\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"orderhandlinginstsource\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1032"
     }
@@ -425,7 +425,7 @@
     "metadata": {
       "description": "Identifies the type of Trading Desk.",
       "display": "DeskType",
-      "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"Agency\",\"since\":\"4.4\",\"sort\":1,\"group\":\"FINRA OATS\",\"doc\":\"Agency\"},{\"value\":\"AR\",\"name\":\"Arbitrage\",\"since\":\"4.4\",\"sort\":2,\"group\":\"FINRA OATS\",\"doc\":\"Arbitrage\"},{\"value\":\"B\",\"name\":\"BlockTrading\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":3,\"group\":\"FINRA OATS\",\"doc\":\"Block trading\"},{\"value\":\"C\",\"name\":\"ConvertibleDesk\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":4,\"group\":\"FINRA OATS\",\"doc\":\"Convertible desk\"},{\"value\":\"CR\",\"name\":\"CentralRiskBooks\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":5,\"group\":\"FINRA OATS\",\"doc\":\"Central risk books\"},{\"value\":\"D\",\"name\":\"Derivatives\",\"since\":\"4.4\",\"sort\":6,\"group\":\"FINRA OATS\",\"doc\":\"Derivatives\"},{\"value\":\"EC\",\"name\":\"EquityCapitalMarkets\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":7,\"group\":\"FINRA OATS\",\"doc\":\"Equity capital markets\"},{\"value\":\"FB\",\"name\":\"FloorBroker\",\"ep\":264,\"sort\":18,\"group\":\"FINRA OATS\",\"doc\":\"Floor Broker\"},{\"value\":\"IN\",\"name\":\"International\",\"since\":\"4.4\",\"sort\":8,\"group\":\"FINRA OATS\",\"doc\":\"International\"},{\"value\":\"IS\",\"name\":\"Institutional\",\"since\":\"4.4\",\"sort\":9,\"group\":\"FINRA OATS\",\"doc\":\"Institutional\"},{\"value\":\"O\",\"name\":\"Other\",\"since\":\"4.4\",\"sort\":10,\"group\":\"FINRA OATS\",\"doc\":\"Other\"},{\"value\":\"PF\",\"name\":\"PreferredTrading\",\"since\":\"4.4\",\"sort\":11,\"group\":\"FINRA OATS\",\"doc\":\"Preferred trading\"},{\"value\":\"PR\",\"name\":\"Proprietary\",\"since\":\"4.4\",\"sort\":12,\"group\":\"FINRA OATS\",\"doc\":\"Proprietary\"},{\"value\":\"PT\",\"name\":\"ProgramTrading\",\"since\":\"4.4\",\"sort\":13,\"group\":\"FINRA OATS\",\"doc\":\"Program trading\"},{\"value\":\"S\",\"name\":\"Sales\",\"since\":\"4.4\",\"sort\":14,\"group\":\"FINRA OATS\",\"doc\":\"Sales\"},{\"value\":\"SW\",\"name\":\"Swaps\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":15,\"group\":\"FINRA OATS\",\"doc\":\"Swaps\"},{\"value\":\"T\",\"name\":\"TradingDeskSystem\",\"since\":\"4.4\",\"sort\":16,\"group\":\"FINRA OATS\",\"doc\":\"Trading desk or system non-market maker\"},{\"value\":\"TR\",\"name\":\"Treasury\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":17,\"group\":\"FINRA OATS\",\"doc\":\"Treasury\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"Agency\",\"since\":\"4.4\",\"sort\":1,\"group\":\"FINRA OATS\",\"doc\":\"Agency\"},{\"value\":\"AR\",\"name\":\"Arbitrage\",\"since\":\"4.4\",\"sort\":2,\"group\":\"FINRA OATS\",\"doc\":\"Arbitrage\"},{\"value\":\"B\",\"name\":\"BlockTrading\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":3,\"group\":\"FINRA OATS\",\"doc\":\"Block trading\"},{\"value\":\"C\",\"name\":\"ConvertibleDesk\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":4,\"group\":\"FINRA OATS\",\"doc\":\"Convertible desk\"},{\"value\":\"CR\",\"name\":\"CentralRiskBooks\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":5,\"group\":\"FINRA OATS\",\"doc\":\"Central risk books\"},{\"value\":\"D\",\"name\":\"Derivatives\",\"since\":\"4.4\",\"sort\":6,\"group\":\"FINRA OATS\",\"doc\":\"Derivatives\"},{\"value\":\"EC\",\"name\":\"EquityCapitalMarkets\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":7,\"group\":\"FINRA OATS\",\"doc\":\"Equity capital markets\"},{\"value\":\"FB\",\"name\":\"FloorBroker\",\"ep\":264,\"sort\":18,\"group\":\"FINRA OATS\",\"doc\":\"Floor Broker\"},{\"value\":\"IN\",\"name\":\"International\",\"since\":\"4.4\",\"sort\":8,\"group\":\"FINRA OATS\",\"doc\":\"International\"},{\"value\":\"IS\",\"name\":\"Institutional\",\"since\":\"4.4\",\"sort\":9,\"group\":\"FINRA OATS\",\"doc\":\"Institutional\"},{\"value\":\"O\",\"name\":\"Other\",\"since\":\"4.4\",\"sort\":10,\"group\":\"FINRA OATS\",\"doc\":\"Other\"},{\"value\":\"PF\",\"name\":\"PreferredTrading\",\"since\":\"4.4\",\"sort\":11,\"group\":\"FINRA OATS\",\"doc\":\"Preferred trading\"},{\"value\":\"PR\",\"name\":\"Proprietary\",\"since\":\"4.4\",\"sort\":12,\"group\":\"FINRA OATS\",\"doc\":\"Proprietary\"},{\"value\":\"PT\",\"name\":\"ProgramTrading\",\"since\":\"4.4\",\"sort\":13,\"group\":\"FINRA OATS\",\"doc\":\"Program trading\"},{\"value\":\"S\",\"name\":\"Sales\",\"since\":\"4.4\",\"sort\":14,\"group\":\"FINRA OATS\",\"doc\":\"Sales\"},{\"value\":\"SW\",\"name\":\"Swaps\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":15,\"group\":\"FINRA OATS\",\"doc\":\"Swaps\"},{\"value\":\"T\",\"name\":\"TradingDeskSystem\",\"since\":\"4.4\",\"sort\":16,\"group\":\"FINRA OATS\",\"aliases\":[\"Trading\"],\"doc\":\"Trading desk or system non-market maker\"},{\"value\":\"TR\",\"name\":\"Treasury\",\"since\":\"5.0.2\",\"ep\":135,\"sort\":17,\"group\":\"FINRA OATS\",\"doc\":\"Treasury\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"desktype\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "1033"
     }
@@ -439,7 +439,7 @@
     "metadata": {
       "description": "Identifies the class or source of DeskType(1033) values. Conditionally required when DeskType(1033) is specified.",
       "display": "DeskTypeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FINRAOATS\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"FINRA OATS\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FINRAOATS\",\"since\":\"4.4\",\"sort\":1,\"aliases\":[\"Nasdoats\"],\"doc\":\"FINRA OATS\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"desktypesource\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1034"
     }
@@ -467,7 +467,7 @@
     "metadata": {
       "description": "The status of this execution acknowledgement message.",
       "display": "ExecAckStatus",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"DontKnow\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Don't know / Rejected\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"DontKnow\",\"since\":\"4.4\",\"sort\":3,\"aliases\":[\"Don\"],\"doc\":\"Don't know / Rejected\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"execackstatus\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "1036"
     }
@@ -750,7 +750,7 @@
     "metadata": {
       "description": "Used to identify whether the order initiator is an aggressor or not in the trade.",
       "display": "AggressorIndicator",
-      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"OrderInitiatorIsPassive\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Order initiator is passive\"},{\"value\":\"Y\",\"name\":\"OrderInitiatorIsAggressor\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Order initiator is aggressor\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"OrderInitiatorIsPassive\",\"since\":\"4.4\",\"sort\":2,\"aliases\":[\"No\"],\"doc\":\"Order initiator is passive\"},{\"value\":\"Y\",\"name\":\"OrderInitiatorIsAggressor\",\"since\":\"4.4\",\"sort\":1,\"aliases\":[\"Yes\"],\"doc\":\"Order initiator is aggressor\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"aggressorindicator\",\"type\":{\"type\":\"boolean\"}}]}",
       "fix:tag": "1057"
     }
@@ -928,7 +928,7 @@
     "metadata": {
       "description": "Identifies market data quote type.",
       "display": "MDQuoteType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Indicative\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Indicative\"},{\"value\":\"1\",\"name\":\"Tradeable\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Tradeable\"},{\"value\":\"2\",\"name\":\"RestrictedTradeable\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Restricted tradeable\"},{\"value\":\"3\",\"name\":\"Counter\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Counter (tradeable)\"},{\"value\":\"4\",\"name\":\"InitiallyTradeable\",\"since\":\"5.0.2\",\"ep\":126,\"sort\":5,\"doc\":\"Initially tradeable\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Indicative\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Indicative\"},{\"value\":\"1\",\"name\":\"Tradeable\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Tradeable\"},{\"value\":\"2\",\"name\":\"RestrictedTradeable\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Restricted tradeable\"},{\"value\":\"3\",\"name\":\"Counter\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Counter (tradeable)\"},{\"value\":\"4\",\"name\":\"InitiallyTradeable\",\"since\":\"5.0.2\",\"ep\":126,\"sort\":5,\"aliases\":[\"IndicativeAndTradeable\"],\"doc\":\"Initially tradeable\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"mdquotetype\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1070"
     }
@@ -1209,7 +1209,7 @@
     "metadata": {
       "description": "Defines the type of peg.",
       "display": "PegPriceType",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"LastPeg\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Last peg (last sale)\"},{\"value\":\"10\",\"name\":\"ShortSaleMinPricePeg\",\"since\":\"5.0.2\",\"ep\":123,\"sort\":10,\"doc\":\"Short sale minimum price Peg\"},{\"value\":\"2\",\"name\":\"MidPricePeg\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Mid-price peg (midprice of inside quote)\"},{\"value\":\"3\",\"name\":\"OpeningPeg\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Opening peg\"},{\"value\":\"4\",\"name\":\"MarketPeg\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Market peg\"},{\"value\":\"5\",\"name\":\"PrimaryPeg\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Primary peg (primary market - buy at bid or sell at offer)\"},{\"value\":\"7\",\"name\":\"PegToVWAP\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Peg to VWAP\"},{\"value\":\"8\",\"name\":\"TrailingStopPeg\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Trailing Stop Peg\"},{\"value\":\"9\",\"name\":\"PegToLimitPrice\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Peg to Limit Price\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"LastPeg\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Last peg (last sale)\"},{\"value\":\"10\",\"name\":\"ShortSaleMinPricePeg\",\"since\":\"5.0.2\",\"ep\":123,\"sort\":10,\"doc\":\"Short sale minimum price Peg\"},{\"value\":\"2\",\"name\":\"MidPricePeg\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Mid-price peg (midprice of inside quote)\"},{\"value\":\"3\",\"name\":\"OpeningPeg\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Opening peg\"},{\"value\":\"4\",\"name\":\"MarketPeg\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Market peg\"},{\"value\":\"5\",\"name\":\"PrimaryPeg\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Primary peg (primary market - buy at bid or sell at offer)\"},{\"value\":\"6\",\"name\":\"FixedPegToLocalBestBidOrOfferAtTimeOfOrder\",\"since\":\"5.0\",\"deprecated\":\"5.0.1\"},{\"value\":\"7\",\"name\":\"PegToVWAP\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Peg to VWAP\"},{\"value\":\"8\",\"name\":\"TrailingStopPeg\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Trailing Stop Peg\"},{\"value\":\"9\",\"name\":\"PegToLimitPrice\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Peg to Limit Price\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"pegpricetype\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1094"
     }

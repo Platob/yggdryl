@@ -474,6 +474,7 @@ impl<'field> FixField<'field>
   pub fn group(&self) -> Option<&'field str>
   pub fn msgtype(&self) -> Option<&'field str>
   pub fn counter(&self) -> Result<Option<i32>>
+  pub fn replacements(&self) -> FixReplacements<'field>
   impl FixFieldMut<'_>
   pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()>
   pub fn set_id(&mut self, branch: &FixBranch, tag: i32) -> Result<()>
@@ -491,8 +492,68 @@ impl<'field> FixField<'field>
   pub fn remove_msgtype(&mut self) -> Option<String>
   pub fn set_counter(&mut self, tag: i32) -> Result<()>
   pub fn remove_counter(&mut self) -> Result<Option<i32>>
+  pub fn set_replacements(&mut self, entries: &[FixReplacement]) -> Result<()>
+  pub fn remove_replacements(&mut self) -> Result<Option<Vec<FixReplacement>>>
   pub struct FixAliases<'field>
   impl<'field> Iterator for FixAliases<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
+
+### yggdryl::fix::document  [rust\src\fix\document.rs]
+pub struct Words<'doc>  (re-exported at the crate root)
+  impl<'doc> Iterator for Words<'doc>  (Item = &'doc str; also FusedIterator)
+  impl Clone, Debug for Words<'_>
+pub struct Numbers<'doc>
+  impl Iterator for Numbers<'_>  (Item = i32; also FusedIterator)
+  impl Clone, Debug for Numbers<'_>
+
+### yggdryl::fix::replacements  [rust\src\fix\replacements.rs]
+pub enum FixFillSource  (Source | Constant(SmolStr) | From(i32) | Join(Vec<i32>))
+  impl Clone, Debug, PartialEq, Eq for FixFillSource
+pub enum FixFill
+  Field { tag: i32, value: FixFillSource }
+  Group { name: SmolStr, members: Vec<FixFill> }
+  impl Clone, Debug, PartialEq, Eq for FixFill
+  impl From<FixFillEntry<'_>> for FixFill
+pub struct FixReplacement
+  pub const fn new(since: Version) -> Self
+  pub const fn with_ep(mut self, ep: u32) -> Self
+  pub fn with_msgtypes<I, S>(mut self, msgtypes: I) -> Self where I: IntoIterator<Item = S>, S: Into<SmolStr>,
+  pub fn with_in<I, S>(mut self, groups: I) -> Self where I: IntoIterator<Item = S>, S: Into<SmolStr>,
+  pub fn with_when(mut self, when: impl Into<SmolStr>) -> Self
+  pub fn with_fills<I>(mut self, fills: I) -> Self where I: IntoIterator<Item = FixFill>,
+  pub fn with_doc(mut self, doc: impl Into<SmolStr>) -> Self
+  pub const fn since(&self) -> Version
+  pub const fn ep(&self) -> Option<u32>
+  pub fn msgtypes(&self) -> &[SmolStr]
+  pub fn in_groups(&self) -> &[SmolStr]
+  pub fn when(&self) -> Option<&str>
+  pub fn fills(&self) -> &[FixFill]
+  pub fn doc(&self) -> Option<&str>
+  impl Clone, Debug, PartialEq, Eq for FixReplacement
+  impl From<FixReplacementEntry<'_>> for FixReplacement
+pub enum FixFillValue<'field>  (Source | Constant(&'field str) | From(i32) | Join(Numbers<'field>))
+  impl Clone, Debug for FixFillValue<'_>
+pub enum FixFillEntry<'field>
+  Field { tag: i32, value: FixFillValue<'field> }
+  Group { name: &'field str, members: FixFills<'field> }
+  impl Clone, Debug for FixFillEntry<'_>
+pub struct FixReplacementEntry<'field>
+  pub const fn since(self) -> Version
+  pub const fn ep(self) -> Option<u32>
+  pub const fn msgtypes(self) -> Words<'field>
+  pub const fn in_groups(self) -> Words<'field>
+  pub const fn when(self) -> Option<&'field str>
+  pub const fn fills(self) -> FixFills<'field>
+  pub const fn doc(self) -> Option<&'field str>
+  pub fn parse_doc(self) -> Result<Option<String>>
+  impl Clone, Copy, Debug, PartialEq, Eq for FixReplacementEntry<'_>
+pub struct FixFills<'field>
+  pub fn next_ok(&mut self) -> Option<FixFillEntry<'field>>
+  impl<'field> Iterator for FixFills<'field>  (Item = Result<FixFillEntry<'field>>; also FusedIterator)
+  impl Clone, Debug for FixFills<'_>
+pub struct FixReplacements<'field>
+  pub fn next_ok(&mut self) -> Option<FixReplacementEntry<'field>>
+  impl<'field> Iterator for FixReplacements<'field>  (Item = Result<FixReplacementEntry<'field>>; also FusedIterator)
+  impl Clone, Debug for FixReplacements<'_>
 
 ### yggdryl::fix::global  [rust\src\fix\global.rs]
 impl FixRegistry

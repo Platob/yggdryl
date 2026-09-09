@@ -153,7 +153,7 @@
     "metadata": {
       "description": "Indicates whether or not to exchange for phsyical.",
       "display": "ExchangeForPhysical",
-      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"False\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"False\"},{\"value\":\"Y\",\"name\":\"True\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"True\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"False\",\"since\":\"4.2\",\"sort\":1,\"aliases\":[\"No\"],\"doc\":\"False\"},{\"value\":\"Y\",\"name\":\"True\",\"since\":\"4.2\",\"sort\":2,\"aliases\":[\"Yes\"],\"doc\":\"True\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"exchangeforphysical\",\"type\":{\"type\":\"boolean\"}}]}",
       "fix:tag": "411"
     }
@@ -315,7 +315,7 @@
     "metadata": {
       "description": "Code to represent the price type.",
       "display": "PriceType",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Percentage\",\"since\":\"4.2\",\"doc\":\"Percentage (i.e. percent of par) (often called \\\"dollar price\\\" for fixed income)\"},{\"value\":\"10\",\"name\":\"FixedCabinetTradePrice\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Fixed cabinet trade price (primarily for listed futures and options)\"},{\"value\":\"11\",\"name\":\"VariableCabinetTradePrice\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Variable cabinet trade price (primarily for listed futures and options)\"},{\"value\":\"12\",\"name\":\"PriceSpread\",\"since\":\"5.0.2\",\"ep\":207,\"sort\":11,\"doc\":\"Price spread\"},{\"value\":\"13\",\"name\":\"ProductTicksInHalves\",\"since\":\"4.4\",\"ep\":19,\"sort\":12,\"doc\":\"Product ticks in halves\"},{\"value\":\"14\",\"name\":\"ProductTicksInFourths\",\"since\":\"4.4\",\"ep\":19,\"sort\":13,\"doc\":\"Product ticks in fourths\"},{\"value\":\"15\",\"name\":\"ProductTicksInEighths\",\"since\":\"4.4\",\"ep\":19,\"sort\":14,\"doc\":\"Product ticks in eighths\"},{\"value\":\"16\",\"name\":\"ProductTicksInSixteenths\",\"since\":\"4.4\",\"ep\":19,\"sort\":15,\"doc\":\"Product ticks in sixteenths\"},{\"value\":\"17\",\"name\":\"ProductTicksInThirtySeconds\",\"since\":\"4.4\",\"ep\":19,\"sort\":16,\"doc\":\"Product ticks in thirty-seconds\"},{\"value\":\"18\",\"name\":\"ProductTicksInSixtyFourths\",\"since\":\"4.4\",\"ep\":19,\"sort\":17,\"doc\":\"Product ticks in sixty-fourths\"},{\"value\":\"19\",\"name\":\"ProductTicksInOneTwentyEighths\",\"since\":\"4.4\",\"ep\":19,\"sort\":18,\"doc\":\"Product ticks in one-twenty-eighths\"},{\"value\":\"2\",\"name\":\"PerUnit\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Per unit (i.e. per share or contract)\"},{\"value\":\"20\",\"name\":\"NormalRateRepresentation\",\"since\":\"5.0.2\",\"ep\":100,\"sort\":19,\"doc\":\"Normal rate representation (e.g. FX rate)\"},{\"value\":\"21\",\"name\":\"InverseRateRepresentation\",\"since\":\"5.0.2\",\"ep\":100,\"sort\":20,\"doc\":\"Inverse rate representation (e.g. FX rate)\"},{\"value\":\"22\",\"name\":\"BasisPoints\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":22,\"doc\":\"Basis points\"},{\"value\":\"23\",\"name\":\"UpfrontPoints\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":23,\"doc\":\"Up front points\"},{\"value\":\"24\",\"name\":\"InterestRate\",\"since\":\"5.0.2\",\"ep\":174,\"sort\":24,\"doc\":\"Interest rate\"},{\"value\":\"25\",\"name\":\"PercentageNotional\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":25,\"doc\":\"Percentage of notional\"},{\"value\":\"3\",\"name\":\"FixedAmount\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Fixed amount (absolute value)\"},{\"value\":\"4\",\"name\":\"Discount\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Discount - percentage points below par\"},{\"value\":\"5\",\"name\":\"Premium\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Premium - percentage points over par\"},{\"value\":\"6\",\"name\":\"Spread\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Spread (basis points spread)\"},{\"value\":\"7\",\"name\":\"TEDPrice\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"TED Price\"},{\"value\":\"8\",\"name\":\"TEDYield\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"TED Yield\"},{\"value\":\"9\",\"name\":\"Yield\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Yield\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Percentage\",\"since\":\"4.2\",\"doc\":\"Percentage (i.e. percent of par) (often called \\\"dollar price\\\" for fixed income)\"},{\"value\":\"10\",\"name\":\"FixedCabinetTradePrice\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Fixed cabinet trade price (primarily for listed futures and options)\"},{\"value\":\"11\",\"name\":\"VariableCabinetTradePrice\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Variable cabinet trade price (primarily for listed futures and options)\"},{\"value\":\"12\",\"name\":\"PriceSpread\",\"since\":\"5.0.2\",\"ep\":207,\"sort\":11,\"doc\":\"Price spread\"},{\"value\":\"13\",\"name\":\"ProductTicksInHalves\",\"since\":\"4.4\",\"ep\":19,\"sort\":12,\"aliases\":[\"ProductTicksInHalfs\"],\"doc\":\"Product ticks in halves\"},{\"value\":\"14\",\"name\":\"ProductTicksInFourths\",\"since\":\"4.4\",\"ep\":19,\"sort\":13,\"doc\":\"Product ticks in fourths\"},{\"value\":\"15\",\"name\":\"ProductTicksInEighths\",\"since\":\"4.4\",\"ep\":19,\"sort\":14,\"aliases\":[\"ProductTicksInEights\"],\"doc\":\"Product ticks in eighths\"},{\"value\":\"16\",\"name\":\"ProductTicksInSixteenths\",\"since\":\"4.4\",\"ep\":19,\"sort\":15,\"doc\":\"Product ticks in sixteenths\"},{\"value\":\"17\",\"name\":\"ProductTicksInThirtySeconds\",\"since\":\"4.4\",\"ep\":19,\"sort\":16,\"doc\":\"Product ticks in thirty-seconds\"},{\"value\":\"18\",\"name\":\"ProductTicksInSixtyFourths\",\"since\":\"4.4\",\"ep\":19,\"sort\":17,\"aliases\":[\"ProductTicksInSixtyForths\"],\"doc\":\"Product ticks in sixty-fourths\"},{\"value\":\"19\",\"name\":\"ProductTicksInOneTwentyEighths\",\"since\":\"4.4\",\"ep\":19,\"sort\":18,\"aliases\":[\"ProductTicksInOneTwentyEights\"],\"doc\":\"Product ticks in one-twenty-eighths\"},{\"value\":\"2\",\"name\":\"PerUnit\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Per unit (i.e. per share or contract)\"},{\"value\":\"20\",\"name\":\"NormalRateRepresentation\",\"since\":\"5.0.2\",\"ep\":100,\"sort\":19,\"doc\":\"Normal rate representation (e.g. FX rate)\"},{\"value\":\"21\",\"name\":\"InverseRateRepresentation\",\"since\":\"5.0.2\",\"ep\":100,\"sort\":20,\"doc\":\"Inverse rate representation (e.g. FX rate)\"},{\"value\":\"22\",\"name\":\"BasisPoints\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":22,\"doc\":\"Basis points\"},{\"value\":\"23\",\"name\":\"UpfrontPoints\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":23,\"doc\":\"Up front points\"},{\"value\":\"24\",\"name\":\"InterestRate\",\"since\":\"5.0.2\",\"ep\":174,\"sort\":24,\"doc\":\"Interest rate\"},{\"value\":\"25\",\"name\":\"PercentageNotional\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":25,\"doc\":\"Percentage of notional\"},{\"value\":\"3\",\"name\":\"FixedAmount\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Fixed amount (absolute value)\"},{\"value\":\"4\",\"name\":\"Discount\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Discount - percentage points below par\"},{\"value\":\"5\",\"name\":\"Premium\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Premium - percentage points over par\"},{\"value\":\"6\",\"name\":\"Spread\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Spread (basis points spread)\"},{\"value\":\"7\",\"name\":\"TEDPrice\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"TED Price\"},{\"value\":\"8\",\"name\":\"TEDYield\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"TED Yield\"},{\"value\":\"9\",\"name\":\"Yield\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Yield\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"pricetype\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "423"
     }
@@ -368,7 +368,7 @@
     "metadata": {
       "description": "Code to identify whether to book out executions on a part-filled GT order on the day of execution or to accumulate.",
       "display": "GTBookingInst",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BookOutAllTradesOnDayOfExecution\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Book out all trades on day of execution\"},{\"value\":\"1\",\"name\":\"AccumulateUntilFilledOrExpired\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Accumulate executions until order is filled or expires\"},{\"value\":\"2\",\"name\":\"AccumulateUntilVerballyNotifiedOtherwise\",\"since\":\"4.2\",\"sort\":3,\"doc\":\"Accumulate until verbally notified otherwise\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BookOutAllTradesOnDayOfExecution\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Book out all trades on day of execution\"},{\"value\":\"1\",\"name\":\"AccumulateUntilFilledOrExpired\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Accumulate executions until order is filled or expires\"},{\"value\":\"2\",\"name\":\"AccumulateUntilVerballyNotifiedOtherwise\",\"since\":\"4.2\",\"sort\":3,\"aliases\":[\"AccumulateUntilVerballlyNotifiedOtherwise\"],\"doc\":\"Accumulate until verbally notified otherwise\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"gtbookinginst\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "427"
     }
@@ -465,7 +465,7 @@
     "metadata": {
       "description": "Identifies the type of request that a Cancel Reject is in response to.",
       "display": "CxlRejResponseTo",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"OrderCancelRequest\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Order cancel request\"},{\"value\":\"2\",\"name\":\"OrderCancelReplaceRequest\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Order cancel/replace request\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"OrderCancelRequest\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Order cancel request\"},{\"value\":\"2\",\"name\":\"OrderCancelReplaceRequest\",\"since\":\"4.2\",\"sort\":2,\"aliases\":[\"OrderCancel\"],\"doc\":\"Order cancel/replace request\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"cxlrejresponseto\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "434"
     }
@@ -522,6 +522,32 @@
       "display": "ContraTradeTime",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"contratradetime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
       "fix:tag": "438"
+    }
+  },
+  {
+    "name": "clearingfirm",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ClearingFirm",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"clearingfirm\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"removed\":true}]}",
+      "fix:replacements": "{\"replacements\":[{\"since\":\"4.3\",\"fills\":[{\"group\":\"parties\",\"members\":[{\"tag\":448},{\"tag\":452,\"value\":\"4\"}]}],\"doc\":\"ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)\"}]}",
+      "fix:tag": "439"
+    }
+  },
+  {
+    "name": "clearingaccount",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ClearingAccount",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"clearingaccount\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"removed\":true}]}",
+      "fix:replacements": "{\"replacements\":[{\"since\":\"4.3\",\"fills\":[{\"group\":\"parties\",\"members\":[{\"tag\":452,\"value\":\"4\"},{\"group\":\"ptyssubgrp\",\"members\":[{\"tag\":523}]}]}],\"doc\":\"ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)\"}]}",
+      "fix:tag": "440"
     }
   },
   {
@@ -630,6 +656,33 @@
       "display": "PartyID",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"partyid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "448"
+    }
+  },
+  {
+    "name": "totalvolumetradeddate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotalVolumeTradedDate",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"totalvolumetradeddate\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}},{\"since\":\"4.4\",\"removed\":true}]}",
+      "fix:tag": "449"
+    }
+  },
+  {
+    "name": "totalvolumetradedtime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotalVolumeTradedTime",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"totalvolumetradedtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}},{\"since\":\"4.4\",\"removed\":true}]}",
+      "fix:tag": "450"
     }
   },
   {
@@ -815,9 +868,23 @@
     "metadata": {
       "description": "Indicates whether or not this FIX Session is a \"test\" vs. \"production\" connection. Useful for preventing \"accidents\".",
       "display": "TestMessageIndicator",
-      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"False\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"False (production)\"},{\"value\":\"Y\",\"name\":\"True\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"True (test)\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"False\",\"since\":\"4.3\",\"sort\":1,\"aliases\":[\"No\"],\"doc\":\"False (production)\"},{\"value\":\"Y\",\"name\":\"True\",\"since\":\"4.3\",\"sort\":2,\"aliases\":[\"Yes\"],\"doc\":\"True (test)\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"testmessageindicator\",\"type\":{\"type\":\"boolean\"}}]}",
       "fix:tag": "464"
+    }
+  },
+  {
+    "name": "quantitytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "QuantityType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Shares\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"2\",\"name\":\"Bonds\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"3\",\"name\":\"Currentface\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"4\",\"name\":\"Originalface\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"5\",\"name\":\"Currency\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"6\",\"name\":\"Contracts\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"7\",\"name\":\"Other\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"8\",\"name\":\"Par\",\"since\":\"4.3\",\"deprecated\":\"4.4\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"quantitytype\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.4\",\"removed\":true}]}",
+      "fix:replacements": "{\"replacements\":[{\"since\":\"4.4\",\"when\":\"6\",\"fills\":[{\"tag\":854,\"value\":\"1\"}],\"doc\":\"QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)\"},{\"since\":\"4.4\",\"when\":\"1\",\"fills\":[{\"tag\":854,\"value\":\"0\"}],\"doc\":\"QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)\"},{\"since\":\"4.4\",\"when\":\"5\",\"fills\":[{\"tag\":854,\"value\":\"0\"}],\"doc\":\"QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)\"},{\"since\":\"4.4\",\"when\":\"8\",\"fills\":[{\"tag\":854,\"value\":\"0\"}],\"doc\":\"QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)\"}]}",
+      "fix:tag": "465"
     }
   },
   {
@@ -1110,7 +1177,7 @@
     "metadata": {
       "description": "Identifies Trade Report message transaction type",
       "display": "TradeReportTransType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Cancel\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Cancel\"},{\"value\":\"2\",\"name\":\"Replace\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Replace\"},{\"value\":\"3\",\"name\":\"Release\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Release\"},{\"value\":\"4\",\"name\":\"Reverse\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Reverse\"},{\"value\":\"5\",\"name\":\"CancelDueToBackOutOfTrade\",\"since\":\"4.4\",\"ep\":4,\"sort\":6,\"doc\":\"Cancel Due To Back Out of Trade\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Cancel\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Cancel\"},{\"value\":\"2\",\"name\":\"Replace\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Replace\"},{\"value\":\"3\",\"name\":\"Release\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Release\"},{\"value\":\"4\",\"name\":\"Reverse\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Reverse\"},{\"value\":\"5\",\"name\":\"CancelDueToBackOutOfTrade\",\"since\":\"4.4\",\"ep\":4,\"sort\":6,\"doc\":\"Cancel Due To Back Out of Trade\"},{\"value\":\"C\",\"name\":\"CancelLegacy\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"N\",\"name\":\"NewLegacy\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"R\",\"name\":\"ReplaceLegacy\",\"since\":\"4.3\",\"deprecated\":\"4.4\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradereporttranstype\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.4\",\"name\":\"tradereporttranstype\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "487"
     }

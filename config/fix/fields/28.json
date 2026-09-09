@@ -365,7 +365,7 @@
     "metadata": {
       "description": "Used to indicate that a ClOrdID(11) value is an intentional duplicate of a previously sent value. Allows to avoid the rejection of an order with OrdRejReason(103) = 6 (Duplicate Order).",
       "display": "DuplicateClOrdIDIndicator",
-      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"UniqueClOrdID\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":1,\"doc\":\"Unique ClOrdID(11)\"},{\"value\":\"Y\",\"name\":\"DuplicateClOrdID\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":2,\"doc\":\"Duplicate ClOrdID(11)\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"UniqueClOrdID\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":1,\"aliases\":[\"No\"],\"doc\":\"Unique ClOrdID(11)\"},{\"value\":\"Y\",\"name\":\"DuplicateClOrdID\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":2,\"aliases\":[\"Yes\"],\"doc\":\"Duplicate ClOrdID(11)\"}]}",
       "fix:tag": "2829"
     }
   },
@@ -467,7 +467,7 @@
     "metadata": {
       "description": "Used to indicate whether the quoting system allows only one quote to be active at a time for the quote issuer or market maker.",
       "display": "SingleQuoteIndicator",
-      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"MultipleQuotesAllowed\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":1,\"doc\":\"Multiple quotes allowed\"},{\"value\":\"Y\",\"name\":\"OnlyOneQuoteAllowed\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":2,\"doc\":\"Only one quote allowed\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"MultipleQuotesAllowed\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":1,\"aliases\":[\"No\"],\"doc\":\"Multiple quotes allowed\"},{\"value\":\"Y\",\"name\":\"OnlyOneQuoteAllowed\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":2,\"aliases\":[\"Yes\"],\"doc\":\"Only one quote allowed\"}]}",
       "fix:tag": "2837"
     }
   },
@@ -492,7 +492,7 @@
     "metadata": {
       "description": "Indicates whether a given timestamp was manually captured.",
       "display": "TrdRegTimestampManualIndicator",
-      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"NotManuallyCaptured\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":1,\"doc\":\"Not manually captured\"},{\"value\":\"Y\",\"name\":\"ManuallyCaptured\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":2,\"doc\":\"Manually captured\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"NotManuallyCaptured\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":1,\"aliases\":[\"No\"],\"doc\":\"Not manually captured\"},{\"value\":\"Y\",\"name\":\"ManuallyCaptured\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":2,\"aliases\":[\"Yes\"],\"doc\":\"Manually captured\"}]}",
       "fix:tag": "2839"
     }
   },
@@ -763,7 +763,7 @@
     "metadata": {
       "description": "Type of attribute(s) or characteristic(s) associated with the transaction.",
       "display": "TransactionAttributeType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ExclusiveArrangement\",\"since\":\"5.0.2\",\"ep\":254,\"doc\":\"Exclusive arrangement\"},{\"value\":\"1\",\"name\":\"CollateralReuse\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":1,\"doc\":\"Collateral reuse\"},{\"value\":\"2\",\"name\":\"CollateralArrangementType\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":2,\"doc\":\"Collateral arrangement type\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ExclusiveArrangement\",\"since\":\"5.0.2\",\"ep\":254,\"doc\":\"Exclusive arrangement\"},{\"value\":\"1\",\"name\":\"CollateralReuse\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":1,\"doc\":\"Collateral reuse\"},{\"value\":\"2\",\"name\":\"CollateralArrangementType\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":2,\"aliases\":[\"CollateralArrangmentType\"],\"doc\":\"Collateral arrangement type\"}]}",
       "fix:tag": "2872"
     }
   },
@@ -888,7 +888,7 @@
       "description": "Indicates whether a routing arrangement is in place, e.g. between two brokers. May be used together with OrderOrigination(1724) to further describe the origin of an order.",
       "display": "RoutingArrangementIndicator",
       "fix:aliases": "routingarrangmentindicator",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoRoutingArrangementInPlace\",\"since\":\"5.0.2\",\"ep\":256,\"doc\":\"No routing arrangement in place\"},{\"value\":\"1\",\"name\":\"RoutingArrangementInPlace\",\"since\":\"5.0.2\",\"ep\":256,\"sort\":1,\"doc\":\"Routing arrangement in place\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoRoutingArrangementInPlace\",\"since\":\"5.0.2\",\"ep\":256,\"aliases\":[\"NoRoutingArrangmentInPlace\"],\"doc\":\"No routing arrangement in place\"},{\"value\":\"1\",\"name\":\"RoutingArrangementInPlace\",\"since\":\"5.0.2\",\"ep\":256,\"sort\":1,\"doc\":\"Routing arrangement in place\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"routingarrangmentindicator\",\"type\":{\"type\":\"int32\"}},{\"since\":\"5.0.2\",\"ep\":256,\"name\":\"routingarrangementindicator\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "2883"
     }

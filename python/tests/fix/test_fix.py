@@ -332,7 +332,7 @@ def test_a_specification_tag_forces_the_standard_branch() -> None:
 def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) -> None:
     # The store's fields, and the crate's own beside them: a store never
     # writes those, so a loaded dictionary holds the crate's definition.
-    assert len(seed) == 6203 + CRATED
+    assert len(seed) == 6241 + CRATED
     assert bool(seed)
 
     assert seed.field_by_tag(55).name == "symbol"
@@ -1225,7 +1225,7 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     assert restored.by_path("parties.0.partyid").as_py() == "BROKER"
 
     assert repr(message) == 'FixMsg("NewOrderSingle", 5 values)'
-    assert repr(seed) == f"FixRegistry({6203 + CRATED} fields)"
+    assert repr(seed) == f"FixRegistry({6241 + CRATED} fields)"
     # A new registry is never empty: it holds the crate's own fields.
     assert repr(FixRegistry()) == f"FixRegistry({CRATED} fields)"
 

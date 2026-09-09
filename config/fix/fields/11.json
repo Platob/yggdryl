@@ -960,7 +960,7 @@
     "metadata": {
       "description": "Specifies whether a quote is public, i.e. available to the market, or private, i.e. available to a specified counterparty only.",
       "display": "PrivateQuote",
-      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"PublicQuote\",\"since\":\"5.0\",\"ep\":46,\"sort\":2,\"doc\":\"Public Quote\"},{\"value\":\"Y\",\"name\":\"PrivateQuote\",\"since\":\"5.0\",\"ep\":46,\"sort\":1,\"doc\":\"Private Quote\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"PublicQuote\",\"since\":\"5.0\",\"ep\":46,\"sort\":2,\"aliases\":[\"No\"],\"doc\":\"Public Quote\"},{\"value\":\"Y\",\"name\":\"PrivateQuote\",\"since\":\"5.0\",\"ep\":46,\"sort\":1,\"aliases\":[\"Yes\"],\"doc\":\"Private Quote\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"privatequote\",\"type\":{\"type\":\"boolean\"}}]}",
       "fix:tag": "1171"
     }

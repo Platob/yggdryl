@@ -18,6 +18,7 @@
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
 //! | lineage | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version |
 //! | codes | `fix:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
+//! | replacements | `fix:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take |
 //! | counter | `fix:counter` | `i32` | the wire field counting a group's occurrences |
 //! | component | `fix:component` | name | the component defining a group occurrence |
 //!
@@ -163,6 +164,7 @@ mod msgtype;
 mod catalog;
 mod record;
 mod registry;
+mod replacements;
 mod schema;
 mod store;
 #[cfg(test)]
@@ -188,7 +190,7 @@ pub use crated::{
     fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
-pub use document::Words;
+pub use document::{Numbers, Words};
 pub use entry::FixEntry;
 pub use field::FixSpellings;
 pub use lifecycle::FixLifecycle;
@@ -198,6 +200,10 @@ pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
 pub use registry::{FixFieldIter, FixRegistry};
+pub use replacements::{
+    FixFill, FixFillEntry, FixFillSource, FixFillValue, FixFills, FixReplacement,
+    FixReplacementEntry, FixReplacements,
+};
 pub use ulbridge::{
     ERROR_TAG, MBEAN_TAG, OPERATION_TAG, STATUS_TAG, ULBRIDGE_BRANCH, ULBRIDGE_ROWHEADER,
     ULBRIDGE_TAG_MIN, UlPlugin, UlPlugins, fix_ulbridge_fields,

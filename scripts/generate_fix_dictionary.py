@@ -16,6 +16,13 @@ references its ordinary int32 counter and contains a non-null component.
 Each field stores its enum records directly in fix:codes metadata. Datatypes
 resolve through the crate's logical-name table.
 
+The dictionary carries every cross-version fact the crate restates a message
+with, so no table of them lives in Rust: a field FIX removed is present with
+a lineage that ends in a removed entry, a field or code FIX deprecated says so
+at its version, a code set holds every value an older version declared and
+every older spelling of a surviving one, and a field whose value another field
+took over carries the fix:replacements document that says which and how.
+
 Usage::
 
     python scripts/generate_fix_dictionary.py
@@ -169,6 +176,40 @@ def version_of(spelling: str | None) -> str | None:
     return text or None
 
 
+def deprecated_version_of(spelling: str | None, latest_version: str) -> str | None:
+    """The version a `deprecated` attribute names, as a version the crate orders.
+
+    Two spellings mean something `version_of` cannot say: `FIXT.1.1` is the
+    session layer that shipped with FIX 5.0, so a field deprecated there was
+    deprecated at 5.0, and `FIX.Latest` is the document being read, whose own
+    version is the date - the extension pack beside it is what makes the
+    point finer than the version alone.
+    """
+    if spelling == "FIXT.1.1":
+        return "5.0"
+    if spelling in {"FIX.Latest", "Latest"}:
+        return latest_version
+    return version_of(spelling)
+
+
+# The QuickFIX versions in publication order: the version after the last one
+# naming a field or listing a code is where the dictionary dates its removal.
+QUICKFIX_VERSIONS = tuple(source.version for source in SOURCES if source.format == "quickfix")
+
+
+def version_after(version: str, latest_version: str) -> str:
+    """The QuickFIX version following `version`, else the Latest document's own.
+
+    A gap between two listings is not a removal, so callers hand this the last
+    version that names the thing; when that is the newest QuickFIX file, the
+    next dated point the dictionary has is Latest itself.
+    """
+    at = QUICKFIX_VERSIONS.index(version)
+    if at + 1 < len(QUICKFIX_VERSIONS):
+        return QUICKFIX_VERSIONS[at + 1]
+    return latest_version
+
+
 def read_source(source: Source, base: str | pathlib.Path | None) -> bytes:
     """Read one source from a local directory or from its pinned URL."""
     if base is not None and not str(base).startswith(("http://", "https://")):
@@ -212,6 +253,7 @@ def parse_orchestra(data: bytes, protocol_version: str | None = None) -> dict[st
         ep = int(declared.rsplit("_EP", 1)[1])
     elif declared.startswith("EP"):
         ep = int(declared[2:])
+    version = protocol_version or version_of(declared.split("_")[0]) or "5.0.2"
 
     code_sets: dict[str, dict[str, Any]] = {}
     for element in root.iter(f"{{{NS['fixr']}}}codeSet"):
@@ -245,6 +287,8 @@ def parse_orchestra(data: bytes, protocol_version: str | None = None) -> dict[st
             "code_set": element.get("codeSet"),
             "since": version_of(element.get("added")),
             "ep": extension_pack(element.get("addedEP")),
+            "deprecated": deprecated_version_of(element.get("deprecated"), version),
+            "deprecated_ep": extension_pack(element.get("deprecatedEP")),
             "doc": orchestra_documentation(element),
         }
 
@@ -287,7 +331,7 @@ def parse_orchestra(data: bytes, protocol_version: str | None = None) -> dict[st
     }
 
     return {
-        "version": protocol_version or version_of(declared.split("_")[0]) or "5.0.2",
+        "version": version,
         "ep": ep,
         "fields": fields,
         "code_sets": code_sets,
@@ -490,6 +534,419 @@ def codes_document(codes: list[dict[str, Any]]) -> str:
     return canonical_json({"codes": rendered})
 
 
+def camel_case(description: str) -> str:
+    """A QuickFIX enum description as a code name: `PARTIAL_FILL` is `PartialFill`."""
+    return "".join(part[:1].upper() + part[1:].lower() for part in description.split("_") if part)
+
+
+# The legacy names the crate's own `state` datatype reads, where the CamelCased
+# QuickFIX description would spell them differently. `State::from_spelling`
+# knows `PartiallyFilled` and `Filled`; it does not know `PartialFill`.
+LEGACY_NAMES = {(150, "1"): "PartiallyFilled", (150, "2"): "Filled"}
+
+# Deprecations the specification dated in Appendix 6-F before the removal the
+# QuickFIX history shows, which no scraped source states as an attribute.
+HAND_DATED_DEPRECATIONS = {47: "4.3", 219: "4.3", 370: "4.3"}
+
+
+def place_entry(entries: list[dict[str, Any]], since: str, ep: int | None, flag: str) -> None:
+    """State `flag` at one pedigree, merging into the entry already dated there.
+
+    The Rust writer refuses two entries at one pedigree, so a flag dated where
+    the history already has a point joins that point; elsewhere it is its own
+    entry, kept in the pedigree order the reader walks - version first, and a
+    version's base statement before any extension pack against it.
+    """
+    for entry in entries:
+        if (entry["since"], entry.get("ep")) == (since, ep):
+            entry[flag] = True
+            return
+
+    def pedigree(entry: dict[str, Any]) -> tuple[tuple[int, int, int], bool, int]:
+        return version_key(entry["since"]), entry.get("ep") is not None, entry.get("ep") or 0
+
+    placed = {"since": since, "ep": ep, flag: True}
+    at = len(entries)
+    while at > 0 and pedigree(entries[at - 1]) > pedigree(placed):
+        at -= 1
+    entries.insert(at, placed)
+
+
+def fold_legacy_codes(
+    tag: int,
+    codes: list[dict[str, Any]],
+    listings: list[tuple[str, list[dict[str, str]]]],
+    latest_version: str,
+) -> list[dict[str, Any]]:
+    """One code set holding every value any version declared for the field.
+
+    `codes` is what Latest states and wins on every value it keeps; `listings`
+    are the QuickFIX enum listings, oldest version first. A value Latest kept
+    whose older description folds to another spelling gains that spelling as
+    an alias; a value Latest dropped becomes a code dated from the first
+    version listing it to the version after the last. Names and aliases are
+    one folded namespace across the set, because a spelling reaching two codes
+    resolves to neither: a generated name a current one already claims takes
+    the `Legacy` suffix, and a spelling already reachable is not added twice.
+    """
+    held = [dict(code) for code in codes]
+    by_value = {code["value"]: code for code in held}
+    spelled = {folded(code["name"]) for code in held}
+    spelled.update(folded(alias) for code in held for alias in code.get("aliases") or [])
+    legacy: dict[str, dict[str, Any]] = {}
+    for version, listed in listings:
+        for entry in listed:
+            value = entry["value"].strip()
+            if not value:
+                continue
+            name = LEGACY_NAMES.get((tag, value)) or camel_case(entry["name"])
+            current = by_value.get(value)
+            if current is not None:
+                if folded(name) not in spelled:
+                    current.setdefault("aliases", []).append(name)
+                    spelled.add(folded(name))
+                continue
+            dropped = legacy.get(value)
+            if dropped is None:
+                legacy[value] = {"value": value, "spellings": [name], "since": version, "last": version}
+            else:
+                dropped["last"] = version
+                if name not in dropped["spellings"]:
+                    dropped["spellings"].append(name)
+    for value, dropped in legacy.items():
+        # The newest spelling names the code, as it does for a surviving one.
+        spellings = dropped["spellings"]
+        name = spellings[-1]
+        if folded(name) in spelled:
+            name += "Legacy"
+        if folded(name) in spelled:
+            raise ValueError(f"tag {tag}: legacy code {value!r} has no free name ({name})")
+        spelled.add(folded(name))
+        aliases = []
+        for spelling in spellings[:-1]:
+            if folded(spelling) not in spelled:
+                aliases.append(spelling)
+                spelled.add(folded(spelling))
+        held.append(
+            {
+                "value": value,
+                "name": name,
+                "since": dropped["since"],
+                "deprecated": version_after(dropped["last"], latest_version),
+                "aliases": aliases,
+            }
+        )
+    return held
+
+
+def replacements_document(entries: list[dict[str, Any]]) -> str:
+    """`fix:replacements`, keys in the order the reader expects.
+
+    The Python half of the Rust writer: entry keys `since, ep, msgtypes, in,
+    when, fills, doc`, fill keys `tag, value, from, join, group, members`, and
+    the same compact rendering `codes_document` uses. Entries keep the order
+    the table states them in - the first entry whose `when` matches a value
+    answers, so a catch-all without one comes last - and are never sorted.
+    """
+    entry_order = ["since", "ep", "msgtypes", "in", "when", "fills", "doc"]
+    fill_order = ["tag", "value", "from", "join", "group", "members"]
+
+    def fills(held: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rendered = []
+        for fill in held:
+            rendered.append(
+                {
+                    key: fills(fill[key]) if key == "members" else fill[key]
+                    for key in fill_order
+                    if fill.get(key) not in (None, [])
+                }
+            )
+        return rendered
+
+    rendered = []
+    for entry in entries:
+        rendered.append(
+            {
+                key: fills(entry[key]) if key == "fills" else entry[key]
+                for key in entry_order
+                if entry.get(key) not in (None, [])
+            }
+        )
+    return canonical_json({"replacements": rendered})
+
+
+def rule(
+    since: str,
+    fills: list[dict[str, Any]],
+    *,
+    when: str | None = None,
+    msgtypes: list[str] | None = None,
+    within: list[str] | None = None,
+    doc: str | None = None,
+) -> dict[str, Any]:
+    """One replacement entry; `within` is the document's `in`."""
+    return {"since": since, "msgtypes": msgtypes, "in": within, "when": when, "fills": fills, "doc": doc}
+
+
+def fill(tag: int, value: str | None = None, *, source: int | None = None, join: list[int] | None = None) -> dict[str, Any]:
+    """One field target: a constant, another tag's value, a join, or - with
+    none of them - the source field's own value."""
+    return {"tag": tag, "value": value, "from": source, "join": join}
+
+
+def party(role: str) -> list[dict[str, Any]]:
+    """The one Parties occurrence a field naming a counterparty becomes."""
+    return [{"group": "parties", "members": [fill(448), fill(452, role)]}]
+
+
+def benchmark(currency: str, curve: str, point: str) -> list[dict[str, Any]]:
+    """The curve one Benchmark(219) value spelled, as its three fields."""
+    return [fill(220, currency), fill(221, curve), fill(222, point)]
+
+
+# Rule80A(47) as OrderCapacity(528) and, where the appendix states them, the
+# OrderRestrictions(529) tokens; a row whose restriction the appendix leaves to
+# Side fills only the capacity.
+RULE80A = {
+    "A": ("A", None), "B": ("A", None), "C": ("P", "1 3"), "D": ("P", "1 2"),
+    "E": ("P", None), "F": ("W", None), "H": ("I", None), "I": ("I", None),
+    "J": ("I", "1 2"), "K": ("I", "1 3"), "L": ("P", "4"), "M": ("W", "1 2"),
+    "N": ("W", "1 3"), "O": ("P", "4"), "P": ("P", None), "R": ("A", "4"),
+    "S": ("P", "5"), "T": ("W", "5"), "U": ("A", "1 2"), "W": ("W", None),
+    "X": ("W", "4"), "Y": ("A", "1 3"), "Z": ("A", "4"),
+}
+
+# The pegging ExecInst(18) values FIX 5.0 moved to PegPriceType(1094).
+PEG_PRICE_TYPES = {"L": "1", "M": "2", "O": "3", "P": "4", "R": "5", "W": "7", "a": "8", "d": "9"}
+
+# Source tag -> entries, in document order. A tag listed twice concatenates,
+# so a family's entries follow the earlier family's. A `doc` cites the
+# appendix only where the mapping is not the same value in the replacement.
+REPLACEMENT_RULES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
+    # FIX 4.3 Appendix 6-F, Replaced features.
+    (20, [
+        rule("4.3", [fill(150, "H")], when="1", doc="ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)"),
+        rule("4.3", [fill(150, "G")], when="2", doc="ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)"),
+        rule("4.3", [fill(150, "I")], when="3", doc="ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)"),
+    ]),
+    (150, [
+        rule("4.3", [fill(150, "F")], when="1", doc="ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
+        rule("4.3", [fill(150, "F")], when="2", doc="ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
+    ]),
+    (47, [
+        rule(
+            "4.3",
+            [fill(528, capacity)] + ([fill(529, restrictions)] if restrictions else []),
+            when=code,
+            doc=f"Rule80A {code} is OrderCapacity {capacity}"
+            + (f" with OrderRestrictions {restrictions}" if restrictions else "")
+            + " (FIX 4.3 Appendix 6-F)",
+        )
+        for code, (capacity, restrictions) in RULE80A.items()
+    ]),
+    (204, [
+        rule("4.3", [fill(528, "A")], when="0", doc="CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"),
+        rule("4.3", [fill(528, "P")], when="1", doc="CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"),
+    ]),
+    (76, [rule("4.3", party("1"), doc="ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)")]),
+    (92, [rule("4.3", party("2"), doc="BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)")]),
+    (109, [rule("4.3", party("3"), doc="ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)")]),
+    (439, [rule("4.3", party("4"), doc="ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)")]),
+    (440, [
+        rule(
+            "4.3",
+            [{"group": "parties", "members": [fill(452, "4"), {"group": "ptyssubgrp", "members": [fill(523)]}]}],
+            doc="ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)",
+        ),
+    ]),
+    (166, [
+        *(
+            rule(
+                "4.3",
+                [{"group": "parties", "members": [fill(448), fill(447, "C"), fill(452, "10")]}],
+                when=code,
+                doc="SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
+            )
+            for code in ("CED", "DTC", "EUR", "FED", "PNY", "PTC")
+        ),
+        rule(
+            "4.3",
+            [{"group": "parties", "members": [fill(448), fill(447, "E"), fill(452, "10")]}],
+            doc="SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)",
+        ),
+    ]),
+    (46, [rule("4.3", [fill(55)])]),
+    (205, [rule("4.3", [fill(541, join=[200, 205])], doc="MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)")]),
+    (314, [rule("4.3", [fill(542, join=[313, 314])], doc="UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)")]),
+    (370, [
+        rule(
+            "4.3",
+            [{"group": "hopgrp", "members": [fill(629), fill(628, source=115)]}],
+            doc="OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)",
+        ),
+    ]),
+    (71, [
+        rule("4.3", [fill(626, "1")], when="0", msgtypes=["J"], doc="A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)"),
+        rule("4.3", [fill(71, "0"), fill(626, "2")], when="3", msgtypes=["J"], doc="A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)"),
+    ]),
+    # FIX 4.4 Appendix 6-F Replaced features and Appendix 6-E Deprecated features.
+    (40, [
+        rule("4.4", [fill(40, "1"), fill(59, "7")], when="5", doc="OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", [fill(40, "1"), fill(59, "7")], when="A", doc="OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", [fill(40, "2"), fill(59, "7")], when="B", doc="OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", [fill(40, "1"), fill(460, "4")], when="C", doc="OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", [fill(40, "2"), fill(460, "4")], when="F", doc="OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", [fill(40, "D"), fill(460, "4")], when="H", doc="OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
+    ]),
+    (63, [rule("4.4", [fill(63, "2")], when="A", doc="SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)")]),
+    *(
+        (tag, [
+            rule("4.4", [fill(tag, "TNOTE")], when="UST", doc="SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"),
+            rule("4.4", [fill(tag, "TBILL")], when="USTB", doc="SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"),
+        ])
+        for tag in (167, 310, 609)
+    ),
+    (18, [
+        rule(
+            "4.4",
+            [fill(835, "1"), fill(840, "1"), fill(18, "R")],
+            when="T",
+            doc="ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)",
+        ),
+    ]),
+    (219, [
+        rule("4.4", benchmark("USD", "Treasury", "INTERPOLATED"), when="1", doc="Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", benchmark("USD", "Treasury", "5Y"), when="2", doc="Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", benchmark("USD", "Treasury", "5Y-OLD"), when="3", doc="Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", benchmark("USD", "Treasury", "10Y"), when="4", doc="Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", benchmark("USD", "Treasury", "10Y-OLD"), when="5", doc="Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", benchmark("USD", "Treasury", "30Y"), when="6", doc="Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", benchmark("USD", "Treasury", "30Y-OLD"), when="7", doc="Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", benchmark("USD", "LIBOR", "3M"), when="8", doc="Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)"),
+        rule("4.4", benchmark("USD", "LIBOR", "6M"), when="9", doc="Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"),
+    ]),
+    (540, [rule("4.4", [fill(159)])]),
+    (119, [rule("4.4", [fill(737)], within=["allocgrp"])]),
+    (120, [rule("4.4", [fill(736)], within=["allocgrp"])]),
+    (240, [rule("4.4", [fill(696)])]),
+    (239, [rule("4.4", [fill(310)])]),
+    (226, [
+        rule("4.4", [fill(788, "1")], when="1", doc="A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"),
+        rule("4.4", [fill(788, "2")], doc="A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"),
+    ]),
+    (227, [rule("4.4", [fill(44)])]),
+    (465, [
+        rule("4.4", [fill(854, "1")], when="6", doc="QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)"),
+        *(
+            rule("4.4", [fill(854, "0")], when=code, doc="QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)")
+            for code in ("1", "5", "8")
+        ),
+    ]),
+    # FIX 5.0 Appendix 6-E, Deprecated features.
+    (111, [rule("5.0", [fill(1138)])]),
+    (210, [rule("5.0", [fill(1082)])]),
+    (575, [rule("5.0", [fill(1093, "1")], when="Y", doc="An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)")]),
+    (18, [
+        rule("5.0", [fill(1094, price_type)], when=code, doc=f"ExecInst {code} is PegPriceType {price_type} (FIX 5.0 Appendix 6-E)")
+        for code, price_type in PEG_PRICE_TYPES.items()
+    ]),
+    (687, [rule("5.0", [fill(685)], msgtypes=["R", "AJ", "AG", "S", "AI", "AB", "8"])]),
+    # FIX 5.0 SP1 Appendix 6-E, Deprecated features.
+    (687, [rule("5.0.1", [fill(1418)], msgtypes=["AE", "AR"])]),
+    (852, [
+        rule("5.0.1", [fill(1390, "1")], when="Y", doc="PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
+        rule("5.0.1", [fill(1390, "0")], when="N", doc="PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
+    ]),
+    (37, [rule("5.0.1", [fill(1369)], msgtypes=["r"])]),
+    (198, [rule("5.0.1", [fill(1369)], msgtypes=["r"])]),
+)
+
+
+def attach_replacements(
+    catalog: dict[str, list[dict[str, Any]]],
+    code_values: dict[int, set[str]],
+    multi_valued: set[int],
+) -> dict[int, int]:
+    """Write the rules table onto its source fields, refusing one that does
+    not resolve against the dictionary it is written into.
+
+    A rule is data the crate reads at intake and never re-checks, so every
+    reference it makes is proven here: the source and every target tag are
+    fields, a `when` and every constant are codes of the set they are read
+    against (every space-separated token, for a MultipleCharValue or
+    MultipleStringValue target), group names are groups, message types are
+    messages, and a fill has exactly the shape the reader admits. Answers
+    the number of entries written per source tag.
+    """
+    by_tag = {int(field["metadata"]["fix:tag"]): field for field in catalog["fields"]}
+    groups = {field["name"] for field in catalog["groups"]}
+    msgtypes = {field["metadata"]["fix:msgtype"] for field in catalog["messages"]}
+
+    def check_code(tag: int, value: str, where: str) -> None:
+        codes = code_values.get(tag)
+        if codes is None:
+            return
+        for token in value.split() if tag in multi_valued else [value]:
+            if token not in codes:
+                raise ValueError(f"{where}: {token!r} is not a code of tag {tag}")
+
+    def check_fill(held: dict[str, Any], where: str) -> None:
+        if ("tag" in held) == ("group" in held):
+            raise ValueError(f"{where}: a fill names exactly one of tag or group")
+        if "group" in held:
+            if set(held) - {"group", "members"}:
+                raise ValueError(f"{where}: a group fill holds only members")
+            if held["group"] not in groups:
+                raise ValueError(f"{where}: unknown group {held['group']!r}")
+            if not held.get("members"):
+                raise ValueError(f"{where}: group {held['group']!r} fills no member")
+            for member in held["members"]:
+                check_fill(member, f"{where} in {held['group']}")
+            return
+        target = held["tag"]
+        if target not in by_tag:
+            raise ValueError(f"{where}: unknown target tag {target}")
+        stated = [key for key in ("value", "from", "join") if held.get(key) is not None]
+        if len(stated) > 1 or set(held) - {"tag", "value", "from", "join"}:
+            raise ValueError(f"{where}: tag {target} states more than one source")
+        if held.get("value") is not None:
+            check_code(target, held["value"], f"{where} tag {target}")
+        if held.get("from") is not None and held["from"] not in by_tag:
+            raise ValueError(f"{where}: unknown from tag {held['from']}")
+        if held.get("join") is not None:
+            if len(held["join"]) < 2:
+                raise ValueError(f"{where}: a join of tag {target} needs two tags")
+            for part in held["join"]:
+                if part not in by_tag:
+                    raise ValueError(f"{where}: unknown join tag {part}")
+
+    per_tag: dict[int, list[dict[str, Any]]] = {}
+    for tag, entries in REPLACEMENT_RULES:
+        per_tag.setdefault(tag, []).extend(entries)
+    for tag, entries in per_tag.items():
+        if tag not in by_tag:
+            raise ValueError(f"replacements for unknown tag {tag}")
+        for index, entry in enumerate(entries):
+            where = f"tag {tag} entry {index}"
+            version_key(entry["since"])
+            for msgtype in entry.get("msgtypes") or []:
+                if msgtype not in msgtypes:
+                    raise ValueError(f"{where}: unknown MsgType {msgtype!r}")
+            for group in entry.get("in") or []:
+                if group not in groups:
+                    raise ValueError(f"{where}: unknown group {group!r}")
+            if entry.get("when") is not None:
+                check_code(tag, entry["when"], f"{where} when")
+            if not entry["fills"]:
+                raise ValueError(f"{where}: fills nothing")
+            for held in entry["fills"]:
+                check_fill(held, where)
+        metadata = by_tag[tag]["metadata"]
+        metadata["fix:replacements"] = replacements_document(entries)
+        by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
+    return {tag: len(entries) for tag, entries in per_tag.items()}
+
+
 # Longest first so a longer suffix is never shadowed.
 LATIN = (
     ("appendices", "appendix"),
@@ -541,13 +998,19 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """Resolve the source graph once into the registry's five categories."""
     latest = parsed["orchestra-latest"]
 
-    # Per-tag history, oldest first, from the versions QuickFIX publishes.
+    # Per-tag history, oldest first, from the versions QuickFIX publishes:
+    # the name and type at each version, the versions naming the tag at all,
+    # and the enum listing each version states.
     history: dict[int, list[dict[str, Any]]] = {}
+    named: dict[int, list[str]] = {}
+    listings: dict[int, list[tuple[str, list[dict[str, str]]]]] = {}
     for source in SOURCES:
         if source.format != "quickfix":
             continue
         held = parsed[source.source_id]
         for tag, field in held["fields"].items():
+            named.setdefault(tag, []).append(source.version)
+            listings.setdefault(tag, []).append((source.version, field["codes"]))
             entry = {
                 "since": source.version,
                 "name": folded(field["name"]),
@@ -558,7 +1021,54 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 continue
             entries.append(entry)
 
+    # The wire values every field's set holds at any version, and the fields
+    # whose value is a space-separated list of them: what a replacement rule's
+    # constants and `when` are checked against.
+    code_values: dict[int, set[str]] = {}
+    multi_valued: set[int] = set()
+
+    def coded(tag: int, fix_type: str, codes: list[dict[str, Any]]) -> str | None:
+        """The field's `fix:codes`, legacy values folded in, or nothing."""
+        folded_codes = fold_legacy_codes(tag, codes, listings.get(tag, []), latest["version"])
+        if folded(fix_type) in {"multiplecharvalue", "multiplestringvalue"}:
+            multi_valued.add(tag)
+        if not folded_codes:
+            return None
+        code_values[tag] = {code["value"] for code in folded_codes}
+        return codes_document(folded_codes)
+
     fields: list[dict[str, Any]] = []
+    # A tag some version declared and Latest no longer does was removed: its
+    # history ends with a removed entry dated at the version after the last
+    # one naming it, and the field is what that last version said it was.
+    for tag in sorted(set(history) - set(latest["fields"])):
+        entries = [dict(entry) for entry in history[tag]]
+        current = entries[-1]
+        name, fix_type = current["name"], current["type"]
+        entries.append({"since": version_after(named[tag][-1], latest["version"]), "removed": True})
+        if tag in HAND_DATED_DEPRECATIONS:
+            place_entry(entries, HAND_DATED_DEPRECATIONS[tag], None, "deprecated")
+        display = next(
+            parsed[source.source_id]["fields"][tag]["name"]
+            for source in reversed(SOURCES)
+            if source.format == "quickfix" and tag in parsed[source.source_id]["fields"]
+        )
+        metadata = {"fix:tag": str(tag), "display": display, "fix:lineage": lineage_document(entries)}
+        aliases = [entry["name"] for entry in entries if entry.get("name") not in (None, name)]
+        if aliases:
+            metadata["fix:aliases"] = ",".join(dict.fromkeys(aliases))
+        codes = coded(tag, fix_type, [])
+        if codes is not None:
+            metadata["fix:codes"] = codes
+        fields.append(
+            {
+                "name": name,
+                "dtype": dtype_document(fix_type),
+                "nullable": True,
+                "metadata": dict(sorted(metadata.items())),
+            }
+        )
+
     for tag, field in sorted(latest["fields"].items()):
         name = folded(field["name"])
         dtype = dtype_of(field["type"], tag, latest["code_sets"])
@@ -588,13 +1098,18 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 entries[-1] = current
             else:
                 entries.append(current)
+        if field["deprecated"]:
+            place_entry(entries, field["deprecated"], field["deprecated_ep"], "deprecated")
 
         metadata: dict[str, str] = {"fix:tag": str(tag)}
         if field["name"] != name:
             metadata["display"] = field["name"]
         if field["doc"]:
             metadata["description"] = field["doc"]
-        if len(entries) > 1 or entries[0]["since"] != latest["version"]:
+        # A field is dated only when it has a history to state: it was named
+        # or typed otherwise once, appeared later than the dictionary's own
+        # version, or was deprecated.
+        if len(entries) > 1 or entries[0]["since"] != latest["version"] or entries[0].get("deprecated"):
             metadata["fix:lineage"] = lineage_document(entries)
             aliases = []
             for entry in entries:
@@ -607,7 +1122,10 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         if field["code_set"] and code_set_name not in latest["code_sets"]:
             raise ValueError(f"{field['name']}: unresolved code set {code_set_name}")
         if code_set_name in latest["code_sets"]:
-            metadata["fix:codes"] = codes_document(latest["code_sets"][code_set_name]["codes"])
+            held = latest["code_sets"][code_set_name]
+            codes = coded(tag, held["type"], held["codes"])
+            if codes is not None:
+                metadata["fix:codes"] = codes
 
         fields.append(
             {
@@ -617,7 +1135,9 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 "metadata": dict(sorted(metadata.items())),
             }
         )
-    return build_catalog(latest, fields)
+    catalog = build_catalog(latest, fields)
+    attach_replacements(catalog, code_values, multi_valued)
+    return catalog
 
 
 def build_catalog(

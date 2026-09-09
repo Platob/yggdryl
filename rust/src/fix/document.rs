@@ -1,12 +1,13 @@
 //! The canonical JSON documents the `fix:` namespace stores, read borrowed.
 //!
-//! Two `fix:` properties hold more than one text can say as a list: the
-//! per-version [lineage](super::lineage) and the [code set](super::codes).
-//! Both are JSON, because a metadata value may hold no control character and
-//! so cannot be separator-framed, and both are read on hot paths where
-//! building a parse tree per ask would cost more than the lookup.
+//! Three `fix:` properties hold more than one text can say as a list: the
+//! per-version [lineage](super::lineage), the [code set](super::codes) and
+//! the [replacements](super::replacements) a value is restated through. All
+//! are JSON, because a metadata value may hold no control character and so
+//! cannot be separator-framed, and all are read on hot paths where building a
+//! parse tree per ask would cost more than the lookup.
 //!
-//! So one convention serves both. A document is rendered with its keys in a
+//! So one convention serves them. A document is rendered with its keys in a
 //! **declared order** rather than sorted, compactly, with one text per value;
 //! the reader walks the bytes and hands back slices of them, allocating
 //! nothing. Declared order is what makes the walk safe *and* cheap: a reader
@@ -17,6 +18,8 @@
 //! A refusal is a `Copy` [`Refusal`] rather than an [`Error`], so an
 //! infallible read of a malformed document costs no allocation either; only
 //! a fallible door spends one, through [`Refusal::into_error`].
+
+use std::fmt::{self, Write as _};
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -45,6 +48,10 @@ pub(super) enum Refusal {
     UnknownKey,
     /// A key the document must state was absent.
     MissingKey(&'static str),
+    /// Two keys that exclude each other were both stated.
+    Together(&'static str, &'static str),
+    /// A list held fewer elements than the grammar requires of it.
+    Short(&'static str, usize),
     /// The document did not open on the array it holds.
     WrongRoot(&'static str),
     /// Bytes stood after the document ended.
@@ -82,6 +89,12 @@ impl Refusal {
             ),
             Self::UnknownKey => format_smolstr!("unknown key {:?}", key()),
             Self::MissingKey(what) => format_smolstr!("expected every entry to state {what:?}"),
+            Self::Together(left, right) => {
+                format_smolstr!("expected {left:?} and {right:?} never together")
+            }
+            Self::Short(what, least) => {
+                format_smolstr!("expected {what:?} to hold at least {least} elements")
+            }
             Self::WrongRoot(what) => {
                 format_smolstr!("expected the document to hold {what:?}")
             }
@@ -232,6 +245,63 @@ impl<'doc> Cursor<'doc> {
             return Err(Refusal::NotANumber(key));
         }
         Ok(body)
+    }
+
+    /// Reads one nested array, handing back the text between its brackets.
+    ///
+    /// A list of fills is the one array these documents hold whose elements
+    /// are objects, and one whose objects hold lists of their own, so the
+    /// brackets and braces are balanced together by scanning and strings are
+    /// skipped whole exactly as [`Self::read_document`] skips them. The
+    /// elements stay unread: the caller's own grammar reads them out of the
+    /// slice handed back, and a caller that only wants past them pays the
+    /// skip.
+    pub(super) fn read_list(&mut self) -> Scan<&'doc str> {
+        let start = self.position;
+        self.expect(b'[')?;
+        let mut depth = 1_usize;
+        while depth > 0 {
+            match self.peek() {
+                Some(b'"') => {
+                    self.read_string()?;
+                    continue;
+                }
+                Some(b'[' | b'{') => depth += 1,
+                Some(b']' | b'}') => depth -= 1,
+                Some(_) => {}
+                None => {
+                    self.position = start;
+                    return Err(Refusal::Unclosed);
+                }
+            }
+            self.position += 1;
+        }
+        Ok(&self.document[start + 1..self.position - 1])
+    }
+
+    /// Reads the body of an array of tags, as one slice.
+    ///
+    /// Every element is read as a decimal tag so a hand-edited array is
+    /// refused here rather than mis-read by [`Numbers`], which walks the
+    /// slice handed back without checking it again.
+    pub(super) fn read_numbers(&mut self, key: &'static str) -> Scan<&'doc str> {
+        self.expect(b'[')?;
+        let start = self.position;
+        loop {
+            if self.peek() == Some(b']') {
+                let body = &self.document[start..self.position];
+                self.position += 1;
+                return Ok(body);
+            }
+            let at = self.position;
+            if i32::try_from(self.read_number(key)?).is_err() {
+                self.position = at;
+                return Err(Refusal::TooWide(key));
+            }
+            if self.peek() == Some(b',') {
+                self.position += 1;
+            }
+        }
     }
 
     /// Reads one non-negative decimal number.
@@ -432,6 +502,37 @@ impl<'doc> Iterator for Words<'doc> {
 
 impl std::iter::FusedIterator for Words<'_> {}
 
+/// The tags one array-valued key holds, borrowed.
+///
+/// The reader that produced the body already held every element to the tag
+/// grammar, so nothing here re-validates and nothing allocates.
+#[derive(Clone, Debug)]
+pub struct Numbers<'doc>(&'doc str);
+
+impl<'doc> Numbers<'doc> {
+    /// Walks one array body a reader answered.
+    pub(super) const fn over(body: &'doc str) -> Self {
+        Self(body)
+    }
+}
+
+impl Iterator for Numbers<'_> {
+    type Item = i32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let rest = self.0.strip_prefix(',').unwrap_or(self.0);
+        let end = rest
+            .bytes()
+            .position(|byte| !byte.is_ascii_digit())
+            .unwrap_or(rest.len());
+        let (digits, tail) = rest.split_at(end);
+        self.0 = tail;
+        digits.parse().ok()
+    }
+}
+
+impl std::iter::FusedIterator for Numbers<'_> {}
+
 /// Renders one canonical document, keys in their declared order.
 ///
 /// Values are escaped through the crate's own JSON codec rather than by a
@@ -468,6 +569,24 @@ impl Writer {
 
     /// Closes the array, leaving the document open for its trailing keys.
     pub(super) fn close_array(&mut self) {
+        self.text.push(']');
+        self.empty = false;
+    }
+
+    /// Opens one array-valued key whose elements are objects.
+    ///
+    /// One flag serves every nesting depth because elements nest strictly:
+    /// the list opened here is the only one taking elements until it closes,
+    /// and closing it leaves the enclosing array mid-way, where its next
+    /// element needs a separator.
+    pub(super) fn open_list(&mut self, first: bool, key: &str) {
+        self.key(first, key);
+        self.text.push('[');
+        self.empty = true;
+    }
+
+    /// Closes the list [`Self::open_list`] opened.
+    pub(super) fn close_list(&mut self) {
         self.text.push(']');
         self.empty = false;
     }
@@ -514,11 +633,29 @@ impl Writer {
     }
 
     /// Writes one number-valued key.
-    pub(super) fn number(&mut self, first: bool, key: &str, value: u32) {
+    pub(super) fn number(&mut self, first: bool, key: &str, value: impl fmt::Display) {
         self.key(first, key);
         // Writing into a `String` cannot fail.
-        use std::fmt::Write as _;
         let _ = write!(self.text, "{value}");
+    }
+
+    /// Writes one array-of-tags key.
+    pub(super) fn numbers(
+        &mut self,
+        first: bool,
+        key: &str,
+        values: impl IntoIterator<Item = i32>,
+    ) {
+        self.key(first, key);
+        self.text.push('[');
+        for (index, value) in values.into_iter().enumerate() {
+            if index > 0 {
+                self.text.push(',');
+            }
+            // Writing into a `String` cannot fail.
+            let _ = write!(self.text, "{value}");
+        }
+        self.text.push(']');
     }
 
     /// Writes one flag key, which exists only when true.

@@ -265,7 +265,7 @@ test('the registry resolves every key the way the core does', () => {
   const registry = seed()
   // The store's fields, and the crate's own beside them: a store never
   // writes those, so a loaded dictionary holds the crate's definition.
-  assert.equal(registry.size, 6203 + CRATED)
+  assert.equal(registry.size, 6241 + CRATED)
 
   assert.equal(registry.fieldByTag(55).name, 'symbol')
   assert.equal(registry.getFieldByTag(55).name, 'symbol')
@@ -683,7 +683,7 @@ test('a shared registry refuses mutation and a clone is independent', () => {
   assert.ok(copy.equals(registry))
   copy.insert(fixField('Unreferenced', 'utf8', 39999))
   assert.equal(copy.equals(registry), false)
-  assert.equal(registry.size, 6203 + CRATED)
+  assert.equal(registry.size, 6241 + CRATED)
 })
 
 function order(registry) {
@@ -877,13 +877,13 @@ test('a registry is a value: equality, hash, clone, JSON and text', () => {
   assert.equal(registry.stableHash(), seed().stableHash())
   assert.equal(typeof registry.stableHash(), 'bigint')
   assert.equal(registry.equals(new fix.FixRegistry()), false)
-  assert.equal(registry.toString(), `FixRegistry(${6203 + CRATED} fields)`)
+  assert.equal(registry.toString(), `FixRegistry(${6241 + CRATED} fields)`)
   // A new registry is never empty: it holds the crate's own fields.
   assert.equal(new fix.FixRegistry().toString(), `FixRegistry(${CRATED} fields)`)
 
   const document = registry.toJSON()
   // The crate's own are seeded, never stored, so only the store's own are written.
-  assert.equal(document.fields.length, 6203)
+  assert.equal(document.fields.length, 6241)
   assert.deepEqual(document.fields[0], JSON.parse(JSON.stringify(registry.fieldByTag(1))))
   assert.equal(document.fields[0].metadata['fix:tag'], '1')
   assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))

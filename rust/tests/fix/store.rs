@@ -193,7 +193,7 @@ fn the_complete_committed_catalog_round_trips_through_one_snapshot() {
     assert_eq!(&loaded, registry.as_ref());
     assert_eq!(loaded.stable_hash(), registry.stable_hash());
     assert_eq!(loaded.into_json().unwrap(), document);
-    assert_eq!(loaded.len(), 6203 + super::crated());
+    assert_eq!(loaded.len(), 6241 + super::crated());
     assert_eq!(loaded.definitions(FixCategory::Messages).count(), 181);
     assert_eq!(loaded.definitions(FixCategory::Components).count(), 747);
     assert_eq!(loaded.definitions(FixCategory::Groups).count(), 580);
@@ -520,7 +520,7 @@ fn malformed_shards_and_folder_disagreements_are_located() {
 fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
-    assert_eq!(registry.len(), 6203 + super::crated());
+    assert_eq!(registry.len(), 6241 + super::crated());
     for (category, count) in [
         (FixCategory::Components, 747),
         (FixCategory::Groups, 580),

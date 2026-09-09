@@ -9,6 +9,9 @@ use smol_str::SmolStr;
 use super::global::autoload;
 use super::registry::control_byte;
 use super::store::shard_of;
+use crate::fix::{
+    FixFill, FixFillEntry, FixFillSource, FixFillValue, FixReplacement, FixReplacements,
+};
 use crate::holder::local::Folder;
 use crate::{
     DataType, Error, Field, FixBranch, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey,
@@ -3965,6 +3968,473 @@ fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
     assert_eq!(field, before);
 }
 
+/// Fixture C: `Rule80A(47)`, stating every shape a replacement rule has.
+///
+/// Three entries in a deliberate order: a value rule, a rule scoped to two
+/// message types and one repeating group, and a catch-all filling a group
+/// occurrence whose members reach every fill source, one of them a group
+/// again.
+fn rule80a_rules() -> Vec<FixReplacement> {
+    vec![
+        FixReplacement::new(version("4.3"))
+            .with_when("C")
+            .with_fills([
+                FixFill::Field {
+                    tag: 528,
+                    value: FixFillSource::Constant("P".into()),
+                },
+                FixFill::Field {
+                    tag: 529,
+                    value: FixFillSource::Constant("1 3".into()),
+                },
+            ])
+            .with_doc(r#"Program order, non-index arbitrage, for "other" agency"#),
+        FixReplacement::new(version("4.3"))
+            .with_ep(12)
+            .with_msgtypes(["8", "AE"])
+            .with_in(["allocgrp"])
+            .with_when("A")
+            .with_fills([FixFill::Field {
+                tag: 528,
+                value: FixFillSource::Constant("A".into()),
+            }]),
+        FixReplacement::new(version("4.3")).with_fills([FixFill::Group {
+            name: "parties".into(),
+            members: vec![
+                FixFill::Field {
+                    tag: 448,
+                    value: FixFillSource::Source,
+                },
+                FixFill::Field {
+                    tag: 628,
+                    value: FixFillSource::From(115),
+                },
+                FixFill::Group {
+                    name: "ptyssubgrp".into(),
+                    members: vec![FixFill::Field {
+                        tag: 523,
+                        value: FixFillSource::Join(vec![200, 205]),
+                    }],
+                },
+            ],
+        }]),
+    ]
+}
+
+/// The one text fixture C renders to.
+const RULE80A_DOCUMENT: &str = concat!(
+    r#"{"replacements":["#,
+    r#"{"since":"4.3","when":"C","fills":[{"tag":528,"value":"P"},{"tag":529,"value":"1 3"}],"#,
+    r#""doc":"Program order, non-index arbitrage, for \"other\" agency"},"#,
+    r#"{"since":"4.3","ep":12,"msgtypes":["8","AE"],"in":["allocgrp"],"when":"A","#,
+    r#""fills":[{"tag":528,"value":"A"}]},"#,
+    r#"{"since":"4.3","fills":[{"group":"parties","members":[{"tag":448},{"tag":628,"from":115},"#,
+    r#"{"group":"ptyssubgrp","members":[{"tag":523,"join":[200,205]}]}]}]}]}"#,
+);
+
+fn rule80a() -> Field {
+    let mut field = DataType::Utf8.nullable_field("rule80a");
+    field.as_fix_mut().set_tag(47).unwrap();
+    field
+        .as_fix_mut()
+        .set_replacements(&rule80a_rules())
+        .unwrap();
+    field
+}
+
+/// A field carrying one hand-written `fix:replacements` text, unvalidated.
+fn replacing(document: &str) -> Field {
+    let mut field = DataType::Utf8.nullable_field("rule80a");
+    field
+        .set_metadata([("fix:replacements", document)])
+        .unwrap();
+    field
+}
+
+#[test]
+fn a_replacement_document_round_trips_canonically_and_in_order() {
+    let field = rule80a();
+    assert_eq!(
+        field.get_metadata("fix:replacements"),
+        Some(RULE80A_DOCUMENT)
+    );
+
+    // The borrowed read hands back every fact as a slice of that text.
+    let view = field.as_fix();
+    let entries: Vec<_> = view
+        .replacements()
+        .map(|entry| entry.expect("a readable entry"))
+        .collect();
+    assert_eq!(entries.len(), 3);
+    let valued = entries[0];
+    assert_eq!(valued.since(), version("4.3"));
+    assert_eq!(valued.ep(), None);
+    assert_eq!(valued.msgtypes().count(), 0, "every message");
+    assert_eq!(valued.in_groups().count(), 0, "wherever the field sits");
+    assert_eq!(valued.when(), Some("C"));
+    assert_eq!(
+        valued.doc(),
+        Some(r#"Program order, non-index arbitrage, for \"other\" agency"#),
+        "still escaped as stored"
+    );
+    assert_eq!(
+        valued.parse_doc().unwrap().as_deref(),
+        Some(r#"Program order, non-index arbitrage, for "other" agency"#)
+    );
+    let fills: Vec<_> = valued.fills().map(|fill| fill.unwrap()).collect();
+    assert!(matches!(
+        fills.as_slice(),
+        [
+            FixFillEntry::Field {
+                tag: 528,
+                value: FixFillValue::Constant("P")
+            },
+            FixFillEntry::Field {
+                tag: 529,
+                value: FixFillValue::Constant("1 3")
+            },
+        ]
+    ));
+
+    let scoped = entries[1];
+    assert_eq!(scoped.ep(), Some(12));
+    assert_eq!(scoped.msgtypes().collect::<Vec<_>>(), ["8", "AE"]);
+    assert_eq!(scoped.in_groups().collect::<Vec<_>>(), ["allocgrp"]);
+    assert_eq!(scoped.when(), Some("A"));
+    assert_eq!(scoped.doc(), None);
+
+    // A group fill nests, and its members are a walk of their own.
+    let grouped = entries[2];
+    assert_eq!(grouped.when(), None, "the catch-all comes last");
+    let mut fills = grouped.fills();
+    let Some(FixFillEntry::Group { name, mut members }) = fills.next_ok() else {
+        panic!("a group fill");
+    };
+    assert_eq!(name, "parties");
+    assert!(fills.next_ok().is_none());
+    assert!(matches!(
+        members.next_ok(),
+        Some(FixFillEntry::Field {
+            tag: 448,
+            value: FixFillValue::Source
+        })
+    ));
+    assert!(matches!(
+        members.next_ok(),
+        Some(FixFillEntry::Field {
+            tag: 628,
+            value: FixFillValue::From(115)
+        })
+    ));
+    let Some(FixFillEntry::Group { name, mut members }) = members.next_ok() else {
+        panic!("a nested group fill");
+    };
+    assert_eq!(name, "ptyssubgrp");
+    let Some(FixFillEntry::Field {
+        tag: 523,
+        value: FixFillValue::Join(tags),
+    }) = members.next_ok()
+    else {
+        panic!("a join fill");
+    };
+    assert_eq!(tags.collect::<Vec<_>>(), [200, 205]);
+    assert!(members.next_ok().is_none());
+
+    // Owning what was read answers exactly what was written, so taking the
+    // rules away and putting them back produces the same text - and the
+    // order is kept, because it is the rule.
+    let owned: Vec<FixReplacement> = entries.into_iter().map(FixReplacement::from).collect();
+    assert_eq!(owned, rule80a_rules());
+    let mut rebuilt = field.clone();
+    let taken = rebuilt.as_fix_mut().remove_replacements().unwrap().unwrap();
+    assert_eq!(taken, rule80a_rules());
+    assert_eq!(rebuilt.get_metadata("fix:replacements"), None);
+    assert_eq!(rebuilt.as_fix().replacements().count(), 0);
+    rebuilt.as_fix_mut().set_replacements(&taken).unwrap();
+    assert_eq!(rebuilt, field);
+    assert_eq!(
+        rebuilt.as_fix_mut().remove_replacements().unwrap(),
+        Some(taken)
+    );
+    assert_eq!(rebuilt.as_fix_mut().remove_replacements().unwrap(), None);
+}
+
+#[test]
+fn an_empty_replacement_set_removes_the_property() {
+    let mut field = rule80a();
+    field.as_fix_mut().set_replacements(&[]).unwrap();
+    assert_eq!(field.get_metadata("fix:replacements"), None);
+    assert_eq!(field.as_fix().replacements().count(), 0);
+    assert!(field.as_fix().replacements().next_ok().is_none());
+    // Removing what is not there is not an error.
+    assert_eq!(field.as_fix_mut().remove_replacements().unwrap(), None);
+}
+
+#[test]
+fn the_replacement_writer_refuses_what_the_document_cannot_state() {
+    let field_fill = |tag: i32, value: FixFillSource| FixFill::Field { tag, value };
+    let constant = |text: &str| FixFillSource::Constant(text.into());
+    let sound = || FixReplacement::new(version("4.3")).with_fills([field_fill(528, constant("A"))]);
+    for (rules, names) in [
+        // An entry stating no fill restates nothing.
+        (
+            vec![FixReplacement::new(version("4.3"))],
+            "at least one fill",
+        ),
+        // A group occurrence with no member is no occurrence.
+        (
+            vec![
+                FixReplacement::new(version("4.3")).with_fills([FixFill::Group {
+                    name: "parties".into(),
+                    members: Vec::new(),
+                }]),
+            ],
+            "at least one member",
+        ),
+        // A join of one tag is a `from`.
+        (
+            vec![
+                FixReplacement::new(version("4.3"))
+                    .with_fills([field_fill(541, FixFillSource::Join(vec![200]))]),
+            ],
+            "at least two tags",
+        ),
+        // Tags are non-negative wherever they stand.
+        (
+            vec![FixReplacement::new(version("4.3")).with_fills([field_fill(-1, constant("A"))])],
+            "a FIX tag, got -1",
+        ),
+        (
+            vec![
+                FixReplacement::new(version("4.3"))
+                    .with_fills([field_fill(628, FixFillSource::From(-115))]),
+            ],
+            "a FIX tag, got -115",
+        ),
+        (
+            vec![
+                FixReplacement::new(version("4.3"))
+                    .with_fills([field_fill(541, FixFillSource::Join(vec![200, -205]))]),
+            ],
+            "a FIX tag, got -205",
+        ),
+        // What the reader reads back as a word must be written as one.
+        (vec![sound().with_when("")], r#""when""#),
+        (
+            vec![
+                FixReplacement::new(version("4.3"))
+                    .with_fills([field_fill(58, constant(r#"say "hi""#))]),
+            ],
+            r#""value""#,
+        ),
+        (vec![sound().with_in(["alloc\\grp"])], r#""in""#),
+        (
+            vec![
+                FixReplacement::new(version("4.3")).with_fills([FixFill::Group {
+                    name: "".into(),
+                    members: vec![field_fill(448, FixFillSource::Source)],
+                }]),
+            ],
+            r#""group""#,
+        ),
+        // A message type is held to what `set_msgtype` holds one to.
+        (vec![sound().with_msgtypes([""])], "message-code"),
+        // A refusal anywhere in the list refuses the whole list.
+        (
+            vec![sound(), FixReplacement::new(version("4.4"))],
+            "at least one fill",
+        ),
+    ] {
+        let mut field = DataType::Utf8.nullable_field("rule80a");
+        field.as_fix_mut().set_tag(47).unwrap();
+        let error = field.as_fix_mut().set_replacements(&rules).unwrap_err();
+        assert!(error.to_string().contains(names), "{names}: {error}");
+        assert_eq!(
+            field.get_metadata("fix:replacements"),
+            None,
+            "atomic: {names}"
+        );
+    }
+}
+
+#[test]
+fn a_hand_edited_replacement_document_is_refused_at_its_own_byte() {
+    // Each case: the stored text, the reason expected, and the text whose
+    // first byte the refusal must name.
+    for (document, reason, at) in [
+        (
+            r#"{"replacements":[{"fills":[{"tag":528}],"since":"4.3"}]}"#,
+            "out of order",
+            Some(r#""since""#),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528}],"note":"x"}]}"#,
+            r#"unknown key "note""#,
+            Some(r#""note""#),
+        ),
+        (
+            r#"{"replacements":[{"fills":[{"tag":528}]}]}"#,
+            r#"state "since""#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3"}]}"#,
+            r#"state "fills""#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[]}]}"#,
+            r#""fills" to hold at least 1"#,
+            Some(r#"[]"#),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"group":"parties","members":[{"tag":1}]}]}]}"#,
+            r#""tag" and "group" never together"#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"value":"A"}]}]}"#,
+            r#"state "tag""#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"value":"A","from":1}]}]}"#,
+            r#""value" and "from" never together"#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"from":1,"join":[2,3]}]}]}"#,
+            r#""from" and "join" never together"#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"members":[{"tag":1}]}]}]}"#,
+            r#""tag" and "members" never together"#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"value":"A","group":"parties","members":[{"tag":1}]}]}]}"#,
+            r#""group" and "value" never together"#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties"}]}]}"#,
+            r#"state "members""#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties","members":[]}]}]}"#,
+            r#""members" to hold at least 1"#,
+            Some(r#"[]"#),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":541,"join":[200]}]}]}"#,
+            r#""join" to hold at least 2"#,
+            Some(r#"[200]"#),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":541,"join":[200,4294967295]}]}]}"#,
+            r#""join" to fit in 32 bits"#,
+            Some("4294967295"),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":2147483648}]}]}"#,
+            r#""tag" to fit in 32 bits"#,
+            Some("2147483648"),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","when":"a\"b","fills":[{"tag":528}]}]}"#,
+            r#""when" to hold no escape"#,
+            Some(r#""a\"b""#),
+        ),
+        (
+            r#"{"replacements":[]}x"#,
+            "expected the document to end",
+            Some("x"),
+        ),
+        // A refusal inside a nested member names its byte in the whole
+        // document, not in the slice the member walk was reading.
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties","members":[{"tag":1,"value":"A","from":2}]}]}]}"#,
+            r#""value" and "from" never together"#,
+            Some("]}]}]}"),
+        ),
+    ] {
+        let field = replacing(document);
+        let error = field
+            .as_fix()
+            .replacements()
+            .next()
+            .expect("a refusal")
+            .expect_err("a refusal");
+        let Error::Parse {
+            target, position, ..
+        } = &error
+        else {
+            panic!("{document}: {error}");
+        };
+        assert_eq!(*target, "fix replacements", "{document}");
+        assert!(error.to_string().contains(reason), "{document}: {error}");
+        if let Some(at) = at {
+            assert_eq!(*position, document.find(at).unwrap(), "{document}: {error}");
+        }
+        // The infallible walk answers nothing rather than a wrong entry.
+        assert!(
+            field.as_fix().replacements().next_ok().is_none(),
+            "{document}"
+        );
+        // And taking a document a reader refuses away reports the refusal,
+        // having removed it.
+        let mut taken = field.clone();
+        assert!(
+            taken.as_fix_mut().remove_replacements().is_err(),
+            "{document}"
+        );
+        assert_eq!(taken.get_metadata("fix:replacements"), None, "{document}");
+    }
+
+    // A refusal is fused: the walk ends where it stopped.
+    let field =
+        replacing(r#"{"replacements":[{"since":"4.3"},{"since":"4.4","fills":[{"tag":1}]}]}"#);
+    let mut walk = field.as_fix().replacements();
+    assert!(walk.next().unwrap().is_err());
+    assert!(walk.next().is_none());
+}
+
+#[test]
+fn a_merge_lets_the_incoming_replacements_win_whole() {
+    let mut stored = DataType::Utf8.nullable_field("rule80a");
+    stored.as_fix_mut().set_tag(47).unwrap();
+    stored
+        .as_fix_mut()
+        .set_replacements(&[
+            FixReplacement::new(version("4.3")).with_fills([FixFill::Field {
+                tag: 528,
+                value: FixFillSource::Constant("W".into()),
+            }]),
+        ])
+        .unwrap();
+    let stored_text = stored.get_metadata("fix:replacements").unwrap().to_owned();
+
+    // Two documents have no order between them, so the incoming one is not
+    // folded entry by entry: it replaces the stored one.
+    let mut incoming = rule80a();
+    incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+    assert_eq!(
+        incoming.get_metadata("fix:replacements"),
+        Some(RULE80A_DOCUMENT)
+    );
+
+    // The stored one keeps what only it has.
+    let mut bare = DataType::Utf8.nullable_field("rule80a");
+    bare.as_fix_mut().set_tag(47).unwrap();
+    bare.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+    assert_eq!(
+        bare.get_metadata("fix:replacements"),
+        Some(stored_text.as_str())
+    );
+}
+
 /// Immutable seed fixtures share parsing and compiled plans within this binary.
 fn committed() -> Arc<FixRegistry> {
     static REGISTRY: std::sync::OnceLock<Arc<FixRegistry>> = std::sync::OnceLock::new();
@@ -4304,6 +4774,97 @@ fn every_committed_lineage_is_the_document_the_rust_writer_renders() {
     // `state`, which each lineage records, less the one the generic MsgType
     // datatype's removal collapses back.
     assert_eq!(entries, 1_670, "lineage entries");
+}
+
+/// Every tag and group one owned fill names is one the dictionary has.
+fn assert_fills_resolve(registry: &FixRegistry, fills: &[FixFill], owner: &str) {
+    for fill in fills {
+        match fill {
+            FixFill::Field { tag, value } => {
+                assert!(registry.get_field(*tag).is_some(), "{owner} fills {tag}");
+                match value {
+                    FixFillSource::Source | FixFillSource::Constant(_) => {}
+                    FixFillSource::From(from) => {
+                        assert!(registry.get_field(*from).is_some(), "{owner} reads {from}");
+                    }
+                    FixFillSource::Join(tags) => {
+                        for tag in tags {
+                            assert!(registry.get_field(*tag).is_some(), "{owner} joins {tag}");
+                        }
+                    }
+                }
+            }
+            FixFill::Group { name, members } => {
+                assert!(
+                    registry
+                        .get_definition(FixCategory::Groups, name, None)
+                        .is_some(),
+                    "{owner} fills group {name}"
+                );
+                assert_fills_resolve(registry, members, owner);
+            }
+        }
+    }
+}
+
+#[test]
+fn every_committed_replacement_is_the_document_the_rust_writer_renders() {
+    let registry = committed();
+    let mut documents = 0_usize;
+    for field in every_committed_field(&registry) {
+        let Some(stored) = field.as_metadata().get("fix:replacements") else {
+            continue;
+        };
+        documents += 1;
+        let held: Vec<FixReplacement> = field
+            .as_fix()
+            .replacements()
+            .map(|entry| FixReplacement::from(entry.expect("a readable entry")))
+            .collect();
+        assert!(
+            !held.is_empty(),
+            "{} states at least one rule",
+            field.name()
+        );
+
+        // The cross-host assertion: the dictionary generator wrote this
+        // document in Python, and re-rendering the entries it holds through
+        // the Rust writer must reproduce it byte for byte, or the two hosts
+        // have forked on key order or spelling. Versions are canonicalized
+        // first, for the reason the lineage assertion states.
+        assert_eq!(
+            FixReplacements::render(&held).expect("the entries render"),
+            canonical_versions(stored),
+            "{}",
+            field.name()
+        );
+
+        // Every name a rule reaches for is one the dictionary resolves, so a
+        // reader applying it never has to guess.
+        for entry in &held {
+            for msgtype in entry.msgtypes() {
+                assert!(
+                    registry.get_msgtype(msgtype, None).is_some(),
+                    "{} applies to message type {msgtype}",
+                    field.name()
+                );
+            }
+            for group in entry.in_groups() {
+                assert!(
+                    registry
+                        .get_definition(FixCategory::Groups, group, None)
+                        .is_some(),
+                    "{} applies inside {group}",
+                    field.name()
+                );
+            }
+            assert_fills_resolve(&registry, entry.fills(), field.name());
+        }
+    }
+    // The generator writes these; a dictionary that carries none yet is a
+    // dictionary with nothing to disagree about, so the count is reported
+    // rather than pinned.
+    eprintln!("{documents} committed fields carry fix:replacements");
 }
 
 #[test]
