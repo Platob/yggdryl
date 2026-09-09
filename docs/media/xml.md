@@ -16,6 +16,7 @@ An XML document read and written as rows, and one row at a time by position.
 | Index | restated across positional writes rather than read again, so a run of them costs one scan |
 | Coding | a content coding is the handle's business; rows still read and write, but a row has no address until the bytes are the document's own |
 | Errors | name the row and the byte offset inside it |
+| Bindings | Rust owns the positional surface; Python and JavaScript reach an XML document's rows through the shared [`IOMedia`](../holder/iobase/records.md) methods, and Python names the encoding as `yggdryl.media.Xml` |
 
 ## Rows through the shared surface
 

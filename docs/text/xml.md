@@ -20,26 +20,47 @@ One document read as the record its element names, backed by the shared Rust cod
 | Errors | name `xml` and a byte offset; `validate_for_write` rejects before a destination opens |
 | `IOBase` | `from_io` / `into_io` infer XML and outer [coding](../coding/index.md) from the media type |
 | Rows | a document holding one element per row is [Media](../media/xml.md), which adds position |
+| Bindings | Rust: `yggdryl::text::xml`; Python: `yggdryl.text.xml`, with `cls=Scalar` answering the core value; JavaScript reaches XML through the runtime-format codec |
 
 ## Use
 
-```rust
-use yggdryl::Scalar;
-use yggdryl::text::xml;
+Rust returns `Scalar`; Python redirects native mappings through the same codec.
 
-let value = xml::from_utf8("<trade id='7'><symbol>AAPL</symbol></trade>")?;
-let trade = value.get_key_str("trade").expect("the document element");
+=== "Rust"
 
-assert_eq!(trade.get_key_str("@id").and_then(Scalar::as_utf8), Some("7"));
-assert_eq!(
-    trade.get_key_str("symbol").and_then(Scalar::as_utf8),
-    Some("AAPL")
-);
-assert_eq!(
-    xml::into_utf8(&value)?,
-    r#"<trade id="7"><symbol>AAPL</symbol></trade>"#
-);
-```
+    ```rust
+    use yggdryl::Scalar;
+    use yggdryl::text::xml;
+
+    let value = xml::from_utf8("<trade id='7'><symbol>AAPL</symbol></trade>")?;
+    let trade = value.get_key_str("trade").expect("the document element");
+
+    assert_eq!(trade.get_key_str("@id").and_then(Scalar::as_utf8), Some("7"));
+    assert_eq!(
+        trade.get_key_str("symbol").and_then(Scalar::as_utf8),
+        Some("AAPL")
+    );
+    assert_eq!(
+        xml::into_utf8(&value)?,
+        r#"<trade id="7"><symbol>AAPL</symbol></trade>"#
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar
+    from yggdryl.text import xml
+
+    source = "<trade id='7'><symbol>AAPL</symbol></trade>"
+    natural = xml.loads(source)
+    value = xml.loads(source, cls=Scalar)
+
+    assert natural == {"trade": {"@id": "7", "symbol": "AAPL"}}
+    assert value.kind == "record"
+    assert xml.dumps(value) == b'<trade id="7"><symbol>AAPL</symbol></trade>'
+    assert xml.loads(xml.dumps(value)) == natural
+    ```
 
 ## Inferring entry point
 
