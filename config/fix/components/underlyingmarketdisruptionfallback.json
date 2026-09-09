@@ -1,0 +1,33 @@
+{
+  "name": "underlyingmarketdisruptionfallback",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingmarketdisruptionfallbacktype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmarketdisruptionfallbacktype"
+        }
+      },
+      {
+        "name": "underlyingmarketdisruptionfallbackvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmarketdisruptionfallbackvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingMarketDisruptionFallback",
+    "fix:tag": "437853"
+  }
+}

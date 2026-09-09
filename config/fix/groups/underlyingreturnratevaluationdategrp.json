@@ -1,0 +1,24 @@
+{
+  "name": "underlyingreturnratevaluationdategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingreturnratevaluationdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingreturnratevaluationdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingReturnRateValuationDates(43071) > 0.",
+    "display": "UnderlyingReturnRateValuationDateGrp",
+    "fix:component": "underlyingreturnratevaluationdatecomponent",
+    "fix:counter": "43071",
+    "fix:tag": "741530"
+  }
+}

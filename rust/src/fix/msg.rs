@@ -36,6 +36,8 @@ use crate::{DataType, Error, Field, Result, Scalar, Version};
 /// tag is retained rather than dropped: it is looked for under its rendered
 /// decimal name, which is where a transcriber keeps a tag no dictionary
 /// explains.
+/// A repeating-group counter remains an int32 value reached by its tag;
+/// the separate collection is reached by name, such as `Parties`.
 ///
 /// Serialization is inherited, not written: `field.clone().into_json()`
 /// renders the schema, [`into_json_scalar`](crate::into_json_scalar) the
@@ -115,6 +117,8 @@ pub struct FixMsg {
     /// search. Derived from the field, the branch and the registry alone,
     /// and derived lazily, so a message nobody projects pays nothing for it.
     fallback: OnceLock<Vec<(i32, usize)>>,
+    /// Group positions keyed by their `fix:counter`, separate from tag values.
+    groups: Vec<(i32, usize)>,
     field: Field,
     value: Scalar,
 }
@@ -128,6 +132,17 @@ fn tag_positions(field: &Field) -> Vec<(i32, usize)> {
         .iter()
         .enumerate()
         .filter_map(|(index, child)| Some((child.as_fix().tag().ok().flatten()?, index)))
+        .collect();
+    held.sort_unstable();
+    held
+}
+
+fn group_positions(field: &Field) -> Vec<(i32, usize)> {
+    let mut held: Vec<_> = field
+        .fields()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, child)| Some((child.as_fix().counter().ok()??, index)))
         .collect();
     held.sort_unstable();
     held
@@ -166,6 +181,13 @@ fn emit_text(entries: &[FixEntry], separator: char, text: &mut String) -> Result
 }
 
 impl FixMsg {
+    /// The deterministic hash of this message's schema and row.
+    /// Uses one allocation for the shared XXH3 state, independent of message size.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// Builds a message against the process-wide registry.
     ///
     /// # Errors
@@ -253,12 +275,14 @@ impl FixMsg {
             .branch_named(declared.name())
             .cloned()
             .unwrap_or(declared);
+        let groups = group_positions(&field);
         Ok(Self {
             registry,
             entries,
             branch,
             tags,
             fallback: OnceLock::new(),
+            groups,
             field,
             value,
         })
@@ -304,6 +328,7 @@ impl FixMsg {
             branch,
             mut tags,
             fallback: _,
+            mut groups,
             mut field,
             value,
         } = self;
@@ -324,6 +349,10 @@ impl FixMsg {
                 let at = tags.partition_point(|(known, _)| *known < tag);
                 tags.insert(at, (tag, index));
             }
+            if let Ok(Some(counter)) = child.as_fix().counter() {
+                let at = groups.partition_point(|(known, _)| *known < counter);
+                groups.insert(at, (counter, index));
+            }
             members.push(child);
             values.push(held);
         }
@@ -334,6 +363,7 @@ impl FixMsg {
             branch,
             tags,
             fallback: OnceLock::new(),
+            groups,
             field,
             value: Scalar::from_sequence(values),
         })
@@ -521,6 +551,22 @@ impl FixMsg {
         found.ok().map(|at| self.tags[at].1)
     }
 
+    pub(super) fn index_of_group(&self, counter: i32) -> Option<usize> {
+        let index = self
+            .groups
+            .binary_search_by_key(&counter, |(tag, _)| *tag)
+            .ok()?;
+        if index > 0 && self.groups[index - 1].0 == counter
+            || self
+                .groups
+                .get(index + 1)
+                .is_some_and(|(tag, _)| *tag == counter)
+        {
+            return None;
+        }
+        Some(self.groups[index].1)
+    }
+
     /// Returns the value of the root child a tag names, raising absence.
     ///
     /// # Errors
@@ -557,7 +603,7 @@ impl FixMsg {
     /// spelling first, then an exact match - or, when the value at hand is
     /// the sequence a List field holds, a decimal segment indexes one entry.
     /// A repeating group is that List of Structs, so reaching one member
-    /// needs the entry's index: `NoPartyIDs.0.PartyID`.
+    /// needs the entry's index: `Parties.0.PartyID`.
     pub fn get_by_path(&self, path: &str) -> Option<&Scalar> {
         if let Some(value) = self.get_by_name(path) {
             return Some(value);
@@ -645,6 +691,18 @@ impl FixMsg {
         self.known_by_name(name)
             .and_then(|known| parent.index_of(known.name()))
             .or_else(|| parent.index_of(name))
+            .or_else(|| {
+                let mut positions =
+                    parent
+                        .fields()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, field)| {
+                            crate::types::folds_equal(field.name(), name).then_some(index)
+                        });
+                let index = positions.next()?;
+                positions.next().is_none().then_some(index)
+            })
     }
 
     /// One step of a path: into a Struct child by name, or into a List entry

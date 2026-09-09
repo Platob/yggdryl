@@ -1,0 +1,73 @@
+{
+  "name": "underlyingphysicalsettlterm",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "nounderlyingphysicalsettldeliverableobligations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingphysicalsettldeliverableobligations"
+        }
+      },
+      {
+        "name": "underlyingphysicalsettldeliverableobligationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingphysicalsettldeliverableobligationgrp"
+        }
+      },
+      {
+        "name": "underlyingphysicalsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingphysicalsettlcurrency"
+        }
+      },
+      {
+        "name": "underlyingphysicalsettlbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingphysicalsettlbusinessdays"
+        }
+      },
+      {
+        "name": "underlyingphysicalsettlmaximumbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingphysicalsettlmaximumbusinessdays"
+        }
+      },
+      {
+        "name": "underlyingphysicalsettltermxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingphysicalsettltermxid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPhysicalSettlTerm",
+    "fix:tag": "105479"
+  }
+}

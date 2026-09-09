@@ -1,0 +1,43 @@
+{
+  "name": "algosystemmodule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "algosystemmodulename",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "algosystemmodulename"
+        }
+      },
+      {
+        "name": "algosystemmoduleversion",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "algosystemmoduleversion"
+        }
+      },
+      {
+        "name": "algosystemmodulelastupdatetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "algosystemmodulelastupdatetime"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "AlgoSystemModule",
+    "fix:tag": "418053"
+  }
+}

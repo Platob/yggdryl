@@ -1,0 +1,53 @@
+{
+  "name": "underlyingdividendpayment",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingdividendpaymentdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendpaymentdate"
+        }
+      },
+      {
+        "name": "underlyingdividendpaymentamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendpaymentamount"
+        }
+      },
+      {
+        "name": "underlyingdividendpaymentcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendpaymentcurrency"
+        }
+      },
+      {
+        "name": "underlyingdividendaccruedinterest",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendaccruedinterest"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingDividendPayment",
+    "fix:tag": "1014494"
+  }
+}

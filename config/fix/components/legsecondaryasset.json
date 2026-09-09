@@ -1,0 +1,53 @@
+{
+  "name": "legsecondaryasset",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legsecondaryassetclass",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsecondaryassetclass"
+        }
+      },
+      {
+        "name": "legsecondaryassetsubclass",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsecondaryassetsubclass"
+        }
+      },
+      {
+        "name": "legsecondaryassettype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsecondaryassettype"
+        }
+      },
+      {
+        "name": "legsecondaryassetsubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsecondaryassetsubtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegSecondaryAsset",
+    "fix:tag": "967917"
+  }
+}

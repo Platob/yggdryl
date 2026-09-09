@@ -1,0 +1,33 @@
+{
+  "name": "paymentstreamfixingdatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreamfixingdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfixingdate"
+        }
+      },
+      {
+        "name": "paymentstreamfixingdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfixingdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentStreamFixingDate",
+    "fix:tag": "159379"
+  }
+}

@@ -1,0 +1,153 @@
+{
+  "name": "prealloc",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "allocaccount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocaccount"
+        }
+      },
+      {
+        "name": "allocacctidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocacctidsource"
+        }
+      },
+      {
+        "name": "allocsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocsettlcurrency"
+        }
+      },
+      {
+        "name": "allocsettlcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocsettlcurrencycodesource"
+        }
+      },
+      {
+        "name": "individualallocid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "individualallocid"
+        }
+      },
+      {
+        "name": "alloclegrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloclegrefid"
+        }
+      },
+      {
+        "name": "nonestedpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonestedpartyids"
+        }
+      },
+      {
+        "name": "nestedparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties"
+        }
+      },
+      {
+        "name": "allochandlinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allochandlinst"
+        }
+      },
+      {
+        "name": "allocqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocqty"
+        }
+      },
+      {
+        "name": "custodiallotid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "custodiallotid"
+        }
+      },
+      {
+        "name": "versuspurchasedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "versuspurchasedate"
+        }
+      },
+      {
+        "name": "versuspurchaseprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "versuspurchaseprice"
+        }
+      },
+      {
+        "name": "currentcostbasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "currentcostbasis"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PreAlloc",
+    "fix:tag": "462272"
+  }
+}

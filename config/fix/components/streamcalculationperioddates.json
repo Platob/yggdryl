@@ -1,0 +1,224 @@
+{
+  "name": "streamcalculationperioddates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streamcalculationperioddatesxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationperioddatesxid"
+        }
+      },
+      {
+        "name": "streamcalculationperioddatesxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationperioddatesxidref"
+        }
+      },
+      {
+        "name": "streamcalculationperiodbusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationperiodbusinessdayconvention"
+        }
+      },
+      {
+        "name": "nostreamcalculationperiodbusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nostreamcalculationperiodbusinesscenters"
+        }
+      },
+      {
+        "name": "streamcalculationperiodbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "streamcalculationperiodbusinesscentergrp"
+        }
+      },
+      {
+        "name": "nostreamcalculationperioddates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nostreamcalculationperioddates"
+        }
+      },
+      {
+        "name": "streamcalculationperioddategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "streamcalculationperioddategrp"
+        }
+      },
+      {
+        "name": "streamfirstperiodstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamfirstperiodstartdateunadjusted"
+        }
+      },
+      {
+        "name": "streamfirstperiodstartdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamfirstperiodstartdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nostreamfirstperiodstartdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nostreamfirstperiodstartdatebusinesscenters"
+        }
+      },
+      {
+        "name": "streamfirstperiodstartdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "streamfirstperiodstartdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "streamfirstperiodstartdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamfirstperiodstartdateadjusted"
+        }
+      },
+      {
+        "name": "streamfirstregularperiodstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamfirstregularperiodstartdateunadjusted"
+        }
+      },
+      {
+        "name": "streamfirstcompoundingperiodenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamfirstcompoundingperiodenddateunadjusted"
+        }
+      },
+      {
+        "name": "streamlastregularperiodenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamlastregularperiodenddateunadjusted"
+        }
+      },
+      {
+        "name": "streamcalculationfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationfrequencyperiod"
+        }
+      },
+      {
+        "name": "streamcalculationfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationfrequencyunit"
+        }
+      },
+      {
+        "name": "streamcalculationrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationrollconvention"
+        }
+      },
+      {
+        "name": "streamcalculationbalanceoffirstperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationbalanceoffirstperiod"
+        }
+      },
+      {
+        "name": "streamcalculationcorrectionperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationcorrectionperiod"
+        }
+      },
+      {
+        "name": "streamcalculationcorrectionunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcalculationcorrectionunit"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the calculation period dates of the stream.",
+    "display": "StreamCalculationPeriodDates",
+    "fix:tag": "480062"
+  }
+}

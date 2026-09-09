@@ -1,0 +1,134 @@
+{
+  "name": "tradingsessionrules",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "noordtyperules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noordtyperules"
+        }
+      },
+      {
+        "name": "ordtyperules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "ordtyperules"
+        }
+      },
+      {
+        "name": "notimeinforcerules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notimeinforcerules"
+        }
+      },
+      {
+        "name": "timeinforcerules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "timeinforcerules"
+        }
+      },
+      {
+        "name": "noexecinstrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noexecinstrules"
+        }
+      },
+      {
+        "name": "execinstrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "execinstrules"
+        }
+      },
+      {
+        "name": "noauctiontyperules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noauctiontyperules"
+        }
+      },
+      {
+        "name": "auctiontyperulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "auctiontyperulegrp"
+        }
+      },
+      {
+        "name": "nomatchrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomatchrules"
+        }
+      },
+      {
+        "name": "matchrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "matchrules"
+        }
+      },
+      {
+        "name": "nomdfeedtypes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomdfeedtypes"
+        }
+      },
+      {
+        "name": "marketdatafeedtypes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "marketdatafeedtypes"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies the order types that are valid for trading. The scope of the rule is determined by the context in which the component is used. In this case, the scope is trading session.",
+    "display": "TradingSessionRules",
+    "fix:tag": "623055"
+  }
+}

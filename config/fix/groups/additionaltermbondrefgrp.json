@@ -1,0 +1,24 @@
+{
+  "name": "additionaltermbondrefgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "additionaltermbondref",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "additionaltermbondref"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAdditionalTermBondRefs(40000) > 0.",
+    "display": "AdditionalTermBondRefGrp",
+    "fix:component": "additionaltermbondref",
+    "fix:counter": "40000",
+    "fix:tag": "306961"
+  }
+}

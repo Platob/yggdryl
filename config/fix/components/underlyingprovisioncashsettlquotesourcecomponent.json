@@ -1,0 +1,34 @@
+{
+  "name": "underlyingprovisioncashsettlquotesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisioncashsettlquotesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlquotesource"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlquotereferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlquotereferencepage"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The UnderlyingProvisionCashSettlQuoteSource is a subcomponent of the UnderlyingProvisionGrp component used to specify the reference source for currency or rate quote for cash settlement purposes.",
+    "display": "UnderlyingProvisionCashSettlQuoteSource",
+    "fix:tag": "675179"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "name": "testgatewaydetail",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "testgatewaydetailname",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testgatewaydetailname"
+        }
+      },
+      {
+        "name": "testgatewaydetailtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testgatewaydetailtype"
+        }
+      },
+      {
+        "name": "testgatewaydetailvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testgatewaydetailvalue"
+        }
+      },
+      {
+        "name": "testgatewaymarketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testgatewaymarketid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TestGatewayDetail",
+    "fix:tag": "646928"
+  }
+}

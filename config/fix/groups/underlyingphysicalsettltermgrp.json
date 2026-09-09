@@ -1,0 +1,24 @@
+{
+  "name": "underlyingphysicalsettltermgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingphysicalsettlterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingphysicalsettlterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingPhysicalSettlTerms(42060) > 0.",
+    "display": "UnderlyingPhysicalSettlTermGrp",
+    "fix:component": "underlyingphysicalsettlterm",
+    "fix:counter": "42060",
+    "fix:tag": "190211"
+  }
+}

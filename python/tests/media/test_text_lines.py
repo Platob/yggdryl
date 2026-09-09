@@ -581,12 +581,17 @@ def test_a_nanosecond_modification_time_reaches_a_record_floored(
     target.write_bytes(b"first\nsecond\n")
     stamp = int(MTIME.timestamp()) * 1_000_000_000 + MTIME.microsecond * 1_000 + 789
     os.utime(target, ns=(stamp, stamp))
+    stored_stamp = target.stat().st_mtime_ns
+    # Windows filesystems retain 100 ns ticks. Test the timestamp actually
+    # stored, while requiring a remainder that the record path must floor.
+    assert stored_stamp // 1_000 == stamp // 1_000
+    assert stored_stamp % 1_000 != 0
     source = IOBase(target)
 
     # The batch path keeps every nanosecond of it, which is why the count and
     # not the `datetime` is what proves it.
     table = source.read_arrow_reader(options=TextOptions()).read_all()
-    assert table.column("mtime").cast(pa.int64()).to_pylist() == [stamp, stamp]
+    assert table.column("mtime").cast(pa.int64()).to_pylist() == [stored_stamp, stored_stamp]
 
     # The record path hands back the microsecond `datetime` holds.
     assert [row["mtime"] for row in source.read_records(options=TextOptions())] == [

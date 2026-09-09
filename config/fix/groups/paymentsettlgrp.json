@@ -1,0 +1,24 @@
+{
+  "name": "paymentsettlgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentsettl",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentsettl"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentSettls(40230) > 0.",
+    "display": "PaymentSettlGrp",
+    "fix:component": "paymentsettl",
+    "fix:counter": "40230",
+    "fix:tag": "841061"
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "name": "risklimittypecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "risklimittype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimittype"
+        }
+      },
+      {
+        "name": "risklimitamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitamount"
+        }
+      },
+      {
+        "name": "risklimitaction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitaction"
+        }
+      },
+      {
+        "name": "risklimitutilizationamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitutilizationamount"
+        }
+      },
+      {
+        "name": "risklimitutilizationpercent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitutilizationpercent"
+        }
+      },
+      {
+        "name": "risklimitcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitcurrency"
+        }
+      },
+      {
+        "name": "risklimitcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitcurrencycodesource"
+        }
+      },
+      {
+        "name": "risklimitplatform",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitplatform"
+        }
+      },
+      {
+        "name": "risklimitvelocityperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitvelocityperiod"
+        }
+      },
+      {
+        "name": "risklimitvelocityunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitvelocityunit"
+        }
+      },
+      {
+        "name": "noriskwarninglevels",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noriskwarninglevels"
+        }
+      },
+      {
+        "name": "riskwarninglevelgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "riskwarninglevelgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RiskLimitType",
+    "fix:tag": "768117"
+  }
+}

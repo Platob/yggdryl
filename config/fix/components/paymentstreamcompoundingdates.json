@@ -1,0 +1,184 @@
+{
+  "name": "paymentstreamcompoundingdates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreamcompoundingdatesbusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingdatesbusinessdayconvention"
+        }
+      },
+      {
+        "name": "nopaymentstreamcompoundingdatesbusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentstreamcompoundingdatesbusinesscenters"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingdatesbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentstreamcompoundingdatesbusinesscentergrp"
+        }
+      },
+      {
+        "name": "nopaymentstreamcompoundingdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentstreamcompoundingdates"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentstreamcompoundingdategrp"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingdatesrelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingdatesrelativeto"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingdatesoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingdatesoffsetperiod"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingdatesoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingdatesoffsetunit"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingdatesoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingdatesoffsetdaytype"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingperiodskip",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingperiodskip"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingstartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "paymentstreamcompoundingstartdate"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "paymentstreamcompoundingenddate"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingfrequencyperiod"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingfrequencyunit"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingrollconvention"
+        }
+      },
+      {
+        "name": "paymentstreamboundsfirstdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamboundsfirstdateunadjusted"
+        }
+      },
+      {
+        "name": "paymentstreamboundslastdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamboundslastdateunadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to payment stream compounding dates.",
+    "display": "PaymentStreamCompoundingDates",
+    "fix:tag": "616157"
+  }
+}

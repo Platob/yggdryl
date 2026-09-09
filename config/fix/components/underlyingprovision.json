@@ -1,0 +1,363 @@
+{
+  "name": "underlyingprovision",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisiontype"
+        }
+      },
+      {
+        "name": "underlyingprovisiondateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisiondateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingprovisiondatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisiondatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingprovisiondatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprovisiondatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingprovisiondatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprovisiondatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingprovisiondateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisiondateadjusted"
+        }
+      },
+      {
+        "name": "underlyingprovisiondatetenorperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisiondatetenorperiod"
+        }
+      },
+      {
+        "name": "underlyingprovisiondatetenorunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisiondatetenorunit"
+        }
+      },
+      {
+        "name": "underlyingprovisionbreakfeeelection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionbreakfeeelection"
+        }
+      },
+      {
+        "name": "underlyingprovisionbreakfeerate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionbreakfeerate"
+        }
+      },
+      {
+        "name": "underlyingprovisioncalculationagent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncalculationagent"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionsinglepartybuyerside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionsinglepartybuyerside"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionsinglepartysellerside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionsinglepartysellerside"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlvaluedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingprovisioncashsettlvaluedates"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexercisedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingprovisionoptionexercisedates"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexpirationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingprovisionoptionexpirationdate"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionrelevantunderlyingdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingprovisionoptionrelevantunderlyingdate"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexercisestyle",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexercisestyle"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexercisemultiplenotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexercisemultiplenotional"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexerciseminimumnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexerciseminimumnotional"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexercisemaximumnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexercisemaximumnotional"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionminimumnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionminimumnumber"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionmaximumnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionmaximumnumber"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionexerciseconfirmation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexerciseconfirmation"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlpaymentdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingprovisioncashsettlpaymentdates"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlmethod"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlcurrency"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlcurrency2",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlcurrency2"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlquotetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlquotetype"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlquotesourcecomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingprovisioncashsettlquotesourcecomponent"
+        }
+      },
+      {
+        "name": "underlyingprovisiontext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisiontext"
+        }
+      },
+      {
+        "name": "encodedunderlyingprovisiontextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingprovisiontextlen"
+        }
+      },
+      {
+        "name": "encodedunderlyingprovisiontext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingprovisiontext"
+        }
+      },
+      {
+        "name": "nounderlyingprovisionpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprovisionpartyids"
+        }
+      },
+      {
+        "name": "underlyingprovisionparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprovisionparties"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProvision",
+    "fix:tag": "911835"
+  }
+}

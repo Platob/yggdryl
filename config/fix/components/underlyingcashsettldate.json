@@ -1,0 +1,104 @@
+{
+  "name": "underlyingcashsettldate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcashsettldateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettldateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingcashsettldatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettldatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingcashsettldatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcashsettldatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingcashsettldatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcashsettldatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingcashsettldaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettldaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingcashsettldateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettldateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingcashsettldateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettldateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingcashsettldateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettldateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingcashsettldateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettldateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in the Instrument component. The specified value would be specific to this instance of the cash settlement provision.",
+    "display": "UnderlyingCashSettlDate",
+    "fix:tag": "297201"
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "name": "underlyingpaymentstubenddate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstubenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubenddateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubenddatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubenddatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingpaymentstubenddatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingpaymentstubenddatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubenddatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingpaymentstubenddatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubenddaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubenddaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubenddateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubenddateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubenddateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubenddateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubenddateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubenddateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubenddateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstubenddateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument. The specified value would be specific to this payment stub instance.",
+    "display": "UnderlyingPaymentStubEndDate",
+    "fix:tag": "454884"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "instrmtlegseclistgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrmtlegseclist",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "instrmtlegseclist"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of legs that make up the Security",
+    "display": "InstrmtLegSecListGrp",
+    "fix:component": "instrmtlegseclist",
+    "fix:counter": "555",
+    "fix:tag": "365197"
+  }
+}

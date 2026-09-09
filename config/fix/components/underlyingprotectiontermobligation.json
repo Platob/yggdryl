@@ -1,0 +1,33 @@
+{
+  "name": "underlyingprotectiontermobligation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprotectiontermobligationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermobligationtype"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermobligationvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermobligationvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProtectionTermObligation",
+    "fix:tag": "533542"
+  }
+}

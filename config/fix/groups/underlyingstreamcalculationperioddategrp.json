@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamcalculationperioddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcalculationperioddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingstreamcalculationperioddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingStreamCalculationPeriodDates(41954) > 0.",
+    "display": "UnderlyingStreamCalculationPeriodDateGrp",
+    "fix:component": "underlyingstreamcalculationperioddatecomponent",
+    "fix:counter": "41954",
+    "fix:tag": "621507"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "legprovisionoptionexpirationdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisionoptionexpirationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprovisionoptionexpirationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProvisionOptionExpirationDateBusinessCenters(40937) > 0.",
+    "display": "LegProvisionOptionExpirationDateBusinessCenterGrp",
+    "fix:component": "legprovisionoptionexpirationdatebusinesscentercomponent",
+    "fix:counter": "40937",
+    "fix:tag": "425218"
+  }
+}

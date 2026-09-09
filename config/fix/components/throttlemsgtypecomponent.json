@@ -1,0 +1,23 @@
+{
+  "name": "throttlemsgtypecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "throttlemsgtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttlemsgtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ThrottleMsgType",
+    "fix:tag": "405547"
+  }
+}

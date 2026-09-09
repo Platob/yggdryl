@@ -1,0 +1,33 @@
+{
+  "name": "provisionoptionexercisefixeddatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "provisionoptionexercisefixeddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexercisefixeddate"
+        }
+      },
+      {
+        "name": "provisionoptionexercisefixeddatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexercisefixeddatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ProvisionOptionExerciseFixedDate",
+    "fix:tag": "184147"
+  }
+}

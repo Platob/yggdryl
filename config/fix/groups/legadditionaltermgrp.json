@@ -1,0 +1,24 @@
+{
+  "name": "legadditionaltermgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legadditionalterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legadditionalterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegAdditionalTerms(41335) > 0.",
+    "display": "LegAdditionalTermGrp",
+    "fix:component": "legadditionalterm",
+    "fix:counter": "41335",
+    "fix:tag": "1002785"
+  }
+}

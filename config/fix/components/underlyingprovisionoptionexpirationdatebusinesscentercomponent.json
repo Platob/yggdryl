@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprovisionoptionexpirationdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisionoptionexpirationdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionexpirationdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProvisionOptionExpirationDateBusinessCenter",
+    "fix:tag": "191667"
+  }
+}

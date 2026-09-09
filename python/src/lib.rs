@@ -36,6 +36,7 @@ mod text;
 mod txhash;
 mod types;
 mod uri;
+mod version;
 mod xxhash;
 
 pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
@@ -250,8 +251,8 @@ impl PyDifferenceIterator {
 fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     use pyo3::types::PyDict;
     use yggdryl::{
-        Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, Scheme, TimeUnit,
-        UnionMode,
+        Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, PythonKind, Scheme,
+        TimeUnit, UnionMode,
     };
 
     let listing = PyDict::new(py);
@@ -305,6 +306,10 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         yggdryl::Representation::ALL
             .map(yggdryl::Representation::as_str)
             .to_vec(),
+    )?;
+    listing.set_item(
+        "python_kinds",
+        PythonKind::ALL.map(PythonKind::as_str).to_vec(),
     )?;
     listing.set_item(
         "compatibility_schemes",
@@ -419,15 +424,22 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyFieldPropertyIterator>()?;
     module.add_class::<PyFieldMetadata>()?;
     module.add_class::<PyProtocolField>()?;
+    module.add_class::<types::python::PyPythonMetadata>()?;
     module.add_class::<types::cast::PyArrowCastPlan>()?;
     module.add_class::<fix::PyFixBranch>()?;
     module.add_class::<fix::PyFixRegistry>()?;
+    module.add_class::<version::PyVersion>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;
     module.add_class::<fix::PyFixCodec>()?;
     module.add_class::<fix::PyFixLifecycle>()?;
     module.add_class::<fix::PyUlPlugin>()?;
+    module.add_class::<fix::PyUlPlugins>()?;
+    module.add_class::<fix::PyFixMessages>()?;
+    module.add_class::<fix::PyMsgType>()?;
+    module.add_class::<fix::PyMsgTypeIterator>()?;
+    module.add_class::<fix::PyFixDefinitionIterator>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyCodecScalarIterator>()?;
     module.add_class::<PyMimeType>()?;

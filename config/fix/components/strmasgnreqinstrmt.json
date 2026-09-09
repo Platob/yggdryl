@@ -1,0 +1,53 @@
+{
+  "name": "strmasgnreqinstrmt",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrument"
+        }
+      },
+      {
+        "name": "settltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settltype"
+        }
+      },
+      {
+        "name": "mdentrysize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdentrysize"
+        }
+      },
+      {
+        "name": "mdstreamid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstreamid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StrmAsgnReqInstrmt",
+    "fix:tag": "218449"
+  }
+}

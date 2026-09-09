@@ -1,0 +1,74 @@
+{
+  "name": "legpaymentstreamcompoundingenddate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamcompoundingenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingenddateunadjusted"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingenddaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingenddaterelativeto"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingenddateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingenddateoffsetperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingenddateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingenddateoffsetunit"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingenddateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingenddateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingenddateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingenddateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when LegPaymentStreamCompoundingEndDateOffsetUnit(42424) is specified.",
+    "display": "LegPaymentStreamCompoundingEndDate",
+    "fix:tag": "148096"
+  }
+}

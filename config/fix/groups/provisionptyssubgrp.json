@@ -1,0 +1,24 @@
+{
+  "name": "provisionptyssubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provisionptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "provisionptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProvisionPartySubIDs(40178) > 0.",
+    "display": "ProvisionPtysSubGrp",
+    "fix:component": "provisionptyssub",
+    "fix:counter": "40178",
+    "fix:tag": "551289"
+  }
+}

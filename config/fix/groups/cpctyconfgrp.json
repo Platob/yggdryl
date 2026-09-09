@@ -1,0 +1,24 @@
+{
+  "name": "cpctyconfgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "cpctyconf",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "cpctyconf"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies the capacity of the firm executing the order(s)",
+    "display": "CpctyConfGrp",
+    "fix:component": "cpctyconf",
+    "fix:counter": "862",
+    "fix:tag": "596785"
+  }
+}

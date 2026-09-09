@@ -1,0 +1,24 @@
+{
+  "name": "matchrules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "matchrule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "matchrule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoMatchRules(1235) > 0.",
+    "display": "MatchRules",
+    "fix:component": "matchrule",
+    "fix:counter": "1235",
+    "fix:tag": "108286"
+  }
+}

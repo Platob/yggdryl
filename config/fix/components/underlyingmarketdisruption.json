@@ -1,0 +1,124 @@
+{
+  "name": "underlyingmarketdisruption",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingmarketdisruptionprovision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmarketdisruptionprovision"
+        }
+      },
+      {
+        "name": "nounderlyingmarketdisruptionevents",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingmarketdisruptionevents"
+        }
+      },
+      {
+        "name": "underlyingmarketdisruptioneventgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingmarketdisruptioneventgrp"
+        }
+      },
+      {
+        "name": "underlyingmarketdisruptionfallbackprovision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmarketdisruptionfallbackprovision"
+        }
+      },
+      {
+        "name": "nounderlyingmarketdisruptionfallbacks",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingmarketdisruptionfallbacks"
+        }
+      },
+      {
+        "name": "underlyingmarketdisruptionfallbackgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingmarketdisruptionfallbackgrp"
+        }
+      },
+      {
+        "name": "nounderlyingmarketdisruptionfallbackreferenceprices",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingmarketdisruptionfallbackreferenceprices"
+        }
+      },
+      {
+        "name": "underlyingmarketdisruptionfallbackreferencepricegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingmarketdisruptionfallbackreferencepricegrp"
+        }
+      },
+      {
+        "name": "underlyingmarketdisruptionmaximumdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmarketdisruptionmaximumdays"
+        }
+      },
+      {
+        "name": "underlyingmarketdisruptionmaterialitypercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmarketdisruptionmaterialitypercentage"
+        }
+      },
+      {
+        "name": "underlyingmarketdisruptionminimumfuturescontracts",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmarketdisruptionminimumfuturescontracts"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "If specified, the disruption event should be specified in UnderlyingMarketDisruptionEventGrp.",
+    "display": "UnderlyingMarketDisruption",
+    "fix:tag": "406372"
+  }
+}

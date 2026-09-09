@@ -1,0 +1,73 @@
+{
+  "name": "nestedparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "nestedpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nestedpartyid"
+        }
+      },
+      {
+        "name": "nestedpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nestedpartyidsource"
+        }
+      },
+      {
+        "name": "nestedpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nestedpartyrole"
+        }
+      },
+      {
+        "name": "nestedpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nestedpartyrolequalifier"
+        }
+      },
+      {
+        "name": "nonestedpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonestedpartysubids"
+        }
+      },
+      {
+        "name": "nstdptyssubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nstdptyssubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "NestedParty",
+    "fix:tag": "218333"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "underlyingdividendfxtriggerdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingdividendfxtriggerdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendfxtriggerdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingDividendFXTriggerDateBusinessCenter",
+    "fix:tag": "797606"
+  }
+}

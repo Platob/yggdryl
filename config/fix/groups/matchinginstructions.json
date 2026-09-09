@@ -1,0 +1,24 @@
+{
+  "name": "matchinginstructions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "matchinginstruction",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "matchinginstruction"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoMatchInst > 0.",
+    "display": "MatchingInstructions",
+    "fix:component": "matchinginstruction",
+    "fix:counter": "1624",
+    "fix:tag": "1058753"
+  }
+}

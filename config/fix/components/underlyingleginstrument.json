@@ -1,0 +1,183 @@
+{
+  "name": "underlyingleginstrument",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyinglegsymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegsymbol"
+        }
+      },
+      {
+        "name": "underlyinglegsymbolsfx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegsymbolsfx"
+        }
+      },
+      {
+        "name": "underlyinglegsecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegsecurityid"
+        }
+      },
+      {
+        "name": "underlyinglegsecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegsecurityidsource"
+        }
+      },
+      {
+        "name": "nounderlyinglegsecurityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyinglegsecurityaltid"
+        }
+      },
+      {
+        "name": "underlyinglegsecurityaltidgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyinglegsecurityaltidgrp"
+        }
+      },
+      {
+        "name": "underlyinglegcficode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegcficode"
+        }
+      },
+      {
+        "name": "underlyinglegsecuritytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegsecuritytype"
+        }
+      },
+      {
+        "name": "underlyinglegsecuritysubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegsecuritysubtype"
+        }
+      },
+      {
+        "name": "underlyinglegmaturitymonthyear",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegmaturitymonthyear"
+        }
+      },
+      {
+        "name": "underlyinglegmaturitydate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegmaturitydate"
+        }
+      },
+      {
+        "name": "underlyinglegmaturitytime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegmaturitytime"
+        }
+      },
+      {
+        "name": "underlyinglegstrikeprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegstrikeprice"
+        }
+      },
+      {
+        "name": "underlyinglegoptattribute",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegoptattribute"
+        }
+      },
+      {
+        "name": "underlyinglegputorcall",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegputorcall"
+        }
+      },
+      {
+        "name": "underlyinglegsecurityexchange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegsecurityexchange"
+        }
+      },
+      {
+        "name": "underlyinglegsecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegsecuritydesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingLegInstrument",
+    "fix:tag": "393121"
+  }
+}

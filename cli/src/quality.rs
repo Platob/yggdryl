@@ -11,7 +11,7 @@
 //! whichever the index happened to hold; a field with no tag cannot be
 //! written back at all.
 
-use yggdryl::{Field, FixRegistry};
+use yggdryl::{Field, FixCategory, FixRegistry};
 
 use crate::style;
 
@@ -53,8 +53,8 @@ pub struct Finding {
 pub struct Report {
     /// What was found.
     pub findings: Vec<Finding>,
-    /// How many fields were walked.
-    pub fields: usize,
+    /// How many definitions were walked in each category.
+    pub categories: Vec<(FixCategory, usize)>,
     /// How many code records were walked.
     pub codes: usize,
     /// How many lineage entries were walked.
@@ -83,111 +83,100 @@ impl Report {
 pub fn check(registry: &FixRegistry) -> Report {
     let mut report = Report {
         findings: Vec::new(),
-        fields: 0,
+        categories: Vec::new(),
         codes: 0,
         entries: 0,
     };
-    // Folded names, to catch two fields one lookup cannot tell apart.
-    let mut folded: Vec<(String, String)> = Vec::new();
+    for category in FixCategory::ALL {
+        let mut count = 0;
+        for field in registry.definitions(category) {
+            count += 1;
+            let view = field.as_fix();
+            let named = format!("{category}/{}", field.name());
 
-    for field in registry {
-        report.fields += 1;
-        let view = field.as_fix();
-        let named = field.name().to_owned();
-
-        // A field with no tag cannot be written back into the store, so a
-        // dictionary holding one cannot round-trip.
-        match view.tag() {
-            Ok(Some(_)) => {}
-            Ok(None) => report.findings.push(Finding {
-                level: Level::Fail,
-                check: "tag",
-                subject: named.clone(),
-                detail: "states no fix:tag, so it cannot be written back".to_owned(),
-            }),
-            Err(error) => report.findings.push(Finding {
-                level: Level::Fail,
-                check: "tag",
-                subject: named.clone(),
-                detail: format!("states a tag that will not read: {error}"),
-            }),
-        }
-
-        // A borrowed walk ends at a refusal, so one malformed record removes
-        // every record after it from resolution - silently.
-        for code in view.codes() {
-            match code {
-                Ok(_) => report.codes += 1,
-                Err(error) => {
-                    report.findings.push(Finding {
+            // A field with no tag cannot be written back into the store, so a
+            // dictionary holding one cannot round-trip.
+            if category == FixCategory::Fields {
+                match view.tag() {
+                    Ok(Some(_)) => {}
+                    Ok(None) => report.findings.push(Finding {
                         level: Level::Fail,
-                        check: "codes",
+                        check: "tag",
                         subject: named.clone(),
-                        detail: format!(
-                            "its code set stops at {error} - every code after it is invisible"
-                        ),
-                    });
-                    break;
+                        detail: "states no fix:tag, so it cannot be written back".to_owned(),
+                    }),
+                    Err(error) => report.findings.push(Finding {
+                        level: Level::Fail,
+                        check: "tag",
+                        subject: named.clone(),
+                        detail: format!("states a tag that will not read: {error}"),
+                    }),
                 }
             }
-        }
-        for entry in view.lineage() {
-            match entry {
-                Ok(_) => report.entries += 1,
-                Err(error) => {
+
+            // A borrowed walk ends at a refusal, so one malformed record removes
+            // every record after it from resolution - silently.
+            for code in view.codes() {
+                match code {
+                    Ok(_) => report.codes += 1,
+                    Err(error) => {
+                        report.findings.push(Finding {
+                            level: Level::Fail,
+                            check: "codes",
+                            subject: named.clone(),
+                            detail: format!(
+                                "its code set stops at {error} - every code after it is invisible"
+                            ),
+                        });
+                        break;
+                    }
+                }
+            }
+            for entry in view.lineage() {
+                match entry {
+                    Ok(_) => report.entries += 1,
+                    Err(error) => {
+                        report.findings.push(Finding {
+                            level: Level::Fail,
+                            check: "lineage",
+                            subject: named.clone(),
+                            detail: format!("its lineage stops at {error}"),
+                        });
+                        break;
+                    }
+                }
+            }
+
+            // A lineage whose newest entry names something else is a lineage
+            // about another field.
+            let newest = view
+                .lineage()
+                .filter_map(std::result::Result::ok)
+                .filter_map(yggdryl::FixLineageEntry::name)
+                .last();
+            if let Some(newest) = newest {
+                if !newest.eq_ignore_ascii_case(field.name()) {
                     report.findings.push(Finding {
-                        level: Level::Fail,
+                        level: Level::Warn,
                         check: "lineage",
                         subject: named.clone(),
-                        detail: format!("its lineage stops at {error}"),
+                        detail: format!("its newest lineage entry names {newest:?}"),
                     });
-                    break;
                 }
             }
-        }
 
-        // A lineage whose newest entry names something else is a lineage
-        // about another field.
-        let newest = view
-            .lineage()
-            .filter_map(std::result::Result::ok)
-            .filter_map(yggdryl::FixLineageEntry::name)
-            .last();
-        if let Some(newest) = newest {
-            if !newest.eq_ignore_ascii_case(field.name()) {
-                report.findings.push(Finding {
-                    level: Level::Warn,
-                    check: "lineage",
-                    subject: named.clone(),
-                    detail: format!("its newest lineage entry names {newest:?}"),
-                });
-            }
+            duplicated_codes(&mut report, field, &named);
+            shaped_group(&mut report, field, &named);
         }
-
-        // Two spellings one fold cannot tell apart answer whichever the index
-        // happened to hold.
-        let key = fold(field.name());
-        if let Some((_, other)) = folded.iter().find(|(held, _)| *held == key) {
-            report.findings.push(Finding {
-                level: Level::Fail,
-                check: "names",
-                subject: named.clone(),
-                detail: format!("folds to the same name as {other:?}"),
-            });
-        } else {
-            folded.push((key, named.clone()));
-        }
-
-        duplicated_codes(&mut report, field, &named);
-        shaped_group(&mut report, field, &named);
+        report.categories.push((category, count));
     }
 
-    if report.fields == 0 {
+    if report.categories.iter().all(|(_, count)| *count == 0) {
         report.findings.push(Finding {
             level: Level::Note,
             check: "empty",
             subject: String::new(),
-            detail: "the dictionary holds no fields".to_owned(),
+            detail: "the dictionary holds no definitions".to_owned(),
         });
     }
     report
@@ -226,14 +215,6 @@ fn shaped_group(report: &mut Report, field: &Field, named: &str) {
     }
 }
 
-/// The crate's one fold, for the duplicate-name check.
-fn fold(name: &str) -> String {
-    name.chars()
-        .filter(|held| !matches!(held, '_' | '-' | ' '))
-        .flat_map(char::to_lowercase)
-        .collect()
-}
-
 /// A list field's item, where it is one.
 fn list_item(field: &Field) -> Option<&Field> {
     match field.dtype() {
@@ -245,7 +226,9 @@ fn list_item(field: &Field) -> Option<&Field> {
 /// Prints a report the way a person reads it.
 pub fn render(report: &Report) {
     style::heading("checked");
-    style::entry("fields", &report.fields.to_string());
+    for (category, count) in &report.categories {
+        style::entry(category.as_str(), &count.to_string());
+    }
     style::entry("codes", &report.codes.to_string());
     style::entry("lineage entries", &report.entries.to_string());
 
@@ -266,7 +249,7 @@ pub fn render(report: &Report) {
             ]
         })
         .collect();
-    style::table(&["level", "check", "field", "detail"], &rows);
+    style::table(&["level", "check", "definition", "detail"], &rows);
 
     let failed = report.counted(Level::Fail);
     let warned = report.counted(Level::Warn);

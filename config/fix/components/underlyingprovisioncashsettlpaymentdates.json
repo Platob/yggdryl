@@ -1,0 +1,124 @@
+{
+  "name": "underlyingprovisioncashsettlpaymentdates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisioncashsettlpaymentdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlpaymentdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingprovisioncashsettlpaymentdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprovisioncashsettlpaymentdatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlpaymentdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprovisioncashsettlpaymentdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlpaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlpaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlpaymentdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlpaymentdateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlpaymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlpaymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlpaymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlpaymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlpaymentdaterangefirst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlpaymentdaterangefirst"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlpaymentdaterangelast",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlpaymentdaterangelast"
+        }
+      },
+      {
+        "name": "nounderlyingprovisioncashsettlpaymentdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprovisioncashsettlpaymentdates"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlpaymentfixeddategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprovisioncashsettlpaymentfixeddategrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the busienss day convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument. The specified value would be specific to this instance of the provisional cash settlement payment date.",
+    "display": "UnderlyingProvisionCashSettlPaymentDates",
+    "fix:tag": "991046"
+  }
+}

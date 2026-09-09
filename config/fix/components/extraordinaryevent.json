@@ -1,0 +1,33 @@
+{
+  "name": "extraordinaryevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "extraordinaryeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "extraordinaryeventtype"
+        }
+      },
+      {
+        "name": "extraordinaryeventvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "extraordinaryeventvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ExtraordinaryEvent",
+    "fix:tag": "237313"
+  }
+}

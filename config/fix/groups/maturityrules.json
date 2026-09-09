@@ -1,0 +1,24 @@
+{
+  "name": "maturityrules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "maturityrule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "maturityrule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of maturity rule entries. This block specifies the rules for determining how new strikes should be listed within the stated price range of the underlying instrument",
+    "display": "MaturityRules",
+    "fix:component": "maturityrule",
+    "fix:counter": "1236",
+    "fix:tag": "832745"
+  }
+}

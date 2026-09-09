@@ -159,8 +159,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
                     black_box(&codec)
                         .transform_line(black_box(body), false)
                         .expect("a readable row")
-                        .entries()
-                        .len()
+                        .map(|message| message.expect("a typed message").entries().len())
+                        .sum::<usize>()
                 })
                 .sum::<usize>()
         });
@@ -206,7 +206,8 @@ pub fn stages(criterion: &mut Criterion) {
     let held = bodies(&source);
     let messages: Vec<FixMsg> = held
         .iter()
-        .map(|body| codec.transform_line(body, false).expect("a row"))
+        .flat_map(|body| codec.transform_line(body, false).expect("a row"))
+        .map(|message| message.expect("a typed message"))
         .collect();
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
     let mut group = criterion.benchmark_group("fix/pipeline_stages");
@@ -214,13 +215,13 @@ pub fn stages(criterion: &mut Criterion) {
         bencher.iter(|| {
             messages
                 .iter()
-                .map(|message| black_box(message).to_row(&schema).expect("a row").len())
+                .map(|message| black_box(message).into_row(&schema).expect("a row").len())
                 .sum::<usize>()
         });
     });
     let rows: Vec<Scalar> = messages
         .iter()
-        .map(|message| message.to_row(&schema).expect("a row"))
+        .map(|message| message.into_row(&schema).expect("a row"))
         .collect();
     group.bench_function("canonicalize", |bencher| {
         bencher.iter(|| {
@@ -299,7 +300,7 @@ pub fn stages(criterion: &mut Criterion) {
         bencher.iter(|| {
             messages
                 .iter()
-                .map(|message| black_box(message).to_row(&narrow).expect("a row").len())
+                .map(|message| black_box(message).into_row(&narrow).expect("a row").len())
                 .sum::<usize>()
         });
     });

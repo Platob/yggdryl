@@ -1,0 +1,114 @@
+{
+  "name": "legprovisioncashsettlvaluedates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprovisioncashsettlvaluetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlvaluetime"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlvaluetimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlvaluetimebusinesscenter"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlvaluedatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlvaluedatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegprovisioncashsettlvaluedatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegprovisioncashsettlvaluedatebusinesscenters"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlvaluedatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legprovisioncashsettlvaluedatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlvaluedaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlvaluedaterelativeto"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlvaluedateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlvaluedateoffsetperiod"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlvaluedateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlvaluedateoffsetunit"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlvaluedateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlvaluedateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlvaluedateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlvaluedateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the leg provision cash settlement value date.",
+    "display": "LegProvisionCashSettlValueDates",
+    "fix:tag": "149714"
+  }
+}

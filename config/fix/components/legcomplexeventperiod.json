@@ -1,0 +1,93 @@
+{
+  "name": "legcomplexeventperiod",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcomplexeventperiodtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventperiodtype"
+        }
+      },
+      {
+        "name": "legcomplexeventbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventbusinesscenter"
+        }
+      },
+      {
+        "name": "nolegcomplexeventschedules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegcomplexeventschedules"
+        }
+      },
+      {
+        "name": "legcomplexeventschedulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legcomplexeventschedulegrp"
+        }
+      },
+      {
+        "name": "nolegcomplexeventperioddatetimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegcomplexeventperioddatetimes"
+        }
+      },
+      {
+        "name": "legcomplexeventperioddategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legcomplexeventperioddategrp"
+        }
+      },
+      {
+        "name": "nolegcomplexeventaveragingobservations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegcomplexeventaveragingobservations"
+        }
+      },
+      {
+        "name": "legcomplexeventaveragingobservationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legcomplexeventaveragingobservationgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegComplexEventPeriod",
+    "fix:tag": "959084"
+  }
+}

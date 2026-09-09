@@ -1,0 +1,24 @@
+{
+  "name": "financingcontractualmatrixgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "financingcontractualmatrix",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "financingcontractualmatrix"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoContractualMatrices(40042) > 0.",
+    "display": "FinancingContractualMatrixGrp",
+    "fix:component": "financingcontractualmatrix",
+    "fix:counter": "40042",
+    "fix:tag": "935698"
+  }
+}

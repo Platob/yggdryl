@@ -97,10 +97,8 @@ pub const GROUP_TAGS: [i32; 3] = [453, 454, 768];
 
 /// The column holding the arrival record.
 ///
-/// A counter-named list, exactly as the dictionary spells every repeating
-/// group: the crate publishes that contract for FIX groups and follows it for
-/// its own columns. It carries no `fix:tag` - it is in no field set, no
-/// registry and no dictionary shard, and exists only in the fixed row.
+/// This arrival-record column carries no `fix:tag` or `fix:counter`: it belongs
+/// to the fixed row, outside the registry and its dictionary shards.
 pub const ENTRIES_COLUMN: &str = "nofixentries";
 
 /// The column holding what no dictionary explained.
@@ -195,6 +193,11 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
         {
             fields.push(held);
         }
+        if let Some(group) = registry.get_group_by_counter(crate::FixId::standard(tag)) {
+            let mut group = group.clone();
+            group.set_nullable(true);
+            fields.push(group);
+        }
     }
     fields.push(entries_field(
         ENTRIES_COLUMN,
@@ -214,8 +217,8 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
 /// A capture is read from somewhere, and where it was read from is what a
 /// monitor orders and joins on: the object's URL, the line number in it, the
 /// clock the line was stamped with, the thread that wrote it. None of that is
-/// FIX and all of it is the row, so it leads the row - and because a line in
-/// is a row out, carrying it is a slice rather than a join.
+/// FIX and all of it leads the row. A bulk configuration produces one output
+/// row per selected MBean, repeating these source values for each message.
 ///
 /// A carried column whose name a FIX column already takes - under the fold
 /// every name here resolves by, so `sessionId` and `sessionid` are one name -
@@ -511,11 +514,11 @@ impl super::FixMsg {
     /// This message as the fixed row a table holds.
     ///
     /// The columns are the schema's own, in its own order, and each is filled
-    /// by the tag its name spells - so a message that carried nothing at a
-    /// column answers null there rather than shifting its neighbours, which
+    /// by its scalar tag or logical group's `fix:counter`. A message carrying
+    /// nothing at a column answers null there rather than shifting its neighbours, which
     /// is what makes two rows of one capture comparable at all. A column no
-    /// tag names is a capture's own and is left null for whoever read the
-    /// capture to fill.
+    /// tag or group counter names is a capture's own and is left null for the
+    /// capture reader to fill.
     ///
     /// The arrival record closes the row under [`ENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it, and [`UNMAPPED_COLUMN`]
@@ -531,9 +534,9 @@ impl super::FixMsg {
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     /// let schema = fix_schema(&registry, "fix")?;
     /// let reader = FixCodec::new(Arc::clone(&registry));
-    /// let order = reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|", false)?;
+    /// let order = reader.transform_fix_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|", false)?;
     ///
-    /// let row = order.to_row(&schema)?;
+    /// let row = order.into_row(&schema)?;
     /// let held = row.as_sequence().expect("a row");
     /// // The columns are the folded names, so `msgtype` is where the type is.
     /// let at = schema.index_of("msgtype").expect("the msgtype column");
@@ -549,7 +552,7 @@ impl super::FixMsg {
     /// Returns the JSON writer's failure rendering a truncated subtree into
     /// the arrival column's leaf - the one fallible step, because every other
     /// member is already a value.
-    pub fn to_row(&self, schema: &Field) -> Result<crate::Scalar> {
+    pub fn into_row(&self, schema: &Field) -> Result<crate::Scalar> {
         let tags = column_tags_of(schema);
         self.row_values(schema, &tags)
             .map(crate::Scalar::from_sequence)
@@ -557,7 +560,7 @@ impl super::FixMsg {
 
     /// The fixed row as the values it is made of, before they are wrapped.
     ///
-    /// What [`Self::to_row`] answers, still open: a reader carrying its own
+    /// What [`Self::into_row`] answers, still open: a reader carrying its own
     /// columns in front of the tags writes them into the slots the schema
     /// left for them and wraps the row once, rather than unwrapping a row to
     /// wrap it again. `tags` is [`fix_column_tags`] over the same schema,
@@ -587,16 +590,30 @@ impl super::FixMsg {
             values.push(match column.name() {
                 ENTRIES_COLUMN => known.take().unwrap_or(crate::Scalar::Null),
                 UNMAPPED_COLUMN => unknown.take().unwrap_or(crate::Scalar::Null),
-                // A column answers for the tag its field carries; one that
+                // A column declaring a group's `fix:counter` answers with
+                // that group, read from the message's own occurrences. Any
+                // other column answers for the tag its field carries; one that
                 // carries none is a capture's own column and nothing in the
                 // message answers for it.
-                _ => match *tag {
-                    Some(tag) => {
-                        let held = self.regrouped(tag, column, self.column_value(tag, &mut clock));
-                        fitted(column, held)
+                _ => {
+                    if let Some(counter) = column.as_fix().counter()? {
+                        let value = self
+                            .index_of_group(counter)
+                            .and_then(|index| self.as_value().get(index))
+                            .cloned()
+                            .unwrap_or(crate::Scalar::Null);
+                        self.regrouped(counter, column, value)
+                    } else {
+                        match *tag {
+                            Some(tag) => {
+                                let held =
+                                    self.regrouped(tag, column, self.column_value(tag, &mut clock));
+                                fitted(column, held)
+                            }
+                            None => crate::Scalar::Null,
+                        }
                     }
-                    None => crate::Scalar::Null,
-                },
+                }
             });
         }
         Ok(values)
@@ -619,7 +636,7 @@ impl super::FixMsg {
         };
         // The message's own member names, in the order its values sit in.
         let spelled: Vec<&str> = self
-            .index_of_tag(tag)
+            .index_of_group(tag)
             .and_then(|at| self.as_field().get_field_at(at))
             .and_then(item_fields)
             .map(|fields| fields.iter().map(Field::name).collect())
@@ -752,7 +769,10 @@ impl super::FixMsg {
         by: i32,
         wanted: &str,
     ) -> Option<crate::Scalar> {
-        let at = self.index_of_tag(group)?;
+        // `group` is the counter's tag, and a group is reached by the counter
+        // it declares rather than by that tag: the tag names the counter's own
+        // column, which holds a count and not the occurrences.
+        let at = self.index_of_group(group)?;
         let declared = item_fields(self.as_field().get_field_at(at)?)?;
         let position = |tag: i32| {
             declared

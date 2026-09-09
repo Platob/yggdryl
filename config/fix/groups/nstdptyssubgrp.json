@@ -1,0 +1,23 @@
+{
+  "name": "nstdptyssubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "nstdptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "nstdptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "NstdPtysSubGrp",
+    "fix:component": "nstdptyssub",
+    "fix:counter": "804",
+    "fix:tag": "808086"
+  }
+}

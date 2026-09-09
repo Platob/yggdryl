@@ -1,0 +1,24 @@
+{
+  "name": "clearingaccounttypegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "clearingaccounttypecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "clearingaccounttypecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoClearingAccountTypes(1918) > 0.",
+    "display": "ClearingAccountTypeGrp",
+    "fix:component": "clearingaccounttypecomponent",
+    "fix:counter": "1918",
+    "fix:tag": "357549"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "streamterminationdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streamterminationdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamterminationdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StreamTerminationDateBusinessCenter",
+    "fix:tag": "704539"
+  }
+}

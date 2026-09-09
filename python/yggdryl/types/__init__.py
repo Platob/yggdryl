@@ -5,7 +5,15 @@ ordinary :class:`yggdryl.Field`, so metadata, Arrow caching, equality, and
 dataclass schemas continue to have one native implementation.
 """
 
-from .._native import ArrowCastPlan, AsciiEnum, DataType, Field, ProtocolField, Timezone
+from .._native import (
+    ArrowCastPlan,
+    AsciiEnum,
+    DataType,
+    Field,
+    ProtocolField,
+    PythonMetadata,
+    Timezone,
+)
 from . import scalar as scalar
 from ._classes import field
 from ._typing import TypedDataType, TypedField
@@ -20,7 +28,6 @@ from .ascii import (
     FixedAsciiField,
     IsinField,
     MicField,
-    MsgTypeField,
     SideField,
     ascii,
     cfi,
@@ -32,7 +39,6 @@ from .ascii import (
     fixed_ascii,
     isin,
     mic,
-    msgtype,
     side,
 )
 from .binary import (
@@ -147,7 +153,7 @@ from .temporal import (
     datetime64,
 )
 from .url import UrlField, url
-from .version import VersionField, version
+from .version import Version, VersionField, version
 
 __all__ = [
     "ArrowCastPlan",
@@ -157,8 +163,8 @@ __all__ = [
     "StateField",
     "TimeInForceField",
     "Field",
-    "MsgTypeField",
     "ProtocolField",
+    "PythonMetadata",
     "Scalar",
     "SideField",
     "Timezone",
@@ -219,6 +225,7 @@ __all__ = [
     "UnionField",
     "VariantField",
     "UrlField",
+    "Version",
     "VersionField",
     "Utf8Field",
     "Utf8ViewField",
@@ -267,7 +274,6 @@ __all__ = [
     "map",
     "map_of",
     "mic",
-    "msgtype",
     "null",
     "run_end_encoded",
     "scalar",

@@ -1,0 +1,23 @@
+{
+  "name": "paymentstreampricingbusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreampricingbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampricingbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentStreamPricingBusinessCenter",
+    "fix:tag": "304084"
+  }
+}

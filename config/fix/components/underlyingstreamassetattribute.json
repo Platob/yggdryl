@@ -1,0 +1,43 @@
+{
+  "name": "underlyingstreamassetattribute",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamassetattributetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamassetattributetype"
+        }
+      },
+      {
+        "name": "underlyingstreamassetattributevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamassetattributevalue"
+        }
+      },
+      {
+        "name": "underlyingstreamassetattributelimit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamassetattributelimit"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStreamAssetAttribute",
+    "fix:tag": "411058"
+  }
+}

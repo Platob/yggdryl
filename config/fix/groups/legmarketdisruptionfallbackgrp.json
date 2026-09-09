@@ -1,0 +1,24 @@
+{
+  "name": "legmarketdisruptionfallbackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legmarketdisruptionfallback",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legmarketdisruptionfallback"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegMarketDisruptionFallbacks(41469) > 0.",
+    "display": "LegMarketDisruptionFallbackGrp",
+    "fix:component": "legmarketdisruptionfallback",
+    "fix:counter": "41469",
+    "fix:tag": "466438"
+  }
+}

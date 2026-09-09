@@ -1,0 +1,24 @@
+{
+  "name": "relsymderivsecgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relsymderivsec",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "relsymderivsec"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies the number of repeating symbols (instruments) specified",
+    "display": "RelSymDerivSecGrp",
+    "fix:component": "relsymderivsec",
+    "fix:counter": "146",
+    "fix:tag": "209402"
+  }
+}

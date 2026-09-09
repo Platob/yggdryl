@@ -1,0 +1,24 @@
+{
+  "name": "partydetailsupdategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "partydetailsupdate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "partydetailsupdate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPartyUpdates > 0.",
+    "display": "PartyDetailsUpdateGrp",
+    "fix:component": "partydetailsupdate",
+    "fix:counter": "1676",
+    "fix:tag": "297874"
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "name": "commissiondata",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "commission",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commission"
+        }
+      },
+      {
+        "name": "commtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commtype"
+        }
+      },
+      {
+        "name": "commcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commcurrency"
+        }
+      },
+      {
+        "name": "commcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commcurrencycodesource"
+        }
+      },
+      {
+        "name": "commrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commrate"
+        }
+      },
+      {
+        "name": "communitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "communitofmeasure"
+        }
+      },
+      {
+        "name": "fundrenewwaiv",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fundrenewwaiv"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The CommissionData component block is used to carry commission information such as the type of commission and the rate. Use the CommissionDataGrp component as an alternative if multiple commissions or enhanced attributes are needed.",
+    "display": "CommissionData",
+    "fix:tag": "400420"
+  }
+}

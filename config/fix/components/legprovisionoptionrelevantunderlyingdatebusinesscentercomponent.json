@@ -1,0 +1,23 @@
+{
+  "name": "legprovisionoptionrelevantunderlyingdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprovisionoptionrelevantunderlyingdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionrelevantunderlyingdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProvisionOptionRelevantUnderlyingDateBusinessCenter",
+    "fix:tag": "1044793"
+  }
+}

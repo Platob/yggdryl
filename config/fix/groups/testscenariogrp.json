@@ -1,0 +1,24 @@
+{
+  "name": "testscenariogrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testscenario",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "testscenario"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTestScenarios(3028) > 0.",
+    "display": "TestScenarioGrp",
+    "fix:component": "testscenario",
+    "fix:counter": "3028",
+    "fix:tag": "266324"
+  }
+}

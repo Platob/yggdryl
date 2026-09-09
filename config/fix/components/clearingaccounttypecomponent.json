@@ -1,0 +1,23 @@
+{
+  "name": "clearingaccounttypecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "clearingaccounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clearingaccounttype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ClearingAccountType",
+    "fix:tag": "418685"
+  }
+}

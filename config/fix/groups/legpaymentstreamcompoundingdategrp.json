@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentstreamcompoundingdategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstreamcompoundingdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentstreamcompoundingdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentStreamCompoundingDates(42405) > 0.",
+    "display": "LegPaymentStreamCompoundingDateGrp",
+    "fix:component": "legpaymentstreamcompoundingdatecomponent",
+    "fix:counter": "42405",
+    "fix:tag": "348144"
+  }
+}

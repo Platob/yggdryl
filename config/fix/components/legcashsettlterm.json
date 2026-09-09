@@ -1,0 +1,243 @@
+{
+  "name": "legcashsettlterm",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcashsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlcurrency"
+        }
+      },
+      {
+        "name": "legcassettlvaluationfirstbusinessdayoffset",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcassettlvaluationfirstbusinessdayoffset"
+        }
+      },
+      {
+        "name": "legcashsettlvaluationsubsequentbusinessdaysoffset",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlvaluationsubsequentbusinessdaysoffset"
+        }
+      },
+      {
+        "name": "legcashsettlnumofvaluationdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlnumofvaluationdates"
+        }
+      },
+      {
+        "name": "legcashsettlvaluationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlvaluationtime"
+        }
+      },
+      {
+        "name": "legcashsettlbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlbusinesscenter"
+        }
+      },
+      {
+        "name": "legcashsettlquotemethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlquotemethod"
+        }
+      },
+      {
+        "name": "legcashsettlquoteamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlquoteamount"
+        }
+      },
+      {
+        "name": "legcashsettlquotecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlquotecurrency"
+        }
+      },
+      {
+        "name": "legcashsettlminimumquoteamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlminimumquoteamount"
+        }
+      },
+      {
+        "name": "legcashsettlminimumquotecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlminimumquotecurrency"
+        }
+      },
+      {
+        "name": "nolegcashsettldealers",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegcashsettldealers"
+        }
+      },
+      {
+        "name": "legcashsettldealergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legcashsettldealergrp"
+        }
+      },
+      {
+        "name": "legcashsettlpricesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlpricesource"
+        }
+      },
+      {
+        "name": "legcashsettlpricedefault",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlpricedefault"
+        }
+      },
+      {
+        "name": "legcashsettlbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlbusinessdays"
+        }
+      },
+      {
+        "name": "legcashsettlamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlamount"
+        }
+      },
+      {
+        "name": "legcashsettldate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legcashsettldate"
+        }
+      },
+      {
+        "name": "legcashsettlrecoveryfactor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlrecoveryfactor"
+        }
+      },
+      {
+        "name": "legcashsettlfixedtermindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlfixedtermindicator"
+        }
+      },
+      {
+        "name": "legcashsettlaccruedinterestindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlaccruedinterestindicator"
+        }
+      },
+      {
+        "name": "legcashsettlvaluationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettlvaluationmethod"
+        }
+      },
+      {
+        "name": "legcashsettltermxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettltermxid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegCashSettlTerm",
+    "fix:tag": "1092082"
+  }
+}

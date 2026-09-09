@@ -1,0 +1,33 @@
+{
+  "name": "stipulation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "stipulationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "stipulationtype"
+        }
+      },
+      {
+        "name": "stipulationvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "stipulationvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Stipulation",
+    "fix:tag": "535028"
+  }
+}

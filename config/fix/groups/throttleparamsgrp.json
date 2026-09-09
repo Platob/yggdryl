@@ -1,0 +1,24 @@
+{
+  "name": "throttleparamsgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "throttleparam",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "throttleparam"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Indicates number of throttles to follow.",
+    "display": "ThrottleParamsGrp",
+    "fix:component": "throttleparam",
+    "fix:counter": "1610",
+    "fix:tag": "991980"
+  }
+}

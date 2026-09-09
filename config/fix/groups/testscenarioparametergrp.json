@@ -1,0 +1,24 @@
+{
+  "name": "testscenarioparametergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testscenarioparameter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "testscenarioparameter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTestScenarioParameters(3130) > 0.",
+    "display": "TestScenarioParameterGrp",
+    "fix:component": "testscenarioparameter",
+    "fix:counter": "3130",
+    "fix:tag": "777202"
+  }
+}

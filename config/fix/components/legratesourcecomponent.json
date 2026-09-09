@@ -1,0 +1,103 @@
+{
+  "name": "legratesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legratesource"
+        }
+      },
+      {
+        "name": "legratesourcetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legratesourcetype"
+        }
+      },
+      {
+        "name": "legreferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreferencepage"
+        }
+      },
+      {
+        "name": "legratesourcereferencepageheading",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legratesourcereferencepageheading"
+        }
+      },
+      {
+        "name": "legratesourcesymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legratesourcesymbol"
+        }
+      },
+      {
+        "name": "legfxbenchmark",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legfxbenchmark"
+        }
+      },
+      {
+        "name": "legfxbenchmarkdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legfxbenchmarkdate"
+        }
+      },
+      {
+        "name": "legfxbenchmarktime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legfxbenchmarktime"
+        }
+      },
+      {
+        "name": "legfxbenchmarkbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legfxbenchmarkbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegRateSource",
+    "fix:tag": "893002"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "strmasgnreqinstrmtgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "strmasgnreqinstrmt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "strmasgnreqinstrmt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StrmAsgnReqInstrmtGrp",
+    "fix:component": "strmasgnreqinstrmt",
+    "fix:counter": "146",
+    "fix:tag": "549959"
+  }
+}

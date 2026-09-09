@@ -1,0 +1,24 @@
+{
+  "name": "quotreqrjctgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quotreqrjct",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "quotreqrjct"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of related symbols (instruments) in Request",
+    "display": "QuotReqRjctGrp",
+    "fix:component": "quotreqrjct",
+    "fix:counter": "146",
+    "fix:tag": "322791"
+  }
+}

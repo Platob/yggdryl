@@ -1,0 +1,23 @@
+{
+  "name": "legcashsettldatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcashsettldatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettldatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegCashSettlDateBusinessCenter",
+    "fix:tag": "590424"
+  }
+}

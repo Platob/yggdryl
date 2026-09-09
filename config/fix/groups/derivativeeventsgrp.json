@@ -1,0 +1,23 @@
+{
+  "name": "derivativeeventsgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "derivativeevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "derivativeevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DerivativeEventsGrp",
+    "fix:component": "derivativeevent",
+    "fix:counter": "1286",
+    "fix:tag": "601776"
+  }
+}

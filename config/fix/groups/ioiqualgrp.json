@@ -1,0 +1,24 @@
+{
+  "name": "ioiqualgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "ioiqual",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "ioiqual"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if any IOIQualifiers are specified. Indicates the number of repeating IOIQualifiers.",
+    "display": "IOIQualGrp",
+    "fix:component": "ioiqual",
+    "fix:counter": "199",
+    "fix:tag": "422312"
+  }
+}

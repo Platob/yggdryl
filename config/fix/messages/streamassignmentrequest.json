@@ -1,0 +1,75 @@
+{
+  "name": "streamassignmentrequest",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "streamasgnreqid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "streamasgnreqid"
+        }
+      },
+      {
+        "name": "streamasgnreqtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "streamasgnreqtype"
+        }
+      },
+      {
+        "name": "noasgnreqs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "noasgnreqs"
+        }
+      },
+      {
+        "name": "strmasgnreqgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "strmasgnreqgrp"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = CC",
+    "display": "StreamAssignmentRequest",
+    "fix:msgtype": "CC",
+    "fix:tag": "1083748"
+  }
+}

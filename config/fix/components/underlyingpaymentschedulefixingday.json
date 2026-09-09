@@ -1,0 +1,33 @@
+{
+  "name": "underlyingpaymentschedulefixingday",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentschedulefixingdayofweek",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentschedulefixingdayofweek"
+        }
+      },
+      {
+        "name": "underlyingpaymentschedulefixingdaynumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentschedulefixingdaynumber"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPaymentScheduleFixingDay",
+    "fix:tag": "1005041"
+  }
+}

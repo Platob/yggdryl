@@ -1,0 +1,24 @@
+{
+  "name": "paymentstreamfixingdategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreamfixingdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentstreamfixingdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentStreamFixingDates(42660) > 0.",
+    "display": "PaymentStreamFixingDateGrp",
+    "fix:component": "paymentstreamfixingdatecomponent",
+    "fix:counter": "42660",
+    "fix:tag": "259121"
+  }
+}

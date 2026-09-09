@@ -1,0 +1,224 @@
+{
+  "name": "legstreamcalculationperioddates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamcalculationperioddatesxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationperioddatesxid"
+        }
+      },
+      {
+        "name": "legstreamcalculationperioddatesxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationperioddatesxidref"
+        }
+      },
+      {
+        "name": "legstreamcalculationperiodbusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationperiodbusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegstreamcalculationperiodbusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegstreamcalculationperiodbusinesscenters"
+        }
+      },
+      {
+        "name": "legstreamcalculationperiodbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legstreamcalculationperiodbusinesscentergrp"
+        }
+      },
+      {
+        "name": "nolegstreamcalculationperioddates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegstreamcalculationperioddates"
+        }
+      },
+      {
+        "name": "legstreamcalculationperioddategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legstreamcalculationperioddategrp"
+        }
+      },
+      {
+        "name": "legstreamfirstperiodstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamfirstperiodstartdateunadjusted"
+        }
+      },
+      {
+        "name": "legstreamfirstperiodstartdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamfirstperiodstartdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegstreamfirstperiodstartdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegstreamfirstperiodstartdatebusinesscenters"
+        }
+      },
+      {
+        "name": "legstreamfirstperiodstartdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legstreamfirstperiodstartdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legstreamfirstperiodstartdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamfirstperiodstartdateadjusted"
+        }
+      },
+      {
+        "name": "legstreamfirstregularperiodstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamfirstregularperiodstartdateunadjusted"
+        }
+      },
+      {
+        "name": "legstreamfirstcompoundingperiodenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamfirstcompoundingperiodenddateunadjusted"
+        }
+      },
+      {
+        "name": "legstreamlastregularperiodenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamlastregularperiodenddateunadjusted"
+        }
+      },
+      {
+        "name": "legstreamcalculationfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationfrequencyperiod"
+        }
+      },
+      {
+        "name": "legstreamcalculationfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationfrequencyunit"
+        }
+      },
+      {
+        "name": "legstreamcalculationrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationrollconvention"
+        }
+      },
+      {
+        "name": "legstreamcalculationbalanceoffirstperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationbalanceoffirstperiod"
+        }
+      },
+      {
+        "name": "legstreamcalculationcorrectionperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationcorrectionperiod"
+        }
+      },
+      {
+        "name": "legstreamcalculationcorrectionunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationcorrectionunit"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the leg stream calculation period dates.",
+    "display": "LegStreamCalculationPeriodDates",
+    "fix:tag": "539859"
+  }
+}

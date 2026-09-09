@@ -544,7 +544,7 @@ impl TextOptions {
         }
         if self.parse_msgtype {
             fields.push(described(
-                DataType::MsgType.nullable_field("msgtype"),
+                DataType::Utf8.nullable_field("msgtype"),
                 "The message type read from the line.",
             )?);
         }

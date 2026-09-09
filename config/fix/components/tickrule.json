@@ -1,0 +1,83 @@
+{
+  "name": "tickrule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "starttickpricerange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "starttickpricerange"
+        }
+      },
+      {
+        "name": "endtickpricerange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "endtickpricerange"
+        }
+      },
+      {
+        "name": "tickincrement",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tickincrement"
+        }
+      },
+      {
+        "name": "tickruletype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tickruletype"
+        }
+      },
+      {
+        "name": "tickruleproductcomplex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tickruleproductcomplex"
+        }
+      },
+      {
+        "name": "settlpriceincrement",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlpriceincrement"
+        }
+      },
+      {
+        "name": "settlpricesecondaryincrement",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlpricesecondaryincrement"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TickRule",
+    "fix:tag": "773145"
+  }
+}

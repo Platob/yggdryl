@@ -1,0 +1,24 @@
+{
+  "name": "relatedtradegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedtrade",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "relatedtrade"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoRelatedTrades(1855) > 0.",
+    "display": "RelatedTradeGrp",
+    "fix:component": "relatedtrade",
+    "fix:counter": "1855",
+    "fix:tag": "500690"
+  }
+}

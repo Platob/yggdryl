@@ -25,7 +25,13 @@ import weakref
 from decimal import Decimal
 from typing import Any, Callable, Literal, Mapping, TypeVar, get_args, get_origin
 
-from .._native import DataType, Field, Field as NativeField
+from .._native import (
+    DataType,
+    Field,
+    Field as NativeField,
+    PythonMetadata,
+    Version,
+)
 from .nested import StructField
 
 _T = TypeVar("_T")
@@ -675,12 +681,9 @@ def _build_schema(
         if cls.__dict__.get("__yggdryl_field_class__", False)
         else "dataclass"
     )
-    root_metadata = {
-        "python.module": cls.__module__,
-        "python.class": cls.__name__,
-        "python.qualname": cls.__qualname__,
-        "python.kind": kind,
-    }
+    # The class states its own module and qualified name; the native value is
+    # what validates them and spells the `python:` keys they are stored under.
+    root_metadata = dict(PythonMetadata.from_type(cls, kind).properties)
     description = _docstring_summary(cls)
     if description:
         root_metadata["description"] = description
@@ -845,7 +848,7 @@ def _renamed_native_field(field: NativeField, name: str) -> NativeField:
 
 
 def field(value: object, name: str | None = None) -> Field:
-    """Return the native field named by a Field, Arrow shape, or dataclass."""
+    """Return the native field named by a Field, Version, Arrow shape, or dataclass."""
 
     if name is not None and not isinstance(name, str):
         raise TypeError("name must be str or None")
@@ -853,6 +856,8 @@ def field(value: object, name: str | None = None) -> Field:
         if name is None or name == value.name:
             return value
         return _renamed_native_field(value, name)
+    if value is Version or isinstance(value, Version):
+        return NativeField.from_pyhint("value" if name is None else name, Version)
     cls = value if isinstance(value, type) else type(value)
     if dc.is_dataclass(cls):
         owner = _decorated_field_owner(cls)
@@ -882,7 +887,7 @@ def field(value: object, name: str | None = None) -> Field:
             pa.field("value" if name is None else name, value)
         )
     raise TypeError(
-        f"{value!r} does not name a field: expected Field, Arrow shape, or dataclass"
+        f"{value!r} does not name a field: expected Field, Version, Arrow shape, or dataclass"
     )
 
 
@@ -1903,6 +1908,15 @@ def _convert(
         if isinstance(value, (pathlib.PurePath, uuid.UUID, enum.Enum)):
             return str(value.value if isinstance(value, enum.Enum) else value)
         raise _error(path, str, value)
+    if hint is Version:
+        if isinstance(value, Version):
+            return value
+        try:
+            if isinstance(value, str):
+                return Version.from_str(value)
+        except ValueError as error:
+            raise _error(path, Version, value) from error
+        raise _error(path, Version, value)
     if hint in (bytes, bytearray, memoryview):
         if isinstance(value, str):
             raw = value.encode("utf-8")

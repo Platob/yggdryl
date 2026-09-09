@@ -1,0 +1,24 @@
+{
+  "name": "instrmtmdreqgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrmtmdreq",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "instrmtmdreq"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of symbols (instruments) requested.",
+    "display": "InstrmtMDReqGrp",
+    "fix:component": "instrmtmdreq",
+    "fix:counter": "146",
+    "fix:tag": "868941"
+  }
+}

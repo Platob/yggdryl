@@ -1,0 +1,24 @@
+{
+  "name": "legdeliverystreamcyclegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdeliverystreamcycle",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legdeliverystreamcycle"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegDeliveryStreamCycles(41456) > 0.",
+    "display": "LegDeliveryStreamCycleGrp",
+    "fix:component": "legdeliverystreamcycle",
+    "fix:counter": "41456",
+    "fix:tag": "819408"
+  }
+}

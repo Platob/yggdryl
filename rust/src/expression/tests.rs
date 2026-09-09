@@ -387,34 +387,39 @@ fn scalar_casts_return_the_exact_target_leaf() {
 
 #[test]
 fn versions_do_not_fall_through_text_or_numeric_expression_paths() {
-    let sp2 = Scalar::from("5.0SP2".parse::<Version>().unwrap());
-    let sp10 = Scalar::from("5.0SP10".parse::<Version>().unwrap());
+    let patch2 = Scalar::from("5.0.2".parse::<Version>().unwrap());
+    let patch10 = Scalar::from("5.0.10".parse::<Version>().unwrap());
 
     assert_eq!(
-        super::eval::convert(&DataType::Version, &Scalar::from("5.0.SP2"), Safety::Strict).unwrap(),
-        sp2
+        super::eval::convert(
+            &DataType::Version,
+            &Scalar::from("005.000.002"),
+            Safety::Strict
+        )
+        .unwrap(),
+        patch2
     );
     assert_eq!(
-        super::eval::convert(&DataType::Version, &sp2, Safety::Strict).unwrap(),
-        sp2
+        super::eval::convert(&DataType::Version, &patch2, Safety::Strict).unwrap(),
+        patch2
     );
     assert_eq!(
-        super::eval::convert(&DataType::Utf8, &sp2, Safety::Strict).unwrap(),
-        Scalar::from("5.0SP2")
+        super::eval::convert(&DataType::Utf8, &patch2, Safety::Strict).unwrap(),
+        Scalar::from("5.0.2")
     );
     assert!(super::eval::convert(&DataType::Version, &Scalar::from(5), Safety::Strict).is_err());
     assert_eq!(
-        super::eval::order(&DataType::Version, &sp2, &sp10),
+        super::eval::order(&DataType::Version, &patch2, &patch10),
         Some(std::cmp::Ordering::Less)
     );
 
     let schema = DataType::from_fields([DataType::Version.required_field("v")])
         .unwrap()
         .required_field("row");
-    let row = Scalar::from_sequence([sp2]);
+    let row = Scalar::from_sequence([patch2]);
     for (text, expected) in [
-        ("v < version '5.0SP10'", Scalar::from(true)),
-        ("length(v)", Scalar::from(6_i64)),
+        ("v < version '5.0.10'", Scalar::from(true)),
+        ("length(v)", Scalar::from(5_i64)),
         ("v like '5.0%'", Scalar::from(true)),
     ] {
         let answer = text

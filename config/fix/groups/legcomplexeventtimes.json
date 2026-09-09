@@ -1,0 +1,24 @@
+{
+  "name": "legcomplexeventtimes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventtime",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcomplexeventtime"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegComplexEventTimes(2253) > 0.",
+    "display": "LegComplexEventTimes",
+    "fix:component": "legcomplexeventtime",
+    "fix:counter": "2253",
+    "fix:tag": "145594"
+  }
+}

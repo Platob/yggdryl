@@ -1,0 +1,24 @@
+{
+  "name": "legprotectiontermeventqualifiergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprotectiontermeventqualifiercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprotectiontermeventqualifiercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProtectionTermEventQualifiers(41633) > 0.",
+    "display": "LegProtectionTermEventQualifierGrp",
+    "fix:component": "legprotectiontermeventqualifiercomponent",
+    "fix:counter": "41633",
+    "fix:tag": "202554"
+  }
+}

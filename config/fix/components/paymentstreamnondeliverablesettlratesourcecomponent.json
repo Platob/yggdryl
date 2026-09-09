@@ -1,0 +1,34 @@
+{
+  "name": "paymentstreamnondeliverablesettlratesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreamnondeliverablesettlratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamnondeliverablesettlratesource"
+        }
+      },
+      {
+        "name": "paymentstreamnondeliverablesettlreferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamnondeliverablesettlreferencepage"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when PaymentStreamNonDeliverableSettlRateSource(40371) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
+    "display": "PaymentStreamNonDeliverableSettlRateSource",
+    "fix:tag": "501812"
+  }
+}

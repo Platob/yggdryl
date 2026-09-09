@@ -1,0 +1,24 @@
+{
+  "name": "paymentstreamnondeliverablefixingdategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreamnondeliverablefixingdate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentstreamnondeliverablefixingdate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoNonDeliverableFixingDates(40825) > 0.",
+    "display": "PaymentStreamNonDeliverableFixingDateGrp",
+    "fix:component": "paymentstreamnondeliverablefixingdate",
+    "fix:counter": "40825",
+    "fix:tag": "482327"
+  }
+}

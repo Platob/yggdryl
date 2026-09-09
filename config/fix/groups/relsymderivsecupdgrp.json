@@ -1,0 +1,24 @@
+{
+  "name": "relsymderivsecupdgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relsymderivsecupd",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "relsymderivsecupd"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "If provided, then Instrument occurrence has explicitly changed",
+    "display": "RelSymDerivSecUpdGrp",
+    "fix:component": "relsymderivsecupd",
+    "fix:counter": "146",
+    "fix:tag": "1057104"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "additionaltermgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "additionalterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "additionalterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAdditionalTerms(40019) > 0.",
+    "display": "AdditionalTermGrp",
+    "fix:component": "additionalterm",
+    "fix:counter": "40019",
+    "fix:tag": "105260"
+  }
+}

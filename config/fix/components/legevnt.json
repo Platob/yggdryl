@@ -1,0 +1,113 @@
+{
+  "name": "legevnt",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legeventtype"
+        }
+      },
+      {
+        "name": "legeventdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legeventdate"
+        }
+      },
+      {
+        "name": "legeventtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legeventtime"
+        }
+      },
+      {
+        "name": "legeventtimeunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legeventtimeunit"
+        }
+      },
+      {
+        "name": "legeventtimeperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legeventtimeperiod"
+        }
+      },
+      {
+        "name": "legeventmonthyear",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legeventmonthyear"
+        }
+      },
+      {
+        "name": "legeventpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legeventpx"
+        }
+      },
+      {
+        "name": "legeventtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legeventtext"
+        }
+      },
+      {
+        "name": "encodedlegeventtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegeventtextlen"
+        }
+      },
+      {
+        "name": "encodedlegeventtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegeventtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegEvnt",
+    "fix:tag": "998739"
+  }
+}

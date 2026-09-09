@@ -1,0 +1,24 @@
+{
+  "name": "legprovisiongrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovision",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprovision"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProvisions(40448) > 0.",
+    "display": "LegProvisionGrp",
+    "fix:component": "legprovision",
+    "fix:counter": "40448",
+    "fix:tag": "1009372"
+  }
+}

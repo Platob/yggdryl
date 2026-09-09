@@ -1,0 +1,24 @@
+{
+  "name": "disclosureinstructiongrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "disclosureinstructioncomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "disclosureinstructioncomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoDisclosureInstructions(1812) > 0.",
+    "display": "DisclosureInstructionGrp",
+    "fix:component": "disclosureinstructioncomponent",
+    "fix:counter": "1812",
+    "fix:tag": "1033224"
+  }
+}

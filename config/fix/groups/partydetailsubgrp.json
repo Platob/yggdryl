@@ -1,0 +1,24 @@
+{
+  "name": "partydetailsubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "partydetailsub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "partydetailsub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoPartyDetailSubIDs > 0.",
+    "display": "PartyDetailSubGrp",
+    "fix:component": "partydetailsub",
+    "fix:counter": "1694",
+    "fix:tag": "965583"
+  }
+}

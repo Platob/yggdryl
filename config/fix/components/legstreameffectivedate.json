@@ -1,0 +1,104 @@
+{
+  "name": "legstreameffectivedate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreameffectivedateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreameffectivedateunadjusted"
+        }
+      },
+      {
+        "name": "legstreameffectivedatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreameffectivedatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegstreameffectivedatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegstreameffectivedatebusinesscenters"
+        }
+      },
+      {
+        "name": "legstreameffectivedatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legstreameffectivedatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legstreameffectivedaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreameffectivedaterelativeto"
+        }
+      },
+      {
+        "name": "legstreameffectivedateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreameffectivedateoffsetperiod"
+        }
+      },
+      {
+        "name": "legstreameffectivedateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreameffectivedateoffsetunit"
+        }
+      },
+      {
+        "name": "legstreameffectivedateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreameffectivedateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legstreameffectivedateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreameffectivedateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the leg stream effective date.",
+    "display": "LegStreamEffectiveDate",
+    "fix:tag": "508783"
+  }
+}

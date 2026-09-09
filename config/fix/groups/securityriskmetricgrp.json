@@ -1,0 +1,24 @@
+{
+  "name": "securityriskmetricgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "securityriskmetric",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "securityriskmetric"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoSecurityRiskMetrics(2995) > 0.",
+    "display": "SecurityRiskMetricGrp",
+    "fix:component": "securityriskmetric",
+    "fix:counter": "2995",
+    "fix:tag": "860483"
+  }
+}

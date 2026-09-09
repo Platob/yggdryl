@@ -1,0 +1,264 @@
+{
+  "name": "instrumentscope",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrumentscopesymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesymbol"
+        }
+      },
+      {
+        "name": "instrumentscopesymbolsfx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesymbolsfx"
+        }
+      },
+      {
+        "name": "instrumentscopesecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesecurityid"
+        }
+      },
+      {
+        "name": "instrumentscopesecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesecurityidsource"
+        }
+      },
+      {
+        "name": "noinstrumentscopesecurityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noinstrumentscopesecurityaltid"
+        }
+      },
+      {
+        "name": "instrumentscopesecurityaltidgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "instrumentscopesecurityaltidgrp"
+        }
+      },
+      {
+        "name": "instrumentscopeproduct",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopeproduct"
+        }
+      },
+      {
+        "name": "instrumentscopeproductcomplex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopeproductcomplex"
+        }
+      },
+      {
+        "name": "instrumentscopesecuritygroup",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesecuritygroup"
+        }
+      },
+      {
+        "name": "instrumentscopecficode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopecficode"
+        }
+      },
+      {
+        "name": "instrumentscopeupicode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopeupicode"
+        }
+      },
+      {
+        "name": "instrumentscopesecuritytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesecuritytype"
+        }
+      },
+      {
+        "name": "instrumentscopesecuritysubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesecuritysubtype"
+        }
+      },
+      {
+        "name": "instrumentscopematuritymonthyear",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopematuritymonthyear"
+        }
+      },
+      {
+        "name": "instrumentscopematuritytime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopematuritytime"
+        }
+      },
+      {
+        "name": "instrumentscoperestructuringtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscoperestructuringtype"
+        }
+      },
+      {
+        "name": "instrumentscopeseniority",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopeseniority"
+        }
+      },
+      {
+        "name": "instrumentscopeputorcall",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopeputorcall"
+        }
+      },
+      {
+        "name": "instrumentscopeflexibleindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopeflexibleindicator"
+        }
+      },
+      {
+        "name": "instrumentscopecouponrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopecouponrate"
+        }
+      },
+      {
+        "name": "instrumentscopesecurityexchange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesecurityexchange"
+        }
+      },
+      {
+        "name": "instrumentscopesecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesecuritydesc"
+        }
+      },
+      {
+        "name": "instrumentscopeencodedsecuritydesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopeencodedsecuritydesclen"
+        }
+      },
+      {
+        "name": "instrumentscopeencodedsecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopeencodedsecuritydesc"
+        }
+      },
+      {
+        "name": "instrumentscopesettltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesettltype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Can be used to specify FX tenors.",
+    "display": "InstrumentScope",
+    "fix:tag": "515527"
+  }
+}

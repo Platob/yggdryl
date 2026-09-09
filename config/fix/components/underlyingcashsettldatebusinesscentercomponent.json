@@ -1,0 +1,23 @@
+{
+  "name": "underlyingcashsettldatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcashsettldatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettldatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingCashSettlDateBusinessCenter",
+    "fix:tag": "747382"
+  }
+}

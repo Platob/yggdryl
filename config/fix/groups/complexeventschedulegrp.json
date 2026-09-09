@@ -1,0 +1,24 @@
+{
+  "name": "complexeventschedulegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "complexeventschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoComplexEventSchedules(41031) > 0.",
+    "display": "ComplexEventScheduleGrp",
+    "fix:component": "complexeventschedule",
+    "fix:counter": "41031",
+    "fix:tag": "778363"
+  }
+}

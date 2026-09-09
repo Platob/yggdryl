@@ -1,0 +1,23 @@
+{
+  "name": "indexrollmonthcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "indexrollmonth",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "indexrollmonth"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "IndexRollMonth",
+    "fix:tag": "774464"
+  }
+}

@@ -1,0 +1,154 @@
+{
+  "name": "underlyingoptionexerciseexpiration",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingoptionexerciseexpirationdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingoptionexerciseexpirationdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingoptionexerciseexpirationdatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingoptionexerciseexpirationdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "nounderlyingoptionexerciseexpirationdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingoptionexerciseexpirationdates"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingoptionexerciseexpirationdategrp"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationdaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationdateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationfrequencyperiod"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationfrequencyunit"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationrollconvention"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationtime"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationtimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument. The specified value would be specific to the underlying exercise expiration dates.",
+    "display": "UnderlyingOptionExerciseExpiration",
+    "fix:tag": "509006"
+  }
+}

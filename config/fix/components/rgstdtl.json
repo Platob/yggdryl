@@ -1,0 +1,103 @@
+{
+  "name": "rgstdtl",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "registdtls",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "registdtls"
+        }
+      },
+      {
+        "name": "registemail",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "registemail"
+        }
+      },
+      {
+        "name": "mailingdtls",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mailingdtls"
+        }
+      },
+      {
+        "name": "mailinginst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mailinginst"
+        }
+      },
+      {
+        "name": "nonestedpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonestedpartyids"
+        }
+      },
+      {
+        "name": "nestedparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties"
+        }
+      },
+      {
+        "name": "ownertype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ownertype"
+        }
+      },
+      {
+        "name": "dateofbirth",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dateofbirth"
+        }
+      },
+      {
+        "name": "investorcountryofresidence",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "investorcountryofresidence"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RgstDtl",
+    "fix:tag": "666878"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "marketdisruptionfallbackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "marketdisruptionfallback",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "marketdisruptionfallback"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoMarketDisruptionFallbacks(41094) > 0.",
+    "display": "MarketDisruptionFallbackGrp",
+    "fix:component": "marketdisruptionfallback",
+    "fix:counter": "41094",
+    "fix:tag": "111620"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "cashsettltermgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "cashsettlterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "cashsettlterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoCashSettlTerms(40022) > 0.",
+    "display": "CashSettlTermGrp",
+    "fix:component": "cashsettlterm",
+    "fix:counter": "40022",
+    "fix:tag": "696127"
+  }
+}

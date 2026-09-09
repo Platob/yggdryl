@@ -14,6 +14,7 @@ This page owns the path as a sequence of names: segments, filenames, media type,
 | Mutators | atomic; a rejected name changes nothing |
 | `mime_type`, `media_type` | last suffix; whole chain as base plus encodings |
 | `from_path`, `into_path` | drive: first segment, empty authority; UNC server: authority; either separator roots a path |
+| A path naming no root | `Uri` keeps it relative; `Url` roots it at the working directory, because a `file:` URL is absolute |
 | Escapes across the bridge | `from_path` encodes a name, `into_path` decodes one; an escape that would become a separator, a dot segment, a drive, or a UNC name is refused instead |
 | Navigation | `UriPath`, lifted onto `Uri` and `Url`; scheme, authority, query, fragment survive; `Urn` has none |
 

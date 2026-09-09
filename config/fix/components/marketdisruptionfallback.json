@@ -1,0 +1,33 @@
+{
+  "name": "marketdisruptionfallback",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "marketdisruptionfallbacktype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionfallbacktype"
+        }
+      },
+      {
+        "name": "marketdisruptionfallbackvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionfallbackvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MarketDisruptionFallback",
+    "fix:tag": "1035610"
+  }
+}

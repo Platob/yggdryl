@@ -1,0 +1,24 @@
+{
+  "name": "legstreamcommoditysettlbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamcommoditysettlbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legstreamcommoditysettlbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegStreamCommoditySettlementBusinessCenters(41646) > 0.",
+    "display": "LegStreamCommoditySettlBusinessCenterGrp",
+    "fix:component": "legstreamcommoditysettlbusinesscentercomponent",
+    "fix:counter": "41646",
+    "fix:tag": "522474"
+  }
+}

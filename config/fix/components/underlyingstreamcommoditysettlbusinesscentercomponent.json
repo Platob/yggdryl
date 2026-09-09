@@ -1,0 +1,23 @@
+{
+  "name": "underlyingstreamcommoditysettlbusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamcommoditysettlbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStreamCommoditySettlBusinessCenter",
+    "fix:tag": "106412"
+  }
+}

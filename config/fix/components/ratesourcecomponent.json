@@ -1,0 +1,113 @@
+{
+  "name": "ratesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "ratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ratesource"
+        }
+      },
+      {
+        "name": "ratesourcetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ratesourcetype"
+        }
+      },
+      {
+        "name": "referencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "referencepage"
+        }
+      },
+      {
+        "name": "ratesourcereferencepageheading",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ratesourcereferencepageheading"
+        }
+      },
+      {
+        "name": "fxbenchmarkratefix",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fxbenchmarkratefix"
+        }
+      },
+      {
+        "name": "ratesourcesymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ratesourcesymbol"
+        }
+      },
+      {
+        "name": "fxbenchmark",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fxbenchmark"
+        }
+      },
+      {
+        "name": "fxbenchmarkdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fxbenchmarkdate"
+        }
+      },
+      {
+        "name": "fxbenchmarktime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fxbenchmarktime"
+        }
+      },
+      {
+        "name": "fxbenchmarkbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fxbenchmarkbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RateSource",
+    "fix:tag": "702377"
+  }
+}

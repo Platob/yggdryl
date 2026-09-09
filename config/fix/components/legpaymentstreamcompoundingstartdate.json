@@ -1,0 +1,74 @@
+{
+  "name": "legpaymentstreamcompoundingstartdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamcompoundingstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingstartdateunadjusted"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingstartdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingstartdaterelativeto"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingstartdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingstartdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingstartdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingstartdateoffsetunit"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingstartdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingstartdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingstartdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingstartdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when LegPaymentStreamCompoundingStartDateOffsetUnit(42448) is specified.",
+    "display": "LegPaymentStreamCompoundingStartDate",
+    "fix:tag": "461934"
+  }
+}

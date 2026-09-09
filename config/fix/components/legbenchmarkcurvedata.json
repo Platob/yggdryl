@@ -1,0 +1,74 @@
+{
+  "name": "legbenchmarkcurvedata",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legbenchmarkcurvecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legbenchmarkcurvecurrency"
+        }
+      },
+      {
+        "name": "legbenchmarkcurvecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legbenchmarkcurvecurrencycodesource"
+        }
+      },
+      {
+        "name": "legbenchmarkcurvename",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legbenchmarkcurvename"
+        }
+      },
+      {
+        "name": "legbenchmarkcurvepoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legbenchmarkcurvepoint"
+        }
+      },
+      {
+        "name": "legbenchmarkprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legbenchmarkprice"
+        }
+      },
+      {
+        "name": "legbenchmarkpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legbenchmarkpricetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The LegBenchmarkCurveData is used to convey the benchmark information used for pricing in a multi-legged Fixed Income security.",
+    "display": "LegBenchmarkCurveData",
+    "fix:tag": "305085"
+  }
+}

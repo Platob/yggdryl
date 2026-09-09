@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprovisioncashsettlvaluedatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProvisionCashSettlValueDateBusinessCenters(42182) > 0.",
+    "display": "UnderlyingProvisionCashSettlValueDateBusinessCenterGrp",
+    "fix:component": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent",
+    "fix:counter": "42182",
+    "fix:tag": "1053171"
+  }
+}

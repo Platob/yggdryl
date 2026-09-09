@@ -1,0 +1,103 @@
+{
+  "name": "paycollect",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paycollecttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paycollecttype"
+        }
+      },
+      {
+        "name": "paycollectcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paycollectcurrency"
+        }
+      },
+      {
+        "name": "paycollectcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paycollectcurrencycodesource"
+        }
+      },
+      {
+        "name": "paycollectfxrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paycollectfxrate"
+        }
+      },
+      {
+        "name": "paycollectfxratecalc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paycollectfxratecalc"
+        }
+      },
+      {
+        "name": "payamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "payamount"
+        }
+      },
+      {
+        "name": "collectamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collectamount"
+        }
+      },
+      {
+        "name": "paycollectmarketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paycollectmarketsegmentid"
+        }
+      },
+      {
+        "name": "paycollectmarketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paycollectmarketid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PayCollect",
+    "fix:tag": "887353"
+  }
+}

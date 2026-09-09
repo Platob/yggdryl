@@ -1,0 +1,343 @@
+{
+  "name": "underlyingreturnrate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingreturnratepricesequence",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratepricesequence"
+        }
+      },
+      {
+        "name": "underlyingreturnratecommissionbasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratecommissionbasis"
+        }
+      },
+      {
+        "name": "underlyingreturnratecommissionamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratecommissionamount"
+        }
+      },
+      {
+        "name": "underlyingreturnratecommissioncurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratecommissioncurrency"
+        }
+      },
+      {
+        "name": "underlyingreturnratetotalcommissionpertrade",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratetotalcommissionpertrade"
+        }
+      },
+      {
+        "name": "underlyingreturnratedeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratedeterminationmethod"
+        }
+      },
+      {
+        "name": "nounderlyingreturnrateprices",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingreturnrateprices"
+        }
+      },
+      {
+        "name": "underlyingreturnratepricegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingreturnratepricegrp"
+        }
+      },
+      {
+        "name": "nounderlyingreturnratefxconversions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingreturnratefxconversions"
+        }
+      },
+      {
+        "name": "underlyingreturnratefxconversiongrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingreturnratefxconversiongrp"
+        }
+      },
+      {
+        "name": "underlyingreturnrateamountrelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnrateamountrelativeto"
+        }
+      },
+      {
+        "name": "underlyingreturnratequotemeasuretype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequotemeasuretype"
+        }
+      },
+      {
+        "name": "underlyingreturnratequoteunits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequoteunits"
+        }
+      },
+      {
+        "name": "underlyingreturnratequotemethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequotemethod"
+        }
+      },
+      {
+        "name": "underlyingreturnratequotecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequotecurrency"
+        }
+      },
+      {
+        "name": "underlyingreturnratequotecurrencytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequotecurrencytype"
+        }
+      },
+      {
+        "name": "underlyingreturnratequotetimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequotetimetype"
+        }
+      },
+      {
+        "name": "underlyingreturnratequotetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequotetime"
+        }
+      },
+      {
+        "name": "underlyingreturnratequotedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequotedate"
+        }
+      },
+      {
+        "name": "underlyingreturnratequoteexpirationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequoteexpirationtime"
+        }
+      },
+      {
+        "name": "underlyingreturnratequotebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequotebusinesscenter"
+        }
+      },
+      {
+        "name": "underlyingreturnratequoteexchange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequoteexchange"
+        }
+      },
+      {
+        "name": "nounderlyingreturnrateinformationsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingreturnrateinformationsources"
+        }
+      },
+      {
+        "name": "underlyingreturnrateinformationsourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingreturnrateinformationsourcegrp"
+        }
+      },
+      {
+        "name": "underlyingreturnratequotepricingmodel",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratequotepricingmodel"
+        }
+      },
+      {
+        "name": "underlyingreturnratecashflowtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratecashflowtype"
+        }
+      },
+      {
+        "name": "nounderlyingreturnratedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingreturnratedates"
+        }
+      },
+      {
+        "name": "underlyingreturnratedategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingreturnratedategrp"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationtimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationtimetype"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationtime"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationtimebusinesscenter"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationpriceoption",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationpriceoption"
+        }
+      },
+      {
+        "name": "underlyingreturnratefinalpricefallback",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratefinalpricefallback"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingReturnRate",
+    "fix:tag": "302587"
+  }
+}

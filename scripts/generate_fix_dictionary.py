@@ -10,13 +10,11 @@ unreviewable. The provenance manifest records both checksums - the bytes read
 and the definitions produced - so CI can test for drift, and its second half
 needs no network at all.
 
-Six kinds come out of Orchestra and each lands where it can live: fields and
-groups carry a tag so they become registry entries, code sets are a property
-of the field that declares them, datatypes are checked against the crate's
-own logical-name table and stored nowhere, and components and messages have
-no tag so they go to a layouts manifest beside the trees, which also records
-each group's own identifier so a `groupRef` resolves. Nothing is invented to
-make a kind fit.
+Orchestra's fields, components, groups and messages each have their own
+directory of native Field documents. Only wire fields have tags. A group
+references its ordinary int32 counter and contains a non-null component.
+Each field stores its enum records directly in fix:codes metadata. Datatypes
+resolve through the crate's logical-name table.
 
 Usage::
 
@@ -92,8 +90,8 @@ SOURCES: tuple[Source, ...] = (
                 ("FIX43", "4.3"),
                 ("FIX44", "4.4"),
                 ("FIX50", "5.0"),
-                ("FIX50SP1", "5.0SP1"),
-                ("FIX50SP2", "5.0SP2"),
+                ("FIX50SP1", "5.0.1"),
+                ("FIX50SP2", "5.0.2"),
             ]
         )
     ),
@@ -137,7 +135,7 @@ LOGICAL_NAMES = {
     "utcdateonly", "localmktdate", "tztimeonly",
     "monthyear", "country", "currency", "exchange", "language", "tenor",
     "multiplecharvalue", "multiplestringvalue", "xid", "xidref", "xmldata",
-    "mic", "cfi", "side", "msgtype", "utcdate",
+    "mic", "cfi", "side", "utcdate",
     # Orchestra names these beside the ones the table resolves.
     "localmktdatetime", "time", "date",
 }
@@ -149,7 +147,8 @@ LOGICAL_NAMES = {
 # crate carries on its own lines, so it is read far more often than it arrives.
 # Tags 39 and 150 are the order's state: their two code sets agree on every
 # value they share, and the crate's own `state` type reads either.
-CODED_TAGS = {35: "msgtype", 39: "state", 54: "side", 150: "state", 385: "msgdirection"}
+CODED_TAGS = {39: "state", 54: "side", 150: "state", 385: "msgdirection"}
+
 
 def folded(name: str) -> str:
     """The crate's one fold: case folded, `_`, `-` and space dropped."""
@@ -163,6 +162,10 @@ def version_of(spelling: str | None) -> str | None:
     text = spelling.removeprefix("FIX.").removeprefix("FIXT.")
     if text in {"Latest", "FIX.Latest"}:
         return None
+    service_pack = re.fullmatch(r"(\d+\.\d+)[sS][pP](\d+)", text)
+    if service_pack:
+        text = f"{service_pack[1]}.{service_pack[2]}"
+    version_key(text)
     return text or None
 
 
@@ -200,13 +203,15 @@ def extension_pack(declared: str | None) -> int | None:
     return pack if pack > 0 else None
 
 
-def parse_orchestra(data: bytes) -> dict[str, Any]:
+def parse_orchestra(data: bytes, protocol_version: str | None = None) -> dict[str, Any]:
     """Every kind one Orchestra file publishes."""
     root = ElementTree.fromstring(data)
     declared = root.get("version", "")
     ep = None
     if "_EP" in declared:
         ep = int(declared.rsplit("_EP", 1)[1])
+    elif declared.startswith("EP"):
+        ep = int(declared[2:])
 
     code_sets: dict[str, dict[str, Any]] = {}
     for element in root.iter(f"{{{NS['fixr']}}}codeSet"):
@@ -265,6 +270,7 @@ def parse_orchestra(data: bytes) -> dict[str, Any]:
             "id": int(element.get("id", "0")),
             "members": members_of(element),
             "since": version_of(element.get("added")),
+            "doc": orchestra_documentation(element),
         }
         for element in root.iter(f"{{{NS['fixr']}}}component")
     }
@@ -275,12 +281,13 @@ def parse_orchestra(data: bytes) -> dict[str, Any]:
             "id": int(element.get("id", "0")),
             "members": members_of(element),
             "since": version_of(element.get("added")),
+            "doc": orchestra_documentation(element),
         }
         for element in root.iter(f"{{{NS['fixr']}}}message")
     }
 
     return {
-        "version": version_of(declared.split("_")[0]) or "5.0SP2",
+        "version": protocol_version or version_of(declared.split("_")[0]) or "5.0.2",
         "ep": ep,
         "fields": fields,
         "code_sets": code_sets,
@@ -380,10 +387,8 @@ def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
     """The crate datatype spelling one FIX datatype name resolves through.
 
     The logical-name table already *is* the FIX Latest datatype table, so a
-    field declares its FIX type and the grammar answers the column. Two tags
-    the standard itself declares as code sets take the datatype the crate
-    gives that code set; that is honouring the declaration rather than the
-    narrowing a generator must not do.
+    field declares its FIX type and the grammar answers the column. Registered
+    coded types keep their crate datatype; message codes remain plain text.
     """
     if tag in CODED_TAGS:
         return CODED_TAGS[tag]
@@ -485,31 +490,13 @@ def codes_document(codes: list[dict[str, Any]]) -> str:
     return canonical_json({"codes": rendered})
 
 
-# The Latin plurals, longest first so a longer suffix is never shadowed. This
-# mirrors `fix::component::LATIN`; the cross-host test asserts the two agree
-# for every shipped group.
+# Longest first so a longer suffix is never shadowed.
 LATIN = (
     ("appendices", "appendix"),
     ("matrices", "matrix"),
     ("vertices", "vertex"),
     ("indices", "index"),
 )
-
-
-def component_name(counter_display: str) -> str | None:
-    """Return the component name headed by a repeating-group counter.
-
-    The Python half of one rule; `rust/src/fix/component.rs` is the other and
-    owns its reasoning. Reads the counter's display spelling, never its folded
-    name, and answers None where the spelling is not a counter's.
-    """
-    if not counter_display.startswith("No"):
-        return None
-    stem = counter_display[2:]
-    head = stem[:1]
-    if not head.isascii() or not head.isupper():
-        return None
-    return _singularize(stem)
 
 
 def _singularize(stem: str) -> str:
@@ -542,15 +529,16 @@ def _singularize(stem: str) -> str:
     return stem[:-1]
 
 
-def occurrence_name(counter: dict[str, Any]) -> str:
-    """The name one repeating group's occurrence takes under `counter`."""
-    display = (counter.get("metadata") or {}).get("display")
-    derived = component_name(display) if display else None
-    return derived.lower() if derived else counter["name"]
+def entry_name(group_name: str) -> str:
+    """An entry follows its published collection, including numeric qualifiers."""
+    stem = group_name.removesuffix("Grp")
+    matched = re.fullmatch(r"(.*?)(\d*)", stem)
+    assert matched is not None
+    return _singularize(matched[1]) + matched[2]
 
 
-def build(parsed: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Fold every source into one definition per tag, lowest priority first."""
+def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Resolve the source graph once into the registry's five categories."""
     latest = parsed["orchestra-latest"]
 
     # Per-tag history, oldest first, from the versions QuickFIX publishes.
@@ -615,9 +603,11 @@ def build(parsed: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict
                     aliases.append(spelling)
             if aliases:
                 metadata["fix:aliases"] = ",".join(aliases)
-        code_set = latest["code_sets"].get(field["code_set"] or field["type"] or "")
-        if code_set and code_set["codes"]:
-            metadata["fix:codes"] = codes_document(code_set["codes"])
+        code_set_name = field["code_set"] or field["type"] or ""
+        if field["code_set"] and code_set_name not in latest["code_sets"]:
+            raise ValueError(f"{field['name']}: unresolved code set {code_set_name}")
+        if code_set_name in latest["code_sets"]:
+            metadata["fix:codes"] = codes_document(latest["code_sets"][code_set_name]["codes"])
 
         fields.append(
             {
@@ -625,91 +615,160 @@ def build(parsed: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict
                 "dtype": dtype_document(dtype),
                 "nullable": True,
                 "metadata": dict(sorted(metadata.items())),
-                "_tag": tag,
-                "_nested": False,
             }
         )
+    return build_catalog(latest, fields)
 
-    # Groups become the nested tree: a List of a non-null Struct named for the
-    # component the counter heads, whose own `fix:tag` is the counter's.
-    #
-    # One counter tag heads several groups - Orchestra declares `NoRelatedSym`
-    # eleven times, once per message context - and a registry holds one
-    # definition per identifier. So the contexts are unioned in wire order,
-    # first occurrence winning, and the per-message shape stays in the layouts
-    # manifest, which records it exactly.
-    by_tag = {field["_tag"]: field for field in fields}
-    grouped: dict[int, list[dict[str, Any]]] = {}
-    for name, group in sorted(latest["groups"].items()):
-        counter_tag = group["tag"]
-        if counter_tag not in by_tag:
-            continue
-        members = grouped.setdefault(counter_tag, [])
-        held = {member["id"] for member in members}
-        for member in group["members"]:
-            if member["kind"] != "field" or member["id"] == counter_tag:
-                continue
-            if member["id"] in held or member["id"] not in by_tag:
-                continue
-            held.add(member["id"])
-            members.append(member)
 
-    for counter_tag, members in sorted(grouped.items()):
-        if not members:
-            continue
-        counter = by_tag[counter_tag]
-        children = [
-            {
-                "name": by_tag[member["id"]]["name"],
-                "dtype": by_tag[member["id"]]["dtype"],
-                "nullable": not member["required"],
-                "metadata": {"fix:tag": str(member["id"])},
+def build_catalog(
+    latest: dict[str, Any], fields: list[dict[str, Any]]
+) -> dict[str, list[dict[str, Any]]]:
+    """Keep wire identity separate from the source's reusable named graph.
+
+    The published collection names are authoritative. Entry names are local
+    schema names: Parties becomes Party, NestedParties2 becomes NestedParty2.
+    A category suffix resolves collisions with existing protocol vocabulary;
+    the source ID disambiguates a remaining generated-name collision.
+
+    References are native null Fields with one typed FIX metadata reference.
+    The core resolves them at intake; a tree never duplicates its owners here.
+    """
+    result = {kind: [] for kind in ("fields", "components", "groups", "messages")}
+    result["fields"] = fields
+    by_tag = {int(field["metadata"]["fix:tag"]): field for field in fields}
+    used = {field["name"] for field in fields}
+    if len(used) != len(fields):
+        raise ValueError("duplicate folded FIX field name")
+    used.update(
+        folded(alias)
+        for field in fields
+        for alias in field.get("metadata", {}).get("fix:aliases", "").split(",")
+        if alias
+    )
+    source_names: dict[tuple[str, int], str] = {}
+    definitions: dict[tuple[str, int], dict[str, Any]] = {}
+    for category in ("components", "groups", "messages"):
+        for source_name, definition in latest[category].items():
+            key = (category, definition["id"])
+            if key in definitions:
+                raise ValueError(f"duplicate {category} id {key[1]}")
+            definitions[key] = definition
+            source_names[key] = definition.get("name", source_name)
+
+    reserved = {folded(name) for name in source_names.values()} | used
+    names: dict[tuple[str, int], str] = {}
+
+    def claim(display: str, suffix: str, identifier: int, original: bool) -> str:
+        canonical = folded(display)
+        if canonical in used or (not original and canonical in reserved):
+            canonical = folded(display + suffix)
+            if canonical in used or canonical in reserved:
+                canonical += str(identifier)
+        if canonical in used or (not original and canonical in reserved):
+            raise ValueError(f"unresolvable FIX name collision: {display} ({identifier})")
+        if re.fullmatch(r"[a-z0-9][a-z0-9_.-]*", canonical) is None:
+            raise ValueError(f"invalid FIX catalog name: {display!r}")
+        used.add(canonical)
+        return canonical
+
+    suffixes = {"components": "Component", "groups": "Grp", "messages": "Message"}
+    for key, display in sorted(source_names.items()):
+        names[key] = claim(display, suffixes[key[0]], key[1], original=True)
+
+    entries: dict[int, str] = {}
+    entry_displays: dict[int, str] = {}
+    for (category, identifier), display in sorted(source_names.items()):
+        if category == "groups":
+            entry_displays[identifier] = entry_name(display)
+            entries[identifier] = claim(entry_displays[identifier], "Component", identifier, original=False)
+
+    def reference(name: str, kind: str, required: bool) -> dict[str, Any]:
+        return {
+            "name": name,
+            "dtype": {"type": "null"},
+            "nullable": not required,
+            "metadata": {f"fix:{kind}": name},
+        }
+
+    def members(owner: tuple[str, int]) -> list[dict[str, Any]]:
+        children = []
+        child_names = set()
+        for member in definitions[owner]["members"]:
+            kind, identifier = member["kind"], member["id"]
+            required = member["required"]
+            if kind == "field":
+                if identifier not in by_tag:
+                    raise ValueError(f"{source_names[owner]}: unresolved field {identifier}")
+                children.append(reference(by_tag[identifier]["name"], "field", required))
+            else:
+                target = (f"{kind}s", identifier)
+                if target not in definitions:
+                    raise ValueError(f"{source_names[owner]}: unresolved {kind} {identifier}")
+                if kind == "group":
+                    counter = definitions[target]["tag"]
+                    if counter not in by_tag or by_tag[counter]["dtype"] != {"type": "int32"}:
+                        raise ValueError(f"{source_names[target]}: counter {counter} must be an int32 field")
+                    children.append(reference(by_tag[counter]["name"], "field", required))
+                children.append(reference(names[target], kind, required))
+        for child in children:
+            if child["name"] in child_names:
+                raise ValueError(f"{source_names[owner]}: duplicate member {child['name']}")
+            child_names.add(child["name"])
+        return children
+
+    # References keep storage compact but must still describe one finite graph.
+    visiting: set[tuple[str, int]] = set()
+    resolved: set[tuple[str, int]] = set()
+
+    def validate_graph(key: tuple[str, int], depth: int = 0) -> None:
+        if key in visiting or depth > 64:
+            raise ValueError(f"cyclic or excessive FIX nesting at {source_names[key]}")
+        if key in resolved:
+            return
+        visiting.add(key)
+        for member in definitions[key]["members"]:
+            if member["kind"] != "field":
+                target = (f"{member['kind']}s", member["id"])
+                if target not in definitions:
+                    raise ValueError(f"{source_names[key]}: unresolved {target}")
+                validate_graph(target, depth + 1)
+        visiting.remove(key)
+        resolved.add(key)
+
+    for key, definition in sorted(definitions.items()):
+        validate_graph(key)
+        category, identifier = key
+        metadata = {"display": source_names[key]}
+        if definition.get("doc"):
+            metadata["description"] = definition["doc"]
+        children = members(key)
+        if category == "groups":
+            counter = definition["tag"]
+            if counter not in by_tag or by_tag[counter]["dtype"] != {"type": "int32"}:
+                raise ValueError(f"{source_names[key]}: counter {counter} must be an int32 field")
+            entry = {
+                "name": entries[identifier],
+                "dtype": {"type": "struct", "fields": children},
+                "nullable": False,
+                "metadata": {"display": entry_displays[identifier]},
             }
-            for member in members
-        ]
-        fields = [field for field in fields if field["_tag"] != counter_tag]
-        fields.append(
-            {
-                "name": counter["name"],
-                "dtype": {
-                    "type": "list",
-                    "field": {
-                        "name": occurrence_name(counter),
-                        "dtype": {"type": "struct", "fields": children},
-                        "nullable": False,
-                        "metadata": {},
-                    },
-                },
-                "nullable": True,
-                "metadata": dict(counter["metadata"]),
-                "_tag": counter_tag,
-                "_nested": True,
-            }
+            result["components"].append(entry)
+            dtype = {"type": "list", "field": reference(entries[identifier], "component", True)}
+            metadata["fix:counter"] = str(counter)
+            metadata["fix:component"] = entries[identifier]
+        else:
+            dtype = {"type": "struct", "fields": children}
+        if category == "messages":
+            metadata["fix:msgtype"] = next(
+                wire for wire, held in latest["messages"].items() if held["id"] == identifier
+            )
+        result[category].append(
+            {"name": names[key], "dtype": dtype, "nullable": False, "metadata": dict(sorted(metadata.items()))}
         )
 
-    layouts = {
-        "components": [
-            {"name": name, "id": held["id"], "members": held["members"]}
-            for name, held in sorted(latest["components"].items())
-        ],
-        # A `groupRef` names the group's own identifier, which is neither a tag
-        # nor a component identifier, so a layout is unwalkable without this
-        # third table. `tag` is the counter the registry holds the group under.
-        "groups": [
-            {
-                "name": name,
-                "id": held["id"],
-                "tag": held["tag"],
-                "members": held["members"],
-            }
-            for name, held in sorted(latest["groups"].items())
-        ],
-        "messages": [
-            {"msgtype": msgtype, "name": held["name"], "id": held["id"], "members": held["members"]}
-            for msgtype, held in sorted(latest["messages"].items())
-        ],
-    }
-    return fields, layouts
+    for category in result:
+        result[category].sort(key=lambda field: int(field["metadata"]["fix:tag"]) if category == "fields" else field["name"])
+    return result
 
 
 def dtype_document(name: str) -> dict[str, Any]:
@@ -766,7 +825,6 @@ def dtype_document(name: str) -> dict[str, Any]:
         "Reserved4000Plus": {"type": "int32"},
         "Time": {"type": "time64", "unit": "nanosecond"},
         "Date": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
-        "msgtype": {"type": "msgtype"},
         "side": {"type": "side"},
         "msgdirection": {"type": "msgdirection"},
         "state": {"type": "state"},
@@ -779,43 +837,153 @@ def dtype_document(name: str) -> dict[str, Any]:
     return document
 
 
-_VERSION = re.compile(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?(.*)$")
+def version_key(version: str) -> tuple[int, int, int]:
+    """The core's major:u8, minor:u8, patch:u16 numeric ordering."""
+    matched = re.fullmatch(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?", version)
+    if matched is None:
+        raise ValueError(f"invalid numeric FIX version {version!r}")
+    major, minor, patch = (int(part or 0) for part in matched.groups())
+    if major > 255 or minor > 255 or patch > 65535:
+        raise ValueError(f"FIX version exceeds major:u8, minor:u8, patch:u16: {version!r}")
+    return major, minor, patch
 
 
-def version_key(version: str) -> tuple[int, int, int, int, str]:
-    """Numeric-first ordering, post-release qualifiers after a bare version."""
-    match = _VERSION.match(version)
-    if not match:
-        return (0, 0, 0, 0, version)
-    major, minor, patch, qualifier = match.groups()
-    pre = qualifier.startswith("-")
-    return (
-        int(major),
-        int(minor or 0),
-        int(patch or 0),
-        -1 if pre else (0 if not qualifier else 1),
-        qualifier.lstrip("-."),
-    )
+# The block a named definition's derived tag is taken from, and the XXH32 the
+# core derives it with. Kept in step with `FixId::DEFINITION_TAG_MIN` and
+# `FixId::DEFINITION_TAG_MAX` in rust/src/fix/mod.rs: a document this writes is
+# loaded by that core, and a tag outside the block is refused.
+DEFINITION_TAG_MIN = 100_000
+DEFINITION_TAG_MAX = 1_100_000
+
+_MASK = 0xFFFF_FFFF
+_PRIME32 = (2654435761, 2246822519, 3266489917, 668265263, 374761393)
 
 
-def write_tree(out: pathlib.Path, fields: list[dict[str, Any]]) -> dict[str, str]:
-    """Write shards exactly as `write_into` produces them."""
-    shards: dict[tuple[str, int], list[dict[str, Any]]] = {}
-    for field in fields:
-        tree = "nested" if field["_nested"] else "primitive"
-        shards.setdefault((tree, field["_tag"] // 100), []).append(field)
-    written: dict[str, str] = {}
-    for (tree, shard), held in sorted(shards.items()):
-        held.sort(key=lambda field: field["_tag"])
-        document = [
-            {key: value for key, value in field.items() if not key.startswith("_")}
-            for field in held
-        ]
-        path = out / tree / f"{shard}.json"
+def _rotl32(value: int, count: int) -> int:
+    return ((value << count) | (value >> (32 - count))) & _MASK
+
+
+def _xxh32_round(acc: int, lane: int) -> int:
+    return (_rotl32((acc + lane * _PRIME32[1]) & _MASK, 13) * _PRIME32[0]) & _MASK
+
+
+def xxh32(data: bytes) -> int:
+    """XXH32 of `data` at seed zero.
+
+    Spelled here rather than imported: this script is the dictionary's own
+    build step and runs on the standard library alone. The core's
+    `yggdryl::xxhash::Xxh32` is the same function, which is what lets a tag
+    derived here equal the tag the core would derive for the same name.
+    """
+    one, two, three, four, five = _PRIME32
+    size = len(data)
+    at = 0
+    if size >= 16:
+        first, second = (one + two) & _MASK, two
+        third, fourth = 0, (-one) & _MASK
+        while at + 16 <= size:
+            first = _xxh32_round(first, int.from_bytes(data[at : at + 4], "little"))
+            second = _xxh32_round(second, int.from_bytes(data[at + 4 : at + 8], "little"))
+            third = _xxh32_round(third, int.from_bytes(data[at + 8 : at + 12], "little"))
+            fourth = _xxh32_round(fourth, int.from_bytes(data[at + 12 : at + 16], "little"))
+            at += 16
+        held = (
+            _rotl32(first, 1) + _rotl32(second, 7) + _rotl32(third, 12) + _rotl32(fourth, 18)
+        ) & _MASK
+    else:
+        held = five
+    held = (held + size) & _MASK
+    while at + 4 <= size:
+        held = (held + int.from_bytes(data[at : at + 4], "little") * three) & _MASK
+        held = (_rotl32(held, 17) * four) & _MASK
+        at += 4
+    while at < size:
+        held = (held + data[at] * five) & _MASK
+        held = (_rotl32(held, 11) * one) & _MASK
+        at += 1
+    held ^= held >> 15
+    held = (held * two) & _MASK
+    held ^= held >> 13
+    held = (held * three) & _MASK
+    held ^= held >> 16
+    return held
+
+
+def assign_definition_tags(catalog: dict[str, list[dict[str, Any]]]) -> None:
+    """Give every component, group and message a tag of its own.
+
+    Only wire fields have a tag the specification publishes; a named definition
+    has none, so one is derived from its name into a block nothing else claims.
+    XXH32 of the name places it, and a slot already taken is stepped past,
+    wrapping, so a name is always registrable. The core derives the same tag
+    the same way, and keeps a tag a document already states rather than
+    deriving a second one - so writing them here is what makes the identity the
+    dictionary's rather than each reader's.
+
+    Assignment walks the categories in the core's own load order and each
+    category by name, so the tag a definition gets depends on the dictionary
+    and not on the order a source file happened to list it in.
+    """
+    span = DEFINITION_TAG_MAX - DEFINITION_TAG_MIN
+    taken = {
+        int(field["metadata"]["fix:tag"])
+        for field in catalog["fields"]
+        if "fix:tag" in field.get("metadata", {})
+    }
+    for category in ("components", "groups", "messages"):
+        for field in sorted(catalog[category], key=lambda held: held["name"]):
+            start = xxh32(field["name"].encode()) % span
+            for step in range(span):
+                tag = DEFINITION_TAG_MIN + (start + step) % span
+                if tag not in taken:
+                    break
+            else:
+                raise ValueError(f"no free derived tag for {field['name']!r}")
+            taken.add(tag)
+            metadata = field.setdefault("metadata", {})
+            metadata["fix:tag"] = str(tag)
+            field["metadata"] = dict(sorted(metadata.items()))
+
+
+def render_tree(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
+    """Render native Field documents with compact references between owners."""
+    shards: dict[int, list[dict[str, Any]]] = {}
+    for field in catalog["fields"]:
+        tag = int(field["metadata"]["fix:tag"])
+        shards.setdefault(tag // 100, []).append(field)
+    documents: dict[str, Any] = {
+        f"fields/{shard}.json": held for shard, held in sorted(shards.items())
+    }
+    for category in ("components", "groups", "messages"):
+        for field in catalog[category]:
+            documents[f"{category}/{field['name']}.json"] = field
+    return {
+        name: json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+        for name, document in sorted(documents.items())
+    }
+
+
+def write_tree(out: pathlib.Path, documents: dict[str, str]) -> dict[str, str]:
+    """Replace generated files only; every target stays under the output root."""
+    out = out.resolve()
+    for tree in ("fields", "components", "groups", "messages", "primitive", "nested"):
+        for stale in sorted((out / tree).glob("*.json")):
+            relative = stale.resolve().relative_to(out).as_posix()
+            if relative not in documents:
+                stale.unlink()
+        if tree in {"primitive", "nested"}:
+            try:
+                (out / tree).rmdir()
+            except FileNotFoundError:
+                pass
+    (out / "layouts.json").unlink(missing_ok=True)
+    written = {}
+    for name, text in documents.items():
+        path = out / name
+        path.resolve().relative_to(out)
         path.parent.mkdir(parents=True, exist_ok=True)
-        text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
         path.write_text(text, encoding="utf-8", newline="\n")
-        written[f"{tree}/{shard}.json"] = hashlib.sha256(text.encode()).hexdigest()
+        written[name] = hashlib.sha256(text.encode()).hexdigest()
     return written
 
 
@@ -908,7 +1076,8 @@ def main() -> int:
     for source in SOURCES:
         data = read_source(source, arguments.source)
         parsed[source.source_id] = (
-            parse_orchestra(data) if source.format == "orchestra" else parse_quickfix(data)
+            parse_orchestra(data, source.version if source.version != "latest" else "5.0.2")
+            if source.format == "orchestra" else parse_quickfix(data)
         )
         provenance.append(
             {
@@ -930,24 +1099,50 @@ def main() -> int:
     if unmapped:
         raise SystemExit(f"unmapped FIX datatypes: {', '.join(unmapped)}")
 
-    fields, layouts = build(parsed)
+    catalog = build(parsed)
+    assign_definition_tags(catalog)
+    documents = render_tree(catalog)
+    written = {name: hashlib.sha256(text.encode()).hexdigest() for name, text in documents.items()}
+    manifest = {
+        "version": latest["version"],
+        "ep": latest["ep"],
+        "sources": provenance,
+        "definitions": written,
+    }
     if arguments.check:
-        print(f"{len(fields)} definitions, {len(latest['datatypes'])} datatypes resolved")
+        failures = []
+        for name, expected in documents.items():
+            try:
+                actual = (out / name).read_text(encoding="utf-8")
+            except FileNotFoundError:
+                failures.append(f"missing {name}")
+                continue
+            if actual != expected:
+                failures.append(f"changed {name}")
+        expected_names = set(documents)
+        for category in (*catalog, "primitive", "nested"):
+            for path in (out / category).glob("*.json"):
+                name = path.relative_to(out).as_posix()
+                if name not in expected_names:
+                    failures.append(f"unexpected {name}")
+        if (out / "layouts.json").exists():
+            failures.append("retired layouts.json exists")
+        try:
+            actual_manifest = json.loads((out / "provenance.json").read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            actual_manifest = None
+        if actual_manifest != manifest:
+            failures.append("changed provenance.json")
+        if failures:
+            print("\n".join(failures), file=sys.stderr)
+            return 1
+        print(f"verified {len(documents)} documents; " + ", ".join(f"{len(held)} {kind}" for kind, held in catalog.items()))
         return 0
-
-    for tree in ("primitive", "nested"):
-        for stale in sorted((out / tree).glob("*.json")):
-            stale.unlink()
-    written = write_tree(out, fields)
+    write_tree(out, documents)
 
     (out / "provenance.json").write_text(
         json.dumps(
-            {
-                "version": latest["version"],
-                "ep": latest["ep"],
-                "sources": provenance,
-                "definitions": written,
-            },
+            manifest,
             indent=2,
             ensure_ascii=False,
         )
@@ -956,13 +1151,8 @@ def main() -> int:
         newline="\n",
     )
     write_constants(latest, parsed)
-    (out / "layouts.json").write_text(
-        json.dumps(layouts, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
     print(
-        f"wrote {len(fields)} definitions across {len(written)} shards "
+        f"wrote {len(written)} documents (" + ", ".join(f"{len(held)} {kind}" for kind, held in catalog.items()) + ") "
         f"at FIX {latest['version']} EP{latest['ep']}"
     )
     return 0

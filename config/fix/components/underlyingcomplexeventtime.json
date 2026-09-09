@@ -1,0 +1,33 @@
+{
+  "name": "underlyingcomplexeventtime",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventstarttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventstarttime"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventendtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventendtime"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventTime",
+    "fix:tag": "116002"
+  }
+}

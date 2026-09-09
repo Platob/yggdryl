@@ -23,11 +23,13 @@ use pyo3::types::{PyBool, PyBytes, PyInt};
 use yggdryl::types::MsgDirection;
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField,
-    FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch, FixCodec as CoreFixCodec,
-    FixField as CoreFixField, FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle,
+    FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch,
+    FixCategory as CoreFixCategory, FixCodec as CoreFixCodec, FixField as CoreFixField,
+    FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMessages as CoreFixMessages,
     FixMsg as CoreFixMsg, FixOptions as CoreFixOptions, FixRegistry as CoreFixRegistry,
-    IOBase as CoreIOBase, Scalar, UlPlugin as CoreUlPlugin, Version as CoreVersion,
-    from_json_scalar_with_field, into_json_scalar,
+    IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar, UlPlugin as CoreUlPlugin,
+    UlPlugins as CoreUlPlugins, Version as CoreVersion, from_json_scalar_with_field,
+    into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -212,7 +214,7 @@ impl PyFixRegistry {
 
     /// A registry holding nothing but this crate's own fields.
     ///
-    /// Every registry starts here: the nineteen standard fields from tag 65000
+    /// Every registry starts here: the twenty standard fields from tag 65000
     /// that `fix_crate_fields` lists are what a row is typed by, so a
     /// dictionary loaded from a store, built from fields or left alone holds
     /// them alike, on the standard branch every one of them resolves through.
@@ -237,7 +239,7 @@ impl PyFixRegistry {
         Ok(Self::from_arc(Arc::new(registry)))
     }
 
-    /// Load every shard under `<location>/primitive` and `<location>/nested`.
+    /// Load scalar shards and native message, component, and group definitions.
     ///
     /// `location` is an `IOBase` handle or anything that names a folder: a
     /// string, a path-like, a `Url`. A folder that is not there loads as a new
@@ -355,31 +357,181 @@ impl PyFixRegistry {
     /// the text they arrived as, because a key no dictionary explains is kept
     /// rather than dropped.
     fn with_ulbridge_fields(&mut self) -> PyResult<()> {
-        let held = std::mem::take(self.inner_mut()?);
-        *self.inner_mut()? = held.with_ulbridge_fields().map_err(value_error)?;
+        let registry = self.inner_mut()?;
+        *registry = registry
+            .clone()
+            .with_ulbridge_fields()
+            .map_err(value_error)?;
         Ok(())
     }
 
-    /// Register one message type, answering the value it takes.
-    ///
-    /// A type the code set does not have is added rather than refused, and a
-    /// spelling too long for the datatype takes a stable synthesized value.
-    /// `name` is the symbolic name the set files it under, with the spelling
-    /// kept as an alias when the two differ, and `description` is the source's
-    /// own wording. Idempotent and enriching: a type already spelled answers
-    /// its value, gains a spelling the set did not answer to and a description
-    /// it did not have, and keeps everything it already held.
+    /// Register a message definition and borrow its immutable singleton view.
     #[pyo3(signature = (spelling, name=None, description=None))]
     fn register_msgtype(
         &mut self,
         spelling: &str,
         name: Option<&str>,
         description: Option<&str>,
-    ) -> PyResult<String> {
+    ) -> PyResult<PyMsgType> {
+        let held = std::ptr::from_ref(
+            self.inner_mut()?
+                .register_msgtype(spelling, name, description)
+                .map_err(value_error)?
+                .as_field(),
+        );
+        PyMsgType::from_field_pointer(&self.inner, held)
+    }
+
+    #[pyo3(signature = (category, name, branch=None))]
+    fn get_definition(
+        &self,
+        category: &str,
+        name: &str,
+        branch: Option<&str>,
+    ) -> PyResult<Option<PyField>> {
+        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
+        let branch = branch.map(branch_from_py).transpose()?;
+        Ok(self
+            .inner
+            .get_definition(category, name, branch.as_ref())
+            .cloned()
+            .map(PyField::from_inner))
+    }
+
+    #[pyo3(signature = (category, name, branch=None))]
+    fn definition(&self, category: &str, name: &str, branch: Option<&str>) -> PyResult<PyField> {
+        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
+        let branch = branch.map(branch_from_py).transpose()?;
+        self.inner
+            .definition(category, name, branch.as_ref())
+            .cloned()
+            .map(PyField::from_inner)
+            .map_err(|error| absent(&error))
+    }
+
+    fn definitions(&self, category: &str) -> PyResult<PyFixDefinitionIterator> {
+        Ok(PyFixDefinitionIterator {
+            registry: Arc::clone(&self.inner),
+            category: CoreFixCategory::from_str(category).map_err(value_error)?,
+            index: 0,
+        })
+    }
+
+    fn insert_definition(
+        &mut self,
+        category: &str,
+        field: &Bound<'_, PyAny>,
+    ) -> PyResult<Option<PyField>> {
+        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
+        let field = core_field_from_value(field)?;
         self.inner_mut()?
-            .register_msgtype(spelling, name, description)
-            .map(|held| held.as_str().to_owned())
+            .insert_definition(category, field)
+            .map(|field| field.map(PyField::from_inner))
             .map_err(value_error)
+    }
+
+    fn create_definition(&mut self, category: &str, field: &Bound<'_, PyAny>) -> PyResult<()> {
+        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
+        let field = core_field_from_value(field)?;
+        self.inner_mut()?
+            .create_definition(category, field)
+            .map_err(value_error)
+    }
+
+    fn update_definition(&mut self, category: &str, field: &Bound<'_, PyAny>) -> PyResult<PyField> {
+        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
+        let field = core_field_from_value(field)?;
+        self.inner_mut()?
+            .update_definition(category, field)
+            .map(PyField::from_inner)
+            .map_err(value_error)
+    }
+
+    #[pyo3(signature = (category, name, branch=None))]
+    fn remove_definition(
+        &mut self,
+        category: &str,
+        name: &str,
+        branch: Option<&str>,
+    ) -> PyResult<Option<PyField>> {
+        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
+        let branch = branch.map(branch_from_py).transpose()?;
+        self.inner_mut()?
+            .remove_definition(category, name, branch.as_ref())
+            .map(|field| field.map(PyField::from_inner))
+            .map_err(value_error)
+    }
+
+    #[pyo3(signature = (spelling, branch=None))]
+    fn get_msgtype(&self, spelling: &str, branch: Option<&str>) -> PyResult<Option<PyMsgType>> {
+        let branch = branch.map(branch_from_py).transpose()?;
+        self.inner
+            .get_msgtype(spelling, branch.as_ref())
+            .map(|message| PyMsgType::from_field_pointer(&self.inner, message.as_field()))
+            .transpose()
+    }
+
+    #[pyo3(signature = (spelling, branch=None))]
+    fn msgtype(&self, spelling: &str, branch: Option<&str>) -> PyResult<PyMsgType> {
+        let branch = branch.map(branch_from_py).transpose()?;
+        let message = self
+            .inner
+            .msgtype(spelling, branch.as_ref())
+            .map_err(|error| absent(&error))?;
+        PyMsgType::from_field_pointer(&self.inner, message.as_field())
+    }
+
+    fn msgtypes(&self) -> PyMsgTypeIterator {
+        PyMsgTypeIterator {
+            registry: Arc::clone(&self.inner),
+            index: 0,
+        }
+    }
+
+    fn get_group_by_counter(&self, id: &str) -> PyResult<Option<PyField>> {
+        Ok(self
+            .inner
+            .get_group_by_counter(id_from_py(id)?)
+            .cloned()
+            .map(PyField::from_inner))
+    }
+
+    fn group_by_counter(&self, id: &str) -> PyResult<PyField> {
+        self.inner
+            .group_by_counter(id_from_py(id)?)
+            .cloned()
+            .map(PyField::from_inner)
+            .map_err(|error| absent(&error))
+    }
+
+    #[staticmethod]
+    fn from_json(document: &str) -> PyResult<Self> {
+        CoreFixRegistry::from_json(document)
+            .map(|inner| Self::from_arc(Arc::new(inner)))
+            .map_err(value_error)
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    fn into_json(&self) -> PyResult<String> {
+        self.inner.into_json().map_err(value_error)
+    }
+
+    fn stable_hash(&self) -> u64 {
+        self.inner.stable_hash()
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String,))> {
+        Ok((
+            py.get_type::<Self>().getattr("from_json")?.unbind(),
+            (self.into_json()?,),
+        ))
+    }
+
+    fn __copy__(&self) -> Self {
+        Self::from_arc(Arc::new(self.inner.as_ref().clone()))
+    }
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.__copy__()
     }
 
     /// Write every populated shard under `<location>/<tree>/<branch>`,
@@ -682,6 +834,210 @@ pub(crate) struct PyFixFieldIterator {
     done: bool,
 }
 
+#[pyclass(name = "FixDefinitionIterator", module = "yggdryl._native")]
+pub(crate) struct PyFixDefinitionIterator {
+    registry: Arc<CoreFixRegistry>,
+    category: CoreFixCategory,
+    index: usize,
+}
+
+#[pymethods]
+impl PyFixDefinitionIterator {
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+    fn __next__(&mut self) -> Option<PyField> {
+        let field = self.registry.definition_at(self.category, self.index)?;
+        self.index += 1;
+        Some(PyField::from_inner(field.clone()))
+    }
+}
+
+#[pyclass(
+    name = "MsgType",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
+#[derive(Clone)]
+pub(crate) struct PyMsgType {
+    registry: Arc<CoreFixRegistry>,
+    index: usize,
+}
+
+impl PyMsgType {
+    fn from_field_pointer(
+        registry: &Arc<CoreFixRegistry>,
+        field: *const CoreField,
+    ) -> PyResult<Self> {
+        let index = registry
+            .msgtypes()
+            .position(|message| std::ptr::eq(message.as_field(), field))
+            .ok_or_else(|| {
+                PyValueError::new_err("message singleton does not belong to this registry")
+            })?;
+        Ok(Self {
+            registry: Arc::clone(registry),
+            index,
+        })
+    }
+    fn inner(&self) -> &CoreMsgType {
+        self.registry
+            .msgtype_at(self.index)
+            .expect("an immutable registry retains its singleton positions")
+    }
+}
+
+#[pymethods]
+impl PyMsgType {
+    #[getter]
+    fn name(&self) -> &str {
+        self.inner().name()
+    }
+    #[getter]
+    fn value(&self) -> &str {
+        self.inner().as_str()
+    }
+    #[getter]
+    fn field(&self) -> PyField {
+        PyField::from_inner_with_read_only(self.inner().as_field().clone(), true)
+    }
+    fn get_group_by_counter(&self, id: &str) -> PyResult<Option<PyField>> {
+        Ok(self
+            .inner()
+            .get_group_by_counter(id_from_py(id)?)
+            .cloned()
+            .map(PyField::from_inner))
+    }
+    fn stable_hash(&self) -> u64 {
+        self.inner().stable_hash()
+    }
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.stable_hash())
+    }
+    fn __richcmp__(
+        &self,
+        py: Python<'_>,
+        other: &Bound<'_, PyAny>,
+        operation: pyo3::class::basic::CompareOp,
+    ) -> Py<PyAny> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return py.NotImplemented();
+        };
+        PyBool::new(
+            py,
+            crate::compare(self.inner().cmp(other.inner()), operation),
+        )
+        .to_owned()
+        .into_any()
+        .unbind()
+    }
+    fn __str__(&self) -> &str {
+        self.inner().as_str()
+    }
+    fn __repr__(&self) -> String {
+        format!("MsgType({:?}, {:?})", self.name(), self.value())
+    }
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+
+    #[staticmethod]
+    fn _from_pickle(registry: &str, index: usize) -> PyResult<Self> {
+        let registry = Arc::new(CoreFixRegistry::from_json(registry).map_err(value_error)?);
+        registry
+            .msgtype_at(index)
+            .ok_or_else(|| PyValueError::new_err("message position is outside the registry"))?;
+        Ok(Self { registry, index })
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (String, usize))> {
+        Ok((
+            py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
+            (self.registry.into_json().map_err(value_error)?, self.index),
+        ))
+    }
+}
+
+#[pyclass(name = "MsgTypeIterator", module = "yggdryl._native")]
+pub(crate) struct PyMsgTypeIterator {
+    registry: Arc<CoreFixRegistry>,
+    index: usize,
+}
+
+#[pymethods]
+impl PyMsgTypeIterator {
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+    fn __next__(&mut self) -> Option<PyMsgType> {
+        self.registry.msgtype_at(self.index)?;
+        let value = PyMsgType {
+            registry: Arc::clone(&self.registry),
+            index: self.index,
+        };
+        self.index += 1;
+        Some(value)
+    }
+}
+
+#[pyclass(name = "FixMessages", module = "yggdryl._native")]
+pub(crate) struct PyFixMessages {
+    inner: CoreFixMessages,
+}
+
+impl PyFixMessages {
+    const fn from_inner(inner: CoreFixMessages) -> Self {
+        Self { inner }
+    }
+}
+
+#[pymethods]
+impl PyFixMessages {
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+    fn __next__(&mut self) -> PyResult<Option<PyFixMsg>> {
+        self.inner
+            .next()
+            .transpose()
+            .map(|message| message.map(PyFixMsg::from_inner))
+            .map_err(value_error)
+    }
+}
+
+#[pyclass(name = "UlPlugins", module = "yggdryl._native")]
+pub(crate) struct PyUlPlugins {
+    inner: CoreUlPlugins,
+}
+
+impl PyUlPlugins {
+    const fn from_inner(inner: CoreUlPlugins) -> Self {
+        Self { inner }
+    }
+}
+
+#[pymethods]
+impl PyUlPlugins {
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+    fn __next__(&mut self) -> Option<PyUlPlugin> {
+        self.inner.next().map(PyUlPlugin::from_inner)
+    }
+}
+
 #[pymethods]
 impl PyFixFieldIterator {
     // Consumption changes iterator state.
@@ -778,7 +1134,7 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
 
 /// What [`PyFixMsg::__reduce__`] hands pickle: the rebuilder and the three
 /// documents it needs - the schema, the value, and the dictionary's fields.
-type MsgPickle = (Py<PyAny>, (String, String, Vec<String>));
+type MsgPickle = (Py<PyAny>, (String, String, String));
 
 /// A FIX message: a value plus the registry that types it.
 ///
@@ -806,14 +1162,6 @@ impl PyFixMsg {
     /// Borrow the message the core holds.
     pub(crate) const fn as_inner(&self) -> &CoreFixMsg {
         &self.inner
-    }
-
-    /// The value both the hash and the equality read.
-    fn identity_value(&self) -> Scalar {
-        Scalar::from_sequence([
-            Scalar::from(self.inner.as_field()),
-            self.inner.as_value().clone(),
-        ])
     }
 
     /// Wrap an answered value, or report the absence its key names.
@@ -849,14 +1197,10 @@ impl PyFixMsg {
 
     /// Rebuild a message from the three parts pickle carried.
     #[staticmethod]
-    fn _from_pickle(field: &str, value: &str, registry: Vec<String>) -> PyResult<Self> {
+    fn _from_pickle(field: &str, value: &str, registry: &str) -> PyResult<Self> {
         let field = CoreField::from_json(field).map_err(value_error)?;
         let value = from_json_scalar_with_field(value, &field).map_err(value_error)?;
-        let mut fields = Vec::with_capacity(registry.len());
-        for document in registry {
-            fields.push(CoreField::from_json(&document).map_err(value_error)?);
-        }
-        let registry = CoreFixRegistry::from_fields(fields).map_err(value_error)?;
+        let registry = CoreFixRegistry::from_json(registry).map_err(value_error)?;
         CoreFixMsg::with_registry(Arc::new(registry), field, value)
             .map(|inner| Self { inner })
             .map_err(value_error)
@@ -993,7 +1337,7 @@ impl PyFixMsg {
 
     /// A deterministic hash of the schema and the value.
     fn stable_hash(&self) -> u64 {
-        self.identity_value().stable_hash()
+        self.inner.stable_hash()
     }
 
     fn __hash__(&self) -> isize {
@@ -1025,10 +1369,7 @@ impl PyFixMsg {
             .into_json()
             .map_err(value_error)?;
         let value = into_json_scalar(self.inner.as_value()).map_err(value_error)?;
-        let mut registry = Vec::with_capacity(self.inner.registry().len());
-        for stored in self.inner.registry().iter() {
-            registry.push(stored.clone().into_json().map_err(value_error)?);
-        }
+        let registry = self.inner.registry().into_json().map_err(value_error)?;
         Ok((callable, (field, value, registry)))
     }
 
@@ -1127,9 +1468,10 @@ impl PyFixMsg {
     /// shifting its neighbours, which is what makes two rows of one capture
     /// comparable at all. A column no tag names answers null: it is the
     /// capture's, and nothing in the message says what it held.
-    fn to_row(&self, schema: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
+    #[allow(clippy::wrong_self_convention)]
+    fn into_row(&self, schema: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
-            .to_row(&core_field_from_value(schema)?)
+            .into_row(&core_field_from_value(schema)?)
             .map(PyScalar::from_inner)
             .map_err(value_error)
     }
@@ -1139,7 +1481,8 @@ impl PyFixMsg {
     /// Named for what it answers rather than for consuming the message: the
     /// bytes come from the arrival record, which the message keeps.
     #[pyo3(signature = (separator=1))]
-    fn to_bytes<'py>(&self, py: Python<'py>, separator: u8) -> Bound<'py, PyBytes> {
+    #[allow(clippy::wrong_self_convention)]
+    fn into_bytes<'py>(&self, py: Python<'py>, separator: u8) -> Bound<'py, PyBytes> {
         PyBytes::new(py, &self.inner.into_bytes(separator))
     }
 
@@ -1184,6 +1527,32 @@ impl PyFixCodec {
 
 #[pymethods]
 impl PyFixCodec {
+    #[staticmethod]
+    fn infer_msgtype_bytes(py: Python<'_>, body: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
+        crate::text::codec::with_python_bytes(
+            body,
+            "a captured line must be bytes, bytearray, or memoryview",
+            |body| {
+                Ok(CoreFixCodec::infer_msgtype_bytes(body)
+                    .map(|value| PyBytes::new(py, value).unbind().into_any()))
+            },
+        )
+    }
+
+    #[staticmethod]
+    fn infer_msgtype_text(body: &str) -> Option<String> {
+        CoreFixCodec::infer_msgtype_text(body).map(str::to_owned)
+    }
+
+    #[pyo3(signature = (record, enrich=false))]
+    fn transform_record(&self, record: &Bound<'_, PyAny>, enrich: bool) -> PyResult<PyFixMessages> {
+        let record = stated_document(from_py(record)?);
+        self.inner
+            .transform_record(&record, enrich)
+            .map(PyFixMessages::from_inner)
+            .map_err(value_error)
+    }
+
     /// Open a reader over one dictionary, or over the process default.
     #[new]
     #[pyo3(signature = (registry=None, *, branch=None, version=None, null_values=None))]
@@ -1218,10 +1587,10 @@ impl PyFixCodec {
 
     /// One captured line, whatever it is wrapped in.
     #[pyo3(signature = (row, enrich=false))]
-    fn transform_line(&self, row: &[u8], enrich: bool) -> PyResult<PyFixMsg> {
+    fn transform_line(&self, row: &[u8], enrich: bool) -> PyResult<PyFixMessages> {
         self.inner
             .transform_line(row, enrich)
-            .map(PyFixMsg::from_inner)
+            .map(PyFixMessages::from_inner)
             .map_err(value_error)
     }
 
@@ -1267,10 +1636,10 @@ impl PyFixCodec {
     /// a timestamp in front of one and sometimes a duration behind it, and
     /// both are prose.
     #[pyo3(signature = (body, enrich=false))]
-    fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> PyResult<PyFixMsg> {
+    fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> PyResult<PyFixMessages> {
         self.inner
             .transform_ulconfig_line(body, enrich)
-            .map(PyFixMsg::from_inner)
+            .map(PyFixMessages::from_inner)
             .map_err(value_error)
     }
 
@@ -1295,7 +1664,7 @@ impl PyFixCodec {
     ///
     /// An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
     /// Only the row is filled: the arrival record is what the wire carried
-    /// and is left alone, so `to_bytes` re-emits the received line either
+    /// and is left alone, so `into_bytes` re-emits the received line either
     /// way, and a stated value is never replaced.
     fn enrich_fixmsg(&self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
         self.inner
@@ -1412,9 +1781,7 @@ impl PyFixLifecycle {
 
 /// Read one FIX version, or report the native parse failure as a `ValueError`.
 ///
-/// A version crosses as text and becomes a `Version` here, once, so the
-/// grammar - `4.4`, `FIX.4.4`, `5.0SP2` - stays the core's and no second class
-/// exists in Python.
+/// A protocol prefix is removed before the numeric version parser runs.
 fn version_from_py(text: &str) -> PyResult<CoreVersion> {
     let spelling = text.strip_prefix("FIX.").unwrap_or(text);
     spelling.parse::<CoreVersion>().map_err(value_error)
@@ -1447,7 +1814,7 @@ pub(crate) fn fix_schema(
 /// `carrier` is a capture's own root - where a line was read from, which line
 /// it was, what stamped it - and its columns lead the row, because that is what
 /// a monitor orders and joins on. A carried column whose folded name a FIX
-/// column already takes - `sessionId` and `sessionid` are one name - is dropped
+/// column already takes - `senderSessionId` and `sendersessionid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means,
 /// and the row fills it from what the capture stated.
 #[pyfunction]
@@ -1598,7 +1965,7 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The fields this crate defines, in tag order: nineteen standard fields from
+/// The fields this crate defines, in tag order: twenty standard fields from
 /// tag 65000, above every tag FIX or a venue publishes.
 ///
 /// The digest, the version read, the cross-venue symbol, the market clock, the
@@ -1666,9 +2033,10 @@ fn stated_attributes(value: Scalar) -> PyResult<Scalar> {
     Ok(held)
 }
 
-/// What [`PyUlPlugin::__reduce__`] hands pickle: the rebuilder and the two
-/// parts it needs - the attributes as a document, and the `ObjectName`.
-type PluginPickle = (Py<PyAny>, (String, Option<String>));
+/// Pickle carries the attributes, `ObjectName`, and shared source envelope.
+type UlPluginPickle = (Py<PyAny>, (String, Option<String>, String));
+
+type BranchPickle = (Py<PyAny>, (String, String, Vec<String>));
 
 /// One plugin a bridge configuration document answers for.
 ///
@@ -1698,14 +2066,6 @@ impl PyUlPlugin {
     const fn from_inner(inner: CoreUlPlugin) -> Self {
         Self { inner }
     }
-
-    /// The value both the hash and the pickle read.
-    fn identity_value(&self) -> Scalar {
-        Scalar::from_sequence([
-            self.inner.mbean().map_or(Scalar::Null, Scalar::from),
-            self.inner.as_attributes().clone(),
-        ])
-    }
 }
 
 #[pymethods]
@@ -1716,11 +2076,19 @@ impl PyUlPlugin {
     /// names, a native `Scalar`, a parsed document - and `mbean` is the
     /// `ObjectName` the bridge holds the plugin under, where one is known.
     #[new]
-    #[pyo3(signature = (attributes, mbean=None))]
-    fn new(attributes: &Bound<'_, PyAny>, mbean: Option<&str>) -> PyResult<Self> {
+    #[pyo3(signature = (attributes, mbean=None, envelope=None))]
+    fn new(
+        attributes: &Bound<'_, PyAny>,
+        mbean: Option<&str>,
+        envelope: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
         Ok(Self::from_inner(CoreUlPlugin::new(
             mbean,
             stated_attributes(from_py(attributes)?)?,
+            envelope
+                .map(|value| from_py(value).map(stated_document))
+                .transpose()?
+                .unwrap_or(Scalar::Null),
         )))
     }
 
@@ -1730,9 +2098,9 @@ impl PyUlPlugin {
     /// a transport writes a timestamp in front of one and sometimes a duration
     /// behind it, and both are prose. Bytes that name no `MBean` are read whole.
     #[staticmethod]
-    fn from_json_bytes(body: &[u8]) -> PyResult<Vec<Self>> {
+    fn from_json_bytes(body: &[u8]) -> PyResult<PyUlPlugins> {
         CoreUlPlugin::from_json_bytes(body)
-            .map(|held| held.map(Self::from_inner).collect())
+            .map(PyUlPlugins::from_inner)
             .map_err(value_error)
     }
 
@@ -1743,19 +2111,19 @@ impl PyUlPlugin {
     /// answers nothing answers no plugins rather than raising - a Jolokia
     /// error is a document too.
     #[staticmethod]
-    fn from_json_scalar(document: &Bound<'_, PyAny>) -> PyResult<Vec<Self>> {
+    fn from_json_scalar(document: &Bound<'_, PyAny>) -> PyResult<PyUlPlugins> {
         let document = stated_document(from_py(document)?);
-        Ok(CoreUlPlugin::from_json_scalar(&document)
-            .map(Self::from_inner)
-            .collect())
+        CoreUlPlugin::from_json_scalar(&document)
+            .map(PyUlPlugins::from_inner)
+            .map_err(value_error)
     }
 
     /// Every plugin one typed message carries, one per occurrence.
     #[staticmethod]
-    fn from_fixmsg(message: &PyFixMsg) -> Vec<Self> {
+    fn from_fixmsg(message: &PyFixMsg) -> PyResult<Self> {
         CoreUlPlugin::from_fixmsg(message.as_inner())
             .map(Self::from_inner)
-            .collect()
+            .map_err(value_error)
     }
 
     /// This plugin as a message typed against `codec`'s dictionary.
@@ -1824,6 +2192,11 @@ impl PyUlPlugin {
             .collect()
     }
 
+    #[getter]
+    fn envelope(&self) -> PyScalar {
+        PyScalar::from_inner(self.inner.as_envelope().clone())
+    }
+
     /// One attribute as the document stated it, or `None`.
     ///
     /// The spelling is folded the way every other name in this crate is, so
@@ -1834,7 +2207,7 @@ impl PyUlPlugin {
 
     /// The stable digest of this plugin, the same in every process.
     fn stable_hash(&self) -> u64 {
-        self.identity_value().stable_hash()
+        self.inner.stable_hash()
     }
 
     fn __hash__(&self) -> isize {
@@ -1862,17 +2235,24 @@ impl PyUlPlugin {
 
     /// Rebuild a plugin from the two parts pickle carried.
     #[staticmethod]
-    fn _from_pickle(attributes: &str, mbean: Option<&str>) -> PyResult<Self> {
+    fn _from_pickle(attributes: &str, mbean: Option<&str>, envelope: &str) -> PyResult<Self> {
         let attributes = yggdryl::from_json_scalar(attributes.as_bytes()).map_err(value_error)?;
-        Ok(Self::from_inner(CoreUlPlugin::new(mbean, attributes)))
+        let envelope = yggdryl::from_json_scalar(envelope.as_bytes()).map_err(value_error)?;
+        Ok(Self::from_inner(CoreUlPlugin::new(
+            mbean, attributes, envelope,
+        )))
     }
 
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<PluginPickle> {
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<UlPluginPickle> {
         let callable = py.get_type::<Self>().getattr("_from_pickle")?.unbind();
         let attributes = into_json_scalar(self.inner.as_attributes()).map_err(value_error)?;
         Ok((
             callable,
-            (attributes, self.inner.mbean().map(str::to_owned)),
+            (
+                attributes,
+                self.inner.mbean().map(str::to_owned),
+                into_json_scalar(self.inner.as_envelope()).map_err(value_error)?,
+            ),
         ))
     }
 
@@ -1910,7 +2290,7 @@ pub(crate) fn fix_ulbridge_fields() -> PyResult<Vec<PyField>> {
         .map_err(value_error)
 }
 
-/// The vocabulary one Ullink `CBlock` declares, in declaration order./// The vocabulary one Ullink `CBlock` declares, in declaration order.
+/// The vocabulary one Ullink `CBlock` declares, in declaration order.
 ///
 /// The dictionary half of `FixRegistry.from_cfb_file`, answered on its own: every
 /// field carries the `fix:tag` and `fix:branch` that key it and whatever code
@@ -2127,9 +2507,10 @@ impl PyFixBranch {
 
     fn __repr__(&self) -> String {
         format!(
-            "FixBranch({:?}, version={:?})",
+            "FixBranch({:?}, version={:?}, aliases={:?})",
             self.inner.name(),
             self.inner.version().to_string(),
+            self.aliases(),
         )
     }
 
@@ -2143,7 +2524,7 @@ impl PyFixBranch {
         operation: pyo3::class::basic::CompareOp,
     ) -> PyResult<Py<PyAny>> {
         let py = other.py();
-        let Ok(other) = branch_value_from_py(other) else {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
             return Ok(py.NotImplemented());
         };
         Ok(crate::compare(self.inner.cmp(&other.inner), operation)
@@ -2153,25 +2534,21 @@ impl PyFixBranch {
             .unbind())
     }
 
-    fn __reduce__(&self) -> (Py<PyAny>, (String, String)) {
-        Python::attach(|py| {
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<BranchPickle> {
+        Ok((
+            py.get_type::<Self>().getattr("_from_parts")?.unbind(),
             (
-                py.get_type::<Self>()
-                    .getattr("_from_parts")
-                    .unwrap()
-                    .unbind(),
-                (
-                    self.inner.name().to_owned(),
-                    self.inner.version().to_string(),
-                ),
-            )
-        })
+                self.inner.name().to_owned(),
+                self.inner.version().to_string(),
+                self.aliases().into_iter().map(str::to_owned).collect(),
+            ),
+        ))
     }
 
     /// Rebuild the exact declaration pickle and repr carry.
     #[staticmethod]
-    fn _from_parts(name: &str, version: &str) -> PyResult<Self> {
-        Self::new(name, Some(version), None)
+    fn _from_parts(name: &str, version: &str, aliases: Vec<String>) -> PyResult<Self> {
+        Self::new(name, Some(version), Some(aliases))
     }
 
     fn __copy__(&self) -> Self {

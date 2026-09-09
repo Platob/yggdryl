@@ -1,0 +1,24 @@
+{
+  "name": "undinstrmtcollgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "undinstrmtcoll",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "undinstrmtcoll"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of legs that make up the Security",
+    "display": "UndInstrmtCollGrp",
+    "fix:component": "undinstrmtcoll",
+    "fix:counter": "711",
+    "fix:tag": "746161"
+  }
+}

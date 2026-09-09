@@ -1,0 +1,24 @@
+{
+  "name": "strategyparametersgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "strategyparameter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "strategyparameter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Indicates number of strategy parameters",
+    "display": "StrategyParametersGrp",
+    "fix:component": "strategyparameter",
+    "fix:counter": "957",
+    "fix:tag": "877753"
+  }
+}

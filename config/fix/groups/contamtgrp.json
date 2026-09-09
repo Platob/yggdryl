@@ -1,0 +1,24 @@
+{
+  "name": "contamtgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "contamt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "contamt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of contract details in this message (number of repeating groups to follow)",
+    "display": "ContAmtGrp",
+    "fix:component": "contamt",
+    "fix:counter": "518",
+    "fix:tag": "904573"
+  }
+}

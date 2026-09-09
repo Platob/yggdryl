@@ -1,0 +1,33 @@
+{
+  "name": "underlyingstipulation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstiptype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstiptype"
+        }
+      },
+      {
+        "name": "underlyingstipvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstipvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStipulation",
+    "fix:tag": "1088992"
+  }
+}

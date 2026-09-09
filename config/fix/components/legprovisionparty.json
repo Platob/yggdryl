@@ -1,0 +1,73 @@
+{
+  "name": "legprovisionparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprovisionpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionpartyid"
+        }
+      },
+      {
+        "name": "legprovisionpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionpartyidsource"
+        }
+      },
+      {
+        "name": "legprovisionpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionpartyrole"
+        }
+      },
+      {
+        "name": "legprovisionpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionpartyrolequalifier"
+        }
+      },
+      {
+        "name": "nolegprovisionpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegprovisionpartysubids"
+        }
+      },
+      {
+        "name": "legprovisionptyssubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legprovisionptyssubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProvisionParty",
+    "fix:tag": "778876"
+  }
+}

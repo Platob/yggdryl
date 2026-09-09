@@ -29,6 +29,7 @@ from yggdryl import (
     MimeType,
     Parameters,
     ProtocolField,
+    PythonMetadata,
     RecordOptions,
     Statement,
     TextOptions,
@@ -36,6 +37,7 @@ from yggdryl import (
     Uri,
     Url,
     Urn,
+    Version,
     Scalar,
     types,
     fix,
@@ -48,11 +50,15 @@ from yggdryl.text import json, toml, yaml
 from yggdryl._native import (
     ByteIterator,
     FieldMetadata,
+    FixDefinitionIterator,
+    FixMessages,
     IOCursor,
     IcebergNames,
     Listing,
+    MsgTypeIterator,
     ScalarEntryIterator,
     ScalarIterator,
+    UlPlugins,
 )
 from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
 from yggdryl.types import (
@@ -72,7 +78,18 @@ from yggdryl.types import (
     ListField,
     TimeField,
     VariantField,
+    VersionField,
 )
+
+numeric_version: Version = Version(5, 0, 2)
+parsed_version: Version = Version.from_str("255.255.65535")
+version_parts: tuple[int, int, int] = (parsed_version.major, parsed_version.minor, parsed_version.patch)
+version_hash: int = numeric_version.stable_hash()
+version_compared: bool = numeric_version <= parsed_version
+version_copied: Version = numeric_version.__copy__()
+version_pickled: tuple[object, tuple[int, int, int]] = numeric_version.__reduce__()
+typed_version: VersionField = types.version("fixversion")
+typed_version_kind: Literal["version"] = typed_version.dtype.id
 
 file_uri: Uri = Uri.from_path(Path("data/events.parquet"))
 file_url: Url = file_uri.into_url()
@@ -149,6 +166,10 @@ listing_hash: None = Listing.__hash__
 value_iterator_hash: None = ScalarIterator.__hash__
 value_entry_iterator_hash: None = ScalarEntryIterator.__hash__
 iceberg_names_hash: None = IcebergNames.__hash__
+fix_definitions_hash: None = FixDefinitionIterator.__hash__
+fix_messages_hash: None = FixMessages.__hash__
+fix_msgtypes_hash: None = MsgTypeIterator.__hash__
+ulplugins_hash: None = UlPlugins.__hash__
 bound_hash: None = Bound.__hash__
 bound_statement_hash: None = BoundStatement.__hash__
 catalog_hash: None = iceberg.Catalog.__hash__
@@ -518,6 +539,7 @@ iceberg_properties: ProtocolField = field.iceberg
 digest_properties: ProtocolField = field.digest
 identity_properties: ProtocolField = field.identity
 partition_properties: ProtocolField = field.partition
+python_properties: ProtocolField = field.python
 postgres_properties: ProtocolField = field.protocol("POSTGRES")
 protocol_scheme: str = iceberg_properties.scheme
 protocol_prefix: str = iceberg_properties.prefix
@@ -1137,7 +1159,33 @@ fix_id: str | None = fix_field.fix.id
 fix_standard_branch: str = fix.STANDARD_BRANCH
 fix_declared_branch: fix.FixBranch = fix.FixBranch("bloomberg", aliases=["blp"])
 fix_branch_aliases: list[str] = fix_declared_branch.aliases
+fix_branch_pickle: tuple[object, tuple[str, str, list[str]]] = fix_declared_branch.__reduce__()
 fix_branch_has_alias: bool = fix_declared_branch.has_alias("blp")
+
+python_field: Field = Field("Quote", "int64", nullable=False)
+python_field.python.class_metadata = PythonMetadata(
+    "trading.book", "Book.Quote", "dataclass"
+)
+python_field.python.module = "trading.execution"
+python_field.python.qualname = "Book.Fill"
+python_field.python.kind = "field"
+python_declared: PythonMetadata | None = python_field.python.class_metadata
+python_module: str | None = python_field.python.module
+python_qualname: str | None = python_field.python.qualname
+python_class_name: str | None = python_field.python.class_name
+python_kind: str | None = python_field.python.kind
+python_import_path: str | None = python_field.python.import_path
+python_declaration: PythonMetadata = PythonMetadata("trading.book", "Quote")
+python_declared_module: str = python_declaration.module
+python_declared_qualname: str = python_declaration.qualname
+python_declared_class_name: str = python_declaration.class_name
+python_declared_kind: str = python_declaration.kind
+python_declared_path: str = python_declaration.import_path
+python_declared_importable: bool = python_declaration.is_importable
+python_declared_keyword: bool = python_declaration.is_keyword_constructed
+python_declared_properties: dict[str, str] = python_declaration.properties
+python_declared_hash: int = python_declaration.stable_hash()
+python_from_type: PythonMetadata = PythonMetadata.from_type(Field, "class")
 fix_user_tag_min: int = fix.USER_TAG_MIN
 fix_user_tag_max: int = fix.USER_TAG_MAX
 
@@ -1174,8 +1222,8 @@ fix_maybe_by_path: Field | None = fix_registry_from_fields.get_field_by_path(
 )
 fix_bytes_protocol: MimeType = MimeType.infer_bytes(b"35=D|")
 fix_text_protocol: MimeType = MimeType.infer_text("35=D|")
-fix_bytes_msgtype: bytes | None = MimeType.infer_bytes_msgtype(b"35=D|")
-fix_text_msgtype: str | None = MimeType.infer_text_msgtype("35=D|")
+fix_bytes_msgtype: bytes | None = fix.FixCodec.infer_msgtype_bytes(b"35=D|")
+fix_text_msgtype: str | None = fix.FixCodec.infer_msgtype_text("35=D|")
 fix_generic: Field = fix_registry_from_fields.field(38)
 fix_maybe_generic: Field | None = fix_registry_from_fields.get_field("OrderQty")
 fix_item: Field = fix_registry_from_fields[38]
@@ -1196,7 +1244,7 @@ fix_parsed: pa.RecordBatchReader = fix.parse_arrow_reader(
     pa.RecordBatchReader.from_batches(pa.schema([pa.field("body", pa.binary())]), []),
     fix_registry_from_fields,
     "body",
-    version="FIX.4.4",
+    version="4.4",
     dedup=True,
     enrich=True,
     lifecycle=True,
@@ -1237,7 +1285,7 @@ fix_message_party: list[Scalar | None] | None = fix_message.party("1")
 fix_message_regulatory: Scalar | None = fix_message.trd_reg_timestamp("1")
 fix_message_anomalies: list[str] = fix_message.anomalies()
 fix_message_arrivals: list[tuple[int, int, str, str]] = fix_message.entries()
-fix_message_wire: bytes = fix_message.to_bytes(124)
+fix_message_wire: bytes = fix_message.into_bytes(124)
 
 fix_branch_or_none: fix.FixBranch | None = fix_registry_from_fields.get_branch_by_digest(
     fix_declared_branch.digest()
@@ -1255,8 +1303,11 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     null_values=["<none>"],
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
-fix_read_text: fix.FixMsg = fix_reader.transform_line(b"8=FIX.4.4|35=D|10=0|")
-fix_read_bytes: fix.FixMsg = fix_reader.transform_line(b"8=FIX.4.4|35=D|10=0|")
+fix_read_messages: fix.FixMessages = fix_reader.transform_line(b"8=FIX.4.4|35=D|10=0|")
+fix_read_text: fix.FixMsg = next(fix_read_messages)
+fix_read_bytes: fix.FixMsg = next(fix_reader.transform_line(b"8=FIX.4.4|35=D|10=0|"))
+fix_read_record: fix.FixMessages = fix_reader.transform_record({"body": b"35=D|"})
+fix_read_config: fix.FixMessages = fix_reader.transform_ulconfig_line(b'{"Name":"Router"}')
 fix_read_frame: fix.FixMsg = fix_reader.transform_fix_line(b"8=FIX.4.4", 1)
 fix_read_bridge: fix.FixMsg = fix_reader.transform_ullink_line(b"#SYMBOL=TTF")
 fix_read_pairs: fix.FixMsg = fix_reader.transform_pairs([("55", "AAPL")])
@@ -1267,6 +1318,61 @@ fix_life_default: fix.FixLifecycle = fix.FixLifecycle()
 fix_life_filled: fix.FixMsg = fix_life.fill(fix_read_text)
 fix_life_alive: int = fix_life.alive()
 fix_life.clear()
+
+fix_counter: Field = Field("nopartyids", "int32")
+fix_counter.fix.tag = 453
+fix_component: Field = Field("party", DataType.from_fields([fix_field]), nullable=False)
+fix_group: Field = types.list("parties", fix_component)
+fix_group.fix.counter = 453
+fix_group.fix.component = "party"
+fix_reference: Field = Field("partyid", "null")
+fix_reference.fix.field_ref = "partyid"
+fix_reference.fix.group = None
+fix_reference.fix.component = None
+fix_counter_tag: int | None = fix_group.fix.counter
+fix_component_name: str | None = fix_group.fix.component
+fix_field_reference: str | None = fix_reference.fix.field_ref
+fix_group_reference: str | None = fix_reference.fix.group
+fix_root.fix.msgtype = "D"
+fix_message_code: str | None = fix_root.fix.msgtype
+fix_catalog = fix.FixRegistry.from_fields([fix_counter])
+fix_catalog.create_definition("components", fix_component)
+fix_inserted_definition: Field | None = fix_catalog.insert_definition("groups", fix_group)
+fix_updated_definition: Field = fix_catalog.update_definition("groups", fix_group)
+fix_definition: Field = fix_catalog.definition("groups", "parties")
+fix_optional_definition: Field | None = fix_catalog.get_definition("components", "party", "")
+fix_definitions: FixDefinitionIterator = fix_catalog.definitions("groups")
+fix_definition_item: Field = next(fix_definitions)
+fix_group_by_counter: Field = fix_catalog.group_by_counter("453:")
+fix_optional_group: Field | None = fix_catalog.get_group_by_counter("453:")
+fix_removed_definition: Field | None = fix_catalog.remove_definition("groups", "parties", "")
+fix_catalog_snapshot: str = fix_catalog.into_json()
+fix_catalog_restored: fix.FixRegistry = fix.FixRegistry.from_json(fix_catalog_snapshot)
+fix_catalog_hash: int = fix_catalog.stable_hash()
+fix_catalog_copy: fix.FixRegistry = fix_catalog.__copy__()
+fix_catalog_pickle: tuple[object, tuple[str]] = fix_catalog.__reduce__()
+fix_registered_type: fix.MsgType = fix_catalog.register_msgtype("U1", "CustomMessage")
+fix_msgtype: fix.MsgType = fix_registry_loaded.msgtype("D", "")
+fix_optional_msgtype: fix.MsgType | None = fix_registry_loaded.get_msgtype("D")
+fix_msgtypes: MsgTypeIterator = fix_registry_loaded.msgtypes()
+fix_msgtype_item: fix.MsgType = next(fix_msgtypes)
+fix_msgtype_name: str = fix_msgtype.name
+fix_msgtype_value: str = fix_msgtype.value
+fix_msgtype_field: Field = fix_msgtype.field
+fix_msgtype_group: Field | None = fix_msgtype.get_group_by_counter("453:")
+fix_msgtype_hash: int = fix_msgtype.stable_hash()
+fix_msgtype_ordered: bool = fix_msgtype <= fix_msgtype_item
+fix_msgtype_pickle: tuple[object, tuple[str, int]] = fix_msgtype.__reduce__()
+fix_configuration: fix.UlPlugin = fix.UlPlugin({"Name": "Router"}, envelope={"status": 200})
+fix_configurations: fix.UlPlugins = fix.UlPlugin.from_json_scalar({"Name": "Router"})
+fix_configurations_bytes: fix.UlPlugins = fix.UlPlugin.from_json_bytes(b'{"Name":"Router"}')
+fix_configuration_item: fix.UlPlugin = next(fix_configurations)
+fix_configuration_message: fix.FixMsg = fix_configuration.into_fixmsg(fix_reader)
+fix_configuration_again: fix.UlPlugin = fix.UlPlugin.from_fixmsg(fix_configuration_message)
+fix_configuration_envelope: Scalar = fix_configuration.envelope
+fix_configuration_attributes: dict[str, Scalar] = fix_configuration.attributes
+fix_configuration_hash: int = fix_configuration.stable_hash()
+fix_configuration_pickle: tuple[Any, tuple[str, str | None, str]] = fix_configuration.__reduce__()
 
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_fixed_tags: list[int] = fix.fix_schema_tags()
@@ -1282,7 +1388,7 @@ fix_ingested: tuple[int, int] = fix_registry_from_fields.add_cfb_file(
 )
 fix_carried_schema: Field = fix.fix_schema_carrying(fix_root, fix_fixed_schema)
 fix_column_at: int | None = fix_fixed_schema.index_of("msgtype")
-fix_fixed_row: Scalar = fix_read_text.to_row(fix_fixed_schema)
+fix_fixed_row: Scalar = fix_read_text.into_row(fix_fixed_schema)
 
 fix_global: fix.FixRegistry = fix.global_registry()
 fix.install_global_registry(fix_registry_from_fields)
@@ -1291,6 +1397,17 @@ assert fix_tag == 38 and fix_tags and fix_aliases and fix_description
 assert fix_branch == fix_standard_branch and fix_user_tag_min == 5000
 assert fix_user_tag_max == 40_000
 assert fix_id == "38:" and fix_vendor_id == "5001:cme"
+assert python_declared is not None and python_declared.kind == "field"
+assert python_module == "trading.execution" and python_qualname == "Book.Fill"
+assert python_class_name == "Fill" and python_kind == "field"
+assert python_import_path == "trading.execution.Book.Fill"
+assert python_declared_module == "trading.book" and python_declared_kind == "class"
+assert python_declared_qualname == python_declared_class_name == "Quote"
+assert python_declared_path == "trading.book.Quote" and python_declared_importable
+assert not python_declared_keyword and python_declared_hash
+assert python_declared_properties["python:module"] == "trading.book"
+assert python_from_type.class_name == "Field"
+assert python_properties.scheme == "python"
 assert fix_by_id and fix_maybe_by_id
 assert fix_registry_loaded is not None and fix_registry_from_url is not None
 assert fix_registry_from_handle is not None and fix_registry_from_text is not None

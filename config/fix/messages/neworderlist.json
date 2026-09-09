@@ -1,0 +1,285 @@
+{
+  "name": "neworderlist",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "listid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "listid"
+        }
+      },
+      {
+        "name": "bidid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "bidid"
+        }
+      },
+      {
+        "name": "clientbidid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clientbidid"
+        }
+      },
+      {
+        "name": "progrptreqs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "progrptreqs"
+        }
+      },
+      {
+        "name": "bidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "bidtype"
+        }
+      },
+      {
+        "name": "progperiodinterval",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "progperiodinterval"
+        }
+      },
+      {
+        "name": "cancellationrights",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cancellationrights"
+        }
+      },
+      {
+        "name": "moneylaunderingstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "moneylaunderingstatus"
+        }
+      },
+      {
+        "name": "registid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "registid"
+        }
+      },
+      {
+        "name": "listexecinsttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "listexecinsttype"
+        }
+      },
+      {
+        "name": "listexecinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "listexecinst"
+        }
+      },
+      {
+        "name": "contingencytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contingencytype"
+        }
+      },
+      {
+        "name": "encodedlistexecinstlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlistexecinstlen"
+        }
+      },
+      {
+        "name": "encodedlistexecinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlistexecinst"
+        }
+      },
+      {
+        "name": "allowableonesidednesspct",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allowableonesidednesspct"
+        }
+      },
+      {
+        "name": "allowableonesidednessvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allowableonesidednessvalue"
+        }
+      },
+      {
+        "name": "allowableonesidednesscurr",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allowableonesidednesscurr"
+        }
+      },
+      {
+        "name": "listmanualorderindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "listmanualorderindicator"
+        }
+      },
+      {
+        "name": "totnoorders",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "totnoorders"
+        }
+      },
+      {
+        "name": "lastfragment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastfragment"
+        }
+      },
+      {
+        "name": "norootpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norootpartyids"
+        }
+      },
+      {
+        "name": "rootparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "rootparties"
+        }
+      },
+      {
+        "name": "noorders",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "noorders"
+        }
+      },
+      {
+        "name": "listordgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "listordgrp"
+        }
+      },
+      {
+        "name": "throttleinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttleinst"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = E",
+    "display": "NewOrderList",
+    "fix:msgtype": "E",
+    "fix:tag": "962450"
+  }
+}

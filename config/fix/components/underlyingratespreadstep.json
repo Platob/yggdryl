@@ -1,0 +1,33 @@
+{
+  "name": "underlyingratespreadstep",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingratespreadstepdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingratespreadstepdate"
+        }
+      },
+      {
+        "name": "underlyingratespreadstepvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingratespreadstepvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingRateSpreadStep",
+    "fix:tag": "322198"
+  }
+}

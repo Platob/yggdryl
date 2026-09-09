@@ -141,7 +141,7 @@ The source field is complete before any source bytes are read.
 | `mtime` | `datetime64(ns, UTC)` | nullable; present unless `parse_mtime` is off |
 | `direction` | `msgdirection` | nullable; present only with `parse_direction` |
 | `mimetype` | `utf8` | present only with `parse_mimetype` |
-| `msgtype` | `msgtype` | nullable; present only with `parse_msgtype` |
+| `msgtype` | `utf8` | nullable; present only with `parse_msgtype`; complete wire code |
 | `body` | `binary` | required retained record bytes |
 | `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped |
 
@@ -158,7 +158,12 @@ when the read goes on into a FIX batch.
 
 The three classification columns are the [capture readings](../fix/registry.md#classifying-a-captured-line) run over each record's body: what the line is, the message type it declares, and which way it moved. They need no dictionary and cost one shallow scan per record, which is why they are opt-in per column — a read that only needs rows should not pay for them. Rust only: neither binding reaches these flags today.
 
-`parse_direction` also takes the marker off the body, because a verb in front of the payload is transport prose rather than payload. `msgtype` is the `msgtype` datatype, so a reading wider than its eight bytes — a bridge's `ConfigurationPlugin`, a composite key — is [coerced](../types/ascii.md#a-reading-wider-than-the-type) into the stable synthesized value rather than dropped to null.
+`parse_direction` also takes the marker off the body, because a verb in front of the payload is transport prose rather than payload. The `msgtype` column preserves the complete UTF-8 code, including `ConfigurationPlugin` and composite codes such as `P Report Ack`. [Registry-owned message definitions](../fix/registry.md) resolve these codes to their Struct fields.
+
+[FIX decoding](../fix/decode.md) consumes these captured records through a lazy
+`FixMessages` iterator. One bulk ULconfig response can yield several flat
+messages; each retains the originating capture columns. The text reader itself
+still emits one row per framed record.
 
 Measured in [Classifying a capture](../fix/registry.md#classifying-a-capture).
 

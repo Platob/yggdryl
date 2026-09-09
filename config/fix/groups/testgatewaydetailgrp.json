@@ -1,0 +1,24 @@
+{
+  "name": "testgatewaydetailgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testgatewaydetail",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "testgatewaydetail"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTestGatewayDetails(3092)>0.",
+    "display": "TestGatewayDetailGrp",
+    "fix:component": "testgatewaydetail",
+    "fix:counter": "3092",
+    "fix:tag": "874133"
+  }
+}

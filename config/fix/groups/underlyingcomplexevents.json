@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcomplexevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcomplexevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingComplexEvents(2045) > 0.",
+    "display": "UnderlyingComplexEvents",
+    "fix:component": "underlyingcomplexevent",
+    "fix:counter": "2045",
+    "fix:tag": "667496"
+  }
+}

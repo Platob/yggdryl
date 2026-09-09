@@ -1,0 +1,24 @@
+{
+  "name": "legstreamcommoditydatasourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamcommoditydatasource",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legstreamcommoditydatasource"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegStreamCommodityDataSources(41677) > 0.",
+    "display": "LegStreamCommodityDataSourceGrp",
+    "fix:component": "legstreamcommoditydatasource",
+    "fix:counter": "41677",
+    "fix:tag": "752773"
+  }
+}

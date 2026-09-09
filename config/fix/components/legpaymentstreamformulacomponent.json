@@ -1,0 +1,74 @@
+{
+  "name": "legpaymentstreamformulacomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamformulacurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamformulacurrency"
+        }
+      },
+      {
+        "name": "legpaymentstreamformulacurrencydeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamformulacurrencydeterminationmethod"
+        }
+      },
+      {
+        "name": "legpaymentstreamformulareferenceamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamformulareferenceamount"
+        }
+      },
+      {
+        "name": "nolegpaymentstreamformulas",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpaymentstreamformulas"
+        }
+      },
+      {
+        "name": "legpaymentstreamformulamathgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentstreamformulamathgrp"
+        }
+      },
+      {
+        "name": "legpaymentstreamformulaimagecomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreamformulaimagecomponent"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "LegPaymentStreamFormula is a subcomponent of the LegPaymentStreamFloatingRate component used to report the parameters for determining the floating rate of the stream e.g. for equity swaps.",
+    "display": "LegPaymentStreamFormula",
+    "fix:tag": "129493"
+  }
+}

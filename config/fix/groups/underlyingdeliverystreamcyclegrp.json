@@ -1,0 +1,24 @@
+{
+  "name": "underlyingdeliverystreamcyclegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdeliverystreamcycle",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingdeliverystreamcycle"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingDeliveryStreamCycles(41804) > 0.",
+    "display": "UnderlyingDeliveryStreamCycleGrp",
+    "fix:component": "underlyingdeliverystreamcycle",
+    "fix:counter": "41804",
+    "fix:tag": "595011"
+  }
+}

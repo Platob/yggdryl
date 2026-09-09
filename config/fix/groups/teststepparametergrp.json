@@ -1,0 +1,24 @@
+{
+  "name": "teststepparametergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "teststepparameter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "teststepparameter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTestStepParameters(3045) > 0.",
+    "display": "TestStepParameterGrp",
+    "fix:component": "teststepparameter",
+    "fix:counter": "3045",
+    "fix:tag": "243092"
+  }
+}

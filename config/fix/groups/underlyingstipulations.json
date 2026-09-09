@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstipulations",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstipulation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingstipulation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingStips(887) > 0.",
+    "display": "UnderlyingStipulations",
+    "fix:component": "underlyingstipulation",
+    "fix:counter": "887",
+    "fix:tag": "849873"
+  }
+}

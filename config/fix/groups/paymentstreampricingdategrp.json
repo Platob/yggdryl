@@ -1,0 +1,24 @@
+{
+  "name": "paymentstreampricingdategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreampricingdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentstreampricingdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentStreamPricingDates(41224) > 0.",
+    "display": "PaymentStreamPricingDateGrp",
+    "fix:component": "paymentstreampricingdatecomponent",
+    "fix:counter": "41224",
+    "fix:tag": "453555"
+  }
+}

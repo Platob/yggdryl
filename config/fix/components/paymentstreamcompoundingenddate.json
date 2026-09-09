@@ -1,0 +1,74 @@
+{
+  "name": "paymentstreamcompoundingenddate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreamcompoundingenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingenddateunadjusted"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingenddaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingenddaterelativeto"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingenddateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingenddateoffsetperiod"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingenddateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingenddateoffsetunit"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingenddateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingenddateoffsetdaytype"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingenddateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingenddateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when PaymentStreamCompoundingEndDateOffsetUnit(42625) is specified.",
+    "display": "PaymentStreamCompoundingEndDate",
+    "fix:tag": "803870"
+  }
+}

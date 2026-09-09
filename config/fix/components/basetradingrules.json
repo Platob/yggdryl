@@ -1,0 +1,244 @@
+{
+  "name": "basetradingrules",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "notickrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notickrules"
+        }
+      },
+      {
+        "name": "tickrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "tickrules"
+        }
+      },
+      {
+        "name": "nolottyperules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolottyperules"
+        }
+      },
+      {
+        "name": "lottyperules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "lottyperules"
+        }
+      },
+      {
+        "name": "pricelimits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "pricelimits"
+        }
+      },
+      {
+        "name": "nopricerangerules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopricerangerules"
+        }
+      },
+      {
+        "name": "pricerangerulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "pricerangerulegrp"
+        }
+      },
+      {
+        "name": "noquotesizerules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noquotesizerules"
+        }
+      },
+      {
+        "name": "quotesizerulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "quotesizerulegrp"
+        }
+      },
+      {
+        "name": "expirationcycle",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "expirationcycle"
+        }
+      },
+      {
+        "name": "tradevoltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradevoltype"
+        }
+      },
+      {
+        "name": "mintradevol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mintradevol"
+        }
+      },
+      {
+        "name": "maxtradevol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "maxtradevol"
+        }
+      },
+      {
+        "name": "maxpricevariation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "maxpricevariation"
+        }
+      },
+      {
+        "name": "impliedmarketindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "impliedmarketindicator"
+        }
+      },
+      {
+        "name": "tradingcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingcurrency"
+        }
+      },
+      {
+        "name": "tradingcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingcurrencycodesource"
+        }
+      },
+      {
+        "name": "roundlot",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "roundlot"
+        }
+      },
+      {
+        "name": "multilegmodel",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "multilegmodel"
+        }
+      },
+      {
+        "name": "multilegpricemethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "multilegpricemethod"
+        }
+      },
+      {
+        "name": "pricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricetype"
+        }
+      },
+      {
+        "name": "fastmarketpercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fastmarketpercentage"
+        }
+      },
+      {
+        "name": "quotesideindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotesideindicator"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies price tick rules for the security.",
+    "display": "BaseTradingRules",
+    "fix:tag": "419982"
+  }
+}

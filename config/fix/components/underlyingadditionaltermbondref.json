@@ -1,0 +1,193 @@
+{
+  "name": "underlyingadditionaltermbondref",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingadditionaltermbondsecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondsecurityid"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondsecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondsecurityidsource"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbonddesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbonddesc"
+        }
+      },
+      {
+        "name": "encodedunderlyingadditionaltermbonddesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingadditionaltermbonddesclen"
+        }
+      },
+      {
+        "name": "encodedunderlyingadditionaltermbonddesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingadditionaltermbonddesc"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondcurrency"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondissuer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondissuer"
+        }
+      },
+      {
+        "name": "encodedunderlyingadditionaltermbondissuerlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingadditionaltermbondissuerlen"
+        }
+      },
+      {
+        "name": "encodedunderlyingadditionaltermbondissuer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingadditionaltermbondissuer"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondseniority",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondseniority"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondcoupontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondcoupontype"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondcouponrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondcouponrate"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondmaturitydate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondmaturitydate"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondparvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondparvalue"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondcurrenttotalissuedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondcurrenttotalissuedamount"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondcouponfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondcouponfrequencyperiod"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondcouponfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbondcouponfrequencyunit"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbonddaycount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermbonddaycount"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingAdditionalTermBondRef",
+    "fix:tag": "549719"
+  }
+}

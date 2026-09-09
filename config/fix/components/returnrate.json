@@ -1,0 +1,343 @@
+{
+  "name": "returnrate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "returnratepricesequence",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratepricesequence"
+        }
+      },
+      {
+        "name": "returnratecommissionbasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratecommissionbasis"
+        }
+      },
+      {
+        "name": "returnratecommissionamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratecommissionamount"
+        }
+      },
+      {
+        "name": "returnratecommissioncurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratecommissioncurrency"
+        }
+      },
+      {
+        "name": "returnratetotalcommissionpertrade",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratetotalcommissionpertrade"
+        }
+      },
+      {
+        "name": "returnratedeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratedeterminationmethod"
+        }
+      },
+      {
+        "name": "noreturnrateprices",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noreturnrateprices"
+        }
+      },
+      {
+        "name": "returnratepricegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "returnratepricegrp"
+        }
+      },
+      {
+        "name": "noreturnratefxconversions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noreturnratefxconversions"
+        }
+      },
+      {
+        "name": "returnratefxconversiongrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "returnratefxconversiongrp"
+        }
+      },
+      {
+        "name": "returnrateamountrelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnrateamountrelativeto"
+        }
+      },
+      {
+        "name": "returnratequotemeasuretype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequotemeasuretype"
+        }
+      },
+      {
+        "name": "returnratequoteunits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequoteunits"
+        }
+      },
+      {
+        "name": "returnratequotemethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequotemethod"
+        }
+      },
+      {
+        "name": "returnratequotecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequotecurrency"
+        }
+      },
+      {
+        "name": "returnratequotecurrencytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequotecurrencytype"
+        }
+      },
+      {
+        "name": "returnratequotetimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequotetimetype"
+        }
+      },
+      {
+        "name": "returnratequotetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequotetime"
+        }
+      },
+      {
+        "name": "returnratequotedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequotedate"
+        }
+      },
+      {
+        "name": "returnratequoteexpirationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequoteexpirationtime"
+        }
+      },
+      {
+        "name": "returnratequotebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequotebusinesscenter"
+        }
+      },
+      {
+        "name": "returnratequoteexchange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequoteexchange"
+        }
+      },
+      {
+        "name": "noreturnrateinformationsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noreturnrateinformationsources"
+        }
+      },
+      {
+        "name": "returnrateinformationsourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "returnrateinformationsourcegrp"
+        }
+      },
+      {
+        "name": "returnratequotepricingmodel",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratequotepricingmodel"
+        }
+      },
+      {
+        "name": "returnratecashflowtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratecashflowtype"
+        }
+      },
+      {
+        "name": "noreturnratedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noreturnratedates"
+        }
+      },
+      {
+        "name": "returnratedategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "returnratedategrp"
+        }
+      },
+      {
+        "name": "returnratevaluationtimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationtimetype"
+        }
+      },
+      {
+        "name": "returnratevaluationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationtime"
+        }
+      },
+      {
+        "name": "returnratevaluationtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationtimebusinesscenter"
+        }
+      },
+      {
+        "name": "returnratevaluationpriceoption",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationpriceoption"
+        }
+      },
+      {
+        "name": "returnratefinalpricefallback",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratefinalpricefallback"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ReturnRate",
+    "fix:tag": "358162"
+  }
+}

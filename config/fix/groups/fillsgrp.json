@@ -1,0 +1,24 @@
+{
+  "name": "fillsgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "fill",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "fill"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies the number of partial fills included in this Execution Report",
+    "display": "FillsGrp",
+    "fix:component": "fill",
+    "fix:counter": "1362",
+    "fix:tag": "820703"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "expirationqty",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "expirationqtycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "expirationqtycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoExpiration > 1",
+    "display": "ExpirationQty",
+    "fix:component": "expirationqtycomponent",
+    "fix:counter": "981",
+    "fix:tag": "1058738"
+  }
+}

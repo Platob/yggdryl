@@ -1,0 +1,53 @@
+{
+  "name": "underlyingstreamcommoditysettldaycomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamcommoditysettlday",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlday"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettltotalhours",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettltotalhours"
+        }
+      },
+      {
+        "name": "nounderlyingstreamcommoditysettltimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingstreamcommoditysettltimes"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettltimegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingstreamcommoditysettltimegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStreamCommoditySettlDay",
+    "fix:tag": "1030576"
+  }
+}

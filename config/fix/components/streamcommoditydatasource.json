@@ -1,0 +1,33 @@
+{
+  "name": "streamcommoditydatasource",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streamcommoditydatasourceid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcommoditydatasourceid"
+        }
+      },
+      {
+        "name": "streamcommoditydatasourceidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcommoditydatasourceidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StreamCommodityDataSource",
+    "fix:tag": "133871"
+  }
+}

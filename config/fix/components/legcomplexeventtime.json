@@ -1,0 +1,33 @@
+{
+  "name": "legcomplexeventtime",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcomplexeventstarttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventstarttime"
+        }
+      },
+      {
+        "name": "legcomplexeventendtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventendtime"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegComplexEventTime",
+    "fix:tag": "750520"
+  }
+}

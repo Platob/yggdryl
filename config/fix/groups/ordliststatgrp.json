@@ -1,0 +1,24 @@
+{
+  "name": "ordliststatgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "ordliststat",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "ordliststat"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of orders statused in this message, i.e. number of repeating groups to follow.",
+    "display": "OrdListStatGrp",
+    "fix:component": "ordliststat",
+    "fix:counter": "73",
+    "fix:tag": "886521"
+  }
+}

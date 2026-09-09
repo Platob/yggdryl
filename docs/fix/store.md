@@ -1,187 +1,99 @@
 # Store
 
-A registry persists through one [`IOBase`](../holder/index.md) folder handle as two shard trees plus one branch manifest.
+A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as four category directories and an optional branch manifest.
 
 ## Contract
 
-| key | value |
+| Aspect | Rule |
 | --- | --- |
-| Owns | `FixRegistry::from_handle` and `write_into` over one folder handle |
-| Layout | `<root>/primitive/<shard>.json` and `<root>/primitive/<branch>/<shard>.json`, the same two under `nested/`, and `<root>/branches.json` |
-| Branch level | The standard branch writes its shards directly under a tree; a named branch adds one folder |
-| Shard | `shard = tag / 100`, inside each tree; an alternate tag fans nothing |
-| Tree | `field.dtype().is_nested()`, after unwrapping a dictionary and a run-end encoding; the in-memory indexes still cover both trees together |
-| Shard body | JSON array of `Field::into_value`, identifier-ordered, indented; no envelope, no version marker |
-| Manifest | `branches.json`, a canonical JSON array ordered by branch name, holding every named branch; `aliases` is written only where a branch declares one, and absent is valid for the key and for the file |
-| Load | every shard of both trees on open; both trees optional; other leaves ignored; a missing folder loads as `FixRegistry::new()`, the crate's own fields alone |
-| Authority | the field's own `fix:branch` and datatype, never the folder it sits in; a standard field states no key |
-| Crate fields | the crate's own nineteen fields, standard tags from 65000, are never written - every registry holds them from construction - and a stored copy of one is read past |
-| Write | creates the root, writes populated shards whole, then removes empty shards, branch folders and trees |
-| Refused | a root still holding `records/`; no migration, no backward compatibility |
+| Owner | `FixRegistry::from_handle` and `write_into`; bindings redirect to the native loader/writer |
+| Fields | `fields/<tag / 100>.json`, or `fields/<branch>/<tag / 100>.json`; each document is an array of tagged scalar fields |
+| Named definitions | `messages/<name>.json`, `components/<name>.json`, `groups/<name>.json`, with a branch directory when needed; one native `Field` per document, stating the `fix:tag` derived from the definition's name |
+| Enums | Inline `fix:codes` metadata on each scalar field |
+| References | Compact native child fields retain reference metadata and use `Null` as the unresolved datatype; intake resolves them to canonical native fields |
+| Branch manifest | Optional `branches.json`, containing named branch declarations and aliases |
+| Crate fields | The crate's own twenty fields, standard tags from 65000, are never written; every registry holds them from construction, and a stored copy of one is read past |
+| Validation | Category shape, shard arithmetic, name/branch identity, references, codes, cycles, and depth are checked before exposing the registry |
+| Missing folder | Loads an empty registry and creates nothing |
+| Refused | A root still holding `records/`; no migration, no backward compatibility |
+| Publication | Writes populated documents, then removes stale owned documents and empty category directories; separate file writes are not a directory-wide transaction |
 | Seed | `config/fix`, tracked and written by `write_into`; outside the [default registry](registry.md)'s order |
 
 ## Use
 
-A dictionary of only scalars writes no `nested/` folder, and one of only groups writes no `primitive/`.
+The counter is a scalar field; a reusable component defines one occurrence and the group references it. This example writes all four categories and reloads their complete graph.
 
 === "Rust"
 
     ```rust
-    use yggdryl::IOBase;
     use yggdryl::holder::local::Folder;
-    use yggdryl::{DataType, FixId, FixBranch, FixRegistry, fix_crate_fields};
+    use yggdryl::{DataType, FixCategory, FixRegistry, IOBase};
 
-    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-fix-store-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    let mut folder = Folder::new(&root)?;
+    let path = Folder::temporary()?.path()?.join(format!("ygg-doc-store-{}", std::process::id()));
+    let mut root = Folder::new(&path)?;
+    let mut count = DataType::Int32.nullable_field("NoPartyIDs");
+    count.as_fix_mut().set_tag(453)?;
+    let mut id = DataType::Utf8.nullable_field("PartyID");
+    id.as_fix_mut().set_tag(448)?;
+    let mut registry = FixRegistry::from_fields([count, id])?;
+    let mut member = registry.field(448)?.clone();
+    member.as_fix_mut().set_field_ref("PartyID")?;
+    let party = DataType::from_fields([member])?.required_field("Party");
+    registry.create_definition(FixCategory::Components, party.clone())?;
+    let mut group = DataType::list(party).nullable_field("Parties");
+    group.as_fix_mut().set_counter(453)?;
+    group.as_fix_mut().set_component("Party")?;
+    registry.create_definition(FixCategory::Groups, group)?;
+    let mut order = DataType::from_fields([])?.required_field("Order");
+    order.as_fix_mut().set_msgtype("D")?;
+    registry.create_definition(FixCategory::Messages, order)?;
 
-    let mut fields = Vec::new();
-    for (tag, name) in [(35, "MsgType"), (99, "StopPx"), (100, "NoAllocs"), (150, "ExecType")] {
-        let mut field = DataType::Utf8.nullable_field(name);
-        field.as_fix_mut().set_tag(tag)?;
-        fields.push(field);
-    }
-    fields[3].as_fix_mut().set_tags(&[20])?;
-    // One venue field, which lands in its own branch folder.
-    let cme = FixBranch::from_str("cme")?;
-    let mut trade = DataType::Utf8.nullable_field("TradeID");
-    trade.as_fix_mut().set_id(&cme, 5001)?;
-    fields.push(trade);
-    // One repeating group, which is the only field of the nested tree.
-    let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])?
-        .required_field("PartyID");
-    let mut parties = DataType::list(item).nullable_field("NoPartyIDs");
-    parties.as_fix_mut().set_tag(453)?;
-    fields.push(parties);
-    let mut registry = FixRegistry::from_fields(fields)?;
-    registry.write_into(&mut folder)?;
-
-    let shards = |tree: &str, branch: &str| -> yggdryl::Result<Vec<String>> {
-        let mut names: Vec<String> = std::fs::read_dir(root.join(tree).join(branch))?
-            .filter(|entry| entry.as_ref().is_ok_and(|entry| entry.path().is_file()))
-            .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
-            .collect::<Result<_, _>>()?;
-        names.sort();
-        Ok(names)
-    };
-    // The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    assert_eq!(shards("primitive", "")?, ["0.json", "1.json"]);
-    // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
-    assert_eq!(shards("primitive", "cme")?, ["50.json"]);
-    // The group is nested, so it is the nested tree's only shard: 453 / 100.
-    assert_eq!(shards("nested", "")?, ["4.json"]);
-
-    let reloaded = FixRegistry::from_handle(&folder)?;
+    registry.write_into(&mut root)?;
+    assert!(path.join("fields/4.json").is_file());
+    assert!(path.join("components/Party.json").is_file());
+    assert!(path.join("groups/Parties.json").is_file());
+    assert!(path.join("messages/Order.json").is_file());
+    let reloaded = FixRegistry::from_handle(&root)?;
     assert_eq!(reloaded, registry);
-    assert_eq!(reloaded.field_by_tag(20)?.name(), "ExecType");
-    assert_eq!(reloaded.field_by_tag(453)?.name(), "NoPartyIDs");
-    assert_eq!(reloaded.field_by_id(FixId::from_str("5001:cme")?)?.name(), "TradeID");
-
-    // Removing the only field of a shard removes the shard on the next write,
-    // emptying a branch removes its folder whole, and emptying a tree removes
-    // the tree.
-    registry.remove(100);
-    registry.remove(150);
-    registry.remove(453);
-    registry.remove(FixId::from_str("5001:cme")?);
-    registry.write_into(&mut folder)?;
-    assert!(!root.join("primitive").join("").join("1.json").exists());
-    assert!(!root.join("primitive").join("cme").exists());
-    assert!(!root.join("nested").exists());
-    // The crate's own fields are never written: every registry already holds them.
-    assert!(!root.join("primitive").join("650.json").exists());
-    assert_eq!(FixRegistry::from_handle(&folder)?.len(), 2 + fix_crate_fields()?.len());
-
-    // A folder that is not there loads as the crate's own fields alone and
-    // is not created.
-    let absent = Folder::new(root.join("absent"))?;
-    assert_eq!(FixRegistry::from_handle(&absent)?, FixRegistry::new());
-    assert!(!absent.exists());
-    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(reloaded.field_by_path("Parties.PartyID", None)?.as_fix().tag()?, Some(448));
+    root.remove(true)?;
     ```
 
 === "Python"
 
     ```python
     import pathlib
-    import shutil
     import tempfile
+    from yggdryl import DataType, Field, types
+    from yggdryl.fix import FixRegistry
 
-    import pytest
+    count = Field("NoPartyIDs", "int32")
+    count.fix.tag = 453
+    party_id = Field("PartyID", "utf8")
+    party_id.fix.tag = 448
+    registry = FixRegistry.from_fields([count, party_id])
+    member = registry.field(448)
+    member.fix.field_ref = "PartyID"
+    party = Field("Party", DataType.from_fields([member]), nullable=False)
+    registry.create_definition("components", party)
+    group = types.list("Parties", party)
+    group.fix.counter = 453
+    group.fix.component = "Party"
+    registry.create_definition("groups", group)
+    order = Field("Order", DataType.from_fields([]), nullable=False)
+    order.fix.msgtype = "D"
+    registry.create_definition("messages", order)
 
-    from yggdryl import DataType, Field, types as field_builders
-    from yggdryl.fix import FixRegistry, fix_crate_fields
-
-    workspace = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-fix-"))
-    root = workspace / "dictionary"
-
-    declared = []
-    for tag, name in ((35, "MsgType"), (99, "StopPx"), (100, "NoAllocs"), (150, "ExecType")):
-        field = Field(name, "utf8")
-        field.fix.tag = tag
-        declared.append(field)
-    declared[3].fix.tags = [20]
-    # One venue field, which lands in its own branch folder.
-    trade = Field("TradeID", "utf8")
-    trade.fix.id = "5001:cme"
-    declared.append(trade)
-    # One repeating group, which is the only field of the nested tree.
-    item = Field("PartyID", DataType.from_fields([Field("PartyID", "utf8")]), nullable=False)
-    parties = field_builders.list("NoPartyIDs", item)
-    parties.fix.tag = 453
-    declared.append(parties)
-    registry = FixRegistry.from_fields(declared)
-    registry.write_into(root)
-
-
-    def shards(tree: str, branch: str) -> list[str]:
-        return sorted(path.name for path in (root / tree / branch).iterdir() if path.is_file())
-
-
-    # The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    assert shards("primitive", "") == ["0.json", "1.json"]
-    # Each branch owns its own shard arithmetic: 5001 / 100 is 50.
-    assert shards("primitive", "cme") == ["50.json"]
-    # The group is nested, so it is the nested tree's only shard: 453 / 100.
-    assert shards("nested", "") == ["4.json"]
-
-    reloaded = FixRegistry.from_handle(root)
-    assert reloaded == registry
-    assert reloaded.field_by_tag(20).name == "ExecType"
-    assert reloaded.field_by_tag(453).name == "NoPartyIDs"
-    assert reloaded.field_by_id("5001:cme").name == "TradeID"
-
-    # Removing the only field of a shard removes the shard on the next write,
-    # emptying a branch removes its folder whole, and emptying a tree removes
-    # the tree. `remove` reads a str key as a standard name, so the venue
-    # field leaves by rebuilding the dictionary without it.
-    registry.remove(100)
-    registry.remove(150)
-    registry.remove(453)
-    kept = FixRegistry.from_fields(
-        [field for field in registry if field.fix.branch == ""]
-    )
-    kept.write_into(root)
-    assert not (root / "primitive" / "1.json").exists()
-    assert not (root / "primitive" / "cme").exists()
-    assert not (root / "nested").exists()
-    # The crate's own fields are never written: every registry already holds them.
-    assert not (root / "primitive" / "650.json").exists()
-    assert len(FixRegistry.from_handle(root)) == 2 + len(fix_crate_fields())
-
-    # A root left in the retired `records/` layout is refused, not read empty.
-    retired = workspace / "retired"
-    (retired / "records" / "old").mkdir(parents=True)
-    with pytest.raises(ValueError, match="records"):
-        FixRegistry.from_handle(retired)
-
-    # A folder that is not there loads as the crate's own fields alone and
-    # is not created.
-    absent = root / "absent"
-    assert FixRegistry.from_handle(absent) == FixRegistry()
-    assert not absent.exists()
-
-    shutil.rmtree(workspace)
+    with tempfile.TemporaryDirectory(prefix="ygg-doc-store-") as temporary:
+        root = pathlib.Path(temporary) / "catalog"
+        registry.write_into(root)
+        assert (root / "fields/4.json").is_file()
+        assert (root / "components/Party.json").is_file()
+        assert (root / "groups/Parties.json").is_file()
+        assert (root / "messages/Order.json").is_file()
+        reloaded = FixRegistry.from_handle(root)
+        assert reloaded == registry
+        assert reloaded.field_by_path("Parties.PartyID").fix.tag == 448
     ```
 
 === "JavaScript"
@@ -193,119 +105,85 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     const path = require('node:path')
     const { Field, fields, fix } = require('yggdryl')
 
-    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-fix-'))
-    const root = path.join(workspace, 'dictionary')
+    const count = Field.from('NoPartyIDs: int32')
+    count.fix.tag = 453
+    const partyId = Field.from('PartyID: utf8')
+    partyId.fix.tag = 448
+    const registry = fix.FixRegistry.fromFields([count, partyId])
+    const member = registry.field(448)
+    member.fix.fieldRef = 'PartyID'
+    const party = fields.struct('Party', [member], { nullable: false })
+    registry.createDefinition('components', party)
+    const group = fields.list('Parties', party)
+    group.fix.counter = 453
+    group.fix.component = 'Party'
+    registry.createDefinition('groups', group)
+    const order = fields.struct('Order', [], { nullable: false })
+    order.fix.msgtype = 'D'
+    registry.createDefinition('messages', order)
 
-    const declared = []
-    for (const [tag, name] of [[35, 'MsgType'], [99, 'StopPx'], [100, 'NoAllocs'], [150, 'ExecType']]) {
-      const field = Field.from(`${name}: utf8`)
-      field.fix.tag = tag
-      declared.push(field)
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-doc-store-'))
+    try {
+      registry.writeInto(root)
+      for (const file of ['fields/4.json', 'components/Party.json', 'groups/Parties.json', 'messages/Order.json']) {
+        assert.ok(fs.existsSync(path.join(root, file)))
+      }
+      const reloaded = fix.FixRegistry.fromHandle(root)
+      assert.ok(reloaded.equals(registry))
+      assert.equal(reloaded.fieldByPath('Parties.PartyID').fix.tag, 448)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
     }
-    declared[3].fix.tags = [20]
-    // One venue field, which lands in its own branch folder.
-    const trade = Field.from('TradeID: utf8')
-    trade.fix.id = '5001:cme'
-    declared.push(trade)
-    // One repeating group, which is the only field of the nested tree.
-    const item = fields.struct('PartyID', [Field.from('PartyID: utf8')], { nullable: false })
-    const parties = fields.list('NoPartyIDs', item)
-    parties.fix.tag = 453
-    declared.push(parties)
-    const registry = fix.FixRegistry.fromFields(declared)
-    registry.writeInto(root)
-
-    const shards = (tree, branch) => fs.readdirSync(path.join(root, tree, branch))
-      .filter((name) => fs.statSync(path.join(root, tree, branch, name)).isFile())
-      .sort()
-    // The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    assert.deepEqual(shards('primitive', ''), ['0.json', '1.json'])
-    // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
-    assert.deepEqual(shards('primitive', 'cme'), ['50.json'])
-    // The group is nested, so it is the nested tree's only shard: 453 / 100.
-    assert.deepEqual(shards('nested', ''), ['4.json'])
-
-    const reloaded = fix.FixRegistry.fromHandle(root)
-    assert.ok(reloaded.equals(registry))
-    assert.equal(reloaded.fieldByTag(20).name, 'ExecType')
-    assert.equal(reloaded.fieldByTag(453).name, 'NoPartyIDs')
-    assert.equal(reloaded.fieldById('5001:cme').name, 'TradeID')
-
-    // Removing the only field of a shard removes the shard on the next write,
-    // emptying a branch removes its folder whole, and emptying a tree removes
-    // the tree. A vendor field leaves by its identifier, because `remove`
-    // reads a string as a standard name.
-    registry.remove(100)
-    registry.remove(150)
-    registry.remove(453)
-    registry.removeById('5001:cme')
-    registry.writeInto(root)
-    assert.equal(fs.existsSync(path.join(root, 'primitive', '1.json')), false)
-    assert.equal(fs.existsSync(path.join(root, 'primitive', 'cme')), false)
-    assert.equal(fs.existsSync(path.join(root, 'nested')), false)
-    // The crate's own fields are never written: every registry already holds them.
-    assert.equal(fs.existsSync(path.join(root, 'primitive', '650.json')), false)
-    assert.equal(fix.FixRegistry.fromHandle(root).size, 2 + fix.crateFields().length)
-
-    // A root left in the retired `records/` layout is refused, not read empty.
-    const retired = path.join(workspace, 'retired')
-    fs.mkdirSync(path.join(retired, 'records', 'old'), { recursive: true })
-    assert.throws(() => fix.FixRegistry.fromHandle(retired), /records/)
-
-    // A folder that is not there loads as the crate's own fields alone and
-    // is not created.
-    const absent = path.join(root, 'absent')
-    assert.ok(fix.FixRegistry.fromHandle(absent).equals(new fix.FixRegistry()))
-    assert.equal(fs.existsSync(absent), false)
-
-    fs.rmSync(workspace, { recursive: true, force: true })
     ```
 
-## Trees and shards
+## Categories and shards
 
-`primitive` holds the fields whose datatype is one scalar value and `nested` the ones carrying a subtree. In FIX terms the nested fields are exactly the components, a Struct of members, and the repeating groups, a List of that Struct.
-
-The split keeps an authored dictionary legible, not the lookup fast: one identity space and one field vector still cover both trees.
+Only scalar fields use numeric shards; alternate tags do not create additional copies. Named files use the stored canonical definition name, so case-only updates retain the existing filename.
 
 ```text
-<root>/primitive/<shard>.json
-<root>/primitive/<branch>/<shard>.json
-<root>/nested/<shard>.json
-<root>/nested/<branch>/<shard>.json
+<root>/fields/0.json
+<root>/fields/cme/50.json
+<root>/components/Party.json
+<root>/groups/Parties.json
+<root>/messages/Order.json
+<root>/messages/cme/VenueOrder.json
 <root>/branches.json
 ```
 
-`shard = tag / 100` inside each tree, so `55:` is `primitive/0.json` and `5001:cme` is `primitive/cme/50.json`. A named branch segment is the canonical lowercase text, one safe path segment.
+Tag `55:` belongs in `fields/0.json`; `5001:cme` belongs in `fields/cme/50.json`. Every field's own identity must agree with its directory and document location. A standard definition omits `fix:branch`.
+
+## Compact references
+
+A persisted child refers to one canonical definition using `fix:field`, `fix:component`, or `fix:group`; its `Null` datatype is replaced at intake. A `fix:component` or `fix:group` occurrence states no tag of its own: the derived tag belongs to the canonical definition, and the resolver leaves it there rather than inheriting it, so a catalog compares equal to itself across a round trip. The loaded object is a resolved `Field`, so message readers do not perform filesystem access or resolve schema references per row.
+
+```json
+{
+  "name": "PartyID",
+  "dtype": {"type": "null"},
+  "nullable": true,
+  "metadata": {"fix:field": "partyid"}
+}
+```
+
+A group stores a List or LargeList whose non-null item references the occurrence component; its root records the counter tag and component relationship, beside its own `fix:tag`, which is derived from the group's name and is never the counter's. The writer compacts resolved references again, keeping each canonical definition in one document. Missing targets, conflicting reference kinds, cycles, and nesting beyond 64 are located intake errors. Independent occurrence metadata overrides are refused; canonical metadata updates refresh their references atomically.
 
 ## Branch manifest
 
-`branches.json` is a canonically rendered JSON array ordered by branch name, and the standard branch is omitted from it. Each named `FixBranch` stores `name`, `bid`, `version` and, where it has any, `aliases`.
+`branches.json` is an array ordered by branch name; each named branch record carries `name`, signed `branch` digest, numeric `version`, and optional `aliases`. The digest is checked against the canonical name, and each folder manifest entry must belong to a definition in the catalog.
 
-`bid` is the branch digest, spelled and typed exactly as the `bid` an arrival entry carries. It is derivable - a one-way XXH32 of the folded name - and stored anyway, because that is what makes it a published join key rather than a cache: an outside reader joining a capture's `bid` column to this manifest cannot reproduce the hash, and `FixRegistry::branch_by_bid` is the crate's own side of the same join.
+An absent manifest is valid: branches are reconstructed from the definitions with their defaults. Rust and Python expose branch declarations and mutation directly; Node accepts branch text and preserves complete declarations through native catalog snapshots.
 
-| rule | behaviour |
-| --- | --- |
-| absent value in an entry | defaulted to the branch defaults |
-| declared `bid` | verified against the derived digest |
-| absent manifest | valid; default branch values are reconstructed from the shards |
-| entry with no field in either tree | typed error, never an invented dictionary |
+## Complete JSON snapshots
 
-A registry answers the stored branch values through six calls.
+`FixRegistry::into_json` and `from_json` use one object with `fields`, `components`, `groups`, `messages`, and `branches` arrays. They reuse the folder store's compact references and resolver, so a snapshot retains named definitions, contextual groups, inline enums, and branch aliases; collecting ordinary scalar iteration does not preserve a catalog.
 
-| call | answers |
-| --- | --- |
-| `branch_of(FixId)` | the borrowed `FixBranch` that identifier names |
-| `branch_named(&str)` | the borrowed branch of that name |
-| `branches()` | every stored branch |
-| `get_branch_by_bid(i64)` / `branch_by_bid(i64)` | the branch one digest names |
-| `set_branch(FixBranch)` | installs one atomically |
-
-Component IDs keep the spelling they were written with.
+Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `toJSON`, and `clone` do the same; `stable_hash` / `stableHash` derives from native registry state.
 
 ## The tracked seed
 
-`config/fix` holds a small FIX 4.4 subset in `config/fix/primitive/<shard>.json` and `config/fix/nested/4.json`: the header and trailer, the order and execution fields, `Parties` as a repeating group.
-Each field carries the specification's wording as its description and a display name where FIX has one.
+The committed `config/fix` catalog contains 6,203 scalar fields in 65 shards, 747 components, 580 groups, and 181 messages: 1,573 JSON documents totaling 9,370,670 bytes. It contains 27,103 inline code records on 2,016 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 named definitions states the tag derived from its name - `groups/parties.json` is 209321 - and no two share one.
+
+The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradingCommunity/orchestrations/blob/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml), with the [documented naming rules](registry.md#group-names). This is a complete resolved catalog workload, so its load/write timings are not comparable to a scalar-only seed or a small FIX-version subset.
 
 === "Rust"
 
@@ -322,7 +200,7 @@ Each field carries the specification's wording as its description and a display 
     assert_eq!(registry.field_by_tag(55)?.name(), "symbol");
     assert_eq!(registry.field_by_name("SYMBOL", Some(&standard))?.name(), "symbol");
     assert_eq!(registry.field_by_tag(150)?.display(), Some("ExecType"));
-    assert_eq!(registry.field_by_path("NoPartyIDs.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_path("Parties.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("ClOrdID", Some(&standard))?.display(), Some("ClOrdID"));
     // Every field is a specification field or one of the crate's own, and
     // both are standard, so none states a branch.
@@ -347,12 +225,12 @@ Each field carries the specification's wording as its description and a display 
     assert registry.field_by_id("55:").name == "symbol"
     assert registry.field_by_name("SYMBOL", STANDARD_BRANCH).name == "symbol"
     assert registry.field_by_tag(150).display == "ExecType"
-    assert registry.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH).fix.tag == 448
+    assert registry.field_by_path("Parties.PartyID", STANDARD_BRANCH).fix.tag == 448
     assert registry.field_by_name("ClOrdID", STANDARD_BRANCH).display == "ClOrdID"
     # Every field is a specification field or one of the crate's own, and
     # both are standard, so none states a branch.
     assert sum("fix:branch" in field.metadata for field in registry) == 0
-    assert len(fix_crate_fields()) == 19
+    assert len(fix_crate_fields()) == 20
     # The whole published dictionary, not a sample of it.
     assert len(registry) > 6_000
     ```
@@ -372,35 +250,32 @@ Each field carries the specification's wording as its description and a display 
     assert.equal(registry.fieldById('55:').name, 'symbol')
     assert.equal(registry.fieldByName('SYMBOL', standard).name, 'symbol')
     assert.equal(registry.fieldByTag(150).display, 'ExecType')
-    assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', standard).fix.tag, 448)
+    assert.equal(registry.fieldByPath('Parties.PartyID', standard).fix.tag, 448)
     assert.equal(registry.fieldByName('ClOrdID', standard).display, 'ClOrdID')
     // Every field is a specification field or one of the crate's own, and
     // both are standard, so none states a branch.
     assert.equal([...registry].filter((field) => field.has('fix:branch')).length, 0)
-    assert.equal(fix.crateFields().length, 19)
+    assert.equal(fix.crateFields().length, 20)
     // The whole published dictionary, not a sample of it.
     assert.ok(registry.size > 6_000)
     ```
 
 ## Edges
 
-- `primitive/0.json`, a leaf directly under a tree -> a standard-branch shard, read like any other; other leaves are ignored.
-- A folder under a tree whose name is not a branch -> `FixBranch::from_str`'s parse failure, its byte position and the folder URL.
-- `branches.json` absent -> valid; every branch value is reconstructed from the shards with the branch defaults.
-- A `branches.json` entry no field in either tree claims -> typed error, never an invented dictionary.
-- A `branches.json` entry holding `targetcompid` or `sendercompid` -> typed error naming the key. A branch is a dictionary and the session that spoke it is a fact about a run, so a manifest written before they were dropped is regenerated rather than read around.
-- A branch folder's name -> the canonical lowercase branch text: one path segment, no separators, no `.` or `..`.
-- A `README` beside the shards -> ignored on read, left alone by `write_into`'s cleanup; only `<n>.json` with a decimal `n` is read.
-- A field in the wrong shard, in a folder its `fix:branch` contradicts, or in the tree its datatype contradicts -> refused with both sides named.
-- A dictionary-encoded or run-end-encoded field -> placed by its unwrapped value type, so a dictionary of Struct is nested and one of Utf8 is not.
-- A shard that does not parse, holds a tagless field, duplicates another shard's tag, or holds a field the registry refuses -> typed error naming the shard's URL.
-- A folder that does not exist -> `FixRegistry::new()`, the crate's own fields and nothing else, and the folder is not created.
-- A shard holding one of the crate's own fields, a standard tag from 65000 -> read past: they are the crate's definition, and the registry already holds them.
-- `write_into` writes no shard for the crate's own fields, so a store never holds a copy of a definition that could drift from the crate's.
-- A root still holding `records/`, nested or flat -> refused naming the folder, never read as empty.
-- The last field of a shard removed -> that shard, its branch folder and its tree disappear on the next `write_into`.
-- A field whose datatype moves it between trees -> the old tree's copy is removed by the next `write_into`, never resurrected on reload.
-- `config/fix` in the Python and JavaScript seed examples -> resolved against the working directory, so run them from the repository root.
+- A missing category is empty; reading a missing root creates nothing.
+- Duplicate field identifiers or named declarations fail instead of replacing an earlier source record.
+- Scalar arrays and individual named documents have distinct shapes; loading the wrong shape names the document.
+- Wrong shard, branch, category datatype, counter type, or reference target is refused before a registry is returned.
+- Standard fields outside the user range cannot acquire a named branch.
+- Canonical definition names must form safe single path segments; separators and traversal names are refused.
+- A directory under a category whose name is not a branch is refused with `FixBranch::from_str`'s parse failure, its byte position, and the directory URL; a branch directory is named by the canonical lowercase branch text.
+- A `branches.json` entry holding `targetcompid` or `sendercompid` is refused naming the key: a branch is a dictionary, and the session that spoke it is a fact about a run.
+- A `README` beside the field shards is ignored on read and left alone by publication; only `<n>.json` with a decimal `n` is read.
+- A stored document holding one of the crate's own fields, a standard tag from 65000, is read past, and `write_into` writes none of them, so a store never holds a copy that could drift from the crate's.
+- A root still holding `records/`, nested or flat, is refused naming the directory, never read as empty.
+- Removing the last definition from a shard or category removes its owned document or directory on the next write.
+- Folder writes publish individual documents; a backend failure can leave already published files visible.
+- `config/fix` in the Python and JavaScript seed examples resolves against the working directory, so run them from the repository root.
 
 ## Commands
 
@@ -409,18 +284,61 @@ Each field carries the specification's wording as its description and a display 
     ```bash
     cargo test -p yggdryl --test fix store
     cargo test -p yggdryl --lib fix::tests::shard_arithmetic
+    cargo test -p yggdryl --test iobase_calls fix_catalog_storage_resolves_each_root_path_once
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/fix
-    python/.venv/bin/python -m pytest python/tests/fix -k "storage_location or retired_layout or written_trees or own_folder"
+    python -m pytest python/tests/fix/test_catalog.py
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test node/tests/fix/fix.test.js
-    node --test --test-name-pattern="storage location|retired layout|two trees|own folder" node/tests/fix/fix.test.js
+    node --test node/tests/fix/catalog.test.js
     ```
+
+## Performance
+
+Release measurements on Windows, AMD Ryzen 5 150 with 12 logical CPUs, Rust 1.96, Python 3.12.13, and Node 24.18. Rust uses 10 Criterion samples; Python and Node use 2,000 boundary iterations, with expensive folder loads reduced to a smaller number of rounds.
+
+| Folder operation | Rust estimate | Python | Node |
+| --- | ---: | ---: | ---: |
+| Load full seed | 3.98 s | 2.03 s | 1 op/s, rounded |
+| Load 200 scalar fields | Not measured by this Rust fixture | 4.73 ms | 128 ops/s |
+| Load 1 / 10 / 100 field shards | 1.15 / 7.05 / 84.7 ms | Not isolated | Not isolated |
+| Write 100 field shards | 551 ms | Not isolated | Not isolated |
+| Load full catalog with second branch | 3.41 s | Not isolated | Not isolated |
+| Write full catalog with second branch | 12.1 s | Not isolated | Not isolated |
+
+Different processes and sample counts make these observed boundary costs, not a language speed ranking. The full-seed load resolves referenced components and groups and compiles message/group indexes; scalar-shard fixtures measure a smaller operation.
+
+| Native full-seed snapshot | Rust estimate |
+| --- | ---: |
+| `into_json` | 177 ms |
+| `from_json` | 1.44 s |
+| `stable_hash`, one digester state allocation | 396 ms |
+
+| Small catalog boundary | Python | Node |
+| --- | ---: | ---: |
+| Snapshot encode | 29.2 us | 33,590 ops/s |
+| Snapshot decode | 92.2 us | 9,421 ops/s |
+| Content hash | 3.02 us | 365,490 ops/s |
+| Independent copy | 2.00 us | 177,936 ops/s |
+
+The small boundary fixture contains two fields plus one component, group, and message. It is intentionally distinct from the full-seed Rust snapshot fixture.
+
+Root navigation is asserted with `Counted`: loading resolves four category roots plus the manifest (`child_by_path=5`); writing a one-shard catalog resolves those five paths plus its shard (`child_by_path=6`). These counts cover the root handle only; document reads/writes occur on child handles and are outside that tally.
+
+Regenerate with release bindings installed:
+
+```bash
+cargo bench -p yggdryl --bench fix -- --sample-size 10 --warm-up-time 0.1 --measurement-time 0.2
+python python/benchmarks/fix.py --iterations 2000
+```
+
+```powershell
+$env:YGGDRYL_BENCH_ITERATIONS = '2000'
+node node/benchmarks/fix.js
+```

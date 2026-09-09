@@ -1,0 +1,24 @@
+{
+  "name": "complexevents",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "complexevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoComplexEvents(1483) > 0.",
+    "display": "ComplexEvents",
+    "fix:component": "complexevent",
+    "fix:counter": "1483",
+    "fix:tag": "847681"
+  }
+}

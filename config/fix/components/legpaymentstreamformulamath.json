@@ -1,0 +1,43 @@
+{
+  "name": "legpaymentstreamformulamath",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamformulalength",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamformulalength"
+        }
+      },
+      {
+        "name": "legpaymentstreamformula",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamformula"
+        }
+      },
+      {
+        "name": "legpaymentstreamformuladesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamformuladesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPaymentStreamFormulaMath",
+    "fix:tag": "212877"
+  }
+}

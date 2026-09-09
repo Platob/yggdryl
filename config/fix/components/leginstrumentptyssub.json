@@ -1,0 +1,33 @@
+{
+  "name": "leginstrumentptyssub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "leginstrumentpartysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leginstrumentpartysubid"
+        }
+      },
+      {
+        "name": "leginstrumentpartysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leginstrumentpartysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegInstrumentPtysSub",
+    "fix:tag": "699091"
+  }
+}

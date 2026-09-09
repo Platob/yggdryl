@@ -1,0 +1,33 @@
+{
+  "name": "legprovisioncashsettlpaymentfixeddate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprovisioncashsettlpaymentdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlpaymentdate"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlpaymentdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlpaymentdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProvisionCashSettlPaymentFixedDate",
+    "fix:tag": "710804"
+  }
+}

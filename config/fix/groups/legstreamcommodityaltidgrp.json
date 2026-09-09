@@ -1,0 +1,24 @@
+{
+  "name": "legstreamcommodityaltidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamcommodityaltidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legstreamcommodityaltidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegStreamCommodityAltIDs(41674) > 0.",
+    "display": "LegStreamCommodityAltIDGrp",
+    "fix:component": "legstreamcommodityaltidcomponent",
+    "fix:counter": "41674",
+    "fix:tag": "749996"
+  }
+}

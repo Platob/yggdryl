@@ -1,0 +1,24 @@
+{
+  "name": "rootsubparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "rootsubparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "rootsubparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Repeating group of RootParty sub-identifiers.",
+    "display": "RootSubParties",
+    "fix:component": "rootsubparty",
+    "fix:counter": "1120",
+    "fix:tag": "473702"
+  }
+}

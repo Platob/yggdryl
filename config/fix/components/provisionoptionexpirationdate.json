@@ -1,0 +1,124 @@
+{
+  "name": "provisionoptionexpirationdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "provisionoptionexpirationdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexpirationdateunadjusted"
+        }
+      },
+      {
+        "name": "provisionoptionexpirationdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexpirationdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "noprovisionoptionexpirationdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprovisionoptionexpirationdatebusinesscenters"
+        }
+      },
+      {
+        "name": "provisionoptionexpirationdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "provisionoptionexpirationdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "provisionoptionexpirationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexpirationdaterelativeto"
+        }
+      },
+      {
+        "name": "provisionoptionexpirationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexpirationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "provisionoptionexpirationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexpirationdateoffsetunit"
+        }
+      },
+      {
+        "name": "provisionoptionexpirationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexpirationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "provisionoptionexpirationdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexpirationdateadjusted"
+        }
+      },
+      {
+        "name": "provisionoptionexpirationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexpirationtime"
+        }
+      },
+      {
+        "name": "provisionoptionexpirationtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexpirationtimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the provisional option expiration date.",
+    "display": "ProvisionOptionExpirationDate",
+    "fix:tag": "101054"
+  }
+}

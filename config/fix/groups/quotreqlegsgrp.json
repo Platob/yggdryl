@@ -1,0 +1,24 @@
+{
+  "name": "quotreqlegsgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quotreqleg",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "quotreqleg"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegs(555) > 0.",
+    "display": "QuotReqLegsGrp",
+    "fix:component": "quotreqleg",
+    "fix:counter": "555",
+    "fix:tag": "858634"
+  }
+}

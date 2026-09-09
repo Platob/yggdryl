@@ -1,0 +1,24 @@
+{
+  "name": "contragrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "contra",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "contra"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of ContraBrokers repeating group instances.",
+    "display": "ContraGrp",
+    "fix:component": "contra",
+    "fix:counter": "382",
+    "fix:tag": "303389"
+  }
+}

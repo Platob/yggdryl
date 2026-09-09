@@ -1,0 +1,93 @@
+{
+  "name": "rgstdistinst",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "distribpaymentmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "distribpaymentmethod"
+        }
+      },
+      {
+        "name": "distribpercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "distribpercentage"
+        }
+      },
+      {
+        "name": "cashdistribcurr",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cashdistribcurr"
+        }
+      },
+      {
+        "name": "cashdistribagentname",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cashdistribagentname"
+        }
+      },
+      {
+        "name": "cashdistribagentcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cashdistribagentcode"
+        }
+      },
+      {
+        "name": "cashdistribagentacctnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cashdistribagentacctnumber"
+        }
+      },
+      {
+        "name": "cashdistribpayref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cashdistribpayref"
+        }
+      },
+      {
+        "name": "cashdistribagentacctname",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cashdistribagentacctname"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RgstDistInst",
+    "fix:tag": "345666"
+  }
+}

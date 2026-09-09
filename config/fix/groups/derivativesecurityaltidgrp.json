@@ -1,0 +1,23 @@
+{
+  "name": "derivativesecurityaltidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "derivativesecurityaltidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "derivativesecurityaltidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DerivativeSecurityAltIDGrp",
+    "fix:component": "derivativesecurityaltidcomponent",
+    "fix:counter": "1218",
+    "fix:tag": "273110"
+  }
+}

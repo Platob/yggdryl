@@ -1,0 +1,53 @@
+{
+  "name": "complexeventratesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventratesource"
+        }
+      },
+      {
+        "name": "complexeventratesourcetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventratesourcetype"
+        }
+      },
+      {
+        "name": "complexeventreferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventreferencepage"
+        }
+      },
+      {
+        "name": "complexeventreferencepageheading",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventreferencepageheading"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ComplexEventRateSource",
+    "fix:tag": "173292"
+  }
+}

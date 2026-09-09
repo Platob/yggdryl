@@ -1,4 +1,4 @@
-//! One generic record read as one message.
+//! One generic record read as a bounded stream of messages.
 //!
 //! A record is a name-to-value map - one `Scalar` variant - and every
 //! row-oriented reader in the crate answers with one, so this is the shape a
@@ -19,10 +19,10 @@ use crate::{Error, Result, Scalar, Version};
 
 use crate::Field;
 
-use super::FixBranch;
 use super::build::{Fill, RowExtras};
 use super::codec::FixCodec;
 use super::msg::FixMsg;
+use super::{FixBranch, FixMessages};
 
 /// The column a payload is read from when nothing names another.
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
@@ -54,10 +54,10 @@ pub(super) fn plugin_session(
 ) -> Option<(Field, i32)> {
     let tag = match direction? {
         held if held.eq_ignore_ascii_case(crate::types::MsgDirection::SENT) => {
-            super::SENDERPLUGINSESSION_TAG
+            super::SENDERSESSIONNAME_TAG
         }
         held if held.eq_ignore_ascii_case(crate::types::MsgDirection::RECV) => {
-            super::TARGETPLUGINSESSION_TAG
+            super::TARGETSESSIONNAME_TAG
         }
         _ => return None,
     };
@@ -131,7 +131,7 @@ pub(super) fn transform_record_with(
     record: &Scalar,
     payload: &str,
     enrich: bool,
-) -> Result<FixMsg> {
+) -> Result<FixMessages> {
     let Some(held) = record.as_record() else {
         return Err(Error::Parse {
             target: "fix record",
@@ -212,7 +212,7 @@ pub(super) fn transform_bytes(
     parameters: RowParameters<'_>,
     bytes: &[u8],
     enrich: bool,
-) -> Result<FixMsg> {
+) -> Result<FixMessages> {
     let branch = parameters
         .branch
         .and_then(|name| FixBranch::from_str(name).ok());
@@ -238,14 +238,16 @@ pub(super) fn transform_bytes(
     };
     let extras = parameters.extras();
     if bytes.is_empty() {
-        return Ok(empty(reader, extras));
+        return Ok(FixMessages::one(empty(reader, extras)));
     }
     // A stated separator is read as a numeric frame with that separator; with
     // none stated the reader picks its own dialect from the frame, which is
     // what a record carrying only a payload has to do.
     let built = match parameters.separator.and_then(|held| held.bytes().next()) {
-        Some(separator) => reader.split_fix_with(bytes, separator, extras, enrich),
+        Some(separator) => reader
+            .split_fix_with(bytes, separator, extras, enrich)
+            .map(FixMessages::one),
         None => reader.transform_line_with(bytes, extras, enrich),
     };
-    Ok(built.unwrap_or_else(|_| empty(reader, extras)))
+    Ok(built.unwrap_or_else(|_| FixMessages::one(empty(reader, extras))))
 }

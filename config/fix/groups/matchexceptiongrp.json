@@ -1,0 +1,24 @@
+{
+  "name": "matchexceptiongrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "matchexception",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "matchexception"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoMatchExceptions(2772) > 0.",
+    "display": "MatchExceptionGrp",
+    "fix:component": "matchexception",
+    "fix:counter": "2772",
+    "fix:tag": "208552"
+  }
+}

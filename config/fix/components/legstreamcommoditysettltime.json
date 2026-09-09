@@ -1,0 +1,43 @@
+{
+  "name": "legstreamcommoditysettltime",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamcommoditysettlstart",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlstart"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlend",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlend"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettltimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettltimetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamCommoditySettlTime",
+    "fix:tag": "127100"
+  }
+}

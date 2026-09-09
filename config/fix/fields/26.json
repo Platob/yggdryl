@@ -1,0 +1,1234 @@
+[
+  {
+    "name": "strikeindexcurvepoint",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The point on the floating rate index curve. Sample values:",
+      "display": "StrikeIndexCurvePoint",
+      "fix:tag": "2600"
+    }
+  },
+  {
+    "name": "strikeindexquote",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The quote side from which the index price is to be determined.",
+      "display": "StrikeIndexQuote",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bid\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Bid\"},{\"value\":\"1\",\"name\":\"Mid\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Mid\"},{\"value\":\"2\",\"name\":\"Offer\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Offer\"}]}",
+      "fix:tag": "2601"
+    }
+  },
+  {
+    "name": "extraordinaryeventadjustmentmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
+      "display": "ExtraordinaryEventAdjustmentMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"CalculationAgent\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Calculation agent\"},{\"value\":\"1\",\"name\":\"OptionsExchange\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Options exchange\"}]}",
+      "fix:tag": "2602"
+    }
+  },
+  {
+    "name": "exchangelookalike",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For a share option trade, indicates whether the instrument is to be treated as an 'exchange look-alike'.",
+      "display": "ExchangeLookAlike",
+      "fix:tag": "2603"
+    }
+  },
+  {
+    "name": "legstrikeindexcurvepoint",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The point on the floating rate index curve. Sample values:",
+      "display": "LegStrikeIndexCurvePoint",
+      "fix:tag": "2604"
+    }
+  },
+  {
+    "name": "legstrikeindexquote",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The quote side from which the index price is to be determined.",
+      "display": "LegStrikeIndexQuote",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bid\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Bid\"},{\"value\":\"1\",\"name\":\"Mid\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Mid\"},{\"value\":\"2\",\"name\":\"Offer\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Offer\"}]}",
+      "fix:tag": "2605"
+    }
+  },
+  {
+    "name": "legextraordinaryeventadjustmentmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
+      "display": "LegExtraordinaryEventAdjustmentMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"CalculationAgent\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Calculation agent\"},{\"value\":\"1\",\"name\":\"OptionsExchange\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Options exchange\"}]}",
+      "fix:tag": "2606"
+    }
+  },
+  {
+    "name": "legexchangelookalike",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For a share option trade, indicates whether the instrument is to be treated as an 'exchange look-alike'.",
+      "display": "LegExchangeLookAlike",
+      "fix:tag": "2607"
+    }
+  },
+  {
+    "name": "legcomplexeventfuturespricevaluation",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to futures contracts.",
+      "display": "LegComplexEventFuturesPriceValuation",
+      "fix:tag": "2608"
+    }
+  },
+  {
+    "name": "legcomplexeventoptionspricevaluation",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to options contracts.",
+      "display": "LegComplexEventOptionsPriceValuation",
+      "fix:tag": "2609"
+    }
+  },
+  {
+    "name": "legcomplexeventpvfinalpriceelectionfallback",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price",
+      "display": "LegComplexEventPVFinalPriceElectionFallback",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Close\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Close\"},{\"value\":\"1\",\"name\":\"HedgeElection\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Hedge election\"}]}",
+      "fix:tag": "2610"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventfuturespricevaluation",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to futures contracts.",
+      "display": "UnderlyingComplexEventFuturesPriceValuation",
+      "fix:tag": "2611"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventoptionspricevaluation",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to options contracts.",
+      "display": "UnderlyingComplexEventOptionsPriceValuation",
+      "fix:tag": "2612"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventpvfinalpriceelectionfallback",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price",
+      "display": "UnderlyingComplexEventPVFinalPriceElectionFallback",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Close\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Close\"},{\"value\":\"1\",\"name\":\"HedgeElection\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Hedge election\"}]}",
+      "fix:tag": "2613"
+    }
+  },
+  {
+    "name": "underlyingnotional",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Notional value for the equity or bond underlier.",
+      "display": "UnderlyingNotional",
+      "fix:tag": "2614"
+    }
+  },
+  {
+    "name": "underlyingnotionalcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency denomination of the notional value.",
+      "display": "UnderlyingNotionalCurrency",
+      "fix:tag": "2615"
+    }
+  },
+  {
+    "name": "underlyingnotionaldeterminationmethod",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the method of determining the notional amount. See: https://fpml.org/coding-scheme/determination-method for values.",
+      "display": "UnderlyingNotionalDeterminationMethod",
+      "fix:tag": "2616"
+    }
+  },
+  {
+    "name": "underlyingnotionaladjustments",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the conditions that govern the adjustment to the number of units of the return swap.",
+      "display": "UnderlyingNotionalAdjustments",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Execution\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Execution\"},{\"value\":\"1\",\"name\":\"PortfolioRebalancing\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Portfolio rebalancing\"},{\"value\":\"2\",\"name\":\"Standard\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Standrd\"}]}",
+      "fix:tag": "2617"
+    }
+  },
+  {
+    "name": "positionid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique identifier for a position entity. Refer to PosMaintRptID(721) for a unique identifier of a position report message.",
+      "display": "PositionID",
+      "fix:tag": "2618"
+    }
+  },
+  {
+    "name": "underlyingnotionalxidref",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Cross reference to another notional amount for duplicating its properties.",
+      "display": "UnderlyingNotionalXIDRef",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingnotionalxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:tag": "2619"
+    }
+  },
+  {
+    "name": "underlyingfutureid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "In the case of an index underlier specifies the unique identifier for the referenced futures contract.",
+      "display": "UnderlyingFutureID",
+      "fix:tag": "2620"
+    }
+  },
+  {
+    "name": "underlyingfutureidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the source of the UnderlyingFutureID(2620).",
+      "display": "UnderlyingFutureIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:tag": "2621"
+    }
+  },
+  {
+    "name": "underlyingstrikeindexcurvepoint",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The point on the floating rate index curve. Sample values:",
+      "display": "UnderlyingStrikeIndexCurvePoint",
+      "fix:tag": "2622"
+    }
+  },
+  {
+    "name": "underlyingstrikeindexquote",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The quote side from which the index price is to be determined.",
+      "display": "UnderlyingStrikeIndexQuote",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bid\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Bid\"},{\"value\":\"1\",\"name\":\"Mid\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Mid\"},{\"value\":\"2\",\"name\":\"Offer\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Offer\"}]}",
+      "fix:tag": "2623"
+    }
+  },
+  {
+    "name": "underlyingextraordinaryeventadjustmentmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
+      "display": "UnderlyingExtraordinaryEventAdjustmentMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"CalculationAgent\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Calculation agent\"},{\"value\":\"1\",\"name\":\"OptionsExchange\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Options exchange\"}]}",
+      "fix:tag": "2624"
+    }
+  },
+  {
+    "name": "underlyingexchangelookalike",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "For a share option trade, indicates whether the instrument is to be treated as an 'exchange look-alike'.",
+      "display": "UnderlyingExchangeLookAlike",
+      "fix:tag": "2625"
+    }
+  },
+  {
+    "name": "underlyingaveragevolumelimitationpercentage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The limit of average percentage of individual securities traded in a day or a number of days.",
+      "display": "UnderlyingAverageVolumeLimitationPercentage",
+      "fix:tag": "2626"
+    }
+  },
+  {
+    "name": "underlyingaveragevolumelimitationperioddays",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the limitation period for average daily trading volume in number of days.",
+      "display": "UnderlyingAverageVolumeLimitationPeriodDays",
+      "fix:tag": "2627"
+    }
+  },
+  {
+    "name": "underlyingdepositoryreceiptindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the underlier is a depository receipt.",
+      "display": "UnderlyingDepositoryReceiptIndicator",
+      "fix:tag": "2628"
+    }
+  },
+  {
+    "name": "underlyingopenunits",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of units (units of the index or number of securities, par amount of a bond) that constitute the underlier. In the case of a basket swap, this is used to reference both the number of basket units, and the number of each asset components of the basket when these are expressed in absolute terms.",
+      "display": "UnderlyingOpenUnits",
+      "fix:tag": "2629"
+    }
+  },
+  {
+    "name": "underlyingbasketdivisor",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the basket divisor amount. This value is normally used to adjust the constituent weight for pricing or to adjust for dividends, or other corporate actions.",
+      "display": "UnderlyingBasketDivisor",
+      "fix:tag": "2630"
+    }
+  },
+  {
+    "name": "underlyinginstrumentxid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier for referencing this UnderlyingInstrument from a parent instrument or a convertible instrument.",
+      "display": "UnderlyingInstrumentXID",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyinginstrumentxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:tag": "2631"
+    }
+  },
+  {
+    "name": "collateralamounttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The type of value in CurrentCollateralAmount(1704).",
+      "display": "CollateralAmountType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"MarketValuation\",\"since\":\"5.0.2\",\"ep\":197,\"doc\":\"Market valuation (the default)\"},{\"value\":\"1\",\"name\":\"PortfolioValue\",\"since\":\"5.0.2\",\"ep\":197,\"sort\":1,\"doc\":\"Portfolio value before processing pledge request\"},{\"value\":\"2\",\"name\":\"ValueConfirmed\",\"since\":\"5.0.2\",\"ep\":197,\"sort\":2,\"doc\":\"Value confirmed as \\\"locked-up\\\" for processing a pledge request\"},{\"value\":\"3\",\"name\":\"CollateralCreditValue\",\"since\":\"5.0.2\",\"ep\":197,\"sort\":3,\"doc\":\"Credit value of collateral at CCP processing a pledge request\"},{\"value\":\"4\",\"name\":\"AdditionalCollateralValue\",\"since\":\"5.0.2\",\"ep\":227,\"sort\":4,\"doc\":\"Additional collateral value\"},{\"value\":\"5\",\"name\":\"EstimatedMarketValuation\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":5,\"doc\":\"Estimated market valuation\"}]}",
+      "fix:tag": "2632"
+    }
+  },
+  {
+    "name": "nomiscfeesubtypes",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the number of miscellaneous fee sub-types.",
+      "display": "NoMiscFeeSubTypes",
+      "fix:tag": "2633"
+    }
+  },
+  {
+    "name": "miscfeesubtype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to provide more granular fee types related to a value of MiscFeeType(139). See https://fixtrading.org/packages/misc-fee-sub-types for code list of applicable fees. Other fee sub-types may be used by mutual agreement of the counterparties.",
+      "display": "MiscFeeSubType",
+      "fix:tag": "2634"
+    }
+  },
+  {
+    "name": "miscfeesubtypeamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The amount of the specified MiscFeeSubType(2634).",
+      "display": "MiscFeeSubTypeAmt",
+      "fix:tag": "2635"
+    }
+  },
+  {
+    "name": "miscfeesubtypedesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Can be used to provide an optional textual description of the fee sub-type.",
+      "display": "MiscFeeSubTypeDesc",
+      "fix:tag": "2636"
+    }
+  },
+  {
+    "name": "encodedmiscfeesubtypedesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedMiscFeeSubTypeDesc(2638) field.",
+      "display": "EncodedMiscFeeSubTypeDescLen",
+      "fix:tag": "2637"
+    }
+  },
+  {
+    "name": "encodedmiscfeesubtypedesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the MiscFeeSubTypeDesc(2636) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the MiscFeeSubTypeDesc(2636) field.",
+      "display": "EncodedMiscFeeSubTypeDesc",
+      "fix:tag": "2638"
+    }
+  },
+  {
+    "name": "nocommissions",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of commissions in the repeating group.",
+      "display": "NoCommissions",
+      "fix:tag": "2639"
+    }
+  },
+  {
+    "name": "commissionamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The commission amount.",
+      "display": "CommissionAmount",
+      "fix:tag": "2640"
+    }
+  },
+  {
+    "name": "commissionamounttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates what type of commission is being expressed in CommissionAmount(2640).",
+      "display": "CommissionAmountType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unspecified\",\"since\":\"5.0.2\",\"ep\":204,\"doc\":\"Unspecified\"},{\"value\":\"1\",\"name\":\"Acceptance\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":1,\"doc\":\"Acceptance\"},{\"value\":\"2\",\"name\":\"Broker\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":2,\"doc\":\"Broker\"},{\"value\":\"3\",\"name\":\"ClearingBroker\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":3,\"doc\":\"Clearing broker\"},{\"value\":\"4\",\"name\":\"Retail\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":4,\"doc\":\"Retail\"},{\"value\":\"5\",\"name\":\"SalesCommission\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":5,\"doc\":\"Sales commission\"},{\"value\":\"6\",\"name\":\"LocalCommission\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":6,\"doc\":\"Local commission\"},{\"value\":\"7\",\"name\":\"ResearchPayment\",\"since\":\"5.0.2\",\"ep\":233,\"sort\":7,\"doc\":\"Research payment\"}]}",
+      "fix:tag": "2641"
+    }
+  },
+  {
+    "name": "commissionbasis",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the basis or unit used to calculate the commission.",
+      "display": "CommissionBasis",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"PerUnit\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Amount per unit\"},{\"value\":\"2\",\"name\":\"Percent\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Percent\"},{\"value\":\"3\",\"name\":\"Absolute\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Absolute\"},{\"value\":\"4\",\"name\":\"PercentageWaivedCashDiscount\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Percentage waived, cash discount basis\"},{\"value\":\"5\",\"name\":\"PercentageWaivedEnhancedUnits\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Percentage waived, enhanced units basis\"},{\"value\":\"6\",\"name\":\"PointsPerBondOrContract\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Points per bond or contract\"},{\"value\":\"7\",\"name\":\"BasisPoints\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":7,\"doc\":\"Basis points\"},{\"value\":\"8\",\"name\":\"AmountPerContract\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":8,\"doc\":\"Amount per contract\"}]}",
+      "fix:tag": "2642"
+    }
+  },
+  {
+    "name": "commissioncurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency denomination of the commission amount if different from the trade's currency.",
+      "display": "CommissionCurrency",
+      "fix:tag": "2643"
+    }
+  },
+  {
+    "name": "commissionunitofmeasure",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The commission rate unit of measure.",
+      "display": "CommissionUnitOfMeasure",
+      "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0.1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0.2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0.2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0.2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"deprecated\":\"5.0.1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"deprecated\":\"5.0.2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0.2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0.2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
+      "fix:tag": "2644"
+    }
+  },
+  {
+    "name": "commissionunitofmeasurecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the currency of the unit of measure. Conditionally required when CommissionUnitOfMeasure(2644) = Ccy (Amount of currency).",
+      "display": "CommissionUnitOfMeasureCurrency",
+      "fix:tag": "2645"
+    }
+  },
+  {
+    "name": "commissionrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The commission rate when CommissionAmount(2640) is based on a percentage of quantity, amount per unit or a factor of \"unit of measure\". If the rate is a percentage or expressed in basis points, use the decimalized form, e.g. \"0.05\" for a 5% commission or \"0.005\" for 50 basis points.",
+      "display": "CommissionRate",
+      "fix:tag": "2646"
+    }
+  },
+  {
+    "name": "commissionsharedindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the amount in CommissionAmount(2640) is to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement.",
+      "display": "CommissionSharedIndicator",
+      "fix:tag": "2647"
+    }
+  },
+  {
+    "name": "commissionamountshared",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Commission amount to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement. If specified, this amount should not exceed the amount in CommissionAmount(2640).",
+      "display": "CommissionAmountShared",
+      "fix:tag": "2648"
+    }
+  },
+  {
+    "name": "commissionlegrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
+      "display": "CommissionLegRefID",
+      "fix:tag": "2649"
+    }
+  },
+  {
+    "name": "commissiondesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Description of the commission.",
+      "display": "CommissionDesc",
+      "fix:tag": "2650"
+    }
+  },
+  {
+    "name": "encodedcommissiondesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of the encoded (non-ASCII characters) EncodedCommissionDesc(2652) field.",
+      "display": "EncodedCommissionDescLen",
+      "fix:tag": "2651"
+    }
+  },
+  {
+    "name": "encodedcommissiondesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the CommissionDesc(2650) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the CommissionDesc(2650) field.",
+      "display": "EncodedCommissionDesc",
+      "fix:tag": "2652"
+    }
+  },
+  {
+    "name": "noalloccommissions",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of commissions in the repeating group.",
+      "display": "NoAllocCommissions",
+      "fix:tag": "2653"
+    }
+  },
+  {
+    "name": "alloccommissionamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The commission amount.",
+      "display": "AllocCommissionAmount",
+      "fix:tag": "2654"
+    }
+  },
+  {
+    "name": "alloccommissionamounttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates what type of commission is being expressed in AllocCommissionAmount(2654).",
+      "display": "AllocCommissionAmountType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unspecified\",\"since\":\"5.0.2\",\"ep\":204,\"doc\":\"Unspecified\"},{\"value\":\"1\",\"name\":\"Acceptance\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":1,\"doc\":\"Acceptance\"},{\"value\":\"2\",\"name\":\"Broker\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":2,\"doc\":\"Broker\"},{\"value\":\"3\",\"name\":\"ClearingBroker\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":3,\"doc\":\"Clearing broker\"},{\"value\":\"4\",\"name\":\"Retail\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":4,\"doc\":\"Retail\"},{\"value\":\"5\",\"name\":\"SalesCommission\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":5,\"doc\":\"Sales commission\"},{\"value\":\"6\",\"name\":\"LocalCommission\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":6,\"doc\":\"Local commission\"},{\"value\":\"7\",\"name\":\"ResearchPayment\",\"since\":\"5.0.2\",\"ep\":233,\"sort\":7,\"doc\":\"Research payment\"}]}",
+      "fix:tag": "2655"
+    }
+  },
+  {
+    "name": "alloccommissionbasis",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the basis or unit used to calculate the commission.",
+      "display": "AllocCommissionBasis",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"PerUnit\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Amount per unit\"},{\"value\":\"2\",\"name\":\"Percent\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Percent\"},{\"value\":\"3\",\"name\":\"Absolute\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Absolute\"},{\"value\":\"4\",\"name\":\"PercentageWaivedCashDiscount\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Percentage waived, cash discount basis\"},{\"value\":\"5\",\"name\":\"PercentageWaivedEnhancedUnits\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Percentage waived, enhanced units basis\"},{\"value\":\"6\",\"name\":\"PointsPerBondOrContract\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Points per bond or contract\"},{\"value\":\"7\",\"name\":\"BasisPoints\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":7,\"doc\":\"Basis points\"},{\"value\":\"8\",\"name\":\"AmountPerContract\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":8,\"doc\":\"Amount per contract\"}]}",
+      "fix:tag": "2656"
+    }
+  },
+  {
+    "name": "alloccommissioncurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency denomination of the commission amount if different from the trade's currency.",
+      "display": "AllocCommissionCurrency",
+      "fix:tag": "2657"
+    }
+  },
+  {
+    "name": "alloccommissionunitofmeasure",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The commission rate unit of measure.",
+      "display": "AllocCommissionUnitOfMeasure",
+      "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0.1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0.2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0.2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0.2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"deprecated\":\"5.0.1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"deprecated\":\"5.0.2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0.2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0.2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
+      "fix:tag": "2658"
+    }
+  },
+  {
+    "name": "alloccommissionunitofmeasurecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the currency of the unit of measure. Conditionally required when AllocCommissionUnitOfMeasure(2658) = Ccy (Currency).",
+      "display": "AllocCommissionUnitOfMeasureCurrency",
+      "fix:tag": "2659"
+    }
+  },
+  {
+    "name": "alloccommissionrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The commission rate when AllocCommissionAmount(2654) is based on a percentage of quantity, amount per unit or a factor of \"unit of measure\". If the rate is a percentage or expressed in basis points, use the decimalized form, e.g. \"0.05\" for a 5% commission or \"0.005\" for 50 basis points.",
+      "display": "AllocCommissionRate",
+      "fix:tag": "2660"
+    }
+  },
+  {
+    "name": "alloccommissionsharedindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the amount in AllocCommissionAmount(2654) is to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement.",
+      "display": "AllocCommissionSharedIndicator",
+      "fix:tag": "2661"
+    }
+  },
+  {
+    "name": "alloccommissionamountshared",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Commission amount to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement. If specified, this amount should not exceed the amount in AllocCommissionAmount(2654).",
+      "display": "AllocCommissionAmountShared",
+      "fix:tag": "2662"
+    }
+  },
+  {
+    "name": "alloccommissionlegrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
+      "display": "AllocCommissionLegRefID",
+      "fix:tag": "2663"
+    }
+  },
+  {
+    "name": "alloccommissiondesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Description of the commission.",
+      "display": "AllocCommissionDesc",
+      "fix:tag": "2664"
+    }
+  },
+  {
+    "name": "encodedalloccommissiondesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of the encoded (non-ASCII characters) EncodedAllocCommissionDesc(2666) field.",
+      "display": "EncodedAllocCommissionDescLen",
+      "fix:tag": "2665"
+    }
+  },
+  {
+    "name": "encodedalloccommissiondesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the AllocCommissionDesc(2664) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the AllocCommissionDesc(2664) field.",
+      "display": "EncodedAllocCommissionDesc",
+      "fix:tag": "2666"
+    }
+  },
+  {
+    "name": "algorithmictradeindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates that the order or trade originates from a computer program or algorithm requiring little-to-no human intervention.",
+      "display": "AlgorithmicTradeIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NonAlgorithmicTrade\",\"since\":\"5.0.2\",\"ep\":216,\"doc\":\"Non-algorithmic trade\"},{\"value\":\"1\",\"name\":\"AlgorithmicTrade\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":1,\"doc\":\"Algorithmic trade\"}]}",
+      "fix:tag": "2667"
+    }
+  },
+  {
+    "name": "notrdregpublications",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of regulatory publication rules in repeating group.",
+      "display": "NoTrdRegPublications",
+      "fix:tag": "2668"
+    }
+  },
+  {
+    "name": "trdregpublicationtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of regulatory trade publication.",
+      "display": "TrdRegPublicationType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"PreTradeTransparencyWaiver\",\"since\":\"5.0.2\",\"ep\":216,\"doc\":\"Pre-trade transparency waiver\"},{\"value\":\"1\",\"name\":\"PostTradeDeferral\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":1,\"doc\":\"Post-trade deferral\"},{\"value\":\"2\",\"name\":\"ExemptFromPublication\",\"since\":\"5.0.2\",\"ep\":228,\"sort\":2,\"doc\":\"Exempt from publication\"},{\"value\":\"3\",\"name\":\"OrderLevelPublicationToSubscribers\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":3,\"doc\":\"Order level publication to subscribers\"},{\"value\":\"4\",\"name\":\"PriceLevelPublicationToSubscribers\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":4,\"doc\":\"Price level publication to subscribers\"},{\"value\":\"5\",\"name\":\"OrderLevelPublicationToThePublic\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":5,\"doc\":\"Order level publication to the public\"},{\"value\":\"6\",\"name\":\"PublicationInternalToExecutionVenue\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":6,\"doc\":\"Publication internal to execution venue\"}]}",
+      "fix:tag": "2669"
+    }
+  },
+  {
+    "name": "trdregpublicationreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Additional reason for trade publication type specified in TrdRegPublicationType(2669).",
+      "display": "TrdRegPublicationReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoBookOrderDueToAverageSpreadPrice\",\"since\":\"5.0.2\",\"ep\":216,\"doc\":\"No preceding order in book as transaction price set within average spread of a liquid instrument\"},{\"value\":\"1\",\"name\":\"NoBookOrderDueToRefPrice\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":1,\"doc\":\"No preceding order in book as transaction price depends on system-set reference price for an illiquid instrument\"},{\"value\":\"10\",\"name\":\"NoPublicPriceSizeDueToOrderHidden\",\"since\":\"5.0.2\",\"ep\":228,\"sort\":10,\"doc\":\"No public price and/or size quoted due to order being hidden\"},{\"value\":\"11\",\"name\":\"ExemptedDueToSecuritiesFinancingTransaction\",\"since\":\"5.0.2\",\"ep\":228,\"sort\":11,\"doc\":\"Exempted due to securities financing transaction\"},{\"value\":\"12\",\"name\":\"ExemptedDueToESCBPolicyTransaction\",\"since\":\"5.0.2\",\"ep\":228,\"sort\":12,\"doc\":\"Exempted due to European System of Central Banks (ESCB) policy transaction\"},{\"value\":\"13\",\"name\":\"ExceptionDueToReportByPaper\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":13,\"doc\":\"Exception due to report by paper\"},{\"value\":\"14\",\"name\":\"ExceptionDueToTradeExecutedWithNonReportingParty\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":14,\"doc\":\"Exception due to trade with non-reporting party\"},{\"value\":\"15\",\"name\":\"ExceptionDueToIntraFirmOrder\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":15,\"doc\":\"Exception due to intra-firm order\"},{\"value\":\"16\",\"name\":\"ReportedOutsideReportingHours\",\"ep\":268,\"sort\":16,\"doc\":\"Reported outside of reporting hours\"},{\"value\":\"17\",\"name\":\"NoPublicPxDueToPreTradeWaiver\",\"ep\":283,\"sort\":17,\"doc\":\"No public price quoted due to usage of a pre-trade transparency waiver\"},{\"value\":\"18\",\"name\":\"DeferralDueToMediumLiquidInstrument\",\"ep\":300,\"sort\":18,\"doc\":\"Deferral due to medium liquid instrument\"},{\"value\":\"19\",\"name\":\"DeferralDueToMediumIlliquidInstrument\",\"ep\":300,\"sort\":19,\"doc\":\"Deferral due to medium illiquid instrument\"},{\"value\":\"2\",\"name\":\"NoBookOrderDueToOtherConditions\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":2,\"doc\":\"No preceding order in book as transaction price is for transaction subject to conditions other than current market price\"},{\"value\":\"20\",\"name\":\"DeferralDueToLargeLiquidInstrument\",\"ep\":300,\"sort\":20,\"doc\":\"Deferral due to large liquid instrument\"},{\"value\":\"21\",\"name\":\"DeferralDueToLargeIlliquidInstrument\",\"ep\":300,\"sort\":21,\"doc\":\"Deferral due to large illiquid instrument\"},{\"value\":\"22\",\"name\":\"DeferralDueToVeryLargeLiquidInstrument\",\"ep\":300,\"sort\":22,\"doc\":\"Deferral due to very large liquid instrument\"},{\"value\":\"23\",\"name\":\"DeferralDueToVeryLargeIlliquidInstrument\",\"ep\":300,\"sort\":23,\"doc\":\"Deferral due to very large illiquid instrument\"},{\"value\":\"24\",\"name\":\"DeferralDueToAssetClass\",\"ep\":300,\"sort\":24,\"doc\":\"Deferral due to asset class\"},{\"value\":\"3\",\"name\":\"NoPublicPriceDueToRefPrice\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":3,\"doc\":\"No public price for preceding order as public reference price was used for matching orders\"},{\"value\":\"4\",\"name\":\"NoPublicPriceDueToIlliquid\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":4,\"doc\":\"No public price quoted as instrument is illiquid\"},{\"value\":\"5\",\"name\":\"NoPublicPriceDueToOrderSize\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":5,\"doc\":\"No public price quoted due to \\\"Size\\\"\"},{\"value\":\"6\",\"name\":\"DeferralDueToLargeInScale\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":6,\"doc\":\"Deferral due to \\\"Large in Scale\\\"\"},{\"value\":\"7\",\"name\":\"DeferralDueToIlliquid\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":7,\"doc\":\"Deferral due to \\\"Illiquid Instrument\\\"\"},{\"value\":\"8\",\"name\":\"DeferralDueToSizeSpecific\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":8,\"doc\":\"Deferral due to \\\"Size Specific\\\"\"},{\"value\":\"9\",\"name\":\"NoPublicPriceDueToLargeInScale\",\"since\":\"5.0.2\",\"ep\":228,\"sort\":9,\"doc\":\"No public price and/or size quoted as transaction is \\\"large in scale\\\"\"}]}",
+      "fix:tag": "2670"
+    }
+  },
+  {
+    "name": "sidetradereportingindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used between parties to convey trade reporting status.",
+      "display": "SideTradeReportingIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotReported\",\"since\":\"5.0.2\",\"ep\":222,\"doc\":\"Trade has not (yet) been reported\"},{\"value\":\"1\",\"name\":\"OnBook\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":1,\"doc\":\"Trade has been or will be reported by a trading venue as an \\\"on-book\\\" trade\"},{\"value\":\"2\",\"name\":\"SISeller\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":2,\"doc\":\"Trade has or will be reported as a seller trade by the authorised reporter\"},{\"value\":\"3\",\"name\":\"SIBuyer\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":3,\"doc\":\"Trade has or will be reported as a buyer trade by the authorised reporter\"},{\"value\":\"4\",\"name\":\"NonSISeller\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":4,\"doc\":\"Trade has or will be reported as a seller trade by an entity other than the authorised reporter\"},{\"value\":\"5\",\"name\":\"SubDelegationByFirm\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":5,\"doc\":\"Trade has been or will be reported under a sub-delegation arrangement by an investment firm to a reporting facility (e.g. APA) on behalf of another investment firm\"},{\"value\":\"6\",\"name\":\"Reportable\",\"since\":\"5.0.2\",\"ep\":237,\"sort\":6,\"doc\":\"Trade has been or will be reported\"},{\"value\":\"7\",\"name\":\"NonSIBuyer\",\"since\":\"5.0.2\",\"ep\":237,\"sort\":7,\"doc\":\"Trade has been or will be reported as a buyer trade by an entity other than the authorised reporter\"},{\"value\":\"8\",\"name\":\"OffBook\",\"since\":\"5.0.2\",\"ep\":237,\"sort\":8,\"doc\":\"Trade has been or will be reported by a trading venue as an \\\"off-book\\\" trade\"},{\"value\":\"9\",\"name\":\"NotReportable\",\"since\":\"5.0.2\",\"ep\":237,\"sort\":9,\"doc\":\"Trade is not reportable\"}]}",
+      "fix:tag": "2671"
+    }
+  },
+  {
+    "name": "crossrequestid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique message identifier for a cross request as assigned by the submitter of the request.",
+      "display": "CrossRequestID",
+      "fix:tag": "2672"
+    }
+  },
+  {
+    "name": "fillmatchid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier assigned by a matching system to a match event containing multiple executions.",
+      "display": "FillMatchID",
+      "fix:tag": "2673"
+    }
+  },
+  {
+    "name": "fillmatchsubid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier assigned by a matching system to a price level (e.g. match step, clip) within a match event containing multiple executions.",
+      "display": "FillMatchSubID",
+      "fix:tag": "2674"
+    }
+  },
+  {
+    "name": "massactionreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reason for submission of mass action.",
+      "display": "MassActionReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":223,\"doc\":\"No special reason (default)\"},{\"value\":\"1\",\"name\":\"TradingRiskControl\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":1,\"doc\":\"Trading risk control\"},{\"value\":\"10\",\"name\":\"CompleInstrumentDeleted\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":10,\"doc\":\"Complex instrument deleted\"},{\"value\":\"11\",\"name\":\"CircuitBreakerActivated\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":11,\"doc\":\"Circuit breaker activated\"},{\"value\":\"2\",\"name\":\"ClearingRiskControl\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":2,\"doc\":\"Clearing risk control\"},{\"value\":\"3\",\"name\":\"MarketMakerProtection\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":3,\"doc\":\"Market maker protection\"},{\"value\":\"4\",\"name\":\"StopTrading\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":4,\"doc\":\"Stop trading\"},{\"value\":\"5\",\"name\":\"EmergencyAction\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":5,\"doc\":\"Emergency action\"},{\"value\":\"6\",\"name\":\"SessionLossLogout\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":6,\"doc\":\"Session loss or logout\"},{\"value\":\"7\",\"name\":\"DuplicateLogin\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":7,\"doc\":\"Duplicate login\"},{\"value\":\"8\",\"name\":\"ProductNotTraded\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":8,\"doc\":\"Product not traded\"},{\"value\":\"9\",\"name\":\"InstrumentNotTraded\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":9,\"doc\":\"Instrument not traded\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:tag": "2675"
+    }
+  },
+  {
+    "name": "maximumpricedeviation",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Maximum deviation, in percentage terms, of an execution price from a reference price, e.g. the initial price of a match event.",
+      "display": "MaximumPriceDeviation",
+      "fix:tag": "2676"
+    }
+  },
+  {
+    "name": "notaffectedreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reason for order being unaffected by mass action even though it belongs to the orders covered by MassActionScope(1374).",
+      "display": "NotAffectedReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"OrderSuspended\",\"since\":\"5.0.2\",\"ep\":223,\"doc\":\"Order suspended\"},{\"value\":\"1\",\"name\":\"InstrumentSuspended\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":1,\"doc\":\"Instrument suspended\"}]}",
+      "fix:tag": "2677"
+    }
+  },
+  {
+    "name": "totalnotaffectedorders",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Total number of orders unaffected by either the OrderMassActionRequest(35=CA) or OrderMassCancelRequest(35=Q).",
+      "display": "TotalNotAffectedOrders",
+      "fix:tag": "2678"
+    }
+  },
+  {
+    "name": "orderownershipindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Change of ownership of an order to a specific party.",
+      "display": "OrderOwnershipIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoChange\",\"since\":\"5.0.2\",\"ep\":223,\"doc\":\"No change of ownership (default)\"},{\"value\":\"1\",\"name\":\"ExecutingPartyChange\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":1,\"doc\":\"Change of ownership to executing party\"},{\"value\":\"2\",\"name\":\"EnteringPartyChange\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":2,\"doc\":\"Change of ownership to entering party\"},{\"value\":\"3\",\"name\":\"SpecifiedPartyChange\",\"since\":\"5.0.2\",\"ep\":223,\"sort\":3,\"doc\":\"Change of ownership to specified party\"}]}",
+      "fix:tag": "2679"
+    }
+  },
+  {
+    "name": "legaccount",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
+      "display": "LegAccount",
+      "fix:tag": "2680"
+    }
+  },
+  {
+    "name": "inthemoneycondition",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies an option instrument's \"in the money\" condition.",
+      "display": "InTheMoneyCondition",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"StandardITM\",\"since\":\"5.0.2\",\"ep\":224,\"doc\":\"Standard in-the-money\"},{\"value\":\"1\",\"name\":\"ATMITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":1,\"doc\":\"At-the-money is in-the-money\"},{\"value\":\"2\",\"name\":\"ATMCallITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":2,\"doc\":\"At-the-money call is in-the-money\"},{\"value\":\"3\",\"name\":\"ATMPutITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":3,\"doc\":\"At-the-money put is in-the-money\"}]}",
+      "fix:tag": "2681"
+    }
+  },
+  {
+    "name": "leginthemoneycondition",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
+      "display": "LegInTheMoneyCondition",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"StandardITM\",\"since\":\"5.0.2\",\"ep\":224,\"doc\":\"Standard in-the-money\"},{\"value\":\"1\",\"name\":\"ATMITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":1,\"doc\":\"At-the-money is in-the-money\"},{\"value\":\"2\",\"name\":\"ATMCallITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":2,\"doc\":\"At-the-money call is in-the-money\"},{\"value\":\"3\",\"name\":\"ATMPutITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":3,\"doc\":\"At-the-money put is in-the-money\"}]}",
+      "fix:tag": "2682"
+    }
+  },
+  {
+    "name": "underlyinginthemoneycondition",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
+      "display": "UnderlyingInTheMoneyCondition",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"StandardITM\",\"since\":\"5.0.2\",\"ep\":224,\"doc\":\"Standard in-the-money\"},{\"value\":\"1\",\"name\":\"ATMITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":1,\"doc\":\"At-the-money is in-the-money\"},{\"value\":\"2\",\"name\":\"ATMCallITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":2,\"doc\":\"At-the-money call is in-the-money\"},{\"value\":\"3\",\"name\":\"ATMPutITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":3,\"doc\":\"At-the-money put is in-the-money\"}]}",
+      "fix:tag": "2683"
+    }
+  },
+  {
+    "name": "derivativeinthemoneycondition",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
+      "display": "DerivativeInTheMoneyCondition",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"StandardITM\",\"since\":\"5.0.2\",\"ep\":224,\"doc\":\"Standard in-the-money\"},{\"value\":\"1\",\"name\":\"ATMITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":1,\"doc\":\"At-the-money is in-the-money\"},{\"value\":\"2\",\"name\":\"ATMCallITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":2,\"doc\":\"At-the-money call is in-the-money\"},{\"value\":\"3\",\"name\":\"ATMPutITM\",\"since\":\"5.0.2\",\"ep\":224,\"sort\":3,\"doc\":\"At-the-money put is in-the-money\"}]}",
+      "fix:tag": "2684"
+    }
+  },
+  {
+    "name": "contraryinstructioneligibilityindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of InTheMoneyCondition(2681). When not specified, the eligibility is undefined or not applicable.",
+      "display": "ContraryInstructionEligibilityIndicator",
+      "fix:tag": "2685"
+    }
+  },
+  {
+    "name": "legcontraryinstructioneligibilityindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of LegInTheMoneyCondition(2682). When not specified, the eligibility is undefined or not applicable.",
+      "display": "LegContraryInstructionEligibilityIndicator",
+      "fix:tag": "2686"
+    }
+  },
+  {
+    "name": "underlyingcontraryinstructioneligibilityindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of UnderlyingInTheMoneyCondition(2683). When not specified, the eligibility is undefined or not applicable.",
+      "display": "UnderlyingContraryInstructionEligibilityIndicator",
+      "fix:tag": "2687"
+    }
+  },
+  {
+    "name": "derivativecontraryinstructioneligibilityindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of DerivativeInTheMoneyCondition(2684). When not specified, the eligibility is undefined or not applicable.",
+      "display": "DerivativeContraryInstructionEligibilityIndicator",
+      "fix:tag": "2688"
+    }
+  },
+  {
+    "name": "collateralmarketprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Market price of the collateral, either from market sources or pre-agreed by the counterparties.",
+      "display": "CollateralMarketPrice",
+      "fix:tag": "2689"
+    }
+  },
+  {
+    "name": "collateralpercentoverage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Percentage of over-collateralization particularly when CollateralAmountType(2632) = 4 (Additional collateral value)",
+      "display": "CollateralPercentOverage",
+      "fix:tag": "2690"
+    }
+  },
+  {
+    "name": "nosidecollateralamounts",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of side collateral amount entries.",
+      "display": "NoSideCollateralAmounts",
+      "fix:tag": "2691"
+    }
+  },
+  {
+    "name": "sidecollateralamountmarketid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Market associated with the collateral amount.",
+      "display": "SideCollateralAmountMarketID",
+      "fix:tag": "2692"
+    }
+  },
+  {
+    "name": "sidecollateralamountmarketsegmentid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Market segment associated with the collateral amount.",
+      "display": "SideCollateralAmountMarketSegmentID",
+      "fix:tag": "2693"
+    }
+  },
+  {
+    "name": "sidecollateralamounttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The type of value in CurrentCollateralAmount(1704).",
+      "display": "SideCollateralAmountType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"MarketValuation\",\"since\":\"5.0.2\",\"ep\":197,\"doc\":\"Market valuation (the default)\"},{\"value\":\"1\",\"name\":\"PortfolioValue\",\"since\":\"5.0.2\",\"ep\":197,\"sort\":1,\"doc\":\"Portfolio value before processing pledge request\"},{\"value\":\"2\",\"name\":\"ValueConfirmed\",\"since\":\"5.0.2\",\"ep\":197,\"sort\":2,\"doc\":\"Value confirmed as \\\"locked-up\\\" for processing a pledge request\"},{\"value\":\"3\",\"name\":\"CollateralCreditValue\",\"since\":\"5.0.2\",\"ep\":197,\"sort\":3,\"doc\":\"Credit value of collateral at CCP processing a pledge request\"},{\"value\":\"4\",\"name\":\"AdditionalCollateralValue\",\"since\":\"5.0.2\",\"ep\":227,\"sort\":4,\"doc\":\"Additional collateral value\"},{\"value\":\"5\",\"name\":\"EstimatedMarketValuation\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":5,\"doc\":\"Estimated market valuation\"}]}",
+      "fix:tag": "2694"
+    }
+  },
+  {
+    "name": "sidecollateralcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency of the collateral; optional, defaults to settlement currency if not specified.",
+      "display": "SideCollateralCurrency",
+      "fix:tag": "2695"
+    }
+  },
+  {
+    "name": "sidecollateralfxrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Foreign exchange rate used to compute the SideCurrentCollateralAmount(2702) from the SideCollateralCurrency(2695) and the Currency(15).",
+      "display": "SideCollateralFXRate",
+      "fix:tag": "2696"
+    }
+  },
+  {
+    "name": "sidecollateralfxratecalc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies whether or not SideCollateralFXRate(2696) should be multiplied or divided.",
+      "display": "SideCollateralFXRateCalc",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:tag": "2697"
+    }
+  },
+  {
+    "name": "sidecollateralmarketprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Market price of the collateral, either from market sources or pre-agreed by the counterparties.",
+      "display": "SideCollateralMarketPrice",
+      "fix:tag": "2698"
+    }
+  },
+  {
+    "name": "sidecollateralpercentoverage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Percentage of over-collateralization particularly when SideCollateralAmountType(2694) = 4 (Additional collateral value).",
+      "display": "SideCollateralPercentOverage",
+      "fix:tag": "2699"
+    }
+  }
+]

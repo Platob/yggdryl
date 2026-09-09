@@ -1,0 +1,104 @@
+{
+  "name": "underlyingdividendfxtriggerdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingdividendfxtriggerdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendfxtriggerdaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingdividendfxtriggerdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendfxtriggerdateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingdividendfxtriggerdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendfxtriggerdateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingdividendfxtriggerdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendfxtriggerdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingdividendfxtriggerdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendfxtriggerdateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingdividendfxtriggerdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendfxtriggerdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingdividendfxtriggerdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingdividendfxtriggerdatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingdividendfxtriggerdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingdividendfxtriggerdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingdividendfxtriggerdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendfxtriggerdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when UnderlyingDividendFXTriggerDateOffsetUnit(42848) is specified.",
+    "display": "UnderlyingDividendFXTriggerDate",
+    "fix:tag": "186075"
+  }
+}

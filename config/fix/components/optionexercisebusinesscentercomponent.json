@@ -1,0 +1,23 @@
+{
+  "name": "optionexercisebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "optionexercisebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "OptionExerciseBusinessCenter",
+    "fix:tag": "419839"
+  }
+}

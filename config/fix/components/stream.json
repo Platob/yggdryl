@@ -1,0 +1,343 @@
+{
+  "name": "stream",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streamtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamtype"
+        }
+      },
+      {
+        "name": "streamxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamxid"
+        }
+      },
+      {
+        "name": "streamdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamdesc"
+        }
+      },
+      {
+        "name": "streamversion",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamversion"
+        }
+      },
+      {
+        "name": "streamversioneffectivedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamversioneffectivedate"
+        }
+      },
+      {
+        "name": "streampayside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streampayside"
+        }
+      },
+      {
+        "name": "streamreceiveside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamreceiveside"
+        }
+      },
+      {
+        "name": "streamnotionalxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamnotionalxidref"
+        }
+      },
+      {
+        "name": "streamnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamnotional"
+        }
+      },
+      {
+        "name": "streamcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcurrency"
+        }
+      },
+      {
+        "name": "streamnotionaldeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamnotionaldeterminationmethod"
+        }
+      },
+      {
+        "name": "streamnotionaladjustments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamnotionaladjustments"
+        }
+      },
+      {
+        "name": "streamnotionalfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamnotionalfrequencyperiod"
+        }
+      },
+      {
+        "name": "streamnotionalfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamnotionalfrequencyunit"
+        }
+      },
+      {
+        "name": "streamnotionalcommodityfrequency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamnotionalcommodityfrequency"
+        }
+      },
+      {
+        "name": "streamnotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamnotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "streamtotalnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamtotalnotional"
+        }
+      },
+      {
+        "name": "streamtotalnotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamtotalnotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "streamcommodity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "streamcommodity"
+        }
+      },
+      {
+        "name": "streameffectivedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "streameffectivedate"
+        }
+      },
+      {
+        "name": "streamterminationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "streamterminationdate"
+        }
+      },
+      {
+        "name": "streamcalculationperioddates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "streamcalculationperioddates"
+        }
+      },
+      {
+        "name": "paymentstream",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "paymentstream"
+        }
+      },
+      {
+        "name": "nopaymentschedules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentschedules"
+        }
+      },
+      {
+        "name": "paymentschedulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentschedulegrp"
+        }
+      },
+      {
+        "name": "nopaymentstubs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentstubs"
+        }
+      },
+      {
+        "name": "paymentstubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentstubgrp"
+        }
+      },
+      {
+        "name": "deliverystream",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "deliverystream"
+        }
+      },
+      {
+        "name": "nodeliveryschedules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nodeliveryschedules"
+        }
+      },
+      {
+        "name": "deliveryschedulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "deliveryschedulegrp"
+        }
+      },
+      {
+        "name": "streamtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamtext"
+        }
+      },
+      {
+        "name": "encodedstreamtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedstreamtextlen"
+        }
+      },
+      {
+        "name": "encodedstreamtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedstreamtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Stream",
+    "fix:tag": "666236"
+  }
+}

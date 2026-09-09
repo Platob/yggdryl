@@ -1,0 +1,24 @@
+{
+  "name": "optionexercisebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "optionexercisebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "optionexercisebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoOptionExerciseBusinessCenters(41116) > 0.",
+    "display": "OptionExerciseBusinessCenterGrp",
+    "fix:component": "optionexercisebusinesscentercomponent",
+    "fix:counter": "41116",
+    "fix:tag": "373798"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "quoteattribute",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "quoteattributetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quoteattributetype"
+        }
+      },
+      {
+        "name": "quoteattributevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quoteattributevalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "QuoteAttribute",
+    "fix:tag": "641653"
+  }
+}

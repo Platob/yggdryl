@@ -984,6 +984,11 @@
   min-width: 14rem;
 }
 
+.ygg-fx__panel-body > .ygg-fx__call {
+  max-height: 30rem;
+  overflow: auto;
+}
+
 @media screen and (max-width: 44.98em) {
   .ygg-fx__cards {
     grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));

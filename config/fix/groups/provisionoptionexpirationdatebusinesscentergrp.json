@@ -1,0 +1,24 @@
+{
+  "name": "provisionoptionexpirationdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provisionoptionexpirationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "provisionoptionexpirationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProvisionOptionExpirationDateBusinessCenters(40955) > 0.",
+    "display": "ProvisionOptionExpirationDateBusinessCenterGrp",
+    "fix:component": "provisionoptionexpirationdatebusinesscentercomponent",
+    "fix:counter": "40955",
+    "fix:tag": "440265"
+  }
+}

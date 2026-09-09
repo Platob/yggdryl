@@ -1,0 +1,53 @@
+{
+  "name": "legstreamcommoditysettldaycomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamcommoditysettlday",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlday"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettltotalhours",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettltotalhours"
+        }
+      },
+      {
+        "name": "nolegstreamcommoditysettltimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegstreamcommoditysettltimes"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettltimegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legstreamcommoditysettltimegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamCommoditySettlDay",
+    "fix:tag": "154307"
+  }
+}

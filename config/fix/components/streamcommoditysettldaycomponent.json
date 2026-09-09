@@ -1,0 +1,53 @@
+{
+  "name": "streamcommoditysettldaycomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streamcommoditysettlday",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcommoditysettlday"
+        }
+      },
+      {
+        "name": "streamcommoditysettltotalhours",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcommoditysettltotalhours"
+        }
+      },
+      {
+        "name": "nostreamcommoditysettltimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nostreamcommoditysettltimes"
+        }
+      },
+      {
+        "name": "streamcommoditysettltimegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "streamcommoditysettltimegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StreamCommoditySettlDay",
+    "fix:tag": "231493"
+  }
+}

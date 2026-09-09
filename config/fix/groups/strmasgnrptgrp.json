@@ -1,0 +1,24 @@
+{
+  "name": "strmasgnrptgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "strmasgnrpt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "strmasgnrpt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Stream Assignment Reports.",
+    "display": "StrmAsgnRptGrp",
+    "fix:component": "strmasgnrpt",
+    "fix:counter": "1499",
+    "fix:tag": "540532"
+  }
+}

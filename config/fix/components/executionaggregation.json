@@ -1,0 +1,53 @@
+{
+  "name": "executionaggregation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "lastqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastqty"
+        }
+      },
+      {
+        "name": "execid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "execid"
+        }
+      },
+      {
+        "name": "tradeid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeid"
+        }
+      },
+      {
+        "name": "lastpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastpx"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ExecutionAggregation",
+    "fix:tag": "596879"
+  }
+}

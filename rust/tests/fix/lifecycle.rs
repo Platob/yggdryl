@@ -1,6 +1,8 @@
 //! One order's life across the messages that told it: the three identities
 //! the lifecycle pass stamps, the chain they join, and when it ends.
 
+use super::OneMessage;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -49,7 +51,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     let mut life = FixLifecycle::new(Arc::clone(&registry));
     let mut stamped = Vec::with_capacity(LIFE.len());
     for line in LIFE {
-        let message = reader.transform_line(line, false).expect("the line reads");
+        let message = reader.one_line(line, false).expect("the line reads");
         stamped.push(life.fill(message).expect("the stamp lands"));
         // Alive from the first message to the fill that ends it.
         assert_eq!(life.alive(), usize::from(stamped.len() < LIFE.len()));
@@ -95,7 +97,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
         .unwrap()
         .replace("20260102", "20260103");
     let again = life
-        .fill(reader.transform_line(tomorrow.as_bytes(), false).unwrap())
+        .fill(reader.one_line(tomorrow.as_bytes(), false).unwrap())
         .unwrap();
     assert_ne!(bytes(&again, PERSISTENTID_TAG).unwrap(), chains[0]);
     assert_eq!(life.alive(), 1);
@@ -103,9 +105,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     assert_eq!(life.alive(), 0);
     // The same line at the same instant is the same chain identity, which is
     // what makes two reads of one capture agree.
-    let replayed = life
-        .fill(reader.transform_line(LIFE[0], false).unwrap())
-        .unwrap();
+    let replayed = life.fill(reader.one_line(LIFE[0], false).unwrap()).unwrap();
     assert_eq!(bytes(&replayed, PERSISTENTID_TAG).unwrap(), chains[0]);
     assert_eq!(bytes(&replayed, ID_TAG), Some(ids[0].clone()));
 }
@@ -115,7 +115,7 @@ fn a_message_naming_no_order_has_an_id_and_no_chain() {
     let registry = registry();
     let reader = FixCodec::new(Arc::clone(&registry));
     let heartbeat = reader
-        .transform_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|", false)
         .unwrap();
     let mut stamped = reader.lifecycle([heartbeat]);
     let held = stamped.next().unwrap().unwrap();
@@ -134,9 +134,7 @@ fn a_message_naming_no_order_has_an_id_and_no_chain() {
     let sent = i64::from_be_bytes(bytes(&held, ID_TAG).unwrap()[..8].try_into().unwrap());
     assert_eq!(sent, 1_767_348_930_000_000);
     let undated = reader
-        .lifecycle([reader
-            .transform_line(b"8=FIX.4.4|35=0|10=0|", false)
-            .unwrap()])
+        .lifecycle([reader.one_line(b"8=FIX.4.4|35=0|10=0|", false).unwrap()])
         .next()
         .unwrap()
         .unwrap();
@@ -150,9 +148,7 @@ fn the_instrument_identity_is_the_same_across_spellings_and_venues() {
     let mut life = FixLifecycle::new(Arc::clone(&registry));
     let mut identity = |line: &[u8]| {
         bytes(
-            &life
-                .fill(reader.transform_line(line, false).unwrap())
-                .unwrap(),
+            &life.fill(reader.one_line(line, false).unwrap()).unwrap(),
             INSTID_TAG,
         )
     };
@@ -184,7 +180,7 @@ fn a_stamped_stream_read_again_keeps_what_it_carries() {
     let once: Vec<FixMsg> = reader
         .lifecycle(
             LIFE.iter()
-                .map(|line| reader.transform_line(line, false).unwrap()),
+                .map(|line| reader.one_line(line, false).unwrap()),
         )
         .map(|held| held.unwrap())
         .collect();

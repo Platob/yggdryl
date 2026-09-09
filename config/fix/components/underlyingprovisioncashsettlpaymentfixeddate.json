@@ -1,0 +1,33 @@
+{
+  "name": "underlyingprovisioncashsettlpaymentfixeddate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisioncashsettlpaymentdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlpaymentdate"
+        }
+      },
+      {
+        "name": "underlyingprovisioncashsettlpaymentdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlpaymentdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProvisionCashSettlPaymentFixedDate",
+    "fix:tag": "884901"
+  }
+}

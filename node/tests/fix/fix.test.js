@@ -21,9 +21,9 @@ const { DataType, Field, IOBase, MimeType, Scalar, Url, fields, fix } = require(
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 
 // What every registry holds before anything is inserted: the crate's own
-// nineteen fields, standard fields from tag 65000 up, which
+// twenty fields, standard fields from tag 65000 up, which
 // `new fix.FixRegistry()` seeds and `fix.crateFields()` lists.
-const CRATED = 19
+const CRATED = 20
 // The first tag the crate claims; every tag from it up is one of its own.
 const CRATE_TAG_MIN = 65000
 
@@ -31,8 +31,10 @@ function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-fix-'))
 }
 
+let seedRegistry
 function seed() {
-  return fix.FixRegistry.fromHandle(SEED)
+  seedRegistry ??= fix.FixRegistry.fromHandle(SEED)
+  return seedRegistry.clone()
 }
 
 function fixField(name, dtype, tag, { branch = fix.STANDARD_BRANCH, tags, aliases, description } = {}) {
@@ -282,12 +284,12 @@ test('the registry resolves every key the way the core does', () => {
   assert.equal(registry.fieldByPath('NoPartyIDs', '').fix.tag, 453)
   // An occurrence is not a path segment: the walk steps through the list and
   // the member is spelled directly under the counter.
-  assert.equal(registry.fieldByPath('nopartyids.partyid', '').fix.tag, 448)
-  assert.equal(registry.fieldByPath('nopartyids.partyrole', '').name, 'partyrole')
-  assert.equal(registry.getFieldByPath('nopartyids.partyid.partyid', ''), null)
+  assert.equal(registry.fieldByPath('parties.partyid', '').fix.tag, 448)
+  assert.equal(registry.fieldByPath('parties.partyrole', '').name, 'partyrole')
+  assert.equal(registry.getFieldByPath('parties.partyid.partyid', ''), null)
 
   // The generic pair answers exactly what the specialized one does.
-  for (const key of [55, 'Symbol', 'nopartyids', 'nopartyids.partyid']) {
+  for (const key of [55, 'Symbol', 'nopartyids', 'parties.partyid']) {
     const answer = registry.field(key)
     assert.ok(answer.equals(registry.getField(key)))
     assert.ok(answer.equals(registry.get(key)))
@@ -306,7 +308,7 @@ test('protocol and MsgType inference stays native and shallow', () => {
   const cases = [
     ['prefix 8=FIX.4.4|35=D|55=AAPL|10=001| Symbol=suffix', MimeType.FIX, 'D'],
     ['ACCOUNT=A1|MSGTYPE=8|SYMBOL=AAPL', MimeType.ULLINK, '8'],
-    ['8=FIX.4.4|35=UL|#SYMBOL=TTF|10=001|', MimeType.FIXUL, 'UDF'],
+    ['8=FIX.4.4|35=UL|#SYMBOL=TTF|10=001|', MimeType.FIXUL, 'UL'],
     [
       '8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|',
       MimeType.FIXUL,
@@ -323,13 +325,13 @@ test('protocol and MsgType inference stays native and shallow', () => {
   for (const [line, protocol, msgtype] of cases) {
     assert.ok(MimeType.inferBytes(Buffer.from(line)).equals(protocol))
     assert.ok(MimeType.inferText(line).equals(protocol))
-    const bytes = MimeType.inferBytesMsgtype(Buffer.from(line))
+    const bytes = fix.FixCodec.inferMsgtypeBytes(Buffer.from(line))
     assert.equal(bytes?.toString() ?? null, msgtype)
-    assert.equal(MimeType.inferTextMsgtype(line), msgtype)
+    assert.equal(fix.FixCodec.inferMsgtypeText(line), msgtype)
   }
 
-  assert.equal(MimeType.inferBytesMsgtype(Buffer.from('35=AE|')).toString(), 'AE')
-  assert.equal(MimeType.inferTextMsgtype('MSGTYPE=AE|'), 'AE')
+  assert.equal(fix.FixCodec.inferMsgtypeBytes(Buffer.from('35=AE|')).toString(), 'AE')
+  assert.equal(fix.FixCodec.inferMsgtypeText('MSGTYPE=AE|'), 'AE')
 
   // A bridge configuration states its own half of the exchange, and the
   // `send` its own payload spells is never read as the marker.
@@ -338,7 +340,7 @@ test('protocol and MsgType inference stays native and shallow', () => {
     '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
   assert.ok(MimeType.inferText(answered).equals(MimeType.ULCONFIG))
   assert.equal(MimeType.inferTextDirection(answered), 'RECV')
-  assert.equal(MimeType.inferTextMsgtype(answered), 'read')
+  assert.equal(fix.FixCodec.inferMsgtypeText(answered), 'read')
   const asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
   assert.equal(MimeType.inferTextDirection(asked), 'SENT')
 })
@@ -526,7 +528,7 @@ test('the seed iterates in canonical-tag order and every field is standard', () 
 
   const tags = [...registry].map((field) => field.fix.tag)
   assert.deepEqual(tags, [...tags].sort((left, right) => left - right))
-  // Every stored field is a specification field, and the crate's own nineteen
+  // Every stored field is a specification field, and the crate's own twenty
   // are standard fields above every published tag, so no field states a
   // branch at all - and the crate's close the walk, since nothing the seed
   // stores sits at or above their first tag.
@@ -559,44 +561,34 @@ test('the registry takes every storage location', () => {
   }
 })
 
-test('a root left in the retired layout is refused', (t) => {
+test('a malformed native shard names its location', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const old = path.join(root, 'old')
-
-  fs.mkdirSync(path.join(old, 'records', ''), { recursive: true })
-  fs.writeFileSync(path.join(old, 'records', '0.json'), '[]')
-  assert.throws(() => fix.FixRegistry.fromHandle(old), /records/)
+  fs.mkdirSync(path.join(root, 'fields'))
+  fs.writeFileSync(path.join(root, 'fields', '0.json'), '[{"name":"broken"}]')
+  assert.throws(() => fix.FixRegistry.fromHandle(root), /0.json/)
 })
 
-test('a written folder reloads equal through the two trees', (t) => {
+test('a written catalog reloads all four categories', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const dictionary = path.join(root, 'dictionary')
   const reference = seed()
-
   reference.writeInto(dictionary)
-  // A shard per hundred tags, over both trees: counted rather than listed,
-  // because the committed dictionary is six thousand fields and the listing
-  // would be the generator's output restated.
-  const primitive = fs.readdirSync(path.join(dictionary, 'primitive', '')).sort()
-  const nested = fs.readdirSync(path.join(dictionary, 'nested', '')).sort()
-  assert.ok(primitive.includes('0.json') && nested.includes('0.json'))
-  assert.equal(primitive.length + nested.length, 128)
+  assert.deepEqual(fs.readdirSync(dictionary).sort(), ['components', 'fields', 'groups', 'messages'])
+  const shards = fs.readdirSync(path.join(dictionary, 'fields'))
+  assert.equal(shards.length, 65)
   // The crate's own fields are never written - a standard field from 65000
   // up is the crate's rather than the store's - so the shard their block
   // would take is absent, and the reload holds them all the same.
-  assert.equal(primitive.includes('650.json') || nested.includes('650.json'), false)
-  // The reload is the assertion; the listing above only says it sharded.
+  assert.equal(shards.includes('650.json'), false)
   assert.ok(fix.FixRegistry.fromHandle(dictionary).equals(reference))
-
   const reloaded = fix.FixRegistry.fromHandle(new IOBase(dictionary))
-  for (const key of [453, 'partyid', 447, 452]) reloaded.remove(key)
+  for (const key of [453, 'partyid', 447, 452]) assert.equal(reloaded.remove(key), null)
+  reloaded.insert(fixField('Unreferenced', 'utf8', 39999))
+  assert.equal(reloaded.remove(39999).name, 'Unreferenced')
   reloaded.writeInto(new IOBase(dictionary))
-  // A shard of a six-thousand-field dictionary survives losing four of them;
-  // what the removal has to show is the count, not a missing file.
-  assert.ok(fs.existsSync(path.join(dictionary, 'primitive')))
-  assert.equal(fix.FixRegistry.fromHandle(dictionary).size, reference.size - 4)
+  assert.ok(fix.FixRegistry.fromHandle(dictionary).equals(reference))
 })
 
 test('a vendor branch gets its own folder', (t) => {
@@ -611,10 +603,10 @@ test('a vendor branch gets its own folder', (t) => {
   registry.writeInto(dictionary)
 
   // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
-  assert.ok(fs.existsSync(path.join(dictionary, 'primitive', '0.json')))
-  assert.ok(fs.existsSync(path.join(dictionary, 'primitive', 'cme', '50.json')))
+  assert.ok(fs.existsSync(path.join(dictionary, 'fields', '0.json')))
+  assert.ok(fs.existsSync(path.join(dictionary, 'fields', 'cme', '50.json')))
   assert.equal(
-    fs.existsSync(path.join(dictionary, 'primitive', '650.json')),
+    fs.existsSync(path.join(dictionary, 'fields', '650.json')),
     false,
     "the crate's own fields are never stored",
   )
@@ -657,13 +649,13 @@ test('insert, update and remove carry the core rules across', () => {
   // A merge concatenates the two list properties, incoming first.
   registry.update(fixField('SYMBOL', 'utf8', 55, { tags: [65], aliases: ['Sym'] }))
   const merged = registry.fieldByTag(65)
-  assert.equal(merged.name, 'SYMBOL')
+  assert.equal(merged.name, 'Symbol')
   assert.deepEqual(merged.fix.aliases, ['Sym', 'Ticker'])
   // A datatype disagreement is refused, never widened.
   assert.throws(() => registry.update(fixField('Symbol', 'large_utf8', 55)))
   assert.ok(registry.fieldByTag(55).dtype.equals(DataType.from('utf8')))
 
-  assert.equal(registry.remove('sym').name, 'SYMBOL')
+  assert.equal(registry.remove('sym').name, 'Symbol')
   assert.equal(registry.getFieldByTag(65), null)
   assert.equal(registry.remove(9999), null)
 
@@ -689,7 +681,7 @@ test('a shared registry refuses mutation and a clone is independent', () => {
   assert.equal(registry.fieldByTag(55).name, 'symbol')
   const copy = registry.clone()
   assert.ok(copy.equals(registry))
-  assert.equal(copy.remove(55).name, 'symbol')
+  copy.insert(fixField('Unreferenced', 'utf8', 39999))
   assert.equal(copy.equals(registry), false)
   assert.equal(registry.size, 6203 + CRATED)
 })
@@ -701,6 +693,7 @@ function order(registry) {
       registry.fieldByTag(55),
       registry.fieldByTag(38),
       registry.fieldByName('nopartyids', ''),
+      registry.definition('groups', 'Parties'),
       Field.from('9999: utf8'),
     ],
     { nullable: false },
@@ -710,7 +703,8 @@ function order(registry) {
 const ORDER_VALUE = {
   symbol: 'AAPL',
   orderqty: Scalar.float(100),
-  nopartyids: [{ partyid: 'BROKER', partyidsource: 'D', partyrole: 1 }],
+  nopartyids: 1,
+  parties: [{ partyid: 'BROKER', partyidsource: 'D', partyrole: 1 }],
   9999: 'custom',
 }
 
@@ -722,15 +716,15 @@ test('a message resolves through the registry it carries', () => {
   assert.ok(message.field.equals(root))
   assert.ok(message.registry.equals(registry))
   assert.equal(message.branch, fix.STANDARD_BRANCH)
-  assert.equal([...message].length, 4)
+  assert.equal([...message].length, 5)
   // `size` is what Python spells `len(message)`, and it agrees with the walk.
-  assert.equal(message.size, 4)
+  assert.equal(message.size, 5)
   assert.equal(message.size, [...message.entries()].length)
   assert.equal(message.byTag(55).asJs(), 'AAPL')
   assert.equal(message.byId('55:').asJs(), 'AAPL')
   assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
   assert.equal(message.byTag(38).toString(), '100.0')
-  assert.equal(message.byPath('nopartyids.0.partyid').asJs(), 'BROKER')
+  assert.equal(message.byPath('parties.0.partyid').asJs(), 'BROKER')
   // An unknown tag is retained under its rendered name, never dropped.
   assert.equal(message.byTag(9999).asJs(), 'custom')
   // An identifier is exact: a dictionary this message does not speak misses.
@@ -740,7 +734,7 @@ test('a message resolves through the registry it carries', () => {
   assert.ok(message.at('symbol').equals(message.byTag(55)))
   assert.equal(message.get(1234), null)
   assert.equal(message.getByName('nope'), null)
-  assert.equal(message.getByPath('nopartyids.partyid'), null)
+  assert.equal(message.getByPath('parties.partyid'), null)
   assert.throws(
     () => message.byTag(1234),
     /^Error: expected a fix value at "tag 1234", got nothing$/,
@@ -750,7 +744,7 @@ test('a message resolves through the registry it carries', () => {
     /^Error: expected a fix value at "identifier 5001:#[0-9a-f]{8}", got nothing$/,
   )
   assert.throws(() => message.byName('nope'), /name \\"nope\\"/)
-  assert.throws(() => message.byPath('nopartyids.partyid'), /path \\"nopartyids.partyid\\"/)
+  assert.throws(() => message.byPath('parties.partyid'), /path \\"parties.partyid\\"/)
   assert.throws(() => message.at(55n), {
     name: 'TypeError',
     message: 'key must be a number tag or a string name, got BigInt',
@@ -865,14 +859,14 @@ test('a message is a value: equality, hash, clone and JSON', () => {
   const copy = message.clone()
   assert.ok(copy.equals(message))
   assert.ok(copy.registry.equals(registry))
-  assert.equal(message.toString(), 'FixMsg("NewOrderSingle", 4 values)')
+  assert.equal(message.toString(), 'FixMsg("NewOrderSingle", 5 values)')
 
   const document = message.toJSON()
   assert.deepEqual(Object.keys(document), ['field', 'value'])
   assert.equal(document.field.metadata['fix:tag'], undefined, 'the root carries no tag')
   // The value document is the ordered row, not the object it was written as.
   assert.equal(document.value[0], 'AAPL')
-  assert.equal(document.value.length, 4)
+  assert.equal(document.value.length, 5)
   assert.ok(JSON.stringify(message).includes('"NewOrderSingle"'))
 })
 
@@ -888,9 +882,11 @@ test('a registry is a value: equality, hash, clone, JSON and text', () => {
   assert.equal(new fix.FixRegistry().toString(), `FixRegistry(${CRATED} fields)`)
 
   const document = registry.toJSON()
-  assert.equal(document.length, 6203 + CRATED)
-  assert.deepEqual(document[0], JSON.parse(JSON.stringify(registry.fieldByTag(1))))
-  assert.equal(document[0].metadata['fix:tag'], '1')
+  // The crate's own are seeded, never stored, so only the store's own are written.
+  assert.equal(document.fields.length, 6203)
+  assert.deepEqual(document.fields[0], JSON.parse(JSON.stringify(registry.fieldByTag(1))))
+  assert.equal(document.fields[0].metadata['fix:tag'], '1')
+  assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
 })
 
 test('the fix namespace is frozen and the raw exports are gone', () => {
@@ -902,17 +898,22 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
     [
       'FixCodec',
       'FixLifecycle',
+      'FixMessages',
       'FixMsg',
       'FixRegistry',
+      'MsgType',
       'STANDARD_BRANCH',
       'USER_TAG_MAX',
       'USER_TAG_MIN',
+      'UlPlugin',
+      'UlPlugins',
       'crateFields',
       'globalRegistry',
       'installGlobalRegistry',
       'schema',
       'schemaCarrying',
       'schemaTags',
+      'ulbridgeFields',
     ],
   )
   assert.equal(fix.STANDARD_BRANCH, '')
@@ -971,8 +972,8 @@ test('a reader parses every frame shape the core reads', () => {
   const registry = seed()
   const reader = new fix.FixCodec(registry)
 
-  assert.equal(reader.transformLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|')).byTag(55).toJSON(), 'AAPL')
-  assert.equal(reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')).byTag(55).toJSON(), 'AAPL')
+  assert.equal(reader.transformLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|')).next().value.byTag(55).toJSON(), 'AAPL')
+  assert.equal(reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')).next().value.byTag(55).toJSON(), 'AAPL')
   assert.equal(
     reader.transformFixLine(Buffer.from('8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01'), 1).byTag(55).toJSON(),
     'AAPL',
@@ -988,7 +989,7 @@ test('a reader parses every frame shape the core reads', () => {
   assert.deepEqual([...pairs].map(([name]) => name), ['beginstring', 'symbol', 'timestamp'])
   assert.equal(pairs.byTag(8).toJSON(), 'FIX.4.2')
   assert.deepEqual(pairs.arrivals().map(([tag]) => tag), [55])
-  assert.equal(pairs.toBytes(124).toString(), '55=AAPL|')
+  assert.equal(pairs.intoBytes(124).toString(), '55=AAPL|')
 
   // A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
   // whose value packs its members behind the two control bytes ULLINK uses.
@@ -1005,7 +1006,7 @@ test('a reader parses every frame shape the core reads', () => {
         '|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|',
       'binary',
     ),
-  )
+  ).next().value
   assert.ok(inferred.equals(bridge))
   assert.equal(bridge.byTag(55).toJSON(), 'TTF')
   assert.equal(bridge.byTag(38).toJSON(), 1200)
@@ -1025,14 +1026,14 @@ test('a reader takes the pins the core takes', () => {
   // dictionary's own whatever version read the row, and the 4.2 spelling still
   // reaches it as an alias.
   const dated = new fix.FixCodec(registry, { version: '4.2' })
-  const named = dated.transformLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|'))
+  const named = dated.transformLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|')).next().value
   assert.ok(named.field.indexOf('lastqty') !== null)
   assert.ok(named.getByName('lastshares') !== null)
   assert.ok(named.getByName('lastqty') !== null)
 
   // A stated absence produces no field at all.
   const silent = new fix.FixCodec(registry, { nullValues: ['<none>'] })
-  assert.equal(silent.transformLine(Buffer.from('8=FIX.4.4|35=D|55=<none>|10=0|')).getByTag(55), null)
+  assert.equal(silent.transformLine(Buffer.from('8=FIX.4.4|35=D|55=<none>|10=0|')).next().value.getByTag(55), null)
 
   assert.throws(() => new fix.FixCodec(registry, { branch: 'not a branch' }))
 })
@@ -1044,25 +1045,25 @@ test('a reader fills what the line implied and leaves the wire alone', () => {
   // check digit closes has stated its source, and under that source the
   // crate's `isincode` column and the country its prefix names.
   const line = '8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|'
-  const filled = reader.transformLine(Buffer.from(line), true)
+  const filled = reader.transformLine(Buffer.from(line), true).next().value
   assert.equal(filled.byTag(22).toJSON(), '4')
   assert.equal(filled.byTag(65013).toJSON(), 'US0378331005')
   assert.equal(filled.byTag(470).toJSON(), 'US')
   assert.equal(filled.byTag(59).toJSON(), '0', 'an order stating no time in force is a day order')
 
   // Without the flag the line states none of them.
-  const bare = reader.transformLine(Buffer.from(line))
+  const bare = reader.transformLine(Buffer.from(line)).next().value
   assert.equal(bare.getByTag(22), null)
   assert.equal(bare.getByTag(65013), null)
   assert.equal(bare.getByTag(470), null)
 
   // Only the row was filled: the wire comes back byte for byte, and a second
   // pass changes nothing.
-  assert.equal(filled.toBytes('|'.charCodeAt(0)).toString(), line)
+  assert.equal(filled.intoBytes('|'.charCodeAt(0)).toString(), line)
   assert.ok(reader.enrichFixmsg(filled).equals(filled))
 
   // A value no standard closes answers nothing rather than a guess.
-  const opaque = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|'), true)
+  const opaque = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|'), true).next().value
   assert.equal(opaque.getByTag(22), null)
   assert.equal(opaque.getByTag(65013), null)
 })
@@ -1099,7 +1100,7 @@ test('every message of one order carries the chain identity until it ends', () =
   const life = new fix.FixLifecycle(registry)
   const stamped = []
   for (const line of LIFE) {
-    stamped.push(life.fill(reader.transformLine(Buffer.from(line))))
+    stamped.push(life.fill(reader.transformLine(Buffer.from(line)).next().value))
     // Alive from the first message to the fill that ends it.
     assert.equal(life.alive, stamped.length < LIFE.length ? 1 : 0)
   }
@@ -1127,14 +1128,14 @@ test('every message of one order carries the chain identity until it ends', () =
 
   // Nothing here is an entry: the wire re-emits byte for byte.
   for (const [at, line] of LIFE.entries()) {
-    assert.equal(stamped[at].toBytes(PIPE).toString(), line)
+    assert.equal(stamped[at].intoBytes(PIPE).toString(), line)
   }
 
   // The identifier a venue reuses tomorrow opens a new chain rather than
   // joining yesterday's, which ended: dated by its own clock, it is another
   // identity.
   const tomorrow = LIFE[0].replaceAll('20260102', '20260103')
-  const again = life.fill(reader.transformLine(Buffer.from(tomorrow)))
+  const again = life.fill(reader.transformLine(Buffer.from(tomorrow)).next().value)
   assert.equal(identity(again, PERSISTENTID).equals(chains[0]), false)
   assert.equal(life.alive, 1)
   assert.equal(life.toString(), 'FixLifecycle(1 alive)')
@@ -1143,13 +1144,13 @@ test('every message of one order carries the chain identity until it ends', () =
   assert.equal(String(life), 'FixLifecycle(0 alive)')
   // The same line at the same instant is the same chain identity, which is
   // what makes two reads of one capture agree.
-  const replayed = life.fill(reader.transformLine(Buffer.from(LIFE[0])))
+  const replayed = life.fill(reader.transformLine(Buffer.from(LIFE[0])).next().value)
   assert.ok(identity(replayed, PERSISTENTID).equals(chains[0]))
   assert.ok(identity(replayed, ID).equals(ids[0]))
 
   // Over an array, the reader runs one lifecycle for the whole stream, and a
   // stamped stream read again keeps what it carries.
-  const once = reader.lifecycle(LIFE.map((line) => reader.transformLine(Buffer.from(line))))
+  const once = reader.lifecycle(LIFE.map((line) => reader.transformLine(Buffer.from(line)).next().value))
   const twice = reader.lifecycle(once)
   assert.equal(once.length, LIFE.length)
   for (const [at, first] of once.entries()) {
@@ -1165,7 +1166,7 @@ test('every message of one order carries the chain identity until it ends', () =
 test('a message naming no order has an id and no chain', () => {
   const reader = new fix.FixCodec(seed())
   const [heartbeat] = reader.lifecycle([
-    reader.transformLine(Buffer.from('8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|')),
+    reader.transformLine(Buffer.from('8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|')).next().value,
   ])
   const sent = identity(heartbeat, ID)
   assert.notEqual(sent, null, 'every message has an id')
@@ -1174,7 +1175,7 @@ test('a message naming no order has an id and no chain', () => {
   // The impact clock is the sending time where no transaction time is
   // stated, and the epoch where the message states no clock at all.
   assert.equal(sent.readBigInt64BE(0), 1_767_348_930_000_000n)
-  const [undated] = reader.lifecycle([reader.transformLine(Buffer.from('8=FIX.4.4|35=0|10=0|'))])
+  const [undated] = reader.lifecycle([reader.transformLine(Buffer.from('8=FIX.4.4|35=0|10=0|')).next().value])
   assert.ok(identity(undated, ID).subarray(0, 8).equals(Buffer.alloc(8)))
 
   // A lifecycle over the process default is the same pass: the columns are
@@ -1190,7 +1191,7 @@ test('the instrument identity is the same across spellings and venues', () => {
   const registry = seed()
   const reader = new fix.FixCodec(registry)
   const life = new fix.FixLifecycle(registry)
-  const instrument = (line) => identity(life.fill(reader.transformLine(Buffer.from(line))), INSTID)
+  const instrument = (line) => identity(life.fill(reader.transformLine(Buffer.from(line)).next().value), INSTID)
   // An ISIN outranks a symbol, so the same security under two symbols is one
   // instrument, and case is not a difference.
   const byIsin = instrument('8=FIX.4.4|35=D|11=B1|48=US0378331005|22=4|55=AAPL|207=XNAS|15=USD|10=0|')
@@ -1222,9 +1223,10 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
   // The crate's own facts close the columns, and FIX's own `MsgDirection`
   // after them, because no message carries it on the wire.
-  assert.deepEqual(fix.schemaTags().slice(-20), [
+  assert.deepEqual(fix.schemaTags().slice(-21), [
     65000, 65001, 65002, 65003, 65004, 65005, 65006, 65007, 65008, 65009,
-    65010, 65011, 65012, 65013, 65014, 65015, 65016, 65017, 65018, 385,
+    65010, 65011, 65012, 65013, 65014, 65015, 65016, 65017, 65018, 65019,
+    385,
   ])
 
   // A column is found by its folded name, and nothing else is needed.
@@ -1244,8 +1246,8 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.deepEqual(required, ['beginstring', 'msghash', 'timestamp', 'unixpartition'])
 
   const reader = new fix.FixCodec(registry)
-  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|'))
-  const row = message.toRow(schema).toJSON()
+  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|')).next().value
+  const row = message.intoRow(schema).toJSON()
   assert.equal(row.length, schema.fieldLen)
   assert.equal(row[schema.indexOf('beginstring')], 'FIX.4.4')
   assert.equal(row[schema.indexOf('msgtype')], 'D')
@@ -1279,12 +1281,12 @@ test("a capture's own columns lead the row", () => {
 
   // A column no tag names is the capture's, so a row answers null there: the
   // capture fills it, and nothing in the message says what it held.
-  const row = new fix.FixCodec(registry).transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|')).toRow(carried).toJSON()
+  const row = new fix.FixCodec(registry).transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|')).next().value.intoRow(carried).toJSON()
   assert.equal(row[0], null)
   assert.equal(row[carried.indexOf('msgtype')], 'D')
 
   // A capture column whose folded name a FIX column takes is not carried in
-  // front: `sessionId` and `sessionid` are one name, and the FIX column is
+  // front: `senderSessionId` and `sendersessionid` are one name, and the FIX column is
   // the one a reader spelling it means - the session the message itself
   // states. A bridge's own session instance is therefore captured as
   // `sessionUid`, a name no FIX column takes, and leads the row.
@@ -1293,16 +1295,16 @@ test("a capture's own columns lead the row", () => {
     [
       fields.utf8('url', { nullable: false }),
       fields.binary('body', { nullable: false }),
-      fields.utf8('sessionId'),
+      fields.utf8('senderSessionId'),
       fields.utf8('sessionUid'),
     ],
     { nullable: false },
   )
   const folded = fix.schemaCarrying(stamped, plain)
   assert.equal(folded.fieldLen, plain.fieldLen + 3)
-  assert.equal(folded.indexOf('sessionId'), null)
+  assert.equal(folded.indexOf('senderSessionId'), null)
   assert.equal(folded.indexOf('sessionUid'), 2)
-  assert.equal(folded.indexOf('sessionid'), plain.indexOf('sessionid') + 3)
+  assert.equal(folded.indexOf('sendersessionid'), plain.indexOf('sendersessionid') + 3)
 })
 
 test('the crate fields declare their own protocols', () => {
@@ -1318,18 +1320,19 @@ test('the crate fields declare their own protocols', () => {
       'unixpartition',
       'parentclordid',
       'parentorderid',
-      'sessionid',
+      'sendersessionid',
       'msgctxid',
       'senderpluginid',
       'targetpluginid',
-      'senderpluginsession',
-      'targetpluginsession',
+      'sendersessionname',
+      'targetsessionname',
       'isincode',
       'miccode',
       'state',
       'instid',
       'id',
       'persistentid',
+      'targetsessionid',
     ],
   )
   assert.deepEqual(
@@ -1342,18 +1345,19 @@ test('the crate fields declare their own protocols', () => {
       'UnixPartition',
       'ParentClOrdID',
       'ParentOrderID',
-      'SessionId',
+      'SenderSessionId',
       'MsgCtxId',
       'SenderPluginId',
       'TargetPluginId',
-      'SenderPluginSession',
-      'TargetPluginSession',
+      'SenderSessionName',
+      'TargetSessionName',
       'ISINCode',
       'MICCode',
       'State',
       'InstId',
       'Id',
       'PersistentId',
+      'TargetSessionId',
     ],
   )
   // In tag order, on the standard branch, from 65000 up: above every tag FIX
@@ -1385,12 +1389,12 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   assert.deepEqual(
     held.map((field) => [field.name, field.display, field.fix.id]),
     [
-      ['sessionid', 'SessionId', '65007:'],
+      ['sendersessionid', 'SenderSessionId', '65007:'],
       ['msgctxid', 'MsgCtxId', '65008:'],
       ['senderpluginid', 'SenderPluginId', '65009:'],
       ['targetpluginid', 'TargetPluginId', '65010:'],
-      ['senderpluginsession', 'SenderPluginSession', '65011:'],
-      ['targetpluginsession', 'TargetPluginSession', '65012:'],
+      ['sendersessionname', 'SenderSessionName', '65011:'],
+      ['targetsessionname', 'TargetSessionName', '65012:'],
     ],
   )
   assert.ok(held.every((field) => field.dtype.equals(DataType.from('utf8'))))
@@ -1420,7 +1424,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   // And the three identities a lifecycle pass stamps - the instrument, the
   // message and the order chain - sixteen bytes each, so a monitor joins on
   // them as it joins on the digest.
-  const identities = fix.crateFields().slice(16)
+  const identities = fix.crateFields().slice(16, 19)
   assert.deepEqual(
     identities.map((field) => [field.name, field.display, field.fix.id, field.dtype.toString()]),
     [
@@ -1439,12 +1443,12 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
     seed(),
     fix.FixRegistry.fromFields([fixField('Symbol', 'utf8', 55)]),
   ]) {
-    assert.equal(registry.fieldById('65007:').name, 'sessionid')
-    assert.equal(registry.fieldByName('SessionId', fix.STANDARD_BRANCH).fix.tag, 65007)
-    assert.equal(registry.fieldByTag(65012).name, 'targetpluginsession')
+    assert.equal(registry.fieldById('65007:').name, 'sendersessionid')
+    assert.equal(registry.fieldByName('SenderSessionId', fix.STANDARD_BRANCH).fix.tag, 65007)
+    assert.equal(registry.fieldByTag(65012).name, 'targetsessionname')
     assert.equal(registry.field('msgctxid').fix.id, '65008:')
     assert.equal(registry.has('senderpluginid'), true)
-    assert.equal(registry.fieldByName('ULToSessionName', fix.STANDARD_BRANCH).name, 'targetpluginsession')
+    assert.equal(registry.fieldByName('ULToSessionName', fix.STANDARD_BRANCH).name, 'targetsessionname')
   }
 
   // And each is a column of the fixed row, typed by the crate's own
@@ -1462,7 +1466,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
 test('a message says everything the core derives about it', () => {
   const registry = seed()
   const reader = new fix.FixCodec(registry)
-  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|207=XNAS|54=1|44=10.5|38=100|60=20240201-12:34:56|10=0|'))
+  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|207=XNAS|54=1|44=10.5|38=100|60=20240201-12:34:56|10=0|')).next().value
 
   assert.equal(message.symbolTicker().toJSON(), 'AAPL@XNAS')
   assert.ok(message.marketTimestamp() !== null)
@@ -1475,7 +1479,7 @@ test('a message says everything the core derives about it', () => {
   // A row derives the market from the first MIC the message names, and
   // leaves the ISIN and the state null when it stated no source for either.
   const schema = fix.schema(registry, 'FixMessage')
-  const row = message.toRow(schema).toJSON()
+  const row = message.intoRow(schema).toJSON()
   assert.equal(row[schema.indexOf('miccode')], 'XNAS')
   assert.equal(row[schema.indexOf('isincode')], null)
   assert.equal(row[schema.indexOf('state')], null)
@@ -1489,7 +1493,7 @@ test('a message says everything the core derives about it', () => {
   // Every arrival states its dialect as the branch digest, and a message read
   // under no dialect is on the standard branch, whose digest is zero.
   assert.ok(message.arrivals().every(([, bid]) => bid === 0))
-  assert.equal(message.toBytes(124).toString().split('|')[0], '8=FIX.4.4')
+  assert.equal(message.intoBytes(124).toString().split('|')[0], '8=FIX.4.4')
 })
 
 test('a dialect crosses as its digest and the registry resolves it back', () => {
@@ -1512,7 +1516,7 @@ test('a dialect crosses as its digest and the registry resolves it back', () => 
   // digest the registry turns back into the branch. Without that table an
   // outside reader would have to reproduce the hash to join the two.
   const reader = new fix.FixCodec(registry, { branch: 'bloomberg' })
-  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|'))
+  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|')).next().value
   const [, bid] = message.arrivals()[0]
   assert.notEqual(bid, 0)
   assert.equal(registry.branchByDigest(bid), 'bloomberg')
@@ -1526,26 +1530,18 @@ test('a dialect crosses as its digest and the registry resolves it back', () => 
   assert.throws(() => registry.branchByDigest(-1))
 })
 
-test('a message type registers under the name and wording it is given', () => {
+test('a message type keeps its complete wire code and immutable schema', () => {
   const registry = new fix.FixRegistry()
   registry.insert(fixField('msgtype', 'utf8', 35))
-
-  // What fits the column is itself; a bridge's composite key is hashed into
-  // what fits, under the name and the wording the caller gives it.
-  assert.equal(registry.registerMsgtype('D'), 'D')
-  const value = registry.registerMsgtype(
-    'P Report Ack',
-    'AllocationReportAck',
-    'Allocation Report ACK',
-  )
-  assert.match(value, /^~/)
-  const codes = registry.fieldByTag(35).get('fix:codes')
-  assert.match(codes, /"name":"AllocationReportAck"/)
-  assert.match(codes, /P Report Ack/)
-  assert.match(codes, /Allocation Report ACK/)
-
-  // Idempotent: registering it again answers the same value.
-  assert.equal(registry.registerMsgtype('P Report Ack'), value)
+  const value = registry.registerMsgtype('P Report Ack', 'AllocationReportAck', 'Allocation Report ACK')
+  assert.equal(value.asStr(), 'P Report Ack')
+  assert.equal(value.name, 'allocationreportack')
+  assert.match(registry.fieldByTag(35).get('fix:codes'), /"name":"AllocationReportAck"/)
+  assert.match(registry.fieldByTag(35).get('fix:codes'), /P Report Ack/)
+  assert.equal(value.asField().fix.msgtype, 'P Report Ack')
+  assert.throws(() => registry.registerMsgtype('X'), /shared/)
+  const copy = registry.clone()
+  assert.ok(copy.registerMsgtype('P Report Ack').equals(value))
 })
 
 test('a CBlock refusal crosses with the byte, the content and the element', () => {

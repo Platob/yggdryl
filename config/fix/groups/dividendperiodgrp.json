@@ -1,0 +1,24 @@
+{
+  "name": "dividendperiodgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "dividendperiod",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "dividendperiod"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoDividendPeriods(42274) > 0.",
+    "display": "DividendPeriodGrp",
+    "fix:component": "dividendperiod",
+    "fix:counter": "42274",
+    "fix:tag": "386387"
+  }
+}

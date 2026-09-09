@@ -1,0 +1,24 @@
+{
+  "name": "paymentstreamformulamathgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreamformulamath",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentstreamformulamath"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentStreamFormulas(42683) > 0.",
+    "display": "PaymentStreamFormulaMathGrp",
+    "fix:component": "paymentstreamformulamath",
+    "fix:counter": "42683",
+    "fix:tag": "916380"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "derivativesecurityxmlcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "derivativesecurityxmllen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecurityxmllen"
+        }
+      },
+      {
+        "name": "derivativesecurityxml",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecurityxml"
+        }
+      },
+      {
+        "name": "derivativesecurityxmlschema",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecurityxmlschema"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Must be set if DerivativeSecurityXML(1283) field is specified and must immediately precede it.",
+    "display": "DerivativeSecurityXML",
+    "fix:tag": "252421"
+  }
+}

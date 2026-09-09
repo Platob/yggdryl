@@ -1,0 +1,24 @@
+{
+  "name": "marketdisruptioneventgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "marketdisruptioneventcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "marketdisruptioneventcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoMarketDisruptionEvents(41092) > 0.",
+    "display": "MarketDisruptionEventGrp",
+    "fix:component": "marketdisruptioneventcomponent",
+    "fix:counter": "41092",
+    "fix:tag": "241810"
+  }
+}

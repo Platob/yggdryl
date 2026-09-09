@@ -1,0 +1,24 @@
+{
+  "name": "streamcalculationperioddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamcalculationperioddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "streamcalculationperioddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoStreamCalculationPeriodDates(41241) > 0.",
+    "display": "StreamCalculationPeriodDateGrp",
+    "fix:component": "streamcalculationperioddatecomponent",
+    "fix:counter": "41241",
+    "fix:tag": "572253"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "optionexerciseexpirationdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "optionexerciseexpirationdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "OptionExerciseExpirationDateBusinessCenter",
+    "fix:tag": "943460"
+  }
+}

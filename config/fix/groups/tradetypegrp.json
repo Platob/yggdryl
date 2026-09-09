@@ -1,0 +1,24 @@
+{
+  "name": "tradetypegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradetypecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "tradetypecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTradeTypes(3005) > 0.",
+    "display": "TradeTypeGrp",
+    "fix:component": "tradetypecomponent",
+    "fix:counter": "3005",
+    "fix:tag": "630004"
+  }
+}

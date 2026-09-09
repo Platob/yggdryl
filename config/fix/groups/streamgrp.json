@@ -1,0 +1,24 @@
+{
+  "name": "streamgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "stream",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "stream"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoStreams(40049) > 0.",
+    "display": "StreamGrp",
+    "fix:component": "stream",
+    "fix:counter": "40049",
+    "fix:tag": "504476"
+  }
+}

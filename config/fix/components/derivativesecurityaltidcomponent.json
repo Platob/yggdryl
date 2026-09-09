@@ -1,0 +1,33 @@
+{
+  "name": "derivativesecurityaltidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "derivativesecurityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecurityaltid"
+        }
+      },
+      {
+        "name": "derivativesecurityaltidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecurityaltidsource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DerivativeSecurityAltID",
+    "fix:tag": "1082056"
+  }
+}

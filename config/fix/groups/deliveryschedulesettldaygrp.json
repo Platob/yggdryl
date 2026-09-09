@@ -1,0 +1,24 @@
+{
+  "name": "deliveryschedulesettldaygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "deliveryschedulesettldaycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "deliveryschedulesettldaycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoDeliveryScheduleSettlDays(41051) > 0.",
+    "display": "DeliveryScheduleSettlDayGrp",
+    "fix:component": "deliveryschedulesettldaycomponent",
+    "fix:counter": "41051",
+    "fix:tag": "988747"
+  }
+}

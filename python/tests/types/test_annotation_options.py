@@ -34,10 +34,9 @@ def test_field_options_resolve_left_to_right_before_caller_metadata() -> None:
     assert dict(field.metadata.items()) == {
         "PARQUET:field_id": "7",
         "nullable": "metadata-value",
-        "python.class": "Decimal",
-        "python.kind": "class",
-        "python.module": "decimal",
-        "python.qualname": "Decimal",
+        "python:kind": "class",
+        "python:module": "decimal",
+        "python:qualname": "Decimal",
         "role": "settlement",
         "source": "caller",
         "unit": "usd",

@@ -1,0 +1,24 @@
+{
+  "name": "provisiondatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provisiondatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "provisiondatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProvisionDateBusinessCenters(40957) > 0.",
+    "display": "ProvisionDateBusinessCenterGrp",
+    "fix:component": "provisiondatebusinesscentercomponent",
+    "fix:counter": "40957",
+    "fix:tag": "506213"
+  }
+}

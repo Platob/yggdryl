@@ -1,0 +1,433 @@
+{
+  "name": "payment",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymenttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymenttype"
+        }
+      },
+      {
+        "name": "paymentsubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentsubtype"
+        }
+      },
+      {
+        "name": "paymentpayside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentpayside"
+        }
+      },
+      {
+        "name": "paymentreceiveside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentreceiveside"
+        }
+      },
+      {
+        "name": "paymentdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentdesc"
+        }
+      },
+      {
+        "name": "paymentcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentcurrency"
+        }
+      },
+      {
+        "name": "paymentamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentamount"
+        }
+      },
+      {
+        "name": "paymentamountrelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentamountrelativeto"
+        }
+      },
+      {
+        "name": "paymentamountdeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentamountdeterminationmethod"
+        }
+      },
+      {
+        "name": "paymentfixedrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentfixedrate"
+        }
+      },
+      {
+        "name": "paymentfloatingrateindex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentfloatingrateindex"
+        }
+      },
+      {
+        "name": "paymentfloatingrateindexcurveunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentfloatingrateindexcurveunit"
+        }
+      },
+      {
+        "name": "paymentfloatingrateindexcurveperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentfloatingrateindexcurveperiod"
+        }
+      },
+      {
+        "name": "paymentfloatingratespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentfloatingratespread"
+        }
+      },
+      {
+        "name": "paymentrateresetfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentrateresetfrequencyunit"
+        }
+      },
+      {
+        "name": "paymentrateresetfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentrateresetfrequencyperiod"
+        }
+      },
+      {
+        "name": "paymentfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentfrequencyunit"
+        }
+      },
+      {
+        "name": "paymentfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentfrequencyperiod"
+        }
+      },
+      {
+        "name": "paymentprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentprice"
+        }
+      },
+      {
+        "name": "paymentpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentpricetype"
+        }
+      },
+      {
+        "name": "paymentunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentunitofmeasure"
+        }
+      },
+      {
+        "name": "paymentdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentdateunadjusted"
+        }
+      },
+      {
+        "name": "paymentbusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentbusinessdayconvention"
+        }
+      },
+      {
+        "name": "nopaymentbusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentbusinesscenters"
+        }
+      },
+      {
+        "name": "paymentbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentbusinesscentergrp"
+        }
+      },
+      {
+        "name": "paymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentdaterelativeto"
+        }
+      },
+      {
+        "name": "paymentdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentdateoffsetperiod"
+        }
+      },
+      {
+        "name": "paymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "paymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "paymentdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentdateadjusted"
+        }
+      },
+      {
+        "name": "paymentforwardstarttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentforwardstarttype"
+        }
+      },
+      {
+        "name": "paymentdiscountfactor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentdiscountfactor"
+        }
+      },
+      {
+        "name": "paymentpresentvalueamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentpresentvalueamount"
+        }
+      },
+      {
+        "name": "paymentpresentvaluecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentpresentvaluecurrency"
+        }
+      },
+      {
+        "name": "paymentsettlstyle",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentsettlstyle"
+        }
+      },
+      {
+        "name": "paymentmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentmethod"
+        }
+      },
+      {
+        "name": "nopaymentsettls",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentsettls"
+        }
+      },
+      {
+        "name": "paymentsettlgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentsettlgrp"
+        }
+      },
+      {
+        "name": "paymentlegrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentlegrefid"
+        }
+      },
+      {
+        "name": "paymenttext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymenttext"
+        }
+      },
+      {
+        "name": "encodedpaymenttextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedpaymenttextlen"
+        }
+      },
+      {
+        "name": "encodedpaymenttext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedpaymenttext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Payment",
+    "fix:tag": "445397"
+  }
+}

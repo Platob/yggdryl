@@ -1,0 +1,24 @@
+{
+  "name": "newsrefgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "newsref",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "newsref"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of news item references",
+    "display": "NewsRefGrp",
+    "fix:component": "newsref",
+    "fix:counter": "1475",
+    "fix:tag": "589780"
+  }
+}

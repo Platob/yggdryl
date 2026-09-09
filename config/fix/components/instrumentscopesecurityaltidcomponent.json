@@ -1,0 +1,33 @@
+{
+  "name": "instrumentscopesecurityaltidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrumentscopesecurityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesecurityaltid"
+        }
+      },
+      {
+        "name": "instrumentscopesecurityaltidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopesecurityaltidsource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "InstrumentScopeSecurityAltID",
+    "fix:tag": "956709"
+  }
+}

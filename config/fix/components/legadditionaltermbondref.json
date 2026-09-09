@@ -1,0 +1,193 @@
+{
+  "name": "legadditionaltermbondref",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legadditionaltermbondsecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondsecurityid"
+        }
+      },
+      {
+        "name": "legadditionaltermbondsecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondsecurityidsource"
+        }
+      },
+      {
+        "name": "legadditionaltermbonddesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbonddesc"
+        }
+      },
+      {
+        "name": "encodedlegadditionaltermbonddesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegadditionaltermbonddesclen"
+        }
+      },
+      {
+        "name": "encodedlegadditionaltermbonddesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegadditionaltermbonddesc"
+        }
+      },
+      {
+        "name": "legadditionaltermbondcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondcurrency"
+        }
+      },
+      {
+        "name": "legadditionaltermbondissuer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondissuer"
+        }
+      },
+      {
+        "name": "encodedlegadditionaltermbondissuerlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegadditionaltermbondissuerlen"
+        }
+      },
+      {
+        "name": "encodedlegadditionaltermbondissuer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegadditionaltermbondissuer"
+        }
+      },
+      {
+        "name": "legadditionaltermbondseniority",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondseniority"
+        }
+      },
+      {
+        "name": "legadditionaltermbondcoupontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondcoupontype"
+        }
+      },
+      {
+        "name": "legadditionaltermbondcouponrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondcouponrate"
+        }
+      },
+      {
+        "name": "legadditionaltermbondmaturitydate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondmaturitydate"
+        }
+      },
+      {
+        "name": "legadditionaltermbondparvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondparvalue"
+        }
+      },
+      {
+        "name": "legadditionaltermbondcurrenttotalissuedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondcurrenttotalissuedamount"
+        }
+      },
+      {
+        "name": "legadditionaltermbondcouponfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondcouponfrequencyperiod"
+        }
+      },
+      {
+        "name": "legadditionaltermbondcouponfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbondcouponfrequencyunit"
+        }
+      },
+      {
+        "name": "legadditionaltermbonddaycount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legadditionaltermbonddaycount"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegAdditionalTermBondRef",
+    "fix:tag": "269960"
+  }
+}

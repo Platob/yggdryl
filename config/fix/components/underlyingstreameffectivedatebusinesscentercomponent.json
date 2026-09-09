@@ -1,0 +1,23 @@
+{
+  "name": "underlyingstreameffectivedatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreameffectivedatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreameffectivedatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStreamEffectiveDateBusinessCenter",
+    "fix:tag": "843776"
+  }
+}

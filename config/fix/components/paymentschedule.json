@@ -1,0 +1,623 @@
+{
+  "name": "paymentschedule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentscheduletype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduletype"
+        }
+      },
+      {
+        "name": "paymentschedulexid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulexid"
+        }
+      },
+      {
+        "name": "paymentschedulexidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulexidref"
+        }
+      },
+      {
+        "name": "paymentschedulestubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulestubtype"
+        }
+      },
+      {
+        "name": "paymentschedulestartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulestartdateunadjusted"
+        }
+      },
+      {
+        "name": "paymentscheduleenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleenddateunadjusted"
+        }
+      },
+      {
+        "name": "paymentschedulepayside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulepayside"
+        }
+      },
+      {
+        "name": "paymentschedulereceiveside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulereceiveside"
+        }
+      },
+      {
+        "name": "paymentschedulenotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulenotional"
+        }
+      },
+      {
+        "name": "paymentschedulecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulecurrency"
+        }
+      },
+      {
+        "name": "paymentschedulerate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulerate"
+        }
+      },
+      {
+        "name": "paymentscheduleratemultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleratemultiplier"
+        }
+      },
+      {
+        "name": "paymentscheduleratespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleratespread"
+        }
+      },
+      {
+        "name": "paymentscheduleratecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleratecurrency"
+        }
+      },
+      {
+        "name": "paymentschedulerateunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulerateunitofmeasure"
+        }
+      },
+      {
+        "name": "paymentschedulerateconversionfactor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulerateconversionfactor"
+        }
+      },
+      {
+        "name": "paymentscheduleratespreadtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleratespreadtype"
+        }
+      },
+      {
+        "name": "paymentscheduleratespreadpositiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleratespreadpositiontype"
+        }
+      },
+      {
+        "name": "paymentscheduleratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleratetreatment"
+        }
+      },
+      {
+        "name": "paymentschedulefixedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixedamount"
+        }
+      },
+      {
+        "name": "paymentschedulefixedcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixedcurrency"
+        }
+      },
+      {
+        "name": "paymentschedulesettlperiodprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulesettlperiodprice"
+        }
+      },
+      {
+        "name": "paymentschedulesettlperiodpricecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulesettlperiodpricecurrency"
+        }
+      },
+      {
+        "name": "paymentschedulesettlperiodpriceunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulesettlperiodpriceunitofmeasure"
+        }
+      },
+      {
+        "name": "paymentschedulestepunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulestepunitofmeasure"
+        }
+      },
+      {
+        "name": "paymentschedulestepfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulestepfrequencyperiod"
+        }
+      },
+      {
+        "name": "paymentschedulestepfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulestepfrequencyunit"
+        }
+      },
+      {
+        "name": "paymentschedulestepoffsetvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulestepoffsetvalue"
+        }
+      },
+      {
+        "name": "paymentschedulesteprate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulesteprate"
+        }
+      },
+      {
+        "name": "paymentschedulestepoffsetrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulestepoffsetrate"
+        }
+      },
+      {
+        "name": "paymentschedulesteprelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulesteprelativeto"
+        }
+      },
+      {
+        "name": "nopaymentscheduleratesources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentscheduleratesources"
+        }
+      },
+      {
+        "name": "paymentscheduleratesourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentscheduleratesourcegrp"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdateunadjusted"
+        }
+      },
+      {
+        "name": "paymentscheduleweight",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleweight"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdaterelativeto"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nopaymentschedulefixingdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentschedulefixingdatebusinesscenters"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentschedulefixingdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdateoffsetperiod"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdateoffsetunit"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdaydistribution",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdaydistribution"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdaycount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdaycount"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdateadjusted"
+        }
+      },
+      {
+        "name": "nopaymentschedulefixingdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentschedulefixingdays"
+        }
+      },
+      {
+        "name": "paymentschedulefixingdaygrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentschedulefixingdaygrp"
+        }
+      },
+      {
+        "name": "paymentschedulefixinglagperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixinglagperiod"
+        }
+      },
+      {
+        "name": "paymentschedulefixinglagunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixinglagunit"
+        }
+      },
+      {
+        "name": "paymentschedulefixingfirstobservationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingfirstobservationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "paymentschedulefixingfirstobservationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingfirstobservationdateoffsetunit"
+        }
+      },
+      {
+        "name": "paymentschedulefixingtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingtime"
+        }
+      },
+      {
+        "name": "paymentschedulefixingtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingtimebusinesscenter"
+        }
+      },
+      {
+        "name": "paymentscheduleinterimexchangepaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleinterimexchangepaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "paymentscheduleinterimexchangedatesbusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleinterimexchangedatesbusinessdayconvention"
+        }
+      },
+      {
+        "name": "nopaymentscheduleinterimexchangedatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentscheduleinterimexchangedatebusinesscenters"
+        }
+      },
+      {
+        "name": "paymentscheduleinterimexchangedatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentscheduleinterimexchangedatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "paymentscheduleinterimexchangedatesoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleinterimexchangedatesoffsetperiod"
+        }
+      },
+      {
+        "name": "paymentscheduleinterimexchangedatesoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleinterimexchangedatesoffsetunit"
+        }
+      },
+      {
+        "name": "paymentscheduleinterimexchangedatesoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleinterimexchangedatesoffsetdaytype"
+        }
+      },
+      {
+        "name": "paymentscheduleinterimexchangedateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleinterimexchangedateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentSchedule",
+    "fix:tag": "948357"
+  }
+}

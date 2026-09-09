@@ -1,0 +1,33 @@
+{
+  "name": "expirationqtycomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "expirationqtytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "expirationqtytype"
+        }
+      },
+      {
+        "name": "expqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "expqty"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ExpirationQty",
+    "fix:tag": "401656"
+  }
+}

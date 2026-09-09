@@ -9,6 +9,9 @@
 use yggdryl::holder::{Holder, zip};
 use yggdryl::{Codec, IOBase};
 
+// CopyFile and mapped reads cannot share the exchange fixtures on Windows.
+static EXCHANGE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Where the exchange files live, shared with the Python driver.
 fn exchange_dir() -> std::path::PathBuf {
     let mut path = std::env::current_dir().expect("a working directory");
@@ -48,6 +51,7 @@ fn expected_members() -> Vec<(&'static str, Vec<u8>)> {
 
 #[test]
 fn writes_an_archive_for_the_external_reader() {
+    let _exchange = EXCHANGE.lock().expect("exclusive ZIP exchange fixtures");
     let dir = exchange_dir();
     std::fs::create_dir_all(&dir).expect("the exchange directory");
     let path = dir.join("from-rust.zip");
@@ -99,6 +103,7 @@ fn writes_an_archive_for_the_external_reader() {
 
 #[test]
 fn reads_the_archive_the_external_writer_produced() {
+    let _exchange = EXCHANGE.lock().expect("exclusive ZIP exchange fixtures");
     let path = exchange_dir().join("from-python.zip");
     if !path.exists() {
         println!("zip-interop: SKIPPED (no {})", path.display());
@@ -165,6 +170,7 @@ fn reads_the_archive_the_external_writer_produced() {
 
 #[test]
 fn appends_to_the_archive_the_external_writer_produced() {
+    let _exchange = EXCHANGE.lock().expect("exclusive ZIP exchange fixtures");
     let path = exchange_dir().join("from-python.zip");
     if !path.exists() {
         println!("zip-interop: SKIPPED (no {})", path.display());
@@ -199,6 +205,7 @@ fn appends_to_the_archive_the_external_writer_produced() {
 
 #[test]
 fn compacts_the_streamed_archive_the_external_writer_produced() {
+    let _exchange = EXCHANGE.lock().expect("exclusive ZIP exchange fixtures");
     let path = exchange_dir().join("from-python-streamed.zip");
     if !path.exists() {
         println!("zip-interop: SKIPPED (no {})", path.display());

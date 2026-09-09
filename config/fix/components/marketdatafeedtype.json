@@ -1,0 +1,123 @@
+{
+  "name": "marketdatafeedtype",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "mdfeedtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdfeedtype"
+        }
+      },
+      {
+        "name": "mdsubfeedtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdsubfeedtype"
+        }
+      },
+      {
+        "name": "marketdepth",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdepth"
+        }
+      },
+      {
+        "name": "marketdepthtimeinterval",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdepthtimeinterval"
+        }
+      },
+      {
+        "name": "marketdepthtimeintervalunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdepthtimeintervalunit"
+        }
+      },
+      {
+        "name": "mdrecoverytimeinterval",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdrecoverytimeinterval"
+        }
+      },
+      {
+        "name": "mdrecoverytimeintervalunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdrecoverytimeintervalunit"
+        }
+      },
+      {
+        "name": "mdbooktype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdbooktype"
+        }
+      },
+      {
+        "name": "mdsubbooktype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdsubbooktype"
+        }
+      },
+      {
+        "name": "primaryservicelocationid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "primaryservicelocationid"
+        }
+      },
+      {
+        "name": "secondaryservicelocationid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryservicelocationid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MarketDataFeedType",
+    "fix:tag": "129212"
+  }
+}

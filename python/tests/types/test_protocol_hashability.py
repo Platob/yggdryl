@@ -16,6 +16,7 @@ from yggdryl import (
     IOBase,
     MediaType,
     MimeType,
+    PythonMetadata,
     RecordOptions,
     Statement,
     TextOptions,
@@ -44,6 +45,7 @@ def test_canonical_values_remain_hashable_by_native_identity() -> None:
         Expression("id + 1"),
         Statement("select id"),
         PartitionSpec.unpartitioned(),
+        PythonMetadata("trading.book", "Quote", "dataclass"),
     ]
 
     for value in values:
@@ -65,6 +67,8 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
 
     with pytest.raises(TypeError, match="hashed"):
         field.set_alias("event_id")
+    with pytest.raises(TypeError, match="hashed"):
+        field.python.class_metadata = PythonMetadata("trading.book", "Quote")
     with pytest.raises(TypeError, match="hashed"):
         media_type.push_encoding(MimeType.GZIP)
     with pytest.raises(TypeError, match="hashed"):

@@ -1,0 +1,24 @@
+{
+  "name": "paycollectgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paycollect",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paycollect"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPayCollects > 0.",
+    "display": "PayCollectGrp",
+    "fix:component": "paycollect",
+    "fix:counter": "1707",
+    "fix:tag": "818321"
+  }
+}

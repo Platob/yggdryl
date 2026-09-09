@@ -1,0 +1,24 @@
+{
+  "name": "sidetrdregts",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "sidetrdregtscomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "sidetrdregtscomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The SideTrdRegTS component block is used to convey trading or regulatory timestamps associated with one side of a multi-sided trade event.",
+    "display": "SideTrdRegTS",
+    "fix:component": "sidetrdregtscomponent",
+    "fix:counter": "1016",
+    "fix:tag": "717802"
+  }
+}

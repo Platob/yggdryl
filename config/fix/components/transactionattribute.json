@@ -1,0 +1,33 @@
+{
+  "name": "transactionattribute",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "transactionattributetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "transactionattributetype"
+        }
+      },
+      {
+        "name": "transactionattributevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "transactionattributevalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TransactionAttribute",
+    "fix:tag": "426931"
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "name": "legphysicalsettlterm",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "nolegphysicalsettldeliverableobligations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegphysicalsettldeliverableobligations"
+        }
+      },
+      {
+        "name": "legphysicalsettldeliverableobligationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legphysicalsettldeliverableobligationgrp"
+        }
+      },
+      {
+        "name": "legphysicalsettlcurency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legphysicalsettlcurency"
+        }
+      },
+      {
+        "name": "legphysicalsettlbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legphysicalsettlbusinessdays"
+        }
+      },
+      {
+        "name": "legphysicalsettlmaximumbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legphysicalsettlmaximumbusinessdays"
+        }
+      },
+      {
+        "name": "legphysicalsettltermxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legphysicalsettltermxid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPhysicalSettlTerm",
+    "fix:tag": "445770"
+  }
+}

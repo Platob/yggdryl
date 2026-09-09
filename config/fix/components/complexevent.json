@@ -1,0 +1,503 @@
+{
+  "name": "complexevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventtype"
+        }
+      },
+      {
+        "name": "complexoptpayoutpayside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexoptpayoutpayside"
+        }
+      },
+      {
+        "name": "complexoptpayoutreceiveside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexoptpayoutreceiveside"
+        }
+      },
+      {
+        "name": "complexoptpayoutunderlier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexoptpayoutunderlier"
+        }
+      },
+      {
+        "name": "complexoptpayoutamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexoptpayoutamount"
+        }
+      },
+      {
+        "name": "complexoptpayoutpercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexoptpayoutpercentage"
+        }
+      },
+      {
+        "name": "complexoptpayouttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexoptpayouttime"
+        }
+      },
+      {
+        "name": "complexoptpayoutcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexoptpayoutcurrency"
+        }
+      },
+      {
+        "name": "complexoptpayoutcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexoptpayoutcurrencycodesource"
+        }
+      },
+      {
+        "name": "complexeventprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventprice"
+        }
+      },
+      {
+        "name": "complexeventpricepercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventpricepercentage"
+        }
+      },
+      {
+        "name": "complexeventpriceboundarymethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventpriceboundarymethod"
+        }
+      },
+      {
+        "name": "complexeventpriceboundaryprecision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventpriceboundaryprecision"
+        }
+      },
+      {
+        "name": "complexeventpricetimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventpricetimetype"
+        }
+      },
+      {
+        "name": "complexeventcondition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcondition"
+        }
+      },
+      {
+        "name": "nocomplexeventdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventdates"
+        }
+      },
+      {
+        "name": "complexeventdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventdates"
+        }
+      },
+      {
+        "name": "complexeventcurrencyone",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcurrencyone"
+        }
+      },
+      {
+        "name": "complexeventcurrencyonecodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcurrencyonecodesource"
+        }
+      },
+      {
+        "name": "complexeventcurrencytwo",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcurrencytwo"
+        }
+      },
+      {
+        "name": "complexeventcurrencytwocodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcurrencytwocodesource"
+        }
+      },
+      {
+        "name": "complexeventquotebasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventquotebasis"
+        }
+      },
+      {
+        "name": "complexeventfixedfxrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventfixedfxrate"
+        }
+      },
+      {
+        "name": "complexeventspotrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventspotrate"
+        }
+      },
+      {
+        "name": "complexeventforwardpoints",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventforwardpoints"
+        }
+      },
+      {
+        "name": "complexeventdeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventdeterminationmethod"
+        }
+      },
+      {
+        "name": "complexeventcalculationagent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcalculationagent"
+        }
+      },
+      {
+        "name": "complexeventstrikeprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventstrikeprice"
+        }
+      },
+      {
+        "name": "complexeventstrikefactor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventstrikefactor"
+        }
+      },
+      {
+        "name": "complexeventstrikenumberofoptions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventstrikenumberofoptions"
+        }
+      },
+      {
+        "name": "nocomplexeventratesources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventratesources"
+        }
+      },
+      {
+        "name": "complexeventratesourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventratesourcegrp"
+        }
+      },
+      {
+        "name": "complexeventrelativedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "complexeventrelativedate"
+        }
+      },
+      {
+        "name": "nocomplexeventperiods",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventperiods"
+        }
+      },
+      {
+        "name": "complexeventperiodgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventperiodgrp"
+        }
+      },
+      {
+        "name": "complexeventcrediteventsxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventsxidref"
+        }
+      },
+      {
+        "name": "complexeventcrediteventnotifyingparty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventnotifyingparty"
+        }
+      },
+      {
+        "name": "complexeventcrediteventbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventbusinesscenter"
+        }
+      },
+      {
+        "name": "complexeventcrediteventstandardsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventstandardsources"
+        }
+      },
+      {
+        "name": "complexeventcrediteventminimumsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventminimumsources"
+        }
+      },
+      {
+        "name": "nocomplexeventcrediteventsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventcrediteventsources"
+        }
+      },
+      {
+        "name": "complexeventcrediteventsourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventcrediteventsourcegrp"
+        }
+      },
+      {
+        "name": "nocomplexeventcreditevents",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventcreditevents"
+        }
+      },
+      {
+        "name": "complexeventcrediteventgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventcrediteventgrp"
+        }
+      },
+      {
+        "name": "complexeventfuturespricevaluation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventfuturespricevaluation"
+        }
+      },
+      {
+        "name": "complexeventoptionspricevaluation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventoptionspricevaluation"
+        }
+      },
+      {
+        "name": "complexeventpvfinalpriceelectionfallback",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventpvfinalpriceelectionfallback"
+        }
+      },
+      {
+        "name": "complexeventxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventxid"
+        }
+      },
+      {
+        "name": "complexeventxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventxidref"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ComplexEvent",
+    "fix:tag": "511616"
+  }
+}

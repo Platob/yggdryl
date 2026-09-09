@@ -1,0 +1,23 @@
+{
+  "name": "targetmarketsegment",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "targetmarketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "targetmarketsegmentid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TargetMarketSegment",
+    "fix:tag": "207680"
+  }
+}

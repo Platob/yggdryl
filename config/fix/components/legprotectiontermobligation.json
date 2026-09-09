@@ -1,0 +1,33 @@
+{
+  "name": "legprotectiontermobligation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprotectiontermobligationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermobligationtype"
+        }
+      },
+      {
+        "name": "legprotectiontermobligationvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermobligationvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProtectionTermObligation",
+    "fix:tag": "723117"
+  }
+}

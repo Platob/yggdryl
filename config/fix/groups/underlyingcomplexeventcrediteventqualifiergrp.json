@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcomplexeventcrediteventqualifiergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventcrediteventqualifiercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcomplexeventcrediteventqualifiercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingComplexEventCreditEventQualifiers(41724) > 0.",
+    "display": "UnderlyingComplexEventCreditEventQualifierGrp",
+    "fix:component": "underlyingcomplexeventcrediteventqualifiercomponent",
+    "fix:counter": "41724",
+    "fix:tag": "608613"
+  }
+}

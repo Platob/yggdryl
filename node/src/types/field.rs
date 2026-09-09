@@ -1382,6 +1382,16 @@ impl JsField {
         JsProtocolField::new(reference, CoreScheme::PANDAS)
     }
 
+    /// The live Python runtime property view.
+    ///
+    /// The declaring class a Python schema was built from is stored here. Its
+    /// typed vocabulary is Rust and Python only; JavaScript reads and writes
+    /// the three properties by name.
+    #[napi(getter)]
+    pub fn python(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::PYTHON)
+    }
+
     /// The effective row-digest components, in declaration order.
     #[napi]
     pub fn digest_fields(&self) -> Vec<JsField> {
@@ -1903,6 +1913,120 @@ impl JsProtocolField {
             .as_fix_mut()
             .set_tag(tag)
             .map_err(napi_error)
+    }
+
+    /// The scalar counter referenced by a repeating group.
+    #[napi(getter)]
+    pub fn counter(&self, env: Env) -> Result<Option<i32>> {
+        self.require_fix(env, "counter")?;
+        self.field.inner.as_fix().counter().map_err(napi_error)
+    }
+
+    /// Set a repeating group's exact signed 32-bit counter tag.
+    #[napi(setter)]
+    pub fn set_counter(&mut self, env: Env, value: f64) -> Result<()> {
+        self.require_fix(env, "counter")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_counter(exact_i32(value, "counter")?)
+            .map_err(napi_error)
+    }
+
+    /// The component definition named by this FIX occurrence.
+    #[napi(getter)]
+    pub fn component(&self, env: Env) -> Result<Option<String>> {
+        self.require_fix(env, "component")?;
+        Ok(self.field.inner.as_fix().component().map(ToOwned::to_owned))
+    }
+
+    /// Set this occurrence's component definition.
+    #[napi(setter)]
+    pub fn set_component(&mut self, env: Env, value: String) -> Result<()> {
+        self.require_fix(env, "component")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_component(&value)
+            .map_err(napi_error)
+    }
+
+    /// The group definition named by this FIX occurrence.
+    #[napi(getter)]
+    pub fn group(&self, env: Env) -> Result<Option<String>> {
+        self.require_fix(env, "group")?;
+        Ok(self.field.inner.as_fix().group().map(ToOwned::to_owned))
+    }
+
+    /// Set this occurrence's group definition.
+    #[napi(setter)]
+    pub fn set_group(&mut self, env: Env, value: String) -> Result<()> {
+        self.require_fix(env, "group")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_group(&value)
+            .map_err(napi_error)
+    }
+
+    /// The scalar field definition named by this FIX occurrence.
+    #[napi(getter)]
+    pub fn field_ref(&self, env: Env) -> Result<Option<String>> {
+        self.require_fix(env, "field_ref")?;
+        Ok(self.field.inner.as_fix().field_ref().map(ToOwned::to_owned))
+    }
+
+    /// Set this occurrence's scalar field definition.
+    #[napi(setter)]
+    pub fn set_field_ref(&mut self, env: Env, value: String) -> Result<()> {
+        self.require_fix(env, "field_ref")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_field_ref(&value)
+            .map_err(napi_error)
+    }
+
+    /// The complete wire message code named by this FIX occurrence.
+    #[napi(getter)]
+    pub fn msgtype(&self, env: Env) -> Result<Option<String>> {
+        self.require_fix(env, "msgtype")?;
+        Ok(self.field.inner.as_fix().msgtype().map(ToOwned::to_owned))
+    }
+
+    /// Set this occurrence's complete wire message code.
+    #[napi(setter)]
+    pub fn set_msgtype(&mut self, env: Env, value: String) -> Result<()> {
+        self.require_fix(env, "msgtype")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_msgtype(&value)
+            .map_err(napi_error)
+    }
+
+    /// The symbolic name of a wire value in this field's inline enumeration.
+    #[napi]
+    pub fn code_name(&self, env: Env, value: String) -> Result<Option<String>> {
+        self.require_fix(env, "codes")?;
+        Ok(self
+            .field
+            .inner
+            .as_fix()
+            .code_name(&value)
+            .map(ToOwned::to_owned))
+    }
+
+    /// The wire value of a symbolic name or value in this field's inline enumeration.
+    #[napi]
+    pub fn code_value(&self, env: Env, text: String) -> Result<Option<String>> {
+        self.require_fix(env, "codes")?;
+        Ok(self
+            .field
+            .inner
+            .as_fix()
+            .code_value(&text)
+            .map(ToOwned::to_owned))
     }
 
     /// The alternate tags, highest priority first.

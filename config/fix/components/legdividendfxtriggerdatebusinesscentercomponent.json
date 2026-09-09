@@ -1,0 +1,23 @@
+{
+  "name": "legdividendfxtriggerdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdividendfxtriggerdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfxtriggerdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegDividendFXTriggerDateBusinessCenter",
+    "fix:tag": "273648"
+  }
+}

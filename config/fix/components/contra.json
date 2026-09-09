@@ -1,0 +1,63 @@
+{
+  "name": "contra",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "contrabroker",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contrabroker"
+        }
+      },
+      {
+        "name": "contratrader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contratrader"
+        }
+      },
+      {
+        "name": "contratradeqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contratradeqty"
+        }
+      },
+      {
+        "name": "contratradetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contratradetime"
+        }
+      },
+      {
+        "name": "contralegrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contralegrefid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Contra",
+    "fix:tag": "531526"
+  }
+}

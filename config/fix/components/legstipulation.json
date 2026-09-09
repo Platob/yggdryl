@@ -1,0 +1,33 @@
+{
+  "name": "legstipulation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstipulationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstipulationtype"
+        }
+      },
+      {
+        "name": "legstipulationvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstipulationvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStipulation",
+    "fix:tag": "304410"
+  }
+}

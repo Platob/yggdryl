@@ -1,0 +1,43 @@
+{
+  "name": "sidetrdregtscomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "sidetrdregtimestamp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidetrdregtimestamp"
+        }
+      },
+      {
+        "name": "sidetrdregtimestamptype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidetrdregtimestamptype"
+        }
+      },
+      {
+        "name": "sidetrdregtimestampsrc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidetrdregtimestampsrc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SideTrdRegTS",
+    "fix:tag": "910187"
+  }
+}

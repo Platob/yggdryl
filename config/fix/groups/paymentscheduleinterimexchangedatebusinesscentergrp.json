@@ -1,0 +1,24 @@
+{
+  "name": "paymentscheduleinterimexchangedatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentscheduleinterimexchangedatebusinesscenter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentscheduleinterimexchangedatebusinesscenter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentScheduleInterimExchangeDateBusinessCenters(40945) > 0.",
+    "display": "PaymentScheduleInterimExchangeDateBusinessCenterGrp",
+    "fix:component": "paymentscheduleinterimexchangedatebusinesscenter",
+    "fix:counter": "40945",
+    "fix:tag": "360742"
+  }
+}

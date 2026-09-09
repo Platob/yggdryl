@@ -1,0 +1,23 @@
+{
+  "name": "legoptionexerciseexpirationdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legoptionexerciseexpirationdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegOptionExerciseExpirationDateBusinessCenter",
+    "fix:tag": "144290"
+  }
+}

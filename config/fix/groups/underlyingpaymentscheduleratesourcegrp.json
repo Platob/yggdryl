@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentscheduleratesourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentscheduleratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingpaymentscheduleratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingPaymentScheduleRates(40704) > 0.",
+    "display": "UnderlyingPaymentScheduleRateSourceGrp",
+    "fix:component": "underlyingpaymentscheduleratesourcecomponent",
+    "fix:counter": "40704",
+    "fix:tag": "264718"
+  }
+}

@@ -150,8 +150,31 @@ def test_invalid_python_root_name_is_refused() -> None:
         pa.schema([pa.field("value", pa.int64(), nullable=False)]),
         name="invalid-root",
     )
-    with pytest.raises(TypeError, match="invalid-root"):
+    # The class name a materialized dataclass would take crosses the native
+    # declaration, so the refusal is the core's and names the key it failed.
+    with pytest.raises(ValueError, match="python:qualname.*invalid-root"):
         root.into_dataclass()
+    with pytest.raises(ValueError, match="python:module.*not-a-module"):
+        root.into_dataclass(name="Row", module="not-a-module")
+
+    # What a declaration may be stored as and what a generated class may be
+    # named are different questions. A qualified name, the `<locals>` segment
+    # Python writes for a class declared in a function, and a non-identifier
+    # alphanumeric are all storable and none of them is a legal class name.
+    qualified = Field.from_arrow_schema(
+        pa.schema([pa.field("value", pa.int64(), nullable=False)]),
+        name="Outer.Inner",
+    )
+    with pytest.raises(TypeError, match="non-keyword Python identifier"):
+        qualified.into_dataclass()
+    for storable_name in ("<locals>", "\u00b2"):
+        with pytest.raises(TypeError, match="non-keyword Python identifier"):
+            root.into_dataclass(name=storable_name)
+    with pytest.raises(TypeError, match="dotted Python identifier"):
+        root.into_dataclass(name="Row", module="\u00b2x")
+
+    # Every generated class name is one Python could have written.
+    assert root.into_dataclass(name="Row", module=__name__).__name__.isidentifier()
 
 
 def test_into_field_is_reserved_for_generated_classes() -> None:

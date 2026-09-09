@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcomplexeventschedulegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcomplexeventschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingComplexEventSchedules(41750) > 0.",
+    "display": "UnderlyingComplexEventScheduleGrp",
+    "fix:component": "underlyingcomplexeventschedule",
+    "fix:counter": "41750",
+    "fix:tag": "724118"
+  }
+}

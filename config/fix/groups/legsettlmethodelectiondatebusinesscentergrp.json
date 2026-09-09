@@ -1,0 +1,24 @@
+{
+  "name": "legsettlmethodelectiondatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legsettlmethodelectiondatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legsettlmethodelectiondatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegSettlMethodElectionDateBusinessCenters(42581) > 0.",
+    "display": "LegSettlMethodElectionDateBusinessCenterGrp",
+    "fix:component": "legsettlmethodelectiondatebusinesscentercomponent",
+    "fix:counter": "42581",
+    "fix:tag": "869723"
+  }
+}

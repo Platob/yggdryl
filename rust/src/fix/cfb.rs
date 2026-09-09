@@ -9,8 +9,8 @@
 //! # Two entry points, one parse
 //!
 //! [`FixRegistry::from_cfb_file`] answers the whole file: a dictionary of its
-//! vocabulary, the branch record its root element declares, and the message
-//! roots its grammar bindings describe. [`FixField::from_cfb_file`] answers
+//! scalar fields with code metadata, components, groups and message definitions,
+//! plus the branch record and the message roots. [`FixField::from_cfb_file`] answers
 //! the vocabulary alone, in declaration order, and takes the branch name from
 //! the file's own stem when the caller supplies none - which is what a reader
 //! folding one counterparty's file into a dictionary through
@@ -20,10 +20,9 @@
 //! # Two passes, and the second never invents a type
 //!
 //! `vocabulary` builds the dictionary; `grammar-binding` builds the message
-//! roots out of it. A grammar never edits a dictionary entry: it clones one
-//! and overrides the clone's nullability, so a tag bound `required="true"` in
-//! one message and `required="false"` in another yields two independent
-//! fields off one entry.
+//! roots out of it. A constraint borrows its resolved field and records its
+//! own nullability. A nested grammar resolves its opening counter to int32,
+//! retains that field, and adds a separately named List of components.
 //!
 //! # Only repeating groups are structure
 //!
@@ -34,31 +33,30 @@
 //! repeated runs into shared sub-structs, or dedupes two grammars carrying
 //! the same tag sequence. Every repeating group is a nested `grammar`, and
 //! one recursive function reads all of them - nested grammars are siblings as
-//! often as children, so a two-level special case would be wrong.
+//! often as children. Its entries become named component definitions and its
+//! collection becomes a group definition; both carry no synthetic FIX tag.
+//! The count field remains a sibling immediately before the collection.
 //!
 //! # What is lost, by name
 //!
 //! `part` (so a `header` constraint and a `body` constraint sit as siblings
 //! in one flat struct), `activated`, `read-only`, `ref`, `checkordering`,
-//! `rg-name` beyond naming its group, `condition` and every `expression`,
+//! `rg-name` beyond naming its group, `condition` and every `expression`
+//! beyond the one tag a mapping refers to,
 //! `regexp`, `domain`, every range and sentinel, every validity element,
 //! `merge-mode` (so a file patching a base configuration is read standalone),
 //! a `message-type`'s `supported` and `rejection`, `history`, `cvs-revision`,
-//! the root's `description`, `normalization-binding`, `reject-binding`,
-//! `flow-filter-binding`, `options`, `noe-normalization-binding`, and
-//! the root's own `version`, `date` and `logs`.
+//! the root's `description`, `normalization-binding` beyond the names it
+//! spells, `reject-binding`, `flow-filter-binding`, `options`,
+//! `noe-normalization-binding`, and the root's own `version`, `date` and
+//! `logs`.
 //!
-//! And one loss of a different kind. A CBlock's `float` and `integer` are the
-//! schema grammar's generic answers and the wrong shape for FIX money and
-//! sequence numbers - the logical-name table already spells `price` and `qty`
-//! as `decimal64(18,8)` and `seqnum` as `int64`. But a `.cfb` says nothing
-//! about which tag is money, and this never promotes by tag or consults a
-//! seeded registry mid-parse. What that costs a caller depends on the verb
-//! they fold with, and both outcomes are worth stating plainly: against a
-//! dictionary seeded from the committed one, where tag 6 `AvgPx` is stored
-//! `float64`, [`FixRegistry::add_fields`] **refuses** it, because a datatype
-//! is never widened silently, while [`FixRegistry::insert`] **replaces** it
-//! wholesale on an identity match.
+//! A CBlock's generic numeric types may disagree with the FIX dictionary.
+//! For example, its `float` resolves to float32 while FIX `AvgPx` is float64.
+//! The parser does not consult another registry or promote values by tag.
+//! Merging incompatible datatypes or shared code sets fails atomically.
+//! Replacing a referenced field also fails when its existing layouts would
+//! become inconsistent; an unreferenced identity may be replaced directly.
 //!
 //! Nothing is inferred from a validity child either: a `regexp` pinning a
 //! length does not become a fixed-width ascii, and a `domain="ranges"` does
@@ -74,10 +72,47 @@
 //! of them are two sentences: a sibling's text, and a validity child's own
 //! `description`, are that element's.
 //!
+//! # What a normalization spells a tag with
+//!
+//! A `vocabulary-tag` states what a tag *is*; a `normalization-binding`
+//! states, over and over, what this counterparty *calls* it. Only the second
+//! half is read, and only where the file states it plainly: a
+//! `tag-normalization` whose mapping is one bare `$602` and nothing else says
+//! that its `tag-name` is another spelling of tag 602, so the spelling is
+//! added to that tag as an alias. The vocabulary keeps the name.
+//!
+//! Everything else in the binding is read past, because everything else is a
+//! computation this layer has no evaluator for. `lookup("SecurityIDSource",
+//! $603)` decodes a value rather than naming a tag. A `mapping-condition`
+//! makes the name conditional, and a name that means a tag only sometimes is
+//! not another spelling of it: `LEGISINCODE` is `$602` under `$603 = "4"` and
+//! `LEGEXCHANGECODE` is the same `$602` under `$603 = "8"`, so taking either
+//! would give tag 602 two names it answers to unconditionally and neither of
+//! them what the file said. Two expressions under one mapping are a
+//! construction and name nothing either. Neither is `rg-name`, which names a
+//! repeating group rather than the counter tag beside it - and a binding that
+//! nests one spells that counter plainly in its own `tag-normalization`
+//! anyway. `noe-normalization-binding` keeps its own name for the same
+//! reason it keeps everything else: nothing says it spells a tag the way this
+//! one does.
+//!
+//! Most of what a real binding spells is a name the tag already answers to,
+//! and those add nothing: resolution folds ASCII case, so a
+//! `tag-name="LEGSECURITYID"` over a tag the vocabulary spelled
+//! `LegSecurityID` is a spelling that already resolves. What is left is what
+//! this is worth reading for - a tag whose `vocabulary-tag` declared no `alt`
+//! is named by its own decimal tag, and the normalization is then the only
+//! place the file says what it is called.
+//!
+//! No name is refused. A tag outside the vocabulary, a spelling another tag
+//! already answers to, a spelling the core could not store: each drops that
+//! one name, because a binding otherwise read past is not a place to refuse a
+//! dictionary from.
+//!
 //! # Every message type the file names
 //!
 //! A CBlock states its message types three ways, and all three are read into
-//! one code set on tag 35: the `message-types` listing states the type and
+//! one shared code set referenced by tag 35: the `message-types` listing states the type and
 //! the wording beside it, the two mapping tables spell the same type the way
 //! UlMessage does, and a `grammar-binding` binds one the listing sometimes
 //! omits. Each becomes one code - the file's own spelling as its name, the
@@ -91,9 +126,7 @@
 //! both spellings - and a message root keeps the whole spelling, because the
 //! qualifier is what says which grammar the file bound. Resolving a root's
 //! name through this code set is what joins the two: `AR Outbound` answers
-//! `AR`. A first word wider than the column is hashed by
-//! [`MsgType::coerce`](crate::types::MsgType), which is what a bridge
-//! writing one key rather than a pair needs.
+//! `AR`. The complete wire token is retained without a width limit.
 //!
 //! A message type is a code of tag 35 and never a field, so a file that
 //! declares no tag 35 keeps its types out of the dictionary rather than
@@ -134,9 +167,10 @@ use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
+use crate::types::normalized;
 use crate::{DataType, Error, Field, FixField, IOBase, Result, Url, Version};
 
-use super::{FixBranch, FixCode, FixId, FixRegistry, MSGTYPE_TAG, occurrence_name};
+use super::{FixBranch, FixCode, FixId, FixRegistry, MSGTYPE_TAG};
 
 /// How deep a grammar may nest before the parse refuses.
 ///
@@ -179,11 +213,11 @@ impl FixRegistry {
     /// `fix-version`, `sendercompid` and `targetcompid` become that branch's
     /// own record.
     ///
-    /// The registry half holds the vocabulary, each field with its `fix:tag`,
-    /// insertable and writable like any other. The roots are message trees
-    /// and carry no tag, so they cannot enter a registry - a message root is
-    /// a struct named by a MsgType, and inventing a synthetic tag to key one
-    /// would put something in the dictionary that is not a field.
+    /// The registry holds scalar wire fields under their tags and message
+    /// roots under the Messages category. Nested grammars contribute Groups
+    /// and Components definitions, with `fix:counter` linking each list to its
+    /// ordinary int32 field. Enumerations stay in each field's `fix:codes`
+    /// metadata. Named definitions carry no `fix:tag`.
     ///
     /// No seed is taken: this answers what one file says. Folding it into a
     /// dictionary that already exists is [`FixRegistry::add_fields`]'s job,
@@ -292,6 +326,25 @@ struct Parse<'doc> {
     values: std::collections::HashMap<SmolStr, usize>,
     spellings: std::collections::HashMap<String, usize>,
     roots: Vec<Field>,
+    /// The names the normalization bindings spell for a tag, in declaration
+    /// order.
+    ///
+    /// Collected rather than attached as they arrive, for the reason the
+    /// message types are: a normalization is checked against the whole
+    /// vocabulary - the tag it names, what that tag is already called, and
+    /// what every other tag answers to - and a file is free to spell one
+    /// before it declares the other.
+    named: Vec<Spelled>,
+}
+
+/// One name a `tag-normalization` stated for a tag.
+struct Spelled {
+    tag: i32,
+    /// The name as the file spelled it, which is the spelling stored.
+    name: String,
+    /// The byte the reader had reached, so a refusal names this element
+    /// rather than the end of the file.
+    position: usize,
 }
 
 /// One `vocabulary-tag` as the file declared it.
@@ -324,14 +377,14 @@ impl<'doc> Parse<'doc> {
             values: std::collections::HashMap::new(),
             spellings: std::collections::HashMap::new(),
             roots: Vec::new(),
+            named: Vec::new(),
         }
     }
 
     /// The vocabulary as a dictionary, and the roots the bindings describe.
     fn run(mut self) -> Result<(FixRegistry, Vec<Field>)> {
         self.read()?;
-        let roots = std::mem::take(&mut self.roots);
-        Ok((self.dictionary()?, roots))
+        self.dictionary()
     }
 
     /// The vocabulary alone, in declaration order.
@@ -362,7 +415,7 @@ impl<'doc> Parse<'doc> {
     ///
     /// Both terminals build it, because it is where the file's own entries are
     /// checked against each other rather than only against the grammar.
-    fn dictionary(self) -> Result<FixRegistry> {
+    fn dictionary(self) -> Result<(FixRegistry, Vec<Field>)> {
         let mut registry = FixRegistry::new();
         // The branch record first, and explicitly. A field's metadata carries
         // only its branch's *name* - the version is the dictionary's own
@@ -405,7 +458,31 @@ impl<'doc> Parse<'doc> {
                 )
             })?;
         }
-        Ok(registry)
+        let mut roots = Vec::with_capacity(self.roots.len());
+        for root in self.roots {
+            let wire = msgtype_value(root.name()).to_owned();
+            let scope = wire
+                .as_str()
+                .bytes()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            let mut root = catalog_members(&mut registry, root, &scope)?;
+            roots.push(root.clone());
+            let named = registry
+                .get_field_by_tag(MSGTYPE_TAG)
+                .and_then(|field| field.as_fix().code_name(wire.as_str()))
+                .filter(|name| {
+                    name.bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+                })
+                .filter(|name| *name != wire.as_str())
+                .map_or_else(|| format!("message{scope}"), str::to_ascii_lowercase);
+            root.set_name(named);
+            root.as_fix_mut().set_branch(&self.branch)?;
+            root.as_fix_mut().set_msgtype(wire.as_str())?;
+            catalog_entry(&mut registry, crate::FixCategory::Messages, root, &scope)?;
+        }
+        Ok((registry, roots))
     }
 
     /// Reads the whole document, skipping everything but the two passes.
@@ -431,6 +508,8 @@ impl<'doc> Parse<'doc> {
                     {
                         let name = local_name(&element);
                         self.read_msgtype_mappings(&name)?;
+                    } else if is_named(&element, b"normalization-binding") {
+                        self.read_normalization_binding()?;
                     } else {
                         // Skipped siblings are routinely deep and text-bearing,
                         // so this counts depth rather than assuming a child set.
@@ -447,7 +526,8 @@ impl<'doc> Parse<'doc> {
             }
             buffer.clear();
         }
-        self.attach_msgtypes()
+        self.attach_msgtypes()?;
+        self.attach_names()
     }
 
     /// Reads the branch record the root element carries.
@@ -959,7 +1039,7 @@ impl<'doc> Parse<'doc> {
         let spelling = spelling.trim();
         let value = msgtype_value(spelling);
         let described = described.map(single_line).filter(|held| !held.is_empty());
-        if let Some(at) = self.values.get(value.as_str()).copied() {
+        if let Some(at) = self.values.get(value).copied() {
             if self.msgtypes[at].description().is_none() {
                 if let Some(described) = described {
                     self.msgtypes[at] = self.msgtypes[at].clone().with_description(described);
@@ -980,18 +1060,18 @@ impl<'doc> Parse<'doc> {
                 format_args!(
                     "{:?} at {:?}, which {:?} holds",
                     elide_to(spelling, ERROR_TEXT_LIMIT),
-                    value.as_str(),
+                    value,
                     elide_to(self.msgtypes[taken].name(), ERROR_TEXT_LIMIT)
                 ),
             ));
         }
-        let mut code = FixCode::new(spelling, value.as_str());
+        let mut code = FixCode::new(spelling, value);
         if let Some(described) = described {
             code = code.with_description(described);
         }
         self.msgtypes.push(code);
         let at = self.msgtypes.len() - 1;
-        self.values.insert(SmolStr::new(value.as_str()), at);
+        self.values.insert(SmolStr::new(value), at);
         self.spellings
             .insert(crate::types::normalized(spelling), at);
         Ok(at)
@@ -1054,6 +1134,251 @@ impl<'doc> Parse<'doc> {
                 format_smolstr!("the message types tag {MSGTYPE_TAG} carries: {error}"),
             )
         })
+    }
+
+    /// Reads every `tag-normalization` a `normalization-binding` states, for
+    /// the names it spells its tags with.
+    ///
+    /// A binding nests: a repeating group's members sit inside a
+    /// `normalization` of their own, and that one sits beside its siblings
+    /// rather than under them. Depth is counted rather than assumed, and a
+    /// `tag-normalization` is read wherever it appears, because a name a
+    /// group's member is spelled with is that member's name.
+    ///
+    /// Everything else the binding holds is read past. `type` is not read at
+    /// either level - the corpus writes a message type there and writes a
+    /// direction there - because a name is a name whichever way the file was
+    /// binding it, and reading the attribute would only make this parser
+    /// choose between two readings it has no evaluator to check.
+    fn read_normalization_binding(&mut self) -> Result<()> {
+        let mut buffer = Vec::new();
+        let mut depth = 0_usize;
+        loop {
+            let event = self
+                .reader
+                .read_event_into(&mut buffer)
+                .map_err(|error| self.malformed(&error.to_string()))?;
+            match event {
+                Event::Eof => return Err(self.unclosed("normalization-binding")),
+                Event::Start(element) if is_named(&element, b"tag-normalization") => {
+                    // Owned because the mapping is read before the attribute
+                    // is, and reading it moves the reader off this element.
+                    let element = element.into_owned();
+                    let mapped = self.read_mapping()?;
+                    self.push_spelling(&element, mapped)?;
+                }
+                // One that closes on itself maps nothing, so it names nothing.
+                Event::Empty(_) => {}
+                Event::Start(_) => depth += 1,
+                Event::End(element) => {
+                    if is_named(&element, b"normalization-binding") && depth == 0 {
+                        break;
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+            buffer.clear();
+        }
+        Ok(())
+    }
+
+    /// The tag one `tag-normalization` states its name for, where it states
+    /// one and computes nothing.
+    ///
+    /// A `mapping-condition` is what makes a mapping conditional, and a name
+    /// that means a tag only when another tag holds a particular value is not
+    /// another spelling of it: `LEGISINCODE` is `$602` under `$603 = "4"` and
+    /// `LEGEXCHANGECODE` is the same `$602` under `$603 = "8"`, so taking
+    /// either as a name for tag 602 would give that tag two names it answers
+    /// to unconditionally and neither of them what the file said. A
+    /// conditional mapping therefore names nothing here.
+    ///
+    /// Two expressions name nothing either. One is a mapping and several are
+    /// a construction, and this layer holds no evaluator to say what the
+    /// construction would come to.
+    fn read_mapping(&mut self) -> Result<Option<i32>> {
+        let mut buffer = Vec::new();
+        let mut depth = 0_usize;
+        // The two facts a mapping is read for. `mapping` counts the
+        // expressions under `mapping-expression` so a second one is a
+        // construction rather than a replacement of the first.
+        let mut conditional = false;
+        let mut mapping = 0_usize;
+        let mut mapped = None;
+        // Where in the element the reader is: only a `mapping-expression`'s
+        // own `expression` maps, and a `mapping-condition` carries the same
+        // element name for the opposite purpose.
+        let mut mapping_at = None;
+        loop {
+            let event = self
+                .reader
+                .read_event_into(&mut buffer)
+                .map_err(|error| self.malformed(&error.to_string()))?;
+            let element = match &event {
+                Event::Start(element) | Event::Empty(element) => Some(element),
+                _ => None,
+            };
+            if let Some(element) = element {
+                if is_named(element, b"mapping-condition") {
+                    // An empty one states no condition, exactly as an empty
+                    // `condition-expression` does.
+                    conditional |= matches!(event, Event::Start(_));
+                } else if is_named(element, b"mapping-expression")
+                    && mapping_at.is_none()
+                    && matches!(event, Event::Start(_))
+                {
+                    // One that closes on itself holds no expression, so there
+                    // is no level under it for one to be read at.
+                    mapping_at = Some(depth);
+                } else if is_named(element, b"expression")
+                    && mapping_at.is_some_and(|at| at + 1 == depth)
+                {
+                    mapping += 1;
+                    if mapping == 1 {
+                        mapped = self
+                            .attribute(element, "value")?
+                            .as_deref()
+                            .and_then(referenced);
+                    }
+                }
+            }
+            match event {
+                Event::Eof => return Err(self.unclosed("tag-normalization")),
+                Event::Start(_) => depth += 1,
+                Event::End(_) if depth == 0 => break,
+                Event::End(_) => {
+                    depth -= 1;
+                    if mapping_at == Some(depth) {
+                        mapping_at = None;
+                    }
+                }
+                _ => {}
+            }
+            buffer.clear();
+        }
+        Ok(mapped.filter(|_| !conditional && mapping == 1))
+    }
+
+    /// One `tag-normalization` as a name its tag is spelled with.
+    ///
+    /// An absent or empty `tag-name` says nothing, exactly as an absent map
+    /// entry attribute does, and a mapping that names no single tag has no
+    /// tag to spell - both drop the element rather than refuse the file,
+    /// because a binding this parser otherwise reads past is not a place to
+    /// refuse a whole dictionary from.
+    fn push_spelling(&mut self, element: &BytesStart<'_>, tag: Option<i32>) -> Result<()> {
+        let name = self
+            .attribute(element, "tag-name")?
+            .map(|held| held.trim().to_owned())
+            .filter(|held| !held.is_empty());
+        let (Some(tag), Some(name)) = (tag, name) else {
+            return Ok(());
+        };
+        self.named.push(Spelled {
+            tag,
+            name,
+            position: self.position(),
+        });
+        Ok(())
+    }
+
+    /// Attaches every name a normalization spelled to the tag it spelled it
+    /// for.
+    ///
+    /// The vocabulary owns what a tag is called and this only adds spellings
+    /// beside it, so every name arrives as an alias and none replaces a name.
+    /// Which is the whole of what it is worth reading for: a `vocabulary-tag`
+    /// declaring no `alt` is named by its own decimal tag, and the
+    /// normalization is then the only place the file says what that tag is
+    /// called.
+    ///
+    /// Four names are dropped rather than stored, and none of them is a
+    /// defect in the file:
+    ///
+    /// - one the tag already answers to. A name resolves through ASCII case,
+    ///   so `LEGSECURITYID` already reaches a tag the vocabulary spelled
+    ///   `LegSecurityID` and an alias for it would store a spelling that
+    ///   resolves without one. Most of a real binding is this case.
+    /// - one the tag already carries as an alias, because a file spells a tag
+    ///   in as many normalizations as it maps the tag in.
+    /// - one another tag in the same branch already answers to, canonically
+    ///   or as an alias. Two fields one spelling reaches resolve to neither,
+    ///   so the second claim is dropped exactly as a map entry's second claim
+    ///   on one name is - and a dictionary that refuses the whole file over
+    ///   it would refuse a document nothing is wrong with.
+    /// - one carrying the separator a stored alias list is rendered with,
+    ///   which is the one spelling the core cannot hold.
+    ///
+    /// A branch is what scopes the third: a CBlock's standard tags land in
+    /// the standard branch and its user-range tags in the named one, so two
+    /// tags may share a spelling across the two without either losing it.
+    ///
+    /// The two tests fold differently, and the dictionary is why. What a tag
+    /// *already answers to* is decided by ASCII case, because that is what
+    /// resolution rechecks a name with - so `LEG_SECURITY_ID` is a spelling
+    /// tag 602 does not answer to and is worth storing even where
+    /// `LEGSECURITYID` is not. What is *already claimed* is decided by the
+    /// whole fold, separators included, because that is what the alias index
+    /// keys on: two spellings one key reaches are one claim however they are
+    /// punctuated, and the second would be refused rather than shadowed.
+    fn attach_names(&mut self) -> Result<()> {
+        if self.named.is_empty() {
+            return Ok(());
+        }
+        // Indexed rather than scanned, for the reason the vocabulary is: a
+        // real binding spells thousands of names against a vocabulary of
+        // thousands, and a scan per name is the parse squared.
+        let mut claimed: std::collections::HashMap<(bool, String), usize> =
+            std::collections::HashMap::new();
+        for (at, held) in self.vocabulary.iter().enumerate() {
+            let venue = !self.owner(held.tag).is_standard();
+            let field = &held.field;
+            for spelling in [field.name(), spelled(field)] {
+                claimed.insert((venue, normalized(spelling)), at);
+            }
+            for alias in field.as_fix().aliases() {
+                claimed.insert((venue, normalized(alias)), at);
+            }
+        }
+        for held in std::mem::take(&mut self.named) {
+            let Spelled {
+                tag,
+                name,
+                position,
+            } = held;
+            let Some(at) = self.positions.get(&tag).copied() else {
+                continue;
+            };
+            if name.contains(',') {
+                continue;
+            }
+            let key = (!self.owner(tag).is_standard(), normalized(&name));
+            if claimed.get(&key).is_some_and(|held| *held != at) {
+                continue;
+            }
+            let field = &mut self.vocabulary[at].field;
+            if name.eq_ignore_ascii_case(field.name()) || name.eq_ignore_ascii_case(spelled(field))
+            {
+                continue;
+            }
+            let mut aliases: Vec<SmolStr> = field.as_fix().aliases().map(SmolStr::new).collect();
+            if aliases.iter().any(|held| name.eq_ignore_ascii_case(held)) {
+                continue;
+            }
+            aliases.push(SmolStr::new(&name));
+            field.as_fix_mut().set_aliases(&aliases).map_err(|error| {
+                refusal(
+                    position,
+                    format_smolstr!(
+                        "tag {tag} spelled {:?}: {error}",
+                        elide_to(&name, ERROR_TEXT_LIMIT)
+                    ),
+                )
+            })?;
+            claimed.insert(key, at);
+        }
+        Ok(())
     }
 
     /// Reads one `grammar-binding` into one message root.
@@ -1141,10 +1466,11 @@ impl<'doc> Parse<'doc> {
                     push_child(&mut children, field);
                 }
                 Event::Start(element) if is_named(&element, b"grammar") => {
+                    let declared = self.attribute(&element, "rg-name")?;
                     let nested = self.read_grammar(depth + 1, msgtype)?;
-                    if let Some(group) = self.grouped(nested, msgtype)? {
-                        push_child(&mut children, group);
-                    }
+                    let (counter, group) = self.grouped(nested, msgtype, declared.as_deref())?;
+                    push_child(&mut children, counter);
+                    push_child(&mut children, group);
                 }
                 // A nested grammar with no children has no counter to name it.
                 Event::Empty(element) if is_named(&element, b"grammar") => {
@@ -1160,15 +1486,17 @@ impl<'doc> Parse<'doc> {
 
     /// One nested grammar's children as a repeating-group field.
     ///
-    /// The first child is the counter and is consumed rather than emitted: the
-    /// group takes that counter's name, tag and description, while the
-    /// counter's own integer type is discarded because a list's length already
-    /// carries it. The item struct holds everything after it.
-    fn grouped(&mut self, mut children: Vec<Field>, msgtype: &str) -> Result<Option<Field>> {
+    /// The scalar count precedes the named list; its item holds the members.
+    fn grouped(
+        &mut self,
+        mut children: Vec<Field>,
+        msgtype: &str,
+        declared: Option<&str>,
+    ) -> Result<(Field, Field)> {
         if children.is_empty() {
             return Err(self.counterless(msgtype));
         }
-        let counter = children.remove(0);
+        let mut counter = children.remove(0);
         // A group whose first child is another grammar has no counter to name
         // it, so it is skipped with a refusal while the parent keeps the rest.
         if matches!(counter.dtype(), DataType::List(_) | DataType::LargeList(_)) {
@@ -1181,7 +1509,37 @@ impl<'doc> Parse<'doc> {
                 ),
             ));
         }
-        let item = DataType::from_fields(children)
+        counter.set_dtype(DataType::Int32)?;
+        let tag = counter
+            .as_fix()
+            .tag()?
+            .ok_or_else(|| self.counterless(msgtype))?;
+        if let Some(position) = self.positions.get(&tag) {
+            self.vocabulary[*position]
+                .field
+                .set_dtype(DataType::Int32)?;
+        }
+        let mut name = declared.filter(|name| !name.is_empty()).map_or_else(
+            || super::component::group_name(&counter).to_string(),
+            |name| name.to_ascii_lowercase(),
+        );
+        if self
+            .vocabulary
+            .iter()
+            .any(|field| field.field.name().eq_ignore_ascii_case(&name))
+        {
+            name.push_str("grp");
+        }
+        let mut entry = super::component::entry_name(&name).to_string();
+        if self
+            .vocabulary
+            .iter()
+            .any(|field| field.field.name().eq_ignore_ascii_case(&entry))
+        {
+            entry.push_str("component");
+        }
+        let branch = counter.as_fix().branch()?;
+        let mut item = DataType::from_fields(children)
             .map_err(|error| {
                 self.refused_by(
                     format_args!(
@@ -1192,22 +1550,14 @@ impl<'doc> Parse<'doc> {
                     &error,
                 )
             })?
-            .required_field(occurrence_name(&counter));
-        let mut group = DataType::list(item).nullable_field(counter.name());
+            .required_field(entry.clone());
+        item.as_fix_mut().set_branch(&branch)?;
+        let mut group = DataType::list(item).nullable_field(name);
         group.set_nullable(counter.is_nullable());
-        group
-            .set_metadata(counter.as_metadata().iter())
-            .map_err(|error| {
-                self.refused_by(
-                    format_args!(
-                        "group {:?} in message {:?}",
-                        elide_to(counter.name(), ERROR_TEXT_LIMIT),
-                        elide_to(msgtype, ERROR_TEXT_LIMIT)
-                    ),
-                    &error,
-                )
-            })?;
-        Ok(Some(group))
+        group.as_fix_mut().set_branch(&branch)?;
+        group.as_fix_mut().set_counter(tag)?;
+        group.as_fix_mut().set_component(&entry)?;
+        Ok((counter, group))
     }
 
     /// One `tag-constraint` as a leaf field.
@@ -1483,6 +1833,26 @@ fn spelling(element: &BytesStart<'_>) -> String {
     format!("<{}>", String::from_utf8_lossy(element).trim_end())
 }
 
+/// The tag one mapping expression refers to, where it refers to one and
+/// computes nothing.
+///
+/// `$602` is tag 602 and is the whole expression, so the name it is mapped to
+/// is another spelling of that tag. Every other form mentions a tag without
+/// being its name: `lookup("SecurityIDSource", $603)` decodes the value tag
+/// 603 carries, `$603 = "4"` tests it, and a bare word refers to something
+/// this file names elsewhere. None of them is a tag, and this layer holds no
+/// evaluator to say what they would come to.
+///
+/// Trimmed, because a CBlock leaves the space it wrapped an attribute with -
+/// `value="$609 "` is tag 609 written by an editor.
+fn referenced(value: &str) -> Option<i32> {
+    let held = value.trim().strip_prefix('$')?;
+    if held.is_empty() || !held.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    held.parse().ok()
+}
+
 /// The wire value one declared message type carries.
 ///
 /// A CBlock spells a message type as the wire value and a qualifier: `AR
@@ -1493,12 +1863,9 @@ fn spelling(element: &BytesStart<'_>) -> String {
 /// grammar the file binds under it, which is why a message root keeps the
 /// whole spelling while the code takes the value and answers to both.
 ///
-/// A first word wider than the column is still hashed by
-/// [`MsgType::coerce`](crate::types::MsgType), because a bridge writing one
-/// key rather than a pair is the case that mapping exists for.
-fn msgtype_value(spelling: &str) -> crate::types::MsgType {
-    let wire = spelling.split_whitespace().next().unwrap_or(spelling);
-    crate::types::MsgType::coerce(wire)
+/// The full first word is retained without a datatype width limit.
+fn msgtype_value(spelling: &str) -> &str {
+    spelling.split_whitespace().next().unwrap_or(spelling)
 }
 
 /// One description as a single line of prose.
@@ -1521,13 +1888,79 @@ fn single_line(text: &str) -> String {
     held
 }
 
-/// Adds one child, disambiguating a name a sibling already took.
-///
-/// A duplicate tag at one level is possible because `part` is dropped, and a
-/// tag bound in both `header` and `body` becomes two siblings. Neither an
-/// error nor a deduplication: both are kept in document order and the later
-/// one's name gains a numeric suffix, while its `fix:tag` stays identical so
-/// the tag is still what recovers it.
+/// Stores a named definition, qualifying distinct message contexts once.
+fn catalog_entry(
+    registry: &mut FixRegistry,
+    category: crate::FixCategory,
+    mut field: Field,
+    scope: &str,
+) -> Result<Field> {
+    let branch = field.as_fix().branch()?;
+    if let Some(held) = registry.get_definition(category, field.name(), Some(&branch)) {
+        if held == &field {
+            return Ok(field);
+        }
+        field.set_name(format!("{}{scope}", field.name()));
+        if let Some(held) = registry.get_definition(category, field.name(), Some(&branch)) {
+            if held != &field {
+                return Err(Error::Conflict {
+                    expected: "one CBlock definition per context",
+                    actual: "conflicting definitions",
+                    path: field.name().into(),
+                });
+            }
+            return Ok(field);
+        }
+    }
+    registry.insert_definition(category, field.clone())?;
+    Ok(field)
+}
+
+fn catalog_members(registry: &mut FixRegistry, mut field: Field, scope: &str) -> Result<Field> {
+    match field.dtype() {
+        DataType::Struct(children) => {
+            let children = children
+                .iter()
+                .cloned()
+                .map(|child| catalog_members(registry, child, scope))
+                .collect::<Result<Vec<_>>>()?;
+            field.set_dtype(DataType::from_fields(children)?)?;
+        }
+        DataType::List(item) => {
+            let item = catalog_members(registry, item.as_ref().clone(), scope)?;
+            let mut item = catalog_entry(registry, crate::FixCategory::Components, item, scope)?;
+            let component = item.name().to_owned();
+            item.as_fix_mut().set_component(&component)?;
+            field.set_dtype(DataType::list(item))?;
+            field.as_fix_mut().set_component(&component)?;
+            field = catalog_entry(registry, crate::FixCategory::Groups, field, scope)?;
+            let name = field.name().to_owned();
+            field.as_fix_mut().set_group(&name)?;
+        }
+        _ => {
+            if let Some(known) = field
+                .as_fix()
+                .id()?
+                .and_then(|id| registry.get_field_by_id(id))
+            {
+                if field.dtype() == known.dtype() {
+                    // Maps and message codes can follow the grammar. Resolve
+                    // its earlier clone against the completed vocabulary.
+                    let name = field.name().to_owned();
+                    let nullable = field.is_nullable();
+                    field = known.clone();
+                    field.set_name(name);
+                    field.set_nullable(nullable);
+                    field.as_fix_mut().set_field_ref(known.name())?;
+                }
+            }
+        }
+    }
+    Ok(field)
+}
+
+/// Preserves duplicate constraints in wire order under distinct child names.
+/// Their original `fix:tag` still identifies the wire field.
 fn push_child(children: &mut Vec<Field>, mut field: Field) {
     if !children.iter().any(|held| held.name() == field.name()) {
         children.push(field);

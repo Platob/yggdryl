@@ -1,0 +1,24 @@
+{
+  "name": "quotsetackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quotsetack",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "quotsetack"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The number of sets of quotes in the message",
+    "display": "QuotSetAckGrp",
+    "fix:component": "quotsetack",
+    "fix:counter": "296",
+    "fix:tag": "948103"
+  }
+}

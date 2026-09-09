@@ -1,0 +1,24 @@
+{
+  "name": "legordgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legord",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legord"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegs(555) > 0.",
+    "display": "LegOrdGrp",
+    "fix:component": "legord",
+    "fix:counter": "555",
+    "fix:tag": "968102"
+  }
+}

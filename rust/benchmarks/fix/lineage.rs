@@ -44,8 +44,11 @@ fn dictionary(count: usize) -> FixRegistry {
             i32::try_from(5_000 + index).expect("a small tag"),
         )
     });
-    FixRegistry::from_fields(seed().iter().cloned().chain(dated))
-        .expect("the generated dictionary has no conflict")
+    let mut registry = seed();
+    registry
+        .add_fields(dated)
+        .expect("the generated dictionary has no conflict");
+    registry
 }
 
 pub fn benchmarks(criterion: &mut Criterion) {
@@ -53,7 +56,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let field = dated("LastQty", 32);
     let view = field.as_fix();
     let old = version("4.2");
-    let newest = version("5.0SP2");
+    let newest = version("5.0.2");
     let mut group = criterion.benchmark_group("fix/lineage");
 
     // The borrowed scan, against the undated read it costs more than.
@@ -78,7 +81,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&view).description());
     });
     group.bench_function("baseline_version_parse", |bencher| {
-        bencher.iter(|| black_box("5.0SP2").parse::<Version>());
+        bencher.iter(|| black_box("5.0.2").parse::<Version>());
     });
     // The crate's own JSON codec over the same document, which is what a
     // borrowed scan exists instead of: every entry point it offers answers an

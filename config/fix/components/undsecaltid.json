@@ -1,0 +1,43 @@
+{
+  "name": "undsecaltid",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingsecurityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsecurityaltid"
+        }
+      },
+      {
+        "name": "underlyingsecurityaltidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsecurityaltidsource"
+        }
+      },
+      {
+        "name": "underlyingsymbolpositionnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsymbolpositionnumber"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UndSecAltID",
+    "fix:tag": "295086"
+  }
+}

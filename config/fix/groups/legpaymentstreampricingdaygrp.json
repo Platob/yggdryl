@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentstreampricingdaygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstreampricingday",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentstreampricingday"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentStreamPricingDays(41596) > 0.",
+    "display": "LegPaymentStreamPricingDayGrp",
+    "fix:component": "legpaymentstreampricingday",
+    "fix:counter": "41596",
+    "fix:tag": "238414"
+  }
+}

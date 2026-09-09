@@ -1,0 +1,53 @@
+{
+  "name": "underlyingreturnratepricecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingreturnratepricebasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratepricebasis"
+        }
+      },
+      {
+        "name": "underlyingreturnrateprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnrateprice"
+        }
+      },
+      {
+        "name": "underlyingreturnratepricecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratepricecurrency"
+        }
+      },
+      {
+        "name": "underlyingreturnratepricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratepricetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingReturnRatePrice",
+    "fix:tag": "974168"
+  }
+}

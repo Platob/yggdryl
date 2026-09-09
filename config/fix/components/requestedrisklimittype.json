@@ -1,0 +1,23 @@
+{
+  "name": "requestedrisklimittype",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "risklimittype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimittype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RequestedRiskLimitType",
+    "fix:tag": "671967"
+  }
+}

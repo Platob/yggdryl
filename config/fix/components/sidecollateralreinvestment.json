@@ -1,0 +1,53 @@
+{
+  "name": "sidecollateralreinvestment",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "sidecollateralreinvestmenttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralreinvestmenttype"
+        }
+      },
+      {
+        "name": "sidecollateralreinvestmentamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralreinvestmentamount"
+        }
+      },
+      {
+        "name": "sidecollateralreinvestmentcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralreinvestmentcurrency"
+        }
+      },
+      {
+        "name": "sidecollateralreinvestmentcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralreinvestmentcurrencycodesource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SideCollateralReinvestment",
+    "fix:tag": "966980"
+  }
+}

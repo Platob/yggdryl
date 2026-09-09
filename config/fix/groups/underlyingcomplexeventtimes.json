@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcomplexeventtimes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventtime",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcomplexeventtime"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingComplexEventTimes(2056) > 0.",
+    "display": "UnderlyingComplexEventTimes",
+    "fix:component": "underlyingcomplexeventtime",
+    "fix:counter": "2056",
+    "fix:tag": "281071"
+  }
+}

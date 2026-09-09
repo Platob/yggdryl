@@ -1,0 +1,24 @@
+{
+  "name": "legreturnrateinformationsourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legreturnrateinformationsourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legreturnrateinformationsourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegReturnRateInformationSources(42560) > 0.",
+    "display": "LegReturnRateInformationSourceGrp",
+    "fix:component": "legreturnrateinformationsourcecomponent",
+    "fix:counter": "42560",
+    "fix:tag": "154788"
+  }
+}

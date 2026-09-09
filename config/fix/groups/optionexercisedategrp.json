@@ -1,0 +1,24 @@
+{
+  "name": "optionexercisedategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "optionexercisedatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "optionexercisedatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoOptionExerciseDates(41137) > 0.",
+    "display": "OptionExerciseDateGrp",
+    "fix:component": "optionexercisedatecomponent",
+    "fix:counter": "41137",
+    "fix:tag": "295338"
+  }
+}

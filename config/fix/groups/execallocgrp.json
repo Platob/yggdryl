@@ -1,0 +1,24 @@
+{
+  "name": "execallocgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "execalloc",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "execalloc"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Indicates number of individual execution or trade entries. Absence indicates that no individual execution or trade entries are included. Primarily used to support step-outs.",
+    "display": "ExecAllocGrp",
+    "fix:component": "execalloc",
+    "fix:counter": "124",
+    "fix:tag": "132719"
+  }
+}

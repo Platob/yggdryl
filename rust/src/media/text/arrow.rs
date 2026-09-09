@@ -978,12 +978,7 @@ impl<R: Read> Records<R> {
                 classified
                     .and_then(|held| held.1)
                     .and_then(|value| std::str::from_utf8(value).ok())
-                    // Coerced, because the column is the type and a reading
-                    // wider than it - a bridge's `ConfigurationPlugin`, a
-                    // composite key - is a type the capture carried rather
-                    // than a row with nothing to say.
-                    .map(crate::types::MsgType::coerce)
-                    .and_then(|value| DataType::MsgType.scalar(Scalar::from(value.as_str())).ok())
+                    .map(Scalar::from)
                     .unwrap_or(Scalar::Null),
             ));
         }

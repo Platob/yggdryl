@@ -1,0 +1,24 @@
+{
+  "name": "entitlementgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "entitlement",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "entitlement"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoEntitlements(1773) > 0.",
+    "display": "EntitlementGrp",
+    "fix:component": "entitlement",
+    "fix:counter": "1773",
+    "fix:tag": "538217"
+  }
+}

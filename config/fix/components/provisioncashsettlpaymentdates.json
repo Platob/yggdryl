@@ -1,0 +1,124 @@
+{
+  "name": "provisioncashsettlpaymentdates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "provisioncashsettlpaymentdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlpaymentdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "noprovisioncashsettlpaymentdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprovisioncashsettlpaymentdatebusinesscenters"
+        }
+      },
+      {
+        "name": "provisioncashsettlpaymentdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "provisioncashsettlpaymentdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "provisioncashsettlpaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlpaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "provisioncashsettlpaymentdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlpaymentdateoffsetperiod"
+        }
+      },
+      {
+        "name": "provisioncashsettlpaymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlpaymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "provisioncashsettlpaymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlpaymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "provisioncashsettlpaymentdaterangefirst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlpaymentdaterangefirst"
+        }
+      },
+      {
+        "name": "provisioncashsettlpaymentdaterangelast",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlpaymentdaterangelast"
+        }
+      },
+      {
+        "name": "noprovisioncashsettlpaymentdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprovisioncashsettlpaymentdates"
+        }
+      },
+      {
+        "name": "provisioncashsettlpaymentfixeddategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "provisioncashsettlpaymentfixeddategrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the provisional cash settlement payment dates.",
+    "display": "ProvisionCashSettlPaymentDates",
+    "fix:tag": "425929"
+  }
+}

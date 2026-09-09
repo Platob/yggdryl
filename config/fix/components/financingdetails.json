@@ -1,0 +1,314 @@
+{
+  "name": "financingdetails",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "agreementdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "agreementdesc"
+        }
+      },
+      {
+        "name": "agreementid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "agreementid"
+        }
+      },
+      {
+        "name": "agreementversion",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "agreementversion"
+        }
+      },
+      {
+        "name": "agreementdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "agreementdate"
+        }
+      },
+      {
+        "name": "agreementcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "agreementcurrency"
+        }
+      },
+      {
+        "name": "agreementcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "agreementcurrencycodesource"
+        }
+      },
+      {
+        "name": "masterconfirmationdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "masterconfirmationdesc"
+        }
+      },
+      {
+        "name": "masterconfirmationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "masterconfirmationdate"
+        }
+      },
+      {
+        "name": "masterconfirmationannexdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "masterconfirmationannexdesc"
+        }
+      },
+      {
+        "name": "masterconfirmationannexdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "masterconfirmationannexdate"
+        }
+      },
+      {
+        "name": "brokerconfirmationdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "brokerconfirmationdesc"
+        }
+      },
+      {
+        "name": "nocontractualdefinitions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocontractualdefinitions"
+        }
+      },
+      {
+        "name": "financingcontractualdefinitiongrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "financingcontractualdefinitiongrp"
+        }
+      },
+      {
+        "name": "nofinancingtermsupplements",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nofinancingtermsupplements"
+        }
+      },
+      {
+        "name": "financingtermsupplementgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "financingtermsupplementgrp"
+        }
+      },
+      {
+        "name": "nocontractualmatrices",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocontractualmatrices"
+        }
+      },
+      {
+        "name": "financingcontractualmatrixgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "financingcontractualmatrixgrp"
+        }
+      },
+      {
+        "name": "creditsupportagreementdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "creditsupportagreementdesc"
+        }
+      },
+      {
+        "name": "creditsupportagreementdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "creditsupportagreementdate"
+        }
+      },
+      {
+        "name": "creditsupportagreementid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "creditsupportagreementid"
+        }
+      },
+      {
+        "name": "governinglaw",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "governinglaw"
+        }
+      },
+      {
+        "name": "documentationtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "documentationtext"
+        }
+      },
+      {
+        "name": "encodeddocumentationtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodeddocumentationtextlen"
+        }
+      },
+      {
+        "name": "encodeddocumentationtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodeddocumentationtext"
+        }
+      },
+      {
+        "name": "terminationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "terminationtype"
+        }
+      },
+      {
+        "name": "startdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "startdate"
+        }
+      },
+      {
+        "name": "enddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "enddate"
+        }
+      },
+      {
+        "name": "deliverytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverytype"
+        }
+      },
+      {
+        "name": "marginratio",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marginratio"
+        }
+      },
+      {
+        "name": "marginprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marginprice"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The full name of the base standard agreement, annexes and amendments in place between the principals and applicable to this deal",
+    "display": "FinancingDetails",
+    "fix:tag": "553093"
+  }
+}

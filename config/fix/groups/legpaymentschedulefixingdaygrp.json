@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentschedulefixingdaygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentschedulefixingday",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentschedulefixingday"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentScheduleFixingDays(41530) > 0.",
+    "display": "LegPaymentScheduleFixingDayGrp",
+    "fix:component": "legpaymentschedulefixingday",
+    "fix:counter": "41530",
+    "fix:tag": "898248"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "legstreamcalculationperiodbusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamcalculationperiodbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationperiodbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamCalculationPeriodBusinessCenter",
+    "fix:tag": "621338"
+  }
+}

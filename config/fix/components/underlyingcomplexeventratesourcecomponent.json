@@ -1,0 +1,53 @@
+{
+  "name": "underlyingcomplexeventratesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventratesource"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventratesourcetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventratesourcetype"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventreferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventreferencepage"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventreferencepageheading",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventreferencepageheading"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventRateSource",
+    "fix:tag": "943054"
+  }
+}

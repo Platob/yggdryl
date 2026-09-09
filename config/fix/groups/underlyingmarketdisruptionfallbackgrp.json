@@ -1,0 +1,24 @@
+{
+  "name": "underlyingmarketdisruptionfallbackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingmarketdisruptionfallback",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingmarketdisruptionfallback"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingMarketDisruptionFallbacks(41866) > 0.",
+    "display": "UnderlyingMarketDisruptionFallbackGrp",
+    "fix:component": "underlyingmarketdisruptionfallback",
+    "fix:counter": "41866",
+    "fix:tag": "464158"
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "name": "legquotstat",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrumentleg",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrumentleg"
+        }
+      },
+      {
+        "name": "legorderqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legorderqty"
+        }
+      },
+      {
+        "name": "legqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legqty"
+        }
+      },
+      {
+        "name": "legmidpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmidpx"
+        }
+      },
+      {
+        "name": "legswaptype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legswaptype"
+        }
+      },
+      {
+        "name": "legsettltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettltype"
+        }
+      },
+      {
+        "name": "legsettldate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettldate"
+        }
+      },
+      {
+        "name": "nolegstipulations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegstipulations"
+        }
+      },
+      {
+        "name": "legstipulations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legstipulations"
+        }
+      },
+      {
+        "name": "nonestedpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonestedpartyids"
+        }
+      },
+      {
+        "name": "nestedparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties"
+        }
+      },
+      {
+        "name": "nolegratesources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegratesources"
+        }
+      },
+      {
+        "name": "legratesourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legratesourcegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegQuotStat",
+    "fix:tag": "490112"
+  }
+}

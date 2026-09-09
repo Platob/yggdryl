@@ -1,0 +1,24 @@
+{
+  "name": "seclstupdrelsymsleggrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "seclstupdrelsymsleg",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "seclstupdrelsymsleg"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of legs that make up the Security",
+    "display": "SecLstUpdRelSymsLegGrp",
+    "fix:component": "seclstupdrelsymsleg",
+    "fix:counter": "555",
+    "fix:tag": "808044"
+  }
+}

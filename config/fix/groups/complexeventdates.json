@@ -1,0 +1,24 @@
+{
+  "name": "complexeventdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventdate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "complexeventdate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoComplexEventDates(1491) > 0.",
+    "display": "ComplexEventDates",
+    "fix:component": "complexeventdate",
+    "fix:counter": "1491",
+    "fix:tag": "184864"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "legsettlmethodelectiondatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legsettlmethodelectiondatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlmethodelectiondatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegSettlMethodElectionDateBusinessCenter",
+    "fix:tag": "396452"
+  }
+}

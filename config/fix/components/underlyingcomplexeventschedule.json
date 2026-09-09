@@ -1,0 +1,63 @@
+{
+  "name": "underlyingcomplexeventschedule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventschedulestartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventschedulestartdate"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventscheduleenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventscheduleenddate"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventschedulefrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventschedulefrequencyperiod"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventschedulefrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventschedulefrequencyunit"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventschedulerollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventschedulerollconvention"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventSchedule",
+    "fix:tag": "424005"
+  }
+}

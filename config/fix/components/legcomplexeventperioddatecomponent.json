@@ -1,0 +1,33 @@
+{
+  "name": "legcomplexeventperioddatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcomplexeventperioddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventperioddate"
+        }
+      },
+      {
+        "name": "legcomplexeventperiodtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventperiodtime"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegComplexEventPeriodDate",
+    "fix:tag": "623782"
+  }
+}

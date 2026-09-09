@@ -1,0 +1,24 @@
+{
+  "name": "streamassetattributegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamassetattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "streamassetattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoStreamAssetAttributes(41237) > 0.",
+    "display": "StreamAssetAttributeGrp",
+    "fix:component": "streamassetattribute",
+    "fix:counter": "41237",
+    "fix:tag": "903789"
+  }
+}

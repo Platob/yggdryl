@@ -1,0 +1,24 @@
+{
+  "name": "algosystemmodulegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "algosystemmodule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "algosystemmodule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAlgoSystemModules(3025) > 0.",
+    "display": "AlgoSystemModuleGrp",
+    "fix:component": "algosystemmodule",
+    "fix:counter": "3025",
+    "fix:tag": "795983"
+  }
+}

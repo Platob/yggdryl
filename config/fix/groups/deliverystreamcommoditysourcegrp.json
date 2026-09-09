@@ -1,0 +1,24 @@
+{
+  "name": "deliverystreamcommoditysourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "deliverystreamcommoditysourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "deliverystreamcommoditysourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoDeliveryStreamCommoditySources(41085) > 0.",
+    "display": "DeliveryStreamCommoditySourceGrp",
+    "fix:component": "deliverystreamcommoditysourcecomponent",
+    "fix:counter": "41085",
+    "fix:tag": "844399"
+  }
+}

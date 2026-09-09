@@ -1,0 +1,24 @@
+{
+  "name": "risklimitsgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "risklimit",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "risklimit"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoRiskLimits(1669) > 0.",
+    "display": "RiskLimitsGrp",
+    "fix:component": "risklimit",
+    "fix:counter": "1669",
+    "fix:tag": "694700"
+  }
+}

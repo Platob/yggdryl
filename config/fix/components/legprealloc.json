@@ -1,0 +1,133 @@
+{
+  "name": "legprealloc",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legallocaccount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legallocaccount"
+        }
+      },
+      {
+        "name": "legindividualallocid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legindividualallocid"
+        }
+      },
+      {
+        "name": "nonested2partyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonested2partyids"
+        }
+      },
+      {
+        "name": "nestedparties2",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties2"
+        }
+      },
+      {
+        "name": "legallocqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legallocqty"
+        }
+      },
+      {
+        "name": "legallocacctidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legallocacctidsource"
+        }
+      },
+      {
+        "name": "legallocsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legallocsettlcurrency"
+        }
+      },
+      {
+        "name": "legallocsettlcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legallocsettlcurrencycodesource"
+        }
+      },
+      {
+        "name": "legcustodiallotid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcustodiallotid"
+        }
+      },
+      {
+        "name": "legversuspurchasedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legversuspurchasedate"
+        }
+      },
+      {
+        "name": "legversuspurchaseprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legversuspurchaseprice"
+        }
+      },
+      {
+        "name": "legcurrentcostbasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcurrentcostbasis"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPreAlloc",
+    "fix:tag": "895422"
+  }
+}

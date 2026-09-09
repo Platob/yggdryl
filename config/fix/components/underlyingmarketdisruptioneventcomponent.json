@@ -1,0 +1,33 @@
+{
+  "name": "underlyingmarketdisruptioneventcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingmarketdisruptionevent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmarketdisruptionevent"
+        }
+      },
+      {
+        "name": "underlyingmarketdisruptionvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmarketdisruptionvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingMarketDisruptionEvent",
+    "fix:tag": "915596"
+  }
+}

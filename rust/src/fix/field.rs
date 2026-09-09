@@ -44,6 +44,11 @@ const NULLS: &str = "nulls";
 const LINEAGE: &str = "lineage";
 /// The FIX code set this field's values are drawn from.
 const CODES: &str = "codes";
+const COUNTER: &str = "counter";
+const COMPONENT: &str = "component";
+const FIELD_REF: &str = "field";
+const GROUP: &str = "group";
+const MSGTYPE: &str = "msgtype";
 /// What separates the elements of a list-valued property.
 const SEPARATOR: char = ',';
 
@@ -66,6 +71,33 @@ pub(super) fn parse_tag(text: &str) -> Option<i32> {
 }
 
 impl<'field> FixField<'field> {
+    /// The component referenced by a catalog occurrence.
+    pub fn component(&self) -> Option<&'field str> {
+        self.get(COMPONENT)
+    }
+
+    /// The scalar field referenced by a catalog occurrence.
+    pub fn field_ref(&self) -> Option<&'field str> {
+        self.get(FIELD_REF)
+    }
+
+    /// The repeating group referenced by a catalog occurrence.
+    pub fn group(&self) -> Option<&'field str> {
+        self.get(GROUP)
+    }
+
+    /// The wire message type declared by a message definition.
+    pub fn msgtype(&self) -> Option<&'field str> {
+        self.get(MSGTYPE)
+    }
+
+    /// The tag of a group's separate integer count field.
+    pub fn counter(&self) -> Result<Option<i32>> {
+        self.get(COUNTER)
+            .map(|stored| parse_tag(stored).ok_or_else(|| self.invalid(COUNTER, TAG_SHAPE, stored)))
+            .transpose()
+    }
+
     /// Parses the dictionary this field belongs to.
     ///
     /// An absent property is [`FixBranch::STANDARD`]: the FIX
@@ -429,6 +461,75 @@ impl<'field> FixField<'field> {
 }
 
 impl FixFieldMut<'_> {
+    /// References one component by its catalog name.
+    pub fn set_component(&mut self, name: &str) -> Result<()> {
+        self.set_reference(COMPONENT, name)
+    }
+
+    /// References one scalar field by its catalog name.
+    pub fn set_field_ref(&mut self, name: &str) -> Result<()> {
+        self.set_reference(FIELD_REF, name)
+    }
+
+    /// References one repeating group by its catalog name.
+    pub fn set_group(&mut self, name: &str) -> Result<()> {
+        self.set_reference(GROUP, name)
+    }
+
+    /// Declares the exact wire value of a message type.
+    pub fn set_msgtype(&mut self, value: &str) -> Result<()> {
+        super::msgtype::validate_code(value)?;
+        self.store(MSGTYPE, value.to_owned())
+    }
+
+    /// Declares the tag of the group's separate integer count field.
+    pub fn set_counter(&mut self, tag: i32) -> Result<()> {
+        if tag < 0 {
+            return Err(self.rejected(COUNTER, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
+        }
+        FixId::from_parts(&self.as_protocol().branch()?, tag)?;
+        self.store(COUNTER, tag.to_string())
+    }
+
+    /// Removes the component reference.
+    pub fn remove_component(&mut self) -> Option<String> {
+        self.remove(COMPONENT)
+    }
+
+    /// Removes the scalar field reference.
+    pub fn remove_field_ref(&mut self) -> Option<String> {
+        self.remove(FIELD_REF)
+    }
+
+    /// Removes the repeating group reference.
+    pub fn remove_group(&mut self) -> Option<String> {
+        self.remove(GROUP)
+    }
+
+    /// Removes the declared message type.
+    pub fn remove_msgtype(&mut self) -> Option<String> {
+        self.remove(MSGTYPE)
+    }
+
+    /// Removes the counter reference after validating it.
+    pub fn remove_counter(&mut self) -> Result<Option<i32>> {
+        let tag = self.as_protocol().counter()?;
+        self.remove(COUNTER);
+        Ok(tag)
+    }
+
+    fn set_reference(&mut self, key: &str, name: &str) -> Result<()> {
+        if name.is_empty()
+            || matches!(name, "." | "..")
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+        {
+            return Err(self.rejected(key, format_smolstr!("expected a nonempty catalog name of ASCII letters, digits, underscore, hyphen or dot, got {name:?}")));
+        }
+        self.store(key, name.to_ascii_lowercase())
+    }
+
     /// Records the dictionary this field belongs to.
     ///
     /// [`FixBranch::STANDARD`] removes the property rather than writing an
@@ -802,6 +903,22 @@ impl FixFieldMut<'_> {
                 "fix field",
                 format_smolstr!("tag {:?} merged with {:?}", held.tag()?, other.tag()?),
             ));
+        }
+        for key in [COUNTER, COMPONENT, FIELD_REF, GROUP, MSGTYPE] {
+            if let (Some(left), Some(right)) = (held.get(key), other.get(key)) {
+                let equal = if key == MSGTYPE {
+                    left == right
+                } else {
+                    left.eq_ignore_ascii_case(right)
+                };
+                if !equal {
+                    return Err(Error::conflict(
+                        "one FIX reference",
+                        "conflicting references",
+                        format_smolstr!("{key}: expected {left:?}, got {right:?}"),
+                    ));
+                }
+            }
         }
 
         // One pass over the `fix:` key set, which is a const listing beside

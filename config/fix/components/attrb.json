@@ -1,0 +1,33 @@
+{
+  "name": "attrb",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrattribtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrattribtype"
+        }
+      },
+      {
+        "name": "instrattribvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrattribvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Attrb",
+    "fix:tag": "321297"
+  }
+}

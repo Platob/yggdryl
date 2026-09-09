@@ -1,0 +1,24 @@
+{
+  "name": "underlyingratespreadstepgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingratespreadstep",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingratespreadstep"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingRateSpreadSteps(43005) > 0.",
+    "display": "UnderlyingRateSpreadStepGrp",
+    "fix:component": "underlyingratespreadstep",
+    "fix:counter": "43005",
+    "fix:tag": "234176"
+  }
+}

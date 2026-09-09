@@ -1,0 +1,23 @@
+{
+  "name": "cashsettldealercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "cashsettldealer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cashsettldealer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "CashSettlDealer",
+    "fix:tag": "275091"
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "name": "complexeventperiod",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventperiodtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventperiodtype"
+        }
+      },
+      {
+        "name": "complexeventbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventbusinesscenter"
+        }
+      },
+      {
+        "name": "nocomplexeventschedules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventschedules"
+        }
+      },
+      {
+        "name": "complexeventschedulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventschedulegrp"
+        }
+      },
+      {
+        "name": "nocomplexeventperioddatetimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventperioddatetimes"
+        }
+      },
+      {
+        "name": "complexeventperioddategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventperioddategrp"
+        }
+      },
+      {
+        "name": "nocomplexeventaveragingobservations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventaveragingobservations"
+        }
+      },
+      {
+        "name": "complexeventaveragingobservationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventaveragingobservationgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ComplexEventPeriod",
+    "fix:tag": "998819"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "nestedinstrumentattributecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "nestedinstrattribtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nestedinstrattribtype"
+        }
+      },
+      {
+        "name": "nestedinstrattribvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nestedinstrattribvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "NestedInstrumentAttribute",
+    "fix:tag": "672971"
+  }
+}

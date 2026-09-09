@@ -1,0 +1,33 @@
+{
+  "name": "rootsubparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "rootpartysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rootpartysubid"
+        }
+      },
+      {
+        "name": "rootpartysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rootpartysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RootSubParty",
+    "fix:tag": "219780"
+  }
+}

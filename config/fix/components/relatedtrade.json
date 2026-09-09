@@ -1,0 +1,73 @@
+{
+  "name": "relatedtrade",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "relatedtradeid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedtradeid"
+        }
+      },
+      {
+        "name": "relatedtradeidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedtradeidsource"
+        }
+      },
+      {
+        "name": "relatedregulatorytradeidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedregulatorytradeidsource"
+        }
+      },
+      {
+        "name": "relatedtradedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedtradedate"
+        }
+      },
+      {
+        "name": "relatedtrademarketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedtrademarketid"
+        }
+      },
+      {
+        "name": "relatedtradequantity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedtradequantity"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RelatedTrade",
+    "fix:tag": "909958"
+  }
+}

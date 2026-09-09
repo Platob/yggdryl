@@ -1,0 +1,24 @@
+{
+  "name": "routinggrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "routing",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "routing"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Indicates type of RoutingID. Required if NoRoutingIDs is > 0.",
+    "display": "RoutingGrp",
+    "fix:component": "routing",
+    "fix:counter": "215",
+    "fix:tag": "878515"
+  }
+}

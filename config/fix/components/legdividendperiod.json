@@ -1,0 +1,223 @@
+{
+  "name": "legdividendperiod",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdividendperiodsequence",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodsequence"
+        }
+      },
+      {
+        "name": "legdividendperiodstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodstartdateunadjusted"
+        }
+      },
+      {
+        "name": "legdividendperiodenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodenddateunadjusted"
+        }
+      },
+      {
+        "name": "legdividendperiodunderlierrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodunderlierrefid"
+        }
+      },
+      {
+        "name": "legdividendperiodstrikeprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodstrikeprice"
+        }
+      },
+      {
+        "name": "legdividendperiodbusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodbusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegdividendperiodbusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegdividendperiodbusinesscenters"
+        }
+      },
+      {
+        "name": "legdividendperiodbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legdividendperiodbusinesscentergrp"
+        }
+      },
+      {
+        "name": "legdividendperiodvaluationdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodvaluationdateunadjusted"
+        }
+      },
+      {
+        "name": "legdividendperiodvaluationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodvaluationdaterelativeto"
+        }
+      },
+      {
+        "name": "legdividendperiodvaluationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodvaluationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legdividendperiodvaluationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodvaluationdateoffsetunit"
+        }
+      },
+      {
+        "name": "legdividendperiodvaluationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodvaluationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legdividendperiodvaluationdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodvaluationdateadjusted"
+        }
+      },
+      {
+        "name": "legdividendperiodpaymentdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodpaymentdateunadjusted"
+        }
+      },
+      {
+        "name": "legdividendperiodpaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodpaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "legdividendperiodpaymentdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodpaymentdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legdividendperiodpaymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodpaymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "legdividendperiodpaymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodpaymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legdividendperiodpaymentdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodpaymentdateadjusted"
+        }
+      },
+      {
+        "name": "legdividendperiodxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendperiodxid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegDividendPeriod",
+    "fix:tag": "507502"
+  }
+}

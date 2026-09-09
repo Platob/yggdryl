@@ -1,0 +1,33 @@
+{
+  "name": "underlyingoptionexerciseexpirationdatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingoptionexerciseexpirationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationdate"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpirationdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingOptionExerciseExpirationDate",
+    "fix:tag": "329558"
+  }
+}

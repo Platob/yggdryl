@@ -1,0 +1,23 @@
+{
+  "name": "secaltidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "secaltid",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "secaltid"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SecAltIDGrp",
+    "fix:component": "secaltid",
+    "fix:counter": "454",
+    "fix:tag": "589472"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "protectiontermeventnewssourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "protectiontermeventnewssource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermeventnewssource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ProtectionTermEventNewsSource",
+    "fix:tag": "415590"
+  }
+}

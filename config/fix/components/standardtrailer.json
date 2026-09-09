@@ -1,0 +1,44 @@
+{
+  "name": "standardtrailer",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "signaturelength",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "signaturelength"
+        }
+      },
+      {
+        "name": "signature",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "signature"
+        }
+      },
+      {
+        "name": "checksum",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "checksum"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when trailer contains signature. Note: Not to be included within SecureData field",
+    "display": "StandardTrailer",
+    "fix:tag": "170342"
+  }
+}

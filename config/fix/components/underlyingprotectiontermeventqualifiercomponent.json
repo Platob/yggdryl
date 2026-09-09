@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprotectiontermeventqualifiercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprotectiontermeventqualifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventqualifier"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProtectionTermEventQualifier",
+    "fix:tag": "652894"
+  }
+}

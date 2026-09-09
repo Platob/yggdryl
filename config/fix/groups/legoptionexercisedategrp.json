@@ -1,0 +1,24 @@
+{
+  "name": "legoptionexercisedategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legoptionexercisedatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legoptionexercisedatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegOptionExerciseDates(41512) > 0.",
+    "display": "LegOptionExerciseDateGrp",
+    "fix:component": "legoptionexercisedatecomponent",
+    "fix:counter": "41512",
+    "fix:tag": "834299"
+  }
+}

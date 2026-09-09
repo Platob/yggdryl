@@ -1,0 +1,73 @@
+{
+  "name": "mdack",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "mdentrystatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdentrystatus"
+        }
+      },
+      {
+        "name": "mdentryid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdentryid"
+        }
+      },
+      {
+        "name": "mdentrystatustext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdentrystatustext"
+        }
+      },
+      {
+        "name": "encodedmdentrystatustextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedmdentrystatustextlen"
+        }
+      },
+      {
+        "name": "encodedmdentrystatustext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedmdentrystatustext"
+        }
+      },
+      {
+        "name": "instrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrument"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MDAck",
+    "fix:tag": "1070342"
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "name": "allocregulatorytradeidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "allocregulatorytradeid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocregulatorytradeid"
+        }
+      },
+      {
+        "name": "allocregulatorytradeidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocregulatorytradeidsource"
+        }
+      },
+      {
+        "name": "allocregulatorytradeidevent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocregulatorytradeidevent"
+        }
+      },
+      {
+        "name": "allocregulatorytradeidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocregulatorytradeidtype"
+        }
+      },
+      {
+        "name": "allocregulatorylegrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocregulatorylegrefid"
+        }
+      },
+      {
+        "name": "allocregulatorytradeidscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocregulatorytradeidscope"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "AllocRegulatoryTradeID",
+    "fix:tag": "849313"
+  }
+}

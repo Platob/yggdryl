@@ -1,0 +1,24 @@
+{
+  "name": "legfinancingcontractualmatrixgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legfinancingcontractualmatrix",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legfinancingcontractualmatrix"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegContractualMatrices(42203) > 0.",
+    "display": "LegFinancingContractualMatrixGrp",
+    "fix:component": "legfinancingcontractualmatrix",
+    "fix:counter": "42203",
+    "fix:tag": "686204"
+  }
+}

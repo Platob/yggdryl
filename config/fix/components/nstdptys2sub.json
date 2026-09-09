@@ -1,0 +1,33 @@
+{
+  "name": "nstdptys2sub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "nested2partysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nested2partysubid"
+        }
+      },
+      {
+        "name": "nested2partysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nested2partysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "NstdPtys2Sub",
+    "fix:tag": "517465"
+  }
+}

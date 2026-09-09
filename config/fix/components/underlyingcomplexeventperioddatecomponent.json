@@ -1,0 +1,33 @@
+{
+  "name": "underlyingcomplexeventperioddatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventperioddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventperioddate"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventperiodtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventperiodtime"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventPeriodDate",
+    "fix:tag": "175162"
+  }
+}

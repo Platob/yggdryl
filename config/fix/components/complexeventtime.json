@@ -1,0 +1,33 @@
+{
+  "name": "complexeventtime",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventstarttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventstarttime"
+        }
+      },
+      {
+        "name": "complexeventendtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventendtime"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ComplexEventTime",
+    "fix:tag": "349238"
+  }
+}

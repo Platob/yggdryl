@@ -1,0 +1,23 @@
+{
+  "name": "financingcontractualdefinition",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "contractualdefinition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contractualdefinition"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "FinancingContractualDefinition",
+    "fix:tag": "398930"
+  }
+}

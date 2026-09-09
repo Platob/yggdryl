@@ -1,0 +1,24 @@
+{
+  "name": "paymentsettlptyssubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentsettlptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentsettlptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentSettlPartySubIDs(40238) > 0.",
+    "display": "PaymentSettlPtysSubGrp",
+    "fix:component": "paymentsettlptyssub",
+    "fix:counter": "40238",
+    "fix:tag": "940630"
+  }
+}

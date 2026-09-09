@@ -1,0 +1,24 @@
+{
+  "name": "legcomplexeventaveragingobservationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventaveragingobservation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcomplexeventaveragingobservation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegComplexEventAveragingObservations(41363) > 0.",
+    "display": "LegComplexEventAveragingObservationGrp",
+    "fix:component": "legcomplexeventaveragingobservation",
+    "fix:counter": "41363",
+    "fix:tag": "222057"
+  }
+}

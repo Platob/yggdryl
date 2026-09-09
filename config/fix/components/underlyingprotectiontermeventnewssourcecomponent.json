@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprotectiontermeventnewssourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprotectiontermeventnewssource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventnewssource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProtectionTermEventNewsSource",
+    "fix:tag": "140600"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "nestedparties4",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "nestedparty4",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "nestedparty4"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Repeating group below should contain unique combinations of Nested4PartyID, Nested4PartyIDSource, and Nested4PartyRole.",
+    "display": "NestedParties4",
+    "fix:component": "nestedparty4",
+    "fix:counter": "1414",
+    "fix:tag": "796636"
+  }
+}

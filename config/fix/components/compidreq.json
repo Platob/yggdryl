@@ -1,0 +1,53 @@
+{
+  "name": "compidreq",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "refcompid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "refcompid"
+        }
+      },
+      {
+        "name": "refsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "refsubid"
+        }
+      },
+      {
+        "name": "locationid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "locationid"
+        }
+      },
+      {
+        "name": "deskid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deskid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "CompIDReq",
+    "fix:tag": "958785"
+  }
+}

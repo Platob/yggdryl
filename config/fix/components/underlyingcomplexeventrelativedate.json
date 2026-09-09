@@ -1,0 +1,124 @@
+{
+  "name": "underlyingcomplexeventrelativedate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventdateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventdaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventdateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventdateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventdatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventdateadjusted"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventfixingtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventfixingtime"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventfixingtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventfixingtimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when UnderlyingComplexEventDateOffsetUnit(41742) is specified.",
+    "display": "UnderlyingComplexEventRelativeDate",
+    "fix:tag": "966005"
+  }
+}

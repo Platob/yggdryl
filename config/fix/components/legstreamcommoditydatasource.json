@@ -1,0 +1,33 @@
+{
+  "name": "legstreamcommoditydatasource",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamcommoditydatasourceid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditydatasourceid"
+        }
+      },
+      {
+        "name": "legstreamcommoditydatasourceidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditydatasourceidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamCommodityDataSource",
+    "fix:tag": "113517"
+  }
+}

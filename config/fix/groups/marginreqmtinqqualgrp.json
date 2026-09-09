@@ -1,0 +1,24 @@
+{
+  "name": "marginreqmtinqqualgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "marginreqmtinqqual",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "marginreqmtinqqual"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of qualifier entries",
+    "display": "MarginReqmtInqQualGrp",
+    "fix:component": "marginreqmtinqqual",
+    "fix:counter": "1636",
+    "fix:tag": "689938"
+  }
+}

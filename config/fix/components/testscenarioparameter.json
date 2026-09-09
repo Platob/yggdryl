@@ -1,0 +1,43 @@
+{
+  "name": "testscenarioparameter",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "testscenarioparametername",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testscenarioparametername"
+        }
+      },
+      {
+        "name": "testscenarioparametertype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testscenarioparametertype"
+        }
+      },
+      {
+        "name": "testscenarioparametervalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testscenarioparametervalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TestScenarioParameter",
+    "fix:tag": "247022"
+  }
+}

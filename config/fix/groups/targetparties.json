@@ -1,0 +1,24 @@
+{
+  "name": "targetparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "targetparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "targetparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Repeating group below should contain unique combinations of TargetPartyID, TargetPartyIDSource, and TargetPartyRole.",
+    "display": "TargetParties",
+    "fix:component": "targetparty",
+    "fix:counter": "1461",
+    "fix:tag": "1057391"
+  }
+}

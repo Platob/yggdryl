@@ -1,0 +1,104 @@
+{
+  "name": "settlmethodelectiondate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "settlmethodelectiondateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlmethodelectiondateunadjusted"
+        }
+      },
+      {
+        "name": "settlmethodelectiondatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlmethodelectiondatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nosettlmethodelectiondatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nosettlmethodelectiondatebusinesscenters"
+        }
+      },
+      {
+        "name": "settlmethodelectiondatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "settlmethodelectiondatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "settlmethodelectiondaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlmethodelectiondaterelativeto"
+        }
+      },
+      {
+        "name": "settlmethodelectiondateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlmethodelectiondateoffsetperiod"
+        }
+      },
+      {
+        "name": "settlmethodelectiondateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlmethodelectiondateoffsetunit"
+        }
+      },
+      {
+        "name": "settlmethodelectiondateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlmethodelectiondateoffsetdaytype"
+        }
+      },
+      {
+        "name": "settlmethodelectiondateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlmethodelectiondateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to OptionExercise.",
+    "display": "SettlMethodElectionDate",
+    "fix:tag": "191135"
+  }
+}

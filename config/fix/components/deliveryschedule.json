@@ -1,0 +1,163 @@
+{
+  "name": "deliveryschedule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "deliveryscheduletype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryscheduletype"
+        }
+      },
+      {
+        "name": "deliveryschedulexid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulexid"
+        }
+      },
+      {
+        "name": "deliveryschedulenotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulenotional"
+        }
+      },
+      {
+        "name": "deliveryschedulenotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulenotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "deliveryschedulenotionalcommodityfrequency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulenotionalcommodityfrequency"
+        }
+      },
+      {
+        "name": "deliveryschedulenegativetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulenegativetolerance"
+        }
+      },
+      {
+        "name": "deliveryschedulepositivetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulepositivetolerance"
+        }
+      },
+      {
+        "name": "deliveryscheduletoleranceunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryscheduletoleranceunitofmeasure"
+        }
+      },
+      {
+        "name": "deliveryscheduletolerancetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryscheduletolerancetype"
+        }
+      },
+      {
+        "name": "deliveryschedulesettlcountry",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulesettlcountry"
+        }
+      },
+      {
+        "name": "deliveryschedulesettltimezone",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulesettltimezone"
+        }
+      },
+      {
+        "name": "deliveryschedulesettlflowtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulesettlflowtype"
+        }
+      },
+      {
+        "name": "deliveryschedulesettlholidaysprocessinginstruction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulesettlholidaysprocessinginstruction"
+        }
+      },
+      {
+        "name": "nodeliveryschedulesettldays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nodeliveryschedulesettldays"
+        }
+      },
+      {
+        "name": "deliveryschedulesettldaygrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "deliveryschedulesettldaygrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DeliverySchedule",
+    "fix:tag": "1020673"
+  }
+}

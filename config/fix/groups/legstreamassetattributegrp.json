@@ -1,0 +1,24 @@
+{
+  "name": "legstreamassetattributegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamassetattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legstreamassetattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegStreamAssetAttributes(41452) > 0.",
+    "display": "LegStreamAssetAttributeGrp",
+    "fix:component": "legstreamassetattribute",
+    "fix:counter": "41452",
+    "fix:tag": "264422"
+  }
+}

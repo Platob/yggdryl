@@ -1,0 +1,23 @@
+{
+  "name": "attachmentkeywordcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "attachmentkeyword",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "attachmentkeyword"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "AttachmentKeyword",
+    "fix:tag": "603252"
+  }
+}

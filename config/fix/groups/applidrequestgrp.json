@@ -1,0 +1,24 @@
+{
+  "name": "applidrequestgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "applidrequest",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "applidrequest"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies number of application id occurrences",
+    "display": "ApplIDRequestGrp",
+    "fix:component": "applidrequest",
+    "fix:counter": "1351",
+    "fix:tag": "772833"
+  }
+}

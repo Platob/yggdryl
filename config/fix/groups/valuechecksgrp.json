@@ -1,0 +1,24 @@
+{
+  "name": "valuechecksgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "valuecheck",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "valuecheck"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoValueChecks(1868) > 0.",
+    "display": "ValueChecksGrp",
+    "fix:component": "valuecheck",
+    "fix:counter": "1868",
+    "fix:tag": "353060"
+  }
+}

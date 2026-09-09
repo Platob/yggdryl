@@ -1,0 +1,174 @@
+{
+  "name": "triggeringinstruction",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "triggertype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggertype"
+        }
+      },
+      {
+        "name": "triggeraction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggeraction"
+        }
+      },
+      {
+        "name": "triggerscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggerscope"
+        }
+      },
+      {
+        "name": "triggerprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggerprice"
+        }
+      },
+      {
+        "name": "triggersymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggersymbol"
+        }
+      },
+      {
+        "name": "triggersecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggersecurityid"
+        }
+      },
+      {
+        "name": "triggersecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggersecurityidsource"
+        }
+      },
+      {
+        "name": "triggersecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggersecuritydesc"
+        }
+      },
+      {
+        "name": "triggerpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggerpricetype"
+        }
+      },
+      {
+        "name": "triggerpricetypescope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggerpricetypescope"
+        }
+      },
+      {
+        "name": "triggerpricedirection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggerpricedirection"
+        }
+      },
+      {
+        "name": "triggernewprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggernewprice"
+        }
+      },
+      {
+        "name": "triggerordertype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggerordertype"
+        }
+      },
+      {
+        "name": "triggernewqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggernewqty"
+        }
+      },
+      {
+        "name": "triggertradingsessionid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggertradingsessionid"
+        }
+      },
+      {
+        "name": "triggertradingsessionsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "triggertradingsessionsubid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if any other Triggering tags are specified.",
+    "display": "TriggeringInstruction",
+    "fix:tag": "400921"
+  }
+}

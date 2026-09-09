@@ -1,0 +1,73 @@
+{
+  "name": "seclstupdrelsymsleg",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrumentleg",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrumentleg"
+        }
+      },
+      {
+        "name": "legswaptype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legswaptype"
+        }
+      },
+      {
+        "name": "legsettltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettltype"
+        }
+      },
+      {
+        "name": "nolegstipulations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegstipulations"
+        }
+      },
+      {
+        "name": "legstipulations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legstipulations"
+        }
+      },
+      {
+        "name": "legbenchmarkcurvedata",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legbenchmarkcurvedata"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SecLstUpdRelSymsLeg",
+    "fix:tag": "974933"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "complexeventcrediteventsourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventcrediteventsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventcrediteventsource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ComplexEventCreditEventSource",
+    "fix:tag": "241321"
+  }
+}

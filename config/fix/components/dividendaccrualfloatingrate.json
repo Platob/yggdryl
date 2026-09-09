@@ -1,0 +1,194 @@
+{
+  "name": "dividendaccrualfloatingrate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "dividendfloatingrateindex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfloatingrateindex"
+        }
+      },
+      {
+        "name": "dividendfloatingrateindexcurveperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfloatingrateindexcurveperiod"
+        }
+      },
+      {
+        "name": "dividendfloatingrateindexcurveunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfloatingrateindexcurveunit"
+        }
+      },
+      {
+        "name": "dividendfloatingratemultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfloatingratemultiplier"
+        }
+      },
+      {
+        "name": "dividendfloatingratespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfloatingratespread"
+        }
+      },
+      {
+        "name": "dividendfloatingratespreadpositiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfloatingratespreadpositiontype"
+        }
+      },
+      {
+        "name": "dividendfloatingratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfloatingratetreatment"
+        }
+      },
+      {
+        "name": "dividendcaprate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendcaprate"
+        }
+      },
+      {
+        "name": "dividendcapratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendcapratebuyside"
+        }
+      },
+      {
+        "name": "dividendcapratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendcapratesellside"
+        }
+      },
+      {
+        "name": "dividendfloorrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfloorrate"
+        }
+      },
+      {
+        "name": "dividendfloorratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfloorratebuyside"
+        }
+      },
+      {
+        "name": "dividendfloorratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfloorratesellside"
+        }
+      },
+      {
+        "name": "dividendinitialrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendinitialrate"
+        }
+      },
+      {
+        "name": "dividendfinalrateroundingdirection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfinalrateroundingdirection"
+        }
+      },
+      {
+        "name": "dividendfinalrateprecision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendfinalrateprecision"
+        }
+      },
+      {
+        "name": "dividendaveragingmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendaveragingmethod"
+        }
+      },
+      {
+        "name": "dividendnegativeratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendnegativeratetreatment"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when DividendFloatingRateIndexCurveUnit(42220) is specified.",
+    "display": "DividendAccrualFloatingRate",
+    "fix:tag": "618956"
+  }
+}

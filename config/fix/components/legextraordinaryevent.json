@@ -1,0 +1,33 @@
+{
+  "name": "legextraordinaryevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legextraordinaryeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legextraordinaryeventtype"
+        }
+      },
+      {
+        "name": "legextraordinaryeventvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legextraordinaryeventvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegExtraordinaryEvent",
+    "fix:tag": "1076730"
+  }
+}

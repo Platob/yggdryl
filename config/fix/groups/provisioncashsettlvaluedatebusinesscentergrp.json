@@ -1,0 +1,24 @@
+{
+  "name": "provisioncashsettlvaluedatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provisioncashsettlvaluedatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "provisioncashsettlvaluedatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProvisionCashSettlValueDatBusinessCenters(40953) > 0.",
+    "display": "ProvisionCashSettlValueDateBusinessCenterGrp",
+    "fix:component": "provisioncashsettlvaluedatebusinesscentercomponent",
+    "fix:counter": "40953",
+    "fix:tag": "756078"
+  }
+}

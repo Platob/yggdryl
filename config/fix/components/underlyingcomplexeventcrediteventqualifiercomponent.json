@@ -1,0 +1,23 @@
+{
+  "name": "underlyingcomplexeventcrediteventqualifiercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventcrediteventqualifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventqualifier"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventCreditEventQualifier",
+    "fix:tag": "1039537"
+  }
+}

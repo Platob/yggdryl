@@ -1,0 +1,133 @@
+{
+  "name": "trdregtimestampcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "trdregtimestamp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "trdregtimestamp"
+        }
+      },
+      {
+        "name": "trdregtimestamptype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "trdregtimestamptype"
+        }
+      },
+      {
+        "name": "trdregtimestamporigin",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "trdregtimestamporigin"
+        }
+      },
+      {
+        "name": "trdregtimestampmanualindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "trdregtimestampmanualindicator"
+        }
+      },
+      {
+        "name": "desktype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "desktype"
+        }
+      },
+      {
+        "name": "desktypesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "desktypesource"
+        }
+      },
+      {
+        "name": "deskorderhandlinginst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deskorderhandlinginst"
+        }
+      },
+      {
+        "name": "informationbarrierid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "informationbarrierid"
+        }
+      },
+      {
+        "name": "nbboentrytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nbboentrytype"
+        }
+      },
+      {
+        "name": "nbboprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nbboprice"
+        }
+      },
+      {
+        "name": "nbboqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nbboqty"
+        }
+      },
+      {
+        "name": "nbbosource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nbbosource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TrdRegTimestamp",
+    "fix:tag": "111648"
+  }
+}

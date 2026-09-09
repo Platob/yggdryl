@@ -1,0 +1,33 @@
+{
+  "name": "requestedpartyrolecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "requestedpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "requestedpartyrole"
+        }
+      },
+      {
+        "name": "requestedpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "requestedpartyrolequalifier"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RequestedPartyRole",
+    "fix:tag": "680437"
+  }
+}

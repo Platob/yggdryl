@@ -1,0 +1,53 @@
+{
+  "name": "complexeventdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventstartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventstartdate"
+        }
+      },
+      {
+        "name": "complexeventenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventenddate"
+        }
+      },
+      {
+        "name": "nocomplexeventtimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventtimes"
+        }
+      },
+      {
+        "name": "complexeventtimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventtimes"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ComplexEventDate",
+    "fix:tag": "202379"
+  }
+}

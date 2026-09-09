@@ -1,0 +1,23 @@
+{
+  "name": "paymentscheduleinterimexchangedatebusinesscenter",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentscheduleinterimexchangedatesbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentscheduleinterimexchangedatesbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentScheduleInterimExchangeDateBusinessCenter",
+    "fix:tag": "625888"
+  }
+}

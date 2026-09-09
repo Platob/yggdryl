@@ -1,0 +1,24 @@
+{
+  "name": "limitamts",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "limitamtcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "limitamtcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of limit amount occurrences.",
+    "display": "LimitAmts",
+    "fix:component": "limitamtcomponent",
+    "fix:counter": "1630",
+    "fix:tag": "544399"
+  }
+}

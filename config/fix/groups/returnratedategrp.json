@@ -1,0 +1,24 @@
+{
+  "name": "returnratedategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "returnratedate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "returnratedate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoReturnRateDates(42709) > 0.",
+    "display": "ReturnRateDateGrp",
+    "fix:component": "returnratedate",
+    "fix:counter": "42709",
+    "fix:tag": "1049252"
+  }
+}

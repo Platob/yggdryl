@@ -7,7 +7,9 @@ use yggdryl::holder::local::Folder;
 
 use yggdryl::holder::Buffer;
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
-use yggdryl::{DataType, Error, Field, FixBranch, FixField, FixRegistry, IOBase, Version};
+use yggdryl::{
+    DataType, Error, Field, FixBranch, FixCategory, FixField, FixId, FixRegistry, IOBase, Version,
+};
 
 /// A CBlock in the exact shape a production file has: the same element order,
 /// the same attribute order, the same escaping, the same self-closing forms.
@@ -204,6 +206,127 @@ const SELLSIDE: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 </cplugin-configuration>
 "#;
 
+/// A file whose normalization binding spells its tags the way the corpus
+/// does: the shape a production `.cfb` writes, nested groups included, over a
+/// vocabulary where some tags are named and some are not.
+const NORMALIZED: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.BuySideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="BLPFIX" sendercompid="OURDESK">
+	<vocabulary>
+		<vocabulary-tag name="602" alt="LegSecurityID" type="string" />
+		<vocabulary-tag name="603" alt="LegSecurityIDSource" type="string" />
+		<vocabulary-tag name="604" alt="NoLegSecurityAltID" type="integer" />
+		<vocabulary-tag name="605" alt="LegSecurityAltID" type="string" />
+		<vocabulary-tag name="608" type="string" />
+		<vocabulary-tag name="609" type="string" />
+		<vocabulary-tag name="22830" type="string" />
+		<vocabulary-tag name="22831" type="string" />
+		<vocabulary-tag name="22832" type="string" />
+		<vocabulary-tag name="22833" alt="VenueSym" type="string" />
+		<vocabulary-tag name="22834" type="string" />
+	</vocabulary>
+	<normalization-binding>
+		<normalization type="inbound">
+			<tag-normalization tag-name="LEGSECURITYID" part="body">
+				<mapping-expression>
+					<expression value="$602" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="LEGSECURITYIDSOURCE" part="body">
+				<mapping-expression>
+					<expression value="lookup(&quot;SecurityIDSource&quot;, $603)" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="LEGISINCODE" part="body">
+				<mapping-condition>
+					<expression value="$603 = &quot;4&quot;" />
+				</mapping-condition>
+				<mapping-expression>
+					<expression value="$602" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="LEGEXCHANGECODE" part="body">
+				<mapping-condition>
+					<expression value="$603 = &quot;8&quot;" />
+				</mapping-condition>
+				<mapping-expression>
+					<expression value="$602" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="NOLEGSECURITYALTID" part="body">
+				<mapping-expression>
+					<expression value="$604" />
+				</mapping-expression>
+			</tag-normalization>
+			<normalization type="inbound" rg-name="NOLEGSECURITYALTID" rg-context="604">
+				<tag-normalization tag-name="LegSecurityAltId" part="body">
+					<mapping-expression>
+						<expression value="$605" />
+					</mapping-expression>
+				</tag-normalization>
+				<tag-normalization tag-name="EXCLUDEDDEALERS" part="body">
+					<mapping-expression>
+						<expression value="$22830" />
+					</mapping-expression>
+				</tag-normalization>
+				<condition-expression />
+			</normalization>
+			<tag-normalization tag-name="LEGCFICODE" part="body">
+				<mapping-expression>
+					<expression value="$608 " />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="LEGSECURITYTYPE" part="body">
+				<mapping-expression>
+					<expression value="lookup(&quot;SecurityType&quot;, $609) " />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="EXCLUDED_DEALERS" part="body">
+				<mapping-expression>
+					<expression value="$22830" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="EXCLUDEDDEALERS" part="body">
+				<mapping-expression>
+					<expression value="$22831" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="BUILT" part="body">
+				<mapping-expression>
+					<expression value="$22830" />
+					<expression value="$22831" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="VENUESYM" part="body">
+				<mapping-expression>
+					<expression value="$22832" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="LEGSECURITYID" part="body">
+				<mapping-expression>
+					<expression value="$22834" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="" part="body">
+				<mapping-expression>
+					<expression value="$22832" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="UNDECLARED" part="body">
+				<mapping-expression>
+					<expression value="$999" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="COMMA,SPELLING" part="body">
+				<mapping-expression>
+					<expression value="$22832" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="NOTHING" part="body" />
+		</normalization>
+	</normalization-binding>
+</cplugin-configuration>
+"#;
+
 /// One document behind a handle, the way the store cases build them.
 fn handle(body: &str) -> impl IOBase {
     named_handle(body, "one.cfb")
@@ -331,6 +454,7 @@ fn a_grammar_becomes_one_root_flattened_across_part() {
             "timeinforce",
             "avgpx",
             "nolegs",
+            "legs",
             "beginstring2"
         ],
     );
@@ -338,7 +462,7 @@ fn a_grammar_becomes_one_root_flattened_across_part() {
     // The duplicate keeps the tag, which is what recovers it.
     let fields = root.dtype().as_fields().unwrap();
     assert_eq!(fields[0].as_fix().tag().unwrap(), Some(8));
-    assert_eq!(fields[6].as_fix().tag().unwrap(), Some(8));
+    assert_eq!(fields[7].as_fix().tag().unwrap(), Some(8));
 }
 
 #[test]
@@ -361,44 +485,44 @@ fn required_decides_nullability_and_an_expression_counts_as_absent() {
 }
 
 #[test]
-fn a_nested_grammar_is_a_group_whose_counter_names_it_and_is_consumed() {
-    let (_, roots) = parse(CBLOCK);
+fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
+    let (registry, roots) = parse(CBLOCK);
     let fields = roots[0].dtype().as_fields().unwrap();
-    let group = fields.iter().find(|held| held.name() == "nolegs").unwrap();
-
-    // The group takes the counter's name and tag; the counter's own integer
-    // type is gone, because a list's length already carries it.
-    assert_eq!(group.as_fix().tag().unwrap(), Some(555));
+    let count = fields.iter().find(|held| held.name() == "nolegs").unwrap();
+    assert_eq!(count.dtype(), &DataType::Int32);
+    assert_eq!(count.as_fix().tag().unwrap(), Some(555));
+    assert_eq!(
+        registry.field_by_tag(555).unwrap().dtype(),
+        &DataType::Int32
+    );
+    let group = fields.iter().find(|held| held.name() == "legs").unwrap();
+    assert_eq!(group.as_fix().tag().unwrap(), None);
+    assert_eq!(group.as_fix().counter().unwrap(), Some(555));
     let DataType::List(item) = group.dtype() else {
         panic!("a list, got {}", group.dtype());
     };
-    // The occurrence carries the component the counter heads: `NoLegs`
-    // heads occurrences called `Leg`.
     assert_eq!(item.name(), "leg");
     assert!(!item.is_nullable());
-
-    // Everything after the counter, in document order, by the same rules.
     let members = item.dtype().as_fields().expect("an item struct");
     assert_eq!(
         members.iter().map(yggdryl::Field::name).collect::<Vec<_>>(),
-        ["legcurrency", "nolegsecurityaltid"],
+        ["legcurrency", "nolegsecurityaltid", "legsecurityaltidgrp"]
     );
     assert!(!members[0].is_nullable(), "556 is required");
-
-    // And it recurses: a group inside a group.
-    let DataType::List(inner) = members[1].dtype() else {
-        panic!("a nested list, got {}", members[1].dtype());
-    };
+    assert_eq!(members[1].dtype(), &DataType::Int32);
     assert_eq!(members[1].as_fix().tag().unwrap(), Some(604));
+    let DataType::List(inner) = members[2].dtype() else {
+        panic!("a nested list, got {}", members[2].dtype());
+    };
+    assert_eq!(members[2].as_fix().tag().unwrap(), None);
+    assert_eq!(members[2].as_fix().counter().unwrap(), Some(604));
     assert_eq!(
         inner
-            .dtype()
-            .as_fields()
-            .unwrap()
+            .fields()
             .iter()
             .map(yggdryl::Field::name)
             .collect::<Vec<_>>(),
-        ["legsecurityaltid"],
+        ["legsecurityaltid"]
     );
 }
 
@@ -426,30 +550,128 @@ fn the_root_element_is_the_branch_record() {
 }
 
 #[test]
-fn merging_a_cblock_vocabulary_replaces_on_an_identity_match() {
+fn replacing_a_referenced_cblock_field_is_atomic_and_unreferenced_fields_replace() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("config")
         .join("fix");
-    let folder = Folder::new(root).expect("the seed folder");
-    let mut seeded = FixRegistry::from_handle(&folder).expect("the committed dictionary");
-    // The committed dictionary spells tag 6 as money.
-    assert!(matches!(
-        seeded.field_by_tag(6).unwrap().dtype(),
-        DataType::Decimal128 { .. } | DataType::Decimal64 { .. } | DataType::Float64
-    ));
-
+    let mut seeded = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
     let (vocabulary, _) = FixRegistry::from_cfb_file(&handle(CBLOCK), None).unwrap();
     let avgpx = vocabulary.field_by_tag(6).unwrap().clone();
-    seeded.insert(avgpx).expect("same tag, same name replaces");
-    // The phase's principal known loss, stated rather than hidden: a CBlock
-    // says nothing about which tag is money, so the generic answer wins.
-    assert_eq!(seeded.field_by_tag(6).unwrap().dtype(), &DataType::Float32);
-
-    // Same tag, a different name, is a conflict rather than a silent replace.
-    let mut renamed = vocabulary.field_by_tag(35).unwrap().clone();
+    let before = seeded.clone();
+    let error = seeded.insert(avgpx.clone()).unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    assert!(error.to_string().contains("avgpx"), "{error}");
+    assert_eq!(
+        seeded, before,
+        "referenced layouts remain coherent after refusal"
+    );
+    let mut standalone =
+        FixRegistry::from_fields([seeded.field_by_tag(6).unwrap().clone()]).unwrap();
+    standalone.insert(avgpx).unwrap();
+    assert_eq!(
+        standalone.field_by_tag(6).unwrap().dtype(),
+        &DataType::Float32
+    );
+    let mut renamed = vocabulary.field_by_tag(6).unwrap().clone();
     renamed.set_name("somethingelse");
-    assert!(seeded.insert(renamed).is_err());
+    assert!(standalone.insert(renamed).is_err());
+}
+
+#[test]
+fn catalog_members_resolve_codes_declared_after_their_grammar() {
+    let (registry, roots) = parse(CBLOCK);
+    let message = registry.msgtype("7", Some(&branch())).unwrap();
+    assert_eq!(roots.len(), 1);
+    assert_eq!(roots[0].name(), "7");
+    assert!(!roots[0].is_nullable());
+    for (name, tag, nullable) in [("msgtype", 35, false), ("timeinforce", 59, true)] {
+        let occurrence = message.as_field().get_field(name).unwrap();
+        let canonical = registry.field_by_tag(tag).unwrap();
+        assert_eq!(roots[0].get_field(name), Some(occurrence));
+        assert_eq!(occurrence.as_fix().field_ref(), Some(canonical.name()));
+        assert_eq!(occurrence.is_nullable(), nullable);
+        assert_eq!(
+            occurrence
+                .as_fix()
+                .codes()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
+            canonical
+                .as_fix()
+                .codes()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        );
+    }
+    let repeated = message.as_field().get_field("beginstring2").unwrap();
+    assert_eq!(roots[0].get_field("beginstring2"), Some(repeated));
+    assert!(repeated.is_nullable());
+    assert_eq!(repeated.as_fix().field_ref(), Some("beginstring"));
+}
+
+#[test]
+fn venue_groups_and_their_components_keep_the_counter_branch() {
+    let body = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="55" alt="Symbol" type="string" />
+        <vocabulary-tag name="5000" alt="NoVendorEntries" type="integer" />
+        <vocabulary-tag name="5001" alt="VendorID" type="string" />
+        <vocabulary-tag name="5002" alt="NoVendorSubEntries" type="integer" />
+        <vocabulary-tag name="5003" alt="VendorSubID" type="string" />
+      </vocabulary>
+      <grammar-binding type="D"><grammar>
+        <grammar rg-name="VendorEntries">
+          <tag-constraint name="5000" />
+          <tag-constraint name="5001" required="true" />
+          <tag-constraint name="55" />
+          <grammar rg-name="VendorSubEntries">
+            <tag-constraint name="5002" />
+            <tag-constraint name="5003" required="true" />
+          </grammar>
+        </grammar>
+      </grammar></grammar-binding>
+    </cplugin-configuration>"#;
+    let branch = FixBranch::from_str("venue").unwrap();
+    let (registry, roots) = FixRegistry::from_cfb_file(&handle(body), Some(&branch)).unwrap();
+    for (counter, name, component) in [
+        (5000, "VendorEntries", "VendorEntry"),
+        (5002, "VendorSubEntries", "VendorSubEntry"),
+    ] {
+        let group = registry
+            .definition(FixCategory::Groups, name, Some(&branch))
+            .unwrap();
+        let component = registry
+            .definition(FixCategory::Components, component, Some(&branch))
+            .unwrap();
+        assert_eq!(group.as_fix().branch().unwrap().name(), "venue");
+        assert_eq!(component.as_fix().branch().unwrap().name(), "venue");
+        let id = FixId::from_parts(&branch, counter).unwrap();
+        assert_eq!(registry.field(id).unwrap().dtype(), &DataType::Int32);
+        assert!(
+            registry
+                .msgtype("D", Some(&branch))
+                .unwrap()
+                .get_group_by_counter(id)
+                .is_some()
+        );
+    }
+    let DataType::List(item) = roots[0].get_field("vendorentries").unwrap().dtype() else {
+        panic!("a list group");
+    };
+    assert_eq!(item.as_fix().branch().unwrap().name(), "venue");
+    assert!(
+        item.get_field("symbol")
+            .unwrap()
+            .as_fix()
+            .branch()
+            .unwrap()
+            .is_standard()
+    );
+    assert_eq!(
+        FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
+        registry
+    );
 }
 
 #[test]
@@ -1122,23 +1344,29 @@ fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
         FixRegistry::from_handle(&Folder::new(root).expect("the seed folder")).expect("the seed");
     let before = seeded.clone();
 
-    // A CBlock says nothing about which tag is money or which is a MsgType, so
-    // its generic answers disagree with the committed dictionary's typed ones.
-    // The fold refuses rather than widening, which is the phase's principal
-    // known loss stated as a refusal instead of a silent replacement.
+    // The imported AvgPx datatype disagrees with its committed physical width.
     let fields = FixField::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).unwrap();
-    let error = seeded.add_fields(fields).unwrap_err();
+    let error = seeded.add_fields(fields.clone()).unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    assert!(error.to_string().contains("float32"), "{error}");
+    assert_eq!(
+        seeded, before,
+        "a conflicting scalar datatype does not mutate the catalog"
+    );
+    let avgpx = fields
+        .into_iter()
+        .find(|field| field.as_fix().tag().unwrap() == Some(6))
+        .unwrap();
+    let error = seeded.add_fields([avgpx]).unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
     let message = error.to_string();
     assert!(
-        message.contains("msgtype") && message.contains("utf8"),
+        message.contains("avgpx") && message.contains("float32"),
         "{message}"
     );
-    assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::MsgType);
+    assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::Utf8);
     assert_eq!(seeded.field_by_tag(6).unwrap().dtype(), &DataType::Float64);
 
-    // The fold is one mutation, so the tags read before the refusal - 8 and 9,
-    // which agree and would have merged - are not in the dictionary either.
     assert_eq!(seeded, before, "a refused fold writes nothing");
 }
 
@@ -1256,8 +1484,7 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
 
 #[test]
 fn reading_a_cblock_in_whole_is_one_mutation() {
-    // The committed dictionary types tag 35 as a MsgType, which a CBlock's
-    // generic `string` disagrees with - so this file refuses partway.
+    // A changed scalar width refuses the whole imported document.
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("config")
@@ -1270,6 +1497,200 @@ fn reading_a_cblock_in_whole_is_one_mutation() {
         .add_cfb_file(&handle(CBLOCK), Some("bloomberg"), None)
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    assert!(error.to_string().contains("float32"), "{error}");
     assert_eq!(seeded, before, "neither the branch nor a field arrived");
     assert!(seeded.branch_named("bloomberg").is_none());
+}
+
+#[test]
+fn a_normalization_spells_a_tag_and_the_vocabulary_keeps_its_name() {
+    let (registry, _) = parse(NORMALIZED);
+
+    // A tag its `vocabulary-tag` gave no `alt` is named by its own decimal
+    // tag, and the normalization is the only place the file says what it is
+    // called - which is the whole of what reading the binding is worth.
+    let held = registry.field_by_tag(22830).expect("the unnamed tag");
+    assert_eq!(held.name(), "22830", "the vocabulary keeps the name");
+    assert_eq!(
+        registry
+            .get_field_by_name("ExcludedDealers", Some(&branch()))
+            .map(Field::name),
+        Some("22830"),
+        "and the spelling reaches it as an alias",
+    );
+
+    // A separator-bearing spelling is a spelling the tag does not answer to
+    // without one, so it is stored beside the first and resolves too.
+    assert_eq!(
+        registry
+            .get_field_by_name("EXCLUDED_DEALERS", Some(&branch()))
+            .map(Field::name),
+        Some("22830"),
+    );
+    assert_eq!(
+        held.as_fix().aliases().collect::<Vec<_>>(),
+        ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
+        "in the order the file spelled them",
+    );
+}
+
+#[test]
+fn a_name_a_tag_already_answers_to_is_not_stored_a_second_time() {
+    let (registry, _) = parse(NORMALIZED);
+
+    // Resolution folds ASCII case, so `LEGSECURITYID` already reaches the tag
+    // the vocabulary spelled `LegSecurityID`. Most of a real binding is this.
+    let held = registry.field_by_tag(602).expect("LegSecurityID");
+    assert_eq!(held.name(), "legsecurityid");
+    assert_eq!(held.as_fix().aliases().collect::<Vec<_>>(), [] as [&str; 0]);
+    assert!(registry.get_field_by_name("LEGSECURITYID", None).is_some());
+
+    // The same, spelled with the file's own casing inside a nested group.
+    let alt = registry.field_by_tag(605).expect("LegSecurityAltID");
+    assert_eq!(alt.as_fix().aliases().collect::<Vec<_>>(), [] as [&str; 0]);
+}
+
+#[test]
+fn only_an_unconditional_reference_to_one_tag_is_a_name_for_it() {
+    let (registry, _) = parse(NORMALIZED);
+
+    // A condition makes the name conditional, and a name that means a tag
+    // only when another tag holds a value is not another spelling of it.
+    for conditional in ["LEGISINCODE", "LEGEXCHANGECODE"] {
+        assert!(
+            registry.get_field_by_name(conditional, None).is_none(),
+            "{conditional} is $602 only under a condition",
+        );
+    }
+
+    // A lookup decodes a value rather than naming a tag, and this layer holds
+    // no evaluator to say what the decoded value would be. Tag 603 is reached
+    // by the name its own `vocabulary-tag` gave it and by nothing this added.
+    assert_eq!(
+        registry
+            .field_by_tag(603)
+            .expect("LegSecurityIDSource")
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        [] as [&str; 0],
+        "a lookup names nothing",
+    );
+    // Tag 609 was given no `alt`, so a lookup naming it leaves it unreachable
+    // by any spelling but its own tag.
+    assert!(
+        registry
+            .get_field_by_name("LEGSECURITYTYPE", None)
+            .is_none()
+    );
+    assert_eq!(registry.field_by_tag(609).expect("609").name(), "609");
+
+    // Two expressions under one mapping are a construction, not a mapping.
+    assert!(registry.get_field_by_name("BUILT", None).is_none());
+
+    // One expression that is a bare reference still is one, trailing space
+    // and all: a CBlock leaves the space it wrapped an attribute with. Tag
+    // 608 is FIX's own, so the spelling lands in the standard branch with it.
+    assert_eq!(
+        registry
+            .get_field_by_name("LEGCFICODE", None)
+            .map(Field::name),
+        Some("608"),
+    );
+
+    // `rg-name` names a repeating group and never the counter beside it; the
+    // binding spells that counter plainly in its own `tag-normalization`.
+    assert_eq!(
+        registry.field_by_tag(604).expect("the counter").name(),
+        "nolegsecurityaltid",
+    );
+}
+
+#[test]
+fn a_spelling_that_cannot_be_answered_is_dropped_and_never_refused() {
+    let (registry, roots) = parse(NORMALIZED);
+    assert!(roots.is_empty(), "the file binds no grammar");
+
+    // A spelling another tag already answers to would resolve to neither, so
+    // the second claim goes exactly as a map entry's second claim does.
+    assert_eq!(
+        registry
+            .get_field_by_name("EXCLUDEDDEALERS", Some(&branch()))
+            .map(Field::name),
+        Some("22830"),
+        "the first claim keeps it",
+    );
+    assert_eq!(
+        registry
+            .field_by_tag(22831)
+            .expect("the second claimant")
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        [] as [&str; 0],
+    );
+
+    // A spelling another tag in the same branch answers to canonically goes
+    // too: a canonical name always wins a lookup, so the alias would be a
+    // spelling stored where nothing could ever reach it.
+    assert_eq!(
+        registry
+            .field_by_tag(22832)
+            .expect("the tag spelled as another")
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        [] as [&str; 0],
+    );
+    assert_eq!(
+        registry
+            .get_field_by_name("VENUESYM", Some(&branch()))
+            .map(Field::name),
+        Some("venuesym"),
+    );
+
+    // A branch is what scopes that: a CBlock's standard tags land in the
+    // standard branch and its user-range tags in the named one, so a venue
+    // tag may be spelled with a name FIX already publishes without either
+    // losing it. The standard dictionary is still what an unqualified name
+    // reaches.
+    assert_eq!(
+        registry
+            .field_by_tag(22834)
+            .expect("the venue tag spelled as a standard one")
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        ["LEGSECURITYID"],
+    );
+    assert_eq!(
+        registry
+            .get_field_by_name("LEGSECURITYID", None)
+            .map(Field::name),
+        Some("legsecurityid"),
+        "the standard tag keeps the unqualified spelling",
+    );
+
+    // An empty `tag-name`, a comma the stored list is rendered with, a tag
+    // the vocabulary never declared, and a mapping that maps nothing: each
+    // drops its own name and none of them refuses the document.
+    assert!(registry.get_field_by_name("COMMA,SPELLING", None).is_none());
+    assert!(registry.get_field_by_name("UNDECLARED", None).is_none());
+    assert!(registry.get_field_by_name("NOTHING", None).is_none());
+    assert!(registry.get_field_by_tag(999).is_none());
+}
+
+#[test]
+fn both_doors_carry_the_names_a_normalization_spelled() {
+    let fields =
+        FixField::from_cfb_file(&handle(NORMALIZED), Some("bloomberg")).expect("a readable CBlock");
+    let held = fields
+        .iter()
+        .find(|field| field.name() == "22830")
+        .expect("the unnamed tag");
+    assert_eq!(
+        held.as_fix().aliases().collect::<Vec<_>>(),
+        ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
+        "the vocabulary door carries them too",
+    );
 }

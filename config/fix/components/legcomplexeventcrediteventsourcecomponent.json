@@ -1,0 +1,23 @@
+{
+  "name": "legcomplexeventcrediteventsourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcomplexeventcrediteventsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventcrediteventsource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegComplexEventCreditEventSource",
+    "fix:tag": "732451"
+  }
+}

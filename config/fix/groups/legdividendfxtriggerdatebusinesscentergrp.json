@@ -1,0 +1,24 @@
+{
+  "name": "legdividendfxtriggerdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdividendfxtriggerdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legdividendfxtriggerdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegDividendFXTriggerDateBusinessCenters(42364) > 0.",
+    "display": "LegDividendFXTriggerDateBusinessCenterGrp",
+    "fix:component": "legdividendfxtriggerdatebusinesscentercomponent",
+    "fix:counter": "42364",
+    "fix:tag": "666018"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "secsize",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "mdsecsizetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdsecsizetype"
+        }
+      },
+      {
+        "name": "mdsecsize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdsecsize"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SecSize",
+    "fix:tag": "189928"
+  }
+}

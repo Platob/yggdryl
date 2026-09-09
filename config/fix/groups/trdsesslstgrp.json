@@ -1,0 +1,24 @@
+{
+  "name": "trdsesslstgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdsesslst",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "trdsesslst"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Identifier for Trading Session",
+    "display": "TrdSessLstGrp",
+    "fix:component": "trdsesslst",
+    "fix:counter": "386",
+    "fix:tag": "157934"
+  }
+}

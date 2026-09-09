@@ -1,0 +1,194 @@
+{
+  "name": "paymentstreamcompoundingfloatingrate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreamcompoundingrateindex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingrateindex"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingrateindexcurveperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingrateindexcurveperiod"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingrateindexcurveunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingrateindexcurveunit"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingratemultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingratemultiplier"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingratespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingratespread"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingratespreadpositiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingratespreadpositiontype"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingratetreatment"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingcaprate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingcaprate"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingcapratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingcapratebuyside"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingcapratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingcapratesellside"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingfloorrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingfloorrate"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingfloorratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingfloorratebuyside"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingfloorratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingfloorratesellside"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundinginitialrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundinginitialrate"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingfinalrateroundingdirection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingfinalrateroundingdirection"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingfinalrateprecision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingfinalrateprecision"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingaveragingmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingaveragingmethod"
+        }
+      },
+      {
+        "name": "paymentstreamcompoundingnegativeratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcompoundingnegativeratetreatment"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required if PaymentStreamCompoundingRateIndexCurveUnit(42630) is specified.",
+    "display": "PaymentStreamCompoundingFloatingRate",
+    "fix:tag": "731315"
+  }
+}

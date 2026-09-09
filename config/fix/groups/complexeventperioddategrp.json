@@ -1,0 +1,24 @@
+{
+  "name": "complexeventperioddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventperioddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "complexeventperioddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoComplexEventPeriodDateTimes(41007) > 0.",
+    "display": "ComplexEventPeriodDateGrp",
+    "fix:component": "complexeventperioddatecomponent",
+    "fix:counter": "41007",
+    "fix:tag": "984643"
+  }
+}

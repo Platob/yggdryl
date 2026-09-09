@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisioncashsettlvaluedatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlvaluedatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProvisionCashSettlValueDateBusinessCenter",
+    "fix:tag": "1051965"
+  }
+}

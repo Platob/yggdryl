@@ -1,0 +1,23 @@
+{
+  "name": "legsecaltidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legsecaltid",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legsecaltid"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegSecAltIDGrp",
+    "fix:component": "legsecaltid",
+    "fix:counter": "604",
+    "fix:tag": "1030906"
+  }
+}

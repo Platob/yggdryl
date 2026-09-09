@@ -20,5 +20,6 @@ criterion_group!(
     fix_benches::pipeline::stages,
     fix_benches::read::benchmarks,
     fix_benches::store::benchmarks,
+    fix_benches::ulconfig::benchmarks,
 );
 criterion_main!(fix);

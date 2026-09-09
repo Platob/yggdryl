@@ -1,0 +1,93 @@
+{
+  "name": "underlyingcomplexeventperiod",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventperiodtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventperiodtype"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventbusinesscenter"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventschedules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventschedules"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventschedulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventschedulegrp"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventperioddatetimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventperioddatetimes"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventperioddategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventperioddategrp"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventaveragingobservations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventaveragingobservations"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventaveragingobservationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventaveragingobservationgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventPeriod",
+    "fix:tag": "193979"
+  }
+}

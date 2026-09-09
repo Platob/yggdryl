@@ -1,0 +1,53 @@
+{
+  "name": "legsettlratedisruptionfallback",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legsettlratepostponementmaximumdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlratepostponementmaximumdays"
+        }
+      },
+      {
+        "name": "legsettlratefallbackratesourcecomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legsettlratefallbackratesourcecomponent"
+        }
+      },
+      {
+        "name": "legsettlratepostponementsurvey",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlratepostponementsurvey"
+        }
+      },
+      {
+        "name": "legsettlratepostponementcalculationagent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlratepostponementcalculationagent"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegSettlRateDisruptionFallback",
+    "fix:tag": "1027076"
+  }
+}

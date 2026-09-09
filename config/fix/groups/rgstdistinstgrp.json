@@ -1,0 +1,24 @@
+{
+  "name": "rgstdistinstgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "rgstdistinst",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "rgstdistinst"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of Distribution instructions in this message (number of repeating groups to follow)",
+    "display": "RgstDistInstGrp",
+    "fix:component": "rgstdistinst",
+    "fix:counter": "510",
+    "fix:tag": "377394"
+  }
+}

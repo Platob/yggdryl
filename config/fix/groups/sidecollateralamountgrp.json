@@ -1,0 +1,24 @@
+{
+  "name": "sidecollateralamountgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "sidecollateralamount",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "sidecollateralamount"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoSideCollateralAmounts(2691) > 0.",
+    "display": "SideCollateralAmountGrp",
+    "fix:component": "sidecollateralamount",
+    "fix:counter": "2691",
+    "fix:tag": "695495"
+  }
+}

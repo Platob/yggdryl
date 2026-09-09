@@ -1,0 +1,33 @@
+{
+  "name": "protectiontermobligation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "protectiontermobligationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermobligationtype"
+        }
+      },
+      {
+        "name": "protectiontermobligationvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermobligationvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ProtectionTermObligation",
+    "fix:tag": "125168"
+  }
+}

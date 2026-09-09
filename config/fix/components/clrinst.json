@@ -1,0 +1,23 @@
+{
+  "name": "clrinst",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "clearinginstruction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clearinginstruction"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ClrInst",
+    "fix:tag": "766334"
+  }
+}

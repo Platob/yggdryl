@@ -1,0 +1,24 @@
+{
+  "name": "risklimittypesgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "risklimittypecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "risklimittypecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoRiskLimitTypes(1529) > 0.",
+    "display": "RiskLimitTypesGrp",
+    "fix:component": "risklimittypecomponent",
+    "fix:counter": "1529",
+    "fix:tag": "1029457"
+  }
+}

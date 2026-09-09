@@ -1,0 +1,23 @@
+{
+  "name": "ptyssubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "ptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "ptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PtysSubGrp",
+    "fix:component": "ptyssub",
+    "fix:counter": "802",
+    "fix:tag": "605533"
+  }
+}

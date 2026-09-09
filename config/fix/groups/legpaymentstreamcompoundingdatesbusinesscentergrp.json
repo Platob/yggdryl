@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentstreamcompoundingdatesbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstreamcompoundingdatesbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentstreamcompoundingdatesbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentStreamCompoundingDatesBusinessCenters(42419) > 0.",
+    "display": "LegPaymentStreamCompoundingDatesBusinessCenterGrp",
+    "fix:component": "legpaymentstreamcompoundingdatesbusinesscentercomponent",
+    "fix:counter": "42419",
+    "fix:tag": "679160"
+  }
+}

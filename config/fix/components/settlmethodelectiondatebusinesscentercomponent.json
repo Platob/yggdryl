@@ -1,0 +1,23 @@
+{
+  "name": "settlmethodelectiondatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "settlmethodelectiondatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlmethodelectiondatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SettlMethodElectionDateBusinessCenter",
+    "fix:tag": "199567"
+  }
+}

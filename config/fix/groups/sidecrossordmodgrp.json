@@ -1,0 +1,24 @@
+{
+  "name": "sidecrossordmodgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "sidecrossordmod",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "sidecrossordmod"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Must be 1 or 2 if CrossType(549)=1(All-or-none Cross), 2 otherwise.",
+    "display": "SideCrossOrdModGrp",
+    "fix:component": "sidecrossordmod",
+    "fix:counter": "552",
+    "fix:tag": "341631"
+  }
+}

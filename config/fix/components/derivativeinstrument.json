@@ -1,0 +1,744 @@
+{
+  "name": "derivativeinstrument",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "derivativesymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesymbol"
+        }
+      },
+      {
+        "name": "derivativesymbolsfx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesymbolsfx"
+        }
+      },
+      {
+        "name": "derivativesecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecurityid"
+        }
+      },
+      {
+        "name": "derivativesecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecurityidsource"
+        }
+      },
+      {
+        "name": "noderivativesecurityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noderivativesecurityaltid"
+        }
+      },
+      {
+        "name": "derivativesecurityaltidgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "derivativesecurityaltidgrp"
+        }
+      },
+      {
+        "name": "derivativeproduct",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeproduct"
+        }
+      },
+      {
+        "name": "derivativeproductcomplex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeproductcomplex"
+        }
+      },
+      {
+        "name": "derivflexproducteligibilityindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivflexproducteligibilityindicator"
+        }
+      },
+      {
+        "name": "derivativesecuritygroup",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecuritygroup"
+        }
+      },
+      {
+        "name": "derivativecficode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativecficode"
+        }
+      },
+      {
+        "name": "derivativeupicode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeupicode"
+        }
+      },
+      {
+        "name": "derivativesecuritytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecuritytype"
+        }
+      },
+      {
+        "name": "derivativesecuritysubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecuritysubtype"
+        }
+      },
+      {
+        "name": "derivativematuritymonthyear",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativematuritymonthyear"
+        }
+      },
+      {
+        "name": "derivativematuritydate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativematuritydate"
+        }
+      },
+      {
+        "name": "derivativematuritytime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativematuritytime"
+        }
+      },
+      {
+        "name": "derivativesettleonopenflag",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesettleonopenflag"
+        }
+      },
+      {
+        "name": "derivativeinstrmtassignmentmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinstrmtassignmentmethod"
+        }
+      },
+      {
+        "name": "derivativesecuritystatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecuritystatus"
+        }
+      },
+      {
+        "name": "derivativeissuedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeissuedate"
+        }
+      },
+      {
+        "name": "derivativeinstrregistry",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinstrregistry"
+        }
+      },
+      {
+        "name": "derivativecountryofissue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativecountryofissue"
+        }
+      },
+      {
+        "name": "derivativestateorprovinceofissue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativestateorprovinceofissue"
+        }
+      },
+      {
+        "name": "derivativelocaleofissue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativelocaleofissue"
+        }
+      },
+      {
+        "name": "derivativestrikeprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativestrikeprice"
+        }
+      },
+      {
+        "name": "derivativestrikecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativestrikecurrency"
+        }
+      },
+      {
+        "name": "derivativestrikecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativestrikecurrencycodesource"
+        }
+      },
+      {
+        "name": "derivativestrikemultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativestrikemultiplier"
+        }
+      },
+      {
+        "name": "derivativestrikevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativestrikevalue"
+        }
+      },
+      {
+        "name": "derivativeoptattribute",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeoptattribute"
+        }
+      },
+      {
+        "name": "derivativecontractmultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativecontractmultiplier"
+        }
+      },
+      {
+        "name": "derivativecontractmultiplierunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativecontractmultiplierunit"
+        }
+      },
+      {
+        "name": "derivativeflowscheduletype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeflowscheduletype"
+        }
+      },
+      {
+        "name": "derivativeminpriceincrement",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeminpriceincrement"
+        }
+      },
+      {
+        "name": "derivativeminpriceincrementamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeminpriceincrementamount"
+        }
+      },
+      {
+        "name": "derivativeunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeunitofmeasure"
+        }
+      },
+      {
+        "name": "derivativeunitofmeasureqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeunitofmeasureqty"
+        }
+      },
+      {
+        "name": "derivativeunitofmeasurecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeunitofmeasurecurrency"
+        }
+      },
+      {
+        "name": "derivativeunitofmeasurecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeunitofmeasurecurrencycodesource"
+        }
+      },
+      {
+        "name": "derivativepriceunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativepriceunitofmeasure"
+        }
+      },
+      {
+        "name": "derivativepriceunitofmeasureqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativepriceunitofmeasureqty"
+        }
+      },
+      {
+        "name": "derivativepriceunitofmeasurecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativepriceunitofmeasurecurrency"
+        }
+      },
+      {
+        "name": "derivativepriceunitofmeasurecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativepriceunitofmeasurecurrencycodesource"
+        }
+      },
+      {
+        "name": "derivativesettlmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesettlmethod"
+        }
+      },
+      {
+        "name": "derivativepricequotemethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativepricequotemethod"
+        }
+      },
+      {
+        "name": "derivativevaluationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativevaluationmethod"
+        }
+      },
+      {
+        "name": "derivativepricequotecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativepricequotecurrency"
+        }
+      },
+      {
+        "name": "derivativepricequotecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativepricequotecurrencycodesource"
+        }
+      },
+      {
+        "name": "derivativelistmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativelistmethod"
+        }
+      },
+      {
+        "name": "derivativecapprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativecapprice"
+        }
+      },
+      {
+        "name": "derivativefloorprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativefloorprice"
+        }
+      },
+      {
+        "name": "derivativeputorcall",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeputorcall"
+        }
+      },
+      {
+        "name": "derivativeinthemoneycondition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinthemoneycondition"
+        }
+      },
+      {
+        "name": "derivativecontraryinstructioneligibilityindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativecontraryinstructioneligibilityindicator"
+        }
+      },
+      {
+        "name": "derivativeexercisestyle",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeexercisestyle"
+        }
+      },
+      {
+        "name": "derivativeoptpayoutamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeoptpayoutamount"
+        }
+      },
+      {
+        "name": "derivativetimeunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativetimeunit"
+        }
+      },
+      {
+        "name": "derivativesecurityexchange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecurityexchange"
+        }
+      },
+      {
+        "name": "derivativepositionlimit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativepositionlimit"
+        }
+      },
+      {
+        "name": "derivativentpositionlimit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativentpositionlimit"
+        }
+      },
+      {
+        "name": "derivativeissuer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeissuer"
+        }
+      },
+      {
+        "name": "derivativeencodedissuerlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeencodedissuerlen"
+        }
+      },
+      {
+        "name": "derivativeencodedissuer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeencodedissuer"
+        }
+      },
+      {
+        "name": "derivativesecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativesecuritydesc"
+        }
+      },
+      {
+        "name": "derivativeencodedsecuritydesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeencodedsecuritydesclen"
+        }
+      },
+      {
+        "name": "derivativeencodedsecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeencodedsecuritydesc"
+        }
+      },
+      {
+        "name": "derivativesecurityxmlcomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "derivativesecurityxmlcomponent"
+        }
+      },
+      {
+        "name": "derivativecontractsettlmonth",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativecontractsettlmonth"
+        }
+      },
+      {
+        "name": "noderivativeevents",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noderivativeevents"
+        }
+      },
+      {
+        "name": "derivativeeventsgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "derivativeeventsgrp"
+        }
+      },
+      {
+        "name": "noderivativeinstrumentparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noderivativeinstrumentparties"
+        }
+      },
+      {
+        "name": "derivativeinstrumentparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "derivativeinstrumentparties"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Common, \"human understood\" representation of the security. SecurityID value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
+    "display": "DerivativeInstrument",
+    "fix:tag": "697291"
+  }
+}

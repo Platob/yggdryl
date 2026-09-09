@@ -1,0 +1,23 @@
+{
+  "name": "underlyinglegsecurityaltidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyinglegsecurityaltidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyinglegsecurityaltidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingLegSecurityAltIDGrp",
+    "fix:component": "underlyinglegsecurityaltidcomponent",
+    "fix:counter": "1334",
+    "fix:tag": "846450"
+  }
+}

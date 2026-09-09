@@ -1,0 +1,33 @@
+{
+  "name": "underlyingstreamcalculationperioddatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamcalculationperioddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcalculationperioddate"
+        }
+      },
+      {
+        "name": "underlyingstreamcalculationperioddatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcalculationperioddatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStreamCalculationPeriodDate",
+    "fix:tag": "996636"
+  }
+}

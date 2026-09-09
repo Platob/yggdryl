@@ -12,27 +12,18 @@
 //! enrichment leaves the wire exactly as it arrived so the round trip still
 //! closes.
 
-use std::path::PathBuf;
+use super::OneMessage;
+
 use std::sync::Arc;
 
 use yggdryl::holder::Buffer;
-use yggdryl::holder::local::Folder;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::{FixBatchReader, FixCodec, FixOptions, FixRegistry, IOMedia, Scalar, Url, write_fix};
 
 /// The committed dictionary, plus the bridge's own vocabulary.
 fn registry() -> Arc<FixRegistry> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
-    let held = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
-    Arc::new(
-        held.with_ulbridge_fields()
-            .expect("the bridge's own fields"),
-    )
+    super::ulbridge_registry()
 }
 
 /// A framed order behind the prose its process printed around it.
@@ -202,9 +193,8 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
 
     // The two paths agree on what each line said. They are compared on the
     // reading rather than on the storage: a batch value has crossed the Arrow
-    // boundary and a message's has not, so `MsgType` is a packed code on one
-    // side and text on the other, and comparing those would compare the
-    // boundary rather than the read.
+    // boundary and a message's has not, so logical values may differ in
+    // physical representation while retaining the same declared reading.
     let batch = &batched[0];
     for tag in [11, 55, 37, 17, 39, 151, 6, 120] {
         let column = tag_column(batch, tag);
@@ -239,21 +229,19 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     let codec = FixCodec::new(Arc::clone(&registry));
 
     // A framed order behind prose: the frame is located and the prose dropped.
-    let order = codec
-        .transform_line(TAGGED.as_bytes(), true)
-        .expect("an order");
+    let order = codec.one_line(TAGGED.as_bytes(), true).expect("an order");
     assert_eq!(order.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
     assert_eq!(order.by_tag(55).unwrap().as_str(), Some("AAPL"));
 
     // A bridge row keyed by name, with its group packed into one occurrence.
     let bridge = codec
-        .transform_line(NAMED.as_bytes(), true)
+        .one_line(NAMED.as_bytes(), true)
         .expect("a bridge row");
     assert_eq!(bridge.by_tag(55).unwrap().as_str(), Some("TTF"));
     // The packed occurrence split into the group the counter heads: one
     // occurrence, carrying the members the bridge packed into its value.
     let parties = bridge
-        .by_tag(453)
+        .by_name("parties")
         .expect("the group the counter heads")
         .as_sequence()
         .expect("a list");
@@ -265,16 +253,14 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     );
 
     // A FIXML row, whose fields are attributes rather than pairs.
-    let fixml = codec
-        .transform_line(FIXML.as_bytes(), true)
-        .expect("a FIXML row");
+    let fixml = codec.one_line(FIXML.as_bytes(), true).expect("a FIXML row");
     assert_eq!(fixml.by_tag(11).unwrap().as_str(), Some("ORDER-2"));
     // The same document behind a transport's prose, with whitespace either
     // side: the document opens where the tag opens, whatever was trimmed off
     // the line's end.
     let prosed = format!("  Sending : {FIXML}  \t");
     let behind = codec
-        .transform_line(prosed.as_bytes(), true)
+        .one_line(prosed.as_bytes(), true)
         .expect("a FIXML row behind prose");
     assert_eq!(behind.by_tag(11).unwrap().as_str(), Some("ORDER-2"));
     assert_eq!(behind.by_tag(54).unwrap(), fixml.by_tag(54).unwrap());
@@ -288,28 +274,29 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).expect("a branch");
     let bridge = FixCodec::new(Arc::clone(&registry)).with_branch(&branch);
     let config = bridge
-        .transform_line(ULCONFIG.as_bytes(), true)
+        .one_line(ULCONFIG.as_bytes(), true)
         .expect("a configuration document");
+    assert_eq!(config.branch(), &branch);
+    assert_eq!(config.as_field().as_fix().branch().unwrap(), branch);
     // The envelope is what the exchange was, and it types: a status is a
     // number rather than the text it arrived as.
     assert_eq!(
         config.by_tag(yggdryl::STATUS_TAG).unwrap(),
         &Scalar::from(200_i64)
     );
-    // Each MBean the document answers for is one occurrence, and a field the
-    // specification publishes keeps the specification's tag inside it.
+    // One MBean produces one message, with standard FIX fields on their own tags.
     assert_eq!(
-        config.by_path("SessionInterfaces.0.SenderCompID").unwrap(),
+        config.by_path("SenderCompID").unwrap(),
         &Scalar::from("ULB_BKRBDG"),
     );
     assert_eq!(
-        config.by_path("SessionInterfaces.0.MBeanType").unwrap(),
+        config.by_path("MBeanType").unwrap(),
         &Scalar::from("Plugin"),
     );
 
     // A line that is not a message is a message with nothing in it, never an
     // error: one corrupt line must not end a run over ten million.
-    let prose = codec.transform_line(PROSE.as_bytes(), true).expect("a row");
+    let prose = codec.one_line(PROSE.as_bytes(), true).expect("a row");
     assert_eq!(prose.get_by_tag(35), None);
 }
 
@@ -320,12 +307,8 @@ fn enrichment_fills_the_columns_and_leaves_the_wire_alone() {
 
     // The part-filled report states what was ordered and what was done, so it
     // has stated what is left and what the fill was worth.
-    let bare = codec
-        .transform_line(WORKING.as_bytes(), false)
-        .expect("a report");
-    let filled = codec
-        .transform_line(WORKING.as_bytes(), true)
-        .expect("a report");
+    let bare = codec.one_line(WORKING.as_bytes(), false).expect("a report");
+    let filled = codec.one_line(WORKING.as_bytes(), true).expect("a report");
     assert_eq!(bare.get_by_tag(151), None);
     assert_eq!(filled.by_tag(151).unwrap(), &Scalar::from(60.0_f64));
     assert_eq!(filled.by_tag(381).unwrap(), &Scalar::from(420.0_f64));
@@ -337,21 +320,15 @@ fn enrichment_fills_the_columns_and_leaves_the_wire_alone() {
 
     // The closing fill settles in the currency it was dealt in, at the rate it
     // stated - Appendix O read as the implication it is.
-    let closed = codec
-        .transform_line(FILLED.as_bytes(), true)
-        .expect("a report");
+    let closed = codec.one_line(FILLED.as_bytes(), true).expect("a report");
     assert_eq!(closed.by_tag(151).unwrap(), &Scalar::from(0.0_f64));
     assert_eq!(closed.by_tag(120).unwrap().as_str(), Some("EUR"));
 
     // And none of it touched the arrival record, so the capture still
     // re-emits the bytes it was read from.
     for line in [WORKING, FILLED] {
-        let plain = codec
-            .transform_line(line.as_bytes(), false)
-            .expect("a report");
-        let held = codec
-            .transform_line(line.as_bytes(), true)
-            .expect("a report");
+        let plain = codec.one_line(line.as_bytes(), false).expect("a report");
+        let held = codec.one_line(line.as_bytes(), true).expect("a report");
         assert_eq!(plain.entries(), held.entries());
         assert_eq!(held.into_bytes(b'|'), line.as_bytes());
     }
@@ -461,27 +438,22 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
         yggdryl::MimeType::ULCONFIG
     );
     assert_eq!(
-        yggdryl::types::MsgType::infer_bytes(LOGGED.as_bytes()),
+        FixCodec::infer_msgtype_bytes(LOGGED.as_bytes()),
         Some(&b"Plugin"[..])
     );
 
     let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
     let codec = FixCodec::new(registry()).with_branch(&branch);
     let message = codec
-        .transform_ulconfig_line(LOGGED.as_bytes(), false)
+        .one_ulconfig_line(LOGGED.as_bytes(), false)
         .expect("the document the line carries");
-    // FIX's own names stay FIX's, and the bridge's own are the bridge's -
-    // both inside the occurrence the document answered for.
+    // Standard FIX and bridge attributes share the configuration's flat row.
     assert_eq!(
-        message
-            .get_by_path("SessionInterfaces.0.SenderCompID")
-            .and_then(Scalar::as_str),
+        message.get_by_path("SenderCompID").and_then(Scalar::as_str),
         Some("CLI.PROD.TRD")
     );
     assert_eq!(
-        message
-            .get_by_path("SessionInterfaces.0.Version")
-            .and_then(Scalar::as_str),
+        message.get_by_path("Version").and_then(Scalar::as_str),
         Some("4.7.0")
     );
     // A `[Jolokia]` in the prose opens no document: only an object whose first
@@ -525,13 +497,103 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
     let message = held[0].into_fixmsg(&codec, false).expect("a typed message");
     assert_eq!(
         message
-            .get_by_path("SessionInterfaces.0.PriorityLevel")
+            .get_by_path("PriorityLevel")
             .and_then(Scalar::as_i64),
         Some(5)
     );
-    let back: Vec<yggdryl::UlPlugin> = yggdryl::UlPlugin::from_fixmsg(&message).collect();
-    assert_eq!(back.len(), 1);
-    assert_eq!(back[0].mbean(), held[0].mbean());
-    assert_eq!(back[0].name(), held[0].name());
-    assert_eq!(back[0].version(), held[0].version());
+    let back = yggdryl::UlPlugin::from_fixmsg(&message).expect("one flat configuration");
+    assert_eq!(back.mbean(), held[0].mbean());
+    assert_eq!(back.name(), held[0].name());
+    assert_eq!(back.version(), held[0].version());
+}
+
+#[test]
+fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
+    let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
+    let codec = FixCodec::new(registry()).with_branch(&branch);
+    let messages = codec
+        .transform_line(WILDCARD.as_bytes(), false)
+        .expect("a wildcard response")
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("each configuration converts");
+    assert_eq!(messages.len(), 2);
+    for (message, expected) in messages
+        .iter()
+        .zip(["ULMSG_BROKER_BDG_DMZ_PCO", "ULMSG_BROKER_TO_DMZ"])
+    {
+        assert_eq!(message.by_name("Name").unwrap().as_str(), Some(expected));
+        assert_eq!(
+            message.by_tag(yggdryl::STATUS_TAG).unwrap(),
+            &Scalar::from(200_i64)
+        );
+        assert_eq!(
+            message.by_tag(yggdryl::MBEAN_TAG).unwrap().as_str(),
+            Some("com.ullink.ulbridge.sessioninterfaces.plugins:*"),
+        );
+        assert!(
+            message
+                .by_name("SessionInterface")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .contains(expected)
+        );
+        assert!(message.get_by_name("SessionInterfaces").is_none());
+    }
+
+    let records: Vec<_> = [WILDCARD, WORKING]
+        .map(|body| {
+            Scalar::from_record([("body", Scalar::from(body.as_bytes().to_vec()))]).unwrap()
+        })
+        .into();
+    let read = codec
+        .transform_records(records, false)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("record iteration expands each configuration");
+    assert_eq!(read.len(), 3);
+    assert_eq!(read[0].as_value(), messages[0].as_value());
+    assert_eq!(read[1].as_value(), messages[1].as_value());
+    assert_eq!(read[2].by_tag(37).unwrap().as_str(), Some("O-9"));
+
+    let field = yggdryl::DataType::from_fields([
+        yggdryl::DataType::Utf8.required_field("url"),
+        yggdryl::DataType::Int64.required_field("rownum"),
+        yggdryl::DataType::Binary.required_field("body"),
+    ])
+    .unwrap()
+    .required_field("capture");
+    let value = Scalar::from_sequence([(41_i64, WILDCARD), (42_i64, WORKING)].map(
+        |(rownum, body)| {
+            Scalar::from_sequence([
+                Scalar::from("file:///bulk.log"),
+                Scalar::from(rownum),
+                Scalar::from(body.as_bytes().to_vec()),
+            ])
+        },
+    ));
+    let source = yggdryl::arrow::batch_from_value(&field, &value).unwrap();
+    let batch = codec
+        .transform_arrow_batch(&source, &FixOptions::new(), false)
+        .expect("bulk responses expand batch rows");
+    assert_eq!(batch.num_rows(), 3);
+    assert_eq!(
+        column(&batch, "rownum"),
+        [
+            Scalar::from(41_i64),
+            Scalar::from(41_i64),
+            Scalar::from(42_i64)
+        ]
+    );
+    assert_eq!(
+        column(&batch, "url"),
+        vec![Scalar::from("file:///bulk.log"); 3]
+    );
+    assert_eq!(
+        column(&batch, "body"),
+        [
+            Scalar::from(WILDCARD.as_bytes().to_vec()),
+            Scalar::from(WILDCARD.as_bytes().to_vec()),
+            Scalar::from(WORKING.as_bytes().to_vec()),
+        ]
+    );
 }

@@ -1,0 +1,24 @@
+{
+  "name": "testsuiteparametergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testsuiteparameter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "testsuiteparameter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTestSuiteParameters(3126) > 0.",
+    "display": "TestSuiteParameterGrp",
+    "fix:component": "testsuiteparameter",
+    "fix:counter": "3126",
+    "fix:tag": "1039954"
+  }
+}

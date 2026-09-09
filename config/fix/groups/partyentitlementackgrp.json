@@ -1,0 +1,24 @@
+{
+  "name": "partyentitlementackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "partyentitlementack",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "partyentitlementack"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPartyEntitlements(1772).",
+    "display": "PartyEntitlementAckGrp",
+    "fix:component": "partyentitlementack",
+    "fix:counter": "1772",
+    "fix:tag": "152799"
+  }
+}

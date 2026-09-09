@@ -1,0 +1,24 @@
+{
+  "name": "lottyperules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "lottyperule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "lottyperule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of Lot Types",
+    "display": "LotTypeRules",
+    "fix:component": "lottyperule",
+    "fix:counter": "1234",
+    "fix:tag": "733809"
+  }
+}

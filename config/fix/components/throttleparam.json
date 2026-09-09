@@ -1,0 +1,83 @@
+{
+  "name": "throttleparam",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "throttleaction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttleaction"
+        }
+      },
+      {
+        "name": "throttletype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttletype"
+        }
+      },
+      {
+        "name": "throttlenomsgs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttlenomsgs"
+        }
+      },
+      {
+        "name": "throttletimeinterval",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttletimeinterval"
+        }
+      },
+      {
+        "name": "throttletimeunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttletimeunit"
+        }
+      },
+      {
+        "name": "nothrottlemsgtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nothrottlemsgtype"
+        }
+      },
+      {
+        "name": "throttlemsgtypegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "throttlemsgtypegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ThrottleParam",
+    "fix:tag": "680696"
+  }
+}

@@ -20,6 +20,9 @@ mod datatype_kind;
 mod digest;
 mod edge_algorithm;
 mod error;
+mod fix_category;
+
+pub use fix_category::FixCategory;
 pub mod expression;
 pub mod fix;
 pub mod holder;
@@ -64,19 +67,20 @@ pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};
 pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
+pub use fix::MsgType;
 pub use fix::{
-    CRATE_TAG_MIN, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS, ERROR_TAG, FixAnomalies,
-    FixAnomaly, FixBranch, FixCode, FixCodeValue, FixCodec, FixCodes, FixDedup, FixEntry,
-    FixFieldIter, FixId, FixKey, FixLifecycle, FixLift, FixLineage, FixLineageEntry, FixMsg,
-    FixParty, FixPedigree, FixRegistry, FixSpellings, ID_TAG, INSTID_TAG, ISINCODE_TAG, MBEAN_TAG,
-    MICCODE_TAG, MSGCTXID_TAG, MSGDIRECTION_TAG, MSGHASH_TAG, OPERATION_TAG, PARENTCLORDID_TAG,
-    PARENTORDERID_TAG, PERSISTENTID_TAG, SENDERPLUGINID_TAG, SENDERPLUGINSESSION_TAG,
-    SESSIONID_TAG, SESSIONINTERFACES_TAG, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG,
-    STATUS_TAG, SYMBOLTICKER_TAG, TARGETPLUGINID_TAG, TARGETPLUGINSESSION_TAG, TIMESTAMP_NAME,
-    TIMESTAMP_TAG, ULBRIDGE_BRANCH, ULBRIDGE_ROWHEADER, ULBRIDGE_TAG_MIN, UNIXPARTITION_TAG,
-    UlPlugin, UlPlugins, VERSION_TAG, Words, fix_column_of, fix_column_tags, fix_crate_fields,
-    fix_lift, fix_lifts, fix_schema, fix_schema_carrying, fix_schema_tags, fix_ulbridge_fields,
-    is_crate_tag,
+    CRATE_TAG_MAX, CRATE_TAG_MIN, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS, ERROR_TAG,
+    FixAnomalies, FixAnomaly, FixBranch, FixCode, FixCodeValue, FixCodec, FixCodes, FixDedup,
+    FixEntry, FixFieldIter, FixId, FixKey, FixLifecycle, FixLift, FixLineage, FixLineageEntry,
+    FixMessages, FixMsg, FixParty, FixPedigree, FixRegistry, FixSpellings, ID_TAG, INSTID_TAG,
+    ISINCODE_TAG, MBEAN_TAG, MICCODE_TAG, MSGCTXID_TAG, MSGDIRECTION_TAG, MSGHASH_TAG,
+    OPERATION_TAG, PARENTCLORDID_TAG, PARENTORDERID_TAG, PERSISTENTID_TAG, SENDERPLUGINID_TAG,
+    SENDERSESSIONID_TAG, SENDERSESSIONNAME_TAG, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
+    STATE_TAG, STATUS_TAG, SYMBOLTICKER_TAG, TARGETPLUGINID_TAG, TARGETSESSIONID_TAG,
+    TARGETSESSIONNAME_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG, ULBRIDGE_BRANCH, ULBRIDGE_ROWHEADER,
+    ULBRIDGE_TAG_MIN, UNIXPARTITION_TAG, UlPlugin, UlPlugins, VERSION_TAG, Words, fix_column_of,
+    fix_column_tags, fix_crate_fields, fix_lift, fix_lifts, fix_schema, fix_schema_carrying,
+    fix_schema_tags, fix_ulbridge_fields, is_crate_tag,
 };
 #[cfg(feature = "arrow")]
 pub use fix::{
@@ -121,7 +125,8 @@ pub use types::protocol::{
     IcebergFieldMut, IdentityField, IdentityFieldMut, MysqlField, MysqlFieldMut, PandasField,
     PandasFieldMut, PartitionField, PartitionFieldMut, PolarsField, PolarsFieldMut, PostgresField,
     PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField, ProtocolFieldMut,
-    S3Field, S3FieldMut, SparkField, SparkFieldMut, SqlField, SqlFieldMut, UrnField, UrnFieldMut,
+    PythonField, PythonFieldMut, PythonKind, PythonMetadata, S3Field, S3FieldMut, SparkField,
+    SparkFieldMut, SqlField, SqlFieldMut, UrnField, UrnFieldMut,
 };
 pub use types::{
     AnyType, AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRef,

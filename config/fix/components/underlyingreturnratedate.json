@@ -1,0 +1,263 @@
+{
+  "name": "underlyingreturnratedate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingreturnratedatemode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratedatemode"
+        }
+      },
+      {
+        "name": "nounderlyingreturnratevaluationdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingreturnratevaluationdates"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingreturnratevaluationdategrp"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationdaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationdateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationstartdateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationstartdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationstartdaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationstartdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationstartdateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationstartdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationstartdateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationstartdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationstartdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationstartdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationstartdateadjusted"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationenddateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationenddaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationenddaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationenddateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationenddateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationenddateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationenddateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationenddateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationenddateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationenddateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationenddateadjusted"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationfrequencyperiod"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationfrequencyunit"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationfrequencyrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationfrequencyrollconvention"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingreturnratevaluationdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingreturnratevaluationdatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingreturnratevaluationdatebusinesscentergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingReturnRateDate",
+    "fix:tag": "430299"
+  }
+}

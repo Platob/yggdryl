@@ -1,0 +1,123 @@
+{
+  "name": "partydetail",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "partydetailid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partydetailid"
+        }
+      },
+      {
+        "name": "partydetailidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partydetailidsource"
+        }
+      },
+      {
+        "name": "partydetailrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partydetailrole"
+        }
+      },
+      {
+        "name": "partydetailrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partydetailrolequalifier"
+        }
+      },
+      {
+        "name": "nopartydetailsubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartydetailsubids"
+        }
+      },
+      {
+        "name": "partydetailsubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "partydetailsubgrp"
+        }
+      },
+      {
+        "name": "nopartydetailaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartydetailaltid"
+        }
+      },
+      {
+        "name": "partydetailaltidgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "partydetailaltidgrp"
+        }
+      },
+      {
+        "name": "norelatedpartydetailid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norelatedpartydetailid"
+        }
+      },
+      {
+        "name": "relatedpartydetailgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "relatedpartydetailgrp"
+        }
+      },
+      {
+        "name": "partydetailstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partydetailstatus"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PartyDetail",
+    "fix:tag": "575364"
+  }
+}

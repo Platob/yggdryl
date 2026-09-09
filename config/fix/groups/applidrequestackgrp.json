@@ -1,0 +1,24 @@
+{
+  "name": "applidrequestackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "applidrequestack",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "applidrequestack"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of applications",
+    "display": "ApplIDRequestAckGrp",
+    "fix:component": "applidrequestack",
+    "fix:counter": "1351",
+    "fix:tag": "854288"
+  }
+}

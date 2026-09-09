@@ -1,0 +1,24 @@
+{
+  "name": "legassetattributegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legassetattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legassetattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegAssetAttributes(2308) > 0.",
+    "display": "LegAssetAttributeGrp",
+    "fix:component": "legassetattribute",
+    "fix:counter": "2308",
+    "fix:tag": "902200"
+  }
+}

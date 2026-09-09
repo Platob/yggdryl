@@ -1,0 +1,73 @@
+{
+  "name": "sectype",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "securitytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securitytype"
+        }
+      },
+      {
+        "name": "securitysubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securitysubtype"
+        }
+      },
+      {
+        "name": "product",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "product"
+        }
+      },
+      {
+        "name": "cficode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cficode"
+        }
+      },
+      {
+        "name": "upicode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "upicode"
+        }
+      },
+      {
+        "name": "transacttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "transacttime"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SecType",
+    "fix:tag": "1001310"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "affectedord",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "affectedorigclordid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "affectedorigclordid"
+        }
+      },
+      {
+        "name": "affectedorderid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "affectedorderid"
+        }
+      },
+      {
+        "name": "affectedsecondaryorderid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "affectedsecondaryorderid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "AffectedOrd",
+    "fix:tag": "463320"
+  }
+}

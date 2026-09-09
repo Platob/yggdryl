@@ -1,0 +1,104 @@
+{
+  "name": "paymentstubstartdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstubstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstubstartdateunadjusted"
+        }
+      },
+      {
+        "name": "paymentstubstartdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstubstartdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nopaymentstubstartdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentstubstartdatebusinesscenters"
+        }
+      },
+      {
+        "name": "paymentstubstartdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentstubstartdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "paymentstubstartdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstubstartdaterelativeto"
+        }
+      },
+      {
+        "name": "paymentstubstartdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstubstartdateoffsetperiod"
+        }
+      },
+      {
+        "name": "paymentstubstartdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstubstartdateoffsetunit"
+        }
+      },
+      {
+        "name": "paymentstubstartdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstubstartdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "paymentstubstartdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstubstartdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this payment stub instance.",
+    "display": "PaymentStubStartDate",
+    "fix:tag": "816835"
+  }
+}

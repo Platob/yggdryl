@@ -1,0 +1,73 @@
+{
+  "name": "paymentsettlparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentsettlpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentsettlpartyid"
+        }
+      },
+      {
+        "name": "paymentsettlpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentsettlpartyidsource"
+        }
+      },
+      {
+        "name": "paymentsettlpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentsettlpartyrole"
+        }
+      },
+      {
+        "name": "paymentsettlpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentsettlpartyrolequalifier"
+        }
+      },
+      {
+        "name": "nopaymentsettlpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentsettlpartysubids"
+        }
+      },
+      {
+        "name": "paymentsettlptyssubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentsettlptyssubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentSettlParty",
+    "fix:tag": "383696"
+  }
+}

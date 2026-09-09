@@ -1,0 +1,24 @@
+{
+  "name": "legdeliverystreamcommoditysourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdeliverystreamcommoditysourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legdeliverystreamcommoditysourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegDeliveryStreamCommoditySources(41460) > 0.",
+    "display": "LegDeliveryStreamCommoditySourceGrp",
+    "fix:component": "legdeliverystreamcommoditysourcecomponent",
+    "fix:counter": "41460",
+    "fix:tag": "1084911"
+  }
+}

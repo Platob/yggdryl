@@ -1,0 +1,24 @@
+{
+  "name": "trdinstrmtleggrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdinstrmtleg",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "trdinstrmtleg"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegs(555) > 0.",
+    "display": "TrdInstrmtLegGrp",
+    "fix:component": "trdinstrmtleg",
+    "fix:counter": "555",
+    "fix:tag": "359778"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "underlyingoptionexercisedatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingoptionexercisedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexercisedate"
+        }
+      },
+      {
+        "name": "underlyingoptionexercisedatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexercisedatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingOptionExerciseDate",
+    "fix:tag": "522430"
+  }
+}

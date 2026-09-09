@@ -1,0 +1,23 @@
+{
+  "name": "pricequalifiercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "pricequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricequalifier"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PriceQualifier",
+    "fix:tag": "784443"
+  }
+}

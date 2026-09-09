@@ -1,0 +1,24 @@
+{
+  "name": "partyrisklimitsgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "partyrisklimit",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "partyrisklimit"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPartyRiskLimits(1677) > 0.",
+    "display": "PartyRiskLimitsGrp",
+    "fix:component": "partyrisklimit",
+    "fix:counter": "1677",
+    "fix:tag": "1048859"
+  }
+}

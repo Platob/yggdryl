@@ -1,0 +1,24 @@
+{
+  "name": "underlyingsettlmethodelectiondatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingsettlmethodelectiondatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingsettlmethodelectiondatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingSettlMethodElectionDateBusinessCenters(43074) > 0.",
+    "display": "UnderlyingSettlMethodElectionDateBusinessCenterGrp",
+    "fix:component": "underlyingsettlmethodelectiondatebusinesscentercomponent",
+    "fix:counter": "43074",
+    "fix:tag": "562686"
+  }
+}

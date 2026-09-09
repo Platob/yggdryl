@@ -7,20 +7,14 @@
  * it. Everything the explorer states about the dictionary - every tag, name,
  * datatype, code set, lineage entry, projected column - therefore comes from
  * here: this runs the published surface over the committed dictionary and
- * writes what it answered. The page reads FIX text against those answers and
- * never restates one of its own.
+ * writes what it answered. The page displays the native catalog and decoded
+ * sample frames without rebuilding the protocol's schemas.
  *
- * Two manifests, because the explorer needs them at two different moments:
+ * docs/assets/fix.json carries the native catalog, registry counts, fixed
+ * capture columns, and recorded decoded/emitted sample results. Codes and
+ * lineage stay inline in their owning native Field metadata.
  *
- *   docs/assets/fix.json         the index every page opens with - the counts,
- *                                the fields, the layouts, the fixed row, and
- *                                one decoded frame per shape a capture holds
- *   docs/assets/fix-codes.json   the code sets and the lineages, fetched
- *                                behind the first paint because they are two
- *                                thirds of the bytes and nothing renders
- *                                until a reader asks about one field
- *
- * Both are committed, so the same build runs on any machine: fixed corpus,
+ * The manifest is committed, so the same build runs on any machine: fixed corpus,
  * fixed key order, two-space JSON, LF, no timestamps and no paths. `--check`
  * proves the tree still matches what a regeneration writes, comparing the
  * text rather than the endings a checkout imposed on it.
@@ -33,13 +27,12 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { MimeType, fix } = require('../node/binding.js')
+const { MimeType, Version, fix } = require('../node/binding.js')
 
 const ROOT = path.join(__dirname, '..')
 const CONFIG = path.join(ROOT, 'config', 'fix')
 const ASSETS = path.join(ROOT, 'docs', 'assets')
 const INDEX = path.join(ASSETS, 'fix.json')
-const CODES = path.join(ASSETS, 'fix-codes.json')
 const VERSION = require('../node/package.json').version
 
 /** The frame whose two self-describing tags are deliberately wrong. */
@@ -48,9 +41,8 @@ const UNSEALED = 'unsealed'
 const SOH = '\u0001'
 
 // The corpus: one line per shape a session log holds, so the decoder shows
-// what the package answers rather than a curated summary. Each is read by the
-// real reader below and the answer is what the page renders beside the
-// reader's own live reading of the same line.
+// what the package answers. Each is read by the native codec below and the
+// page renders its field, value, and protocol-derived answers together.
 const FRAMES = [
   [
     'order',
@@ -177,7 +169,7 @@ function escapedText(bytes) {
 
 /** The message type a line declares, as text; the classifier answers bytes. */
 function msgtypeOf(bytes) {
-  const held = MimeType.inferBytesMsgtype(bytes)
+  const held = fix.FixCodec.inferMsgtypeBytes(bytes)
   return held === null ? null : Buffer.from(held).toString('binary')
 }
 
@@ -186,147 +178,23 @@ function dictionary() {
   return fix.FixRegistry.fromHandle(CONFIG)
 }
 
-/**
- * A repeating group is a List whose occurrence is a Struct with members.
- *
- * The occurrence carries the component's own name - `NoPartyIDs` heads a
- * `PartyID` - so the test is the shape rather than the name: the name is
- * descriptive, and nothing that decides anything may read it.
- */
-function isGroup(field) {
-  const occurrence = field.getFieldAt(0)
-  return occurrence !== null && occurrence.fieldLen > 0
-}
-
-/** The tags one group's occurrence Struct declares, in wire order. */
-function memberTags(field) {
-  const item = field.fieldAt(0)
-  const tags = []
-  for (let at = 0; at < item.fieldLen; at += 1) {
-    const tag = item.fieldAt(at).fix.tag
-    if (tag !== null) tags.push(tag)
-  }
-  return tags
-}
-
-/**
- * One lineage entry's datatype, as the reader of this manifest shows it.
- *
- * The document stores the crate's serialized datatype, exactly as a field's
- * own `dtype` is stored, so this is a *reading* of the package's answer and
- * not a second vocabulary: the tag is the datatype's name and the remaining
- * keys are its parameters, in the order the document holds them.
- */
-function lineageType(held) {
-  if (held === null || held === undefined) return ''
-  const { type, ...rest } = held
-  const parameters = Object.values(rest)
-  return parameters.length === 0 ? type : `${type}(${parameters.join(', ')})`
-}
-
-/**
- * What every counter tag introduces, read from the layouts.
- *
- * The registry holds a group as the flat members it can type, so a group
- * inside a group is not among them and a group of nothing but groups is not
- * nested there at all. A frame carries every one of them, so this is the list
- * a reader of wire text needs: a component flattened into the fields it
- * contributes, and a nested group standing as its own counter. One counter
- * heads several groups - Orchestra declares `NoRelatedSym` eleven times, once
- * per context - so the contexts union in wire order, first occurrence winning,
- * which is the rule the dictionary itself is built with.
- */
-function wireGroups(layouts) {
-  const components = new Map(layouts.components.map((held) => [held.id, held]))
-  const groups = new Map(layouts.groups.map((held) => [held.id, held]))
-  const flatten = (counter, members, into, seen) => {
-    for (const member of members) {
-      if (member.kind === 'field') {
-        if (member.id !== counter && !into.includes(member.id)) into.push(member.id)
-      } else if (member.kind === 'component') {
-        const component = components.get(member.id)
-        if (component !== undefined && !seen.has(member.id)) {
-          seen.add(member.id)
-          flatten(counter, component.members, into, seen)
-        }
-      } else {
-        const nested = groups.get(member.id)
-        if (nested !== undefined && nested.tag !== counter && !into.includes(nested.tag)) {
-          into.push(nested.tag)
-        }
-      }
-    }
-  }
-  const wire = {}
-  for (const group of layouts.groups) {
-    const held = wire[group.tag] ?? { n: group.name, m: [] }
-    flatten(group.tag, group.members, held.m, new Set())
-    wire[group.tag] = held
-  }
-  return wire
-}
-
-/** The field tags one header or trailer component declares, groups included. */
-function envelope(layouts, name) {
-  const wire = { n: name, m: [] }
-  const components = new Map(layouts.components.map((held) => [held.id, held]))
-  const groups = new Map(layouts.groups.map((held) => [held.id, held]))
-  const opening = layouts.components.find((held) => held.name === name)
-  // By name, because a component identifier is the specification's and moves
-  // with it; and loudly, because an empty header would silently reorder every
-  // frame the composer writes.
-  if (opening === undefined) throw new Error(`config/fix/layouts.json has no ${name} component`)
-  const walk = (members) => {
-    for (const member of members) {
-      if (member.kind === 'field') {
-        if (!wire.m.includes(member.id)) wire.m.push(member.id)
-      } else if (member.kind === 'component') {
-        const component = components.get(member.id)
-        if (component !== undefined) walk(component.members)
-      } else {
-        const group = groups.get(member.id)
-        if (group === undefined) continue
-        // A counter is a header tag, and so is every member it introduces:
-        // `HopCompID` belongs in the header wherever `HopGrp` puts it.
-        if (!wire.m.includes(group.tag)) wire.m.push(group.tag)
-        walk(group.members)
-      }
-    }
-  }
-  walk(opening.members)
-  return wire.m
-}
-
 /** One stored JSON document, or null where the field carries none. */
 function document(field, key) {
   const held = field.get(key)
   return held === null ? null : JSON.parse(held)
 }
 
-/**
- * Every registered field, as the index record the explorer searches.
- *
- * Short keys, because there are six thousand of them and the manifest is
- * fetched by a browser: `t` tag, `n` name, `d` display, `y` datatype, `b`
- * branch, `x` description, `a` aliases, `g` alternate tags, `k` kind, `m`
- * group member tags, `c` how many codes, `s`/`e` the versions the lineage
- * dates the field between.
- */
+/** Scalar summaries used to count the registry's metadata. */
 function fieldRecords(registry) {
   const records = []
-  const details = {}
   for (const field of registry) {
     const view = field.fix
     const tag = view.tag
     if (tag === null) continue
-    const group = isGroup(field)
     const codes = document(field, 'fix:codes')
     const lineage = document(field, 'fix:lineage')
     const entries = lineage === null ? [] : lineage.entries
-    // A group's own datatype spells its whole occurrence Struct - two
-    // kilobytes for a large one - and the explorer shows the members from `m`
-    // instead, so the record carries the shape and not the transcription.
-    const record = { t: tag, n: field.name, y: group ? 'list' : field.dtype.toString() }
+    const record = { t: tag, n: field.name, y: field.dtype.toString() }
     if (field.display !== null && field.display !== field.name) record.d = field.display
     if (view.branch !== '') record.b = view.branch
     if (field.description !== null) record.x = field.description
@@ -334,10 +202,6 @@ function fieldRecords(registry) {
     if (aliases.length > 0) record.a = aliases
     const alternates = view.tags
     if (alternates.length > 0) record.g = alternates
-    if (group) {
-      record.k = 'group'
-      record.m = memberTags(field)
-    }
 
     if (codes !== null) record.c = codes.codes.length
     if (entries.length > 0) {
@@ -347,53 +211,27 @@ function fieldRecords(registry) {
     }
     records.push(record)
 
-    if (codes !== null || entries.length > 0) {
-      const detail = {}
-      if (codes !== null) {
-        // Value, name, wording, the version and pack that added it, and the
-        // version that deprecated it: what an explanation of a wire value
-        // needs, and nothing the page never shows.
-        detail.c = codes.codes.map((code) => [
-          code.value,
-          code.name,
-          code.doc ?? '',
-          code.since ?? '',
-          code.ep ?? 0,
-          code.deprecated ?? '',
-        ])
-      }
-      if (entries.length > 0) {
-        detail.l = entries.map((entry) => [
-          entry.since ?? '',
-          entry.name ?? '',
-          lineageType(entry.type),
-          entry.until ?? '',
-        ])
-      }
-      details[view.id] = detail
-    }
   }
   records.sort((left, right) => left.t - right.t || (left.b ?? '').localeCompare(right.b ?? ''))
-  return { records, details }
+  return records
 }
 
 /** What the dictionary is, counted once so the page states no arithmetic. */
-function counts(records, layouts, row) {
+function counts(records, catalog, row) {
   const versions = new Set()
   const branches = new Map()
   const dtypes = new Map()
-  let codeSets = 0
+  let enumFields = 0
   let codes = 0
   let lineage = 0
   let aliases = 0
   let alternates = 0
-  let groups = 0
   for (const record of records) {
     const branch = record.b ?? ''
     branches.set(branch, (branches.get(branch) ?? 0) + 1)
     dtypes.set(record.y, (dtypes.get(record.y) ?? 0) + 1)
     if (record.c) {
-      codeSets += 1
+      enumFields += 1
       codes += record.c
     }
     if (record.s !== undefined) {
@@ -403,43 +241,29 @@ function counts(records, layouts, row) {
     if (record.e !== undefined) versions.add(record.e)
     if (record.a) aliases += record.a.length
     if (record.g) alternates += record.g.length
-    if (record.k === 'group') groups += 1
   }
   return {
     fields: records.length,
-    groups,
-    primitives: records.length - groups,
-    codeSets,
+    groups: catalog.groups.length,
+    enumFields,
     codes,
     lineage,
     aliases,
     alternates,
-    messages: layouts.messages.length,
-    components: layouts.components.length,
-    layoutGroups: layouts.groups.length,
+    messages: catalog.messages.length,
+    components: catalog.components.length,
     columns: row.columns.length,
     branches: branches.size,
     datatypes: dtypes.size,
     versions: versions.size,
     dtypes: [...dtypes.entries()].sort((left, right) => right[1] - left[1] || (left[0] < right[0] ? -1 : 1)),
     branchSizes: [...branches.entries()].sort((left, right) => right[1] - left[1]),
-    versionList: [...versions].filter((held) => held !== '').sort(compareVersions),
+    versionList: [...versions]
+      .filter((held) => held !== '')
+      .map((held) => Version.fromStr(held))
+      .sort((left, right) => left.compare(right))
+      .map(String),
   }
-}
-
-/** FIX versions order by their numbers, then by service pack. */
-function compareVersions(left, right) {
-  const parts = (text) => {
-    const [head, pack] = text.split('SP')
-    return [...head.split('.').map(Number), pack === undefined ? 0 : Number(pack)]
-  }
-  const one = parts(left)
-  const two = parts(right)
-  for (let at = 0; at < Math.max(one.length, two.length); at += 1) {
-    const difference = (one[at] ?? 0) - (two[at] ?? 0)
-    if (difference !== 0) return difference
-  }
-  return 0
 }
 
 /** The fixed row a capture lands in, column by column. */
@@ -467,8 +291,11 @@ function fixedRow(registry) {
 /** One captured line, and everything the package answered about it. */
 function frameCase(registry, reader, schema, key, label, line) {
   const bytes = Buffer.from(line, 'binary')
-  const held = reader.transformLine(bytes)
-  const row = held.toRow(schema).toJSON()
+  const messages = reader.transformLine(bytes)
+  const first = messages.next()
+  if (first.done || !messages.next().done) throw new Error(`corpus ${key} must yield one message`)
+  const held = first.value
+  const row = held.intoRow(schema).toJSON()
 
   const columns = SHOWN.map((tag) => {
     const at = schema.indexOf(String(tag))
@@ -494,6 +321,8 @@ function frameCase(registry, reader, schema, key, label, line) {
     // JSON string carrying them raw is a string a reader cannot see.
     line: text,
     root: held.field.name,
+    field: held.field.toJSON(),
+    value: held.value.toJSON(),
     mime: String(MimeType.inferBytes(bytes)),
     msgtype: msgtypeOf(bytes),
     direction: MimeType.inferBytesDirection(bytes),
@@ -514,24 +343,24 @@ function frameCase(registry, reader, schema, key, label, line) {
     // What the package re-emits from the entries, which is the encoder's
     // proof: a composed frame that does not match this is a composed frame
     // that is wrong.
-    emitted: held.size === 0 ? '' : escapedText([...Buffer.from(held.toBytes(0x7c))]),
+    emitted: held.size === 0 ? '' : escapedText([...Buffer.from(held.intoBytes(0x7c))]),
     // The raw line rather than its escape, and the encoding `frameCase` itself
     // read it under: a snippet that does not reproduce the answer beside it is
     // not the call that answered.
-    call: `new fix.FixCodec(registry).transformLine(Buffer.from(${JSON.stringify(line)}, 'binary'))`,
+    call: `[...new fix.FixCodec(registry).transformLine(Buffer.from(${JSON.stringify(line)}, 'binary'))]`,
   }
 }
 
-/** Build the index manifest and the detail manifest, in the order written. */
-function manifests() {
+/** Build the native catalog and recorded result manifest. */
+function manifest() {
   const registry = dictionary()
   const reader = new fix.FixCodec(registry)
   const schema = fix.schema(registry, 'FixMessage')
-  const layouts = JSON.parse(fs.readFileSync(path.join(CONFIG, 'layouts.json'), 'utf8'))
+  const catalog = registry.toJSON()
   const provenance = JSON.parse(fs.readFileSync(path.join(CONFIG, 'provenance.json'), 'utf8'))
-  const { records, details } = fieldRecords(registry)
+  const records = fieldRecords(registry)
   const row = fixedRow(registry)
-  const kpi = counts(records, layouts, row)
+  const kpi = counts(records, catalog, row)
 
 
   const index = {
@@ -550,27 +379,9 @@ function manifests() {
       })),
     },
     kpi,
-    header: envelope(layouts, 'StandardHeader'),
-    trailer: envelope(layouts, 'StandardTrailer'),
-    wire: wireGroups(layouts),
-    fields: records,
-    messages: layouts.messages.map((message) => ({
-      y: message.msgtype,
-      n: message.name,
-      i: message.id,
-      m: message.members.map((held) => [held.kind[0], held.id, held.required ? 1 : 0]),
-    })),
-    components: layouts.components.map((component) => ({
-      n: component.name,
-      i: component.id,
-      m: component.members.map((held) => [held.kind[0], held.id, held.required ? 1 : 0]),
-    })),
-    groups: layouts.groups.map((group) => ({
-      n: group.name,
-      i: group.id,
-      t: group.tag,
-      m: group.members.map((held) => [held.kind[0], held.id, held.required ? 1 : 0]),
-    })),
+    // Native compact Field documents preserve category and contextual references.
+    // The browser displays this graph; it does not resolve or union schemas.
+    catalog,
     row,
     frames: FRAMES.map(([key, label, line]) =>
       frameCase(registry, reader, schema, key, label, key === UNSEALED ? line : sealed(line)),
@@ -580,7 +391,7 @@ function manifests() {
       reader: 'const reader = new fix.FixCodec(registry)',
     },
   }
-  return { index, details }
+  return index
 }
 
 /** Report the first line two renderings differ on, so drift names itself. */
@@ -618,20 +429,16 @@ function settle(target, wanted, check) {
 
 function main(argv) {
   const check = argv.includes('--check')
-  const { index, details } = manifests()
+  const index = manifest()
   const kpi = index.kpi
 
   console.log(
-    `fix: ${kpi.fields} fields, ${kpi.codes} codes in ${kpi.codeSets} sets, ` +
+    `fix: ${kpi.fields} fields, ${kpi.codes} inline codes across ${kpi.enumFields} fields, ` +
       `${kpi.messages} messages, ${kpi.columns} columns, ${index.frames.length} frames` +
       `${check ? ' checked' : ' generated'}`,
   )
 
-  const written = [
-    settle(INDEX, rendered(index), check),
-    settle(CODES, rendered(details), check),
-  ]
-  return written.every(Boolean) ? 0 : 1
+  return settle(INDEX, rendered(index), check) ? 0 : 1
 }
 
 process.exitCode = main(process.argv.slice(2))

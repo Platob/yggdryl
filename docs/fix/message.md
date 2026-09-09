@@ -8,7 +8,7 @@
 | --- | --- |
 | Owns | root Struct [`Field`](../types/field.md), the row as the `Scalar::Sequence` that root declares, the linked registry |
 | Constructors | `FixMsg::new` links `FixRegistry::global()`; `FixMsg::with_registry` keeps the `Arc` it is given |
-| Validates | the row through `Field::validate_value` and `Field::canonicalize_value`, so a `Scalar::Record` input becomes that sequence |
+| Validates | the row through `Field::scalar`, so a `Scalar::Record` input becomes that sequence |
 | Borrows | `registry()`, `as_field()`, `as_value()` |
 | Branch | derived, not declared: the root field's own `fix:branch`, resolved once at construction |
 | Bare key tier | this message's branch, then the standard branch, and no further |
@@ -23,7 +23,7 @@
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field, into_json_scalar};
+    use yggdryl::{DataType, FixCategory, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field, into_json_scalar};
 
     let mut symbol = DataType::Utf8.required_field("Symbol");
     symbol.as_fix_mut().set_tag(55)?;
@@ -32,18 +32,25 @@
     qty.as_fix_mut().set_tag(38)?;
     let mut party_id = DataType::Utf8.nullable_field("PartyID");
     party_id.as_fix_mut().set_tag(448)?;
-    let mut parties = DataType::list(DataType::from_fields([party_id])?.required_field("PartyID"))
-        .nullable_field("NoPartyIDs");
-    parties.as_fix_mut().set_tag(453)?;
-    let registry = Arc::new(FixRegistry::from_fields([symbol.clone(), qty.clone(), parties.clone()])?);
+    let mut count = DataType::Int32.required_field("NoPartyIDs");
+    count.as_fix_mut().set_tag(453)?;
+    let party = DataType::from_fields([party_id.clone()])?.required_field("Party");
+    let mut parties = DataType::list(party.clone()).nullable_field("Parties");
+    parties.as_fix_mut().set_counter(453)?;
+    parties.as_fix_mut().set_component("Party")?;
+    let mut registry = FixRegistry::from_fields([symbol.clone(), qty.clone(), count.clone(), party_id])?;
+    registry.create_definition(FixCategory::Components, party)?;
+    registry.create_definition(FixCategory::Groups, parties.clone())?;
+    let registry = Arc::new(registry);
 
     // The root carries a tag no dictionary explains, under its rendered name.
-    let root = DataType::from_fields([qty, symbol, parties, DataType::Utf8.nullable_field("9999")])?
+    let root = DataType::from_fields([qty, symbol, count, parties, DataType::Utf8.nullable_field("9999")])?
         .required_field("NewOrderSingle");
     let value = Scalar::from_record([
         ("Symbol", Scalar::from("AAPL")),
         ("OrderQty", Scalar::from(100_i64)),
-        ("NoPartyIDs", Scalar::from_sequence([
+        ("NoPartyIDs", Scalar::from(1_i32)),
+        ("Parties", Scalar::from_sequence([
             Scalar::from_record([("PartyID", Scalar::from("BROKER"))])?,
         ])),
         ("9999", Scalar::from("custom")),
@@ -51,13 +58,13 @@
     let msg = FixMsg::with_registry(Arc::clone(&registry), root.clone(), value)?;
 
     // The record became the ordered row the root declares.
-    assert_eq!(msg.as_value().as_sequence().map(|row| row.len()), Some(4));
+    assert_eq!(msg.as_value().as_sequence().map(|row| row.len()), Some(5));
     assert_eq!(msg.by_tag(38)?, &Scalar::from(100_i64));
     assert_eq!(msg.by_name("ticker")?, &Scalar::from("AAPL"));
-    assert_eq!(msg.by_path("NoPartyIDs.0.PartyID")?, &Scalar::from("BROKER"));
+    assert_eq!(msg.by_path("Parties.0.PartyID")?, &Scalar::from("BROKER"));
     assert_eq!(msg.by_tag(9999)?, &Scalar::from("custom"), "an unknown tag is retained");
     assert_eq!(msg.get(55), msg.get_by_tag(55));
-    assert!(msg.value("NoPartyIDs.PartyID").is_err(), "a group member needs its index");
+    assert!(msg.value("Parties.PartyID").is_err(), "a group member needs its index");
 
     // The message's branch is the root's own, and an identifier is exact.
     assert_eq!(msg.branch(), &yggdryl::FixBranch::STANDARD);
@@ -91,15 +98,20 @@
     qty.fix.tag = 38
     party_id = Field("PartyID", "utf8")
     party_id.fix.tag = 448
-    item = Field("PartyID", DataType.from_fields([party_id]), nullable=False)
-    parties = types.list("NoPartyIDs", item)
-    parties.fix.tag = 453
-    registry = FixRegistry.from_fields([symbol, qty, parties])
+    count = Field("NoPartyIDs", "int32", nullable=False)
+    count.fix.tag = 453
+    item = Field("Party", DataType.from_fields([party_id]), nullable=False)
+    parties = types.list("Parties", item)
+    parties.fix.counter = 453
+    parties.fix.component = "Party"
+    registry = FixRegistry.from_fields([symbol, qty, count, party_id])
+    registry.create_definition("components", item)
+    registry.create_definition("groups", parties)
 
     # The root carries a tag no dictionary explains, under its rendered name.
     root = Field(
         "NewOrderSingle",
-        DataType.from_fields([qty, symbol, parties, Field("9999", "utf8")]),
+        DataType.from_fields([qty, symbol, count, parties, Field("9999", "utf8")]),
         nullable=False,
     )
     message = FixMsg(
@@ -107,22 +119,23 @@
         {
             "Symbol": "AAPL",
             "OrderQty": 100,
-            "NoPartyIDs": [{"PartyID": "BROKER"}],
+            "NoPartyIDs": 1,
+            "Parties": [{"PartyID": "BROKER"}],
             "9999": "custom",
         },
         registry,
     )
 
     # The mapping became the ordered row the root declares.
-    assert len(message) == 4
+    assert len(message) == 5
     assert message.by_tag(38).as_py() == 100
     assert message.by_name("ticker").as_py() == "AAPL"
-    assert message.by_path("NoPartyIDs.0.PartyID").as_py() == "BROKER"
+    assert message.by_path("Parties.0.PartyID").as_py() == "BROKER"
     assert message.by_tag(9999).as_py() == "custom", "an unknown tag is retained"
     assert message[55] == message.get_by_tag(55)
     with pytest.raises(KeyError):
-        message.by_path("NoPartyIDs.PartyID")  # a group member needs its index
-    assert [name for name, _ in message] == ["OrderQty", "Symbol", "NoPartyIDs", "9999"]
+        message.by_path("Parties.PartyID")  # a group member needs its index
+    assert [name for name, _ in message] == ["OrderQty", "Symbol", "NoPartyIDs", "Parties", "9999"]
 
     # The message's branch is the root's own, and an identifier is exact.
     assert message.branch == STANDARD_BRANCH
@@ -148,14 +161,20 @@
     qty.fix.tag = 38
     const partyId = Field.from('PartyID: utf8')
     partyId.fix.tag = 448
-    const parties = fields.list('NoPartyIDs', fields.struct('PartyID', [partyId], { nullable: false }))
-    parties.fix.tag = 453
-    const registry = fix.FixRegistry.fromFields([symbol, qty, parties])
+    const count = fields.int32('NoPartyIDs', { nullable: false })
+    count.fix.tag = 453
+    const item = fields.struct('Party', [partyId], { nullable: false })
+    const parties = fields.list('Parties', item)
+    parties.fix.counter = 453
+    parties.fix.component = 'Party'
+    const registry = fix.FixRegistry.fromFields([symbol, qty, count, partyId])
+    registry.createDefinition('components', item)
+    registry.createDefinition('groups', parties)
 
     // The root carries a tag no dictionary explains, under its rendered name.
     const root = fields.struct(
       'NewOrderSingle',
-      [qty, symbol, parties, Field.from('9999: utf8')],
+      [qty, symbol, count, parties, Field.from('9999: utf8')],
       { nullable: false },
     )
     const message = new fix.FixMsg(
@@ -163,7 +182,8 @@
       {
         Symbol: 'AAPL',
         OrderQty: 100n,
-        NoPartyIDs: [{ PartyID: 'BROKER' }],
+        NoPartyIDs: 1,
+        Parties: [{ PartyID: 'BROKER' }],
         9999: 'custom',
       },
       registry,
@@ -173,13 +193,13 @@
     assert.equal(message.value.kind, 'sequence')
     assert.equal(message.byTag(38).asJs(), 100)
     assert.equal(message.byName('ticker').asJs(), 'AAPL')
-    assert.equal(message.byPath('NoPartyIDs.0.PartyID').asJs(), 'BROKER')
+    assert.equal(message.byPath('Parties.0.PartyID').asJs(), 'BROKER')
     assert.equal(message.byTag(9999).asJs(), 'custom', 'an unknown tag is retained')
     assert.ok(message.get(55).equals(message.getByTag(55)))
-    assert.throws(() => message.at('NoPartyIDs.PartyID'), /a fix value/)
+    assert.throws(() => message.at('Parties.PartyID'), /a fix value/)
     assert.deepEqual(
       [...message].map(([name]) => name),
-      ['OrderQty', 'Symbol', 'NoPartyIDs', '9999'],
+      ['OrderQty', 'Symbol', 'NoPartyIDs', 'Parties', '9999'],
     )
 
     // The message's branch is the root's own, and an identifier is exact.
@@ -220,7 +240,7 @@ A bare tag or name resolves in two steps and no further:
 - `get_by_tag(9999)`, an unknown tag -> the root child named `9999` exactly, never `09999`; the miss allocates nothing.
 - A bare tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` on a non-standard message -> only the standard branch is tried.
 - `by_id` on a foreign branch -> a miss, because an identifier never tiers.
-- `by_path("NoPartyIDs.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the entry's index (`NoPartyIDs.0.PartyID`).
+- `by_path("Parties.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the entry's index (`Parties.0.PartyID`).
 
 ## Commands
 
@@ -228,7 +248,7 @@ A bare tag or name resolves in two steps and no further:
 
     ```bash
     cargo test -p yggdryl --lib fix::tests::a_message
-    cargo test -p yggdryl --test fix serialization_is_inherited
+    cargo test -p yggdryl --test fix codec::a_message_re_emits_from_its_entries_and_reads_back_equal
     ```
 
 === "Python"

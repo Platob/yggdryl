@@ -1,0 +1,24 @@
+{
+  "name": "legsecondaryassetgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legsecondaryasset",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legsecondaryasset"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegSecondaryAssetClasses(2076) > 0.",
+    "display": "LegSecondaryAssetGrp",
+    "fix:component": "legsecondaryasset",
+    "fix:counter": "2076",
+    "fix:tag": "834577"
+  }
+}

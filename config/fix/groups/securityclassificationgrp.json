@@ -1,0 +1,24 @@
+{
+  "name": "securityclassificationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "securityclassification",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "securityclassification"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required if NoSecurityClassifications > 0.",
+    "display": "SecurityClassificationGrp",
+    "fix:component": "securityclassification",
+    "fix:counter": "1582",
+    "fix:tag": "740358"
+  }
+}

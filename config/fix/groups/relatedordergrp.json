@@ -1,0 +1,24 @@
+{
+  "name": "relatedordergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedorder",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "relatedorder"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoOrders(73) > 0.",
+    "display": "RelatedOrderGrp",
+    "fix:component": "relatedorder",
+    "fix:counter": "73",
+    "fix:tag": "966583"
+  }
+}

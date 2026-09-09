@@ -1,0 +1,33 @@
+{
+  "name": "legmarketdisruptioneventcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legmarketdisruptionevent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionevent"
+        }
+      },
+      {
+        "name": "legmarketdisruptionvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegMarketDisruptionEvent",
+    "fix:tag": "255924"
+  }
+}

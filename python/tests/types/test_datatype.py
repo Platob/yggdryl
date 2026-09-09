@@ -11,7 +11,7 @@ from typing import Optional
 import pyarrow as pa
 import pytest
 
-from yggdryl import AsciiEnum, DataType, Field, types
+from yggdryl import AsciiEnum, DataType, Field, Version, types
 
 
 def test_dtype_infers_native_string_and_arrow_values() -> None:
@@ -363,7 +363,7 @@ def test_the_uuid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
         field.cast_arrow_array(pa.array(["not-a-uuid"]))
 
 
-def test_version_is_canonical_numeric_text_in_sixteen_native_bytes() -> None:
+def test_version_is_numeric_with_an_arrow_string_projection() -> None:
     dtype = DataType("version")
     field = Field("version", dtype, nullable=False)
 
@@ -371,18 +371,21 @@ def test_version_is_canonical_numeric_text_in_sixteen_native_bytes() -> None:
     assert dtype.kind == "text"
     assert str(dtype) == "version"
     assert dtype.ascii_width is None
-    assert field.default_scalar().as_py() == "0"
-    assert field.arrow_scalar("5.0.SP1") == pa.scalar("5.0SP1")
-    assert field.cast_arrow_array(pa.array(["5.0.SP1", "5.0SP10"])).to_pylist() == [
-        "5.0SP1",
-        "5.0SP10",
+    assert field.default_scalar().as_py() == Version(0)
+    assert field.arrow_scalar("5.0.01") == pa.scalar("5.0.1")
+    assert field.cast_arrow_array(pa.array(["5.0.01", "5.0.10"])).to_pylist() == [
+        "5.0.1",
+        "5.0.10",
     ]
 
     arrow = field.into_arrow()
     assert arrow.type == pa.string()
     assert Field.from_arrow(arrow) == field
+    # A tail states no number and folds into the patch rather than failing, so
+    # the projection refuses on the major it cannot read, not on the tail.
+    assert field.cast_arrow_array(pa.array(["5.0+"])).to_pylist() == [str(Version.from_str("5.0+"))]
     with pytest.raises(ValueError, match="version"):
-        field.cast_arrow_array(pa.array(["5.0+"]))
+        field.cast_arrow_array(pa.array(["FIX.5.0"]))
 
 
 def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:

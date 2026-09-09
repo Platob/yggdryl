@@ -1,0 +1,23 @@
+{
+  "name": "usernamecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "username",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "username"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Username",
+    "fix:tag": "755376"
+  }
+}

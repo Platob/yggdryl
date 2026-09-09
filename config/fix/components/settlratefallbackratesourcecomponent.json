@@ -1,0 +1,34 @@
+{
+  "name": "settlratefallbackratesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "settlratefallbackratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlratefallbackratesource"
+        }
+      },
+      {
+        "name": "settlratefallbackreferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlratefallbackreferencepage"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when SettlRateFallbackRateSource(40373) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
+    "display": "SettlRateFallbackRateSource",
+    "fix:tag": "225482"
+  }
+}

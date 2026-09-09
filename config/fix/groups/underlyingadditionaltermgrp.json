@@ -1,0 +1,24 @@
+{
+  "name": "underlyingadditionaltermgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingadditionalterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingadditionalterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingAdditionalTerms(42036) > 0.",
+    "display": "UnderlyingAdditionalTermGrp",
+    "fix:component": "underlyingadditionalterm",
+    "fix:counter": "42036",
+    "fix:tag": "1019489"
+  }
+}

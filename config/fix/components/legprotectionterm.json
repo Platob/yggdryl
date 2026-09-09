@@ -1,0 +1,153 @@
+{
+  "name": "legprotectionterm",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprotectiontermnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermnotional"
+        }
+      },
+      {
+        "name": "legprotectiontermcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermcurrency"
+        }
+      },
+      {
+        "name": "legprotectiontermsellernotifies",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermsellernotifies"
+        }
+      },
+      {
+        "name": "legprotectiontermbuyernotifies",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermbuyernotifies"
+        }
+      },
+      {
+        "name": "legprotectiontermeventbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventbusinesscenter"
+        }
+      },
+      {
+        "name": "legprotectiontermstandardsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermstandardsources"
+        }
+      },
+      {
+        "name": "legprotectiontermeventminimumsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventminimumsources"
+        }
+      },
+      {
+        "name": "nolegprotectiontermeventnewssources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegprotectiontermeventnewssources"
+        }
+      },
+      {
+        "name": "legprotectiontermeventnewssourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legprotectiontermeventnewssourcegrp"
+        }
+      },
+      {
+        "name": "nolegprotectiontermevents",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegprotectiontermevents"
+        }
+      },
+      {
+        "name": "legprotectiontermeventgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legprotectiontermeventgrp"
+        }
+      },
+      {
+        "name": "nolegprotectiontermobligations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegprotectiontermobligations"
+        }
+      },
+      {
+        "name": "legprotectiontermobligationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legprotectiontermobligationgrp"
+        }
+      },
+      {
+        "name": "legprotectiontermxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermxid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProtectionTerm",
+    "fix:tag": "661063"
+  }
+}

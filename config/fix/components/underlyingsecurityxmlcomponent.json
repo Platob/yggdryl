@@ -1,0 +1,44 @@
+{
+  "name": "underlyingsecurityxmlcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingsecurityxmllen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsecurityxmllen"
+        }
+      },
+      {
+        "name": "underlyingsecurityxml",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsecurityxml"
+        }
+      },
+      {
+        "name": "underlyingsecurityxmlschema",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsecurityxmlschema"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Must be provided if UnderlyingSecurityXML(1875) field is specified and must immediately precede it.",
+    "display": "UnderlyingSecurityXML",
+    "fix:tag": "569749"
+  }
+}

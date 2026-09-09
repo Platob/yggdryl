@@ -1,0 +1,33 @@
+{
+  "name": "requestingpartysub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "requestingpartysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "requestingpartysubid"
+        }
+      },
+      {
+        "name": "requestingpartysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "requestingpartysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RequestingPartySub",
+    "fix:tag": "1084798"
+  }
+}

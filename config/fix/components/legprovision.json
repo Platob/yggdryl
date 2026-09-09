@@ -1,0 +1,363 @@
+{
+  "name": "legprovision",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprovisiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisiontype"
+        }
+      },
+      {
+        "name": "legprovisiondateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisiondateunadjusted"
+        }
+      },
+      {
+        "name": "legprovisiondatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisiondatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegprovisiondatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegprovisiondatebusinesscenters"
+        }
+      },
+      {
+        "name": "legprovisiondatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legprovisiondatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legprovisiondateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisiondateadjusted"
+        }
+      },
+      {
+        "name": "legprovisiondatetenorperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisiondatetenorperiod"
+        }
+      },
+      {
+        "name": "legprovisiondatetenorunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisiondatetenorunit"
+        }
+      },
+      {
+        "name": "legprovisionbreakfeeelection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionbreakfeeelection"
+        }
+      },
+      {
+        "name": "legprovisionbreakfeerate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionbreakfeerate"
+        }
+      },
+      {
+        "name": "legprovisioncalculationagent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncalculationagent"
+        }
+      },
+      {
+        "name": "legprovisionoptionsinglepartybuyerside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionsinglepartybuyerside"
+        }
+      },
+      {
+        "name": "legprovisionoptionsinglepartysellerside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionsinglepartysellerside"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlvaluedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legprovisioncashsettlvaluedates"
+        }
+      },
+      {
+        "name": "legprovisionoptionexercisedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legprovisionoptionexercisedates"
+        }
+      },
+      {
+        "name": "legprovisionoptionexpirationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legprovisionoptionexpirationdate"
+        }
+      },
+      {
+        "name": "legprovisionoptionrelevantunderlyingdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legprovisionoptionrelevantunderlyingdate"
+        }
+      },
+      {
+        "name": "legprovisionoptionexercisestyle",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionexercisestyle"
+        }
+      },
+      {
+        "name": "legprovisionoptionexercisemultiplenotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionexercisemultiplenotional"
+        }
+      },
+      {
+        "name": "legprovisionoptionexerciseminimumnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionexerciseminimumnotional"
+        }
+      },
+      {
+        "name": "legprovisionoptionexercisemaximumnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionexercisemaximumnotional"
+        }
+      },
+      {
+        "name": "legprovisionoptionminimumnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionminimumnumber"
+        }
+      },
+      {
+        "name": "legprovisionoptionmaximumnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionmaximumnumber"
+        }
+      },
+      {
+        "name": "legprovisionoptionexerciseconfirmation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionexerciseconfirmation"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlpaymentdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legprovisioncashsettlpaymentdates"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlmethod"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlcurrency"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlcurrency2",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlcurrency2"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlquotetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlquotetype"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlquotesourcecomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legprovisioncashsettlquotesourcecomponent"
+        }
+      },
+      {
+        "name": "legprovisiontext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisiontext"
+        }
+      },
+      {
+        "name": "encodedlegprovisiontextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegprovisiontextlen"
+        }
+      },
+      {
+        "name": "encodedlegprovisiontext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegprovisiontext"
+        }
+      },
+      {
+        "name": "nolegprovisionpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegprovisionpartyids"
+        }
+      },
+      {
+        "name": "legprovisionparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legprovisionparties"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProvision",
+    "fix:tag": "1021125"
+  }
+}

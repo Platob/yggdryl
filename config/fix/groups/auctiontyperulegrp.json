@@ -1,0 +1,24 @@
+{
+  "name": "auctiontyperulegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "auctiontyperule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "auctiontyperule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAuctionTypeRules(2548) > 0.",
+    "display": "AuctionTypeRuleGrp",
+    "fix:component": "auctiontyperule",
+    "fix:counter": "2548",
+    "fix:tag": "100972"
+  }
+}

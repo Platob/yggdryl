@@ -1,0 +1,24 @@
+{
+  "name": "paymentscheduleratesourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentscheduleratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentscheduleratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentScheduleRateSources(40868) > 0.",
+    "display": "PaymentScheduleRateSourceGrp",
+    "fix:component": "paymentscheduleratesourcecomponent",
+    "fix:counter": "40868",
+    "fix:tag": "851817"
+  }
+}

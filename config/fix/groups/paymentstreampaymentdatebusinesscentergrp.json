@@ -1,0 +1,24 @@
+{
+  "name": "paymentstreampaymentdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreampaymentdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentstreampaymentdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentStreamPaymentDateBusinessCenters(40947) > 0.",
+    "display": "PaymentStreamPaymentDateBusinessCenterGrp",
+    "fix:component": "paymentstreampaymentdatebusinesscentercomponent",
+    "fix:counter": "40947",
+    "fix:tag": "627265"
+  }
+}

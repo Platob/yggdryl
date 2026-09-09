@@ -1,0 +1,53 @@
+{
+  "name": "underlyingadditionalterm",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingadditionaltermconditionprecedentbondindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermconditionprecedentbondindicator"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermdiscrepancyclauseindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaltermdiscrepancyclauseindicator"
+        }
+      },
+      {
+        "name": "nounderlyingadditionaltermbondrefs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingadditionaltermbondrefs"
+        }
+      },
+      {
+        "name": "underlyingadditionaltermbondrefgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingadditionaltermbondrefgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingAdditionalTerm",
+    "fix:tag": "603826"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "matchingdatapointgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "matchingdatapoint",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "matchingdatapoint"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoMatchingDataPoints(2781) > 0.",
+    "display": "MatchingDataPointGrp",
+    "fix:component": "matchingdatapoint",
+    "fix:counter": "2781",
+    "fix:tag": "1032047"
+  }
+}

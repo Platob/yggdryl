@@ -1,0 +1,33 @@
+{
+  "name": "legoptionexercisedatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legoptionexercisedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisedate"
+        }
+      },
+      {
+        "name": "legoptionexercisedatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisedatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegOptionExerciseDate",
+    "fix:tag": "984641"
+  }
+}

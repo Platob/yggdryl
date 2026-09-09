@@ -1,0 +1,24 @@
+{
+  "name": "legcashsettldealergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcashsettldealercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcashsettldealercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegCashSettlDealers(41342) > 0.",
+    "display": "LegCashSettlDealerGrp",
+    "fix:component": "legcashsettldealercomponent",
+    "fix:counter": "41342",
+    "fix:tag": "363613"
+  }
+}

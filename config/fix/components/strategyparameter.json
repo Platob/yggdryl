@@ -1,0 +1,43 @@
+{
+  "name": "strategyparameter",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "strategyparametername",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "strategyparametername"
+        }
+      },
+      {
+        "name": "strategyparametertype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "strategyparametertype"
+        }
+      },
+      {
+        "name": "strategyparametervalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "strategyparametervalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StrategyParameter",
+    "fix:tag": "329221"
+  }
+}

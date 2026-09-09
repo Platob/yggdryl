@@ -1,0 +1,24 @@
+{
+  "name": "individualallocsubqtyattributegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "individualallocsubqtyattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "individualallocsubqtyattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoIndividualAllocSubQtyAttributes(3099) > 0.",
+    "display": "IndividualAllocSubQtyAttributeGrp",
+    "fix:component": "individualallocsubqtyattribute",
+    "fix:counter": "3099",
+    "fix:tag": "973058"
+  }
+}

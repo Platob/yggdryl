@@ -1,0 +1,24 @@
+{
+  "name": "underlyingevntgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingevnt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingevnt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingEvents(1982) > 0.",
+    "display": "UnderlyingEvntGrp",
+    "fix:component": "underlyingevnt",
+    "fix:counter": "1981",
+    "fix:tag": "593463"
+  }
+}

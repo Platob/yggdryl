@@ -1,0 +1,24 @@
+{
+  "name": "provisiongrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provision",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "provision"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProvisions(40090) > 0.",
+    "display": "ProvisionGrp",
+    "fix:component": "provision",
+    "fix:counter": "40090",
+    "fix:tag": "515134"
+  }
+}

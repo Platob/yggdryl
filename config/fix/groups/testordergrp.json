@@ -1,0 +1,24 @@
+{
+  "name": "testordergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testorder",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "testorder"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTestOrders(3082) > 0.",
+    "display": "TestOrderGrp",
+    "fix:component": "testorder",
+    "fix:counter": "3082",
+    "fix:tag": "118455"
+  }
+}

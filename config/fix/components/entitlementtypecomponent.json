@@ -1,0 +1,33 @@
+{
+  "name": "entitlementtypecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "entitlementtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementtype"
+        }
+      },
+      {
+        "name": "entitlementsubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementsubtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "EntitlementType",
+    "fix:tag": "197051"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "orderattribute",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "orderattributetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderattributetype"
+        }
+      },
+      {
+        "name": "orderattributevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderattributevalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "OrderAttribute",
+    "fix:tag": "816370"
+  }
+}

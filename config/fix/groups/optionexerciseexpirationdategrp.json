@@ -1,0 +1,24 @@
+{
+  "name": "optionexerciseexpirationdategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "optionexerciseexpirationdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "optionexerciseexpirationdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoOptionExpirationDates(41152) > 0.",
+    "display": "OptionExerciseExpirationDateGrp",
+    "fix:component": "optionexerciseexpirationdatecomponent",
+    "fix:counter": "41152",
+    "fix:tag": "795700"
+  }
+}

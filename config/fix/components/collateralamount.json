@@ -1,0 +1,183 @@
+{
+  "name": "collateralamount",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "currentcollateralamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "currentcollateralamount"
+        }
+      },
+      {
+        "name": "collateralcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralcurrency"
+        }
+      },
+      {
+        "name": "collateralcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralcurrencycodesource"
+        }
+      },
+      {
+        "name": "collateralamounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralamounttype"
+        }
+      },
+      {
+        "name": "collateralfxrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralfxrate"
+        }
+      },
+      {
+        "name": "collateralfxratecalc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralfxratecalc"
+        }
+      },
+      {
+        "name": "collateraltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateraltype"
+        }
+      },
+      {
+        "name": "collateralamountmarketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralamountmarketsegmentid"
+        }
+      },
+      {
+        "name": "collateralamountmarketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralamountmarketid"
+        }
+      },
+      {
+        "name": "haircutindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "haircutindicator"
+        }
+      },
+      {
+        "name": "collateralportfolioid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralportfolioid"
+        }
+      },
+      {
+        "name": "collateralpercentoverage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralpercentoverage"
+        }
+      },
+      {
+        "name": "collateralmarketprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralmarketprice"
+        }
+      },
+      {
+        "name": "collateralreinvestmentrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralreinvestmentrate"
+        }
+      },
+      {
+        "name": "nocollateralreinvestments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocollateralreinvestments"
+        }
+      },
+      {
+        "name": "collateralreinvestmentgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "collateralreinvestmentgrp"
+        }
+      },
+      {
+        "name": "underlyingrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingrefid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "CollateralAmount",
+    "fix:tag": "159134"
+  }
+}

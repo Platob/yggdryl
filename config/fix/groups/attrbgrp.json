@@ -1,0 +1,23 @@
+{
+  "name": "attrbgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "attrb",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "attrb"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "AttrbGrp",
+    "fix:component": "attrb",
+    "fix:counter": "870",
+    "fix:tag": "938775"
+  }
+}

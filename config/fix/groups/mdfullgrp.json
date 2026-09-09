@@ -1,0 +1,24 @@
+{
+  "name": "mdfullgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "mdfull",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "mdfull"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of entries following.",
+    "display": "MDFullGrp",
+    "fix:component": "mdfull",
+    "fix:counter": "268",
+    "fix:tag": "746229"
+  }
+}

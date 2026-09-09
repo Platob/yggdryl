@@ -1,0 +1,24 @@
+{
+  "name": "alloccommissiondatagrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "alloccommissiondata",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "alloccommissiondata"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAllocCommissions(2653) > 0.",
+    "display": "AllocCommissionDataGrp",
+    "fix:component": "alloccommissiondata",
+    "fix:counter": "2653",
+    "fix:tag": "545842"
+  }
+}

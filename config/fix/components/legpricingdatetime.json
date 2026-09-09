@@ -1,0 +1,84 @@
+{
+  "name": "legpricingdatetime",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpricingdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpricingdateunadjusted"
+        }
+      },
+      {
+        "name": "legpricingdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpricingdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegpricingdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpricingdatebusinesscenters"
+        }
+      },
+      {
+        "name": "legpricingdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpricingdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legpricingdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpricingdateadjusted"
+        }
+      },
+      {
+        "name": "legpricingtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpricingtime"
+        }
+      },
+      {
+        "name": "legpricingtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpricingtimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to the pricing dates.",
+    "display": "LegPricingDateTime",
+    "fix:tag": "280634"
+  }
+}

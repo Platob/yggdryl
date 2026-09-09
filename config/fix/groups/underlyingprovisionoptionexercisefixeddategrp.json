@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprovisionoptionexercisefixeddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisionoptionexercisefixeddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprovisionoptionexercisefixeddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProvisionOptionExerciseFixedDates(42112) > 0.",
+    "display": "UnderlyingProvisionOptionExerciseFixedDateGrp",
+    "fix:component": "underlyingprovisionoptionexercisefixeddatecomponent",
+    "fix:counter": "42112",
+    "fix:tag": "1090526"
+  }
+}

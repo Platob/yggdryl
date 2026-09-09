@@ -1,0 +1,63 @@
+{
+  "name": "miscfeessub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "miscfeesubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeesubtype"
+        }
+      },
+      {
+        "name": "miscfeesubtypeamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeesubtypeamt"
+        }
+      },
+      {
+        "name": "miscfeesubtypedesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeesubtypedesc"
+        }
+      },
+      {
+        "name": "encodedmiscfeesubtypedesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedmiscfeesubtypedesclen"
+        }
+      },
+      {
+        "name": "encodedmiscfeesubtypedesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedmiscfeesubtypedesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MiscFeesSub",
+    "fix:tag": "175224"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "riskinstrumentscope",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrumentscopeoperator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentscopeoperator"
+        }
+      },
+      {
+        "name": "instrumentscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrumentscope"
+        }
+      },
+      {
+        "name": "riskinstrumentmultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "riskinstrumentmultiplier"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RiskInstrumentScope",
+    "fix:tag": "866779"
+  }
+}

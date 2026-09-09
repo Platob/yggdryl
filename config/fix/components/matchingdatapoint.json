@@ -1,0 +1,53 @@
+{
+  "name": "matchingdatapoint",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "matchingdatapointindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchingdatapointindicator"
+        }
+      },
+      {
+        "name": "matchingdatapointvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchingdatapointvalue"
+        }
+      },
+      {
+        "name": "matchingdatapointtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchingdatapointtype"
+        }
+      },
+      {
+        "name": "matchingdatapointname",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchingdatapointname"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MatchingDataPoint",
+    "fix:tag": "830160"
+  }
+}

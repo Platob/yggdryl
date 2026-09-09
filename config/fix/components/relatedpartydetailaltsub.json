@@ -1,0 +1,33 @@
+{
+  "name": "relatedpartydetailaltsub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "relatedpartydetailaltsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedpartydetailaltsubid"
+        }
+      },
+      {
+        "name": "relatedpartydetailaltsubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedpartydetailaltsubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RelatedPartyDetailAltSub",
+    "fix:tag": "121287"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "complexeventaveragingobservation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventaveragingobservationnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventaveragingobservationnumber"
+        }
+      },
+      {
+        "name": "complexeventaveragingweight",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventaveragingweight"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ComplexEventAveragingObservation",
+    "fix:tag": "542648"
+  }
+}

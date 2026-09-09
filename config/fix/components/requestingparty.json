@@ -1,0 +1,73 @@
+{
+  "name": "requestingparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "requestingpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "requestingpartyid"
+        }
+      },
+      {
+        "name": "requestingpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "requestingpartyidsource"
+        }
+      },
+      {
+        "name": "requestingpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "requestingpartyrole"
+        }
+      },
+      {
+        "name": "requestingpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "requestingpartyrolequalifier"
+        }
+      },
+      {
+        "name": "norequestingpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norequestingpartysubids"
+        }
+      },
+      {
+        "name": "requestingpartysubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "requestingpartysubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RequestingParty",
+    "fix:tag": "125977"
+  }
+}

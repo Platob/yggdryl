@@ -1,0 +1,263 @@
+{
+  "name": "legreturnratedate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legreturnratedatemode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratedatemode"
+        }
+      },
+      {
+        "name": "nolegreturnratevaluationdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegreturnratevaluationdates"
+        }
+      },
+      {
+        "name": "legreturnratevaluationdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legreturnratevaluationdategrp"
+        }
+      },
+      {
+        "name": "legreturnratevaluationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationdaterelativeto"
+        }
+      },
+      {
+        "name": "legreturnratevaluationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legreturnratevaluationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationdateoffsetunit"
+        }
+      },
+      {
+        "name": "legreturnratevaluationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legreturnratevaluationstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationstartdateunadjusted"
+        }
+      },
+      {
+        "name": "legreturnratevaluationstartdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationstartdaterelativeto"
+        }
+      },
+      {
+        "name": "legreturnratevaluationstartdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationstartdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legreturnratevaluationstartdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationstartdateoffsetunit"
+        }
+      },
+      {
+        "name": "legreturnratevaluationstartdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationstartdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legreturnratevaluationstartdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationstartdateadjusted"
+        }
+      },
+      {
+        "name": "legreturnratevaluationenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationenddateunadjusted"
+        }
+      },
+      {
+        "name": "legreturnratevaluationenddaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationenddaterelativeto"
+        }
+      },
+      {
+        "name": "legreturnratevaluationenddateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationenddateoffsetperiod"
+        }
+      },
+      {
+        "name": "legreturnratevaluationenddateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationenddateoffsetunit"
+        }
+      },
+      {
+        "name": "legreturnratevaluationenddateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationenddateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legreturnratevaluationenddateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationenddateadjusted"
+        }
+      },
+      {
+        "name": "legreturnratevaluationfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationfrequencyperiod"
+        }
+      },
+      {
+        "name": "legreturnratevaluationfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationfrequencyunit"
+        }
+      },
+      {
+        "name": "legreturnratevaluationfrequencyrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationfrequencyrollconvention"
+        }
+      },
+      {
+        "name": "legreturnratevaluationdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegreturnratevaluationdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegreturnratevaluationdatebusinesscenters"
+        }
+      },
+      {
+        "name": "legreturnratevaluationdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legreturnratevaluationdatebusinesscentergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegReturnRateDate",
+    "fix:tag": "870425"
+  }
+}

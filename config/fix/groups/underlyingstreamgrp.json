@@ -1,0 +1,24 @@
+{
+  "name": "underlyingstreamgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstream",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingstream"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingStreams(40540) > 0.",
+    "display": "UnderlyingStreamGrp",
+    "fix:component": "underlyingstream",
+    "fix:counter": "40540",
+    "fix:tag": "699318"
+  }
+}

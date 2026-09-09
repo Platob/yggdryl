@@ -1,0 +1,24 @@
+{
+  "name": "collinqqualgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "collinqqual",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "collinqqual"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of qualifiers to inquiry",
+    "display": "CollInqQualGrp",
+    "fix:component": "collinqqual",
+    "fix:counter": "938",
+    "fix:tag": "1086738"
+  }
+}

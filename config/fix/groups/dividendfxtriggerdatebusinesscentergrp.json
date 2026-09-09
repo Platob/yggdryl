@@ -1,0 +1,24 @@
+{
+  "name": "dividendfxtriggerdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "dividendfxtriggerdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "dividendfxtriggerdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoDividendFXTriggerDateBusinessCenters(42272) > 0.",
+    "display": "DividendFXTriggerDateBusinessCenterGrp",
+    "fix:component": "dividendfxtriggerdatebusinesscentercomponent",
+    "fix:counter": "42272",
+    "fix:tag": "147672"
+  }
+}

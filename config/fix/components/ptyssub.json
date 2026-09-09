@@ -1,0 +1,33 @@
+{
+  "name": "ptyssub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "partysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partysubid"
+        }
+      },
+      {
+        "name": "partysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PtysSub",
+    "fix:tag": "1003725"
+  }
+}

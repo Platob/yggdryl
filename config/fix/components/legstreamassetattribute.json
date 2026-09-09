@@ -1,0 +1,43 @@
+{
+  "name": "legstreamassetattribute",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamassetattributetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamassetattributetype"
+        }
+      },
+      {
+        "name": "legstreamassetattributevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamassetattributevalue"
+        }
+      },
+      {
+        "name": "legstreamassetattributelimit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamassetattributelimit"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamAssetAttribute",
+    "fix:tag": "228132"
+  }
+}

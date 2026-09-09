@@ -1,0 +1,24 @@
+{
+  "name": "legprovisionoptionrelevantunderlyingdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisionoptionrelevantunderlyingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprovisionoptionrelevantunderlyingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProvisionOptionRelevantUnderlyingDateBusinessCenters(40938) > 0.",
+    "display": "LegProvisionOptionRelevantUnderlyingDateBusinessCenterGrp",
+    "fix:component": "legprovisionoptionrelevantunderlyingdatebusinesscentercomponent",
+    "fix:counter": "40938",
+    "fix:tag": "751706"
+  }
+}

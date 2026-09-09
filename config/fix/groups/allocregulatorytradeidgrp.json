@@ -1,0 +1,24 @@
+{
+  "name": "allocregulatorytradeidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "allocregulatorytradeidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "allocregulatorytradeidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAllocRegulatoryTradeIDs(1908) > 0.",
+    "display": "AllocRegulatoryTradeIDGrp",
+    "fix:component": "allocregulatorytradeidcomponent",
+    "fix:counter": "1908",
+    "fix:tag": "184658"
+  }
+}

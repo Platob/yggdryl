@@ -1,0 +1,23 @@
+{
+  "name": "notaffectedmarketsegment",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "notaffectedmarketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notaffectedmarketsegmentid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "NotAffectedMarketSegment",
+    "fix:tag": "991150"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "name": "risklimit",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "norisklimittypes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norisklimittypes"
+        }
+      },
+      {
+        "name": "risklimittypesgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "risklimittypesgrp"
+        }
+      },
+      {
+        "name": "noriskinstrumentscopes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noriskinstrumentscopes"
+        }
+      },
+      {
+        "name": "riskinstrumentscopegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "riskinstrumentscopegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RiskLimit",
+    "fix:tag": "186489"
+  }
+}

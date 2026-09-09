@@ -31,6 +31,24 @@ const LOG: &[u8] = include_bytes!("ulbridge.log");
 /// How many lines the capture holds.
 const LINES: usize = 111;
 
+/// The one line that reads as two rows: a wildcard Jolokia read, which
+/// answers for two MBeans and so yields one message per MBean.
+const WILDCARD: usize = 98;
+
+/// How many rows the capture reads as: a row a line, and the wildcard line's
+/// second MBean once more.
+const ROWS: usize = LINES + 1;
+
+/// The first row text line `line` was read into.
+const fn row_of(line: usize) -> usize {
+    if line > WILDCARD { line + 1 } else { line }
+}
+
+/// The text line row `row` was read from.
+const fn line_of(row: usize) -> usize {
+    if row > WILDCARD { row - 1 } else { row }
+}
+
 /// The committed dictionary beside the bridge's own vocabulary.
 fn registry() -> Arc<FixRegistry> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -161,14 +179,15 @@ fn rendered(value: &Scalar) -> Option<String> {
 fn every_line_is_a_row_whatever_the_batch_size_and_the_batches_share_one_schema() {
     let whole = batches(None);
     assert_eq!(whole.len(), 1, "one batch under the byte target");
-    assert_eq!(whole[0].num_rows(), LINES);
+    assert_eq!(
+        whole[0].num_rows(),
+        ROWS,
+        "a row a line, and the wildcard line read once per MBean"
+    );
 
     let small = batches(Some(16));
-    assert_eq!(small.len(), LINES.div_ceil(16), "sixteen rows a batch");
-    assert_eq!(
-        small.iter().map(RecordBatch::num_rows).sum::<usize>(),
-        LINES
-    );
+    assert_eq!(small.len(), ROWS.div_ceil(16), "sixteen rows a batch");
+    assert_eq!(small.iter().map(RecordBatch::num_rows).sum::<usize>(), ROWS);
     for batch in &small {
         assert_eq!(
             batch.schema(),
@@ -216,36 +235,46 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
     assert!(fixed.len() > 80, "{} fixed columns", fixed.len());
     let direction =
         yggdryl::fix_column_of(&schema, yggdryl::MSGDIRECTION_TAG).expect("the direction");
-    for (row, held) in text.iter().enumerate() {
+    let mut next = 0;
+    for (line, held) in text.iter().enumerate() {
         // The record is the text reader's row, whole: the body is what the
-        // codec parses and every other column is what the row states.
-        let message = codec
+        // codec parses and every other column is what the row states. A
+        // wildcard read answers for two MBeans, so one line is two messages
+        // and fills the two rows the batch read gave it.
+        let messages = codec
             .transform_record(&record(&text_names, held), true)
-            .unwrap_or_else(|error| panic!("row {row}: {error}"));
-        for &(index, tag) in &fixed {
-            if index == direction {
-                // The batch reads the direction column; a record does not.
-                continue;
+            .and_then(|messages| messages.collect::<yggdryl::Result<Vec<_>>>())
+            .unwrap_or_else(|error| panic!("line {line}: {error}"));
+        assert_eq!(next, row_of(line), "line {line} opens at its own row");
+        for message in messages {
+            let row = next;
+            next += 1;
+            for &(index, tag) in &fixed {
+                if index == direction {
+                    // The batch reads the direction column; a record does not.
+                    continue;
+                }
+                let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
+                let alone = if alone.is_null() {
+                    message
+                        .into_row(&schema)
+                        .expect("a row")
+                        .as_sequence()
+                        .expect("cells")[index]
+                        .clone()
+                } else {
+                    alone
+                };
+                assert_eq!(
+                    rendered(&alone).is_some(),
+                    rendered(&rows[row][index]).is_some(),
+                    "tag {tag} on row {row}: record read {alone:?}, batch read {:?}",
+                    rows[row][index]
+                );
             }
-            let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
-            let alone = if alone.is_null() {
-                message
-                    .to_row(&schema)
-                    .expect("a row")
-                    .as_sequence()
-                    .expect("cells")[index]
-                    .clone()
-            } else {
-                alone
-            };
-            assert_eq!(
-                rendered(&alone).is_some(),
-                rendered(&rows[row][index]).is_some(),
-                "tag {tag} on row {row}: record read {alone:?}, batch read {:?}",
-                rows[row][index]
-            );
         }
     }
+    assert_eq!(next, rows.len(), "every row was read on its own");
 }
 
 #[test]
@@ -269,6 +298,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
     // `SettlCurrency` is one, so the row does.
     let enriched = codec()
         .transform_record(&record(&text_names, &text[fill]), true)
+        .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the fill reads");
     let gross = enriched
         .by_tag(381)
@@ -287,6 +317,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
     // Read without enrichment, the same line states neither.
     let plain = codec()
         .transform_line(body(&text_names, &text[fill]).as_bytes(), false)
+        .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the fill reads");
     assert!(plain.get_by_tag(381).is_none());
     assert!(plain.get_by_tag(120).is_none());
@@ -338,6 +369,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
         .expect("the anonymized line");
     let masked = codec()
         .transform_record(&record(&text_names, &text[masked]), true)
+        .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the anonymized line reads");
     for tag in [yggdryl::ISINCODE_TAG, 470] {
         assert!(
@@ -359,7 +391,9 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
     let column =
         |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
     for (row, held) in rows.iter().enumerate() {
-        let clock = &text[row][at(&text_names, "timestamp")];
+        // A row is its line's, and the wildcard line's two rows are both its
+        // own, so a row is read against the line it came from.
+        let clock = &text[line_of(row)][at(&text_names, "timestamp")];
         assert_eq!(
             &held[column(yggdryl::TIMESTAMP_TAG)],
             clock,
@@ -381,33 +415,35 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             "row {row} digests"
         );
         // The bracket names the context, which fills `msgctxid`; its session
-        // uid is the bridge's own and is carried in front, so `sessionid`
+        // uid is the bridge's own and is carried in front, so `sendersessionid`
         // holds only what the message itself spelled - a bridge row's
         // `SESSIONID`, and nothing on any other line.
-        let context = &text[row][at(&text_names, "msgCtxId")];
+        let context = &text[line_of(row)][at(&text_names, "msgCtxId")];
         assert_eq!(
             &held[column(yggdryl::MSGCTXID_TAG)],
             context,
             "row {row} context"
         );
-        let uid = &text[row][at(&text_names, "sessionUid")];
+        let uid = &text[line_of(row)][at(&text_names, "sessionUid")];
         assert_eq!(&held[at(&names, "sessionUid")], uid, "row {row} uid");
-        let line = body(&text_names, &text[row]);
+        let line = body(&text_names, &text[line_of(row)]);
         assert_eq!(
-            held[column(yggdryl::SESSIONID_TAG)].as_str().is_some(),
+            held[column(yggdryl::SENDERSESSIONID_TAG)]
+                .as_str()
+                .is_some(),
             line.contains("|SESSIONID="),
             "row {row} session is the message's own"
         );
         // The plugin that logged the line is the plugin session it moved
         // from or to, by the direction it moved - unless the row spelled the
         // session itself, which a bridge row does as `ULFROMSESSIONNAME`.
-        let plugin = &text[row][at(&text_names, "plugin")];
+        let plugin = &text[line_of(row)][at(&text_names, "plugin")];
         let direction = held[column(yggdryl::MSGDIRECTION_TAG)]
             .as_str()
             .map(str::to_owned);
         let (sender, target) = (
-            &held[column(yggdryl::SENDERPLUGINSESSION_TAG)],
-            &held[column(yggdryl::TARGETPLUGINSESSION_TAG)],
+            &held[column(yggdryl::SENDERSESSIONNAME_TAG)],
+            &held[column(yggdryl::TARGETSESSIONNAME_TAG)],
         );
         match direction.as_deref() {
             Some("SENT") if !line.contains("|ULFROMSESSIONNAME=") => {
@@ -434,8 +470,9 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         .iter()
         .position(|held| body(&text_names, held).starts_with("URI: /jolokia"))
         .expect("the Jolokia read");
+    let jolokia = row_of(jolokia);
     assert!(rows[jolokia][at(&names, "sessionUid")].is_null());
-    assert!(rows[jolokia][column(yggdryl::SESSIONID_TAG)].is_null());
+    assert!(rows[jolokia][column(yggdryl::SENDERSESSIONID_TAG)].is_null());
     assert!(rows[jolokia][column(yggdryl::MSGCTXID_TAG)].is_null());
     let stating = |key: &str| {
         text.iter()
@@ -451,16 +488,16 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
     };
     let bridged = stating("ULFROMSESSIONNAME=");
     assert_eq!(
-        rows[bridged][column(yggdryl::SENDERPLUGINSESSION_TAG)].as_str(),
+        rows[row_of(bridged)][column(yggdryl::SENDERSESSIONNAME_TAG)].as_str(),
         Some(spelled(bridged, "ULFROMSESSIONNAME=").as_str())
     );
     assert_eq!(
-        rows[bridged][column(yggdryl::TARGETPLUGINSESSION_TAG)].as_str(),
+        rows[row_of(bridged)][column(yggdryl::TARGETSESSIONNAME_TAG)].as_str(),
         Some(spelled(bridged, "ULTOSESSIONNAME=").as_str())
     );
     let sessioned = stating("SESSIONID=");
     assert_eq!(
-        rows[sessioned][column(yggdryl::SESSIONID_TAG)].as_str(),
+        rows[row_of(sessioned)][column(yggdryl::SENDERSESSIONID_TAG)].as_str(),
         Some(spelled(sessioned, "SESSIONID=").as_str())
     );
     // And the sequence number the bracket states fills a row that carries
@@ -470,14 +507,14 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         .position(|held| body(&text_names, held).starts_with("RouteMessage : ACTION=EXECUTION|"))
         .expect("a routed row");
     assert_eq!(
-        &rows[routed][column(34)],
+        &rows[row_of(routed)][column(34)],
         &text[routed][at(&text_names, "seqNum")]
     );
     let fill = text
         .iter()
         .position(|held| body(&text_names, held).contains("|35=8|34=40218|"))
         .expect("the fill");
-    assert_eq!(rows[fill][column(34)].as_i64(), Some(40218));
+    assert_eq!(rows[row_of(fill)][column(34)].as_i64(), Some(40218));
 }
 
 #[test]
@@ -500,8 +537,8 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
         3,
         "two of the bridge's frames and the exact one"
     );
-    for &row in &frames {
-        let held = &rows[row];
+    for &line in &frames {
+        let (row, held) = (line, &rows[row_of(line)]);
         // The frame's own statements stay the frame's.
         assert_eq!(held[column(35)].as_str(), Some("UL"), "row {row}");
         assert_eq!(held[column(49)].as_str(), Some("ULB_DMZ_BROKER_BDG"));
@@ -537,7 +574,8 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
             .expect("entries");
         assert_eq!(entries.len(), 10, "row {row}: {entries:?}");
         let message = codec
-            .transform_record(&record(&text_names, &text[row]), true)
+            .transform_record(&record(&text_names, &text[line]), true)
+            .and_then(|mut messages| messages.next().expect("a message"))
             .expect("the frame reads");
         let data = message
             .entries()
@@ -553,7 +591,7 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
     }
     // The bridge counted the control bytes its log printed as glyphs, so its
     // stated length is short and the value runs to the trailer instead.
-    let printed = frames[0];
+    let printed = row_of(frames[0]);
     let stated = rows[printed][column(212)].as_i64().expect("XmlDataLen");
     let actual = rows[printed][column(213)]
         .as_bytes()
@@ -562,7 +600,7 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
     assert!(stated < actual, "{stated} stated, {actual} carried");
     assert_eq!(rows[printed][column(55)].as_str(), Some("HOLN"));
     // The exact frame states its length in bytes and is read to it.
-    let exact = frames[2];
+    let exact = row_of(frames[2]);
     assert_eq!(
         rows[exact][column(212)].as_i64().map(|held| held as usize),
         rows[exact][column(213)].as_bytes().map(<[u8]>::len)
@@ -595,52 +633,59 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
     assert_eq!(rows.len(), 2, "{rows:?}");
     let flat = codec
         .transform_record(&record(&text_names, &text[rows[0]]), true)
+        .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the flattened row reads");
     let nested = codec
         .transform_record(&record(&text_names, &text[rows[1]]), true)
+        .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the packed row reads");
     for message in [&flat, &nested] {
-        // Six parties either way, the first the executing firm.
-        let parties = message.by_tag(453).unwrap().as_sequence().expect("parties");
+        // Six parties either way, the first the executing firm: the tag the
+        // row spelled is the counter's own column, and the occurrences are
+        // the group the dictionary files under `Parties`.
+        assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(6_i32));
+        let parties = message
+            .by_path("Parties")
+            .unwrap()
+            .as_sequence()
+            .expect("parties");
         assert_eq!(parties.len(), 6);
         assert_eq!(
-            message.by_path("NoPartyIDs.0.PartyID").unwrap(),
+            message.by_path("Parties.0.PartyID").unwrap(),
             &Scalar::from("HIGH_TOUCH")
         );
         assert_eq!(
-            message.by_path("NoPartyIDs.1.PartyID").unwrap(),
+            message.by_path("Parties.1.PartyID").unwrap(),
             &Scalar::from("SWXCCP")
         );
     }
     // Flattened, the sub-identifier group is a group of the row.
     assert_eq!(
-        flat.by_path("NoPartySubIDs.0.PartySubID").unwrap(),
+        flat.by_path("PtysSubGrp.0.PartySubID").unwrap(),
         &Scalar::from("trader1")
     );
     // Packed inside the party, it is the party's own: reached through it,
     // typed through its own field - `contactname` is the code set's
     // spelling of 9 - and absent from a party that packed none.
     assert_eq!(
-        nested
-            .by_path("NoPartyIDs.0.NoPartySubIDs.0.PartySubID")
-            .unwrap(),
+        nested.by_path("Parties.0.PtysSubGrp.0.PartySubID").unwrap(),
         &Scalar::from("trader1")
     );
     assert_eq!(
         nested
-            .by_path("NoPartyIDs.0.NoPartySubIDs.0.PartySubIDType")
+            .by_path("Parties.0.PtysSubGrp.0.PartySubIDType")
             .unwrap()
             .as_i64(),
         Some(9)
     );
     assert!(
         nested
-            .get_by_path("NoPartyIDs.1.NoPartySubIDs")
+            .get_by_path("Parties.1.PtysSubGrp")
             .is_none_or(Scalar::is_null)
     );
     assert!(
-        nested.get_by_tag(802).is_none(),
-        "no sub-identifier group at the row level"
+        nested.get_by_tag(802).is_none() && nested.get_by_path("PtysSubGrp").is_none(),
+        "no sub-identifier counter or group at the row level"
     );
     // The arrival record nests three deep: the party under its counter, the
     // sub-identifier under the sub-counter under the party.
@@ -710,6 +755,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     let read = |row: usize| {
         codec
             .transform_record(&record(&text_names, &text[row]), true)
+            .and_then(|mut messages| messages.next().expect("a message"))
             .expect("the row reads")
     };
 
@@ -727,20 +773,28 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
         &Scalar::from(200_i64)
     );
     assert_eq!(
-        message.by_path("SessionInterfaces.0.CurrentPort").unwrap(),
+        message.by_path("CurrentPort").unwrap(),
         &Scalar::from(9726_i64)
     );
-    // A wildcard read answers for every plugin, one occurrence each.
+    // A wildcard read answers for every plugin, one message each, and every
+    // message carries its own MBean's attributes flat.
     let wildcard = find(r#""mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*""#);
-    let message = read(wildcard);
-    assert_eq!(
-        message
-            .by_tag(yggdryl::SESSIONINTERFACES_TAG)
-            .unwrap()
-            .as_sequence()
-            .map(<[Scalar]>::len),
-        Some(2)
-    );
+    let messages = codec
+        .transform_record(&record(&text_names, &text[wildcard]), true)
+        .expect("the wildcard reads")
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the wildcard reads");
+    assert_eq!(messages.len(), 2, "one message per plugin");
+    for (name, port) in [
+        ("ULMSG_BROKER_BDG_DMZ_CLI", 9801_i64),
+        ("OMS_X1_OrderOut", 9702_i64),
+    ] {
+        let held = messages
+            .iter()
+            .find(|message| message.get_by_path("Name").and_then(Scalar::as_str) == Some(name))
+            .unwrap_or_else(|| panic!("a message for {name}"));
+        assert_eq!(held.by_path("CurrentPort").unwrap(), &Scalar::from(port));
+    }
     // An error answer states its error.
     let error = find(r#""error_type":"javax.management.InstanceNotFoundException""#);
     assert!(read(error).get_by_tag(yggdryl::ERROR_TAG).is_some());
@@ -748,9 +802,12 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     // FIXML behind a verb reads by its attributes.
     let out = find("<FIXML xmlns=");
     assert_eq!(mimetype(out).as_deref(), Some(MimeType::FIXML.as_str()));
-    assert_eq!(rows[out][column(11)].as_str(), Some("00026877711XOEA0.1"));
-    assert_eq!(rows[out][column(32)].as_f64(), Some(21.0));
-    let inbound = find("<FIXML><Order ClOrdID=\"OD9EOEDJ401\"");
+    assert_eq!(
+        rows[row_of(out)][column(11)].as_str(),
+        Some("00026877711XOEA0.1")
+    );
+    assert_eq!(rows[row_of(out)][column(32)].as_f64(), Some(21.0));
+    let inbound = row_of(find("<FIXML><Order ClOrdID=\"OD9EOEDJ401\""));
     assert_eq!(rows[inbound][column(55)].as_str(), Some("HOLN"));
     assert!(
         rows[inbound][column(35)].is_null(),
@@ -758,41 +815,41 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     );
 
     // Frames spelled with `^A` and `<SOH>` split on the byte they spell.
-    let heartbeat = find("8=FIX.4.4^A9=61^A35=0");
+    let heartbeat = row_of(find("8=FIX.4.4^A9=61^A35=0"));
     assert_eq!(rows[heartbeat][column(35)].as_str(), Some("0"));
     assert_eq!(rows[heartbeat][column(34)].as_i64(), Some(3091));
     let test_request = find("8=FIX.4.4<SOH>9=70<SOH>35=1");
-    assert_eq!(rows[test_request][column(35)].as_str(), Some("1"));
+    assert_eq!(rows[row_of(test_request)][column(35)].as_str(), Some("1"));
     assert_eq!(
         read(test_request).by_tag(112).unwrap().as_str(),
         Some("PING")
     );
 
     // A FIXT session keeps the BeginString it stated.
-    let logon = find("8=FIXT.1.1|");
+    let logon = row_of(find("8=FIXT.1.1|"));
     assert_eq!(rows[logon][column(8)].as_str(), Some("FIXT.1.1"));
     assert_eq!(rows[logon][column(35)].as_str(), Some("A"));
 
     // A spelled absence is null; a member run with no separator splits at
     // the names the dictionary declares.
     let nulls = find("LASTPX=null|LASTSHARES=<null>");
-    assert!(rows[nulls][column(31)].is_null());
-    assert!(rows[nulls][column(32)].is_null());
-    assert_eq!(rows[nulls][column(55)].as_str(), Some("HOLN"));
+    assert!(rows[row_of(nulls)][column(31)].is_null());
+    assert!(rows[row_of(nulls)][column(32)].is_null());
+    assert_eq!(rows[row_of(nulls)][column(55)].as_str(), Some("HOLN"));
     let message = read(nulls);
     assert_eq!(
-        message.by_path("NoPartyIDs.0.PartyID").unwrap(),
+        message.by_path("Parties.0.PartyID").unwrap(),
         &Scalar::from("TRADER2")
     );
     // A coded member is the code's value, typed: `11` is an order origination trader.
     assert_eq!(
-        message.by_path("NoPartyIDs.0.PartyRole").unwrap().as_i64(),
+        message.by_path("Parties.0.PartyRole").unwrap().as_i64(),
         Some(11)
     );
 
     // A marked frame states its direction in front of it.
     let marked = find("|11=OD9EOEDJ401|55=HOLN|54=1|38=50|");
-    assert_eq!(rows[marked][column(35)].as_str(), Some("D"));
+    assert_eq!(rows[row_of(marked)][column(35)].as_str(), Some("D"));
     assert_eq!(
         text[marked][at(&text_names, "direction")].as_str(),
         Some(yggdryl::types::MsgDirection::SENT)
@@ -804,10 +861,10 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
         .iter()
         .position(|held| body(&text_names, held).is_empty())
         .expect("the empty line");
-    assert!(rows[empty][column(35)].is_null());
-    assert!(!rows[empty][column(8)].is_null());
+    assert!(rows[row_of(empty)][column(35)].is_null());
+    assert!(!rows[row_of(empty)][column(8)].is_null());
     assert_eq!(
-        &rows[empty][column(yggdryl::TIMESTAMP_TAG)],
+        &rows[row_of(empty)][column(yggdryl::TIMESTAMP_TAG)],
         &text[empty][at(&text_names, "timestamp")]
     );
     // And a sentence is a sentence.
@@ -816,7 +873,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
         mimetype(warning).as_deref(),
         Some(MimeType::OCTET_STREAM.as_str())
     );
-    assert!(rows[warning][column(35)].is_null());
+    assert!(rows[row_of(warning)][column(35)].is_null());
 }
 
 #[test]
@@ -833,17 +890,17 @@ fn the_wire_re_emits_from_the_arrival_record_frames_included() {
     )
     .expect("the batch reader opens");
     let rows = yggdryl::write_fix(source, &mut written, &emitting).expect("the capture writes");
-    assert_eq!(rows, LINES as u64);
+    assert_eq!(rows, ROWS as u64);
     let lines: Vec<&str> = std::str::from_utf8(&written)
         .expect("text")
         .lines()
         .collect();
-    assert_eq!(lines.len(), LINES);
+    assert_eq!(lines.len(), ROWS);
     // Every frame the bridge wrote with `|` comes back byte for byte, the
     // XmlData rows included, because the entries are the frame and nothing
     // read inside one of its values was recorded as an arrival.
     let mut checked = 0;
-    for (row, held) in text.iter().enumerate() {
+    for (line, held) in text.iter().enumerate() {
         let body = body(&text_names, held);
         let Some(start) = body.find("8=FIX") else {
             continue;
@@ -852,6 +909,7 @@ fn the_wire_re_emits_from_the_arrival_record_frames_included() {
             continue;
         }
         let frame = body[start..].trim_end_matches(" << queued");
+        let row = row_of(line);
         assert_eq!(lines[row], frame, "row {row} re-emits its frame");
         checked += 1;
     }

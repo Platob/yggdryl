@@ -1,0 +1,24 @@
+{
+  "name": "notaffectedordgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "notaffectedord",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "notaffectedord"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoNotAffectedOrders(1370) > 0 and must be the first repeating field in the group. Indicates the client order identifier of an order not affected by the request. If order(s) were manually delivered (or otherwise not delivered over FIX and not assigned a ClOrdID(11)) this field should contain string \"MANUAL\".",
+    "display": "NotAffectedOrdGrp",
+    "fix:component": "notaffectedord",
+    "fix:counter": "1370",
+    "fix:tag": "1026375"
+  }
+}

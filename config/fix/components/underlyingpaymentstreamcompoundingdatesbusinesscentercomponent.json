@@ -1,0 +1,23 @@
+{
+  "name": "underlyingpaymentstreamcompoundingdatesbusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreamcompoundingdatesbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingdatesbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPaymentStreamCompoundingDatesBusinessCenter",
+    "fix:tag": "366623"
+  }
+}

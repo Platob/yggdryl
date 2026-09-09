@@ -1,0 +1,23 @@
+{
+  "name": "legcashsettldealercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcashsettldealer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcashsettldealer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegCashSettlDealer",
+    "fix:tag": "107312"
+  }
+}

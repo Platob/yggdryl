@@ -1,0 +1,24 @@
+{
+  "name": "clrinstgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "clrinst",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "clrinst"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoClearingInstructions > 0",
+    "display": "ClrInstGrp",
+    "fix:component": "clrinst",
+    "fix:counter": "576",
+    "fix:tag": "727694"
+  }
+}

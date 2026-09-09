@@ -1,0 +1,73 @@
+{
+  "name": "pricerangerule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "startpricerange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "startpricerange"
+        }
+      },
+      {
+        "name": "endpricerange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "endpricerange"
+        }
+      },
+      {
+        "name": "pricerangevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricerangevalue"
+        }
+      },
+      {
+        "name": "pricerangepercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricerangepercentage"
+        }
+      },
+      {
+        "name": "pricerangeruleid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricerangeruleid"
+        }
+      },
+      {
+        "name": "pricerangeproductcomplex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricerangeproductcomplex"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PriceRangeRule",
+    "fix:tag": "199839"
+  }
+}

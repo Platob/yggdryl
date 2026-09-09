@@ -1,0 +1,23 @@
+{
+  "name": "legprovisioncashsettlpaymentdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprovisioncashsettlpaymentdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlpaymentdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProvisionCashSettlPaymentDateBusinessCenter",
+    "fix:tag": "900997"
+  }
+}

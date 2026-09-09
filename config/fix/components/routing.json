@@ -1,0 +1,33 @@
+{
+  "name": "routing",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "routingtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "routingtype"
+        }
+      },
+      {
+        "name": "routingid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "routingid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Routing",
+    "fix:tag": "222679"
+  }
+}

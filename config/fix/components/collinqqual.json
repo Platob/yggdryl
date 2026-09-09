@@ -1,0 +1,23 @@
+{
+  "name": "collinqqual",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "collinquiryqualifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collinquiryqualifier"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "CollInqQual",
+    "fix:tag": "658118"
+  }
+}

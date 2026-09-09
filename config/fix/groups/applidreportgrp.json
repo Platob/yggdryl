@@ -1,0 +1,24 @@
+{
+  "name": "applidreportgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "applidreport",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "applidreport"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of applications",
+    "display": "ApplIDReportGrp",
+    "fix:component": "applidreport",
+    "fix:counter": "1351",
+    "fix:tag": "964073"
+  }
+}

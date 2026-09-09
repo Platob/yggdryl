@@ -1,0 +1,24 @@
+{
+  "name": "underlyingdividendpaymentgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdividendpayment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingdividendpayment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingDividendPayments (42855) > 0.",
+    "display": "UnderlyingDividendPaymentGrp",
+    "fix:component": "underlyingdividendpayment",
+    "fix:counter": "42855",
+    "fix:tag": "1078779"
+  }
+}

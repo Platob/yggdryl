@@ -1,0 +1,24 @@
+{
+  "name": "legoptionexercisebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legoptionexercisebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legoptionexercisebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegOptionExerciseBusinessCenters(41491) > 0.",
+    "display": "LegOptionExerciseBusinessCenterGrp",
+    "fix:component": "legoptionexercisebusinesscentercomponent",
+    "fix:counter": "41491",
+    "fix:tag": "637887"
+  }
+}

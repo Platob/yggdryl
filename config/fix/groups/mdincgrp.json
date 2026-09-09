@@ -1,0 +1,24 @@
+{
+  "name": "mdincgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "mdinc",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "mdinc"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of entries following.",
+    "display": "MDIncGrp",
+    "fix:component": "mdinc",
+    "fix:counter": "268",
+    "fix:tag": "198230"
+  }
+}

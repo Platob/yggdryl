@@ -1,0 +1,24 @@
+{
+  "name": "complexeventcrediteventgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventcreditevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "complexeventcreditevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoComplexEventCreditEvents(40996) > 0.",
+    "display": "ComplexEventCreditEventGrp",
+    "fix:component": "complexeventcreditevent",
+    "fix:counter": "40997",
+    "fix:tag": "808090"
+  }
+}

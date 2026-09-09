@@ -1,0 +1,264 @@
+{
+  "name": "dividendconditions",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "dividendreinvestmentindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendreinvestmentindicator"
+        }
+      },
+      {
+        "name": "dividendentitlementevent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendentitlementevent"
+        }
+      },
+      {
+        "name": "dividendamounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendamounttype"
+        }
+      },
+      {
+        "name": "dividendunderlierrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendunderlierrefid"
+        }
+      },
+      {
+        "name": "nodividendperiods",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nodividendperiods"
+        }
+      },
+      {
+        "name": "dividendperiodgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "dividendperiodgrp"
+        }
+      },
+      {
+        "name": "extraordinarydividendpartyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "extraordinarydividendpartyside"
+        }
+      },
+      {
+        "name": "extraordinarydividendamounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "extraordinarydividendamounttype"
+        }
+      },
+      {
+        "name": "extraordinarydividendcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "extraordinarydividendcurrency"
+        }
+      },
+      {
+        "name": "extraordinarydividenddeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "extraordinarydividenddeterminationmethod"
+        }
+      },
+      {
+        "name": "dividendfxtriggerdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "dividendfxtriggerdate"
+        }
+      },
+      {
+        "name": "dividendaccrualfloatingrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "dividendaccrualfloatingrate"
+        }
+      },
+      {
+        "name": "dividendaccrualfixedrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendaccrualfixedrate"
+        }
+      },
+      {
+        "name": "dividendaccrualpaymentdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "dividendaccrualpaymentdate"
+        }
+      },
+      {
+        "name": "dividendcompoundingmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendcompoundingmethod"
+        }
+      },
+      {
+        "name": "dividendnumofindexunits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendnumofindexunits"
+        }
+      },
+      {
+        "name": "dividendcashpercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendcashpercentage"
+        }
+      },
+      {
+        "name": "dividendcashequivalentpercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendcashequivalentpercentage"
+        }
+      },
+      {
+        "name": "noncashdividendtreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noncashdividendtreatment"
+        }
+      },
+      {
+        "name": "dividendcomposition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendcomposition"
+        }
+      },
+      {
+        "name": "specialdividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "specialdividendsindicator"
+        }
+      },
+      {
+        "name": "materialdividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "materialdividendsindicator"
+        }
+      },
+      {
+        "name": "optionsexchangedividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionsexchangedividendsindicator"
+        }
+      },
+      {
+        "name": "additionaldividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "additionaldividendsindicator"
+        }
+      },
+      {
+        "name": "alldividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alldividendsindicator"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The DividendConditions component is a subcomponent of PaymentStream used to specify the conditions' valuations and dates governing the payment of dividends.",
+    "display": "DividendConditions",
+    "fix:tag": "731392"
+  }
+}

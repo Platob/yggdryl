@@ -1,0 +1,24 @@
+{
+  "name": "quoteattributegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quoteattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "quoteattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoQuoteAttributes(2706) > 0.",
+    "display": "QuoteAttributeGrp",
+    "fix:component": "quoteattribute",
+    "fix:counter": "2706",
+    "fix:tag": "976470"
+  }
+}

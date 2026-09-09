@@ -1,0 +1,23 @@
+{
+  "name": "paymentstreaminitialfixingdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreaminitialfixingdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreaminitialfixingdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentStreamInitialFixingDateBusinessCenter",
+    "fix:tag": "255667"
+  }
+}

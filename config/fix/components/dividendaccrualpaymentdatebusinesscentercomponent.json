@@ -1,0 +1,23 @@
+{
+  "name": "dividendaccrualpaymentdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "dividendaccrualpaymentdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendaccrualpaymentdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DividendAccrualPaymentDateBusinessCenter",
+    "fix:tag": "627624"
+  }
+}

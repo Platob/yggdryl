@@ -1,0 +1,43 @@
+{
+  "name": "returnratefxconversion",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "returnratefxcurrencysymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratefxcurrencysymbol"
+        }
+      },
+      {
+        "name": "returnratefxrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratefxrate"
+        }
+      },
+      {
+        "name": "returnratefxratecalc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratefxratecalc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ReturnRateFXConversion",
+    "fix:tag": "268803"
+  }
+}

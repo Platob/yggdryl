@@ -1,0 +1,33 @@
+{
+  "name": "complexeventperioddatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventperioddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventperioddate"
+        }
+      },
+      {
+        "name": "complexeventperiodtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventperiodtime"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ComplexEventPeriodDate",
+    "fix:tag": "562774"
+  }
+}

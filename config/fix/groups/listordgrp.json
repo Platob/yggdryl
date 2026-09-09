@@ -1,0 +1,24 @@
+{
+  "name": "listordgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "listord",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "listord"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of orders in this message (number of repeating groups to follow)",
+    "display": "ListOrdGrp",
+    "fix:component": "listord",
+    "fix:counter": "73",
+    "fix:tag": "627819"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "legstreamcommoditysettlbusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamcommoditysettlbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamCommoditySettlBusinessCenter",
+    "fix:tag": "677884"
+  }
+}

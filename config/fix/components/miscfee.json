@@ -1,0 +1,113 @@
+{
+  "name": "miscfee",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "miscfeeamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeeamt"
+        }
+      },
+      {
+        "name": "miscfeecurr",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeecurr"
+        }
+      },
+      {
+        "name": "miscfeetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeetype"
+        }
+      },
+      {
+        "name": "miscfeequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeequalifier"
+        }
+      },
+      {
+        "name": "nomiscfeesubtypes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomiscfeesubtypes"
+        }
+      },
+      {
+        "name": "miscfeessubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "miscfeessubgrp"
+        }
+      },
+      {
+        "name": "miscfeebasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeebasis"
+        }
+      },
+      {
+        "name": "miscfeerate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeerate"
+        }
+      },
+      {
+        "name": "miscfeeamountdue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeeamountdue"
+        }
+      },
+      {
+        "name": "miscfeedesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "miscfeedesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MiscFee",
+    "fix:tag": "648749"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "underlyingcomplexeventaveragingobservation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventaveragingobservationnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventaveragingobservationnumber"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventaveragingweight",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventaveragingweight"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventAveragingObservation",
+    "fix:tag": "448605"
+  }
+}

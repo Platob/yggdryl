@@ -1,0 +1,24 @@
+{
+  "name": "legprovisioncashsettlvaluedatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisioncashsettlvaluedatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprovisioncashsettlvaluedatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProvisionCashSettlValueDateBusinessCenters(40935) > 0.",
+    "display": "LegProvisionCashSettlValueDateBusinessCenterGrp",
+    "fix:component": "legprovisioncashsettlvaluedatebusinesscentercomponent",
+    "fix:counter": "40935",
+    "fix:tag": "568600"
+  }
+}

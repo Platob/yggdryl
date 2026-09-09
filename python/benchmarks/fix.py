@@ -14,6 +14,9 @@ out, so the only tracked input is the seed dictionary at ``config/fix``.
 from __future__ import annotations
 
 import argparse
+import copy
+import json
+import pickle
 import gc
 import pathlib
 import shutil
@@ -22,8 +25,8 @@ import tempfile
 import timeit
 from collections.abc import Callable
 
-from yggdryl import DataType, Field, MimeType
-from yggdryl.fix import STANDARD_BRANCH, FixMsg, FixRegistry
+from yggdryl import DataType, Field, MimeType, types
+from yggdryl.fix import STANDARD_BRANCH, FixCodec, FixMsg, FixRegistry, UlPlugin
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
@@ -36,6 +39,7 @@ ORDER = Field(
             SEED_REGISTRY.field_by_tag(55),
             SEED_REGISTRY.field_by_tag(38),
             SEED_REGISTRY.field_by_name("NoPartyIDs", STANDARD_BRANCH),
+            SEED_REGISTRY.definition("groups", "Parties"),
         ]
     ),
     nullable=False,
@@ -45,7 +49,8 @@ MESSAGE = FixMsg(
     {
         "symbol": "AAPL",
         "orderqty": 100.0,
-        "nopartyids": [
+        "nopartyids": 1,
+        "parties": [
             {"partyid": "BROKER", "partyidsource": "D", "partyrole": 1}
         ],
     },
@@ -60,14 +65,16 @@ ULLINK_LINE = "ACCOUNT=A1|MSGTYPE=D|SYMBOL=AAPL"
 
 def _vendor_registry() -> FixRegistry:
     """The seed beside a vendor dictionary, for the cross-branch rows."""
-    fields = [field for field in SEED_REGISTRY]
+    registry = copy.copy(SEED_REGISTRY)
+    fields = []
     for offset in range(VENDOR_FIELDS):
         tag = 5000 + offset
         field = Field(f"Venue{offset}", "utf8")
         field.fix.id = f"{tag}:{VENDOR_BRANCH}"
         field.fix.aliases = [f"VenueAlias{offset}"]
         fields.append(field)
-    return FixRegistry.from_fields(fields)
+    registry.add_fields(fields)
+    return registry
 
 
 TWO_BRANCHES = _vendor_registry()
@@ -132,7 +139,7 @@ def _path_one_segment() -> object:
 
 
 def _path_two_segments() -> object:
-    return SEED_REGISTRY.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH)
+    return SEED_REGISTRY.field_by_path("Parties.PartyID", STANDARD_BRANCH)
 
 
 def _vendor_id_hit() -> object:
@@ -172,11 +179,11 @@ def _message_get_by_id() -> object:
 
 
 def _message_get_by_name() -> object:
-    return MESSAGE.get_by_name("ticker")
+    return MESSAGE.get_by_name("Symbol")
 
 
 def _message_get_by_path() -> object:
-    return MESSAGE.get_by_path("NoPartyIDs.0.PartyID")
+    return MESSAGE.get_by_path("Parties.0.PartyID")
 
 
 def _message_branch() -> object:
@@ -188,8 +195,79 @@ def _infer_fixml_protocol() -> object:
 
 
 def _infer_ullink_msgtype() -> object:
-    return MimeType.infer_text_msgtype(ULLINK_LINE)
+    return FixCodec.infer_msgtype_text(ULLINK_LINE)
 
+
+
+def _catalog() -> FixRegistry:
+    counter = Field("NoPartyIDs", "int32")
+    counter.fix.tag = 453
+    member = Field("PartyID", "utf8")
+    member.fix.tag = 448
+    registry = FixRegistry.from_fields([counter, member])
+    member.fix.field_ref = "PartyID"
+    component = Field("Party", DataType.from_fields([member]), nullable=False)
+    registry.create_definition("components", component)
+    group = types.list("Parties", component)
+    group.fix.counter = 453
+    group.fix.component = "Party"
+    registry.create_definition("groups", group)
+    group = registry.definition("groups", "Parties")
+    group.fix.group = "Parties"
+    counter.fix.field_ref = "NoPartyIDs"
+    message = Field("NewOrderSingle", DataType.from_fields([counter, group]), nullable=False)
+    message.fix.msgtype = "D"
+    registry.create_definition("messages", message)
+    return registry
+
+
+CATALOG = _catalog()
+CATALOG_JSON = CATALOG.into_json()
+CATALOG_PICKLE = pickle.dumps(CATALOG)
+CODEC = FixCodec(SEED_REGISTRY)
+BRIDGE_REGISTRY = copy.copy(SEED_REGISTRY)
+BRIDGE_REGISTRY.with_ulbridge_fields()
+BRIDGE_CODEC = FixCodec(BRIDGE_REGISTRY, branch="ulbridge")
+NUMERIC_GROUP = b"8=FIX.4.4|35=D|453=1|448=BROKER|447=D|452=1|10=0|"
+assert CODEC.transform_fix_line(NUMERIC_GROUP).by_tag(453).as_py() == 1
+assert CODEC.transform_fix_line(NUMERIC_GROUP).by_path("Parties.0.PartyID").as_py() == "BROKER"
+assert FixRegistry.from_json(CATALOG_JSON) == CATALOG
+assert pickle.loads(CATALOG_PICKLE) == CATALOG
+
+
+
+def _category_mutation(operation: str) -> FixRegistry:
+    registry = copy.copy(CATALOG)
+    if operation == "create":
+        message = Field("OrderCancel", DataType.from_fields([]), nullable=False)
+        message.fix.msgtype = "F"
+        registry.create_definition("messages", message)
+    elif operation == "remove":
+        registry.remove_definition("messages", "NewOrderSingle")
+    else:
+        component = registry.definition("components", "Party")
+        component.fix.description = "Reviewed"
+        if operation == "update":
+            registry.update_definition("components", component)
+        else:
+            registry.insert_definition("components", component)
+    return registry
+
+
+def _register_vocabulary(bridge: bool) -> FixRegistry:
+    registry = FixRegistry()
+    if bridge:
+        registry.with_ulbridge_fields()
+    else:
+        registry.with_crate_fields()
+    return registry
+
+def _wildcard(count: int) -> bytes:
+    return json.dumps({
+        "request": {"mbean": "com.ullink.ulbridge.sessioninterfaces.plugins:*", "type": "read"},
+        "value": {f"com.ullink.ulbridge.sessioninterfaces.plugins:name=Item{index:04},type=Plugin": {"Name": f"Item{index:04}", "CurrentPort": 9000 + index} for index in range(count)},
+        "status": 200,
+    }).encode()
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
     samples = timeit.repeat(operation, number=iterations, repeat=3)
@@ -239,6 +317,39 @@ def main() -> None:
         _measure("message branch", _message_branch, args.iterations)
         _measure("infer FIXML protocol", _infer_fixml_protocol, args.iterations)
         _measure("infer Ullink MsgType", _infer_ullink_msgtype, args.iterations)
+        for category in ("fields", "components", "groups", "messages"):
+            _measure(f"{category} iterator first", lambda category=category: next(SEED_REGISTRY.definitions(category)), args.iterations)
+            _measure(f"{category} iterator drain", lambda category=category: list(SEED_REGISTRY.definitions(category)), max(1, args.iterations // 50))
+        _measure("category group lookup", lambda: SEED_REGISTRY.definition("groups", "Parties"), args.iterations)
+        _measure("message singleton lookup", lambda: SEED_REGISTRY.msgtype("D"), args.iterations)
+        _measure("message singleton first", lambda: next(SEED_REGISTRY.msgtypes()), args.iterations)
+        _measure("message singleton drain", lambda: list(SEED_REGISTRY.msgtypes()), max(1, args.iterations // 50))
+        _measure("catalog snapshot encode", CATALOG.into_json, args.iterations)
+        _measure("catalog snapshot decode", lambda: FixRegistry.from_json(CATALOG_JSON), args.iterations)
+        _measure("catalog pickle encode", lambda: pickle.dumps(CATALOG), args.iterations)
+        _measure("catalog pickle decode", lambda: pickle.loads(CATALOG_PICKLE), args.iterations)
+        _measure("catalog stable hash", CATALOG.stable_hash, args.iterations)
+        _measure("catalog copy baseline", lambda: copy.copy(CATALOG), args.iterations)
+        for operation in ("create", "insert", "update", "remove"):
+            _measure(f"catalog {operation} including copy", lambda operation=operation: _category_mutation(operation), args.iterations)
+        _measure("register crate vocabulary", lambda: _register_vocabulary(False), args.iterations)
+        _measure("register bridge vocabulary", lambda: _register_vocabulary(True), args.iterations)
+        singleton = CATALOG.msgtype("D")
+        _measure("singleton stable hash", singleton.stable_hash, args.iterations)
+        _measure("singleton field view", lambda: singleton.field, args.iterations)
+
+        _measure("numeric group, compiled plan", lambda: CODEC.transform_fix_line(NUMERIC_GROUP), args.iterations)
+        for count in (1, 32, 64):
+            body = _wildcard(count)
+            assert len(list(UlPlugin.from_json_bytes(body))) == count
+            assert len(list(BRIDGE_CODEC.transform_line(body))) == count
+            _measure(f"UlPlugins first/{count}", lambda body=body: next(UlPlugin.from_json_bytes(body)), args.iterations)
+            _measure(f"UlPlugins drain/{count}", lambda body=body: list(UlPlugin.from_json_bytes(body)), args.iterations)
+            _measure(f"FixMessages first/{count}", lambda body=body: next(BRIDGE_CODEC.transform_line(body)), args.iterations)
+            _measure(f"FixMessages drain/{count}", lambda body=body: list(BRIDGE_CODEC.transform_line(body)), args.iterations)
+            _measure(f"record messages drain/{count}", lambda body=body: list(BRIDGE_CODEC.transform_record({"body": body})), args.iterations)
+            first = next(UlPlugin.from_json_bytes(body))
+            _measure(f"UlPlugin hash/{count}", first.stable_hash, args.iterations)
         loads = max(1, args.iterations // 100)
         _measure(
             "from_handle, the seed",

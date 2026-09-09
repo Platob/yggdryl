@@ -1,0 +1,124 @@
+{
+  "name": "instrumentextension",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "deliveryform",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryform"
+        }
+      },
+      {
+        "name": "pctatrisk",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pctatrisk"
+        }
+      },
+      {
+        "name": "noinstrattrib",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noinstrattrib"
+        }
+      },
+      {
+        "name": "attrbgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "attrbgrp"
+        }
+      },
+      {
+        "name": "commodityfinalpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commodityfinalpricetype"
+        }
+      },
+      {
+        "name": "noindexrollmonths",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noindexrollmonths"
+        }
+      },
+      {
+        "name": "indexrollmonthgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "indexrollmonthgrp"
+        }
+      },
+      {
+        "name": "nextindexrolldate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nextindexrolldate"
+        }
+      },
+      {
+        "name": "floatingrateindex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "floatingrateindex"
+        }
+      },
+      {
+        "name": "noreferencedatadates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noreferencedatadates"
+        }
+      },
+      {
+        "name": "referencedatadategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "referencedatadategrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Identifies the form of delivery.",
+    "display": "InstrumentExtension",
+    "fix:tag": "708834"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "deliveryschedulesettltime",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "deliveryschedulesettlstart",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulesettlstart"
+        }
+      },
+      {
+        "name": "deliveryschedulesettlend",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulesettlend"
+        }
+      },
+      {
+        "name": "deliveryschedulesettltimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliveryschedulesettltimetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DeliveryScheduleSettlTime",
+    "fix:tag": "752532"
+  }
+}

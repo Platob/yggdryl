@@ -1,0 +1,114 @@
+{
+  "name": "legpaymentstreamfixedrate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamrate"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfixedamount"
+        }
+      },
+      {
+        "name": "legpaymentstreamrateoramountcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamrateoramountcurrency"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixedamountunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfixedamountunitofmeasure"
+        }
+      },
+      {
+        "name": "legpaymentstreamtotalfixedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamtotalfixedamount"
+        }
+      },
+      {
+        "name": "legpaymentstreamfuturevaluenotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfuturevaluenotional"
+        }
+      },
+      {
+        "name": "legpaymentstreamfuturevaluedateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfuturevaluedateadjusted"
+        }
+      },
+      {
+        "name": "legpaymentstreamworldscalerate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamworldscalerate"
+        }
+      },
+      {
+        "name": "legpaymentstreamcontractprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcontractprice"
+        }
+      },
+      {
+        "name": "legpaymentstreamcontractpricecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcontractpricecurrency"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Mutually exclusive with LegPaymentStreamFixedAmount(40327).",
+    "display": "LegPaymentStreamFixedRate",
+    "fix:tag": "561335"
+  }
+}

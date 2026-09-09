@@ -1,0 +1,24 @@
+{
+  "name": "marginamount",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "marginamountcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "marginamountcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of margin amount entries",
+    "display": "MarginAmount",
+    "fix:component": "marginamountcomponent",
+    "fix:counter": "1643",
+    "fix:tag": "664835"
+  }
+}

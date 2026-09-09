@@ -1,0 +1,114 @@
+{
+  "name": "underlyingpaymentstreamfixedrate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreamrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamrate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfixedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfixedamount"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamrateoramountcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamrateoramountcurrency"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfixedamountunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfixedamountunitofmeasure"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamtotalfixedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamtotalfixedamount"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfuturevaluenotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfuturevaluenotional"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfuturevaluedateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfuturevaluedateadjusted"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamworldscalerate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamworldscalerate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcontractprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcontractprice"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcontractpricecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcontractpricecurrency"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Mutually exclusive with UnderlyingPaymentStreamFixedAmount(40616).",
+    "display": "UnderlyingPaymentStreamFixedRate",
+    "fix:tag": "634693"
+  }
+}

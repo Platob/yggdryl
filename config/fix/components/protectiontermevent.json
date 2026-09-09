@@ -1,0 +1,103 @@
+{
+  "name": "protectiontermevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "protectiontermeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermeventtype"
+        }
+      },
+      {
+        "name": "protectiontermeventvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermeventvalue"
+        }
+      },
+      {
+        "name": "protectiontermeventcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermeventcurrency"
+        }
+      },
+      {
+        "name": "protectiontermeventperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermeventperiod"
+        }
+      },
+      {
+        "name": "protectiontermeventunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermeventunit"
+        }
+      },
+      {
+        "name": "protectiontermeventdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermeventdaytype"
+        }
+      },
+      {
+        "name": "protectiontermeventratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermeventratesource"
+        }
+      },
+      {
+        "name": "noprotectiontermeventqualifiers",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprotectiontermeventqualifiers"
+        }
+      },
+      {
+        "name": "protectiontermeventqualifiergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "protectiontermeventqualifiergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ProtectionTermEvent",
+    "fix:tag": "805391"
+  }
+}

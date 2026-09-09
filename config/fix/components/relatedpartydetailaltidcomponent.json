@@ -1,0 +1,53 @@
+{
+  "name": "relatedpartydetailaltidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "relatedpartydetailaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedpartydetailaltid"
+        }
+      },
+      {
+        "name": "relatedpartydetailaltidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedpartydetailaltidsource"
+        }
+      },
+      {
+        "name": "norelatedpartydetailaltsubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norelatedpartydetailaltsubids"
+        }
+      },
+      {
+        "name": "relatedpartydetailaltsubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "relatedpartydetailaltsubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RelatedPartyDetailAltID",
+    "fix:tag": "278588"
+  }
+}

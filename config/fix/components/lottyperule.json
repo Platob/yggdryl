@@ -1,0 +1,33 @@
+{
+  "name": "lottyperule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "lottype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lottype"
+        }
+      },
+      {
+        "name": "minlotsize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "minlotsize"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LotTypeRule",
+    "fix:tag": "245094"
+  }
+}

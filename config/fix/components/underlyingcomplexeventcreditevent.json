@@ -1,0 +1,103 @@
+{
+  "name": "underlyingcomplexeventcreditevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventcrediteventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventtype"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventvalue"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventcurrency"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventperiod"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventunit"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventdaytype"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventratesource"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventcrediteventqualifiers",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventcrediteventqualifiers"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventcrediteventqualifiergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventcrediteventqualifiergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventCreditEvent",
+    "fix:tag": "852828"
+  }
+}

@@ -52,16 +52,16 @@ const KEYS: [&str; 7] = [SINCE, EP, NAME, TYPE, DEPRECATED, REMOVED, DOC];
 /// The specification dates a change either by version or by extension pack,
 /// and routinely by both: `LastQty` is added at `FIX.2.7`, while `BasisPoints`
 /// is "Added EP208" against a version that had already shipped. Ordering is
-/// therefore on the pair, version first, so `5.0SP2` at EP204 is older than
-/// `5.0SP2` at EP309 rather than eleven years in one bucket. An entry stating
+/// therefore on the pair, version first, so `5.0.2` at EP204 is older than
+/// `5.0.2` at EP309 rather than eleven years in one bucket. An entry stating
 /// no extension pack is that version's base statement and orders first.
 ///
 /// ```
 /// use yggdryl::{FixPedigree, Version};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let base = FixPedigree::new("5.0SP2".parse::<Version>()?, None);
-/// let patched = FixPedigree::new("5.0SP2".parse::<Version>()?, Some(309));
+/// let base = FixPedigree::new("5.0.2".parse::<Version>()?, None);
+/// let patched = FixPedigree::new("5.0.2".parse::<Version>()?, Some(309));
 /// assert!(base < patched);
 /// assert!(patched < FixPedigree::new(Version::MAX, None));
 /// # Ok(())
@@ -70,7 +70,7 @@ const KEYS: [&str; 7] = [SINCE, EP, NAME, TYPE, DEPRECATED, REMOVED, DOC];
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FixPedigree {
     // Version first so the derived order is version-major, which is what
-    // "5.0SP2 at EP204 is older than 5.0SP2 at EP309" means. `None` before
+    // "5.0.2 at EP204 is older than 5.0.2 at EP309" means. `None` before
     // `Some` follows from `Option`'s own order and is the reading wanted: a
     // version's base statement precedes every extension pack against it.
     version: Version,

@@ -1,0 +1,24 @@
+{
+  "name": "execinstrules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "execinstrule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "execinstrule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of execution instructions",
+    "display": "ExecInstRules",
+    "fix:component": "execinstrule",
+    "fix:counter": "1232",
+    "fix:tag": "903533"
+  }
+}

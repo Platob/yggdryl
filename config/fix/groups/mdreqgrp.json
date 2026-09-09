@@ -1,0 +1,24 @@
+{
+  "name": "mdreqgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "mdreq",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "mdreq"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of MDEntryType fields requested.",
+    "display": "MDReqGrp",
+    "fix:component": "mdreq",
+    "fix:counter": "267",
+    "fix:tag": "940857"
+  }
+}

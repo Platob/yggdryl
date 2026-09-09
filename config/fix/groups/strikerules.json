@@ -1,0 +1,24 @@
+{
+  "name": "strikerules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "strikerule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "strikerule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of strike rule entries. This block specifies the rules for determining how new strikes should be listed within the stated price range of the underlying instrument",
+    "display": "StrikeRules",
+    "fix:component": "strikerule",
+    "fix:counter": "1201",
+    "fix:tag": "795899"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "tradingsessionrulesgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradingsessionrule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "tradingsessionrule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Allows trading rules to be expressed by trading session",
+    "display": "TradingSessionRulesGrp",
+    "fix:component": "tradingsessionrule",
+    "fix:counter": "1309",
+    "fix:tag": "397339"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "underlyingassetattribute",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingassetattributetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingassetattributetype"
+        }
+      },
+      {
+        "name": "underlyingassetattributevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingassetattributevalue"
+        }
+      },
+      {
+        "name": "underlyingassetattributelimit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingassetattributelimit"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingAssetAttribute",
+    "fix:tag": "595375"
+  }
+}

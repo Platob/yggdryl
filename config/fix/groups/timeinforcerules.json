@@ -1,0 +1,24 @@
+{
+  "name": "timeinforcerules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "timeinforcerule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "timeinforcerule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of time in force techniques",
+    "display": "TimeInForceRules",
+    "fix:component": "timeinforcerule",
+    "fix:counter": "1239",
+    "fix:tag": "663935"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "physicalsettldeliverableobligation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "physicalsettldeliverableobligationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "physicalsettldeliverableobligationtype"
+        }
+      },
+      {
+        "name": "physicalsettldeliverableobligationvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "physicalsettldeliverableobligationvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PhysicalSettlDeliverableObligation",
+    "fix:tag": "557023"
+  }
+}

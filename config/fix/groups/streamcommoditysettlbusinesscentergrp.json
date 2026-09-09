@@ -1,0 +1,24 @@
+{
+  "name": "streamcommoditysettlbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamcommoditysettlbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "streamcommoditysettlbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoStreamCommoditySettlBusinessCenters(41249) > 0.",
+    "display": "StreamCommoditySettlBusinessCenterGrp",
+    "fix:component": "streamcommoditysettlbusinesscentercomponent",
+    "fix:counter": "41249",
+    "fix:tag": "765072"
+  }
+}

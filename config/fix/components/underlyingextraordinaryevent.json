@@ -1,0 +1,33 @@
+{
+  "name": "underlyingextraordinaryevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingextraordinaryeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingextraordinaryeventtype"
+        }
+      },
+      {
+        "name": "underlyingextraordinaryeventvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingextraordinaryeventvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingExtraordinaryEvent",
+    "fix:tag": "859898"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "underlyingoptionexercisebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingoptionexercisebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexercisebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingOptionExerciseBusinessCenter",
+    "fix:tag": "821767"
+  }
+}

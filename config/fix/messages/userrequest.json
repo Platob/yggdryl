@@ -1,0 +1,155 @@
+{
+  "name": "userrequest",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "userrequestid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "userrequestid"
+        }
+      },
+      {
+        "name": "userrequesttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "userrequesttype"
+        }
+      },
+      {
+        "name": "username",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "username"
+        }
+      },
+      {
+        "name": "password",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "password"
+        }
+      },
+      {
+        "name": "newpassword",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "newpassword"
+        }
+      },
+      {
+        "name": "encryptedpasswordmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encryptedpasswordmethod"
+        }
+      },
+      {
+        "name": "encryptedpasswordlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encryptedpasswordlen"
+        }
+      },
+      {
+        "name": "encryptedpassword",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encryptedpassword"
+        }
+      },
+      {
+        "name": "encryptednewpasswordlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encryptednewpasswordlen"
+        }
+      },
+      {
+        "name": "encryptednewpassword",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encryptednewpassword"
+        }
+      },
+      {
+        "name": "rawdatalength",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rawdatalength"
+        }
+      },
+      {
+        "name": "rawdata",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rawdata"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = BE",
+    "display": "UserRequest",
+    "fix:msgtype": "BE",
+    "fix:tag": "291769"
+  }
+}

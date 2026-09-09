@@ -1,0 +1,53 @@
+{
+  "name": "legreturnratepricecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legreturnratepricebasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratepricebasis"
+        }
+      },
+      {
+        "name": "legreturnrateprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnrateprice"
+        }
+      },
+      {
+        "name": "legreturnratepricecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratepricecurrency"
+        }
+      },
+      {
+        "name": "legreturnratepricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratepricetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegReturnRatePrice",
+    "fix:tag": "302596"
+  }
+}

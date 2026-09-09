@@ -1,0 +1,73 @@
+{
+  "name": "underlyingprovisionparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisionpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionpartyid"
+        }
+      },
+      {
+        "name": "underlyingprovisionpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionpartyidsource"
+        }
+      },
+      {
+        "name": "underlyingprovisionpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionpartyrole"
+        }
+      },
+      {
+        "name": "underlyingprovisionpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionpartyrolequalifier"
+        }
+      },
+      {
+        "name": "nounderlyingprovisionpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprovisionpartysubids"
+        }
+      },
+      {
+        "name": "underlyingprovisionptyssubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprovisionptyssubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProvisionParty",
+    "fix:tag": "883191"
+  }
+}

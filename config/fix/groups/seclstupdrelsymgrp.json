@@ -1,0 +1,24 @@
+{
+  "name": "seclstupdrelsymgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "seclstupdrelsym",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "seclstupdrelsym"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies the number of repeating symbols (instruments) specified",
+    "display": "SecLstUpdRelSymGrp",
+    "fix:component": "seclstupdrelsym",
+    "fix:counter": "146",
+    "fix:tag": "423589"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "name": "instrmtleg",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrumentleg",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrumentleg"
+        }
+      },
+      {
+        "name": "legfinancingdetails",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legfinancingdetails"
+        }
+      },
+      {
+        "name": "nolegratesources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegratesources"
+        }
+      },
+      {
+        "name": "legratesourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legratesourcegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "InstrmtLeg",
+    "fix:tag": "520248"
+  }
+}

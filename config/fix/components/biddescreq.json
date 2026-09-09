@@ -1,0 +1,123 @@
+{
+  "name": "biddescreq",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "biddescriptortype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "biddescriptortype"
+        }
+      },
+      {
+        "name": "biddescriptor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "biddescriptor"
+        }
+      },
+      {
+        "name": "sidevalueind",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidevalueind"
+        }
+      },
+      {
+        "name": "liquidityvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "liquidityvalue"
+        }
+      },
+      {
+        "name": "liquiditynumsecurities",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "liquiditynumsecurities"
+        }
+      },
+      {
+        "name": "liquiditypctlow",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "liquiditypctlow"
+        }
+      },
+      {
+        "name": "liquiditypcthigh",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "liquiditypcthigh"
+        }
+      },
+      {
+        "name": "efptrackingerror",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "efptrackingerror"
+        }
+      },
+      {
+        "name": "fairvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fairvalue"
+        }
+      },
+      {
+        "name": "outsideindexpct",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "outsideindexpct"
+        }
+      },
+      {
+        "name": "valueoffutures",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "valueoffutures"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "BidDescReq",
+    "fix:tag": "859396"
+  }
+}

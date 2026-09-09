@@ -1,0 +1,24 @@
+{
+  "name": "legevntgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legevnt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legevnt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegEvents(2059) > 0.",
+    "display": "LegEvntGrp",
+    "fix:component": "legevnt",
+    "fix:counter": "2059",
+    "fix:tag": "169274"
+  }
+}

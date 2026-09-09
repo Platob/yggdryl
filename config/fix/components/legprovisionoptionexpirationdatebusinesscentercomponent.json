@@ -1,0 +1,23 @@
+{
+  "name": "legprovisionoptionexpirationdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprovisionoptionexpirationdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionexpirationdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProvisionOptionExpirationDateBusinessCenter",
+    "fix:tag": "412326"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "streamcommoditysettlbusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streamcommoditysettlbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamcommoditysettlbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StreamCommoditySettlBusinessCenter",
+    "fix:tag": "280971"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "legreturnrategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legreturnrate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legreturnrate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegReturnRates(42534) > 0.",
+    "display": "LegReturnRateGrp",
+    "fix:component": "legreturnrate",
+    "fix:counter": "42534",
+    "fix:tag": "623530"
+  }
+}

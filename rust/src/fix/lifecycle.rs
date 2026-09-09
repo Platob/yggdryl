@@ -94,14 +94,24 @@ const PART_SEPARATOR: u8 = 0x1F;
 /// let mut life = FixLifecycle::new(registry);
 ///
 /// // The order, then its acknowledgement under the venue's own identifier.
-/// let order = life.fill(reader.transform_line(
-///     b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.000|10=0|",
-///     false,
-/// )?)?;
-/// let ack = life.fill(reader.transform_line(
-///     b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.250|10=0|",
-///     false,
-/// )?)?;
+/// let order = life.fill(
+///     reader
+///         .transform_line(
+///             b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.000|10=0|",
+///             false,
+///         )?
+///         .next()
+///         .expect("one message")?,
+/// )?;
+/// let ack = life.fill(
+///     reader
+///         .transform_line(
+///             b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.250|10=0|",
+///             false,
+///         )?
+///         .next()
+///         .expect("one message")?,
+/// )?;
 /// // One chain: the acknowledgement carries the order's persistent id.
 /// assert_eq!(order.by_tag(PERSISTENTID_TAG)?, ack.by_tag(PERSISTENTID_TAG)?);
 /// // Two messages: two ids, and the later one sorts after.
@@ -109,10 +119,15 @@ const PART_SEPARATOR: u8 = 0x1F;
 /// assert_eq!(life.alive(), 1);
 ///
 /// // The fill closes the chain, and the venue's identifier is forgotten.
-/// life.fill(reader.transform_line(
-///     b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|60=20260102-10:15:31.000|10=0|",
-///     false,
-/// )?)?;
+/// life.fill(
+///     reader
+///         .transform_line(
+///             b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|60=20260102-10:15:31.000|10=0|",
+///             false,
+///         )?
+///         .next()
+///         .expect("one message")?,
+/// )?;
 /// assert_eq!(life.alive(), 0);
 /// # Ok(())
 /// # }

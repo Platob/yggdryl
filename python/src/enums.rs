@@ -3,8 +3,8 @@
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyTypeError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBytes, PyTuple};
-use yggdryl::types::{MsgDirection as CoreMsgDirection, MsgType as CoreMsgType};
+use pyo3::types::{PyAny, PyTuple};
+use yggdryl::types::MsgDirection as CoreMsgDirection;
 use yggdryl::{MediaType as CoreMediaType, MimeType as CoreMimeType};
 
 use crate::uri::path_string_from_value;
@@ -94,25 +94,6 @@ impl PyMimeType {
             "a captured line must be bytes, bytearray, or memoryview",
             |line| Ok(Self::from_core(CoreMimeType::infer_bytes(line))),
         )
-    }
-
-    /// Read the message type one captured byte line declares.
-    #[staticmethod]
-    fn infer_bytes_msgtype(py: Python<'_>, line: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
-        crate::text::codec::with_python_bytes(
-            line,
-            "a captured line must be bytes, bytearray, or memoryview",
-            |line| {
-                Ok(CoreMsgType::infer_bytes(line)
-                    .map(|value| PyBytes::new(py, value).unbind().into_any()))
-            },
-        )
-    }
-
-    /// Read the message type one captured text line declares.
-    #[staticmethod]
-    fn infer_text_msgtype(line: &str) -> Option<String> {
-        CoreMsgType::infer_text(line).map(ToOwned::to_owned)
     }
 
     /// Read which way one captured byte line moved.

@@ -1,0 +1,164 @@
+{
+  "name": "legoptionexercise",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legexercisedesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legexercisedesc"
+        }
+      },
+      {
+        "name": "encodedlegexercisedesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegexercisedesclen"
+        }
+      },
+      {
+        "name": "encodedlegexercisedesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegexercisedesc"
+        }
+      },
+      {
+        "name": "legautomaticexerciseindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legautomaticexerciseindicator"
+        }
+      },
+      {
+        "name": "legautomaticexercisethresholdrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legautomaticexercisethresholdrate"
+        }
+      },
+      {
+        "name": "legexerciseconfirmationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legexerciseconfirmationmethod"
+        }
+      },
+      {
+        "name": "legmanualnoticebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmanualnoticebusinesscenter"
+        }
+      },
+      {
+        "name": "legfallbackexerciseindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legfallbackexerciseindicator"
+        }
+      },
+      {
+        "name": "leglimitrighttoconfirmindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leglimitrighttoconfirmindicator"
+        }
+      },
+      {
+        "name": "legexercisesplitticketindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legexercisesplitticketindicator"
+        }
+      },
+      {
+        "name": "legsettlmethodelectingpartyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlmethodelectingpartyside"
+        }
+      },
+      {
+        "name": "legsettlmethodelectiondate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legsettlmethodelectiondate"
+        }
+      },
+      {
+        "name": "legoptionexercisedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legoptionexercisedates"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpiration",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legoptionexerciseexpiration"
+        }
+      },
+      {
+        "name": "legoptionexercisemakewholeprovision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legoptionexercisemakewholeprovision"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Must be set if EncodedLegExerciseDesc (41483) field is specified and must immediately precede it.",
+    "display": "LegOptionExercise",
+    "fix:tag": "762849"
+  }
+}

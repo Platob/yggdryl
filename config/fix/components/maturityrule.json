@@ -1,0 +1,73 @@
+{
+  "name": "maturityrule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "maturityruleid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "maturityruleid"
+        }
+      },
+      {
+        "name": "maturitymonthyearformat",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "maturitymonthyearformat"
+        }
+      },
+      {
+        "name": "maturitymonthyearincrementunits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "maturitymonthyearincrementunits"
+        }
+      },
+      {
+        "name": "startmaturitymonthyear",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "startmaturitymonthyear"
+        }
+      },
+      {
+        "name": "endmaturitymonthyear",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "endmaturitymonthyear"
+        }
+      },
+      {
+        "name": "maturitymonthyearincrement",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "maturitymonthyearincrement"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MaturityRule",
+    "fix:tag": "761022"
+  }
+}

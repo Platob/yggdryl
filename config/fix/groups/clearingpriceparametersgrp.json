@@ -1,0 +1,24 @@
+{
+  "name": "clearingpriceparametersgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "clearingpriceparameter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "clearingpriceparameter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of parameter sets.",
+    "display": "ClearingPriceParametersGrp",
+    "fix:component": "clearingpriceparameter",
+    "fix:counter": "2580",
+    "fix:tag": "790583"
+  }
+}

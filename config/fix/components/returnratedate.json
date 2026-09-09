@@ -1,0 +1,263 @@
+{
+  "name": "returnratedate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "returnratedatemode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratedatemode"
+        }
+      },
+      {
+        "name": "noreturnratevaluationdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noreturnratevaluationdates"
+        }
+      },
+      {
+        "name": "returnratevaluationdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "returnratevaluationdategrp"
+        }
+      },
+      {
+        "name": "returnratevaluationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationdaterelativeto"
+        }
+      },
+      {
+        "name": "returnratevaluationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "returnratevaluationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationdateoffsetunit"
+        }
+      },
+      {
+        "name": "returnratevaluationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "returnratevaluationstartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationstartdateunadjusted"
+        }
+      },
+      {
+        "name": "returnratevaluationstartdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationstartdaterelativeto"
+        }
+      },
+      {
+        "name": "returnratevaluationstartdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationstartdateoffsetperiod"
+        }
+      },
+      {
+        "name": "returnratevaluationstartdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationstartdateoffsetunit"
+        }
+      },
+      {
+        "name": "returnratevaluationstartdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationstartdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "returnratevaluationstartdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationstartdateadjusted"
+        }
+      },
+      {
+        "name": "returnratevaluationenddateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationenddateunadjusted"
+        }
+      },
+      {
+        "name": "returnratevaluationenddaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationenddaterelativeto"
+        }
+      },
+      {
+        "name": "returnratevaluationenddateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationenddateoffsetperiod"
+        }
+      },
+      {
+        "name": "returnratevaluationenddateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationenddateoffsetunit"
+        }
+      },
+      {
+        "name": "returnratevaluationenddateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationenddateoffsetdaytype"
+        }
+      },
+      {
+        "name": "returnratevaluationenddateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationenddateadjusted"
+        }
+      },
+      {
+        "name": "returnratevaluationfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationfrequencyperiod"
+        }
+      },
+      {
+        "name": "returnratevaluationfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationfrequencyunit"
+        }
+      },
+      {
+        "name": "returnratevaluationfrequencyrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationfrequencyrollconvention"
+        }
+      },
+      {
+        "name": "returnratevaluationdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratevaluationdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "noreturnratevaluationdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noreturnratevaluationdatebusinesscenters"
+        }
+      },
+      {
+        "name": "returnratevaluationdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "returnratevaluationdatebusinesscentergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ReturnRateDate",
+    "fix:tag": "276487"
+  }
+}

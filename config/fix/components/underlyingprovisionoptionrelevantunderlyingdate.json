@@ -1,0 +1,104 @@
+{
+  "name": "underlyingprovisionoptionrelevantunderlyingdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisionoptionrelevantunderlyingdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionrelevantunderlyingdateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionrelevantunderlyingdatebizdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionrelevantunderlyingdatebizdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingprovisionoptionrelevantunderlyingdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprovisionoptionrelevantunderlyingdatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionrelevantunderlyingdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprovisionoptionrelevantunderlyingdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionrelevantunderlyingdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionrelevantunderlyingdaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionrelevantunderlyingdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionrelevantunderlyingdateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionrelevantunderlyingdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionrelevantunderlyingdateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionrelevantunderlyingdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionrelevantunderlyingdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingprovisionoptionrelevantunderlyingdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionrelevantunderlyingdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument. The specified value would be specific to this instance of the provisional option relevant underlying date.",
+    "display": "UnderlyingProvisionOptionRelevantUnderlyingDate",
+    "fix:tag": "416660"
+  }
+}

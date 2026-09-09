@@ -1,0 +1,33 @@
+{
+  "name": "underlyingstreamcommoditydatasource",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamcommoditydatasourceid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditydatasourceid"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditydatasourceidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditydatasourceidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStreamCommodityDataSource",
+    "fix:tag": "958843"
+  }
+}

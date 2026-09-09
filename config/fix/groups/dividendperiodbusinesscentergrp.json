@@ -1,0 +1,24 @@
+{
+  "name": "dividendperiodbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "dividendperiodbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "dividendperiodbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoDividendPeriodBusinessCenters(42294) > 0.",
+    "display": "DividendPeriodBusinessCenterGrp",
+    "fix:component": "dividendperiodbusinesscentercomponent",
+    "fix:counter": "42294",
+    "fix:tag": "735066"
+  }
+}

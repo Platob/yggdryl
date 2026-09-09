@@ -1,0 +1,24 @@
+{
+  "name": "businesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "businesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "businesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoBusinessCenters(40278) > 0.",
+    "display": "BusinessCenterGrp",
+    "fix:component": "businesscentercomponent",
+    "fix:counter": "40278",
+    "fix:tag": "168739"
+  }
+}

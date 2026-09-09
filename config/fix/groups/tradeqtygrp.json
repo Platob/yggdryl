@@ -1,0 +1,24 @@
+{
+  "name": "tradeqtygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradeqtycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "tradeqtycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTradeQty(1841) > 0.",
+    "display": "TradeQtyGrp",
+    "fix:component": "tradeqtycomponent",
+    "fix:counter": "1841",
+    "fix:tag": "202693"
+  }
+}

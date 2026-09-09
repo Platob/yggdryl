@@ -1,0 +1,104 @@
+{
+  "name": "legdividendaccrualpaymentdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdividendaccrualpaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendaccrualpaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "legdividendaccrualpaymentdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendaccrualpaymentdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legdividendaccrualpaymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendaccrualpaymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "legdividendaccrualpaymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendaccrualpaymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legdividendaccrualpaymentdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendaccrualpaymentdateunadjusted"
+        }
+      },
+      {
+        "name": "legdividendaccrualpaymentdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendaccrualpaymentdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegdividendaccrualpaymentdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegdividendaccrualpaymentdatebusinesscenters"
+        }
+      },
+      {
+        "name": "legdividendaccrualpaymentdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legdividendaccrualpaymentdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legdividendaccrualpaymentdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendaccrualpaymentdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when LegDividendAccrualPaymentDateOffsetUnit(42332) is specified.",
+    "display": "LegDividendAccrualPaymentDate",
+    "fix:tag": "655412"
+  }
+}

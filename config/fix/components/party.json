@@ -1,0 +1,73 @@
+{
+  "name": "party",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "partyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partyid"
+        }
+      },
+      {
+        "name": "partyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partyidsource"
+        }
+      },
+      {
+        "name": "partyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partyrole"
+        }
+      },
+      {
+        "name": "partyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partyrolequalifier"
+        }
+      },
+      {
+        "name": "nopartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartysubids"
+        }
+      },
+      {
+        "name": "ptyssubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "ptyssubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Party",
+    "fix:tag": "780527"
+  }
+}

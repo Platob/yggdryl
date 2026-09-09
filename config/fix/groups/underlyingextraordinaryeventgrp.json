@@ -1,0 +1,24 @@
+{
+  "name": "underlyingextraordinaryeventgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingextraordinaryevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingextraordinaryevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingExtraordinaryEvents(42884) > 0.",
+    "display": "UnderlyingExtraordinaryEventGrp",
+    "fix:component": "underlyingextraordinaryevent",
+    "fix:counter": "42884",
+    "fix:tag": "477677"
+  }
+}

@@ -3,13 +3,13 @@
 //! `config/fix` is a contract rather than a code path: it is the seed every
 //! test in these phases loads, and the one path this suite names.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use yggdryl::holder::local::Folder;
 use yggdryl::{
-    DataType, Field, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, TimeUnit, Timezone,
-    Version,
+    DataType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
+    TimeUnit, Timezone, Version,
 };
 
 fn seed() -> FixRegistry {
@@ -64,7 +64,7 @@ fn the_committed_dictionary_answers_the_worked_case_end_to_end() {
     // "FIX Latest" is a real pedigree the dictionary carries, never a
     // sentinel at the top of the value space.
     let newest = registry.newest().expect("a dated dictionary");
-    assert_eq!(newest.version(), version("5.0SP2"));
+    assert_eq!(newest.version(), version("5.0.2"));
     assert!(newest.ep().is_some());
     assert_ne!(newest.version(), Version::MAX);
     let versions = registry.versions();
@@ -75,33 +75,58 @@ fn the_committed_dictionary_answers_the_worked_case_end_to_end() {
 #[test]
 fn every_generated_name_is_folded_and_no_two_collide() {
     let registry = seed();
-    let mut seen: Vec<String> = Vec::with_capacity(registry.len());
-    for field in registry.iter() {
-        let name = field.name();
-        assert!(
-            !name.bytes().any(|byte| byte.is_ascii_uppercase()),
-            "{name} holds an uppercase byte"
-        );
-        assert!(!name.contains('_'), "{name} holds an underscore");
-        seen.push(name.to_owned());
+    let scalar_names: BTreeSet<_> = registry.iter().map(Field::name).collect();
+    // Across every category, not within one: a derived tag is the definition's
+    // identity in the whole catalog.
+    let mut derived_tags = BTreeSet::new();
+    for category in FixCategory::ALL {
+        let mut seen = BTreeSet::new();
+        for field in registry.definitions(category) {
+            let name = field.name();
+            assert!(
+                !name.bytes().any(|byte| byte.is_ascii_uppercase()),
+                "{name} holds an uppercase byte"
+            );
+            assert!(!name.contains('_'), "{name} holds an underscore");
+            let branch = field.as_fix().branch().expect("valid branch");
+            assert!(seen.insert((branch, name)), "duplicate {category}/{name}");
+            if category != FixCategory::Fields {
+                assert!(
+                    !scalar_names.contains(name),
+                    "{category}/{name} collides with a wire field"
+                );
+                // Every named definition carries a tag of its own, derived
+                // into the block nothing published claims, and no two share
+                // one - the `seen` set below proves the names, this the tags.
+                let derived = field
+                    .as_fix()
+                    .tag()
+                    .expect("valid tag")
+                    .expect("a derived definition tag");
+                assert!(
+                    yggdryl::FixId::is_definition_tag(derived),
+                    "{category}/{name} tag {derived}"
+                );
+                assert!(
+                    derived_tags.insert(derived),
+                    "{category}/{name} repeats derived tag {derived}"
+                );
+            } else {
+                assert!(!field.dtype().is_nested(), "wire field {name} is nested");
+            }
+        }
+        assert!(!seen.is_empty(), "the {category} category is missing");
     }
-    // No two FIX fields differ only by case, which is what makes folding the
-    // stored name lossless - and it is what the separator fold leans on too.
-    seen.sort_unstable();
-    let before = seen.len();
-    seen.dedup();
-    assert_eq!(seen.len(), before, "two fields fold to one name");
 }
 
 #[test]
 fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     let registry = seed();
 
-    // Two tags the standard itself declares as code sets take the datatype
-    // the crate gives that code set. That is honouring a declaration, not the
-    // narrowing a generator must not do.
+    // Each field carries its enum metadata over the scalar datatype. Message codes
+    // remain unrestricted text; Side keeps its generic ASCII datatype.
     let msgtype = registry.field_by_tag(35).expect("tag 35");
-    assert_eq!(msgtype.dtype(), &DataType::MsgType);
+    assert_eq!(msgtype.dtype(), &DataType::Utf8);
     assert_eq!(msgtype.as_fix().code_name("D"), Some("NewOrderSingle"));
     assert_eq!(msgtype.as_fix().code_value("NewOrderSingle"), Some("D"));
 
@@ -122,10 +147,19 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
         registry.field_by_tag(39).unwrap().as_fix().code_name("1"),
         Some("PartiallyFilled")
     );
-    // Every other code set keeps its base type.
+    // Every other code set keeps its base type, and one code set declared by
+    // two fields is stored whole on each.
     let ord_type = registry.field_by_tag(40).expect("tag 40");
     assert_eq!(ord_type.dtype(), &DataType::Utf8);
     assert!(ord_type.as_fix().codes().count() > 5);
+    let source = registry.field_by_tag(22).expect("SecurityIDSource");
+    let alternative = registry.field_by_tag(456).expect("SecurityAltIDSource");
+    assert_eq!(
+        source.as_metadata().get("fix:codes"),
+        alternative.as_metadata().get("fix:codes")
+    );
+    assert!(source.as_metadata().get("fix:codes").is_some());
+    assert!(source.as_metadata().get("fix:codeset").is_none());
 
     // The float family is what the specification says it is.
     for tag in [31, 38, 44, 6] {
@@ -139,16 +173,32 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
 }
 
 #[test]
-fn a_repeating_group_is_a_list_of_one_component_struct_keyed_by_its_counter() {
+fn a_repeating_group_has_a_scalar_counter_and_a_separately_named_component() {
     let registry = seed();
-    let parties = registry.field_by_tag(453).expect("NoPartyIDs");
-    assert_eq!(parties.name(), "nopartyids");
+    let counter = registry.field_by_tag(453).expect("NoPartyIDs");
+    assert_eq!(counter.name(), "nopartyids");
+    assert_eq!(counter.dtype(), &DataType::Int32);
+    let parties = registry
+        .definition(FixCategory::Groups, "Parties", None)
+        .expect("Parties group");
+    assert_eq!(parties.name(), "parties");
+    assert_eq!(parties.display(), Some("Parties"));
+    assert_eq!(parties.as_fix().counter().unwrap(), Some(453));
+    // The counter it heads is the published 453; its own identity is derived,
+    // and the two are never the same number.
+    let derived = parties.as_fix().tag().unwrap().expect("a derived tag");
+    assert!(yggdryl::FixId::is_definition_tag(derived), "{derived}");
+    assert_ne!(derived, 453);
     let DataType::List(item) = parties.dtype() else {
         panic!("a list, got {}", parties.dtype());
     };
-    // `NoPartyIDs` heads occurrences called `PartyID`, folded.
-    assert_eq!(item.name(), "partyid");
+    assert_eq!(item.name(), "party");
+    assert_eq!(item.as_fix().component(), Some("party"));
     assert!(!item.is_nullable());
+    let component = registry
+        .definition(FixCategory::Components, "Party", None)
+        .expect("Party component");
+    assert_eq!(component.dtype(), item.dtype());
     let members: Vec<&str> = item
         .dtype()
         .as_fields()
@@ -158,10 +208,15 @@ fn a_repeating_group_is_a_list_of_one_component_struct_keyed_by_its_counter() {
         .collect();
     assert!(members.contains(&"partyid"), "{members:?}");
     assert!(members.contains(&"partyrole"), "{members:?}");
-    // The counter exists only as the group's own tag, never as a leaf beside
-    // it: one tag, one definition.
-    assert_eq!(parties.as_fix().tag().unwrap(), Some(453));
     assert!(!members.contains(&"nopartyids"), "{members:?}");
+    assert_eq!(
+        registry
+            .definition(FixCategory::Groups, "Parties", None)
+            .unwrap()
+            .get_field_by_path("party.partyid")
+            .map(Field::name),
+        Some("partyid")
+    );
 }
 
 #[test]
@@ -229,15 +284,21 @@ fn every_stored_document_walks_to_its_end() {
             with_codes += 1;
         }
         codes += seen;
-        for entry in view.lineage() {
+    }
+    for field in registry.iter() {
+        assert!(field.as_metadata().get("fix:codeset").is_none());
+        for entry in field.as_fix().lineage() {
             entry.unwrap_or_else(|error| panic!("{}: {error}", field.name()));
             entries += 1;
         }
     }
     // A dictionary this size is the point: a truncation that hides one code
     // in twenty thousand is exactly what nobody notices by reading.
-    assert!(with_codes > 900, "{with_codes} fields carry a code set");
-    assert!(codes > 20_000, "{codes} codes in all");
+    assert!(with_codes > 900, "{with_codes} fields with inline enums");
+    assert!(
+        codes > 10_000,
+        "{codes} enum records stored with their fields"
+    );
     // Fewer than there are fields, and deliberately: a field whose only
     // history is "as it is now" states none (P3).
     assert!(entries > 1_500, "{entries} lineage entries in all");
@@ -263,8 +324,10 @@ fn every_field(registry: &FixRegistry) -> Vec<Field> {
         }
     }
     let mut out = Vec::new();
-    for field in registry.iter() {
-        walk(field, &mut out);
+    for category in FixCategory::ALL {
+        for field in registry.definitions(category) {
+            walk(field, &mut out);
+        }
     }
     out
 }
@@ -320,7 +383,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
 fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
     let registry = seed();
     let mut census: BTreeMap<(String, String), usize> = BTreeMap::new();
-    for field in every_field(&registry) {
+    for field in registry.iter() {
         let view = field.as_fix();
         let held: Vec<_> = view
             .lineage()
@@ -371,7 +434,7 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
         }
     }
     let total: usize = census.values().sum();
-    assert_eq!(total, 67, "surviving retypes: {census:?}");
+    assert_eq!(total, 66, "surviving retypes: {census:?}");
     assert_eq!(
         census
             .iter()
@@ -391,7 +454,6 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
             ("utf8", "int32", 6),
             ("utf8", "mic", 3),
             ("utf8", "msgdirection", 1),
-            ("utf8", "msgtype", 1),
             ("utf8", "side", 1),
             // `OrdStatus` and `ExecType`: the order's state, read as one type.
             ("utf8", "state", 2),

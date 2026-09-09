@@ -1,0 +1,24 @@
+{
+  "name": "allocgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "alloc",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "alloc"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAllocs(78) > 0.",
+    "display": "AllocGrp",
+    "fix:component": "alloc",
+    "fix:counter": "78",
+    "fix:tag": "340092"
+  }
+}

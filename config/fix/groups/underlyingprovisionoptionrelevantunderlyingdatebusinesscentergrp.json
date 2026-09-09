@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprovisionoptionrelevantunderlyingdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisionoptionrelevantunderlyingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprovisionoptionrelevantunderlyingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProvisionOptionRelevantUnderlyingDateBusinessCenters(42188) > 0.",
+    "display": "UnderlyingProvisionOptionRelevantUnderlyingDateBusinessCenterGrp",
+    "fix:component": "underlyingprovisionoptionrelevantunderlyingdatebusinesscentercomponent",
+    "fix:counter": "42188",
+    "fix:tag": "543693"
+  }
+}

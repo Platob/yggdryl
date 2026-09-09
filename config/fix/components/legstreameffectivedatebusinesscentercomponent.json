@@ -1,0 +1,23 @@
+{
+  "name": "legstreameffectivedatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreameffectivedatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreameffectivedatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamEffectiveDateBusinessCenter",
+    "fix:tag": "889433"
+  }
+}

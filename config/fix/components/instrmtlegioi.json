@@ -1,0 +1,53 @@
+{
+  "name": "instrmtlegioi",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrumentleg",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrumentleg"
+        }
+      },
+      {
+        "name": "legioiqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legioiqty"
+        }
+      },
+      {
+        "name": "nolegstipulations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegstipulations"
+        }
+      },
+      {
+        "name": "legstipulations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legstipulations"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "InstrmtLegIOI",
+    "fix:tag": "691902"
+  }
+}

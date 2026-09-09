@@ -1,0 +1,24 @@
+{
+  "name": "underlyingpaymentstreamnondeliverablefixingdategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentstreamnondeliverablefixingdate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingpaymentstreamnondeliverablefixingdate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingNonDeliverableFixingDates(40656) > 0.",
+    "display": "UnderlyingPaymentStreamNonDeliverableFixingDateGrp",
+    "fix:component": "underlyingpaymentstreamnondeliverablefixingdate",
+    "fix:counter": "40656",
+    "fix:tag": "114915"
+  }
+}

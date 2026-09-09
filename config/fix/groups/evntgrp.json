@@ -1,0 +1,24 @@
+{
+  "name": "evntgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "evnt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "evnt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoEvents(864) > 0.",
+    "display": "EvntGrp",
+    "fix:component": "evnt",
+    "fix:counter": "864",
+    "fix:tag": "799205"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "settlptyssub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "settlpartysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlpartysubid"
+        }
+      },
+      {
+        "name": "settlpartysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlpartysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SettlPtysSub",
+    "fix:tag": "647506"
+  }
+}

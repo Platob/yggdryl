@@ -1,0 +1,24 @@
+{
+  "name": "instrmtmatchsidegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrmtmatchside",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "instrmtmatchside"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoInstrmtMatchSides(1889) > 0.",
+    "display": "InstrmtMatchSideGrp",
+    "fix:component": "instrmtmatchside",
+    "fix:counter": "1889",
+    "fix:tag": "1066062"
+  }
+}

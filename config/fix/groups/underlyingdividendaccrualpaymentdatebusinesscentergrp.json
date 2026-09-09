@@ -1,0 +1,24 @@
+{
+  "name": "underlyingdividendaccrualpaymentdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdividendaccrualpaymentdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingdividendaccrualpaymentdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingDividendAccrualPaymentDateBusinessCenters(42799) > 0.",
+    "display": "UnderlyingDividendAccrualPaymentDateBusinessCenterGrp",
+    "fix:component": "underlyingdividendaccrualpaymentdatebusinesscentercomponent",
+    "fix:counter": "42799",
+    "fix:tag": "172135"
+  }
+}

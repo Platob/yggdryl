@@ -1,0 +1,33 @@
+{
+  "name": "undinstrmtcoll",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyinginstrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyinginstrument"
+        }
+      },
+      {
+        "name": "collaction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collaction"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UndInstrmtColl",
+    "fix:tag": "989282"
+  }
+}

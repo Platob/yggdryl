@@ -1,0 +1,23 @@
+{
+  "name": "execinstrule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "execinstvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "execinstvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ExecInstRule",
+    "fix:tag": "757813"
+  }
+}

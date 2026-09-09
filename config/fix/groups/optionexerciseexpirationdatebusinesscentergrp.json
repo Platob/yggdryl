@@ -1,0 +1,24 @@
+{
+  "name": "optionexerciseexpirationdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "optionexerciseexpirationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "optionexerciseexpirationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoOptionExerciseExpirationDateBusinessCenters(41140) > 0.",
+    "display": "OptionExerciseExpirationDateBusinessCenterGrp",
+    "fix:component": "optionexerciseexpirationdatebusinesscentercomponent",
+    "fix:counter": "41140",
+    "fix:tag": "804054"
+  }
+}

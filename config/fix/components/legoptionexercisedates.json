@@ -1,0 +1,244 @@
+{
+  "name": "legoptionexercisedates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legoptionexercisebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegoptionexercisebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegoptionexercisebusinesscenters"
+        }
+      },
+      {
+        "name": "legoptionexercisebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legoptionexercisebusinesscentergrp"
+        }
+      },
+      {
+        "name": "nolegoptionexercisedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegoptionexercisedates"
+        }
+      },
+      {
+        "name": "legoptionexercisedategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legoptionexercisedategrp"
+        }
+      },
+      {
+        "name": "legoptionexerciseearliestdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseearliestdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legoptionexerciseearliestdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseearliestdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legoptionexerciseearliestdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseearliestdateoffsetunit"
+        }
+      },
+      {
+        "name": "legoptionexercisefrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisefrequencyperiod"
+        }
+      },
+      {
+        "name": "legoptionexercisefrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisefrequencyunit"
+        }
+      },
+      {
+        "name": "legoptionexercisestartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisestartdateunadjusted"
+        }
+      },
+      {
+        "name": "legoptionexercisestartdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisestartdaterelativeto"
+        }
+      },
+      {
+        "name": "legoptionexercisestartdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisestartdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legoptionexercisestartdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisestartdateoffsetunit"
+        }
+      },
+      {
+        "name": "legoptionexercisestartdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisestartdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legoptionexercisestartdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisestartdateadjusted"
+        }
+      },
+      {
+        "name": "legoptionexerciseskip",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseskip"
+        }
+      },
+      {
+        "name": "legoptionexercisenominationdeadline",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisenominationdeadline"
+        }
+      },
+      {
+        "name": "legoptionexercisefirstdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisefirstdateunadjusted"
+        }
+      },
+      {
+        "name": "legoptionexerciselastdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciselastdateunadjusted"
+        }
+      },
+      {
+        "name": "legoptionexerciseearliesttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseearliesttime"
+        }
+      },
+      {
+        "name": "legoptionexerciselatesttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciselatesttime"
+        }
+      },
+      {
+        "name": "legoptionexercisetimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexercisetimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of option exercise dates.",
+    "display": "LegOptionExerciseDates",
+    "fix:tag": "661571"
+  }
+}

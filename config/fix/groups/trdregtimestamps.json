@@ -1,0 +1,24 @@
+{
+  "name": "trdregtimestamps",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdregtimestampcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "trdregtimestampcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTrdRegTimestamps(768) > 0.",
+    "display": "TrdRegTimestamps",
+    "fix:component": "trdregtimestampcomponent",
+    "fix:counter": "768",
+    "fix:tag": "763375"
+  }
+}

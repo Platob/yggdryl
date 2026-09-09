@@ -1,0 +1,23 @@
+{
+  "name": "deliverystreamcommoditysourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "deliverystreamcommoditysource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamcommoditysource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DeliveryStreamCommoditySource",
+    "fix:tag": "629369"
+  }
+}

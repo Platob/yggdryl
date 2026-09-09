@@ -1,0 +1,24 @@
+{
+  "name": "undinstrmtgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "undinstrmt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "undinstrmt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of underlyings",
+    "display": "UndInstrmtGrp",
+    "fix:component": "undinstrmt",
+    "fix:counter": "711",
+    "fix:tag": "524175"
+  }
+}

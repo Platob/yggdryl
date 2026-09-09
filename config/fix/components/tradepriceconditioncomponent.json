@@ -1,0 +1,23 @@
+{
+  "name": "tradepriceconditioncomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "tradepricecondition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradepricecondition"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TradePriceCondition",
+    "fix:tag": "371435"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "underlyingcomplexeventdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcomplexeventdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingComplexEventDateBusinessCenters(41737) > 0.",
+    "display": "UnderlyingComplexEventDateBusinessCenterGrp",
+    "fix:component": "underlyingcomplexeventdatebusinesscentercomponent",
+    "fix:counter": "41737",
+    "fix:tag": "587958"
+  }
+}

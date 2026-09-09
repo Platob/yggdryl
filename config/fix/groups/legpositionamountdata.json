@@ -1,0 +1,24 @@
+{
+  "name": "legpositionamountdata",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpositionamountdatacomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpositionamountdatacomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of Position Amount entries",
+    "display": "LegPositionAmountData",
+    "fix:component": "legpositionamountdatacomponent",
+    "fix:counter": "1586",
+    "fix:tag": "602743"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "relatedpositiongrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedposition",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "relatedposition"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoRelatedPositions(1861) > 0.",
+    "display": "RelatedPositionGrp",
+    "fix:component": "relatedposition",
+    "fix:counter": "1861",
+    "fix:tag": "474326"
+  }
+}

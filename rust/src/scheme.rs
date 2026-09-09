@@ -35,6 +35,7 @@ enum SchemeValue {
     Spark,
     Polars,
     Pandas,
+    Python,
     Custom(SmolStr),
 }
 
@@ -94,6 +95,8 @@ impl Scheme {
     pub const POLARS: Self = Self(SchemeValue::Polars);
     /// The pandas interchange namespace.
     pub const PANDAS: Self = Self(SchemeValue::Pandas);
+    /// The Python runtime metadata namespace.
+    pub const PYTHON: Self = Self(SchemeValue::Python);
 
     /// Every schema-compatibility target, in normalization-cost order.
     ///
@@ -141,6 +144,7 @@ impl Scheme {
             SchemeValue::Spark => "spark",
             SchemeValue::Polars => "polars",
             SchemeValue::Pandas => "pandas",
+            SchemeValue::Python => "python",
             SchemeValue::Custom(value) => value.as_str(),
         }
     }
@@ -261,6 +265,7 @@ impl FromStr for Scheme {
             6 if value.eq_ignore_ascii_case("digest") => Some(Self::DIGEST),
             6 if value.eq_ignore_ascii_case("polars") => Some(Self::POLARS),
             6 if value.eq_ignore_ascii_case("pandas") => Some(Self::PANDAS),
+            6 if value.eq_ignore_ascii_case("python") => Some(Self::PYTHON),
             7 if value.eq_ignore_ascii_case("iceberg") => Some(Self::ICEBERG),
             8 if value.eq_ignore_ascii_case("postgres") => Some(Self::POSTGRES),
             8 if value.eq_ignore_ascii_case("identity") => Some(Self::IDENTITY),

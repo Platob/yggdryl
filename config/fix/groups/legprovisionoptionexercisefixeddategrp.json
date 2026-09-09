@@ -1,0 +1,24 @@
+{
+  "name": "legprovisionoptionexercisefixeddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisionoptionexercisefixeddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprovisionoptionexercisefixeddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProvisionOptionExerciseFixedDates(40495) > 0.",
+    "display": "LegProvisionOptionExerciseFixedDateGrp",
+    "fix:component": "legprovisionoptionexercisefixeddatecomponent",
+    "fix:counter": "40495",
+    "fix:tag": "891484"
+  }
+}

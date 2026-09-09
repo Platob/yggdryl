@@ -1,0 +1,24 @@
+{
+  "name": "ordtyperules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "ordtyperule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "ordtyperule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of order types",
+    "display": "OrdTypeRules",
+    "fix:component": "ordtyperule",
+    "fix:counter": "1237",
+    "fix:tag": "919778"
+  }
+}

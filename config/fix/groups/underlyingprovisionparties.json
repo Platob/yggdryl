@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprovisionparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisionparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprovisionparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProvisionPartyIDs(42173) > 0.",
+    "display": "UnderlyingProvisionParties",
+    "fix:component": "underlyingprovisionparty",
+    "fix:counter": "42173",
+    "fix:tag": "131778"
+  }
+}

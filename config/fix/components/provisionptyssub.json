@@ -1,0 +1,33 @@
+{
+  "name": "provisionptyssub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "provisionpartysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionpartysubid"
+        }
+      },
+      {
+        "name": "provisionpartysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionpartysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ProvisionPtysSub",
+    "fix:tag": "1028453"
+  }
+}

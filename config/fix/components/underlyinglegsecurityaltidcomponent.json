@@ -1,0 +1,33 @@
+{
+  "name": "underlyinglegsecurityaltidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyinglegsecurityaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegsecurityaltid"
+        }
+      },
+      {
+        "name": "underlyinglegsecurityaltidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglegsecurityaltidsource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingLegSecurityAltID",
+    "fix:tag": "650401"
+  }
+}

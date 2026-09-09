@@ -1,0 +1,23 @@
+{
+  "name": "underlyingoptionexerciseexpirationdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingoptionexerciseexpirationdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionexerciseexpirationdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingOptionExerciseExpirationDateBusinessCenter",
+    "fix:tag": "539444"
+  }
+}

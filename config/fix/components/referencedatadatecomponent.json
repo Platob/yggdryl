@@ -1,0 +1,33 @@
+{
+  "name": "referencedatadatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "referencedatadate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "referencedatadate"
+        }
+      },
+      {
+        "name": "referencedatadatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "referencedatadatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ReferenceDataDate",
+    "fix:tag": "269385"
+  }
+}

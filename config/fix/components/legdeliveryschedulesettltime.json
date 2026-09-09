@@ -1,0 +1,43 @@
+{
+  "name": "legdeliveryschedulesettltime",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdeliveryschedulesettlstart",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulesettlstart"
+        }
+      },
+      {
+        "name": "legdeliveryschedulesettlend",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulesettlend"
+        }
+      },
+      {
+        "name": "legdeliveryschedulesettltimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulesettltimetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegDeliveryScheduleSettlTime",
+    "fix:tag": "386823"
+  }
+}

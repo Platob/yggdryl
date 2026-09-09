@@ -1,0 +1,33 @@
+{
+  "name": "legmarketdisruptionfallback",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legmarketdisruptionfallbacktype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionfallbacktype"
+        }
+      },
+      {
+        "name": "legmarketdisruptionfallbackvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarketdisruptionfallbackvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegMarketDisruptionFallback",
+    "fix:tag": "789047"
+  }
+}

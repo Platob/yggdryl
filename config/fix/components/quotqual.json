@@ -1,0 +1,23 @@
+{
+  "name": "quotqual",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "quotequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotequalifier"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "QuotQual",
+    "fix:tag": "619174"
+  }
+}

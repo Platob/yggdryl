@@ -1,128 +1,191 @@
 # CLI
 
-`ygg` is the yggdryl command line, one namespace per subcommand. `ygg fix` is everything a desk does to a [dictionary](registry.md) from a terminal: read it, search it, change it, ingest a counterparty's configuration into it, print the [row shape](capture.md) it produces, and check that what came out is right. Rust only.
-
-Two audiences, one implementation. A person at a prompt and a workflow gating a pull request run the same code, and the only difference is that one of them gets colour.
+`ygg fix` manages the native FIX catalog through explicit `fields`, `messages`, `components`, and `groups` command trees. Rust only: the wheel ships this compiled executable without a Python runtime in its execution path.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | argument parsing, terminal drawing, the interactive line editor; no protocol logic of its own |
-| Binary | `ygg`, from the `yggdryl-cli` workspace member, so a library consumer carries none of it |
-| Ships in | the `yggdryl` wheel, as `<version>.data/scripts/ygg`, which an installer puts on PATH; `pip install yggdryl` therefore answers `ygg` with the compiled binary and no Python in the run path |
-| Namespace | one subcommand per namespace, each owning its own verbs and its own state; `fix` is the only one today |
-| Root | `ygg fix --root`, defaulting to `config/fix`; global to the namespace, so it may be given before or after the verb; a folder with no dictionary in it opens holding only the crate's own fields rather than failing |
-| Writes | only `set`, `rm` and `ingest`, and only after the command that changed something asked to save |
-| Colour | on where stdout is a terminal and `NO_COLOR` is unset; box drawing and animation follow the same test |
-| Annotates | `--annotate`, on by itself under `GITHUB_ACTIONS`; findings become workflow annotations and a failure becomes a non-zero exit |
+| Owner | `yggdryl-cli` parses arguments and renders results; the Rust registry owns schema validation, references, mutations, and persistence |
+| Root | `--root`, default `config/fix`; relative locations resolve against the working directory; a folder holding no catalog opens with only the crate's own fields rather than failing |
+| Categories | `fields`, `messages`, `components`, `groups` |
+| Operations | Every category supports `list`, `read`, `create`, `update`, and `delete` |
+| Writes | Successful one-shot mutations save automatically; an interactive session saves only with `save` |
+| Create | Refuses an existing name or field identity |
+| Update | Replaces an existing definition completely, preserving identity; omitted metadata is removed |
+| Delete | Refuses absence and live references |
+| Enums | Scalar `fix:codes` metadata; `--codes` accepts its canonical JSON document |
+| Output | Plain stable text when redirected; terminal styling only when supported and `NO_COLOR` is unset |
+| Workflow | `--annotate`, also enabled by `GITHUB_ACTIONS`, prints workflow findings; failed checks and refused commands exit nonzero |
+
+## Use
+
+Read or search the committed catalog by category:
+
+```bash
+ygg fix --root config/fix fields list Party --limit 20
+ygg fix --root config/fix fields read 453 --json
+ygg fix --root config/fix groups read Parties --json
+ygg fix --root config/fix components read Party
+ygg fix --root config/fix messages list Order
+```
+
+`NoPartyIDs(453)` is an `int32` scalar; `Parties` is a separate List definition whose occurrence component is `Party`. Message reads show the native non-null Struct and its full `fix:msgtype` wire code.
 
 ## Install
 
-`pip install yggdryl` puts `ygg` on PATH. The wheel carries the compiled binary beside the extension module, so the command is the same native executable `cargo build` produces and starts no interpreter to run.
+The published wheel includes the native executable. From a checkout, Cargo runs the same binary:
 
 ```bash
 pip install yggdryl
-ygg fix --root config/fix list symbol
+ygg fix --help
+cargo run -p yggdryl-cli -- fix fields list Symbol
 ```
 
-From a checkout, `cargo run` is the same tool without installing anything.
-
-```bash
-cargo run -p yggdryl-cli -- fix --root config/fix list symbol
-```
-
-Building a wheel that answers `ygg` is two steps, because maturin copies the binary rather than building it: `scripts/stage_cli.py` puts it in `python/wheel-data/scripts/`, and maturin copies that directory into the wheel. Staging nothing is a working build with no command in it, which is what a contributor who only wants the extension module gets.
+To include the CLI in a locally built wheel, stage it before building the wheel:
 
 ```bash
 python scripts/stage_cli.py
 maturin build --manifest-path python/Cargo.toml --out dist
 ```
 
-## Use
+## Four command trees
 
-| Command | What it does |
+| Operation | Arguments and behavior |
 | --- | --- |
-| `list [filter]` | every field whose name or tag contains the filter |
-| `show <key>` | one field in full: identity, lineage, code set |
-| `set <name> <type> --tag N` | create or replace a field |
-| `rm <key>` | remove a field |
-| `ingest <path.cfb>` | read an Ullink `CBlock` in, creating or `--merge`ing |
-| `sync <source>` | fold another dictionary or a `CBlock` in, whichever the location is |
-| `schema` | the one row shape a whole capture lands in |
-| `check` | what the dictionary is wrong about |
-| `diff <other>` | what changed against another dictionary |
-| *no verb* | all of the above, interactively, with completion |
+| `<category> list [filter]` | Match name or decimal tag text, ignoring case; `--branch` filters; `--limit` defaults to 40 |
+| `<category> read <key>` | Display one definition; `--json` emits a complete native `Field` document |
+| `<category> create <name> <type>` | Create from the native datatype grammar and metadata flags |
+| `<category> create --input <file>` | Create from one complete native `Field` JSON document |
+| `<category> update <name> <type>` | Replace the complete existing definition |
+| `<category> update --input <file>` | Replace from a complete native `Field` JSON document |
+| `<category> delete <key>` | Delete the resolved definition, refusing dependents |
 
-A key is a tag, an identifier (`5001:cme`), a name, or a branch-qualified dotted path - the same four the registry takes, coerced by the same code.
+Fields accept a tag, identifier such as `5001:cme`, scalar name, or resolvable path at read intake; named categories use their definition name. Without `--branch`, reads and deletes use the registry's best match and lists include all branches; create/update positional input defaults to the standard branch. Pass `--branch ''` to pin the standard branch on a shell that preserves empty arguments.
 
-## The schema command dumps the row
+### Definition flags
 
-`schema` prints the fixed row a capture lands in, built by [`fix_schema`](capture.md#the-columns-are-the-folded-names) from the dictionary that was loaded. A schema printed here and a schema a reader answers `schema()` with are the same object built by the same code, never two spellings of one intention.
+| Flag | Applies to |
+| --- | --- |
+| `--tag N` | Scalar fields, including group counters |
+| `--counter N` | Groups; identifies an existing `int32` scalar field |
+| `--component NAME` | Groups; identifies the existing occurrence component |
+| `--msgtype CODE` | Messages; full nonempty wire text, including spaces |
+| `--codes JSON` | Scalar inline enum metadata |
+| `--branch NAME` | Named dialect, subject to native tag-range rules |
+| `--description TEXT` | Definition metadata |
+| `--required` | Non-null definition; message roots are always non-null |
 
-```bash
-cargo run -p yggdryl-cli -- fix schema --out schemas/fix-message.json
-```
-
-With `--rowheader`, the columns a capture supplies lead the row. The regex is the one a text read frames lines with, and its named captures become columns ahead of the FIX ones, typed by what their syntax can match - so a group matching `2024-02-01 12:34:56.123456` is a microsecond UTC instant and not a string. A capture named after a FIX column is not carried in front: `timestamp` here is the row's clock and [lands in that column](arrow.md#a-column-is-the-caller-speaking-per-row), and `yggdryl::ULBRIDGE_ROWHEADER` is a [bridge log's own header](arrow.md#a-bridge-log-names-what-it-fills) written that way.
-
-```bash
-cargo run -p yggdryl-cli -- fix schema \
-  --rowheader '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6})\s+\[(?P<threadname>[^\]]+)\]\s+(?P<level>[A-Z]+)\s+'
-```
-
-JSON when it goes to a file, because that is what a downstream consumer reads and it is the crate's own serialization rather than a rendering of it. A table when it goes to a terminal, because nobody reads six thousand lines of JSON at a prompt.
-
-## Sync reads whatever the location is
-
-`sync` folds another source into the dictionary, and the location decides which reader answers it: a folder is another dictionary, a `.cfb` is one counterparty's vocabulary, and anything else is refused rather than guessed at. A `CBlock` declares no media type of its own, so the extension is the only thing that says what the bytes are before they are read.
+`--input` replaces positional name/type and all definition flags. Quote datatype expressions containing spaces or shell metacharacters; a group occurrence must be a non-null Struct.
 
 ```bash
-cargo run -p yggdryl-cli -- fix sync ../desk/config/fix
-cargo run -p yggdryl-cli -- fix sync cblocks/bloomberg.cfb
+ygg fix --root scratch/catalog fields create NoPartyIDs int32 --tag 453
+ygg fix --root scratch/catalog fields create PartyID utf8 --tag 448
+ygg fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' --required
+ygg fix --root scratch/catalog groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
+ygg fix --root scratch/catalog messages create Order 'struct<ClOrdID: utf8>' --msgtype D
+ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes '{"codes":[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]}'
 ```
 
-Both arrive through the same fold, so a tag this dictionary lacks is added and one it holds keeps every key only it declares - and because that fold is one mutation, a source it refuses leaves the dictionary exactly as it was. The counts printed are what was added and what was folded. A `.cfb` goes through [`add_cfb_file`](registry.md#folding-a-second-source-in) rather than the plain fold, so the dialect it declares - its FIX version - is written to the [manifest](store.md) beside the fields, and the file's own name answers as a branch alias.
+A datatype expression embeds its child definitions. To preserve explicit canonical field/component/group references, use a resolved native `Field` document, such as the output of `read --json`; the compact unresolved placeholders in [folder storage](store.md#compact-references) are handled by the folder loader.
 
-With no `--branch`, a `CBlock`'s stem names the dialect its user-range tags belong to: `bloomberg.cfb` reads into the branch `bloomberg`. A folder says nothing to `--branch`; the fields it holds carry the branch they were written with.
+## Review and update a complete definition
 
-## Check and diff are for a workflow
-
-`check` reports what a dictionary is wrong about and `diff` reports what one changed against another. Both print a table at a prompt and workflow annotations under a runner, and `check` exits non-zero when a finding is an error - so a pull request that breaks the dictionary fails on the same command a person debugs with.
+Read JSON, edit the document, then replace it with `update --input`; this retains metadata that a positional replacement would omit. A case-only input name keeps the stored canonical spelling and filename, while a changed identity or referenced datatype is refused atomically.
 
 ```bash
-cargo run -p yggdryl-cli -- fix check
-cargo run -p yggdryl-cli -- fix diff config/fix --annotate
+ygg fix --root scratch/catalog components read Party --json > Party.json
+# Edit Party.json, preserving its name, datatype, nullability, and identity.
+ygg fix --root scratch/catalog components update --input Party.json
+ygg fix --root scratch/catalog components read Party --json
 ```
 
-A rename shows as a rename rather than as an addition beside a removal, because the two dictionaries are compared field by field on identity.
-
-## Naming no verb opens the shell
-
-`ygg fix` with no verb is the interactive shell rather than a usage error: every verb above is reachable from inside it, so a caller who names none is asking for all of them. A dictionary of six thousand fields is not something anyone remembers the spelling of, so the shell completes from the dictionary itself rather than from a fixed word list - tags, names, and the commands that take them. Tab completes the common prefix and shows the alternatives; the arrows walk what has already been asked; `ctrl-d` leaves, and leaving with unsaved changes says so.
+Metadata changes refresh resolved references before publication. Delete dependents first; the group refers to its occurrence component and counter:
 
 ```bash
-cargo run -p yggdryl-cli -- fix
+ygg fix --root scratch/catalog messages delete Order
+ygg fix --root scratch/catalog groups delete Parties
+ygg fix --root scratch/catalog components delete Party
+ygg fix --root scratch/catalog fields delete 448
+ygg fix --root scratch/catalog fields delete 453
 ```
 
-The prompt carries a `*` while anything is unsaved. Every shell command is the same function the flag reaches, so there is no second path where an interactive command could drift from the one it mirrors.
+## Ingest and sync
+
+`ingest` reads an Ullink CBlock into all four categories, replacing matching definitions by default; `--merge` uses the native metadata fold. `sync` always folds a catalog directory or `.cfb` file, and refuses other location types.
+
+```bash
+ygg fix --root scratch/catalog ingest cblocks/venue.cfb --branch venue
+ygg fix --root scratch/catalog ingest cblocks/venue.cfb --branch venue --merge
+ygg fix --root scratch/catalog sync ../desk/config/fix
+ygg fix --root scratch/catalog sync cblocks/venue.cfb
+```
+
+A `.cfb` synchronization without `--branch` derives the dialect from its filename stem through `add_cfb_file`; folder synchronization keeps the branches declared by that catalog. Every in-memory fold is atomic, and native [storage](store.md) handles the resulting documents.
+
+## Schema, check, and diff
+
+`schema` renders the fixed capture row through [`fix_schema`](capture.md#the-columns-are-the-folded-names), the same native builder the codec and a reader's `schema()` answer with; `--out` writes native JSON. `--rowheader` prepends capture columns inferred from its regular expression, each named group typed by what its syntax can match: a group matching `2024-02-01 12:34:56.123456` is a microsecond UTC instant and not a string. A capture named after a FIX column is not carried in front; `timestamp` is the row's clock and [lands in that column](arrow.md#a-column-is-the-caller-speaking-per-row), and `yggdryl::ULBRIDGE_ROWHEADER` is a [bridge log's own header](arrow.md#a-bridge-log-names-what-it-fills) written that way.
+
+```bash
+ygg fix --root config/fix schema --out fix-message.json
+ygg fix --root config/fix schema --rowheader '^(?P<level>[A-Z]+)\s+'
+ygg fix --root config/fix check
+ygg fix --root config/fix diff ../desk/config/fix --annotate
+```
+
+`check` reports invalid catalog relationships and fails when a finding is an error. `diff` compares category definitions and metadata against another catalog; it is read-only.
+
+## Interactive use
+
+With no command, `ygg fix` opens an interactive shell with the same category operations, flags, and native dispatcher. Completion includes category names, operations, definition names, and tags.
+
+```bash
+ygg fix --root config/fix
+```
+
+The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the command tree, and `quit` or Ctrl-D exits. Leaving unsaved changes reports that fact; one-shot commands save successful changes automatically.
 
 ## Edges
 
-- A folder holding no `primitive/` or `nested/` tree opens as a dictionary holding only the crate's own fields; a folder holding the retired layout is refused with the URL named.
-- `ingest` creates by default and merges only when asked, because a new counterparty is a new dictionary and a revised configuration is a change to one that exists; `sync` always folds, because keeping in step with a source is not the same as taking one in for the first time.
-- `sync` of a location that is neither a folder nor a `.cfb` -> refused, naming the location and the role it turned out to be; a location that does not exist yet is `unknown` and refused the same way.
-- `sync` of a `.cfb` whose stem is not a branch -> refused rather than folded into one, exactly as [`FixField::from_cfb_file`](registry.md#folding-a-second-source-in) refuses it.
-- Every location this tool is given is resolved against the working directory before it becomes a URL, so a bare relative name works wherever a path is taken.
-- `set` lower-cases the name it is given, because a dictionary folds names once and a field spelled two ways is one field.
-- Redirected or piped, every command prints plain, stable, greppable text: no colour, no box drawing, no spinner.
-- `ygg fix` with no verb needs a terminal; there is nothing to edit a line with where there is none.
+- A catalog root holding no `fields/`, `components/`, `groups/`, or `messages/` folder loads with only the crate's own fields; a read does not create it.
+- `create` refuses a duplicate even when its supplied document is identical.
+- `update` requires an existing identity and is a full replacement.
+- Scalar fields require tags; a named definition whose document states none takes the tag derived from its name, inside `[100000, 1100000)`.
+- Group count fields remain separate `int32` values and are not replaced by lists.
+- Deleting a referenced field, component, or group fails before saving.
+- `ingest` creates by default and merges only when asked, because a new counterparty is a new catalog and a revised configuration is a change to one that exists; `sync` always folds.
+- `sync` of a location that is neither a folder nor a `.cfb` is refused, naming the location and the role it turned out to be; a location that does not exist yet is `unknown` and refused the same way.
+- `sync` of a `.cfb` whose stem is not a branch is refused rather than folded into one, exactly as [`FixField::from_cfb_file`](registry.md#folding-a-second-source-in) refuses it.
+- Every location this tool is given resolves against the working directory before it becomes a URL, so a bare relative name works wherever a path is taken.
+- Invalid inline enums, unresolved references, contradictory branches, and malformed native documents carry native located errors.
+- A registry mutation is atomic; persistence publishes separate documents and follows the backend's write semantics.
+- Interactive mode requires a terminal; piped one-shot commands emit plain text.
 
 ## Commands
 
 ```bash
-cargo build -p yggdryl-cli
-cargo run -p yggdryl-cli -- --help
-cargo clippy -p yggdryl-cli --all-targets
-python scripts/stage_cli.py --clear
+cargo test -p yggdryl-cli --test fix
+cargo clippy -p yggdryl-cli --all-targets -- -D warnings
+cargo run -p yggdryl-cli -- fix groups create --help
+```
+
+## Performance
+
+Measured in release mode on Windows, AMD Ryzen 5 150 with 12 logical CPUs and Rust 1.96. Each row launches 20 fresh processes; category reads include loading a local fixture with 100 scalar fields, inline enums, one component, one group, and one message, then printing native JSON.
+
+| Process invocation | Mean elapsed |
+| --- | ---: |
+| `fix --help` baseline | 49.875 ms |
+| `fix fields read 54 --json` | 25.413 ms |
+| `fix messages read Order --json` | 20.648 ms |
+| `fix components read Party --json` | 22.805 ms |
+| `fix groups read Parties --json` | 28.229 ms |
+
+These are end-to-end process timings with independent samples; subtracting the help row would not isolate registry cost. The full committed seed has a substantially larger graph than this CLI fixture; its load measurements are on the [store page](store.md#performance).
+
+Regenerate from the repository root:
+
+```bash
+cargo bench -p yggdryl-cli --bench fix
 ```

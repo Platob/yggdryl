@@ -1,0 +1,24 @@
+{
+  "name": "biddescreqgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "biddescreq",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "biddescreq"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Used if BidType=\"Non Disclosed\"",
+    "display": "BidDescReqGrp",
+    "fix:component": "biddescreq",
+    "fix:counter": "398",
+    "fix:tag": "159954"
+  }
+}

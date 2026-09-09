@@ -1,0 +1,23 @@
+{
+  "name": "paymentschedulefixingdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentschedulefixingdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentschedulefixingdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentScheduleFixingDateBusinessCenter",
+    "fix:tag": "730236"
+  }
+}

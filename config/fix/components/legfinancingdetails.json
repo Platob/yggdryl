@@ -1,0 +1,304 @@
+{
+  "name": "legfinancingdetails",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legagreementdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legagreementdesc"
+        }
+      },
+      {
+        "name": "legagreementid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legagreementid"
+        }
+      },
+      {
+        "name": "legagreementversion",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legagreementversion"
+        }
+      },
+      {
+        "name": "legagreementdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legagreementdate"
+        }
+      },
+      {
+        "name": "legagreementcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legagreementcurrency"
+        }
+      },
+      {
+        "name": "legagreementcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legagreementcurrencycodesource"
+        }
+      },
+      {
+        "name": "legmasterconfirmationdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmasterconfirmationdesc"
+        }
+      },
+      {
+        "name": "legmasterconfirmationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmasterconfirmationdate"
+        }
+      },
+      {
+        "name": "legmasterconfirmationannexdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmasterconfirmationannexdesc"
+        }
+      },
+      {
+        "name": "legmasterconfirmationannexdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmasterconfirmationannexdate"
+        }
+      },
+      {
+        "name": "legbrokerconfirmationdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legbrokerconfirmationdesc"
+        }
+      },
+      {
+        "name": "nolegcontractualdefinitions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegcontractualdefinitions"
+        }
+      },
+      {
+        "name": "legfinancingcontractualdefinitionsgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legfinancingcontractualdefinitionsgrp"
+        }
+      },
+      {
+        "name": "nolegfinancingtermsupplements",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegfinancingtermsupplements"
+        }
+      },
+      {
+        "name": "legfinancingtermsupplementgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legfinancingtermsupplementgrp"
+        }
+      },
+      {
+        "name": "nolegcontractualmatrices",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegcontractualmatrices"
+        }
+      },
+      {
+        "name": "legfinancingcontractualmatrixgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legfinancingcontractualmatrixgrp"
+        }
+      },
+      {
+        "name": "legcreditsupportagreementdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcreditsupportagreementdesc"
+        }
+      },
+      {
+        "name": "legcreditsupportagreementdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcreditsupportagreementdate"
+        }
+      },
+      {
+        "name": "legcreditsupportagreementid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcreditsupportagreementid"
+        }
+      },
+      {
+        "name": "leggoverninglaw",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leggoverninglaw"
+        }
+      },
+      {
+        "name": "legdocumentationtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdocumentationtext"
+        }
+      },
+      {
+        "name": "encodedlegdocumentationtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegdocumentationtextlen"
+        }
+      },
+      {
+        "name": "encodedlegdocumentationtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegdocumentationtext"
+        }
+      },
+      {
+        "name": "legterminationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legterminationtype"
+        }
+      },
+      {
+        "name": "legstartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstartdate"
+        }
+      },
+      {
+        "name": "legenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legenddate"
+        }
+      },
+      {
+        "name": "legdeliverytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverytype"
+        }
+      },
+      {
+        "name": "legmarginratio",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmarginratio"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Must be set if EncodedLegDocumentationText(2493) field is specified and must immediately precede it.",
+    "display": "LegFinancingDetails",
+    "fix:tag": "493991"
+  }
+}

@@ -1,0 +1,324 @@
+{
+  "name": "standardheader",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "beginstring",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "beginstring"
+        }
+      },
+      {
+        "name": "bodylength",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "bodylength"
+        }
+      },
+      {
+        "name": "msgtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "msgtype"
+        }
+      },
+      {
+        "name": "applverid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "applverid"
+        }
+      },
+      {
+        "name": "applextid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "applextid"
+        }
+      },
+      {
+        "name": "cstmapplverid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cstmapplverid"
+        }
+      },
+      {
+        "name": "sendercompid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "sendercompid"
+        }
+      },
+      {
+        "name": "targetcompid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "targetcompid"
+        }
+      },
+      {
+        "name": "onbehalfofcompid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "onbehalfofcompid"
+        }
+      },
+      {
+        "name": "delivertocompid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "delivertocompid"
+        }
+      },
+      {
+        "name": "securedatalen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securedatalen"
+        }
+      },
+      {
+        "name": "securedata",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securedata"
+        }
+      },
+      {
+        "name": "msgseqnum",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "msgseqnum"
+        }
+      },
+      {
+        "name": "sendersubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sendersubid"
+        }
+      },
+      {
+        "name": "senderlocationid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "senderlocationid"
+        }
+      },
+      {
+        "name": "targetsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "targetsubid"
+        }
+      },
+      {
+        "name": "targetlocationid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "targetlocationid"
+        }
+      },
+      {
+        "name": "onbehalfofsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "onbehalfofsubid"
+        }
+      },
+      {
+        "name": "onbehalfoflocationid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "onbehalfoflocationid"
+        }
+      },
+      {
+        "name": "delivertosubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "delivertosubid"
+        }
+      },
+      {
+        "name": "delivertolocationid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "delivertolocationid"
+        }
+      },
+      {
+        "name": "possdupflag",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "possdupflag"
+        }
+      },
+      {
+        "name": "possresend",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "possresend"
+        }
+      },
+      {
+        "name": "sendingtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "sendingtime"
+        }
+      },
+      {
+        "name": "origsendingtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "origsendingtime"
+        }
+      },
+      {
+        "name": "xmldatalen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "xmldatalen"
+        }
+      },
+      {
+        "name": "xmldata",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "xmldata"
+        }
+      },
+      {
+        "name": "messageencoding",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "messageencoding"
+        }
+      },
+      {
+        "name": "lastmsgseqnumprocessed",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastmsgseqnumprocessed"
+        }
+      },
+      {
+        "name": "nohops",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nohops"
+        }
+      },
+      {
+        "name": "hopgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "hopgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "FIX session profile (Always unencrypted, must be first field in message)",
+    "display": "StandardHeader",
+    "fix:tag": "1058991"
+  }
+}

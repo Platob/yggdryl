@@ -1,0 +1,24 @@
+{
+  "name": "executionaggregationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "executionaggregation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "executionaggregation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoExecs(124) > 0",
+    "display": "ExecutionAggregationGrp",
+    "fix:component": "executionaggregation",
+    "fix:counter": "124",
+    "fix:tag": "326766"
+  }
+}

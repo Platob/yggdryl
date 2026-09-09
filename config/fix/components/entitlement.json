@@ -1,0 +1,143 @@
+{
+  "name": "entitlement",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "entitlementindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementindicator"
+        }
+      },
+      {
+        "name": "entitlementtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementtype"
+        }
+      },
+      {
+        "name": "entitlementsubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementsubtype"
+        }
+      },
+      {
+        "name": "noentitlementattrib",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noentitlementattrib"
+        }
+      },
+      {
+        "name": "entitlementattribgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "entitlementattribgrp"
+        }
+      },
+      {
+        "name": "entitlementid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementid"
+        }
+      },
+      {
+        "name": "entitlementplatform",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementplatform"
+        }
+      },
+      {
+        "name": "noinstrumentscopes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noinstrumentscopes"
+        }
+      },
+      {
+        "name": "instrumentscopegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "instrumentscopegrp"
+        }
+      },
+      {
+        "name": "nomarketsegments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomarketsegments"
+        }
+      },
+      {
+        "name": "marketsegmentscopegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "marketsegmentscopegrp"
+        }
+      },
+      {
+        "name": "entitlementstartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementstartdate"
+        }
+      },
+      {
+        "name": "entitlementenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementenddate"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Entitlement",
+    "fix:tag": "1021859"
+  }
+}

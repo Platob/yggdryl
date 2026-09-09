@@ -1,0 +1,43 @@
+{
+  "name": "legfinancingcontractualmatrix",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcontractualmatrixsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcontractualmatrixsource"
+        }
+      },
+      {
+        "name": "legcontractualmatrixdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcontractualmatrixdate"
+        }
+      },
+      {
+        "name": "legcontractualmatrixterm",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcontractualmatrixterm"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegFinancingContractualMatrix",
+    "fix:tag": "891654"
+  }
+}

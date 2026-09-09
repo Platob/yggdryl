@@ -1,0 +1,174 @@
+{
+  "name": "paymentstreampaymentdates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreampaymentdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampaymentdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nopaymentstreampaymentdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentstreampaymentdatebusinesscenters"
+        }
+      },
+      {
+        "name": "paymentstreampaymentdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentstreampaymentdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "nopaymentstreampaymentdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentstreampaymentdates"
+        }
+      },
+      {
+        "name": "paymentstreampaymentdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentstreampaymentdategrp"
+        }
+      },
+      {
+        "name": "paymentstreampaymentfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampaymentfrequencyperiod"
+        }
+      },
+      {
+        "name": "paymentstreampaymentfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampaymentfrequencyunit"
+        }
+      },
+      {
+        "name": "paymentstreampaymentrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampaymentrollconvention"
+        }
+      },
+      {
+        "name": "paymentstreamfirstpaymentdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfirstpaymentdateunadjusted"
+        }
+      },
+      {
+        "name": "paymentstreamlastregularpaymentdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamlastregularpaymentdateunadjusted"
+        }
+      },
+      {
+        "name": "paymentstreampaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "paymentstreampaymentdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampaymentdateoffsetperiod"
+        }
+      },
+      {
+        "name": "paymentstreampaymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampaymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "paymentstreampaymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreampaymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "paymentstreammasteragreementpaymentdatesindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreammasteragreementpaymentdatesindicator"
+        }
+      },
+      {
+        "name": "paymentstreamfinalpricepaymentdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "paymentstreamfinalpricepaymentdate"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the payment stream's payment dates.",
+    "display": "PaymentStreamPaymentDates",
+    "fix:tag": "304703"
+  }
+}

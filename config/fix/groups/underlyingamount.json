@@ -1,0 +1,24 @@
+{
+  "name": "underlyingamount",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingamountcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingamountcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Amount to pay in order to receive the underlying instrument.",
+    "display": "UnderlyingAmount",
+    "fix:component": "underlyingamountcomponent",
+    "fix:counter": "984",
+    "fix:tag": "1018631"
+  }
+}

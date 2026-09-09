@@ -1,0 +1,24 @@
+{
+  "name": "legcashsettldatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcashsettldatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcashsettldatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegCashSettlDateBusinessCenters(42306) > 0.",
+    "display": "LegCashSettlDateBusinessCenterGrp",
+    "fix:component": "legcashsettldatebusinesscentercomponent",
+    "fix:counter": "42306",
+    "fix:tag": "740563"
+  }
+}

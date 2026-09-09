@@ -1,0 +1,24 @@
+{
+  "name": "legpaymentstreamformulamathgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstreamformulamath",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentstreamformulamath"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentStreamFormulas(42485) > 0.",
+    "display": "LegPaymentStreamFormulaMathGrp",
+    "fix:component": "legpaymentstreamformulamath",
+    "fix:counter": "42485",
+    "fix:tag": "304247"
+  }
+}

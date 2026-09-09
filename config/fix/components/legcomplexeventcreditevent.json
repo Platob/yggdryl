@@ -1,0 +1,103 @@
+{
+  "name": "legcomplexeventcreditevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legcomplexeventcrediteventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventcrediteventtype"
+        }
+      },
+      {
+        "name": "legcomplexeventcrediteventvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventcrediteventvalue"
+        }
+      },
+      {
+        "name": "legcomplexeventcrediteventcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventcrediteventcurrency"
+        }
+      },
+      {
+        "name": "legcomplexeventcrediteventperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventcrediteventperiod"
+        }
+      },
+      {
+        "name": "legcomplexeventcrediteventunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventcrediteventunit"
+        }
+      },
+      {
+        "name": "legcomplexeventcrediteventdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventcrediteventdaytype"
+        }
+      },
+      {
+        "name": "legcomplexeventcrediteventratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcomplexeventcrediteventratesource"
+        }
+      },
+      {
+        "name": "nolegcomplexeventcrediteventqualifiers",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegcomplexeventcrediteventqualifiers"
+        }
+      },
+      {
+        "name": "legcomplexeventcrediteventqualifiergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legcomplexeventcrediteventqualifiergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegComplexEventCreditEvent",
+    "fix:tag": "422130"
+  }
+}

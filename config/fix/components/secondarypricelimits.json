@@ -1,0 +1,53 @@
+{
+  "name": "secondarypricelimits",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "secondarypricelimittype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondarypricelimittype"
+        }
+      },
+      {
+        "name": "secondarylowlimitprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondarylowlimitprice"
+        }
+      },
+      {
+        "name": "secondaryhighlimitprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryhighlimitprice"
+        }
+      },
+      {
+        "name": "secondarytradingreferenceprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondarytradingreferenceprice"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SecondaryPriceLimits",
+    "fix:tag": "460176"
+  }
+}

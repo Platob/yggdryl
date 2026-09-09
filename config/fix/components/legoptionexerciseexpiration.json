@@ -1,0 +1,154 @@
+{
+  "name": "legoptionexerciseexpiration",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legoptionexerciseexpirationdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegoptionexerciseexpirationdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegoptionexerciseexpirationdatebusinesscenters"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legoptionexerciseexpirationdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "nolegoptionexerciseexpirationdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegoptionexerciseexpirationdates"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legoptionexerciseexpirationdategrp"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationdaterelativeto"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationdateoffsetunit"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationfrequencyperiod"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationfrequencyunit"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationrollconvention"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationtime"
+        }
+      },
+      {
+        "name": "legoptionexerciseexpirationtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legoptionexerciseexpirationtimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified values would be specific to the option exercise expiration date.",
+    "display": "LegOptionExerciseExpiration",
+    "fix:tag": "987927"
+  }
+}

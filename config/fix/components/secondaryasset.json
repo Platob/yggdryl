@@ -1,0 +1,53 @@
+{
+  "name": "secondaryasset",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "secondaryassetclass",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryassetclass"
+        }
+      },
+      {
+        "name": "secondaryassetsubclass",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryassetsubclass"
+        }
+      },
+      {
+        "name": "secondaryassettype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryassettype"
+        }
+      },
+      {
+        "name": "secondaryassetsubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryassetsubtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SecondaryAsset",
+    "fix:tag": "506346"
+  }
+}

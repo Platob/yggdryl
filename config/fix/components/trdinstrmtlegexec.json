@@ -1,0 +1,183 @@
+{
+  "name": "trdinstrmtlegexec",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legrefid"
+        }
+      },
+      {
+        "name": "legexecid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legexecid"
+        }
+      },
+      {
+        "name": "legexecrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legexecrefid"
+        }
+      },
+      {
+        "name": "legtradeid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legtradeid"
+        }
+      },
+      {
+        "name": "legtradereportid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legtradereportid"
+        }
+      },
+      {
+        "name": "legorderqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legorderqty"
+        }
+      },
+      {
+        "name": "legpositioneffect",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpositioneffect"
+        }
+      },
+      {
+        "name": "legcoveredoruncovered",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcoveredoruncovered"
+        }
+      },
+      {
+        "name": "nonested3partyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonested3partyids"
+        }
+      },
+      {
+        "name": "nestedparties3",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties3"
+        }
+      },
+      {
+        "name": "leglastpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leglastpx"
+        }
+      },
+      {
+        "name": "legpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpricetype"
+        }
+      },
+      {
+        "name": "legsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlcurrency"
+        }
+      },
+      {
+        "name": "legsettlcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlcurrencycodesource"
+        }
+      },
+      {
+        "name": "legshortsaleexemptionreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legshortsaleexemptionreason"
+        }
+      },
+      {
+        "name": "leglastqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leglastqty"
+        }
+      },
+      {
+        "name": "legqtytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legqtytype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TrdInstrmtLegExec",
+    "fix:tag": "120241"
+  }
+}

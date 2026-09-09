@@ -1,0 +1,24 @@
+{
+  "name": "underlyingprovisiongrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovision",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprovision"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProvisions(42149) > 0.",
+    "display": "UnderlyingProvisionGrp",
+    "fix:component": "underlyingprovision",
+    "fix:counter": "42149",
+    "fix:tag": "858277"
+  }
+}

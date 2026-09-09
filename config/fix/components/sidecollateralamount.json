@@ -1,0 +1,183 @@
+{
+  "name": "sidecollateralamount",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "sidecurrentcollateralamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecurrentcollateralamount"
+        }
+      },
+      {
+        "name": "sidecollateralcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralcurrency"
+        }
+      },
+      {
+        "name": "sidecollateralcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralcurrencycodesource"
+        }
+      },
+      {
+        "name": "sidecollateralamounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralamounttype"
+        }
+      },
+      {
+        "name": "sidecollateralfxrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralfxrate"
+        }
+      },
+      {
+        "name": "sidecollateralfxratecalc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralfxratecalc"
+        }
+      },
+      {
+        "name": "sidecollateraltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateraltype"
+        }
+      },
+      {
+        "name": "sidecollateralamountmarketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralamountmarketsegmentid"
+        }
+      },
+      {
+        "name": "sidecollateralamountmarketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralamountmarketid"
+        }
+      },
+      {
+        "name": "sidehaircutindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidehaircutindicator"
+        }
+      },
+      {
+        "name": "sidecollateralportfolioid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralportfolioid"
+        }
+      },
+      {
+        "name": "sidecollateralpercentoverage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralpercentoverage"
+        }
+      },
+      {
+        "name": "sidecollateralmarketprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralmarketprice"
+        }
+      },
+      {
+        "name": "sidecollateralreinvestmentrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sidecollateralreinvestmentrate"
+        }
+      },
+      {
+        "name": "nosidecollateralreinvestments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nosidecollateralreinvestments"
+        }
+      },
+      {
+        "name": "sidecollateralreinvestmentgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "sidecollateralreinvestmentgrp"
+        }
+      },
+      {
+        "name": "sideunderlyingrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sideunderlyingrefid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SideCollateralAmount",
+    "fix:tag": "417014"
+  }
+}

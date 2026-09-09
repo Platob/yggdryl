@@ -1,0 +1,113 @@
+{
+  "name": "relatedinstrument",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "relatedinstrumenttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedinstrumenttype"
+        }
+      },
+      {
+        "name": "relatedsymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedsymbol"
+        }
+      },
+      {
+        "name": "relatedsecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedsecurityid"
+        }
+      },
+      {
+        "name": "relatedsecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedsecurityidsource"
+        }
+      },
+      {
+        "name": "relatedsecuritytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedsecuritytype"
+        }
+      },
+      {
+        "name": "relatedmaturitymonthyear",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedmaturitymonthyear"
+        }
+      },
+      {
+        "name": "relatedtosecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedtosecurityid"
+        }
+      },
+      {
+        "name": "relatedtosecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedtosecurityidsource"
+        }
+      },
+      {
+        "name": "relatedtostreamxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedtostreamxidref"
+        }
+      },
+      {
+        "name": "relatedtodividendperiodxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedtodividendperiodxidref"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RelatedInstrument",
+    "fix:tag": "591625"
+  }
+}

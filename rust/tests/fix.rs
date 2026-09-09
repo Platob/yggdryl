@@ -26,12 +26,74 @@ mod global_install;
 mod lifecycle;
 #[path = "fix/lift.rs"]
 mod lift;
+#[path = "fix/numeric_branch.rs"]
+mod numeric_branch;
 #[path = "fix/pipeline.rs"]
 mod pipeline;
 #[path = "fix/schema.rs"]
 mod schema;
 #[path = "fix/store.rs"]
 mod store;
+
+/// Immutable seed fixtures share parsing and compiled plans within this binary.
+fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
+    static REGISTRY: std::sync::OnceLock<std::sync::Arc<yggdryl::FixRegistry>> =
+        std::sync::OnceLock::new();
+    std::sync::Arc::clone(REGISTRY.get_or_init(|| {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+        let folder = yggdryl::holder::local::Folder::new(root).expect("the local seed path");
+        std::sync::Arc::new(
+            yggdryl::FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
+        )
+    }))
+}
+
+fn ulbridge_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
+    static REGISTRY: std::sync::OnceLock<std::sync::Arc<yggdryl::FixRegistry>> =
+        std::sync::OnceLock::new();
+    std::sync::Arc::clone(REGISTRY.get_or_init(|| {
+        std::sync::Arc::new(
+            committed_registry()
+                .as_ref()
+                .clone()
+                .with_ulbridge_fields()
+                .expect("the bridge's own fields"),
+        )
+    }))
+}
+
+trait OneMessage {
+    fn one_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
+    fn one_record(&self, row: &yggdryl::Scalar, enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
+    fn one_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
+}
+
+fn one_message(
+    mut messages: impl Iterator<Item = yggdryl::Result<yggdryl::FixMsg>>,
+) -> yggdryl::Result<yggdryl::FixMsg> {
+    let message = messages
+        .next()
+        .expect("a singleton fixture yields one message")?;
+    assert!(
+        messages.next().is_none(),
+        "a singleton fixture yields exactly one message"
+    );
+    Ok(message)
+}
+
+impl OneMessage for yggdryl::FixCodec {
+    fn one_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
+        one_message(self.transform_line(row, enrich)?)
+    }
+
+    fn one_record(&self, row: &yggdryl::Scalar, enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
+        one_message(self.transform_record(row, enrich)?)
+    }
+
+    fn one_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
+        one_message(self.transform_ulconfig_line(row, enrich)?)
+    }
+}
 
 const ISOLATED_FIX_TEST: &str = "YGGDRYL_ISOLATED_FIX_TEST";
 
@@ -55,16 +117,6 @@ fn crated() -> usize {
     yggdryl::fix_crate_fields()
         .expect("the crate's own fields")
         .len()
-}
-
-/// The crate's own field names, in the order every registry iterates them:
-/// last, because their tags are above every tag a test claims.
-fn crate_names() -> Vec<&'static str> {
-    yggdryl::fix_crate_fields()
-        .expect("the crate's own fields")
-        .iter()
-        .map(yggdryl::Field::name)
-        .collect()
 }
 
 /// Where the column carrying `tag` sits in a batch: by the tag its field

@@ -1,0 +1,53 @@
+{
+  "name": "paymentsettl",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentsettlamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentsettlamount"
+        }
+      },
+      {
+        "name": "paymentsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentsettlcurrency"
+        }
+      },
+      {
+        "name": "nopaymentsettlpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentsettlpartyids"
+        }
+      },
+      {
+        "name": "paymentsettlparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentsettlparties"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentSettl",
+    "fix:tag": "403416"
+  }
+}

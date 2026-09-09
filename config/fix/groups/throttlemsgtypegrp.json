@@ -1,0 +1,24 @@
+{
+  "name": "throttlemsgtypegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "throttlemsgtypecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "throttlemsgtypecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoThrottleMsgType > 0.",
+    "display": "ThrottleMsgTypeGrp",
+    "fix:component": "throttlemsgtypecomponent",
+    "fix:counter": "1618",
+    "fix:tag": "881289"
+  }
+}

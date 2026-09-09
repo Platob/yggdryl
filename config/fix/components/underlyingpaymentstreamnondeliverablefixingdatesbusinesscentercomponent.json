@@ -1,0 +1,23 @@
+{
+  "name": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesBusinessCenter",
+    "fix:tag": "626868"
+  }
+}

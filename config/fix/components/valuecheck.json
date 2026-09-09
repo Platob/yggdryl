@@ -1,0 +1,33 @@
+{
+  "name": "valuecheck",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "valuechecktype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "valuechecktype"
+        }
+      },
+      {
+        "name": "valuecheckaction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "valuecheckaction"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ValueCheck",
+    "fix:tag": "685775"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "partydetailsupdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "listupdateaction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "listupdateaction"
+        }
+      },
+      {
+        "name": "nopartydetails",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartydetails"
+        }
+      },
+      {
+        "name": "partydetailgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "partydetailgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PartyDetailsUpdate",
+    "fix:tag": "121601"
+  }
+}

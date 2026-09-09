@@ -1,0 +1,33 @@
+{
+  "name": "legstreamcalculationperioddatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamcalculationperioddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationperioddate"
+        }
+      },
+      {
+        "name": "legstreamcalculationperioddatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcalculationperioddatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamCalculationPeriodDate",
+    "fix:tag": "1071689"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "deliveryschedulesettltimegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "deliveryschedulesettltime",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "deliveryschedulesettltime"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoDeliveryScheduleSettlTimes(41054) > 0.",
+    "display": "DeliveryScheduleSettlTimeGrp",
+    "fix:component": "deliveryschedulesettltime",
+    "fix:counter": "41054",
+    "fix:tag": "367450"
+  }
+}

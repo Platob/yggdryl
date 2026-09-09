@@ -1,0 +1,104 @@
+{
+  "name": "dividendaccrualpaymentdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "dividendaccrualpaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendaccrualpaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "dividendaccrualpaymentdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendaccrualpaymentdateoffsetperiod"
+        }
+      },
+      {
+        "name": "dividendaccrualpaymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendaccrualpaymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "dividendaccrualpaymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendaccrualpaymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "dividendaccrualpaymentdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendaccrualpaymentdateunadjusted"
+        }
+      },
+      {
+        "name": "dividendaccrualpaymeentdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendaccrualpaymeentdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nodividendaccrualpaymentdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nodividendaccrualpaymentdatebusinesscenters"
+        }
+      },
+      {
+        "name": "dividendaccrualpaymentdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "dividendaccrualpaymentdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "dividendaccrualpaymentdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "dividendaccrualpaymentdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when DividendAccrualPaymentDateOffsetUnit(42240) is specified.",
+    "display": "DividendAccrualPaymentDate",
+    "fix:tag": "643229"
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "name": "legdeliveryschedule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdeliveryscheduletype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryscheduletype"
+        }
+      },
+      {
+        "name": "legdeliveryschedulexid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulexid"
+        }
+      },
+      {
+        "name": "legdeliveryschedulenotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulenotional"
+        }
+      },
+      {
+        "name": "legdeliveryschedulenotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulenotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "legdeliveryschedulenotionalcommodityfrequency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulenotionalcommodityfrequency"
+        }
+      },
+      {
+        "name": "legdeliveryschedulenegativetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulenegativetolerance"
+        }
+      },
+      {
+        "name": "legdeliveryschedulepositivetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulepositivetolerance"
+        }
+      },
+      {
+        "name": "legdeliveryscheduletoleranceunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryscheduletoleranceunitofmeasure"
+        }
+      },
+      {
+        "name": "legdeliveryscheduletolerancetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryscheduletolerancetype"
+        }
+      },
+      {
+        "name": "legdeliveryschedulesettlcountry",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulesettlcountry"
+        }
+      },
+      {
+        "name": "legdeliveryschedulesettltimezone",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulesettltimezone"
+        }
+      },
+      {
+        "name": "legdeliveryschedulesettlflowtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulesettlflowtype"
+        }
+      },
+      {
+        "name": "legdeliveryschedulesettlholidaysprocessinginstruction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliveryschedulesettlholidaysprocessinginstruction"
+        }
+      },
+      {
+        "name": "nolegdeliveryschedulesettldays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegdeliveryschedulesettldays"
+        }
+      },
+      {
+        "name": "legdeliveryschedulesettldaygrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legdeliveryschedulesettldaygrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegDeliverySchedule",
+    "fix:tag": "131077"
+  }
+}

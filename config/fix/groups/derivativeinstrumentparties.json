@@ -1,0 +1,24 @@
+{
+  "name": "derivativeinstrumentparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "derivativeinstrumentparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "derivativeinstrumentparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Should contain unique combinations of DerivativeInstrumentPartyID, DerivativeInstrumentPartyIDSource, and DerivativeInstrumentPartyRole",
+    "display": "DerivativeInstrumentParties",
+    "fix:component": "derivativeinstrumentparty",
+    "fix:counter": "1292",
+    "fix:tag": "252246"
+  }
+}
