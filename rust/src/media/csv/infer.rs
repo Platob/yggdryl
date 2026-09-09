@@ -40,8 +40,17 @@ impl Inference {
     }
 
     /// Fold one cell into the column's answer.
-    pub(crate) fn observe(&mut self, cell: &[u8], null: &str, timezone: Option<&Timezone>) {
-        let observed = cell_dtype(cell, null, timezone);
+    ///
+    /// A quoted cell is content whatever it spells, so a quoted empty cell
+    /// types the column as text rather than yielding to it as absence.
+    pub(crate) fn observe(
+        &mut self,
+        cell: &[u8],
+        quoted: bool,
+        null: &str,
+        timezone: Option<&Timezone>,
+    ) {
+        let observed = cell_dtype(cell, quoted, null, timezone);
         if matches!(observed, DataType::Null) {
             self.absent = true;
             return;
@@ -96,9 +105,12 @@ pub(crate) const fn is_read_dtype(dtype: &DataType) -> bool {
 /// and `2024-01-01` a date rather than an instant. A numeric with a leading
 /// zero stays text: a zero-padded code is an identifier whose padding is part
 /// of the value, and reading it as a number deletes that.
-fn cell_dtype(cell: &[u8], null: &str, timezone: Option<&Timezone>) -> DataType {
-    if cell.is_empty() || cell == null.as_bytes() {
+fn cell_dtype(cell: &[u8], quoted: bool, null: &str, timezone: Option<&Timezone>) -> DataType {
+    if !quoted && cell == null.as_bytes() {
         return DataType::Null;
+    }
+    if cell.is_empty() {
+        return DataType::Utf8;
     }
     // Every typed spelling below is ASCII, so a cell that is not UTF-8 is text
     // and needs no validation pass to prove it.

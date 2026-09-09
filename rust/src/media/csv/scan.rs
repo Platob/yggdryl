@@ -122,12 +122,16 @@ pub(crate) fn cell_bytes<'record>(
 }
 
 /// Append one rendered cell, quoting only when the bytes need it.
-pub(crate) fn render_cell(value: &[u8], dialect: &Dialect, output: &mut Vec<u8>) {
+///
+/// `force` quotes a cell whose bytes are legal but would read back as
+/// something else - the empty string under the default absence spelling, or a
+/// value that happens to spell absence itself.
+pub(crate) fn render_cell(value: &[u8], dialect: &Dialect, force: bool, output: &mut Vec<u8>) {
     let Some(quote) = dialect.quote else {
         output.extend_from_slice(value);
         return;
     };
-    if !needs_quoting(value, quote, dialect) {
+    if !force && !needs_quoting(value, quote, dialect) {
         output.extend_from_slice(value);
         return;
     }
@@ -318,4 +322,84 @@ fn unescape_into(inner: &[u8], dialect: &Dialect, output: &mut Vec<u8>) {
         }
     }
     output.extend_from_slice(&inner[at..]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Dialect, cell_bytes, render_cell, split_cells};
+
+    fn dialect() -> Dialect {
+        Dialect {
+            separator: b',',
+            quote: Some(b'"'),
+            escape: None,
+            comment: None,
+            linesep: None,
+            trim: false,
+        }
+    }
+
+    #[test]
+    fn every_rendered_cell_reads_back_as_the_bytes_it_was_given() {
+        let dialect = dialect();
+        let nasty: [&[u8]; 12] = [
+            b"",
+            b"plain",
+            b",",
+            b"\"",
+            b"\"\"",
+            b"a\"b",
+            b"a,b",
+            b"a\nb",
+            b"a\r\nb",
+            b"  spaced  ",
+            b"\"quoted\"",
+            b"a,\"b\",c",
+        ];
+        for value in nasty {
+            let mut line = Vec::new();
+            render_cell(value, &dialect, false, &mut line);
+            let mut spans = Vec::new();
+            assert!(
+                split_cells(&line, &dialect, &mut spans),
+                "{value:?} rendered to an incomplete record: {line:?}"
+            );
+            assert_eq!(
+                spans.len(),
+                1,
+                "{value:?} rendered to {} cells",
+                spans.len()
+            );
+            assert_eq!(
+                cell_bytes(&line, spans[0], &dialect).as_ref(),
+                value,
+                "rendered as {line:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_malformed_record_splits_without_panicking() {
+        let dialect = dialect();
+        let mut spans = Vec::new();
+        // A quote that never closes is what the scan reports incomplete, so the
+        // reader joins the next physical line and asks again.
+        for record in [b"\"open".as_slice(), b"\"", b"a,\"b"] {
+            assert!(!split_cells(record, &dialect, &mut spans), "{record:?}");
+        }
+        // Everything else splits, whatever it spells.
+        for record in [
+            b"a\"b,c".as_slice(),
+            b"\"a\"x,b",
+            b",,",
+            b"a,",
+            b",a",
+            b"\"a\"\"\"",
+        ] {
+            assert!(split_cells(record, &dialect, &mut spans), "{record:?}");
+            for span in &spans {
+                let _ = cell_bytes(record, *span, &dialect);
+            }
+        }
+    }
 }

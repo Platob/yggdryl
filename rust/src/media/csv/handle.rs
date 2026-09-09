@@ -23,7 +23,7 @@ use crate::{IOBase, IOMedia};
 use super::options::CsvOptions;
 
 #[cfg(feature = "arrow")]
-use super::arrow::{Layout, cell_text, read_layout, row_cells, write_record};
+use super::arrow::{Layout, ends_with, read_layout, render_value, write_row};
 #[cfg(feature = "arrow")]
 use super::index::RowIndex;
 #[cfg(feature = "arrow")]
@@ -137,7 +137,15 @@ impl<H: IOBase> Csv<H> {
     ///
     /// Returns a read or decoding failure.
     pub fn row_size(&self) -> Result<u64> {
-        Ok(self.index()?.rows())
+        if let Some(cached) = self.cached_index.get() {
+            return Ok(cached.rows());
+        }
+        if self.opened {
+            return Ok(self.index()?.rows());
+        }
+        // A closed count needs no map of where each row starts, so it streams
+        // rather than paying for one it would immediately drop.
+        super::arrow::row_size(&self.handle, &self.options)
     }
 
     /// Read one row as its ordered column values, or `None` past the end.
@@ -246,14 +254,19 @@ impl<H: IOBase> Csv<H> {
     /// write failure.
     pub fn write_cell_bytes(&mut self, row: u64, column: usize, value: &[u8]) -> Result<()> {
         let record = self.require_row(row)?;
-        let span = self.require_column(&record, column, row)?;
-        let dialect = self.options.dialect();
-        let mut rendered = Vec::with_capacity(value.len() + 2);
-        super::scan::render_cell(value, &dialect, &mut rendered);
         let (start, end) = record
             .cell_range(column)
             .ok_or_else(|| self.missing_column(column, row))?;
-        debug_assert_eq!(end - start, (span.end - span.start) as u64);
+        let dialect = self.options.dialect();
+        let mut rendered = Vec::with_capacity(value.len() + 2);
+        // A cell that would read back as absence is quoted, so writing the
+        // empty string does not delete the value.
+        super::scan::render_cell(
+            value,
+            &dialect,
+            value == self.options.null().as_bytes(),
+            &mut rendered,
+        );
         self.invalidate();
         splice(&mut self.handle, start, end, &rendered)
     }
@@ -281,8 +294,17 @@ impl<H: IOBase> Csv<H> {
             .get(column)
             .cloned()
             .ok_or_else(|| self.missing_column(column, row))?;
-        let text = cell_text(&field, value, self.options.null())?;
-        self.write_cell_bytes(row, column, text.as_bytes())
+        let (start, end) = {
+            let record = self.require_row(row)?;
+            record
+                .cell_range(column)
+                .ok_or_else(|| self.missing_column(column, row))?
+        };
+        let dialect = self.options.dialect();
+        let mut rendered = Vec::new();
+        render_value(&field, value, &self.options, &dialect, &mut rendered)?;
+        self.invalidate();
+        splice(&mut self.handle, start, end, &rendered)
     }
 
     /// Replace one whole row with ordered column values.
@@ -294,16 +316,8 @@ impl<H: IOBase> Csv<H> {
     pub fn write_row_scalar(&mut self, row: u64, value: &Scalar) -> Result<()> {
         let layout = self.layout()?;
         let record = self.require_row(row)?;
-        let cells = row_cells(&layout.field, value, self.options.null())?;
         let mut line = Vec::new();
-        // The stored terminator stays where it is: only the record's own bytes
-        // are replaced, so a resource of mixed terminators keeps each of them.
-        write_record(
-            cells.iter().map(|cell| cell.as_bytes()),
-            &self.options.dialect(),
-            &[],
-            &mut line,
-        );
+        write_row(&layout.field, value, &self.options, &[], &mut line)?;
         let start = record.offset;
         let end = record.offset + record.bytes.len() as u64;
         self.invalidate();
@@ -318,16 +332,17 @@ impl<H: IOBase> Csv<H> {
     /// or write failure.
     pub fn append_row_scalar(&mut self, value: &Scalar) -> Result<()> {
         let layout = self.layout()?;
-        let cells = row_cells(&layout.field, value, self.options.null())?;
         let terminator = self.options.output_linesep().to_vec();
         let mut line = Vec::new();
-        write_record(
-            cells.iter().map(|cell| cell.as_bytes()),
-            &self.options.dialect(),
-            &terminator,
-            &mut line,
-        );
+        write_row(&layout.field, value, &self.options, &terminator, &mut line)?;
         let size = self.handle.size();
+        if size > 0 && !ends_with(&self.handle, &terminator)? {
+            // The stored final record never got its terminator, so the added
+            // row would otherwise continue it rather than follow it.
+            let mut opened = terminator.clone();
+            opened.append(&mut line);
+            line = opened;
+        }
         self.invalidate();
         // An append is a splice of nothing, so one implementation answers for
         // every positional write, coded refusal included.
@@ -348,11 +363,18 @@ impl<H: IOBase> Csv<H> {
         splice(&mut self.handle, start, end, &[])
     }
 
-    /// Read the record `row` names, through the sparse index.
+    /// Read the record `row` names, through the sparse index when there is one.
+    ///
+    /// An opened session has the index and pays one positional read plus a
+    /// bounded scan. A closed one scans from the first data record: building an
+    /// index for a single row, then dropping it, would cost strictly more.
     fn record_at(&self, row: u64) -> Result<Option<OwnedRecord>> {
-        let index = self.index()?;
-        let Some((offset, skip)) = index.anchor(row) else {
-            return Ok(None);
+        let (offset, skip) = match self.opened {
+            true => match self.index()?.anchor(row) {
+                Some(anchor) => anchor,
+                None => return Ok(None),
+            },
+            false => (self.layout()?.data_start, row),
         };
         read_record(&self.handle, &self.options.dialect(), offset, skip)
     }

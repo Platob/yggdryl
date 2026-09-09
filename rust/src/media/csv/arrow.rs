@@ -6,7 +6,7 @@
 //! same formatter a partition directory name goes through, so a value spells
 //! itself one way across the crate.
 
-use std::io::{BufWriter, Read, Write};
+use std::io::{Read, Write};
 
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::Schema;
@@ -70,25 +70,8 @@ fn layout_from<R: Read>(
         }
     }
     if let Some(declared) = options.field() {
-        // A declared column the cells cannot spell is read as text and
-        // converted by the shared cast, so a decimal or an unsigned width
-        // reaches the caller without a second text-to-value implementation
-        // here. Every emitted column is nullable: an empty cell is absence,
-        // and the declared nullability is enforced by that same cast.
-        let columns = declared
-            .fields()
-            .iter()
-            .map(|column| {
-                let dtype = if super::infer::is_read_dtype(column.dtype()) {
-                    column.dtype().clone()
-                } else {
-                    DataType::Utf8
-                };
-                dtype.nullable_field(column.name())
-            })
-            .collect();
         return Ok(Layout {
-            field: root_field(&options.name, columns)?,
+            field: declared_columns(&declared, &names, &options.name)?,
             data_start,
         });
     }
@@ -114,7 +97,7 @@ fn layout_from<R: Read>(
         if options.autotype() {
             for (span, inference) in record.spans.iter().zip(&mut inferences) {
                 let cell = cell_bytes(record.bytes, *span, dialect);
-                inference.observe(&cell, options.null(), options.timezone());
+                inference.observe(&cell, span.is_quoted(), options.null(), options.timezone());
             }
         }
         seen += 1;
@@ -134,6 +117,48 @@ fn layout_from<R: Read>(
         field: root_field(&options.name, fields)?,
         data_start,
     })
+}
+
+/// Emit the columns a declaration names, keyed by the header where there is one.
+///
+/// The header is what says which cell is which, so a declaration whose columns
+/// are in another order still reads the right cells: the emitted column keeps
+/// the header's name and takes the declared datatype by that name, and the
+/// shared cast reorders, renames, and completes from there. A declared column
+/// the cells cannot spell is read as text and converted by that same cast, so
+/// a decimal or an unsigned width needs no second text-to-value path here.
+/// Every emitted column is nullable - an empty cell is absence - and the
+/// declared nullability is enforced by the cast.
+fn declared_columns(declared: &Field, header: &[SmolStr], name: &SmolStr) -> Result<Field> {
+    let named = |column: &Field| {
+        if super::infer::is_read_dtype(column.dtype()) {
+            column.dtype().clone()
+        } else {
+            DataType::Utf8
+        }
+    };
+    if header.is_empty() {
+        // No header: the declaration's own order is the only thing that can
+        // say which cell is which.
+        let columns = declared
+            .fields()
+            .iter()
+            .map(|column| named(column).nullable_field(column.name()))
+            .collect();
+        return root_field(name, columns);
+    }
+    let columns = header
+        .iter()
+        .map(|column| {
+            let dtype = declared
+                .fields()
+                .iter()
+                .find(|declared| declared.name() == column.as_str())
+                .map_or(DataType::Utf8, named);
+            dtype.nullable_field(column.clone())
+        })
+        .collect();
+    root_field(name, columns)
 }
 
 /// Read the column names one header record spells.
@@ -336,9 +361,11 @@ pub(crate) fn record_scalar(
     for (column, (span, dtype)) in record.spans.iter().zip(dtypes).enumerate() {
         let cell = cell_bytes(record.bytes, *span, dialect);
         let value =
-            cell_scalar(&cell, dtype, null, timezone).map_err(|reason| Error::InvalidRecord {
-                path: format_smolstr!("$[{index}][{column}]"),
-                reason: format_smolstr!("{reason} in row {index} of {}", named(url)),
+            cell_scalar(&cell, span.is_quoted(), dtype, null, timezone).map_err(|reason| {
+                Error::InvalidRecord {
+                    path: format_smolstr!("$[{index}][{column}]"),
+                    reason: format_smolstr!("{reason} in row {index} of {}", named(url)),
+                }
             })?;
         values.push(value);
     }
@@ -346,14 +373,27 @@ pub(crate) fn record_scalar(
 }
 
 /// Read one cell as the value its column declares.
+///
+/// Absence is the `null` spelling on an *unquoted* cell. A quoted cell is
+/// content whatever it spells, which is what lets a resource hold both an
+/// absent value and an empty string under the default spelling.
 fn cell_scalar(
     cell: &[u8],
+    quoted: bool,
     dtype: &DataType,
     null: &str,
     timezone: Option<&Timezone>,
 ) -> std::result::Result<Scalar, SmolStr> {
-    if cell.is_empty() || cell == null.as_bytes() {
+    if !quoted && cell == null.as_bytes() {
         return Ok(Scalar::Null);
+    }
+    if cell.is_empty() {
+        // An empty cell is the empty string only where the column can hold
+        // one; nothing else this vocabulary spells has an empty reading.
+        return Ok(match dtype {
+            DataType::Utf8 => Scalar::from(""),
+            _ => Scalar::Null,
+        });
     }
     let text = std::str::from_utf8(cell).map_err(|error| {
         format_smolstr!(
@@ -374,17 +414,14 @@ pub fn overwrite_arrow_reader(
     batches: BatchReader,
     options: &CsvOptions,
 ) -> Result<()> {
-    let codec = handle.codec();
-    if codec == Codec::Identity {
-        let end = stream_rows(handle, batches, options, 0, options.header(), None)?;
-        // The value is exactly what was rendered: anything the resource held
-        // past it belonged to the rows this call replaced.
-        handle.truncate(end)?;
-        return handle.flush();
-    }
+    // The rendered value is staged whole and published once, as every encoding
+    // in this crate does, so a batch that fails to render never leaves a
+    // half-written resource behind.
     let mut encoded = Vec::new();
     {
-        let mut encoder = codec.writer_with_level(&mut encoded, options.level());
+        let mut encoder = handle
+            .codec()
+            .writer_with_level(&mut encoded, options.level());
         render_rows(batches, options, options.header(), None, &mut encoder)?;
         encoder.finish()?;
     }
@@ -401,21 +438,30 @@ pub fn append_arrow_reader(
     batches: BatchReader,
     options: &CsvOptions,
 ) -> Result<()> {
-    if handle.is_empty() {
+    // A resource holding no records has no header either, whatever its byte
+    // size says, so it is filled rather than appended to.
+    let stored = stored_header(handle, options)?;
+    if handle.is_empty() || (options.header() && stored.is_none()) {
         return overwrite_arrow_reader(handle, batches, options);
     }
     // The stored header decides the cell order, so an incoming batch naming the
     // same columns in another order still lands in the columns it named.
-    let order = stored_order(handle, batches.schema().as_ref(), options)?;
+    let order = stored
+        .map(|stored| column_order(&stored, batches.schema().as_ref()))
+        .transpose()?;
     let terminator = options.output_linesep();
     let codec = handle.codec();
     if codec == Codec::Identity {
+        // Only the added rows are rendered: what is already stored stays where
+        // it is, which is what makes an append cheap on a delimited resource.
+        let mut rendered = Vec::new();
+        render_rows(batches, options, false, order.as_deref(), &mut rendered)?;
         let mut offset = handle.size();
         if offset > 0 && !ends_with(handle, terminator)? {
             handle.pwrite_all(offset, terminator)?;
             offset += terminator.len() as u64;
         }
-        stream_rows(handle, batches, options, offset, false, order.as_deref())?;
+        handle.pwrite_all(offset, &rendered)?;
         return handle.flush();
     }
     let mut encoded = Vec::new();
@@ -442,15 +488,11 @@ pub fn append_arrow_reader(
     handle.write_all_bytes(&encoded)
 }
 
-/// Map the stored header's columns onto an incoming batch's columns.
-///
-/// `None` means the resource stores no header, so the incoming order is the
-/// order rows are written in.
-fn stored_order(
+/// Read the column names the resource already stores, if it stores any.
+fn stored_header(
     handle: &(impl IOBase + ?Sized),
-    incoming: &Schema,
     options: &CsvOptions,
-) -> Result<Option<Vec<usize>>> {
+) -> Result<Option<Vec<SmolStr>>> {
     if !options.header() {
         return Ok(None);
     }
@@ -460,7 +502,11 @@ fn stored_order(
     let Some(record) = records.next_record() else {
         return Ok(None);
     };
-    let stored = header_names(&record?, &dialect, handle.url())?;
+    header_names(&record?, &dialect, handle.url()).map(Some)
+}
+
+/// Map the stored header's columns onto an incoming batch's columns.
+fn column_order(stored: &[SmolStr], incoming: &Schema) -> Result<Vec<usize>> {
     if stored.len() != incoming.fields().len() {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
@@ -492,50 +538,7 @@ fn stored_order(
                     ),
                 })
         })
-        .collect::<Result<Vec<_>>>()
-        .map(Some)
-}
-
-/// Render rows straight into the resource, holding one bounded window.
-fn stream_rows(
-    handle: &mut (impl IOBase + ?Sized),
-    batches: BatchReader,
-    options: &CsvOptions,
-    offset: u64,
-    header: bool,
-    order: Option<&[usize]>,
-) -> Result<u64> {
-    let mut writer = BufWriter::with_capacity(
-        crate::DEFAULT_STREAM_BATCH_SIZE,
-        Positional { handle, offset },
-    );
-    render_rows(batches, options, header, order, &mut writer)?;
-    writer.flush().map_err(Error::Io)?;
-    let published = writer
-        .into_inner()
-        .map_err(|error| Error::Io(error.into_error()))?;
-    Ok(published.offset)
-}
-
-/// A byte sink that publishes through positional writes.
-struct Positional<'handle, H: IOBase + ?Sized> {
-    handle: &'handle mut H,
-    offset: u64,
-}
-
-impl<H: IOBase + ?Sized> Write for Positional<'_, H> {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        let written = self
-            .handle
-            .pwrite(self.offset, bytes)
-            .map_err(std::io::Error::other)?;
-        self.offset += written as u64;
-        Ok(written)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
+        .collect()
 }
 
 /// Render an incoming reader's header and rows into one byte sink.
@@ -561,16 +564,17 @@ fn render_rows(
     let mut cell = String::new();
     for batch in batches {
         let batch = batch.map_err(crate::arrow::from_reader_error)?;
-        let columns = match order {
+        let columns: Vec<usize> = match order {
             Some(order) => order.to_vec(),
             None => (0..batch.num_columns()).collect(),
         };
-        let formatters = columns
+        let arrays = columns
             .iter()
-            .map(|index| {
-                ArrayFormatter::try_new(batch.column(*index).as_ref(), &format)
-                    .map_err(Error::Arrow)
-            })
+            .map(|index| batch.column(*index))
+            .collect::<Vec<_>>();
+        let formatters = arrays
+            .iter()
+            .map(|array| ArrayFormatter::try_new(array.as_ref(), &format).map_err(Error::Arrow))
             .collect::<Result<Vec<_>>>()?;
         line.clear();
         for row in 0..batch.num_rows() {
@@ -578,12 +582,19 @@ fn render_rows(
                 if column > 0 {
                     line.push(dialect.separator);
                 }
+                if arrays[column].is_null(row) {
+                    line.extend_from_slice(options.null().as_bytes());
+                    continue;
+                }
                 cell.clear();
                 formatter
                     .value(row)
                     .write(&mut cell)
                     .map_err(Error::Arrow)?;
-                render_cell(cell.as_bytes(), &dialect, &mut line);
+                // A present value that happens to spell absence - the empty
+                // string under the default spelling - is quoted, so reading it
+                // back answers the value rather than a null.
+                render_cell(cell.as_bytes(), &dialect, cell == options.null(), &mut line);
             }
             line.extend_from_slice(terminator);
             if line.len() >= crate::DEFAULT_STREAM_BATCH_SIZE {
@@ -602,7 +613,7 @@ fn render_rows(
 /// The one-element array is what Arrow's formatter reads, so a value written
 /// through the positional surface spells itself exactly as the same value
 /// written through a batch.
-pub(crate) fn cell_text(field: &Field, value: &Scalar, null: &str) -> Result<String> {
+fn cell_text(field: &Field, value: &Scalar, null: &str) -> Result<String> {
     let array = crate::arrow::scalar_array(field, value)?;
     let format = FormatOptions::new().with_null(null);
     let formatter = ArrayFormatter::try_new(array.as_ref(), &format).map_err(Error::Arrow)?;
@@ -611,8 +622,35 @@ pub(crate) fn cell_text(field: &Field, value: &Scalar, null: &str) -> Result<Str
     Ok(text)
 }
 
-/// Render one row's ordered column values as their cell texts.
-pub(crate) fn row_cells(root: &Field, value: &Scalar, null: &str) -> Result<Vec<String>> {
+/// Append one value as the cell its column spells, quoted when it must be.
+pub(crate) fn render_value(
+    field: &Field,
+    value: &Scalar,
+    options: &CsvOptions,
+    dialect: &Dialect,
+    line: &mut Vec<u8>,
+) -> Result<()> {
+    if value.is_null() {
+        line.extend_from_slice(options.null().as_bytes());
+        return Ok(());
+    }
+    let text = cell_text(field, value, options.null())?;
+    render_cell(text.as_bytes(), dialect, text == options.null(), line);
+    Ok(())
+}
+
+/// Render one row's ordered column values as one complete record.
+///
+/// `terminator` is empty when the record replaces one already stored: the
+/// terminator that ended it stays where it is, so a resource of mixed
+/// terminators keeps each of them.
+pub(crate) fn write_row(
+    root: &Field,
+    value: &Scalar,
+    options: &CsvOptions,
+    terminator: &[u8],
+    line: &mut Vec<u8>,
+) -> Result<()> {
     let row = root.canonicalize_value(value.clone())?;
     let values = row.as_sequence().ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new_static("$"),
@@ -628,15 +666,20 @@ pub(crate) fn row_cells(root: &Field, value: &Scalar, null: &str) -> Result<Vec<
             ),
         });
     }
-    root.fields()
-        .iter()
-        .zip(values)
-        .map(|(field, value)| cell_text(field, value, null))
-        .collect()
+    let dialect = options.dialect();
+    line.clear();
+    for (column, (field, value)) in root.fields().iter().zip(values).enumerate() {
+        if column > 0 {
+            line.push(dialect.separator);
+        }
+        render_value(field, value, options, &dialect, line)?;
+    }
+    line.extend_from_slice(terminator);
+    Ok(())
 }
 
-/// Render one complete record, terminator included.
-pub(crate) fn write_record<'cell>(
+/// Render one complete record from already-rendered cells.
+fn write_record<'cell>(
     cells: impl IntoIterator<Item = &'cell [u8]>,
     dialect: &Dialect,
     terminator: &[u8],
@@ -647,13 +690,13 @@ pub(crate) fn write_record<'cell>(
         if column > 0 {
             line.push(dialect.separator);
         }
-        render_cell(value, dialect, line);
+        render_cell(value, dialect, false, line);
     }
     line.extend_from_slice(terminator);
 }
 
 /// Return whether the stored value already ends with `suffix`.
-fn ends_with(handle: &(impl IOBase + ?Sized), suffix: &[u8]) -> Result<bool> {
+pub(crate) fn ends_with(handle: &(impl IOBase + ?Sized), suffix: &[u8]) -> Result<bool> {
     let size = handle.size();
     if size < suffix.len() as u64 {
         return Ok(false);

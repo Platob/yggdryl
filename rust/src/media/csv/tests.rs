@@ -229,11 +229,13 @@ fn a_ragged_record_is_refused_by_name() {
 }
 
 #[test]
-fn absence_is_spelled_by_the_null_setting() {
+fn absence_is_the_null_spelling_and_nothing_else() {
+    // Under an explicit spelling, an empty cell is the empty string: only the
+    // spelling is absence.
     let options = CsvOptions::new().with_null("NULL");
     let source = named("t.csv", b"symbol,note\nBRN,NULL\nWTI,\n");
     let batches = collect(&source, &options);
-    assert_eq!(column_text(&batches, "note"), [None, None]);
+    assert_eq!(column_text(&batches, "note"), [None, Some(String::new())]);
 
     let mut target = named("out.csv", b"");
     target
@@ -244,8 +246,54 @@ fn absence_is_spelled_by_the_null_setting() {
         .unwrap();
     assert_eq!(
         target.read_all_bytes().unwrap(),
-        b"symbol,note\nBRN,NULL\nWTI,NULL\n"
+        b"symbol,note\nBRN,NULL\nWTI,\n"
     );
+}
+
+#[test]
+fn a_quoted_empty_cell_is_a_value_and_a_bare_one_is_absence() {
+    // The default spelling is the empty cell, so the two are told apart by the
+    // quoting a write puts there and a read reads back.
+    let source = named("t.csv", b"symbol,note\nBRN,\nWTI,\"\"\n");
+    let batches = collect(&source, &CsvOptions::new());
+    assert_eq!(column_text(&batches, "note"), [None, Some(String::new())]);
+
+    let mut target = named("out.csv", b"");
+    target
+        .overwrite_arrow_reader(
+            crate::arrow::batch_reader(batches[0].schema(), batches.clone()),
+            &CsvOptions::new().into(),
+        )
+        .unwrap();
+    assert_eq!(
+        target.read_all_bytes().unwrap(),
+        b"symbol,note\nBRN,\nWTI,\"\"\n"
+    );
+
+    // And the round trip is stable: reading what was written answers the same
+    // two values rather than collapsing them.
+    let round_trip = collect(&target, &CsvOptions::new());
+    assert_eq!(
+        column_text(&round_trip, "note"),
+        [None, Some(String::new())]
+    );
+}
+
+#[test]
+fn a_declared_schema_reads_the_cells_the_header_names() {
+    // The declaration names the columns in another order than the file does.
+    // The header says which cell is which, so the values still land right.
+    let source = named("t.csv", b"quantity,symbol\n120,BRN\n80,WTI\n");
+    let field =
+        crate::Field::from_str("row: struct<symbol: utf8, quantity: int64> not null").unwrap();
+    let mut options = CsvOptions::new();
+    options.set_field(field);
+    let batches = collect(&source, &options);
+    assert_eq!(
+        column_text(&batches, "symbol"),
+        [Some("BRN".to_owned()), Some("WTI".to_owned())]
+    );
+    assert_eq!(column_int(&batches, "quantity"), [Some(120), Some(80)]);
 }
 
 #[test]
@@ -599,4 +647,179 @@ fn typing_off_reads_every_column_as_text() {
     let source = named("t.csv", b"symbol,quantity\nBRN,120\n");
     let options = CsvOptions::new().with_autotype(false);
     assert_eq!(dtype(&source, &options, 1), DataType::Utf8);
+}
+
+#[test]
+fn an_added_row_follows_the_final_record_rather_than_continuing_it() {
+    // The stored final record never got its terminator.
+    let mut media = csv(b"symbol,quantity\nBRN,120");
+    media
+        .append_row_scalar(&Scalar::from_sequence([
+            Scalar::from("WTI"),
+            Scalar::from(80_i64),
+        ]))
+        .unwrap();
+    assert_eq!(
+        media.handle().read_all_bytes().unwrap(),
+        b"symbol,quantity\nBRN,120\nWTI,80\n"
+    );
+    assert_eq!(media.row_size().unwrap(), 2);
+}
+
+#[test]
+fn an_append_to_a_resource_holding_no_records_writes_the_header() {
+    // The resource has bytes but no record, so there is no header to append
+    // under and the rows would otherwise become one.
+    let mut target = named("out.csv", b"\n");
+    let options = CsvOptions::new();
+    let source = named("in.csv", b"symbol,quantity\nBRN,120\n");
+    let batches = collect(&source, &options);
+    crate::media::csv::append_arrow_reader(
+        &mut target,
+        crate::arrow::batch_reader(batches[0].schema(), batches),
+        &options,
+    )
+    .unwrap();
+    assert_eq!(
+        target.read_all_bytes().unwrap(),
+        b"symbol,quantity\nBRN,120\n"
+    );
+}
+
+#[test]
+fn writing_the_empty_string_does_not_delete_the_value() {
+    let mut media = csv(b"symbol,note\nBRN,one\n");
+    media.write_cell_text(0, 1, "").unwrap();
+    assert_eq!(
+        media.handle().read_all_bytes().unwrap(),
+        b"symbol,note\nBRN,\"\"\n"
+    );
+    assert_eq!(media.read_cell_text(0, 1).unwrap().as_deref(), Some(""));
+
+    // And absence is still writable, as the spelling rather than as a value.
+    media.write_cell_scalar(0, 1, &Scalar::Null).unwrap();
+    assert_eq!(
+        media.handle().read_all_bytes().unwrap(),
+        b"symbol,note\nBRN,\n"
+    );
+    assert_eq!(media.read_cell_scalar(0, 1).unwrap(), Some(Scalar::Null));
+}
+
+#[test]
+fn every_row_is_reachable_after_the_index_has_halved_its_resolution() {
+    // Enough rows to force two compactions, so a lookup lands through a stride
+    // of four rather than one. Rows vary in width, so an off-by-one anywhere in
+    // the anchor arithmetic shows up as the wrong value rather than the wrong
+    // offset.
+    let mut bytes = Vec::from(b"id,symbol\n".as_slice());
+    for row in 0..12_000_u32 {
+        bytes.extend_from_slice(format!("{row},S{}\n", "x".repeat((row % 7) as usize)).as_bytes());
+    }
+    let mut media = csv(&bytes);
+    media.open().unwrap();
+    assert_eq!(media.row_size().unwrap(), 12_000);
+
+    let mut previous: Option<std::ops::Range<u64>> = None;
+    for row in 0..12_000_u64 {
+        assert_eq!(
+            media.read_cell_text(row, 0).unwrap().as_deref(),
+            Some(row.to_string().as_str()),
+            "row {row}"
+        );
+        let range = media.read_row_byte_range(row).unwrap().unwrap();
+        if let Some(previous) = previous {
+            // The records tile the resource: no byte is skipped or counted twice.
+            assert_eq!(previous.end, range.start, "row {row}");
+        }
+        previous = Some(range);
+    }
+    assert_eq!(previous.unwrap().end, bytes.len() as u64);
+}
+
+#[test]
+fn a_folder_of_leaves_reads_as_one_table_and_each_header_stays_a_header() {
+    let mut root = crate::holder::local::Folder::temporary()
+        .unwrap()
+        .path()
+        .unwrap();
+    root.push(format!("yggdryl-csv-folder-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("part-0.csv"), b"symbol,quantity\nBRN,120\n").unwrap();
+    // The second leaf names the same columns in the other order, which the
+    // header is what settles.
+    std::fs::write(root.join("part-1.csv"), b"quantity,symbol\n80,WTI\n").unwrap();
+
+    let folder = crate::holder::Holder::folder(&root).unwrap();
+    let options = folder.record_options().unwrap();
+    assert!(matches!(options, RecordOptions::Csv(_)));
+
+    let batches = folder
+        .read_arrow_reader(&options)
+        .unwrap()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(
+        column_text(&batches, "symbol"),
+        [Some("BRN".to_owned()), Some("WTI".to_owned())]
+    );
+    assert_eq!(column_int(&batches, "quantity"), [Some(120), Some(80)]);
+    assert_eq!(folder.row_size().unwrap(), 2);
+
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_coded_resource_round_trips_overwrite_and_append() {
+    let options = CsvOptions::new();
+    let source = named("t.csv", b"symbol,quantity\nBRN,120\n");
+    let batches = collect(&source, &options);
+    let schema = batches[0].schema();
+
+    let mut coded = named("t.csv.gz", b"");
+    assert_eq!(coded.codec(), Codec::Gzip);
+    coded
+        .overwrite_arrow_reader(
+            crate::arrow::batch_reader(schema.clone(), batches.clone()),
+            &options.clone().into(),
+        )
+        .unwrap();
+    // The stored bytes are gzip framing; the rows are what the encoding reads.
+    assert_eq!(&coded.read_range_bytes(0, 2).unwrap(), &[0x1F, 0x8B]);
+    assert_eq!(crate::media::csv::row_size(&coded, &options).unwrap(), 1);
+
+    coded
+        .append_arrow_reader(
+            crate::arrow::batch_reader(schema, batches),
+            &options.clone().into(),
+        )
+        .unwrap();
+    assert_eq!(crate::media::csv::row_size(&coded, &options).unwrap(), 2);
+    let read = collect(&coded, &options);
+    assert_eq!(column_int(&read, "quantity"), [Some(120), Some(120)]);
+}
+
+#[test]
+fn an_empty_cell_is_a_value_only_where_the_column_holds_one() {
+    // The quoted empty cell falls outside the inference sample, so the column
+    // is typed from the numbers and the empty reading has nowhere to go.
+    let source = named("t.csv", b"quantity\n120\n80\n\"\"\n");
+    let options = CsvOptions::new().with_infer_row_size(2);
+    assert_eq!(dtype(&source, &options, 0), DataType::Int64);
+    let batches = collect(&source, &options);
+    assert_eq!(
+        column_int(&batches, "quantity"),
+        [Some(120), Some(80), None]
+    );
+}
+
+#[test]
+fn trimming_reaches_the_absence_spelling_too() {
+    let options = CsvOptions::new().with_trim(true).with_null("NA");
+    let source = named("t.csv", b"symbol,note\nBRN, NA \nWTI, kept \n");
+    let batches = collect(&source, &options);
+    assert_eq!(
+        column_text(&batches, "note"),
+        [None, Some("kept".to_owned())]
+    );
 }

@@ -13,7 +13,7 @@ the positional row and cell access a delimited resource can answer.
 | `comment` | a line opening with this byte carries no record; unset reads every line |
 | `linesep` | exact record terminator; unset accepts LF, CRLF, or CR and writes LF |
 | `header` | the first record names the columns; default `true`, `false` names them `column_1`, `column_2`, … |
-| `null` | the cell text that spells absence; default the empty cell |
+| `null` | the cell text that spells absence in an *unquoted* cell; default the empty cell |
 | `trim` | unquoted cells drop their edge ASCII whitespace; default `false` |
 | `autotype` | infer column datatypes from the cells; default `true`, `false` reads every column as `utf8` |
 | `infer_row_size` | rows inference reads; default `DEFAULT_INFER_ROW_SIZE` (1024), `None` reads every row |
@@ -76,9 +76,28 @@ refusal.
 | anything else, or two readings that do not meet | `utf8` |
 
 Every inferred column is nullable: the sample is a prefix, and an unsampled row
-may still spell absence. A declared `dtype` turns inference off; a declared
-column the cells cannot spell is read as text and converted by the shared cast,
-so a `decimal128(12, 2)` column reads without a second text-to-value path.
+may still spell absence. A declared `dtype` turns inference off. The header still
+says which cell is which, so a declaration whose columns are in another order
+still reads the right cells: the emitted column keeps the header's name and takes
+the declared datatype by that name, and the shared cast reorders and completes
+from there. A declared column the cells cannot spell is read as text and
+converted by that same cast, so a `decimal128(12, 2)` column reads without a
+second text-to-value path.
+
+## Absence
+
+Absence is the `null` spelling on an unquoted cell, and nothing else. A quoted
+cell is content whatever it spells, which is what lets one resource hold both an
+absent value and an empty string under the default spelling.
+
+| cell | value |
+| --- | --- |
+| bare, equal to `null` | absent |
+| quoted, equal to `null` | that text |
+| bare, empty, `null` unset from the default | the empty string |
+
+A write is the same rule read backwards: an absent value is written as the `null`
+spelling, and a present value that would spell it is quoted.
 
 ## Positional access
 
@@ -137,8 +156,8 @@ A cell is quoted only when its bytes need it.
 
 | write | behavior |
 | --- | --- |
-| overwrite | header, when `header` is set, then every row; the resource is truncated to what was rendered |
-| append | rows after the current final record, with no second header; a missing terminator is added first |
+| overwrite | header, when `header` is set, then every row; the value is staged whole and published once, so a batch that fails to render leaves the resource as it was |
+| append | rows after the current final record, with no second header; a missing terminator is added first. A resource holding no records has no header either, so it is filled rather than appended to |
 | append column order | the stored header decides it, so a batch naming the same columns in another order still lands in the columns it named |
 | merge | supported: a delimited row has identity, unlike a text line |
 | coded handle | the whole value is re-encoded, because a coding has no addressable tail |
@@ -150,7 +169,7 @@ A cell is quoted only when its bytes need it.
 - A blank line or a comment line -> carries no record and advances no row number.
 - A numeric with leading zeros (`007`) -> `utf8`: the padding is part of an identifier.
 - A whole number too wide for signed 64 bits -> `utf8`, rather than losing digits to a double.
-- A cell equal to `null` -> absent, both read and written; a value that happens to spell it round-trips as absence.
+- A cell equal to `null` but quoted -> that text, not absence; a present value that would spell absence is quoted on write, so the round trip keeps both.
 - A cell that is not UTF-8 -> refused, naming the byte offset; a header name that is not UTF-8 is refused the same way.
 - A quoted cell whose quote never closes before the resource ends -> read as content, so a truncated file still yields every complete row before it.
 - `infer_row_size` -> a bound, not a hint: a row past it never widens a column.
