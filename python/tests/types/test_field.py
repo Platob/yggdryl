@@ -8,7 +8,7 @@ from typing import Any
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, MediaType, MimeType, Uri, Url
+from yggdryl import DataType, Field, MediaType, MimeType, PythonMetadata, Uri, Url
 
 
 @pytest.mark.skipif(
@@ -389,6 +389,7 @@ WELL_KNOWN_PROTOCOLS = (
     "spark",
     "polars",
     "pandas",
+    "python",
 )
 
 
@@ -508,6 +509,101 @@ def test_protocol_view_named_accessors_cover_every_well_known_protocol() -> None
 
     with pytest.raises(ValueError):
         field.protocol("1invalid")
+
+
+def test_python_view_carries_one_declaration_and_derives_the_bare_name() -> None:
+    declared = PythonMetadata("trading.book", "Book.Quote", "dataclass")
+    field = Field("Quote", "int64", nullable=False)
+    field.python.class_metadata = declared
+
+    # One crossing writes the three properties the declaration is stored as.
+    assert field.python.class_metadata == declared
+    assert dict(field.metadata.items()) == {
+        "python:kind": "dataclass",
+        "python:module": "trading.book",
+        "python:qualname": "Book.Quote",
+    }
+    # The bare class name is derived from the qualified one, never stored.
+    assert field.python.class_name == "Quote"
+    assert field.python.import_path == "trading.book.Book.Quote"
+    assert declared.class_name == "Quote"
+    assert declared.is_importable
+
+    # A tuple is the same declaration spelled without the wrapper.
+    other = Field("Quote", "int64", nullable=False)
+    other.python.class_metadata = ("trading.book", "Book.Quote", "dataclass")
+    assert other.python.class_metadata == declared
+
+    # Every part reads on its own; only the whole is a class.
+    del field.python["kind"]
+    assert field.python.kind is None
+    assert field.python.class_metadata is None
+    assert field.python.module == "trading.book"
+
+    field.python.class_metadata = None
+    assert not field.python
+
+
+def test_python_view_refuses_a_name_python_could_not_have_written() -> None:
+    field = Field("Quote", "int64", nullable=False)
+    field.python.class_metadata = PythonMetadata("trading", "Quote", "field")
+
+    for module in ("trading.", "1trading", "trading book", "class", ""):
+        with pytest.raises(ValueError, match="python:module"):
+            field.python.module = module
+    for qualname in ("", "Book..Quote"):
+        with pytest.raises(ValueError, match="python:qualname"):
+            field.python.qualname = qualname
+    with pytest.raises(ValueError, match="python:kind"):
+        field.python.kind = "record"
+    # A refused write leaves the declaration exactly as it stood.
+    assert field.python.class_metadata == PythonMetadata("trading", "Quote", "field")
+
+    # The generic mapping path runs the same validator.
+    with pytest.raises(ValueError, match="python:kind"):
+        Field("quote", "int64", metadata={"python:kind": "record"})
+
+
+def test_python_vocabulary_is_answered_only_by_the_python_view() -> None:
+    field = Field("Quote", "int64", nullable=False)
+
+    for property_name in ("class_metadata", "module", "qualname", "class_name", "kind"):
+        with pytest.raises(TypeError, match="is a python property"):
+            getattr(field.iceberg, property_name)
+
+
+def test_python_metadata_is_an_immutable_value() -> None:
+    declared = PythonMetadata("trading.book", "Quote", "field")
+
+    assert declared == PythonMetadata("trading.book", "Quote", "field")
+    assert declared != PythonMetadata("trading.book", "Quote", "dataclass")
+    assert hash(declared) == hash(PythonMetadata("trading.book", "Quote", "field"))
+    assert hash(declared) != hash(PythonMetadata("trading.book", "Quote", "class"))
+    assert str(declared) == "trading.book.Quote"
+    assert repr(declared) == 'PythonMetadata("trading.book", "Quote", "field")'
+    assert copy.deepcopy(declared) == declared
+    assert pickle.loads(pickle.dumps(declared)) == declared
+    assert declared.stable_hash() == PythonMetadata(
+        "trading.book", "Quote", "field"
+    ).stable_hash()
+    assert declared.is_keyword_constructed
+    assert not PythonMetadata("trading.book", "Quote", "named_tuple").is_keyword_constructed
+    assert "type_alias" in PythonMetadata.KINDS
+
+    # A class declared inside a function keeps the segment Python writes for it.
+    local = PythonMetadata("app", "build.<locals>.Row", "dataclass")
+    assert local.class_name == "Row"
+    assert not local.is_importable
+
+    # The declaration a class states about itself is read, never re-derived.
+    class Quote:
+        pass
+
+    read = PythonMetadata.from_type(Quote, "class")
+    assert read.module == __name__
+    assert read.qualname.endswith("<locals>.Quote")
+    assert read.class_name == "Quote"
+    assert not read.is_importable
 
 
 def _derived_root() -> Field:

@@ -11,6 +11,8 @@ import pyarrow as pa  # type: ignore[import-untyped]
 from yggdryl import (
     DataType,
     Field,
+    ProtocolField,
+    PythonMetadata,
     Scalar,
     field,
     types,
@@ -65,6 +67,15 @@ version: VersionField = types.version("version", nullable=False)
 version_default_scalar: Scalar = version.default_scalar()
 location: UrlField = types.url("url")
 location_dtype: DataType = location.dtype
+python_view: ProtocolField = root.python
+declared: PythonMetadata | None = python_view.class_metadata
+declared_module: str = PythonMetadata(__name__, "TypedOrder", "field").module
+declared_properties: dict[str, str] = PythonMetadata(
+    __name__, "TypedOrder", "field"
+).properties
+declared_kinds: list[str] = PythonMetadata.KINDS
+declared_class_name: str | None = python_view.class_name
+declared_import_path: str | None = python_view.import_path
 
 
 assert payload["order_id"] == 42

@@ -4,7 +4,9 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Date32Array, RecordBatch};
 use criterion::{BatchSize, Criterion};
 use yggdryl::expression::Function;
-use yggdryl::{DataType, Field, MediaType, Metadata, MimeType, Scalar, Scheme, Url};
+use yggdryl::{
+    DataType, Field, MediaType, Metadata, MimeType, PythonKind, PythonMetadata, Scalar, Scheme, Url,
+};
 
 use super::nested_field;
 
@@ -254,6 +256,65 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    // The declaration every Python dataclass schema carries. Reading it is what
+    // the binding pays per class, so the whole-value read is benchmarked beside
+    // the three parts a caller would otherwise assemble it from.
+    let declared = PythonMetadata::new("trading.book", "Book.Quote", PythonKind::Dataclass)
+        .expect("the static declaration is valid");
+    let mut python_field = DataType::Int64.required_field("Quote");
+    python_field
+        .as_python_mut()
+        .set_class(&declared)
+        .expect("the static declaration remains valid");
+    group.bench_function("python_module_exact", |bencher| {
+        bencher.iter(|| black_box(&python_field).as_python().module());
+    });
+    group.bench_function("python_class_name_derived", |bencher| {
+        bencher.iter(|| black_box(&python_field).as_python().class_name());
+    });
+    group.bench_function("python_kind_typed", |bencher| {
+        bencher.iter(|| {
+            black_box(&python_field)
+                .as_python()
+                .kind()
+                .expect("the static kind remains valid")
+        });
+    });
+    group.bench_function("python_class_typed", |bencher| {
+        bencher.iter(|| {
+            black_box(&python_field)
+                .as_python()
+                .class()
+                .expect("the static declaration remains valid")
+        });
+    });
+    group.bench_function("python_import_path", |bencher| {
+        bencher.iter(|| black_box(&python_field).as_python().import_path());
+    });
+    group.bench_function("python_class_set_noop", |bencher| {
+        bencher.iter(|| {
+            python_field
+                .as_python_mut()
+                .set_class(black_box(&declared))
+                .expect("the identical declaration remains valid");
+        });
+    });
+    let moved = PythonMetadata::new("trading.execution", "Book.Fill", PythonKind::Field)
+        .expect("the moved static declaration is valid");
+    group.bench_function("python_class_set_changed", |bencher| {
+        bencher.iter_batched(
+            || python_field.clone(),
+            |mut field| {
+                field
+                    .as_python_mut()
+                    .set_class(black_box(&moved))
+                    .expect("the moved declaration remains valid");
+                black_box(field)
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
     #[cfg(feature = "iceberg")]
     {
         use yggdryl::media::iceberg::Transform;

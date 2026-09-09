@@ -29,7 +29,7 @@ use std::sync::Arc;
 use yggdryl::types::{MsgDirection, MsgType};
 use yggdryl::{
     DataType, Field, FixBranch, FixCode, FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry,
-    MediaType, MimeType, Scalar, Timezone, Version,
+    MediaType, MimeType, PythonKind, PythonMetadata, Scalar, Timezone, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -179,6 +179,24 @@ fn http_field(extra: usize) -> Field {
         ],
     )
     .expect("the static HTTP metadata is valid");
+    field
+        .update_metadata((0..extra).map(|index| (format!("zz-key-{index:04}"), index.to_string())))
+        .expect("the generated metadata keys are valid");
+    field
+}
+
+/// A field carrying a Python class declaration plus `extra` unrelated keys.
+///
+/// The declaration is the one a decorated dataclass writes, so the counts below
+/// are what the Python binding pays on every schema it builds.
+fn python_field(module: &str, extra: usize) -> Field {
+    let declared = PythonMetadata::new(module, "Book.Quote", PythonKind::Dataclass)
+        .expect("the static declaration is valid");
+    let mut field = DataType::Int64.required_field("Quote");
+    field
+        .as_python_mut()
+        .set_class(&declared)
+        .expect("the static declaration remains valid");
     field
         .update_metadata((0..extra).map(|index| (format!("zz-key-{index:04}"), index.to_string())))
         .expect("the generated metadata keys are valid");
@@ -682,6 +700,48 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
         .expect("static identifier columns");
     costs("identifier_field_ids over nine", 5, || {
         let _ = black_box(wider.as_iceberg().identifier_field_ids());
+    });
+}
+
+#[test]
+fn a_python_read_costs_only_the_declaration_it_hands_back() {
+    let field = python_field("trading.book", 256);
+
+    // Every `python:` key is shorter than `SmolStr`'s 23-byte inline buffer -
+    // `python:qualname` is the longest at 15 - so no assembled lookup key ever
+    // reaches the heap, whatever the declaration says.
+    free("module", || {
+        black_box(field.as_python().module());
+    });
+    free("qualname", || {
+        black_box(field.as_python().qualname());
+    });
+    free("class_name", || {
+        black_box(field.as_python().class_name());
+    });
+    free("kind", || {
+        let _ = black_box(field.as_python().kind());
+    });
+
+    // The whole declaration is two `SmolStr` and a form. A module and a
+    // qualified name that fit inline make reading it free, which is what the
+    // common case - one class, one module path - actually is.
+    free("class", || {
+        let _ = black_box(field.as_python().class());
+    });
+
+    // This is the boundary, pinned: a module path past the inline buffer puts
+    // that half on the heap. It is a property of how long the name is, not of
+    // the read.
+    let deep = python_field("trading.book.execution.reporting.venue", 256);
+    costs("class with a module past the inline buffer", 1, || {
+        let _ = black_box(deep.as_python().class());
+    });
+
+    // The import path is the one read that assembles a value rather than
+    // borrowing one, so it costs the `String` it hands back.
+    costs("import_path", 1, || {
+        black_box(field.as_python().import_path());
     });
 }
 

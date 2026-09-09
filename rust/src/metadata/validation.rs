@@ -7,6 +7,10 @@ use crate::expression::Function;
 use crate::txhash::{
     DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, validate_digest_time,
 };
+use crate::types::protocol::{
+    PYTHON_KIND_KEY, PYTHON_MODULE_KEY, PYTHON_QUALNAME_KEY, canonicalize_python_kind,
+    validate_python_module, validate_python_qualname,
+};
 use crate::xxhash::{
     DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
     canonicalize_digest_algorithm,
@@ -269,6 +273,15 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
                     ),
                 });
             }
+            value
+        }
+        PYTHON_KIND_KEY => canonicalize_python_kind(&value)?,
+        PYTHON_MODULE_KEY => {
+            validate_python_module(&value)?;
+            value
+        }
+        PYTHON_QUALNAME_KEY => {
+            validate_python_qualname(&value)?;
             value
         }
         FIELD_ENUM_KEY => parse_ascii_enum(&value)?.into_json(),

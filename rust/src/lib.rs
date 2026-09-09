@@ -121,7 +121,8 @@ pub use types::protocol::{
     IcebergFieldMut, IdentityField, IdentityFieldMut, MysqlField, MysqlFieldMut, PandasField,
     PandasFieldMut, PartitionField, PartitionFieldMut, PolarsField, PolarsFieldMut, PostgresField,
     PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField, ProtocolFieldMut,
-    S3Field, S3FieldMut, SparkField, SparkFieldMut, SqlField, SqlFieldMut, UrnField, UrnFieldMut,
+    PythonField, PythonFieldMut, PythonKind, PythonMetadata, S3Field, S3FieldMut, SparkField,
+    SparkFieldMut, SqlField, SqlFieldMut, UrnField, UrnFieldMut,
 };
 pub use types::{
     AnyType, AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRef,

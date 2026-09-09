@@ -26,7 +26,7 @@ import typing
 import uuid
 from typing import Any
 
-from .._native import DataType, Field, Uri, Url, Urn
+from .._native import DataType, Field, PythonMetadata, Uri, Url, Urn
 from ..enums.ascii import AsciiCode
 
 try:  # Python 3.10 gets newer annotation wrappers from typing_extensions.
@@ -1394,12 +1394,15 @@ def _class_identity_metadata(hint: object) -> dict[str, str]:
     qualname = getattr(target, "__qualname__", name)
     if not isinstance(module, str) or not isinstance(name, str):
         return {}
-    return {
-        "python.module": module,
-        "python.class": name,
-        "python.qualname": qualname if isinstance(qualname, str) else name,
-        "python.kind": kind,
-    }
+    try:
+        declared = PythonMetadata(
+            module, qualname if isinstance(qualname, str) else name, kind
+        )
+    except ValueError:
+        # A target whose module or qualified name Python could not have
+        # written names no class, exactly as one carrying neither does.
+        return {}
+    return dict(declared.properties)
 
 
 def _resolved_annotations(

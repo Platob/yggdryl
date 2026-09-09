@@ -15,6 +15,8 @@ Field metadata the library reads: reserved keys, `scheme:name` properties behind
 | `iceberg:table_name` | catalog coordinates are protocol properties, never straight keys |
 | `digest:role` | `holder`; anything else refused |
 | `digest:time`, `digest:unit` | a holder's coupled instant: one field path, and `s` / `ms` / `us` / `ns` canonicalized; the storage must be a coupled `fixed_size_binary` ([TxHash](../txhash/arrow.md#coupled-holders)) |
+| `python:module`, `python:qualname` | the declaring Python class, as dotted names Python itself could have written; `<locals>` is the one non-identifier segment a qualified name may carry |
+| `python:kind` | `field`, `dataclass`, `typed_dict`, `named_tuple`, `enum`, `newtype`, `type_alias`, or `class`; anything else refused |
 | view | borrow of the one metadata map, cache-aware writes |
 | Rust `set` | replaces only this protocol's keys; bindings expose `update`, not `set` |
 
@@ -102,11 +104,12 @@ The view remembers the scheme; the caller writes the bare name.
 
     !!! note "Rust-only"
         The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, `DigestField`,
-        `IdentityField`, and sixteen others) are Rust-only. Python reads the generic property
+        `IdentityField`, and seventeen others) are Rust-only. Python reads the generic property
         mapping through `field.iceberg`, and the validated HTTP values stay attributes on the
-        field. `field.partition` is the exception: `sources`, `transform`, and
-        [`apply_arrow_batch`](../holder/iobase/partitions.md#derived-partition-columns) are bound,
-        and answered only by that view.
+        field. `field.partition` and [`field.python`](../extensions/python.md#the-declaring-class)
+        are the exceptions: `sources`, `transform` and
+        [`apply_arrow_batch`](../holder/iobase/partitions.md#derived-partition-columns) on one,
+        `class_metadata` and its three parts on the other, each answered only by its own view.
 
 === "JavaScript"
 
@@ -144,9 +147,10 @@ The view remembers the scheme; the caller writes the bare name.
 
     !!! note "Rust-only"
         The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, `DigestField`,
-        `IdentityField`, `PartitionField`, and fifteen others) are Rust-only, and so is the
-        partition vocabulary Python binds. JavaScript reads the generic property `Map` through
-        `field.iceberg`, and the validated HTTP values stay accessors on the field.
+        `IdentityField`, `PartitionField`, `PythonField`, and fifteen others) are Rust-only, and
+        so are the partition and Python-class vocabularies Python binds. JavaScript reads the
+        generic property `Map` through `field.iceberg` and `field.python`, and the validated HTTP
+        values stay accessors on the field.
 
 ## Reserved keys
 
@@ -155,7 +159,7 @@ Typed accessors parse and canonicalize both ways.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, MimeType, Scheme};
+    use yggdryl::{DataType, Field, MimeType, PythonKind, PythonMetadata, Scheme};
 
     let mut field = Field::new("payload", DataType::Binary, false);
 
@@ -164,6 +168,9 @@ Typed accessors parse and canonicalize both ways.
     field.set_display("Raw payload")?;
     field.as_http_mut().set_content_type("application/json; charset=utf-8")?;
     field.set_property(&Scheme::POSTGRES, "type", "jsonb")?;
+    field
+        .as_python_mut()
+        .set_class(&PythonMetadata::new("app.wire", "Payload", PythonKind::Dataclass)?)?;
 
     assert_eq!(field.parquet_field_id()?, Some(17));
     assert_eq!(field.get_metadata("PARQUET:field_id"), Some("17"));
@@ -189,12 +196,18 @@ Typed accessors parse and canonicalize both ways.
         field.property_iter(&Scheme::POSTGRES).collect::<Vec<_>>(),
         [("type", "jsonb")]
     );
+
+    // The declaring class is one value, and the bare name is derived from the
+    // qualified one rather than stored beside it.
+    assert_eq!(field.as_python().class_name(), Some("Payload"));
+    assert_eq!(field.get_metadata("python:kind"), Some("dataclass"));
+    assert_eq!(field.as_python().import_path().as_deref(), Some("app.wire.Payload"));
     ```
 
 === "Python"
 
     ```python
-    from yggdryl import Field, MimeType
+    from yggdryl import Field, MimeType, PythonMetadata
 
     field = Field("payload", "binary", nullable=False)
 
@@ -203,6 +216,7 @@ Typed accessors parse and canonicalize both ways.
     field.set_display("Raw payload")
     field.set_content_type("application/json; charset=utf-8")
     field.set_property("postgres", "type", "jsonb")
+    field.python.class_metadata = PythonMetadata("app.wire", "Payload", "dataclass")
 
     assert field.parquet_field_id == 17
     assert field.metadata["PARQUET:field_id"] == "17"
@@ -216,6 +230,12 @@ Typed accessors parse and canonicalize both ways.
     assert field.get_property("https", "Content-Type") == field.content_type
     assert field.metadata["http:content-type"] == field.content_type
     assert list(field.property_iter("postgres")) == [("type", "jsonb")]
+
+    # The declaring class is one value, and the bare name is derived from the
+    # qualified one rather than stored beside it.
+    assert field.python.class_name == "Payload"
+    assert field.metadata["python:kind"] == "dataclass"
+    assert field.python.import_path == "app.wire.Payload"
     ```
 
 === "JavaScript"
@@ -231,6 +251,7 @@ Typed accessors parse and canonicalize both ways.
     field.setDisplay('Raw payload')
     field.setContentType('application/json; charset=utf-8')
     field.setProperty('postgres', 'type', 'jsonb')
+    field.python.update({ kind: 'dataclass', module: 'app.wire', qualname: 'Payload' })
 
     assert.equal(field.parquetFieldId, 17)
     assert.equal(field.get('PARQUET:field_id'), '17')
@@ -244,6 +265,11 @@ Typed accessors parse and canonicalize both ways.
     assert.equal(field.getProperty('https', 'Content-Type'), field.contentType)
     assert.equal(field.get('http:content-type'), field.contentType)
     assert.deepEqual(field.propertyIter('postgres'), [{ key: 'type', value: 'jsonb' }])
+
+    // The declaring class a Python schema carries reads back by name here; the
+    // typed vocabulary over it is Rust and Python only.
+    assert.equal(field.python.get('qualname'), 'Payload')
+    assert.equal(field.get('python:kind'), 'dataclass')
     ```
 
 ## Views
@@ -261,6 +287,7 @@ depend on.
 | [`DigestField`, `DigestFieldMut`](../xxhash/values.md#filling-digest-holders) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters; [`time`, `unit`, `is_coupled`](../txhash/arrow.md#coupled-holders) and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `identity:` |
 | [`PartitionField`, `PartitionFieldMut`](../holder/iobase/partitions.md#derived-partition-columns) | `sources`, `transform`, `expression`, `apply_arrow_batch`, and the two setters |
+| [`PythonField`, `PythonFieldMut`](../extensions/python.md#the-declaring-class) | `class`, `module`, `qualname`, `class_name`, `kind`, `import_path`, and their setters |
 
 ## Digest holders and their sources
 

@@ -419,6 +419,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyFieldPropertyIterator>()?;
     module.add_class::<PyFieldMetadata>()?;
     module.add_class::<PyProtocolField>()?;
+    module.add_class::<types::python::PyPythonMetadata>()?;
     module.add_class::<types::cast::PyArrowCastPlan>()?;
     module.add_class::<fix::PyFixBranch>()?;
     module.add_class::<fix::PyFixRegistry>()?;
