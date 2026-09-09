@@ -17,6 +17,7 @@ criterion_group!(
     fix_benches::codes::benchmarks,
     fix_benches::mutate::benchmarks,
     fix_benches::pipeline::benchmarks,
+    fix_benches::pipeline::stages,
     fix_benches::read::benchmarks,
     fix_benches::store::benchmarks,
     fix_benches::ulconfig::benchmarks,

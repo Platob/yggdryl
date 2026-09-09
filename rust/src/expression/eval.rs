@@ -953,7 +953,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         }
         DataType::Ascii | DataType::FixedAscii(_) => canonical(value.clone()),
         // A code takes the same tier at the width its own type fixes.
-        DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi => {
+        DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi | DataType::Isin => {
             canonical(value.clone())
         }
         DataType::Version => match value {

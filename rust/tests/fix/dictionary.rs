@@ -116,10 +116,24 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     assert_eq!(side.dtype(), &DataType::Side);
     assert_eq!(side.as_fix().code_name("1"), Some("Buy"));
     assert_eq!(side.as_fix().code_value("buy"), Some("1"));
-    // An enum preserves the field's declared base type.
-    let ord_status = registry.field_by_tag(39).expect("tag 39");
-    assert_eq!(ord_status.dtype(), &DataType::Utf8);
-    assert!(ord_status.as_fix().codes().count() > 5);
+    // The order's state is declared twice, as `OrdStatus` and as `ExecType`,
+    // and both take the crate's `state`: their code sets agree on every value
+    // they share, and the type reads either. The code set stays on the field
+    // that declares it.
+    for tag in [39, 150] {
+        let state = registry.field_by_tag(tag).expect("a state tag");
+        assert_eq!(state.dtype(), &DataType::State, "tag {tag}");
+        assert!(state.as_fix().codes().count() > 5, "tag {tag}");
+    }
+    assert_eq!(
+        registry.field_by_tag(39).unwrap().as_fix().code_name("1"),
+        Some("PartiallyFilled")
+    );
+    // Every other code set keeps its base type, and one code set declared by
+    // two fields is stored whole on each.
+    let ord_type = registry.field_by_tag(40).expect("tag 40");
+    assert_eq!(ord_type.dtype(), &DataType::Utf8);
+    assert!(ord_type.as_fix().codes().count() > 5);
     let source = registry.field_by_tag(22).expect("SecurityIDSource");
     let alternative = registry.field_by_tag(456).expect("SecurityAltIDSource");
     assert_eq!(
@@ -339,7 +353,8 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 56, "zone-less times of day");
     assert_eq!(naive, 368, "local values, stating no zone");
-    assert_eq!(utc, 66, "instants stated in UTC");
+    // Sixty-six of the seed's, and the crate's own `timestamp`.
+    assert_eq!(utc, 67, "instants stated in UTC");
 }
 
 #[test]
@@ -397,7 +412,7 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
         }
     }
     let total: usize = census.values().sum();
-    assert_eq!(total, 64, "surviving retypes: {census:?}");
+    assert_eq!(total, 66, "surviving retypes: {census:?}");
     assert_eq!(
         census
             .iter()
@@ -418,6 +433,8 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
             ("utf8", "mic", 3),
             ("utf8", "msgdirection", 1),
             ("utf8", "side", 1),
+            // `OrdStatus` and `ExecType`: the order's state, read as one type.
+            ("utf8", "state", 2),
         ]
     );
 }

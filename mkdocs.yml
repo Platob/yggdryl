@@ -221,6 +221,7 @@ nav:
     - Message: fix/message.md
     - Arrow: fix/arrow.md
     - Capture: fix/capture.md
+    - Lifecycle: fix/lifecycle.md
     - CLI: fix/cli.md
   - Extensions:
     - extensions/index.md

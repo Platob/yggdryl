@@ -152,6 +152,7 @@ mod entry;
 mod field;
 mod global;
 mod group_plan;
+mod lifecycle;
 mod lift;
 mod lineage;
 mod messages;
@@ -179,14 +180,18 @@ pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
-    CRATE_BRANCH, DEFAULT_PARTITION_SECONDS, MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG,
-    PARENTCLORDID_TAG, PARENTORDERID_TAG, SYMBOLTICKER_TAG, TIMESTAMP_TAG, UNIXPARTITION_TAG,
-    VERSION_TAG, fix_crate_fields,
+    CRATE_TAG_MAX, CRATE_TAG_MIN, DEFAULT_PARTITION_SECONDS, ID_TAG, INSTID_TAG, ISINCODE_TAG,
+    MICCODE_TAG, MSGCTXID_TAG, MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG, PARENTCLORDID_TAG,
+    PARENTORDERID_TAG, PERSISTENTID_TAG, SENDERPLUGINID_TAG, SENDERSESSIONID_TAG,
+    SENDERSESSIONNAME_TAG, STATE_TAG, SYMBOLTICKER_TAG, TARGETPLUGINID_TAG, TARGETSESSIONID_TAG,
+    TARGETSESSIONNAME_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG, UNIXPARTITION_TAG, VERSION_TAG,
+    fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use document::Words;
 pub use entry::FixEntry;
 pub use field::FixSpellings;
+pub use lifecycle::FixLifecycle;
 pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use messages::FixMessages;
@@ -194,13 +199,13 @@ pub use msg::FixMsg;
 pub use msgtype::MsgType;
 pub use registry::{FixFieldIter, FixRegistry};
 pub use ulbridge::{
-    ERROR_TAG, MBEAN_TAG, OPERATION_TAG, STATUS_TAG, ULBRIDGE_BRANCH, ULBRIDGE_TAG_MIN, Ulconfig,
-    Ulconfigs, fix_ulbridge_fields,
+    ERROR_TAG, MBEAN_TAG, OPERATION_TAG, STATUS_TAG, ULBRIDGE_BRANCH, ULBRIDGE_ROWHEADER,
+    ULBRIDGE_TAG_MIN, UlPlugin, UlPlugins, fix_ulbridge_fields,
 };
 
 pub use schema::{
-    BODY_TAGS, ENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, UNMAPPED_COLUMN, fix_schema,
-    fix_schema_carrying, fix_schema_tags,
+    BODY_TAGS, ENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, UNMAPPED_COLUMN,
+    fix_column_of, fix_column_tags, fix_schema, fix_schema_carrying, fix_schema_tags,
 };
 
 /// The absent branch occupies four zero bytes in every standard identifier.
@@ -512,6 +517,24 @@ impl FixId {
     /// The exclusive upper bound of FIX's user-defined tag range.
     pub const USER_TAG_MAX: i32 = 40_000;
 
+    /// The first tag a derived definition identity takes.
+    ///
+    /// Components, groups and messages are named rather than tagged on the
+    /// wire, so nothing publishes a tag for them. This block is where the one
+    /// they are given is derived, clear of every published tag: above the
+    /// user-defined range a dialect may take and above
+    /// [`crate::CRATE_TAG_MAX`], which is the last block anything else claims.
+    pub const DEFINITION_TAG_MIN: i32 = 100_000;
+
+    /// One past the last tag a derived definition identity takes.
+    pub const DEFINITION_TAG_MAX: i32 = 1_100_000;
+
+    /// Whether a tag is a derived definition identity.
+    #[must_use]
+    pub const fn is_definition_tag(tag: i32) -> bool {
+        tag >= Self::DEFINITION_TAG_MIN && tag < Self::DEFINITION_TAG_MAX
+    }
+
     /// The identifier of `tag` in the standard branch.
     pub const fn standard(tag: i32) -> Self {
         Self::new(tag, entry::signed(STANDARD_BRANCH_DIGEST))
@@ -607,8 +630,15 @@ impl FixId {
     }
 
     /// The branch/tag admissibility rule without constructing its refusal.
+    ///
+    /// A derived definition tag is admissible on any branch: it names a
+    /// definition this crate derived rather than a tag anyone published, and
+    /// the branch digest already keeps a venue's derivation distinct from the
+    /// standard one at the same number.
     pub(super) fn is_admissible(branch: &FixBranch, tag: i32) -> bool {
-        branch.is_standard() || (Self::USER_TAG_MIN..Self::USER_TAG_MAX).contains(&tag)
+        branch.is_standard()
+            || Self::is_definition_tag(tag)
+            || (Self::USER_TAG_MIN..Self::USER_TAG_MAX).contains(&tag)
     }
 
     /// The identifier one tag and one stored branch digest name.

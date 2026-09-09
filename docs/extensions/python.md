@@ -54,8 +54,11 @@ reaches the core's named-capture inference.
 
 `Version(major, minor=0, patch=0)` holds the native four-byte value: unsigned
 8-bit major and minor, unsigned 16-bit patch. Its parts are read-only. Numeric
-comparison, hashing, copying and pickling preserve the same value; `from_str`
-accepts up to three decimal components with no qualifier or tag.
+comparison, hashing, copying and pickling preserve the same value. `from_str`
+reads up to three decimal components, and a compact FIX service pack - `5.0SP2`
+is `5.0.2` - case-insensitively. The major and minor are strict; a patch tail
+stating no number folds into the patch rather than raising, so only empty text
+and a bad major or minor raise `ValueError`.
 
 ```python
 import copy
@@ -1222,11 +1225,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` exposes the native registry, message definitions, codec, messages
-and lazy iterators. `STANDARD_BRANCH` is `""`; `USER_TAG_MIN` (`5000`) and
-`USER_TAG_MAX` (`40000`) bound the half-open range a non-standard branch may
-claim. The `field.fix` view owns typed protocol metadata, including `tag`,
-`branch`, `codes`, `counter`, `component` and `msgtype`.
+`yggdryl.fix` carries `FixRegistry`, `FixBranch`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `parse_arrow_reader()`, `classify_arrow_array()`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), `ULBRIDGE_BRANCH` (`"ulbridge"`, the branch a bridge's own fields declare), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim. The `fix:` vocabulary is typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`, and the definition metadata `codes`, `counter`, `component` and `msgtype`.
 
 | Crossing | Rule |
 | --- | --- |
@@ -1243,8 +1242,9 @@ claim. The `field.fix` view owns typed protocol metadata, including `tag`,
 | `FixMsg` | immutable: equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; its wire code remains complete UTF-8 text |
 | `FixCodec` | `transform_line`, `transform_record`, `transform_ulconfig_line` return lazy `FixMessages`; specialized FIX, Ullink and FIXML transforms return one `FixMsg` |
+| `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a `list` out for the reader, one at a time for the lifecycle; `FixLifecycle.alive()` counts the chains no terminal state has closed, and the lifecycle is mutable, so unhashable |
 | output | `FixMsg.into_row(field)` projects a table row; `into_bytes(separator=1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
-| ULconfig | `Ulconfig.from_json_bytes` / `from_json_scalar` return lazy `Ulconfigs`; each selection converts to one flat message with `into_fixmsg` |
+| UlPlugin | `UlPlugin.from_json_bytes` / `from_json_scalar` return lazy `UlPlugins`; each selection converts to one flat message with `into_fixmsg` |
 
 [FIX](../fix/index.md) owns resolution, folding, merging, sharding and validation.
 
@@ -1343,7 +1343,7 @@ addressable on the message.
 ```python
 import json
 
-from yggdryl.fix import FixCodec, FixMessages, FixRegistry, Ulconfig
+from yggdryl.fix import FixCodec, FixMessages, FixRegistry, UlPlugin
 
 registry = FixRegistry()
 registry.with_ulbridge_fields()
@@ -1358,7 +1358,7 @@ messages = codec.transform_ulconfig_line(json.dumps(document).encode())
 assert isinstance(messages, FixMessages)
 assert [message.by_name("Name").as_py() for message in messages] == ["Orders", "Prices"]
 assert next(messages, None) is None
-selected = next(Ulconfig.from_json_scalar(document))
+selected = next(UlPlugin.from_json_scalar(document))
 assert selected.into_fixmsg(codec).by_name("Name").as_py() == "Orders"
 ```
 

@@ -95,7 +95,7 @@ The canonical [`Scalar`](../types/scalar.md) byte feed, the single `stable_hash`
 
 The tag byte is a wire contract: inserting a `DataTypeId` variant anywhere but the end changes stored digests. A digest identifies the value, not its storage width.
 
-The tag is the value's own [`DataTypeId`](../types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, the six ASCII datatypes - `ascii`, `ascii(n)`, `country`, `currency`, `mic`, `cfi` - all feed `ascii`, and a geography feeds `geometry`.
+The tag is the value's own [`DataTypeId`](../types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every ASCII datatype - `ascii`, `ascii(n)` and the registered codes `country`, `currency`, `mic`, `cfi`, `isin`, `side`, `msgtype`, `msgdirection`, `state`, `timeinforce` - feeds `ascii`, and a geography feeds `geometry`.
 
 | Variant | Tag | Feed after the tag |
 | --- | --- | --- |
@@ -271,7 +271,7 @@ assert_ne!(digests.value(0), digests.value(1));
 - A `variant` column -> refused by name; its binary encoding lands with the Iceberg v3 layer, so there is no value to feed.
 - A `field` whose storage does not match the array given to `column_digests` -> reconciled to the field first, strictly, so a layout difference answers the same digest and a value the declaration cannot hold is named.
 - The same value on a big-endian machine -> the same digest; every integer in the feed is little-endian.
-- A `country`, `currency`, `mic`, `cfi`, `ascii(n)`, or `ascii` cell holding the same text -> one digest; the six compare equal and all feed the `ascii` tag.
+- A `country`, `currency`, `mic`, `cfi`, `isin`, `ascii(n)`, or `ascii` cell holding the same text -> one digest; every ASCII datatype compares equal and feeds the `ascii` tag.
 - A `geometry` and a `geography` cell over the same WKB -> one digest; both feed the `geometry` tag.
 - Holder-local `digest:sources` or `digest:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#filling-digest-holders) only.
 - A path through a list, map, or union -> that value is selected whole, never traversed.

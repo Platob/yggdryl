@@ -40,6 +40,33 @@ where
     R: TryInto<Scalar>,
     R::Error: Into<crate::Error>,
 {
+    build(
+        field,
+        rows,
+        batch_row_size,
+        batch_byte_size,
+        commit_row_size,
+        max_row_size,
+        false,
+    )
+}
+
+/// The one constructor both readers share.
+fn build<I, R>(
+    field: &Field,
+    rows: I,
+    batch_row_size: Option<usize>,
+    batch_byte_size: Option<u64>,
+    commit_row_size: Option<usize>,
+    max_row_size: Option<u64>,
+    canonical: bool,
+) -> Result<BatchReader>
+where
+    I: IntoIterator<Item = R>,
+    I::IntoIter: Send + 'static,
+    R: TryInto<Scalar>,
+    R::Error: Into<crate::Error>,
+{
     let schema = arrow_schema_from_field(field)?;
     Ok(Box::new(Rows {
         rows: rows.into_iter(),
@@ -52,6 +79,7 @@ where
         remaining_rows: max_row_size,
         pending_error: None,
         done: false,
+        canonical,
     }))
 }
 
@@ -78,6 +106,36 @@ where
     )
 }
 
+/// Widen a stream of rows the producer already proved canonical.
+///
+/// The same reader, trusting its source: a producer whose every value went
+/// through the contract of the field it lands under has nothing left for
+/// the per-row canonicalization to find, and a walk that finds nothing is
+/// still a walk over every leaf of every row. The producer states the
+/// proof, and a debug build checks it on every row.
+pub(crate) fn canonical_result_reader<I>(
+    field: &Field,
+    rows: I,
+    batch_row_size: Option<usize>,
+    batch_byte_size: Option<u64>,
+    commit_row_size: Option<usize>,
+    max_row_size: Option<u64>,
+) -> Result<BatchReader>
+where
+    I: IntoIterator<Item = crate::Result<Scalar>>,
+    I::IntoIter: Send + 'static,
+{
+    build(
+        field,
+        rows.into_iter().map(FallibleScalar),
+        batch_row_size,
+        batch_byte_size,
+        commit_row_size,
+        max_row_size,
+        true,
+    )
+}
+
 struct FallibleScalar(crate::Result<Scalar>);
 
 impl TryFrom<FallibleScalar> for Scalar {
@@ -100,6 +158,8 @@ struct Rows<I> {
     remaining_rows: Option<u64>,
     pending_error: Option<ArrowError>,
     done: bool,
+    /// Whether the producer proved every row canonical under `field`.
+    canonical: bool,
 }
 
 impl<I> Iterator for Rows<I>
@@ -173,17 +233,22 @@ where
             };
             // Validation owns shape, arity, nullability, and the error path.
             // Canonicalization then narrows values into their declared native
-            // representation without repeating that validation walk.
-            if let Err(error) = self.field.validate_value(&value) {
-                let error = external(error);
-                if values.is_empty() {
-                    self.done = true;
-                    return Some(Err(error));
-                }
-                self.pending_error = Some(error);
-                break;
-            }
-            match self.field.canonicalize_value(value) {
+            // representation, and runs that validation walk once on the way:
+            // the root itself was proven a Struct when the schema was built.
+            // A producer that proved its rows is taken at its word, and held
+            // to it where a debug build can afford to.
+            let canonical = if self.canonical {
+                debug_assert!(
+                    self.field
+                        .canonicalize_row_value(value.clone())
+                        .is_ok_and(|held| held == value),
+                    "a row declared canonical was not"
+                );
+                Ok(value)
+            } else {
+                self.field.canonicalize_row_value(value)
+            };
+            match canonical {
                 Ok(value) => {
                     if self.batch_byte_size.is_some() {
                         appended += appended_bytes(&value);

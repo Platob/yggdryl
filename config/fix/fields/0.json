@@ -486,14 +486,14 @@
   {
     "name": "ordstatus",
     "dtype": {
-      "type": "utf8"
+      "type": "state"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies current status of order. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
       "display": "OrdStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"PartiallyFilled\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Partially filled\"},{\"value\":\"2\",\"name\":\"Filled\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Filled\"},{\"value\":\"3\",\"name\":\"DoneForDay\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Done for day\"},{\"value\":\"4\",\"name\":\"Canceled\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Canceled\"},{\"value\":\"5\",\"name\":\"Replaced\",\"since\":\"4.4\",\"ep\":35,\"deprecated\":\"4.3\",\"sort\":6,\"doc\":\"Replaced (No longer used)\"},{\"value\":\"6\",\"name\":\"PendingCancel\",\"since\":\"2.7\",\"sort\":7,\"doc\":\"Pending Cancel (i.e. result of Order Cancel Request)\"},{\"value\":\"7\",\"name\":\"Stopped\",\"since\":\"2.7\",\"sort\":8,\"doc\":\"Stopped\"},{\"value\":\"8\",\"name\":\"Rejected\",\"since\":\"2.7\",\"sort\":9,\"doc\":\"Rejected\"},{\"value\":\"9\",\"name\":\"Suspended\",\"since\":\"3.0\",\"sort\":10,\"doc\":\"Suspended\"},{\"value\":\"A\",\"name\":\"PendingNew\",\"since\":\"3.0\",\"sort\":11,\"doc\":\"Pending New\"},{\"value\":\"B\",\"name\":\"Calculated\",\"since\":\"4.0\",\"sort\":12,\"doc\":\"Calculated\"},{\"value\":\"C\",\"name\":\"Expired\",\"since\":\"4.0\",\"sort\":13,\"doc\":\"Expired\"},{\"value\":\"D\",\"name\":\"AcceptedForBidding\",\"since\":\"4.2\",\"sort\":14,\"doc\":\"Accepted for Bidding\"},{\"value\":\"E\",\"name\":\"PendingReplace\",\"since\":\"4.2\",\"sort\":15,\"doc\":\"Pending Replace (i.e. result of Order Cancel/Replace Request)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ordstatus\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ordstatus\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0.2\",\"name\":\"ordstatus\",\"type\":{\"type\":\"state\"}}]}",
       "fix:tag": "39"
     }
   },

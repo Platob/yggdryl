@@ -76,6 +76,15 @@ and `patch: u16`. Parsing accepts one to three decimal components and rendering
 omits trailing zero components. Equality, hashing and ordering use the numeric
 tuple. Python and JavaScript expose the same immutable native value.
 
+The major and minor are strict; the patch is best effort. A tail stating a
+number is that number, whether it states it as `.250` or as a case-insensitive
+FIX service pack `sp250`. A tail stating no number - a qualifier, a fourth
+component, an extension pack - folds into the patch's sixteen bits through the
+crate's stable XXH3 rather than refusing the version. A folded patch is an
+identity rather than a quantity: the same tail always reads as the same
+version, but it orders arbitrarily against a stated patch, two unlike tails can
+fold together, and the canonical text states the fold rather than the tail.
+
 === "Rust"
 
     ```rust
@@ -136,13 +145,14 @@ tuple. Python and JavaScript expose the same immutable native value.
 | Kind | `text`; `VersionField`, `types.version`, and `fields.version` declare this datatype |
 | Bounds | major and minor `0..=255`; patch `0..=65535` |
 | Ordering | numeric tuple: `5 < 5.0.2 < 5.0.10 < 5.1` |
-| Text | one to three decimal components; no tag or qualifier; `5.0.0` renders as `5` |
+| Text | one to three decimal components; `5.0.0` renders as `5` |
+| Patch tail | `.250` and `sp250` state 250; any other tail folds to `1..=65535` via XXH3 |
 | Storage | `Utf8` holding the canonical spelling, extension name `yggdryl.version` |
 | Sorting | Arrow string order stays lexicographic; Rust `Ord`, Python comparisons, and JavaScript `compare` use numeric order |
 
-FIX dictionary intake translates protocol service-pack spellings such as
-`5.0SP2` to `5.0.2` before constructing a `Version`. The generic parser accepts
-numeric components only.
+The parser reads a compact FIX service pack itself, so `5.0SP2` is `5.0.2` and
+`5.0sp250` is `5.0.250`, case-insensitively and with no separately stored
+qualifier.
 
 <div class="ygg-pg" data-playground="versions" markdown="1">
 Explore numeric parts, canonical text, hashes and rejected inputs from the
@@ -216,8 +226,9 @@ native Version example corpus.
 - Case, `_`, `-` and spaces are ignored in a spelling, so `LargeUtf8` and `large_utf8` are one [datatype](datatype.md).
 - Bytes merged with text -> bytes win, text wins next, per the merge order in [Field](field.md).
 - `005.0.000` -> the canonical `5`; trailing zero components are omitted.
-- A version whose major or minor exceeds `255`, or patch exceeds `65535` -> refused at the first bad byte.
-- A fourth component, empty component, sign, whitespace, or qualifier -> refused.
+- A version whose major or minor exceeds `255`, or whose major is not a decimal number -> refused at the first bad byte.
+- Empty text, a leading sign, leading whitespace, or a letter where the major belongs -> refused.
+- A fourth component, an empty component, a qualifier, or a patch above `65535` -> folded into the patch, not refused.
 - Fractional or out-of-range constructor arguments in Python or JavaScript -> refused without narrowing.
 
 ## Commands

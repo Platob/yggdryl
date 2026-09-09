@@ -407,7 +407,7 @@ fn parsed_ulconfig_wildcards_iterate_without_allocating_results() {
         let document = Scalar::from_record([("value", values)]).unwrap();
 
         let (first_allocations, first) = counted(|| {
-            yggdryl::Ulconfig::from_json_scalar(black_box(&document))
+            yggdryl::UlPlugin::from_json_scalar(black_box(&document))
                 .expect("validated wildcard response")
                 .next()
                 .expect("the wildcard has configurations")
@@ -424,7 +424,7 @@ fn parsed_ulconfig_wildcards_iterate_without_allocating_results() {
         );
 
         let (drain_allocations, read) = counted(|| {
-            yggdryl::Ulconfig::from_json_scalar(black_box(&document))
+            yggdryl::UlPlugin::from_json_scalar(black_box(&document))
                 .expect("validated wildcard response")
                 .inspect(|configuration| {
                     black_box(configuration.name());

@@ -48,15 +48,46 @@ test('Version rejects numeric coercion and width overflow at the native boundary
   }
 })
 
-test('Version native parser rejects qualifiers, fourth parts, and malformed components', () => {
+test('Version native parser rejects only the numeric components', () => {
   const field = fields.version('release', { nullable: false })
   for (const text of [
-    '', '1.', '.1', '1..2', '1.2.3.4', '256', '1.256', '1.2.65536',
-    '5.0SP2', '5.0.SP2', '1.2-rc1', '1.2+meta', 'FIX.5.0', '-1', ' 1',
+    '', '.1', ' 1', '-1', '+1', 'v1', '256', '999', '1.256', '1.999', 'FIX.5.0',
   ]) {
     assert.throws(() => Version.fromStr(text), /version/i)
     assert.throws(() => Scalar.fromJs(text, { field }), /version/i)
   }
+})
+
+test('Version reads a compact FIX service pack as its numeric patch', () => {
+  for (const [text, major, minor, patch] of [
+    ['5.0sp250', 5, 0, 250],
+    ['5.0SP250', 5, 0, 250],
+    ['5.0Sp250', 5, 0, 250],
+    ['5.0sP250', 5, 0, 250],
+    ['005.000sp00250', 5, 0, 250],
+    ['5.0SP0', 5, 0, 0],
+    ['5.0sp65535', 5, 0, 65535],
+    ['255.255sp65535', 255, 255, 65535],
+  ]) {
+    const parsed = Version.fromStr(text)
+    assert.ok(parsed.equals(new Version(major, minor, patch)), text)
+  }
+})
+
+test('Version folds a patch tail that states no number instead of failing', () => {
+  const field = fields.version('release', { nullable: false })
+  for (const text of [
+    '1.', '1..2', '1.2.3.4', '1.2.65536', '5.0.SP2', '1.2-rc1', '1.2+meta',
+    '1.2.-1', '1.0SP2_EP250', '1.0sp250 ',
+  ]) {
+    const parsed = Version.fromStr(text)
+    // The same tail always reads as the same version.
+    assert.ok(parsed.equals(Version.fromStr(text)), text)
+    assert.doesNotThrow(() => Scalar.fromJs(text, { field }), text)
+  }
+  assert.ok(!Version.fromStr('1.0-rc1').equals(Version.fromStr('1.0-rc2')))
+  assert.ok(!Version.fromStr('1.0-rc1').equals(Version.fromStr('1.0')))
+  assert.notEqual(Version.fromStr('1.0-rc1').patch, 0)
 })
 
 test('Version order, native hash, clone, and read-only parts share numeric identity', () => {

@@ -7,7 +7,7 @@
 | Aspect | Rule |
 | --- | --- |
 | Owner | `yggdryl-cli` parses arguments and renders results; the Rust registry owns schema validation, references, mutations, and persistence |
-| Root | `--root`, default `config/fix`; relative locations resolve against the working directory |
+| Root | `--root`, default `config/fix`; relative locations resolve against the working directory; a folder holding no catalog opens with only the crate's own fields rather than failing |
 | Categories | `fields`, `messages`, `components`, `groups` |
 | Operations | Every category supports `list`, `read`, `create`, `update`, and `delete` |
 | Writes | Successful one-shot mutations save automatically; an interactive session saves only with `save` |
@@ -125,7 +125,7 @@ A `.cfb` synchronization without `--branch` derives the dialect from its filenam
 
 ## Schema, check, and diff
 
-`schema` renders the fixed capture row using the same native builder as the codec; `--out` writes native JSON. `--rowheader` prepends typed capture columns inferred from its regular expression.
+`schema` renders the fixed capture row through [`fix_schema`](capture.md#the-columns-are-the-folded-names), the same native builder the codec and a reader's `schema()` answer with; `--out` writes native JSON. `--rowheader` prepends capture columns inferred from its regular expression, each named group typed by what its syntax can match: a group matching `2024-02-01 12:34:56.123456` is a microsecond UTC instant and not a string. A capture named after a FIX column is not carried in front; `timestamp` is the row's clock and [lands in that column](arrow.md#a-column-is-the-caller-speaking-per-row), and `yggdryl::ULBRIDGE_ROWHEADER` is a [bridge log's own header](arrow.md#a-bridge-log-names-what-it-fills) written that way.
 
 ```bash
 ygg fix --root config/fix schema --out fix-message.json
@@ -148,12 +148,16 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 
 ## Edges
 
-- A missing catalog root loads empty; a read does not create it.
+- A catalog root holding no `fields/`, `components/`, `groups/`, or `messages/` folder loads with only the crate's own fields; a read does not create it.
 - `create` refuses a duplicate even when its supplied document is identical.
 - `update` requires an existing identity and is a full replacement.
 - Scalar fields require tags; named definitions do not acquire synthetic tags.
 - Group count fields remain separate `int32` values and are not replaced by lists.
 - Deleting a referenced field, component, or group fails before saving.
+- `ingest` creates by default and merges only when asked, because a new counterparty is a new catalog and a revised configuration is a change to one that exists; `sync` always folds.
+- `sync` of a location that is neither a folder nor a `.cfb` is refused, naming the location and the role it turned out to be; a location that does not exist yet is `unknown` and refused the same way.
+- `sync` of a `.cfb` whose stem is not a branch is refused rather than folded into one, exactly as [`FixField::from_cfb_file`](registry.md#folding-a-second-source-in) refuses it.
+- Every location this tool is given resolves against the working directory before it becomes a URL, so a bare relative name works wherever a path is taken.
 - Invalid inline enums, unresolved references, contradictory branches, and malformed native documents carry native located errors.
 - A registry mutation is atomic; persistence publishes separate documents and follows the backend's write semantics.
 - Interactive mode requires a terminal; piped one-shot commands emit plain text.

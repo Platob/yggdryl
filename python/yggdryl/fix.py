@@ -8,8 +8,10 @@ once at the boundary, so neither has a class of its own. :class:`FixRegistry` re
 those fields by identifier, by tag, by branch-qualified name or by
 branch-qualified dotted path and persists them as JSON shards through any
 ``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
-was resolved against. Resolution, folding, merging, sharding and validation are
-native; this module only names them.
+was resolved against. Every registry holds this crate's own fields from
+construction - ``FixRegistry()`` is those twenty fields, never nothing - and a
+store neither writes them nor overrides them. Resolution, folding, merging,
+sharding and validation are native; this module only names them.
 
 :func:`fix_cfb_fields` reads one Ullink ``CBlock`` for the vocabulary it
 declares, in declaration order and keyed, which is what
@@ -18,25 +20,56 @@ adding what is absent, merging what is stored, and writing nothing at all when
 it refuses. :meth:`FixRegistry.from_cfb_file` is the same file read whole, answering
 a dictionary and the message roots its grammar bindings describe.
 
-:class:`Ulconfig` carries one bridge configuration's ObjectName, attributes,
-and response envelope. :class:`Ulconfigs` lazily yields configurations from a
-single or bulk document, and :meth:`Ulconfig.into_fixmsg` converts one to a
+:class:`UlPlugin` carries one bridge configuration's ObjectName, attributes,
+and response envelope. :class:`UlPlugins` lazily yields configurations from a
+single or bulk document, and :meth:`UlPlugin.into_fixmsg` converts one to a
 flat typed message. :func:`fix_ulbridge_fields` is the dictionary
 those attributes type against, which
 :meth:`FixRegistry.with_ulbridge_fields` registers.
 
-:class:`FixCodec` turns a captured line into a lazy :class:`FixMessages` iterator,
+:class:`FixCodec` turns a captured line into a lazy :class:`FixMessages`
+iterator. Every message it builds opens with ``beginstring`` - the wire's own,
+else the version the message was read at - and closes with the crate's
+``timestamp``: the row's own clock where the capture stated one, else the first
+clock the message carries, else the epoch, so
+:meth:`FixMsg.market_timestamp` always answers.
 :func:`parse_arrow_reader` turns a whole Arrow capture into batches of them --
 the capture's own columns first, the dictionary's fixed columns after, one
-source row's columns repeated for each returned message -- and
-:func:`fix_schema` is the one fixed row a whole capture lands in - columns named
-by tag, because a tag is the one name a field has in every version and every
-dialect, so a column is found with ``schema.index_of("35")`` and nothing has to
-be resolved per row. :func:`fix_schema_carrying` puts a capture's own columns in
-front of them, and
-:func:`fix_crate_fields` is what this crate itself adds beside the
-specification: the digest, the version read, the cross-venue symbol, the market
-clock, the partition it falls in, and the two parent order identifiers.
+source row's columns repeated for each returned message. A capture's
+``timestamp`` column stamps its row; its
+``plugin`` column names the plugin session the row moved from or to - the
+sender's for a line the row's ``direction`` says was sent, which is what an
+unmarked line is read as, the target's for one it received; and any other
+column named after a field - ``senderSessionId``, or a bridge's ``seqNum`` for
+``MsgSeqNum`` - fills that field where the frame did not state it, without
+becoming an entry.
+:func:`fix_schema` is the one fixed row a whole capture lands in - columns
+spelled by the dictionary's folded canonical names, ``msgtype`` and never
+``35``, so a column is found with ``schema.index_of("msgtype")`` and nothing has
+to be resolved per row; the tag stays on each column's ``fix:tag``.
+:func:`fix_schema_carrying` puts a capture's own columns in front of them,
+dropping a capture column whose folded name a FIX column already takes.
+:func:`fix_crate_fields` lists what this crate itself adds beside the
+specification: twenty standard fields from tag 65000, above every tag FIX or
+a venue publishes, so they need no branch of their own. ``msghash``,
+``version``, ``symbolticker``, ``timestamp``, ``unixpartition``,
+``parentclordid`` and ``parentorderid``; what a bridge's own log states about a
+line - ``sendersessionid``, the session the message itself names, ``msgctxid``, the
+plugins ``senderpluginid`` and ``targetpluginid`` and the plugin sessions
+``sendersessionname`` and ``targetsessionname`` it moved between; the
+three facts a row derives from what the message said - ``isincode``,
+``miccode`` and ``state``; and the three identities a stream implies -
+``instid``, ``id`` and ``persistentid``.
+
+:class:`FixLifecycle` stamps those three. It reads a stream once, in order,
+through :meth:`FixLifecycle.fill`: every message gets the instrument's identity
+and its own, and one naming an order gets the identity of the chain that order
+belongs to - joined on ``OrigClOrdID``, ``ClOrdID``, ``OrderID``,
+``SecondaryClOrdID`` and ``SecondaryOrderID``, closed by a terminal state, so
+:meth:`FixLifecycle.alive` counts the orders still open and
+:meth:`FixLifecycle.clear` forgets them. :meth:`FixCodec.lifecycle` runs one over
+an iterable of messages, and ``parse_arrow_reader(lifecycle=True)`` runs one over
+a whole capture.
 
 A branch is a ``str`` wherever it is a *key*; :class:`FixBranch` is what a
 *declaration* is, because a declaration also carries the dialect's default FIX
@@ -63,11 +96,12 @@ from ._native import (
     FixBranch,
     FixMsg,
     FixCodec,
+    FixLifecycle,
     FixRegistry,
     FixMessages,
     MsgType,
-    Ulconfig,
-    Ulconfigs,
+    UlPlugin,
+    UlPlugins,
     fix_cfb_fields,
     fix_classify_arrow_array as classify_arrow_array,
     fix_crate_fields,
@@ -88,11 +122,12 @@ __all__ = [
     "FixBranch",
     "FixMsg",
     "FixCodec",
+    "FixLifecycle",
     "FixRegistry",
     "FixMessages",
     "MsgType",
-    "Ulconfig",
-    "Ulconfigs",
+    "UlPlugin",
+    "UlPlugins",
     "classify_arrow_array",
     "fix_cfb_fields",
     "fix_crate_fields",

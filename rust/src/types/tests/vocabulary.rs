@@ -83,7 +83,7 @@ fn a_registered_name_with_no_constant_prebuilds_no_members() {
 
 #[test]
 fn a_name_that_is_not_registered_is_refused_by_the_vocabulary() {
-    let refused = AsciiEnum::from_logical_name("isin")
+    let refused = AsciiEnum::from_logical_name("sedol")
         .unwrap_err()
         .to_string();
     assert!(refused.contains("currency"), "{refused}");

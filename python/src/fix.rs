@@ -25,10 +25,11 @@ use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField,
     FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch,
     FixCategory as CoreFixCategory, FixCodec as CoreFixCodec, FixField as CoreFixField,
-    FixId as CoreFixId, FixKey, FixMessages as CoreFixMessages, FixMsg as CoreFixMsg,
-    FixOptions as CoreFixOptions, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase,
-    MsgType as CoreMsgType, Scalar, Ulconfig as CoreUlconfig, Ulconfigs as CoreUlconfigs,
-    Version as CoreVersion, from_json_scalar_with_field, into_json_scalar,
+    FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMessages as CoreFixMessages,
+    FixMsg as CoreFixMsg, FixOptions as CoreFixOptions, FixRegistry as CoreFixRegistry,
+    IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar, UlPlugin as CoreUlPlugin,
+    UlPlugins as CoreUlPlugins, Version as CoreVersion, from_json_scalar_with_field,
+    into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -211,7 +212,12 @@ impl PyFixRegistry {
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
 
-    /// The empty registry.
+    /// A registry holding nothing but this crate's own fields.
+    ///
+    /// Every registry starts here: the twenty standard fields from tag 65000
+    /// that `fix_crate_fields` lists are what a row is typed by, so a
+    /// dictionary loaded from a store, built from fields or left alone holds
+    /// them alike, on the standard branch every one of them resolves through.
     #[new]
     fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -236,10 +242,12 @@ impl PyFixRegistry {
     /// Load scalar shards and native message, component, and group definitions.
     ///
     /// `location` is an `IOBase` handle or anything that names a folder: a
-    /// string, a path-like, a `Url`. A folder that is not there loads as the
-    /// empty registry and is not created; a shard that does not parse, and a
-    /// root still holding the retired `records/` layout, are a `ValueError`
-    /// naming the URL.
+    /// string, a path-like, a `Url`. A folder that is not there loads as a new
+    /// registry - the crate's own fields and nothing else - and is not
+    /// created; a stored copy of the crate's branch is read past, because the
+    /// crate's own definition is the one that types a row. A shard that does
+    /// not parse, and a root still holding the retired `records/` layout, are
+    /// a `ValueError` naming the URL.
     #[staticmethod]
     fn from_handle(location: &Bound<'_, PyAny>) -> PyResult<Self> {
         let holder = folder_holder_from_value(location)?;
@@ -340,13 +348,6 @@ impl PyFixRegistry {
         read_cfb(location, |handle| {
             registry.add_cfb_file(handle, branch, Some(&held))
         })
-    }
-
-    /// Add this crate's own fields, so they resolve by tag and by name.
-    fn with_crate_fields(&mut self) -> PyResult<()> {
-        let registry = self.inner_mut()?;
-        *registry = registry.clone().with_crate_fields().map_err(value_error)?;
-        Ok(())
     }
 
     /// Add `ULBridge`'s own fields, so a bridge configuration document types.
@@ -1014,26 +1015,26 @@ impl PyFixMessages {
     }
 }
 
-#[pyclass(name = "Ulconfigs", module = "yggdryl._native")]
-pub(crate) struct PyUlconfigs {
-    inner: CoreUlconfigs,
+#[pyclass(name = "UlPlugins", module = "yggdryl._native")]
+pub(crate) struct PyUlPlugins {
+    inner: CoreUlPlugins,
 }
 
-impl PyUlconfigs {
-    const fn from_inner(inner: CoreUlconfigs) -> Self {
+impl PyUlPlugins {
+    const fn from_inner(inner: CoreUlPlugins) -> Self {
         Self { inner }
     }
 }
 
 #[pymethods]
-impl PyUlconfigs {
+impl PyUlPlugins {
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
-    fn __next__(&mut self) -> Option<PyUlconfig> {
-        self.inner.next().map(PyUlconfig::from_inner)
+    fn __next__(&mut self) -> Option<PyUlPlugin> {
+        self.inner.next().map(PyUlPlugin::from_inner)
     }
 }
 
@@ -1387,6 +1388,11 @@ impl PyFixMsg {
     }
 
     /// The timestamp a capture is ordered and partitioned by.
+    ///
+    /// The crate's `timestamp` child every built message closes with: the
+    /// row's own clock where the capture stated one, else the first clock the
+    /// message carries, else the epoch - so a message the codec built always
+    /// answers, and only a message built by hand without that child does not.
     fn market_timestamp(&self) -> Option<PyScalar> {
         Self::answered(Some(&self.inner.market_timestamp()))
     }
@@ -1457,11 +1463,11 @@ impl PyFixMsg {
     /// This message as the fixed row a table holds.
     ///
     /// `schema` is the fixed root :func:`fix_schema` builds. Every column is
-    /// filled by the tag its name spells, so a message that carried nothing at
-    /// a column answers null there rather than shifting its neighbours - which
-    /// is what makes two rows of one capture comparable at all. A column no tag
-    /// names answers null: it is the capture's, and nothing in the message says
-    /// what it held.
+    /// filled by the tag its field carries - never by its spelling - so a
+    /// message that carried nothing at a column answers null there rather than
+    /// shifting its neighbours, which is what makes two rows of one capture
+    /// comparable at all. A column no tag names answers null: it is the
+    /// capture's, and nothing in the message says what it held.
     #[allow(clippy::wrong_self_convention)]
     fn into_row(&self, schema: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
@@ -1681,6 +1687,24 @@ impl PyFixCodec {
             .collect()
     }
 
+    /// Stamps a stream of messages with the identities it implies, in order.
+    ///
+    /// One `FixLifecycle` over the whole iterable: each message gets its
+    /// `instid`, its `id` and - where it carries an order identifier - the
+    /// `persistentid` of the chain that identifier reaches, and a terminal
+    /// state closes the chain. The iterable is read once, in order, and the
+    /// stamped messages come back as a list in that order.
+    fn lifecycle(&self, messages: &Bound<'_, PyAny>) -> PyResult<Vec<PyFixMsg>> {
+        let mut held: Vec<CoreFixMsg> = Vec::new();
+        for message in messages.try_iter()? {
+            held.push(message?.extract::<PyRef<'_, PyFixMsg>>()?.inner.clone());
+        }
+        self.inner
+            .lifecycle(held)
+            .map(|stamped| stamped.map(PyFixMsg::from_inner).map_err(value_error))
+            .collect()
+    }
+
     fn __copy__(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -1697,6 +1721,64 @@ impl PyFixCodec {
     }
 }
 
+/// The state a stream of messages has reached, one chain per order alive.
+///
+/// One [`FixLifecycle`](CoreFixLifecycle), fed every message of a stream in
+/// order through `fill`; the chains it holds are the orders still alive, so
+/// it is mutable and, like the registry, unhashable.
+#[pyclass(name = "FixLifecycle", module = "yggdryl._native")]
+pub(crate) struct PyFixLifecycle {
+    inner: CoreFixLifecycle,
+}
+
+#[pymethods]
+impl PyFixLifecycle {
+    // The chains move with every message, so no hash is stable.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    /// A stream with no order alive yet, over one dictionary or the process
+    /// default.
+    #[new]
+    #[pyo3(signature = (registry=None))]
+    fn new(registry: Option<PyRef<'_, PyFixRegistry>>) -> PyResult<Self> {
+        let registry = match registry {
+            Some(held) => Arc::clone(&held.inner),
+            None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
+        };
+        Ok(Self {
+            inner: CoreFixLifecycle::new(registry),
+        })
+    }
+
+    /// Stamps one message with its three identities and moves the chain it
+    /// belongs to along.
+    ///
+    /// A stated `instid`, `id` or `persistentid` is never overwritten, and the
+    /// entries are untouched, so `to_bytes` re-emits the received line.
+    fn fill(&mut self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
+        self.inner
+            .fill(message.inner.clone())
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    /// How many orders are alive: opened by a message and not yet closed by
+    /// a terminal state.
+    fn alive(&self) -> usize {
+        self.inner.alive()
+    }
+
+    /// Forgets every chain, as a new session or a new day would.
+    fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    fn __repr__(&self) -> String {
+        format!("FixLifecycle({} alive)", self.inner.alive())
+    }
+}
+
 /// Read one FIX version, or report the native parse failure as a `ValueError`.
 ///
 /// A protocol prefix is removed before the numeric version parser runs.
@@ -1709,8 +1791,9 @@ fn version_from_py(text: &str) -> PyResult<CoreVersion> {
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
 /// trailer, this crate's own derived facts, and the two lists that close every
-/// row. Columns are named by tag, because a tag is the one name a field has in
-/// every version and every dialect.
+/// row. Columns are spelled by the dictionary's folded canonical names -
+/// `msgtype`, never `35` - so a row reads the way a message reads; the tag
+/// stays each column's identity, on its `fix:tag`, and is what fills it.
 #[pyfunction]
 #[pyo3(name = "fix_schema", signature = (registry=None, name="fix"))]
 pub(crate) fn fix_schema(
@@ -1730,9 +1813,10 @@ pub(crate) fn fix_schema(
 ///
 /// `carrier` is a capture's own root - where a line was read from, which line
 /// it was, what stamped it - and its columns lead the row, because that is what
-/// a monitor orders and joins on. A carried column whose name a FIX column
-/// already takes is dropped rather than renamed: the FIX column is the one a
-/// reader spelling it means.
+/// a monitor orders and joins on. A carried column whose folded name a FIX
+/// column already takes - `senderSessionId` and `sendersessionid` are one name - is dropped
+/// rather than renamed: the FIX column is the one a reader spelling it means,
+/// and the row fills it from what the capture stated.
 #[pyfunction]
 #[pyo3(name = "fix_schema_carrying", signature = (carrier, read))]
 pub(crate) fn fix_schema_carrying(
@@ -1754,7 +1838,16 @@ pub(crate) fn fix_schema_carrying(
 /// lazy across the boundary -- `PyArrow` pulls one batch at a time.
 ///
 /// Every keyword is the per-stream form of an argument `FixCodec` already
-/// takes per call, so a stream parses exactly as a line does.
+/// takes per call, so a stream parses exactly as a line does. A row's own
+/// columns speak for that row: `timestamp` stamps its message, `branch`,
+/// `beginstring`, `sep` and `direction` are the parameters of the same name,
+/// `plugin` names the plugin session the row moved from or to - the sender's
+/// for a row its direction says was sent, the target's for one it received -
+/// and any other column named after a field fills it where the frame did not
+/// state it - never as an entry. A column whose folded name a fixed column
+/// takes lands there rather than being carried in front. `enrich` fills what
+/// each line implies; `lifecycle` runs one `FixLifecycle` over the whole read,
+/// so a row's `persistentid` depends on the rows before it.
 #[pyfunction]
 #[pyo3(
     name = "fix_parse_arrow_reader",
@@ -1770,6 +1863,8 @@ pub(crate) fn fix_schema_carrying(
         direction = None,
         null_values = None,
         dedup = false,
+        enrich = false,
+        lifecycle = false,
         batch_row_size = None,
         batch_byte_size = None,
     )
@@ -1787,6 +1882,8 @@ pub(crate) fn fix_parse_arrow_reader<'py>(
     direction: Option<&str>,
     null_values: Option<Vec<String>>,
     dedup: bool,
+    enrich: bool,
+    lifecycle: bool,
     batch_row_size: Option<usize>,
     batch_byte_size: Option<u64>,
 ) -> PyResult<Bound<'py, PyAny>> {
@@ -1794,7 +1891,10 @@ pub(crate) fn fix_parse_arrow_reader<'py>(
         Some(held) => Arc::clone(&held.inner),
         None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
     };
-    let mut options = CoreFixOptions::new().with_dedup(dedup);
+    let mut options = CoreFixOptions::new()
+        .with_dedup(dedup)
+        .with_enrich(enrich)
+        .with_lifecycle(lifecycle);
     options.name = name.into();
     if let Some(branch) = branch {
         options = options.with_branch(branch_from_py(branch)?);
@@ -1865,12 +1965,18 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The fields this crate defines on its own branch, in tag order.
+/// The fields this crate defines, in tag order: twenty standard fields from
+/// tag 65000, above every tag FIX or a venue publishes.
 ///
 /// The digest, the version read, the cross-venue symbol, the market clock, the
-/// partition it falls in, and the two parent order identifiers no standard tag
-/// names. Registering them is a caller's choice, which is what
-/// `FixRegistry.with_crate_fields` is for.
+/// partition it falls in, the two parent order identifiers no standard tag
+/// names, what a bridge's own log states about a line - the session the
+/// message itself names, its message context, the plugins and the plugin
+/// sessions it moved between - the three facts a row derives from what the
+/// message said: its ISIN, its market and the order's state - and the three
+/// identities a stream implies, which `FixLifecycle` stamps: the instrument,
+/// the message and the order chain. Every registry holds them from
+/// construction; this is the listing.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
@@ -1928,7 +2034,7 @@ fn stated_attributes(value: Scalar) -> PyResult<Scalar> {
 }
 
 /// Pickle carries the attributes, `ObjectName`, and shared source envelope.
-type UlconfigPickle = (Py<PyAny>, (String, Option<String>, String));
+type UlPluginPickle = (Py<PyAny>, (String, Option<String>, String));
 
 type BranchPickle = (Py<PyAny>, (String, String, Vec<String>));
 
@@ -1946,24 +2052,24 @@ type BranchPickle = (Py<PyAny>, (String, String, Vec<String>));
 ///
 /// Immutable, so it hashes, copies and pickles like every other value here.
 #[pyclass(
-    name = "Ulconfig",
+    name = "UlPlugin",
     module = "yggdryl._native",
     frozen,
     skip_from_py_object
 )]
-pub(crate) struct PyUlconfig {
-    inner: CoreUlconfig,
+pub(crate) struct PyUlPlugin {
+    inner: CoreUlPlugin,
 }
 
-impl PyUlconfig {
+impl PyUlPlugin {
     /// Wrap a plugin the core answered.
-    const fn from_inner(inner: CoreUlconfig) -> Self {
+    const fn from_inner(inner: CoreUlPlugin) -> Self {
         Self { inner }
     }
 }
 
 #[pymethods]
-impl PyUlconfig {
+impl PyUlPlugin {
     /// Build one plugin from the parts a document states.
     ///
     /// `attributes` is anything the `Scalar` boundary reads - a mapping of
@@ -1976,7 +2082,7 @@ impl PyUlconfig {
         mbean: Option<&str>,
         envelope: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        Ok(Self::from_inner(CoreUlconfig::new(
+        Ok(Self::from_inner(CoreUlPlugin::new(
             mbean,
             stated_attributes(from_py(attributes)?)?,
             envelope
@@ -1992,9 +2098,9 @@ impl PyUlconfig {
     /// a transport writes a timestamp in front of one and sometimes a duration
     /// behind it, and both are prose. Bytes that name no `MBean` are read whole.
     #[staticmethod]
-    fn from_json_bytes(body: &[u8]) -> PyResult<PyUlconfigs> {
-        CoreUlconfig::from_json_bytes(body)
-            .map(PyUlconfigs::from_inner)
+    fn from_json_bytes(body: &[u8]) -> PyResult<PyUlPlugins> {
+        CoreUlPlugin::from_json_bytes(body)
+            .map(PyUlPlugins::from_inner)
             .map_err(value_error)
     }
 
@@ -2005,17 +2111,17 @@ impl PyUlconfig {
     /// answers nothing answers no plugins rather than raising - a Jolokia
     /// error is a document too.
     #[staticmethod]
-    fn from_json_scalar(document: &Bound<'_, PyAny>) -> PyResult<PyUlconfigs> {
+    fn from_json_scalar(document: &Bound<'_, PyAny>) -> PyResult<PyUlPlugins> {
         let document = stated_document(from_py(document)?);
-        CoreUlconfig::from_json_scalar(&document)
-            .map(PyUlconfigs::from_inner)
+        CoreUlPlugin::from_json_scalar(&document)
+            .map(PyUlPlugins::from_inner)
             .map_err(value_error)
     }
 
     /// Every plugin one typed message carries, one per occurrence.
     #[staticmethod]
     fn from_fixmsg(message: &PyFixMsg) -> PyResult<Self> {
-        CoreUlconfig::from_fixmsg(message.as_inner())
+        CoreUlPlugin::from_fixmsg(message.as_inner())
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -2132,12 +2238,12 @@ impl PyUlconfig {
     fn _from_pickle(attributes: &str, mbean: Option<&str>, envelope: &str) -> PyResult<Self> {
         let attributes = yggdryl::from_json_scalar(attributes.as_bytes()).map_err(value_error)?;
         let envelope = yggdryl::from_json_scalar(envelope.as_bytes()).map_err(value_error)?;
-        Ok(Self::from_inner(CoreUlconfig::new(
+        Ok(Self::from_inner(CoreUlPlugin::new(
             mbean, attributes, envelope,
         )))
     }
 
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<UlconfigPickle> {
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<UlPluginPickle> {
         let callable = py.get_type::<Self>().getattr("_from_pickle")?.unbind();
         let attributes = into_json_scalar(self.inner.as_attributes()).map_err(value_error)?;
         Ok((
@@ -2162,7 +2268,7 @@ impl PyUlconfig {
 
     fn __repr__(&self) -> String {
         format!(
-            "Ulconfig({:?}, {} attributes)",
+            "UlPlugin({:?}, {} attributes)",
             self.inner.name().unwrap_or_default(),
             self.inner.attributes().count()
         )
@@ -2243,10 +2349,10 @@ impl PyFixMsgIterator {
 ///
 /// The order is the core's: a registry installed by
 /// [`install_global_registry`], then the folder `YGGDRYL_FIX_REGISTRY` names,
-/// then `~/.config/fix` when it exists, then the empty registry. Only the
-/// third step treats absence as empty; every other failure is a `ValueError`
-/// carrying the native message, and the default stays unresolved so the next
-/// call retries.
+/// then `~/.config/fix` when it exists, then a new registry holding the
+/// crate's own fields alone. Only the third step treats absence as that
+/// default; every other failure is a `ValueError` carrying the native
+/// message, and the default stays unresolved so the next call retries.
 #[pyfunction]
 #[pyo3(name = "global_registry")]
 pub(crate) fn fix_global_registry() -> PyResult<PyFixRegistry> {

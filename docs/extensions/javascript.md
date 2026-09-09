@@ -58,8 +58,11 @@ core `joinpath`.
 `new Version(major, minor = 0, patch = 0)` constructs the native four-byte value.
 Major and minor accept exact integers in `0..255`, patch in `0..65535`;
 fractions, non-finite numbers and overflow are refused at the native boundary.
-`fromStr` accepts one to three decimal components. All three properties are
-read-only, and the value has no tag or qualifier.
+`fromStr` reads one to three decimal components, and a compact FIX service
+pack - `5.0SP2` is `5.0.2` - case-insensitively. The major and minor are
+strict; a patch tail stating no number folds into the patch rather than
+throwing, so only empty text and a bad major or minor throw. All three
+properties are read-only, and the value stores no tag or qualifier.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -730,11 +733,17 @@ assert.ok(TxHash.from(value.toString()).equals(value))
 
 ## FIX is a namespace
 
-`fix` exposes the native registry, message definitions, codec, messages and
-lazy iterators. `fix.STANDARD_BRANCH` is `''`; `fix.USER_TAG_MIN` (`5000`) and
-`fix.USER_TAG_MAX` (`40000`) bound the half-open range a non-standard branch may
-claim. The `field.fix` view owns typed protocol metadata, including `tag`,
-`branch`, `codes`, `counter`, `component` and `msgtype`.
+`fix.FixRegistry`, `fix.FixMsg`, `fix.MsgType`, `fix.FixCodec`,
+`fix.FixMessages`, `fix.FixLifecycle`, `fix.UlPlugin`, `fix.UlPlugins`,
+`fix.schema()`, `fix.schemaCarrying()`, `fix.schemaTags()`, `fix.crateFields()`,
+`fix.ulbridgeFields()`, `fix.globalRegistry()`, `fix.installGlobalRegistry()`,
+`fix.STANDARD_BRANCH` (`''`, what an absent `fix:branch` means), and
+`fix.USER_TAG_MIN` (`5000`) and `fix.USER_TAG_MAX` (`40000`), the half-open tag
+range a non-standard branch may claim, are the whole surface: the registry,
+message definitions, codec, messages and lazy iterators. The `fix:` vocabulary
+is typed accessor pairs on the `field.fix` view, including `branch`, `id`,
+`tag`, `tags`, `aliases`, `description`, `codes`, `counter`, `component` and
+`msgtype`.
 
 | Crossing | Rule |
 | --- | --- |
@@ -749,13 +758,14 @@ claim. The `field.fix` view owns typed protocol metadata, including `tag`,
 | `field.fix.branch` | `''` when the key is absent; assigning `''` removes it |
 | `message.at`, `message.byId` | the failing halves; `value` holds the whole message value |
 | `fromHandle`, `writeInto` | an `IOBase`, a `Url`, or the string naming one |
+| `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - an array in and out for the reader, one at a time for the lifecycle; `FixLifecycle.alive` is a read-only number |
 | iteration | registry branch-major then by tag, message in the root's declared order |
 | categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata |
 | CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; complete UTF-8 wire code |
 | `FixCodec` | `transformLine`, `transformRecord`, `transformUlconfigLine` return lazy `FixMessages`; specialized FIX, Ullink and FIXML transforms return one `FixMsg` |
 | output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
-| ULconfig | `Ulconfig.fromJsonBytes` / `fromJsonScalar` return lazy `Ulconfigs`; each selection converts to one flat message with `intoFixmsg` |
+| ULconfig | `UlPlugin.fromJsonBytes` / `fromJsonScalar` return lazy `UlPlugins`; each selection converts to one flat message with `intoFixmsg` |
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -833,7 +843,8 @@ assert.equal(independent.remove(55).name, 'symbol')
 const venue = fix.FixRegistry.fromFields([vendor])
 assert.equal(venue.remove('TradeID'), null)
 assert.equal(venue.removeById('5001:cme').name, 'TradeID')
-assert.equal(venue.size, 0)
+// What remains is the crate's own fields, which every registry holds.
+assert.equal(venue.size, fix.crateFields().length)
 
 // Both collections are lazy native iterators the loader gives the protocol.
 assert.equal([...registry].length, registry.size)
@@ -878,7 +889,7 @@ const messages = codec.transformUlconfigLine(Buffer.from(JSON.stringify(document
 assert.ok(messages instanceof fix.FixMessages)
 assert.deepEqual([...messages].map(message => message.byName('Name').asJs()), ['Orders', 'Prices'])
 assert.equal(messages.next().done, true)
-const selected = fix.Ulconfig.fromJsonScalar(document).next().value
+const selected = fix.UlPlugin.fromJsonScalar(document).next().value
 assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Orders')
 ```
 
@@ -996,7 +1007,7 @@ assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Orders')
   a vendor field leaves.
 - FIX absence -> the native refusal, or `null` from the `get`-prefixed twins,
   for a key that parses.
-- A missing FIX folder -> the empty registry.
+- A missing FIX folder -> a registry holding only the crate's own fields.
 - A registry write -> category folders `fields/`, `messages/`, `components/`
   and `groups/`, with standard definitions directly below each and branch
   definitions under `<branch>/`.

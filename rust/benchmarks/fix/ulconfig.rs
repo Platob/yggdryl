@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::{FixBranch, FixCodec, FixRegistry, Scalar, Ulconfig};
+use yggdryl::{FixBranch, FixCodec, FixRegistry, Scalar, UlPlugin};
 
 fn document(count: usize) -> Scalar {
     let values = (0..count).map(|index| {
@@ -48,10 +48,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     for count in [1, 32, crate::bench_profile::corpus(256, 64)] {
         let document = document(count);
         assert_eq!(
-            Ulconfig::from_json_scalar(&document).unwrap().count(),
+            UlPlugin::from_json_scalar(&document).unwrap().count(),
             count
         );
-        let first = Ulconfig::from_json_scalar(&document)
+        let first = UlPlugin::from_json_scalar(&document)
             .unwrap()
             .next()
             .unwrap();
@@ -75,7 +75,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             &document,
             |b, document| {
                 b.iter(|| {
-                    Ulconfig::from_json_scalar(black_box(document))
+                    UlPlugin::from_json_scalar(black_box(document))
                         .expect("valid wildcard response")
                         .next()
                 });
@@ -87,7 +87,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             &document,
             |b, document| {
                 b.iter(|| {
-                    Ulconfig::from_json_scalar(black_box(document))
+                    UlPlugin::from_json_scalar(black_box(document))
                         .expect("valid wildcard response")
                         .map(black_box)
                         .count()
@@ -99,7 +99,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             &document,
             |b, document| {
                 b.iter(|| {
-                    for configuration in Ulconfig::from_json_scalar(black_box(document))
+                    for configuration in UlPlugin::from_json_scalar(black_box(document))
                         .expect("valid wildcard response")
                     {
                         black_box(

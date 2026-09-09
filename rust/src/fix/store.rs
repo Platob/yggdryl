@@ -209,7 +209,15 @@ impl Resolver<'_> {
         resolved.set_name(field.name());
         resolved.set_nullable(field.is_nullable());
         let metadata = field.as_metadata().merge_with(resolved.as_metadata())?;
-        resolved.set_metadata(metadata.iter())?;
+        // A named definition's tag is its identity in the catalog, not part of
+        // what a reference to it restates - the same rule the reference check
+        // in `catalog.rs` reads occurrences under. Inheriting it here would
+        // make one catalog compare unequal to itself across a round trip,
+        // differing only by a tag no occurrence is supposed to carry.
+        let inherited = metadata
+            .iter()
+            .filter(|(key, _)| category == FixCategory::Fields || *key != super::field::TAG_KEY);
+        resolved.set_metadata(inherited)?;
         Ok((resolved, height))
     }
 
@@ -288,6 +296,17 @@ fn compact(mut field: Field, root: bool) -> Result<Field> {
     Ok(field)
 }
 
+/// Whether a field is one the crate defines rather than a store.
+///
+/// Both halves of every store ask this: a writer to leave them out, a reader
+/// to read past a copy an older writer left in. The branch is part of the
+/// test because a venue may hold its own tag in the same numeric block.
+fn is_crate_field(field: &Field) -> bool {
+    let held = field.as_fix();
+    held.branch().is_ok_and(|branch| branch.is_standard())
+        && held.tag().ok().flatten().is_some_and(super::is_crate_tag)
+}
+
 impl FixRegistry {
     /// Reads a complete registry snapshot from JSON.
     ///
@@ -323,7 +342,16 @@ impl FixRegistry {
         let mut document = Vec::with_capacity(FixCategory::ALL.len() + 1);
         for category in FixCategory::ALL {
             let fields = if category == FixCategory::Fields {
-                self.iter().cloned().map(Field::into_value).collect()
+                // The crate's own fields are not a store's to state: every
+                // registry holds them from construction, so writing them here
+                // would make a snapshot claim to define what it only inherited
+                // - and reading it back would collide with the held copy. The
+                // folder store keeps the same rule in `write_into`.
+                self.iter()
+                    .filter(|field| !is_crate_field(field))
+                    .cloned()
+                    .map(Field::into_value)
+                    .collect()
             } else {
                 self.catalog
                     .iter(category)
@@ -374,6 +402,12 @@ impl FixRegistry {
             for (index, value) in fields.iter().enumerate() {
                 let field = Field::from_value(value.clone())?;
                 if category == FixCategory::Fields {
+                    // A snapshot written before the crate held these states
+                    // them; it is read past rather than allowed to replace the
+                    // definition every registry already carries.
+                    if is_crate_field(&field) {
+                        continue;
+                    }
                     registry.create_definition(category, field)?;
                 } else {
                     let key = definition_key(category, &field)?;
@@ -532,6 +566,13 @@ impl FixRegistry {
             for value in fields {
                 let field = Field::from_value(value.clone())?;
                 let id = canonical_id(&field)?;
+                // The crate's own tags are never a store's to define: every
+                // registry holds the crate's definition from construction, and
+                // a copy an older store wrote is read past rather than allowed
+                // to replace it.
+                if branch.is_standard() && super::is_crate_tag(id.tag()) {
+                    continue;
+                }
                 if shard_of(id.tag()) != shard {
                     return Err(Error::InvalidRecord {
                         path: field.name().into(),
@@ -593,11 +634,17 @@ impl FixRegistry {
         let mut documents: BTreeMap<String, Scalar> = BTreeMap::new();
         let mut shards: BTreeMap<(FixBranch, i32), Vec<Field>> = BTreeMap::new();
         for field in self {
+            let id = canonical_id(field)?;
+            let branch = field.as_fix().branch()?;
+            // The crate's own fields are the crate's rather than the store's:
+            // every registry holds them from construction, so a store that
+            // wrote them would only hand them back to a reader that already
+            // had them.
+            if branch.is_standard() && super::is_crate_tag(id.tag()) {
+                continue;
+            }
             shards
-                .entry((
-                    field.as_fix().branch()?,
-                    shard_of(canonical_id(field)?.tag()),
-                ))
+                .entry((branch, shard_of(id.tag())))
                 .or_default()
                 .push(field.clone());
         }

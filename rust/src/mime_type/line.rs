@@ -155,8 +155,8 @@ impl<'line> LineInference<'line> {
 /// carry Ullink `MSGTYPE=` before an embedded `8=FIX...` frame. The returned
 /// value is borrowed and bounded by the first common entry separator.
 fn find_named_value<'line>(line: &'line [u8], wanted: &[u8]) -> Option<&'line [u8]> {
-    for start in 0..line.len() {
-        let Some((LineKey::Name(name), equals)) = pair_at(line, start) else {
+    for (_, key, equals) in pairs(line) {
+        let LineKey::Name(name) = key else {
             continue;
         };
         if !name.eq_ignore_ascii_case(wanted) {
@@ -210,10 +210,7 @@ fn find_named_value<'line>(line: &'line [u8], wanted: &[u8]) -> Option<&'line [u
 fn locate_frame(line: &[u8]) -> Option<LineFrame> {
     let mut first = None;
     let mut msgtype = None;
-    for start in 0..line.len() {
-        let Some((key, _)) = pair_at(line, start) else {
-            continue;
-        };
+    for (start, key, _) in pairs(line) {
         let candidate = (start, matches!(key, LineKey::Tag(_)));
         first.get_or_insert(candidate);
         match key {
@@ -478,9 +475,88 @@ pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
     inferred
 }
 
+/// What one line is and the message type it declares, from one scan.
+///
+/// The two readings a text reader fills its classification columns from,
+/// answered by the same inspection rather than by one each: a frame beats a
+/// document, because an `XmlData` payload is part of a frame rather than a
+/// document of its own, and a document beats the bare pair rules, because an
+/// attribute inside a tag is not a field.
+pub(crate) fn classify(line: &[u8]) -> (MimeType, Option<&[u8]>) {
+    let inferred = inspect(line);
+    let shape = inferred.mime_type();
+    let shape = if shape == MimeType::OCTET_STREAM || shape == MimeType::KEYVALUE {
+        document_type(line)
+            .or_else(|| document_behind_prefix(line).map(|(shape, _)| shape))
+            .unwrap_or(shape)
+    } else {
+        shape
+    };
+    (shape, inferred.msgtype())
+}
+
+/// An XML document a transport wrote prose in front of, and where it opens.
+///
+/// `Sending : <FIXML ...>...</FIXML>` states attributes rather than pairs,
+/// so it is not read by the pair rules. The document must open before any
+/// `=` - a pair arriving first makes the `<` a value - and the line must
+/// close on the document's own last byte, so a sentence mentioning `<trade>`
+/// stays a sentence. A JSON document is not read this way: one naming the
+/// bridge's namespace is answered by the configuration rules, and prose
+/// closing on braces is prose.
+pub(crate) fn document_behind_prefix(line: &[u8]) -> Option<(MimeType, usize)> {
+    let trimmed = trim_ascii(line);
+    let open = memchr::memchr(b'<', trimmed)?;
+    if memchr::memchr(b'=', &trimmed[..open]).is_some()
+        || trimmed.last() != Some(&b'>')
+        || !trimmed.get(open + 1).is_some_and(u8::is_ascii_alphabetic)
+    {
+        return None;
+    }
+    let shape = if trimmed[open..].starts_with(b"<FIXML") {
+        MimeType::FIXML
+    } else {
+        MimeType::XML
+    };
+    // The offset is into `line`: the whitespace trimmed off the front, which
+    // is not the whitespace trimmed off both ends.
+    let leading = line.len() - line.trim_ascii_start().len();
+    Some((shape, leading + open))
+}
+
 /// Whether the line holds any pair at all, marked or not.
 fn has_any_pair(line: &[u8]) -> bool {
-    (0..line.len()).any(|start| matches!(pair_at(line, start), Some((LineKey::Name(_), _))))
+    pairs(line).any(|(_, key, _)| matches!(key, LineKey::Name(_)))
+}
+
+/// Every pair the line holds, in order: where it starts, its key, and where
+/// its `=` sits.
+///
+/// A pair closes its key at an `=`, so the `=` signs are where the pairs
+/// are, and the line is read at those rather than tried at every byte. The
+/// key is the run of key bytes closing at the `=`; the pair starts where
+/// that run starts, one byte earlier at the bridge's `#`, or just past an
+/// escaped separator whose spelling ends in a key byte - `^A` and `\x01` -
+/// and [`pair_at`] then reads it exactly as it reads a pair anywhere, so
+/// what this yields is what a byte-by-byte scan yielded, in the same order.
+fn pairs(line: &[u8]) -> impl Iterator<Item = (usize, LineKey<'_>, usize)> + '_ {
+    memchr::memchr_iter(b'=', line).filter_map(move |equals| {
+        let mut run = equals;
+        while run > 0 && is_name_continue(line[run - 1]) {
+            run -= 1;
+        }
+        let before = run.checked_sub(1).map(|at| line[at]);
+        let candidates = [
+            run.checked_sub(1).filter(|_| before == Some(b'#')),
+            Some(run),
+            (before == Some(b'^') && line.get(run) == Some(&b'A')).then_some(run + 1),
+            (before == Some(b'\\') && line[run..].starts_with(b"x01")).then_some(run + 3),
+        ];
+        candidates.into_iter().flatten().find_map(|start| {
+            let (key, at) = pair_at(line, start)?;
+            (at == equals).then_some((start, key, at))
+        })
+    })
 }
 
 /// The media type one whole document opens as, before any pair rule runs.

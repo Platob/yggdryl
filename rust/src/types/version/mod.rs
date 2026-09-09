@@ -4,7 +4,9 @@
 //! minor, and a sixteen-bit patch. Missing minor and patch components are zero;
 //! canonical text omits trailing zero components. A compact FIX `SP` suffix
 //! supplies the numeric patch, case-insensitively: `5.0sp250` becomes `5.0.250`.
-//! Qualifiers are not stored. Parsing and numeric comparison allocate nothing, and cloning
+//! Qualifiers are not stored: a patch tail that states no number is folded into
+//! the sixteen bits by the crate's stable XXH3 instead of refusing the version,
+//! so parsing fails only on the major, the minor, or empty text. Parsing and numeric comparison allocate nothing, and cloning
 //! copies the four-byte value. This is neither an ASCII-width
 //! datatype nor a static coded vocabulary. Arrow stores the canonical text as
 //! Utf8; its extension name preserves the datatype on a field round trip.

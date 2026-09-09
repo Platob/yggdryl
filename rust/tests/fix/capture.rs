@@ -131,6 +131,16 @@ fn column(batch: &arrow_array::RecordBatch, name: &str) -> Vec<Scalar> {
         .schema()
         .index_of(name)
         .unwrap_or_else(|_| panic!("a {name} column"));
+    column_at(batch, at)
+}
+
+/// One column of one batch, by the tag its field carries.
+fn tag_column(batch: &arrow_array::RecordBatch, tag: i32) -> Vec<Scalar> {
+    column_at(batch, super::tag_index(batch, tag))
+}
+
+/// One column of one batch, by position.
+fn column_at(batch: &arrow_array::RecordBatch, at: usize) -> Vec<Scalar> {
     let held = yggdryl::arrow::batch_to_value(batch).expect("the batch reads");
     held.as_sequence()
         .expect("rows")
@@ -187,11 +197,7 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     // physical representation while retaining the same declared reading.
     let batch = &batched[0];
     for tag in [11, 55, 37, 17, 39, 151, 6, 120] {
-        let name = tag.to_string();
-        if batch.schema().index_of(&name).is_err() {
-            continue;
-        }
-        let column = column(batch, &name);
+        let column = tag_column(batch, tag);
         for (at, message) in one_at_a_time.iter().enumerate() {
             let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
             assert_eq!(
@@ -249,6 +255,16 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     // A FIXML row, whose fields are attributes rather than pairs.
     let fixml = codec.one_line(FIXML.as_bytes(), true).expect("a FIXML row");
     assert_eq!(fixml.by_tag(11).unwrap().as_str(), Some("ORDER-2"));
+    // The same document behind a transport's prose, with whitespace either
+    // side: the document opens where the tag opens, whatever was trimmed off
+    // the line's end.
+    let prosed = format!("  Sending : {FIXML}  \t");
+    let behind = codec
+        .one_line(prosed.as_bytes(), true)
+        .expect("a FIXML row behind prose");
+    assert_eq!(behind.by_tag(11).unwrap().as_str(), Some("ORDER-2"));
+    assert_eq!(behind.by_tag(54).unwrap(), fixml.by_tag(54).unwrap());
+    assert_eq!(behind.entries().len(), fixml.entries().len());
 
     // A bridge configuration document, read as the document it is. It is read
     // under the bridge's own dialect, which is what gives its envelope fields
@@ -380,7 +396,7 @@ fn the_batch_states_what_each_line_was_and_which_way_it_moved() {
     assert_eq!(directions[5].as_str(), Some("RECV"));
 
     // And the enrichment is visible in the columns, not just on the message.
-    let leaves = column(&batch, "151");
+    let leaves = tag_column(&batch, 151);
     assert_eq!(leaves[1], Scalar::from(60.0_f64), "the part-filled report");
     assert_eq!(leaves[2], Scalar::from(0.0_f64), "the closing fill");
 }
@@ -392,9 +408,9 @@ fn the_batch_states_what_each_line_was_and_which_way_it_moved() {
 /// is what a reader that assumed the document ended the line never saw.
 const LOGGED: &str = concat!(
     r#"2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":"#,
-    r#""com.ullink.ulbridge.sessioninterfaces.plugins:name=SmartTrade_OrderRouting,"#,
-    r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"SmartTrade_OrderRouting","#,
-    r#""Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"PIC.PROD.TRD","#,
+    r#""com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_OrderRouting,"#,
+    r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Router_OrderRouting","#,
+    r#""Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"CLI.PROD.TRD","#,
     r#""TargetCompID":"ST.PROD","BeginString":"FIX.4.4","PrimaryHost":"172.97.127.90","#,
     r#""CurrentPort":9726,"State":"logged","Type":"I","NeedCFBReload":false,"#,
     r#""cm-extension":"4.7.0","IncomingMsgSeqNum":18336},"status":200} (12 ms)"#,
@@ -434,7 +450,7 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
     // Standard FIX and bridge attributes share the configuration's flat row.
     assert_eq!(
         message.get_by_path("SenderCompID").and_then(Scalar::as_str),
-        Some("PIC.PROD.TRD")
+        Some("CLI.PROD.TRD")
     );
     assert_eq!(
         message.get_by_path("Version").and_then(Scalar::as_str),
@@ -449,7 +465,7 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
 fn every_plugin_a_document_answers_for_crosses_both_ways() {
     // A wildcard read answers a plugin per key; a single read answers one, and
     // the request's own MBean names it. Both are the same walk.
-    let held: Vec<yggdryl::Ulconfig> = yggdryl::Ulconfig::from_json_bytes(WILDCARD.as_bytes())
+    let held: Vec<yggdryl::UlPlugin> = yggdryl::UlPlugin::from_json_bytes(WILDCARD.as_bytes())
         .expect("a readable answer")
         .collect();
     assert_eq!(held.len(), 2);
@@ -467,11 +483,11 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
         Some(5)
     );
 
-    let single: Vec<yggdryl::Ulconfig> = yggdryl::Ulconfig::from_json_bytes(LOGGED.as_bytes())
+    let single: Vec<yggdryl::UlPlugin> = yggdryl::UlPlugin::from_json_bytes(LOGGED.as_bytes())
         .expect("a readable line")
         .collect();
     assert_eq!(single.len(), 1);
-    assert_eq!(single[0].name(), Some("SmartTrade_OrderRouting"));
+    assert_eq!(single[0].name(), Some("Router_OrderRouting"));
     assert_eq!(single[0].state(), Some("logged"));
 
     // And back to a typed message, and out of one again: the crossing keeps
@@ -485,7 +501,7 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
             .and_then(Scalar::as_i64),
         Some(5)
     );
-    let back = yggdryl::Ulconfig::from_fixmsg(&message).expect("one flat configuration");
+    let back = yggdryl::UlPlugin::from_fixmsg(&message).expect("one flat configuration");
     assert_eq!(back.mbean(), held[0].mbean());
     assert_eq!(back.name(), held[0].name());
     assert_eq!(back.version(), held[0].version());

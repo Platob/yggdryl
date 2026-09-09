@@ -150,11 +150,15 @@ pub enum DataTypeId {
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
     Url,
+    /// ISO 6166: a securities identification number, twelve ASCII bytes.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Isin,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 60] = [
+    pub const ALL: [Self; 61] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -215,6 +219,7 @@ impl DataTypeId {
         Self::TimeInForce,
         Self::MsgDirection,
         Self::Url,
+        Self::Isin,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -270,6 +275,7 @@ impl DataTypeId {
             Self::Currency => "currency",
             Self::Mic => "mic",
             Self::Cfi => "cfi",
+            Self::Isin => "isin",
             Self::Side => "side",
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
@@ -358,6 +364,7 @@ impl DataTypeId {
             | Self::Currency
             | Self::Mic
             | Self::Cfi
+            | Self::Isin
             | Self::Side
             | Self::State
             | Self::TimeInForce
@@ -502,8 +509,10 @@ impl DataTypeId {
             Self::Country => Some(2),
             Self::Currency => Some(3),
             Self::Cfi => Some(6),
+            Self::Isin => Some(12),
             Self::Side | Self::MsgDirection => Some(4),
-            Self::State | Self::TimeInForce => Some(8),
+            Self::TimeInForce => Some(8),
+            Self::State => Some(10),
             Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,
@@ -589,7 +598,7 @@ mod tests {
 
     #[test]
     fn the_ascii_family_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 60);
+        assert_eq!(DataTypeId::ALL.len(), 61);
         for id in [
             DataTypeId::Ascii,
             DataTypeId::FixedAscii,
@@ -597,6 +606,7 @@ mod tests {
             DataTypeId::Currency,
             DataTypeId::Mic,
             DataTypeId::Cfi,
+            DataTypeId::Isin,
         ] {
             assert_eq!(id.kind(), DataTypeKind::Ascii);
             assert!(id.is_string());
@@ -680,6 +690,8 @@ mod tests {
         assert_eq!(DataTypeId::Geography.as_u8(), 53);
         assert_eq!(DataTypeId::Version.as_u8(), 54);
         assert_eq!(DataTypeId::Url.as_u8(), 59);
+        assert_eq!(DataTypeId::Isin.as_u8(), 60);
+        assert_eq!(DataTypeId::Isin.fixed_byte_width(), Some(12));
     }
 
     #[test]

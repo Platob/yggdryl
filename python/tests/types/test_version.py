@@ -37,14 +37,50 @@ def test_native_parts_and_canonical_numeric_text(text, parts, canonical):
 
 @pytest.mark.parametrize(
     "text",
-    ["", "1.", ".1", "1..2", "1.2.3.4", "256", "1.256", "1.2.65536",
-     "5.0SP2", "5.0.SP2", "1.2-rc1", "1.2+meta", "FIX.5.0", "-1", "1.2.-1", " 1"],
+    ["", ".1", " 1", "-1", "+1", "v1", "256", "999", "1.256", "1.999", "FIX.5.0"],
 )
-def test_invalid_or_qualified_versions_fail_at_the_native_parser(text):
+def test_only_the_numeric_components_fail_at_the_native_parser(text):
     with pytest.raises(ValueError, match="version"):
         Version.from_str(text)
     with pytest.raises(ValueError, match="version"):
         DataType("version").scalar(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "parts"),
+    [
+        ("5.0sp250", (5, 0, 250)),
+        ("5.0SP250", (5, 0, 250)),
+        ("5.0Sp250", (5, 0, 250)),
+        ("5.0sP250", (5, 0, 250)),
+        ("005.000sp00250", (5, 0, 250)),
+        ("5.0SP0", (5, 0, 0)),
+        ("5.0sp65535", (5, 0, 65535)),
+        ("255.255sp65535", (255, 255, 65535)),
+    ],
+)
+def test_compact_fix_service_packs_are_numeric_patches(text, parts):
+    assert Version.from_str(text) == Version(*parts)
+    assert str(Version.from_str(text)) == str(Version(*parts))
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["1.", "1..2", "1.2.3.4", "1.2.65536", "5.0.SP2", "1.2-rc1", "1.2+meta",
+     "1.2.-1", "1.0SP2_EP250", "1.0sp250 "],
+)
+def test_a_patch_tail_stating_no_number_folds_instead_of_failing(text):
+    parsed = Version.from_str(text)
+    assert parsed.major == 1 or parsed.major == 5
+    # The same tail always reads as the same version.
+    assert parsed == Version.from_str(text)
+    assert DataType("version").scalar(text).value == parsed
+
+
+def test_unlike_patch_tails_read_as_unlike_versions():
+    assert Version.from_str("1.0-rc1") != Version.from_str("1.0-rc2")
+    assert Version.from_str("1.0-rc1") != Version.from_str("1.0")
+    assert Version.from_str("1.0-rc1").patch != 0
 
 
 @pytest.mark.parametrize("parts", [(-1,), (256,), (1, -1), (1, 256), (1, 2, -1), (1, 2, 65536)])

@@ -245,7 +245,7 @@ fn children(root: &Field) -> Vec<&str> {
 #[test]
 fn the_vocabulary_becomes_a_dictionary_of_lower_cased_names() {
     let (registry, _) = parse(CBLOCK);
-    assert_eq!(registry.len(), 15);
+    assert_eq!(registry.len(), 15 + super::crated());
 
     // Named by `alt` lower-cased, with the file's own spelling kept beside it,
     // so a caller spelling it the file's way still resolves.
@@ -868,7 +868,7 @@ fn a_document_cut_short_is_refused_rather_than_read_as_a_shorter_one() {
 </cplugin-configuration>"#;
     let (registry, roots) =
         FixRegistry::from_cfb_file(&handle(whole), None).expect("a readable CBlock");
-    assert_eq!((registry.len(), roots.len()), (2, 1));
+    assert_eq!((registry.len(), roots.len()), (2 + super::crated(), 1));
 
     for (cut, wanted) in [
         ("</description>", "vocabulary-tag"),
@@ -891,7 +891,7 @@ fn a_document_cut_short_is_refused_rather_than_read_as_a_shorter_one() {
     let at = whole.find("\t<grammar-binding").expect("the binding");
     let (registry, roots) =
         FixRegistry::from_cfb_file(&handle(&whole[..at]), None).expect("a readable prefix");
-    assert_eq!((registry.len(), roots.len()), (2, 0));
+    assert_eq!((registry.len(), roots.len()), (2 + super::crated(), 0));
 }
 
 #[test]
@@ -977,7 +977,7 @@ fn a_file_declaring_no_message_type_tag_keeps_its_types_out_of_the_dictionary() 
 	<vocabulary><vocabulary-tag name="55" alt="Symbol" type="string" /></vocabulary>
 </cplugin-configuration>"#;
     let (registry, _) = FixRegistry::from_cfb_file(&handle(body), None).expect("a readable CBlock");
-    assert_eq!(registry.len(), 1);
+    assert_eq!(registry.len(), 1 + super::crated());
     assert!(registry.get_field_by_tag(35).is_none());
 }
 
@@ -1116,7 +1116,7 @@ fn a_file_answers_its_vocabulary_alone_and_in_declaration_order() {
 
     // The roots and the branch record are what a registry holds instead.
     let (registry, roots) = FixRegistry::from_cfb_file(&handle(CBLOCK), Some(&branch())).unwrap();
-    assert_eq!(registry.len(), fields.len());
+    assert_eq!(registry.len(), fields.len() + super::crated());
     assert_eq!(roots.len(), 1);
     assert_eq!(
         registry.branch_named("bloomberg").unwrap().version(),
@@ -1297,7 +1297,7 @@ fn both_doors_refuse_a_file_that_names_one_field_twice() {
     let fields = FixField::from_cfb_file(&handle(repeated), None).expect("a readable CBlock");
     assert_eq!(fields.len(), 2);
     let (registry, _) = FixRegistry::from_cfb_file(&handle(repeated), None).unwrap();
-    assert_eq!(registry.len(), 1);
+    assert_eq!(registry.len(), 1 + super::crated());
 }
 
 #[test]
@@ -1310,8 +1310,11 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
             Some(&["mstanley"]),
         )
         .expect("a readable CBlock");
+    // Fifteen of the file's added, and nothing merged: the parsed dictionary
+    // holds the crate's own fields as every registry does, and a fold never
+    // counts them.
     assert_eq!((added, merged), (15, 0));
-    assert_eq!(dictionary.len(), 15);
+    assert_eq!(dictionary.len(), 15 + super::crated());
 
     // The dialect the root element declared, which reading the fields alone
     // would have lost: a field carries its branch's name and nothing else.
@@ -1338,7 +1341,11 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
             None,
         )
         .expect("the same dialect, read again");
-    assert_eq!((added, merged), (0, 1), "SELLSIDE declares only tag 35");
+    assert_eq!(
+        (added, merged),
+        (0, 1),
+        "SELLSIDE declares only tag 35; the crate's own fields are never folded"
+    );
     let branch = dictionary.branch_named("morgan").expect("the named branch");
     assert_eq!(branch.aliases(), ["mstanley", "msfix44", "morgan-2024"]);
     // And the record is the second file's, whole.

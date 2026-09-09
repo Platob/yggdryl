@@ -8,16 +8,22 @@ mod capture;
 mod cfb;
 #[path = "fix/codec.rs"]
 mod codec;
+#[path = "fix/dataset.rs"]
+mod dataset;
 #[path = "fix/dictionary.rs"]
 mod dictionary;
 #[path = "fix/digest.rs"]
 mod digest;
+#[path = "fix/enrich.rs"]
+mod enrich;
 #[path = "fix/global_env.rs"]
 mod global_env;
 #[path = "fix/global_home.rs"]
 mod global_home;
 #[path = "fix/global_install.rs"]
 mod global_install;
+#[path = "fix/lifecycle.rs"]
+mod lifecycle;
 #[path = "fix/lift.rs"]
 mod lift;
 #[path = "fix/numeric_branch.rs"]
@@ -103,4 +109,20 @@ fn run_isolated(test_name: &str, marker: &str) -> bool {
         .expect("the isolated FIX test must start");
     assert!(status.success(), "isolated FIX test {test_name} failed");
     true
+}
+
+/// How many fields every registry holds before a test inserts one: the
+/// crate's own, which `FixRegistry::new` seeds and no store writes.
+fn crated() -> usize {
+    yggdryl::fix_crate_fields()
+        .expect("the crate's own fields")
+        .len()
+}
+
+/// Where the column carrying `tag` sits in a batch: by the tag its field
+/// carries, never by its spelling.
+fn tag_index(batch: &arrow_array::RecordBatch, tag: i32) -> usize {
+    let schema =
+        yggdryl::Field::from_arrow_schema("row", &batch.schema()).expect("the batch schema reads");
+    yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("a column for tag {tag}"))
 }

@@ -1,10 +1,11 @@
-//! The fixed row: tag-named columns, derived facts, and the two closing lists.
+//! The fixed row: columns spelled by name and filled by tag, derived facts,
+//! and the two closing lists.
 
 use super::OneMessage;
 
 use std::sync::Arc;
 
-use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_schema};
+use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_column_of, fix_schema};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -12,35 +13,33 @@ fn reader() -> (Arc<FixRegistry>, FixCodec) {
     (registry, reader)
 }
 
-/// One column's value out of a fixed row, by the tag it is named for.
+/// One column's value out of a fixed row, by the tag its field carries.
 ///
-/// The column is found by the name the tag spells, because that is all a
-/// fixed schema is: the tag never moves, so neither does the column.
+/// The column is found by its tag rather than its spelling, because the tag
+/// is what the row is filled by: a venue renaming a field between versions
+/// moves nothing.
 fn at<'row>(row: &'row Scalar, schema: &Field, tag: i32) -> &'row Scalar {
-    let index = schema
-        .index_of(&tag.to_string())
-        .unwrap_or_else(|| panic!("a column for tag {tag}"));
-    &row.as_sequence().expect("a row")[index]
+    &row.as_sequence().expect("a row")[column_of(schema, tag)]
 }
 
 /// Where one tag's column sits in a fixed schema.
 fn column_of(schema: &Field, tag: i32) -> usize {
-    schema
-        .index_of(&tag.to_string())
-        .unwrap_or_else(|| panic!("a column for tag {tag}"))
+    fix_column_of(schema, tag).unwrap_or_else(|| panic!("a column for tag {tag}"))
 }
 
 #[test]
-fn the_columns_are_the_tags_and_they_do_not_move() {
+fn the_columns_are_named_by_fold_and_filled_by_tag() {
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
 
-    // A tag is the one name a field has in every version and dialect: 32 is
-    // `LastShares` in 4.2 and `LastQty` in a newest one, and the column is
-    // `32` in both.
-    assert_eq!(&names[..3], ["8", "9", "35"]);
-    assert_eq!(schema.index_of("35"), Some(2));
+    // A column is spelled by the dictionary's folded name and found by the
+    // tag its field carries: 32 is `LastShares` in 4.2 and `LastQty` in a
+    // newest one, and the column is the dictionary's one `lastqty` in both.
+    assert_eq!(&names[..3], ["beginstring", "bodylength", "msgtype"]);
+    assert_eq!(schema.index_of("msgtype"), Some(2));
+    assert_eq!(column_of(&schema, 35), 2);
+    assert_eq!(names[column_of(&schema, 32)], "lastqty");
     assert_eq!(
         &names[names.len() - 2..],
         ["nofixentries", "nounmappedfixentries"],
@@ -62,7 +61,7 @@ fn the_columns_are_the_tags_and_they_do_not_move() {
 
     // Crate-owned columns follow the same contract as FIX's: the stable
     // identity is the folded name, while renderers receive the FIX-style
-    // spelling the schema keeps once the column takes the tag's name.
+    // spelling the field keeps as its display.
     for (tag, display) in [
         (yggdryl::MSGHASH_TAG, "MsgHash"),
         (yggdryl::VERSION_TAG, "Version"),
@@ -71,14 +70,69 @@ fn the_columns_are_the_tags_and_they_do_not_move() {
         (yggdryl::UNIXPARTITION_TAG, "UnixPartition"),
         (yggdryl::PARENTCLORDID_TAG, "ParentClOrdID"),
         (yggdryl::PARENTORDERID_TAG, "ParentOrderID"),
+        (yggdryl::SENDERSESSIONID_TAG, "SenderSessionId"),
+        (yggdryl::MSGCTXID_TAG, "MsgCtxId"),
+        (yggdryl::SENDERPLUGINID_TAG, "SenderPluginId"),
+        (yggdryl::TARGETPLUGINID_TAG, "TargetPluginId"),
+        (yggdryl::SENDERSESSIONNAME_TAG, "SenderSessionName"),
+        (yggdryl::TARGETSESSIONNAME_TAG, "TargetSessionName"),
+        (yggdryl::ISINCODE_TAG, "ISINCode"),
+        (yggdryl::MICCODE_TAG, "MICCode"),
+        (yggdryl::STATE_TAG, "State"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
     }
 
-    // Every column is nullable, because a message that carried nothing there
-    // must answer null rather than shift its neighbours.
-    assert!(fields.iter().all(Field::is_nullable));
+    // The four columns every message fills are declared so - the version it
+    // was read as, its digest, its clock and the partition the clock falls in
+    // - and every other is nullable, because a message that carried nothing
+    // there must answer null rather than shift its neighbours.
+    let required: Vec<&str> = fields
+        .iter()
+        .filter(|field| !field.is_nullable())
+        .map(Field::name)
+        .collect();
+    assert_eq!(
+        required,
+        ["beginstring", "msghash", "timestamp", "unixpartition"]
+    );
+}
+
+#[test]
+fn a_row_read_against_one_schema_then_another_answers_each_schema_s_own_columns() {
+    let (registry, reader) = reader();
+    // The tags a schema's columns answer for are remembered from one row to
+    // the next, and the memory is the schema's own: a narrower schema, a
+    // rebuilt one and the first again each fill their own columns.
+    let wide = fix_schema(&registry, "fix").unwrap();
+    let mut symbol = DataType::Utf8.nullable_field("symbol");
+    symbol.as_fix_mut().set_tag(55).unwrap();
+    let mut side = DataType::Utf8.nullable_field("side");
+    side.as_fix_mut().set_tag(54).unwrap();
+    let narrow = fix_schema(&FixRegistry::from_fields([side, symbol]).unwrap(), "fix").unwrap();
+    let rebuilt = fix_schema(&registry, "fix").unwrap();
+    assert_eq!(rebuilt, wide, "one dictionary, one schema");
+
+    let order = reader
+        .one_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|10=0|", false)
+        .unwrap();
+    for schema in [&wide, &narrow, &rebuilt, &wide, &narrow] {
+        let row = order.into_row(schema).unwrap();
+        assert_eq!(
+            row.as_sequence().map(<[Scalar]>::len),
+            Some(schema.fields().len()),
+            "one value per column"
+        );
+        assert_eq!(at(&row, schema, 55).as_str(), Some("AAPL"));
+        assert_eq!(at(&row, schema, 54).as_str(), Some("1"));
+    }
+    let wide_row = order.into_row(&wide).unwrap();
+    assert_eq!(at(&wide_row, &wide, 11).as_str(), Some("ORDER-1"));
+    assert!(
+        fix_column_of(&narrow, 11).is_none(),
+        "the narrow schema has no column for the order id"
+    );
 }
 
 #[test]
@@ -143,8 +197,17 @@ fn the_derived_columns_are_computed_and_never_stored() {
         Some("4.4")
     );
 
-    // And nothing of it was stored: the message is what it was.
+    // And nothing of it was stored: the message is what it was. The clock
+    // alone is a child of the message, stamped when it was built - but never
+    // an entry, so the wire re-emits without it.
     assert!(order.get_by_tag(yggdryl::MSGHASH_TAG).is_none());
+    assert!(order.get_by_tag(yggdryl::TIMESTAMP_TAG).is_some());
+    assert!(
+        order
+            .entries()
+            .iter()
+            .all(|entry| entry.tag() != yggdryl::TIMESTAMP_TAG)
+    );
 }
 
 #[test]

@@ -1,6 +1,6 @@
 //! One parsed source expanding lazily into independently typed messages.
 
-use super::{FixCodec, FixMsg, Ulconfigs};
+use super::{FixCodec, FixMsg, UlPlugins};
 use crate::Result;
 
 enum Source {
@@ -8,7 +8,7 @@ enum Source {
     One(Option<Result<FixMsg>>),
     Configs {
         codec: FixCodec,
-        values: Ulconfigs,
+        values: UlPlugins,
         enrich: bool,
     },
 }
@@ -35,7 +35,7 @@ impl FixMessages {
         })
     }
 
-    pub(super) fn from_ulconfigs(codec: FixCodec, values: Ulconfigs, enrich: bool) -> Self {
+    pub(super) fn from_ulconfigs(codec: FixCodec, values: UlPlugins, enrich: bool) -> Self {
         Self {
             source: Source::Configs {
                 codec,

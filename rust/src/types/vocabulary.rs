@@ -111,6 +111,7 @@ impl DataType {
         ("mic", DataType::Mic),
         ("exchange", DataType::Mic),
         ("cfi", DataType::Cfi),
+        ("isin", DataType::Isin),
         // The remaining codes resolve to themselves. `side` is FIX
         // code sets the standard itself declares, addressed constantly enough
         // to earn a packed datatype; `direction` is transport rather than FIX,

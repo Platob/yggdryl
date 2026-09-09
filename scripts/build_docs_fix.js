@@ -175,9 +175,7 @@ function msgtypeOf(bytes) {
 
 /** The dictionary this crate tracks, with its own fields registered. */
 function dictionary() {
-  const registry = fix.FixRegistry.fromHandle(CONFIG)
-  registry.withCrateFields()
-  return registry
+  return fix.FixRegistry.fromHandle(CONFIG)
 }
 
 /** One stored JSON document, or null where the field carries none. */
@@ -286,7 +284,6 @@ function fixedRow(registry) {
     columns,
     call:
       "const registry = fix.FixRegistry.fromHandle('config/fix')\n" +
-      'registry.withCrateFields()\n' +
       "fix.schema(registry, 'FixMessage')",
   }
 }
@@ -390,8 +387,7 @@ function manifest() {
       frameCase(registry, reader, schema, key, label, key === UNSEALED ? line : sealed(line)),
     ),
     calls: {
-      registry:
-        "const registry = fix.FixRegistry.fromHandle('config/fix')\nregistry.withCrateFields()",
+      registry: "const registry = fix.FixRegistry.fromHandle('config/fix')",
       reader: 'const reader = new fix.FixCodec(registry)',
     },
   }

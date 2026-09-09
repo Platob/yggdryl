@@ -86,6 +86,7 @@ impl fmt::Display for DataType {
             D::Currency => formatter.write_str("currency"),
             D::Mic => formatter.write_str("mic"),
             D::Cfi => formatter.write_str("cfi"),
+            D::Isin => formatter.write_str("isin"),
             D::Side => formatter.write_str("side"),
             D::State => formatter.write_str("state"),
             D::TimeInForce => formatter.write_str("timeinforce"),

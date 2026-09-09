@@ -181,6 +181,49 @@ fn a_cast_to_an_ascii_width_obeys_the_width_rule_on_rows() {
 }
 
 #[test]
+fn a_cast_into_a_securities_number_holds_the_column_to_the_canonical_spelling() {
+    let schema = root([DataType::Utf8.required_field("sid")]);
+    let batch = |values: Vec<&str>| {
+        RecordBatch::try_new(
+            schema.clone().into_arrow_schema().unwrap(),
+            vec![Arc::new(StringArray::from(values))],
+        )
+        .unwrap()
+    };
+    let bound = "cast(sid as isin) = 'US0378331005'"
+        .parse::<Expression>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    // Two numbers closed by their check digits pass, and one matches.
+    assert_eq!(
+        bound
+            .filter(&batch(vec!["US0378331005", "CH0012221716"]))
+            .unwrap()
+            .num_rows(),
+        1
+    );
+    // The column tier refuses a number its check digit does not close, and
+    // one spelled in lower case: a column's bytes are what every reader
+    // digests, so a cast lets in the canonical spelling and nothing else.
+    for column in [vec!["US0378331005", "US0378331006"], vec!["us0378331005"]] {
+        let message = bound.filter(&batch(column)).unwrap_err().to_string();
+        assert!(message.contains("canonical spelling"), "{message}");
+    }
+    // The row tier reads a value as the scalar does, folding the case.
+    assert!(
+        bound
+            .matches(&Scalar::from_sequence([Scalar::from("us0378331005")]))
+            .unwrap()
+    );
+    let message = bound
+        .matches(&Scalar::from_sequence([Scalar::from("US0378331006")]))
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("check digit"), "{message}");
+}
+
+#[test]
 fn an_ascii_literal_has_a_text_form() {
     let parsed = "ccy = ascii(4) 'USD'".parse::<Expression>().unwrap();
     let Expression::Compare(_, _, literal) = &parsed else {
@@ -288,50 +331,109 @@ fn a_state_sorts_from_the_first_state_to_the_terminal_ones() {
     );
 
     let ordered = [
-        "1PENDING", "2NEW", "4PARTFIL", "6PENDCXL", "8FILLED", "9CANCELD", "AREJECTD",
+        "10PENDING",
+        "20NEW",
+        "40PARTFILL",
+        "60PENDCXL",
+        "80FILLED",
+        "90CANCELED",
+        "95REJECTED",
     ];
     let mut shuffled = [
-        "AREJECTD", "8FILLED", "2NEW", "6PENDCXL", "1PENDING", "9CANCELD", "4PARTFIL",
+        "95REJECTED",
+        "80FILLED",
+        "20NEW",
+        "60PENDCXL",
+        "10PENDING",
+        "90CANCELED",
+        "40PARTFILL",
     ];
     shuffled.sort_unstable();
     assert_eq!(shuffled, ordered);
 
+    // The rank is the two leading digits, read as the number they spell.
+    for (held, rank) in [
+        ("00UNKNOWN", 0),
+        ("10PENDING", 10),
+        ("40PARTFILL", 40),
+        ("80FILLED", 80),
+        ("90CANCELED", 90),
+        ("95REJECTED", 95),
+    ] {
+        assert_eq!(State::new(held).unwrap().rank(), Some(rank), "{held}");
+    }
+
     // Every ending is told apart from every other without reading a name.
-    for held in ["1PENDING", "2NEW", "4PARTFIL", "6PENDCXL", "7REPLACD"] {
+    for held in [
+        "10PENDING",
+        "20NEW",
+        "40PARTFILL",
+        "60PENDCXL",
+        "70REPLACED",
+        "70RESTATED",
+    ] {
         assert!(State::new(held).unwrap().is_live(), "{held}");
     }
-    assert!(State::new("8FILLED").unwrap().is_done());
-    assert!(State::new("9CANCELD").unwrap().is_cancelled());
-    assert!(State::new("AREJECTD").unwrap().is_failed());
-    for held in ["8FILLED", "9CANCELD", "AREJECTD"] {
+    assert!(State::new("80FILLED").unwrap().is_done());
+    assert!(State::new("90CANCELED").unwrap().is_cancelled());
+    assert!(State::new("95REJECTED").unwrap().is_failed());
+    for held in ["80FILLED", "90CANCELED", "95REJECTED"] {
         assert!(!State::new(held).unwrap().is_live(), "{held}");
     }
+
+    // The digits between two shipped ranks are placeholders: a state that
+    // belongs between them takes one, and the predicates read the band it
+    // falls in rather than the exact rank.
+    let between = State::new("85ARCHIVED").unwrap();
+    assert_eq!(between.rank(), Some(85));
+    assert!(between.is_done());
+    assert!(!between.is_live());
+    assert!(State::new("92HALTED").unwrap().is_cancelled());
+    assert!(State::new("97ABORTED").unwrap().is_failed());
+
+    // A value that opens with anything but two digits has no rank, and so is
+    // neither live nor ended.
+    let unranked = State::new("FILLED").unwrap();
+    assert_eq!(unranked.rank(), None);
+    assert!(!unranked.is_live());
+    assert!(!unranked.is_done());
+    assert_eq!(State::new("8FILLED").unwrap().rank(), None);
 }
 
 #[test]
 fn a_state_answers_a_fix_code_a_fix_name_and_a_scheduler_word_alike() {
     use yggdryl::types::State;
 
-    // One value, three vocabularies: the wire code an ExecutionReport carries,
-    // the specification's name for it, and the word a scheduler uses.
+    // One value, four vocabularies: the wire code an ExecutionReport carries,
+    // the specification's name for it, the word a scheduler uses, and the
+    // short name a FIX bridge logs.
     for (spelling, expected) in [
-        ("0", "2NEW"),
-        ("1", "4PARTFIL"),
-        ("2", "8FILLED"),
-        ("8", "AREJECTD"),
-        ("F", "4TRADE"),
-        ("New", "2NEW"),
-        ("PartiallyFilled", "4PARTFIL"),
-        ("DoneForDay", "8DONEDAY"),
-        ("done_for_day", "8DONEDAY"),
-        ("DONE FOR DAY", "8DONEDAY"),
-        ("running", "3RUNNING"),
-        ("succeeded", "8SUCCESS"),
-        ("timed out", "ATIMEOUT"),
-        ("failed", "AFAILED"),
+        ("0", "20NEW"),
+        ("1", "40PARTFILL"),
+        ("2", "80FILLED"),
+        ("8", "95REJECTED"),
+        ("F", "40TRADE"),
+        ("New", "20NEW"),
+        ("PartiallyFilled", "40PARTFILL"),
+        ("DoneForDay", "80DONEDAY"),
+        ("done_for_day", "80DONEDAY"),
+        ("DONE FOR DAY", "80DONEDAY"),
+        ("running", "30RUNNING"),
+        ("succeeded", "80SUCCESS"),
+        ("timed out", "95TIMEOUT"),
+        ("failed", "95FAILED"),
+        // The short names a FIX bridge logs fold to the same states.
+        ("PartFill", "40PARTFILL"),
+        ("PartFilled", "40PARTFILL"),
+        ("PendNew", "10PENDNEW"),
+        ("PendCancel", "60PENDCXL"),
+        ("PendReplace", "60PENDRPL"),
+        ("DoneDay", "80DONEDAY"),
+        ("Cancel", "90CANCELED"),
+        ("Reject", "95REJECTED"),
         // A stored value names itself, so resolving one twice is resolving it
         // once.
-        ("8FILLED", "8FILLED"),
+        ("80FILLED", "80FILLED"),
     ] {
         let held =
             State::from_spelling(spelling).unwrap_or_else(|| panic!("{spelling} names no state"));
@@ -344,26 +446,26 @@ fn a_state_answers_a_fix_code_a_fix_name_and_a_scheduler_word_alike() {
     }
 
     // A wire code never folds: `A` is PendingNew and `a` is not a code at all.
-    assert_eq!(State::from_spelling("A").unwrap().as_str(), "1PENDNEW");
+    assert_eq!(State::from_spelling("A").unwrap().as_str(), "10PENDNEW");
     assert_eq!(State::from_spelling("a"), None);
     assert_eq!(State::from_spelling("whatever"), None);
     assert_eq!(State::from_spelling(""), None);
 }
 
 #[test]
-fn the_two_eight_byte_codes_are_ordinary_datatypes_everywhere_else() {
+fn the_state_and_time_in_force_codes_are_ordinary_datatypes_everywhere_else() {
     use yggdryl::{DataTypeKind, Scalar};
 
-    for (name, dtype) in [
-        ("state", DataType::State),
-        ("timeinforce", DataType::TimeInForce),
+    for (name, dtype, width) in [
+        ("state", DataType::State, 10),
+        ("timeinforce", DataType::TimeInForce, 8),
     ] {
         // Parsed, displayed and round-tripped by the grammar like any other.
         assert_eq!(DataType::from_str(name).unwrap(), dtype);
         assert_eq!(dtype.to_string(), name);
         assert_eq!(dtype.kind(), DataTypeKind::Ascii);
         assert!(dtype.is_code());
-        assert_eq!(dtype.ascii_width(), Some(8));
+        assert_eq!(dtype.ascii_width(), Some(width));
 
         // And it crosses Arrow as the fixed width it is, extension name and
         // all, so a column round-trips without becoming plain bytes.
@@ -374,7 +476,12 @@ fn the_two_eight_byte_codes_are_ordinary_datatypes_everywhere_else() {
 
     // A value wider than the storage is refused by the datatype rather than
     // truncated into something that reads.
-    assert!(DataType::State.scalar(Scalar::from("2NEW")).is_ok());
-    assert!(DataType::State.scalar(Scalar::from("WAYTOOLONG")).is_err());
+    assert!(DataType::State.scalar(Scalar::from("20NEW")).is_ok());
+    assert!(DataType::State.scalar(Scalar::from("40PARTFILL")).is_ok());
+    assert!(
+        DataType::State
+            .scalar(Scalar::from("80CALCULATED"))
+            .is_err()
+    );
     assert!(DataType::TimeInForce.scalar(Scalar::from("0")).is_ok());
 }

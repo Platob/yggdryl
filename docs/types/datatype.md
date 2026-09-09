@@ -164,7 +164,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic` and `cfi`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](ascii.md).
+The registry is the FIX Latest table plus `mic`, `cfi` and `isin`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](ascii.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -172,6 +172,7 @@ The registry is the FIX Latest table plus `mic` and `cfi`; `currency`, `country`
 | `Country` | String | `country` | ISO 3166-1 alpha-2, exactly 2 bytes |
 | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
+| `isin` | - | `isin` | ISO 6166, exactly 12 bytes closed by a check digit |
 | `Language` | String | `ascii(2)` | ISO 639-1 alpha-2 |
 | `MonthYear` | String | `ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
 | `Tenor` | Pattern | `ascii(8)` | `D5`, `W2`, `M3`, `Y1` |

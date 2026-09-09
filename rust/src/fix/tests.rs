@@ -72,6 +72,28 @@ fn scratch(label: &str) -> PathBuf {
     path
 }
 
+/// How many fields every registry holds before a test inserts one: the
+/// crate's own, which `FixRegistry::new` seeds.
+fn crated() -> usize {
+    crate::fix_crate_fields().unwrap().len()
+}
+
+/// The crate's own field names, in the order every registry iterates them:
+/// last, because their tags are above every tag a test claims.
+fn crate_names() -> Vec<&'static str> {
+    crate::fix_crate_fields()
+        .unwrap()
+        .iter()
+        .map(Field::name)
+        .collect()
+}
+
+/// `names`, then the crate's own: the order a registry holding `names`
+/// iterates.
+fn then_crated<'a>(names: &[&'a str]) -> Vec<&'a str> {
+    names.iter().copied().chain(crate_names()).collect()
+}
+
 /// The stored keys of one registry, probed through every index.
 fn probe<'registry>(
     registry: &'registry FixRegistry,
@@ -399,7 +421,7 @@ fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
 const ULCONFIG_SINGLE: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","TargetCompID":"ULB_PTBDG","BeginString":"FIX.4.2","Category":"InterBridge","PrimaryHost":"localhost","CurrentPort":7061,"BackupHost":null,"BackupPort":-1,"OutgoingMsgSeqNum":129,"NeedReload":false,"Name":"ULMSG_BROKER_TO_POSTTRADE","ExtendedActions":[{"name":"hot-reset","enabled":true}]},"status":200}"#;
 
 /// One wildcard read, answering for two MBeans of different types.
-const ULCONFIG_WILDCARD: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"A","Category":"InterBridge"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B","CurrentPort":9905,"SenderCompID":"PICTET_BPAG"}},"status":200}"#;
+const ULCONFIG_WILDCARD: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"A","Category":"InterBridge"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B","CurrentPort":9905,"SenderCompID":"CLIENT_BPAG"}},"status":200}"#;
 
 /// A codec over the shipped dictionary, pinned to ULBridge's own.
 fn ulbridge_codec() -> crate::FixCodec {
@@ -506,9 +528,9 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
     );
     assert_eq!(
         messages[1].by_name("SenderCompID").unwrap(),
-        &Scalar::from("PICTET_BPAG")
+        &Scalar::from("CLIENT_BPAG")
     );
-    let recovered = crate::Ulconfig::from_fixmsg(&messages[1]).unwrap();
+    let recovered = crate::UlPlugin::from_fixmsg(&messages[1]).unwrap();
     assert_eq!(recovered.name(), Some("B"));
     assert_eq!(recovered.get("CurrentPort"), Some(&Scalar::from(9905_i64)));
     let rebuilt = recovered.into_fixmsg(&codec, false).unwrap();
@@ -520,6 +542,8 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
         rebuilt.by_name("SessionInterface").unwrap(),
         messages[1].by_name("SessionInterface").unwrap()
     );
+    // A dictionary without ULBridge's fields keeps every key rather than
+    // dropping it: a venue sends fields no dictionary has.
     let bare = crate::FixCodec::new(Arc::new(FixRegistry::new()));
     let plain = bare
         .transform_line(ULCONFIG_WILDCARD, false)
@@ -534,7 +558,7 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
 #[test]
 fn ulconfig_bulk_iteration_keeps_request_and_error_envelopes_and_fuses() {
     let document = crate::from_json_scalar(br#"[{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"status":404,"error":"missing"},{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"value":{"Name":"Bridge","CurrentPort":9905}}]"#).unwrap();
-    let mut configurations = crate::Ulconfig::from_json_scalar(&document).unwrap();
+    let mut configurations = crate::UlPlugin::from_json_scalar(&document).unwrap();
     assert_eq!(configurations.size_hint(), (0, None));
     let error = configurations.next().unwrap();
     let value = configurations.next().unwrap();
@@ -548,11 +572,11 @@ fn ulconfig_bulk_iteration_keeps_request_and_error_envelopes_and_fuses() {
     assert_eq!(message.by_name("Error").unwrap(), &Scalar::from("missing"));
     assert!(message.get_by_name("SessionInterface").is_none());
     let empty = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{},"status":200}"#;
-    let mut values = crate::Ulconfig::from_json_bytes(empty).unwrap();
+    let mut values = crate::UlPlugin::from_json_bytes(empty).unwrap();
     assert!(values.next().is_none());
     assert!(values.next().is_none());
     let request = br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#;
-    let request = crate::Ulconfig::from_json_bytes(request)
+    let request = crate::UlPlugin::from_json_bytes(request)
         .unwrap()
         .next()
         .unwrap();
@@ -567,22 +591,22 @@ fn a_selected_ulconfig_identity_excludes_other_mbeans() {
     use std::hash::{Hash, Hasher};
     let document = String::from_utf8(ULCONFIG_WILDCARD.to_vec()).unwrap();
     let changed_sibling = document.replace("9905", "9906");
-    let first = crate::Ulconfig::from_json_bytes(document.as_bytes())
+    let first = crate::UlPlugin::from_json_bytes(document.as_bytes())
         .unwrap()
         .next()
         .unwrap();
-    let same = crate::Ulconfig::from_json_bytes(changed_sibling.as_bytes())
+    let same = crate::UlPlugin::from_json_bytes(changed_sibling.as_bytes())
         .unwrap()
         .next()
         .unwrap();
     assert_eq!(first, same);
-    let rebuilt = crate::Ulconfig::new(
+    let rebuilt = crate::UlPlugin::new(
         first.mbean(),
         first.as_attributes().clone(),
         first.as_envelope().clone(),
     );
     assert_eq!(first, rebuilt);
-    let digest = |value: &crate::Ulconfig| {
+    let digest = |value: &crate::UlPlugin| {
         let mut hasher = std::hash::DefaultHasher::new();
         value.hash(&mut hasher);
         hasher.finish()
@@ -591,7 +615,7 @@ fn a_selected_ulconfig_identity_excludes_other_mbeans() {
     assert_eq!(first.stable_hash(), same.stable_hash());
     assert_eq!(first.stable_hash(), rebuilt.stable_hash());
     let changed_exchange = document.replace("\"status\":200", "\"status\":503");
-    let changed = crate::Ulconfig::from_json_bytes(changed_exchange.as_bytes())
+    let changed = crate::UlPlugin::from_json_bytes(changed_exchange.as_bytes())
         .unwrap()
         .next()
         .unwrap();
@@ -602,7 +626,7 @@ fn a_selected_ulconfig_identity_excludes_other_mbeans() {
 #[test]
 fn ulconfig_conversion_reports_an_unrepresentable_attribute() {
     let attributes = Scalar::from_record([("CurrentPort", Scalar::from(f64::NAN))]).unwrap();
-    let value = crate::Ulconfig::new(None, attributes, Scalar::Null);
+    let value = crate::UlPlugin::new(None, attributes, Scalar::Null);
     let codec = crate::FixCodec::new(Arc::new(FixRegistry::new()));
     let error = value.into_fixmsg(&codec, false).unwrap_err();
     assert!(error.to_string().contains("non-finite"), "{error}");
@@ -611,17 +635,17 @@ fn ulconfig_conversion_reports_an_unrepresentable_attribute() {
 #[test]
 fn ulconfig_intake_refuses_malformed_bulk_responses_before_yielding() {
     for body in [b"null".as_slice(), b"true", b"1", br#""text""#] {
-        let error = crate::Ulconfig::from_json_bytes(body).unwrap_err();
+        let error = crate::UlPlugin::from_json_bytes(body).unwrap_err();
         assert!(error.to_string().contains("ulconfig"), "{error}");
     }
     for body in [
         br#"[{"value":{"Name":"valid"}},42]"#.as_slice(),
         br#"[{"value":{"Name":"valid"}},[]]"#,
     ] {
-        let error = crate::Ulconfig::from_json_bytes(body).unwrap_err();
+        let error = crate::UlPlugin::from_json_bytes(body).unwrap_err();
         assert!(error.to_string().contains("ulconfig[1]"), "{error}");
     }
-    let mut empty = crate::Ulconfig::from_json_bytes(b"[]").unwrap();
+    let mut empty = crate::UlPlugin::from_json_bytes(b"[]").unwrap();
     assert!(empty.next().is_none());
     assert!(empty.next().is_none());
 }
@@ -668,7 +692,7 @@ fn ulbridge_fields_are_a_dictionary_of_their_own() {
         .unwrap()
         .with_ulbridge_fields()
         .unwrap();
-    assert_eq!(registry.len(), held.len());
+    assert_eq!(registry.len(), held.len() + crated());
     assert!(
         registry
             .get_definition(
@@ -743,9 +767,11 @@ fn merge_with_folds_the_fields_and_the_dialects_beside_them() {
     .unwrap();
     other.set_branch(incoming.clone()).unwrap();
 
+    // The other dictionary holds the crate's own fields as every registry
+    // does, and they are neither added nor merged: a fold never counts them.
     let (added, merged) = dictionary.merge_with(&other).unwrap();
     assert_eq!((added, merged), (1, 1));
-    assert_eq!(dictionary.len(), 3);
+    assert_eq!(dictionary.len(), 3 + crated());
     // A folded input name retains the canonical identity's stored spelling.
     assert_eq!(dictionary.field_by_tag(55).unwrap().name(), "symbol");
 
@@ -1354,7 +1380,7 @@ fn two_branches_may_hold_the_same_tag_and_the_same_name() {
     spec.as_fix_mut().set_tags(&[9055]).unwrap();
 
     let registry = FixRegistry::from_fields([venue.clone(), spec.clone()]).unwrap();
-    assert_eq!(registry.len(), 2);
+    assert_eq!(registry.len(), 2 + crated());
 
     // Each identifier answers its own field, and each name in its own
     // dictionary.
@@ -1693,7 +1719,7 @@ fn an_insert_conflict_names_both_fields_for_each_key_kind() {
         assert!(path.ends_with(", held by Symbol"), "{path}");
         assert_eq!(probed, registry, "{key}: a refusal changes nothing");
         assert_eq!(format!("{probed:?}"), format!("{registry:?}"));
-        assert_eq!(probed.len(), 1);
+        assert_eq!(probed.len(), 1 + crated());
     }
 
     // Overlap across tiers is not a conflict.
@@ -1760,7 +1786,7 @@ fn reinserting_the_same_identity_replaces_properties_and_retains_its_spelling() 
             .get_field_by_name("Ticker", Some(&FixBranch::STANDARD))
             .is_none()
     );
-    assert_eq!(registry.len(), 2);
+    assert_eq!(registry.len(), 2 + crated());
 
     // A tag matching one field and a name matching another is never a
     // replacement, and a new key another field holds refuses the whole thing.
@@ -1834,7 +1860,7 @@ fn a_merge_follows_the_truth_table() {
             "{name}"
         );
     }
-    assert_eq!(registry.len(), 1);
+    assert_eq!(registry.len(), 1 + crated());
 
     // Another spelling retains the accumulated tags and canonical name.
     let before = registry.clone();
@@ -1912,7 +1938,7 @@ fn a_rejected_merge_leaves_the_registry_untouched() {
         [Some("Symbol"); 4]
     );
     assert_eq!(probe(&registry, 44, 31, "price", "px"), [Some("Price"); 4]);
-    assert_eq!(registry.len(), 2);
+    assert_eq!(registry.len(), 2 + crated());
 }
 
 #[test]
@@ -1935,7 +1961,7 @@ fn add_fields_adds_what_is_absent_and_merges_what_is_present() {
         ])
         .unwrap();
     assert_eq!((added, merged), (2, 2));
-    assert_eq!(registry.len(), 4);
+    assert_eq!(registry.len(), 4 + crated());
 
     // The merge kept what only the stored field declared and added the rest.
     let symbol = registry.field_by_tag(55).unwrap();
@@ -1963,7 +1989,7 @@ fn add_fields_adds_what_is_absent_and_merges_what_is_present() {
         .add_fields([identified("TransactTime", &cme(), 5_060)])
         .unwrap();
     assert_eq!((added, merged), (1, 0));
-    assert_eq!(registry.len(), 5);
+    assert_eq!(registry.len(), 5 + crated());
 }
 
 #[test]
@@ -1996,7 +2022,7 @@ fn add_fields_refuses_the_way_the_one_field_writes_refuse() {
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
     assert_eq!(registry, before);
-    assert_eq!(registry.len(), 1);
+    assert_eq!(registry.len(), 1 + crated());
 }
 
 #[test]
@@ -2011,7 +2037,7 @@ fn removal_keeps_every_position_consistent() {
     // Removing the first field moves the last into its slot.
     let removed = registry.remove(55).unwrap();
     assert_eq!(removed.name(), "Symbol");
-    assert_eq!(registry.len(), 2);
+    assert_eq!(registry.len(), 2 + crated());
     assert_eq!(probe(&registry, 55, 65, "symbol", "ticker"), [None; 4]);
     assert_eq!(probe(&registry, 44, 45, "price", "px"), [Some("Price"); 4]);
     assert_eq!(
@@ -2020,7 +2046,7 @@ fn removal_keeps_every_position_consistent() {
     );
     assert_eq!(
         registry.iter().map(Field::name).collect::<Vec<_>>(),
-        ["Price", "Text"]
+        then_crated(&["Price", "Text"])
     );
 
     // A name key removes through the alias tier too; a path never does.
@@ -2031,9 +2057,13 @@ fn removal_keeps_every_position_consistent() {
         probe(&registry, 58, 59, "text", "freetext"),
         [Some("Text"); 4]
     );
-    assert_eq!(registry.len(), 1);
+    assert_eq!(registry.len(), 1 + crated());
     assert_eq!(registry.remove("FreeText").unwrap().name(), "Text");
-    assert!(registry.is_empty());
+    assert_eq!(
+        registry.len(),
+        crated(),
+        "nothing of the test's own is left"
+    );
     assert!(registry.remove(58).is_none());
 
     // A removed key can be claimed again.
@@ -2231,16 +2261,26 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
     reversed.reverse();
     let other = FixRegistry::from_fields(reversed).unwrap();
 
+    // The crate's own fields close every walk: their tags are above any a
+    // test claims.
+    let crated_names = crate_names();
     let mut iter = registry.iter();
-    assert_eq!(iter.len(), 3);
+    assert_eq!(iter.len(), 3 + crated());
     assert_eq!(iter.next().map(Field::name), Some("Account"));
-    assert_eq!(iter.next_back().map(Field::name), Some("Text"));
-    assert_eq!(iter.len(), 1);
+    assert_eq!(
+        iter.next_back().map(Field::name),
+        crated_names.last().copied()
+    );
+    assert_eq!(iter.len(), 1 + crated());
     assert_eq!(iter.next().map(Field::name), Some("Symbol"));
-    assert!(iter.next().is_none());
+    assert_eq!(iter.next().map(Field::name), Some("Text"));
+    assert_eq!(
+        iter.map(Field::name).collect::<Vec<_>>(),
+        crated_names[..crated_names.len() - 1].to_vec()
+    );
     assert_eq!(
         (&registry).into_iter().map(Field::name).collect::<Vec<_>>(),
-        ["Account", "Symbol", "Text"]
+        then_crated(&["Account", "Symbol", "Text"])
     );
     // The cursor form walks the same order, and a binding advancing it with
     // only the last identifier it saw sees every field exactly once.
@@ -2250,13 +2290,17 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
         walked.push(field.name());
         cursor = field.as_fix().id().unwrap();
     }
-    assert_eq!(walked, ["Account", "Symbol", "Text"]);
+    assert_eq!(walked, then_crated(&["Account", "Symbol", "Text"]));
     assert!(
         registry
             .next_field_after(Some(FixId::standard(i32::MAX)))
             .is_none()
     );
-    assert!(FixRegistry::new().next_field_after(None).is_none());
+    assert_eq!(
+        FixRegistry::new().next_field_after(None).map(Field::name),
+        crated_names.first().copied(),
+        "a new registry walks the crate's own fields"
+    );
     // An alternate tag is an index entry, never a cursor stop.
     let mut aliased = tagged("MsgType", 35);
     aliased.as_fix_mut().set_tags(&[2]).unwrap();
@@ -2272,8 +2316,11 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
     assert_eq!(registry, other);
     assert_ne!(registry, FixRegistry::new());
     assert_eq!(FixRegistry::new(), FixRegistry::default());
-    assert!(FixRegistry::new().is_empty());
-    assert_eq!(FixRegistry::new().iter().len(), 0);
+    assert!(
+        !FixRegistry::new().is_empty(),
+        "a new registry holds the crate's own fields"
+    );
+    assert_eq!(FixRegistry::new().iter().len(), crated());
 
     // A conflict anywhere fails the whole build.
     let error = FixRegistry::from_fields([tagged("Text", 58), tagged("Symbol", 58)]).unwrap_err();
@@ -2295,10 +2342,11 @@ fn iteration_and_the_cursor_are_tag_major() {
         identified("Venue", &cme, 9000),
     ])
     .unwrap();
-    // Tags lead across branches; the digest only orders an equal tag.
+    // Tags lead across branches; the digest only orders an equal tag. The
+    // crate's own fields, on the highest tags, close the walk.
     assert_eq!(
         registry.iter().map(Field::name).collect::<Vec<_>>(),
-        ["Account", "MsgType", "TradeID", "Venue"]
+        then_crated(&["Account", "MsgType", "TradeID", "Venue"])
     );
     let mut walked = Vec::new();
     let mut cursor = None;
@@ -2306,7 +2354,10 @@ fn iteration_and_the_cursor_are_tag_major() {
         walked.push(field.name());
         cursor = field.as_fix().id().unwrap();
     }
-    assert_eq!(walked, ["Account", "MsgType", "TradeID", "Venue"]);
+    assert_eq!(
+        walked,
+        then_crated(&["Account", "MsgType", "TradeID", "Venue"])
+    );
     let rendered = format!("{registry:?}");
     assert!(rendered.starts_with("{\"1:\": "), "{rendered}");
 }
@@ -2335,7 +2386,7 @@ fn fields_reject_nested_shapes_and_keep_the_registry_unchanged() {
         .nullable_field("Coded");
     encoded.as_fix_mut().set_tag(60).unwrap();
     registry.insert(encoded).unwrap();
-    assert_eq!(registry.len(), 2);
+    assert_eq!(registry.len(), 2 + crated());
 }
 
 #[test]
@@ -2354,7 +2405,11 @@ fn a_named_group_and_its_counter_keep_separate_identities() {
     let group = registry
         .definition(FixCategory::Groups, "PARTIES", None)
         .unwrap();
-    assert_eq!(group.as_fix().tag().unwrap(), None);
+    // The group's own identity is derived into the definition block; the
+    // counter it heads stays the published tag 453, and the two never meet.
+    let derived = group.as_fix().tag().unwrap().expect("a derived tag");
+    assert!(FixId::is_definition_tag(derived), "{derived}");
+    assert_ne!(derived, 453);
     assert_eq!(group.as_fix().counter().unwrap(), Some(453));
     assert_eq!(
         registry.group_by_counter(FixId::standard(453)).unwrap(),
@@ -2396,13 +2451,13 @@ fn scalar_iteration_and_named_category_iteration_have_distinct_orders() {
     registry
         .insert_definition(FixCategory::Groups, named_group("Parties", 453))
         .unwrap();
-    let expected = ["Account", "Symbol", "Text", "NoPartyIDs"];
+    let expected = then_crated(&["Account", "Symbol", "Text", "NoPartyIDs"]);
     assert_eq!(
         registry.iter().map(Field::name).collect::<Vec<_>>(),
         expected
     );
-    assert_eq!(registry.iter().len(), 4);
-    assert_eq!(registry.len(), 4);
+    assert_eq!(registry.iter().len(), expected.len());
+    assert_eq!(registry.len(), expected.len());
     let mut backwards = registry.iter().rev().map(Field::name).collect::<Vec<_>>();
     backwards.reverse();
     assert_eq!(backwards, expected);
@@ -2443,9 +2498,13 @@ fn the_default_resolves_in_the_documented_order_from_explicit_inputs() {
     let home = root.join("home");
     let config = Folder::new(home.join(".config")).unwrap();
 
-    // Nothing configured, or no home at all: the empty registry.
-    assert!(autoload(None, Some(config.clone())).unwrap().is_empty());
-    assert!(autoload(None, None).unwrap().is_empty());
+    // Nothing configured, or no home at all: a new registry, holding the
+    // crate's own fields and nothing else.
+    assert_eq!(
+        autoload(None, Some(config.clone())).unwrap(),
+        FixRegistry::new()
+    );
+    assert_eq!(autoload(None, None).unwrap(), FixRegistry::new());
 
     // A present dictionary under the configuration directory loads.
     let mut configured = Folder::new(home.join(".config").join("fix")).unwrap();
@@ -2466,7 +2525,7 @@ fn the_default_resolves_in_the_documented_order_from_explicit_inputs() {
     let as_url = located.url().to_string();
     for spelling in [as_path, as_url] {
         let loaded = autoload(Some(&spelling), Some(config.clone())).unwrap();
-        assert_eq!(loaded.len(), 1, "{spelling}");
+        assert_eq!(loaded.len(), 1 + crated(), "{spelling}");
         assert_eq!(
             loaded.field_by_tag(44).unwrap().name(),
             "Price",
@@ -4180,8 +4239,10 @@ fn every_committed_lineage_is_the_document_the_rust_writer_renders() {
     // 1,926 before these two phases: 268 entries stated nothing their
     // predecessor did not once types were resolved and the temporal ones
     // adopted backward, and one more was a second statement about one dated
-    // point. Removing the generic MsgType datatype collapses one more.
-    assert_eq!(entries, 1_668, "lineage entries");
+    // point. Two more since: `OrdStatus` and `ExecType` retyped to the crate's
+    // `state`, which each lineage records, less the one the generic MsgType
+    // datatype's removal collapses back.
+    assert_eq!(entries, 1_670, "lineage entries");
 }
 
 #[test]

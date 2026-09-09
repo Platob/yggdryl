@@ -21,6 +21,7 @@
 | Iteration | Scalar fields iterate tag-major; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve all four categories and branch declarations; stable hashes include that complete state |
+| Crate fields | `new()` holds this crate's [twenty fields](capture.md#the-crates-own-columns), standard tags from 65000, before anything is inserted, so every registry - loaded, built or left empty - resolves `timestamp` and `sendersessionid`; a [store](store.md) never writes them and reads past a stored copy |
 
 ## Use
 
@@ -442,7 +443,7 @@ Registration updates tag 35's inline vocabulary and creates an empty message Str
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then an empty registry. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the crate's own fields and nothing else. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
 Environment and default-folder resolution happen once, on the first global lookup. `Folder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 
@@ -496,7 +497,7 @@ Environment and default-folder resolution happen once, on the first global looku
 
 ### A bridge configuration is a document that names itself
 
-An ObjectName's `type=` property supplies its raw configuration type; otherwise the request operation supplies it. Bulk and wildcard documents expand lazily through `Ulconfigs` and `FixMessages`; each selected configuration becomes one flat typed message, as described in [Capture](capture.md).
+An ObjectName's `type=` property supplies its raw configuration type; otherwise the request operation supplies it. Bulk and wildcard documents expand lazily through `UlPlugins` and `FixMessages`; each selected configuration becomes one flat typed message, as described in [Capture](capture.md).
 
 ### A direction is the verb in front of the payload
 
@@ -561,6 +562,27 @@ The catalog merge excludes the setup clone from its timer and includes source va
 ### Classifying a capture
 
 The shallow raw FIXML message-code scan measured 963 ns in Rust; Python's Ullink message-code inference measured 639 ns and Node's measured 1,230,618 ops/s. These rows use different wire fixtures and describe their own boundary costs.
+
+`fix/classify`, over a `.log` handle read as records - 4,000 lines cycling the five shapes, of which the bridge configuration documents are most of the bytes. Release build, one Linux x86_64 container; the baseline is the same read with the three classification columns off, which is the only honest comparison because it is the same work minus the readings.
+
+| case | median | per row | against the plain read |
+| --- | --- | --- | --- |
+| `read_arrow_reader`, no classification | 4.89 ms | 1.22 us | - |
+| the same with `mimetype`, `msgtype` and `direction` | 15.2 ms | 3.8 us | 3.1x |
+
+The three readings on their own, one line each:
+
+| shape | bytes | `mimetype` | `msgtype` | `direction` |
+| --- | --- | --- | --- | --- |
+| framed FIX with prose either side | 85 | 609 ns | 575 ns | 367 ns |
+| a bare tag stream | 64 | 574 ns | 566 ns | 235 ns |
+| a bridge row keyed by name | 78 | 432 ns | 421 ns | 205 ns |
+| a sentence nothing matches | 52 | 102 ns | 76.8 ns | 1.15 us |
+| a bridge configuration document | 840 | 1.38 us | 1.37 us | 1.11 us |
+
+The scan is linear in the line, so a document is a long line rather than a different kind of work. The one asymmetry is the sentence: with no frame to bound the prose, a direction is read against the whole of it - which is exactly what a document does *not* pay, because its bound is where the object opens.
+
+Classification is opt-in per column for that reason. A capture that only needs rows pays the 1.22 us; one that needs to know what each line is pays the reading over the bytes it has.
 
 Borrowed Rust lookups, singleton views, and compiled group-plan lookups have counting-allocator coverage. Stable hashing allocates one native digester state, and snapshots/projections allocate by contract; the [store measurements](store.md#performance) cover the full graph separately.
 

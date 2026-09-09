@@ -16,10 +16,11 @@
 //!
 //! Because ULBridge is not FIX and is not this crate. The specification
 //! publishes no `PrimaryHost`, so putting one on the standard branch would
-//! say it does; this crate did not invent it either, so the
-//! [crate branch](super::CRATE_BRANCH) is not its home. It is a vendor's
-//! dictionary, which is exactly what a [`FixBranch`] is for - and being a
-//! branch is also what lets a venue keep its own 20001 without colliding.
+//! say it does; this crate did not invent it either, so the crate's own
+//! tags above [`CRATE_TAG_MIN`](super::CRATE_TAG_MIN) are not its home. It
+//! is a vendor's dictionary, which is exactly what a [`FixBranch`] is for -
+//! and being a branch is also what lets a venue keep its own 20001 without
+//! colliding.
 //!
 //! A reader pins it with [`FixCodec::with_branch`](super::FixCodec), and the
 //! names FIX publishes still resolve, because a name is looked for in the
@@ -27,8 +28,8 @@
 //!
 //! # One configuration per message
 //!
-//! A single read yields one [`Ulconfig`]. A wildcard or bulk answer yields
-//! lazy [`Ulconfigs`], retaining the shared source document and one key cursor.
+//! A single read yields one [`UlPlugin`]. A wildcard or bulk answer yields
+//! lazy [`UlPlugins`], retaining the shared source document and one key cursor.
 //! Each value converts to one flat [`FixMsg`](super::FixMsg): `MBean` retains
 //! the request selector, `SessionInterface` the returned ObjectName, and the
 //! attributes become ordinary scalar fields. No synthetic collection or count
@@ -45,7 +46,7 @@
 //! # }
 //! ```
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use smol_str::SmolStr;
 
@@ -76,6 +77,58 @@ pub const ERROR_TAG: i32 = 20_004;
 
 /// The name the actual returned ObjectName member carries.
 const SESSIONINTERFACE_NAME: &str = "SessionInterface";
+
+/// The row header a bridge writes in front of every line of its log.
+///
+/// A clock, a thread bracket, the plugin that wrote the line and its level,
+/// which is what a text read frames a bridge log with. The bracket is the
+/// line's own statement about the message it handled: the thread that wrote
+/// it always, and - on a line handling one message - the session, the
+/// message context and the sequence number, separated as the bridge writes
+/// them. Those three are optional as a whole, so a line that carries only
+/// the thread still frames and leaves them null rather than failing the row.
+///
+/// Every capture is named for what it does. `timestamp` is the row's clock,
+/// so it stamps the message; `msgCtxId` fills the crate's own
+/// [`MsgCtxId`](super::MSGCTXID_TAG); `seqNum` fills `MsgSeqNum(34)`,
+/// through the bridge's own spellings of standard fields; `plugin` names the plugin
+/// session that logged the line, which fills
+/// [`SenderSessionName`](super::SENDERSESSIONNAME_TAG) for a line it
+/// sent and [`TargetSessionName`](super::TARGETSESSIONNAME_TAG) for one
+/// it received; `sessionUid` is the bridge's own session instance, not the
+/// message's session, so it leads the row as the capture's own column beside
+/// `threadId` and `level` and leaves [`SenderSessionId`](super::SENDERSESSIONID_TAG) to
+/// what the message itself states.
+///
+/// ```
+/// # fn main() -> yggdryl::Result<()> {
+/// let options = yggdryl::media::text::TextOptions::new()
+///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
+/// let captures = options.source_field()?;
+/// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
+/// assert!(names.ends_with(&["timestamp", "threadId", "sessionUid", "msgCtxId", "seqNum", "plugin", "level"]));
+/// assert_eq!(captures.field("seqNum")?.dtype(), &yggdryl::DataType::Int64);
+/// # Ok(())
+/// # }
+/// ```
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<sessionUid>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
+
+/// The standard tag one of the bridge's own capture spellings fills.
+///
+/// A bridge writes `seqNum` in its thread bracket where FIX says
+/// `MsgSeqNum`, and a capture named as the bridge spells it should still
+/// land on FIX's own tag. Folded, like every name here, so `SEQNUM` and
+/// `seqnum` are one spelling.
+#[must_use]
+pub(super) fn capture_tag(name: &str) -> Option<i32> {
+    CAPTURE_SPELLINGS
+        .iter()
+        .find(|(spelling, _)| crate::types::folds_equal(spelling, name))
+        .map(|(_, tag)| *tag)
+}
+
+/// The bridge's own spellings of standard fields, beside the tags they fill.
+const CAPTURE_SPELLINGS: [(&str, i32); 1] = [("seqnum", 34)];
 
 /// This dictionary, built once.
 fn branch() -> Result<FixBranch> {
@@ -425,6 +478,8 @@ fn push_attributes(
             SESSIONINTERFACE_NAME.as_bytes().to_vec(),
             mbean.as_bytes().to_vec(),
         ));
+        // The ObjectName's own properties, read where the classifier reads
+        // them so one spelling answers for both.
         for (member, property) in [
             (
                 b"MBeanType".as_slice(),
@@ -447,6 +502,37 @@ fn push_attributes(
         }
     }
     Ok(())
+}
+
+/// What the row a document arrived on stated beside it.
+///
+/// A row's clock and its own columns are borrowed from the row the reader
+/// framed, and one document answers for as many plugins as it names, so what
+/// the row stated is retained here and applied to each of them rather than
+/// borrowed across an expansion the caller drives.
+#[derive(Clone, Debug)]
+struct RowStamp {
+    /// The row's own clock.
+    clock: Option<Scalar>,
+    /// The row's own columns, beside the field and tag each fills.
+    fills: Vec<(Field, i32, Scalar)>,
+}
+
+impl RowStamp {
+    /// What a row stated, retained; nothing at all where it stated nothing.
+    fn retained(extras: super::build::RowExtras<'_>) -> Option<Arc<Self>> {
+        if extras.clock.is_none() && extras.fills.is_empty() {
+            return None;
+        }
+        Some(Arc::new(Self {
+            clock: extras.clock.cloned(),
+            fills: extras
+                .fills
+                .iter()
+                .map(|fill| (fill.field.clone(), fill.tag, fill.value.clone()))
+                .collect(),
+        }))
+    }
 }
 
 /// One leaf of the envelope, where the document stated it.
@@ -492,12 +578,12 @@ fn rendered(value: &Scalar) -> Result<Option<Vec<u8>>> {
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
-/// use yggdryl::Ulconfig;
+/// use yggdryl::UlPlugin;
 ///
 /// // A log line: prose in front of the document, prose behind it.
 /// let line = br#"12:00:00 [Jolokia] Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=OrderRouting,plugin-type=FIX,type=Plugin":{"Name":"OrderRouting","Version":"4.7.0","State":"logged"}},"status":200} (12 ms)"#;
 ///
-/// let held: Vec<Ulconfig> = Ulconfig::from_json_bytes(line)?.collect();
+/// let held: Vec<UlPlugin> = UlPlugin::from_json_bytes(line)?.collect();
 /// assert_eq!(held.len(), 1);
 /// assert_eq!(held[0].name(), Some("OrderRouting"));
 /// assert_eq!(held[0].version(), Some("4.7.0"));
@@ -507,7 +593,7 @@ fn rendered(value: &Scalar) -> Result<Option<Vec<u8>>> {
 /// # }
 /// ```
 #[derive(Clone, Debug)]
-pub struct Ulconfig {
+pub struct UlPlugin {
     /// The ObjectName the document answered under, where it named one.
     ///
     /// A single read states its MBean in the request rather than beside the
@@ -518,9 +604,14 @@ pub struct Ulconfig {
     attributes: Scalar,
     /// Shared original response; only its request/status/error envelope is read.
     envelope: Scalar,
+    /// What the row this plugin arrived on stated beside its document.
+    ///
+    /// Not part of this value's identity: a row is where a statement was
+    /// read, not what it says.
+    stamp: Option<Arc<RowStamp>>,
 }
 
-impl PartialEq for Ulconfig {
+impl PartialEq for UlPlugin {
     fn eq(&self, other: &Self) -> bool {
         self.mbean == other.mbean
             && self.attributes == other.attributes
@@ -528,9 +619,9 @@ impl PartialEq for Ulconfig {
     }
 }
 
-impl Eq for Ulconfig {}
+impl Eq for UlPlugin {}
 
-impl std::hash::Hash for Ulconfig {
+impl std::hash::Hash for UlPlugin {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.mbean.hash(state);
         self.attributes.hash(state);
@@ -538,7 +629,7 @@ impl std::hash::Hash for Ulconfig {
     }
 }
 
-impl Ulconfig {
+impl UlPlugin {
     /// The deterministic hash of this configuration and its selected exchange.
     /// Uses one allocation for the shared XXH3 state, independent of value size.
     #[must_use]
@@ -580,6 +671,7 @@ impl Ulconfig {
             mbean: mbean.map(SmolStr::new),
             attributes,
             envelope,
+            stamp: None,
         }
     }
 
@@ -595,7 +687,7 @@ impl Ulconfig {
     ///
     /// Returns [`Error::Codec`](crate::Error) naming the byte position when
     /// what is there is not JSON.
-    pub fn from_json_bytes(body: &[u8]) -> Result<Ulconfigs> {
+    pub fn from_json_bytes(body: &[u8]) -> Result<UlPlugins> {
         let document = crate::from_json_scalar(
             crate::mime_type::line::ulconfig_span(body).map_or(body, |span| &body[span]),
         )?;
@@ -613,7 +705,7 @@ impl Ulconfig {
     ///
     /// Refuses a non-object response, identifying its index in a bulk array.
     /// Validation finishes before an iterator is returned.
-    pub fn from_json_scalar(document: &Scalar) -> Result<Ulconfigs> {
+    pub fn from_json_scalar(document: &Scalar) -> Result<UlPlugins> {
         if let Some(responses) = document.as_sequence() {
             for (index, response) in responses.iter().enumerate() {
                 if response.as_record().is_none() {
@@ -632,11 +724,12 @@ impl Ulconfig {
                 ),
             });
         }
-        Ok(Ulconfigs {
+        Ok(UlPlugins {
             document: document.clone(),
             response: 0,
             after: None,
             done: false,
+            stamp: None,
         })
     }
 
@@ -655,7 +748,7 @@ impl Ulconfig {
                 })?;
         let mut attributes = Vec::new();
         for (field, value) in message.as_field().fields().iter().zip(values) {
-            if value.is_null() || field.as_fix().branch()?.name() == super::CRATE_BRANCH {
+            if value.is_null() || field.as_fix().tag()?.is_some_and(super::is_crate_tag) {
                 continue;
             }
             let name = field.name();
@@ -696,13 +789,16 @@ impl Ulconfig {
                 .map(SmolStr::new),
             attributes: Scalar::from_record(attributes)?,
             envelope: Scalar::from_record(envelope)?,
+            stamp: None,
         })
     }
 
     /// Converts this configuration to one flat message through the core builder.
     ///
     /// Object/array attributes retain their canonical JSON text. The request
-    /// selector and the returned ObjectName occupy their distinct scalar fields.
+    /// selector and the returned ObjectName occupy their distinct scalar
+    /// fields. What the row this plugin arrived on stated is applied last, so
+    /// a row's own clock outranks any the document carries.
     pub fn into_fixmsg(&self, codec: &super::FixCodec, enrich: bool) -> Result<super::FixMsg> {
         let mut pairs = Vec::new();
         if let Some(root) = self.envelope.as_record() {
@@ -722,7 +818,21 @@ impl Ulconfig {
             .iter()
             .map(|(key, value)| (key.as_slice(), value.as_slice()))
             .collect();
-        codec.build_pairs(&borrowed, enrich)
+        let fills: Vec<super::build::Fill<'_>> = self
+            .stamp
+            .iter()
+            .flat_map(|stamp| stamp.fills.iter())
+            .map(|(field, tag, value)| super::build::Fill {
+                field,
+                tag: *tag,
+                value,
+            })
+            .collect();
+        let extras = super::build::RowExtras {
+            clock: self.stamp.as_ref().and_then(|stamp| stamp.clock.as_ref()),
+            fills: &fills,
+        };
+        codec.build_pairs_with(&borrowed, extras, enrich)
     }
 
     /// The ObjectName the bridge holds this plugin under.
@@ -826,15 +936,16 @@ impl Ulconfig {
 /// Keeps the shared parsed Scalar and one key cursor; no list of results is
 /// materialized. A request or error-only response still yields its envelope.
 #[derive(Clone, Debug)]
-pub struct Ulconfigs {
+pub struct UlPlugins {
     document: Scalar,
     response: usize,
     after: Option<SmolStr>,
     done: bool,
+    stamp: Option<Arc<RowStamp>>,
 }
 
-impl Iterator for Ulconfigs {
-    type Item = Ulconfig;
+impl Iterator for UlPlugins {
+    type Item = UlPlugin;
 
     fn next(&mut self) -> Option<Self::Item> {
         use std::ops::Bound;
@@ -878,10 +989,11 @@ impl Iterator for Ulconfigs {
                             .is_some()
                     })
                 {
-                    let config = Ulconfig {
+                    let config = UlPlugin {
                         mbean: Some(mbean.clone()),
                         attributes: attributes.clone(),
                         envelope: answer.clone(),
+                        stamp: self.stamp.clone(),
                     };
                     self.after = Some(mbean.clone());
                     return Some(config);
@@ -907,7 +1019,7 @@ impl Iterator for Ulconfigs {
                 self.response += 1;
                 continue;
             }
-            let config = Ulconfig {
+            let config = UlPlugin {
                 mbean: (!wildcard && root.contains_key("value"))
                     .then_some(selector)
                     .flatten()
@@ -918,6 +1030,7 @@ impl Iterator for Ulconfigs {
                 } else {
                     Scalar::Null
                 },
+                stamp: self.stamp.clone(),
             };
             self.response += 1;
             return Some(config);
@@ -929,17 +1042,55 @@ impl Iterator for Ulconfigs {
     }
 }
 
-impl std::iter::FusedIterator for Ulconfigs {}
+impl std::iter::FusedIterator for UlPlugins {}
 
 impl super::FixCodec {
     /// Parses one configuration body into lazily converted flat messages.
     ///
+    /// The document is the payload [`MimeType::ULCONFIG`](crate::MimeType)
+    /// names, and this is the reader for it beside the one for a numeric
+    /// frame, a bridge row and a FIXML row: it produces the same key/value
+    /// pairs they do and hands them to the same builder, so what a dictionary
+    /// types here is typed by the rules that type everything else.
+    ///
     /// Bulk responses and wildcard values may yield several messages; each
     /// carries the common envelope and exactly one MBean's scalar attributes.
+    ///
+    /// Pin [`ULBRIDGE_BRANCH`] to type a document's own attributes; FIX's own
+    /// names resolve either way.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`](crate::Error) naming the byte position when
+    /// the document is not JSON. A conversion's own refusal is yielded by the
+    /// iterator rather than raised here.
     pub fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> Result<super::FixMessages> {
+        self.ulconfig_with(body, super::build::RowExtras::NONE, enrich)
+    }
+
+    /// [`Self::transform_ulconfig_line`], with what the row stated beside
+    /// its document.
+    ///
+    /// A row states its clock and its own columns once and the document it
+    /// carries answers for as many plugins as it names, so what the row
+    /// stated is retained on the expansion rather than borrowed across it:
+    /// every message the document yields is stamped by the row it arrived on.
+    pub(super) fn ulconfig_with(
+        &self,
+        body: &[u8],
+        extras: super::build::RowExtras<'_>,
+        enrich: bool,
+    ) -> Result<super::FixMessages> {
+        // The document as the line carries it: a transport writes a timestamp
+        // in front of one and sometimes a duration behind it, and the reader
+        // that classified the line already knows where both stop. A body that
+        // names no MBean is read whole, because a caller handing one straight
+        // in is handing the document itself.
+        let mut values = UlPlugin::from_json_bytes(body)?;
+        values.stamp = RowStamp::retained(extras);
         Ok(super::FixMessages::from_ulconfigs(
             self.clone(),
-            Ulconfig::from_json_bytes(body)?,
+            values,
             enrich,
         ))
     }

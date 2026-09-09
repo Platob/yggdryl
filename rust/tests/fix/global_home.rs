@@ -50,7 +50,7 @@ fn the_configuration_directory_seeds_the_default() {
     }
     let global = FixRegistry::global().expect("the configured registry");
     assert_eq!(global.field_by_tag(55).expect("Symbol").name(), "Symbol");
-    assert_eq!(global.len(), 1);
+    assert_eq!(global.len(), 1 + super::crated());
 
     // SAFETY: the same reasoning as above.
     unsafe {

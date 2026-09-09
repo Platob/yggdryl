@@ -57,7 +57,7 @@ from yggdryl._native import (
     MsgTypeIterator,
     ScalarEntryIterator,
     ScalarIterator,
-    Ulconfigs,
+    UlPlugins,
 )
 from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
 from yggdryl.types import (
@@ -67,6 +67,7 @@ from yggdryl.types import (
     CfiField,
     CountryField,
     CurrencyField,
+    IsinField,
     MicField,
     DenseUnionField,
     FixedSizeListField,
@@ -167,7 +168,7 @@ iceberg_names_hash: None = IcebergNames.__hash__
 fix_definitions_hash: None = FixDefinitionIterator.__hash__
 fix_messages_hash: None = FixMessages.__hash__
 fix_msgtypes_hash: None = MsgTypeIterator.__hash__
-ulconfigs_hash: None = Ulconfigs.__hash__
+ulplugins_hash: None = UlPlugins.__hash__
 bound_hash: None = Bound.__hash__
 bound_statement_hash: None = BoundStatement.__hash__
 catalog_hash: None = iceberg.Catalog.__hash__
@@ -402,13 +403,15 @@ typed_mic: MicField = types.mic("venue")
 typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
 typed_cfi: CfiField = types.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
+typed_isin: IsinField = types.isin("instrument")
+typed_isin_kind: Literal["isin"] = typed_isin.dtype.id
 typed_uuid: UuidField = types.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
 typed_ascii_default_scalar: Scalar = typed_ascii.dtype.default_scalar()
-typed_ascii_isin: FixedAsciiField = types.fixed_ascii("isin", 12)
+typed_ascii_sedol: FixedAsciiField = types.fixed_ascii("sedol", 7)
 # Reading one is the generic conversion, so it lands as ``object``.
-typed_ascii_isin_value: object = typed_ascii_isin.default_scalar().as_py()
+typed_ascii_sedol_value: object = typed_ascii_sedol.default_scalar().as_py()
 ascii_member_name: str = AsciiEnum.member_name("n/a")
 
 
@@ -1216,6 +1219,8 @@ fix_parsed: pa.RecordBatchReader = fix.parse_arrow_reader(
     "body",
     version="4.4",
     dedup=True,
+    enrich=True,
+    lifecycle=True,
 )
 
 fix_root: Field = Field(
@@ -1279,6 +1284,13 @@ fix_read_config: fix.FixMessages = fix_reader.transform_ulconfig_line(b'{"Name":
 fix_read_frame: fix.FixMsg = fix_reader.transform_fix_line(b"8=FIX.4.4", 1)
 fix_read_bridge: fix.FixMsg = fix_reader.transform_ullink_line(b"#SYMBOL=TTF")
 fix_read_pairs: fix.FixMsg = fix_reader.transform_pairs([("55", "AAPL")])
+fix_read_filled: list[fix.FixMsg] = fix_reader.enrich_fixmsgs([fix_read_text])
+fix_read_stamped: list[fix.FixMsg] = fix_reader.lifecycle(iter([fix_read_text]))
+fix_life: fix.FixLifecycle = fix.FixLifecycle(fix_registry_from_fields)
+fix_life_default: fix.FixLifecycle = fix.FixLifecycle()
+fix_life_filled: fix.FixMsg = fix_life.fill(fix_read_text)
+fix_life_alive: int = fix_life.alive()
+fix_life.clear()
 
 fix_counter: Field = Field("nopartyids", "int32")
 fix_counter.fix.tag = 453
@@ -1324,12 +1336,12 @@ fix_msgtype_group: Field | None = fix_msgtype.get_group_by_counter("453:")
 fix_msgtype_hash: int = fix_msgtype.stable_hash()
 fix_msgtype_ordered: bool = fix_msgtype <= fix_msgtype_item
 fix_msgtype_pickle: tuple[object, tuple[str, int]] = fix_msgtype.__reduce__()
-fix_configuration: fix.Ulconfig = fix.Ulconfig({"Name": "Router"}, envelope={"status": 200})
-fix_configurations: fix.Ulconfigs = fix.Ulconfig.from_json_scalar({"Name": "Router"})
-fix_configurations_bytes: fix.Ulconfigs = fix.Ulconfig.from_json_bytes(b'{"Name":"Router"}')
-fix_configuration_item: fix.Ulconfig = next(fix_configurations)
+fix_configuration: fix.UlPlugin = fix.UlPlugin({"Name": "Router"}, envelope={"status": 200})
+fix_configurations: fix.UlPlugins = fix.UlPlugin.from_json_scalar({"Name": "Router"})
+fix_configurations_bytes: fix.UlPlugins = fix.UlPlugin.from_json_bytes(b'{"Name":"Router"}')
+fix_configuration_item: fix.UlPlugin = next(fix_configurations)
 fix_configuration_message: fix.FixMsg = fix_configuration.into_fixmsg(fix_reader)
-fix_configuration_again: fix.Ulconfig = fix.Ulconfig.from_fixmsg(fix_configuration_message)
+fix_configuration_again: fix.UlPlugin = fix.UlPlugin.from_fixmsg(fix_configuration_message)
 fix_configuration_envelope: Scalar = fix_configuration.envelope
 fix_configuration_attributes: dict[str, Scalar] = fix_configuration.attributes
 fix_configuration_hash: int = fix_configuration.stable_hash()
@@ -1348,7 +1360,7 @@ fix_ingested: tuple[int, int] = fix_registry_from_fields.add_cfb_file(
     Path("cblocks") / "bloomberg.cfb", "bloomberg", ["blp"]
 )
 fix_carried_schema: Field = fix.fix_schema_carrying(fix_root, fix_fixed_schema)
-fix_column_at: int | None = fix_fixed_schema.index_of("35")
+fix_column_at: int | None = fix_fixed_schema.index_of("msgtype")
 fix_fixed_row: Scalar = fix_read_text.into_row(fix_fixed_schema)
 
 fix_global: fix.FixRegistry = fix.global_registry()

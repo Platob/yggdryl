@@ -58,34 +58,80 @@ fn grammar_canonicalizes_every_supported_separator_and_trailing_zero() {
 
 #[test]
 fn every_refusal_names_the_first_bad_byte() {
+    // Only the numeric components refuse. Everything a patch tail can say is
+    // folded rather than refused, so the refusals are the major, the minor,
+    // and text that names no major at all.
     for (text, position) in [
         ("", 0),
+        (".1", 0),
+        (" 1", 0),
+        ("-1", 0),
+        ("+1", 0),
+        ("v1", 0),
         ("256.0", 2),
+        ("999", 2),
         ("1.256", 4),
-        ("1.0.65536", 8),
-        ("1.2.3.4", 6),
-        ("4.4.0.0", 6),
-        ("1.", 1),
-        ("1-", 1),
-        ("1..2", 2),
-        ("1.+2", 2),
-        ("1.0SP", 5),
-        ("1.0sp65536", 9),
-        ("1sp250", 1),
-        ("1.0SP-2", 5),
-        ("1.0SP+2", 5),
-        ("1.0SP.2", 5),
-        ("1.0SP2.3", 7),
-        ("1.0.2SP3", 5),
-        ("1.0SP2SP3", 6),
-        ("1.0SP2_EP250", 6),
-        ("1.0s250", 3),
-        ("1.0sp250 ", 8),
-        ("1.0-rc1", 3),
-        ("1.0.SP2", 4),
+        ("1.999", 4),
+        ("12.256", 5),
     ] {
         assert_eq!(parse_position(text), position, "{text:?}");
     }
+}
+
+#[test]
+fn a_patch_tail_that_states_no_number_folds_instead_of_refusing() {
+    // Every tail the strict grammar refused now parses, and the components it
+    // does read stay exactly what the text stated.
+    for text in [
+        "1-",
+        "1.",
+        "1..2",
+        "1.+2",
+        "1.2.3.4",
+        "1.0SP",
+        "1.0sp65536",
+        "1.0.65536",
+        "1.0SP-2",
+        "1.0SP.2",
+        "1.0SP2.3",
+        "1.0.2SP3",
+        "1.0SP2SP3",
+        "1.0SP2_EP250",
+        "1.0s250",
+        "1.0sp250 ",
+        "1.0-rc1",
+        "1.0.SP2",
+        "1.0+meta",
+    ] {
+        let held = version(text);
+        assert_eq!(held.major(), 1, "{text:?}");
+        // The same tail always reads as the same version.
+        assert_eq!(held, version(text), "{text:?}");
+    }
+
+    // The tail is read after the major and minor, whatever they were.
+    assert_eq!(
+        (version("4.4.0.0").major(), version("4.4.0.0").minor()),
+        (4, 4)
+    );
+    assert_eq!(version("4.4.0.0"), version("4.4.0.0"));
+
+    // A stated number is still that number, whichever way the tail states it.
+    assert_eq!(version("5.0.250"), Version::new(5, 0, 250));
+    assert_eq!(version("5.0sp250"), Version::new(5, 0, 250));
+    assert_eq!(version("5.0.0"), Version::new(5, 0, 0));
+
+    // A fold never lands on nothing, and unlike tails read as unlike versions.
+    assert_ne!(version("1.0-rc1").patch(), 0);
+    assert_ne!(version("1.0-rc1"), version("1.0-rc2"));
+    assert_ne!(version("1.0-rc1"), version("1.0"));
+
+    // The major and minor a folded tail follows are the stated ones.
+    assert_eq!(
+        (version("1.2-rc1").major(), version("1.2-rc1").minor()),
+        (1, 2)
+    );
+    assert_eq!(version("255.255-rc1").major(), 255);
 }
 
 #[test]
@@ -202,10 +248,10 @@ fn datatype_identity_naming_and_serde_are_total() {
     assert_eq!(DataTypeId::Version.as_str(), "version");
     assert_eq!(DataTypeId::Version.as_u8(), 54);
     assert_eq!(DataTypeId::Version.fixed_byte_width(), None);
-    // `Version` is no longer last: the coded FIX datatypes and then `Url`
-    // were appended after it, which is what `as_u8` being a wire contract
-    // requires.
-    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Url));
+    // `Version` is no longer last: the coded FIX datatypes, then `Url`, then
+    // `Isin` were appended after it, which is what `as_u8` being a wire
+    // contract requires.
+    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Isin));
     assert!(!DataTypeId::Version.is_parameterized());
     assert!(DataTypeId::Version.is_string());
     assert!(!dtype.is_nested());

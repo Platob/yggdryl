@@ -12,9 +12,12 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as four
 | Enums | Inline `fix:codes` metadata on each scalar field |
 | References | Compact native child fields retain reference metadata and use `Null` as the unresolved datatype; intake resolves them to canonical native fields |
 | Branch manifest | Optional `branches.json`, containing named branch declarations and aliases |
+| Crate fields | The crate's own twenty fields, standard tags from 65000, are never written; every registry holds them from construction, and a stored copy of one is read past |
 | Validation | Category shape, shard arithmetic, name/branch identity, references, codes, cycles, and depth are checked before exposing the registry |
 | Missing folder | Loads an empty registry and creates nothing |
+| Refused | A root still holding `records/`; no migration, no backward compatibility |
 | Publication | Writes populated documents, then removes stale owned documents and empty category directories; separate file writes are not a directory-wide transaction |
+| Seed | `config/fix`, tracked and written by `write_into`; outside the [default registry](registry.md)'s order |
 
 ## Use
 
@@ -182,6 +185,81 @@ The committed `config/fix` catalog contains 6,203 scalar fields in 65 shards, 74
 
 The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradingCommunity/orchestrations/blob/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml), with the [documented naming rules](registry.md#group-names). This is a complete resolved catalog workload, so its load/write timings are not comparable to a scalar-only seed or a small FIX-version subset.
 
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{FixBranch, FixRegistry};
+
+    let standard = FixBranch::STANDARD;
+    let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
+    let registry = FixRegistry::from_handle(&Folder::new(seed)?)?;
+
+    // Names are folded once, so a caller spells one however they have it and
+    // the specification's own spelling stays on `display`.
+    assert_eq!(registry.field_by_tag(55)?.name(), "symbol");
+    assert_eq!(registry.field_by_name("SYMBOL", Some(&standard))?.name(), "symbol");
+    assert_eq!(registry.field_by_tag(150)?.display(), Some("ExecType"));
+    assert_eq!(registry.field_by_path("Parties.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_name("ClOrdID", Some(&standard))?.display(), Some("ClOrdID"));
+    // Every field is a specification field or one of the crate's own, and
+    // both are standard, so none states a branch.
+    let branched = registry.iter().filter(|field| field.has_metadata("fix:branch")).count();
+    assert_eq!(branched, 0);
+    // The whole published dictionary, not a sample of it.
+    assert!(registry.len() > 6_000);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+
+    from yggdryl.fix import STANDARD_BRANCH, FixRegistry, fix_crate_fields
+
+    # The seed this repository tracks, named from the repository root.
+    seed = pathlib.Path("config/fix").resolve()
+    registry = FixRegistry.from_handle(seed)
+
+    assert registry.field_by_tag(55).name == "symbol"
+    assert registry.field_by_id("55:").name == "symbol"
+    assert registry.field_by_name("SYMBOL", STANDARD_BRANCH).name == "symbol"
+    assert registry.field_by_tag(150).display == "ExecType"
+    assert registry.field_by_path("Parties.PartyID", STANDARD_BRANCH).fix.tag == 448
+    assert registry.field_by_name("ClOrdID", STANDARD_BRANCH).display == "ClOrdID"
+    # Every field is a specification field or one of the crate's own, and
+    # both are standard, so none states a branch.
+    assert sum("fix:branch" in field.metadata for field in registry) == 0
+    assert len(fix_crate_fields()) == 19
+    # The whole published dictionary, not a sample of it.
+    assert len(registry) > 6_000
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    // The seed this repository tracks, named from the repository root.
+    const standard = fix.STANDARD_BRANCH
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
+
+    assert.equal(registry.fieldByTag(55).name, 'symbol')
+    assert.equal(registry.fieldById('55:').name, 'symbol')
+    assert.equal(registry.fieldByName('SYMBOL', standard).name, 'symbol')
+    assert.equal(registry.fieldByTag(150).display, 'ExecType')
+    assert.equal(registry.fieldByPath('Parties.PartyID', standard).fix.tag, 448)
+    assert.equal(registry.fieldByName('ClOrdID', standard).display, 'ClOrdID')
+    // Every field is a specification field or one of the crate's own, and
+    // both are standard, so none states a branch.
+    assert.equal([...registry].filter((field) => field.has('fix:branch')).length, 0)
+    assert.equal(fix.crateFields().length, 19)
+    // The whole published dictionary, not a sample of it.
+    assert.ok(registry.size > 6_000)
+    ```
+
 ## Edges
 
 - A missing category is empty; reading a missing root creates nothing.
@@ -190,8 +268,14 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 - Wrong shard, branch, category datatype, counter type, or reference target is refused before a registry is returned.
 - Standard fields outside the user range cannot acquire a named branch.
 - Canonical definition names must form safe single path segments; separators and traversal names are refused.
+- A directory under a category whose name is not a branch is refused with `FixBranch::from_str`'s parse failure, its byte position, and the directory URL; a branch directory is named by the canonical lowercase branch text.
+- A `branches.json` entry holding `targetcompid` or `sendercompid` is refused naming the key: a branch is a dictionary, and the session that spoke it is a fact about a run.
+- A `README` beside the field shards is ignored on read and left alone by publication; only `<n>.json` with a decimal `n` is read.
+- A stored document holding one of the crate's own fields, a standard tag from 65000, is read past, and `write_into` writes none of them, so a store never holds a copy that could drift from the crate's.
+- A root still holding `records/`, nested or flat, is refused naming the directory, never read as empty.
 - Removing the last definition from a shard or category removes its owned document or directory on the next write.
 - Folder writes publish individual documents; a backend failure can leave already published files visible.
+- `config/fix` in the Python and JavaScript seed examples resolves against the working directory, so run them from the repository root.
 
 ## Commands
 
@@ -199,6 +283,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 
     ```bash
     cargo test -p yggdryl --test fix store
+    cargo test -p yggdryl --lib fix::tests::shard_arithmetic
     cargo test -p yggdryl --test iobase_calls fix_catalog_storage_resolves_each_root_path_once
     ```
 

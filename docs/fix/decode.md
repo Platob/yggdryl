@@ -91,14 +91,12 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 ## Edges
 
-- Numeric groups and indexed bridge groups populate the named List while
-  retaining their scalar counts. Ambiguous group contexts require a message
-  definition that selects the layout.
-- A malformed typed value can become null plus an anomaly while the raw arrival
-  remains available for emission.
-- Unexplained keys retain their own spelling and arrival value.
-- Bulk and wildcard configuration input yields all selected configurations;
-  empty answers yield none. A conversion error propagates and fuses the cursor.
+- A numeric frame states its group members flat, and the dictionary's declaration is what folds them back: the group's first declared member opens an occurrence, a member the occurrence already holds opens the next, and a tag the group does not declare closes it. A bridge frame's indexed keys state the occurrences outright, and the same counter holds them either way. A count the members do not meet is reported rather than repaired, and an ambiguous group context needs a message definition to select the layout.
+- A tag that merely arrived twice is two values, not a group of one: only a counter states a count.
+- A value that will not type is null in the row and still exactly as it arrived in the entries, ready for emission; the refusal is an anomaly, never an error.
+- A key no dictionary names is kept under its own spelling and its arrival value. Nothing is dropped for being unexplained.
+- Bulk and wildcard configuration input yields all selected configurations; empty answers yield none. A conversion error propagates and fuses the cursor.
+- The page reads text; the package reads bytes. A frame whose bytes are not text — a `data` field carrying binary — decodes lossily here and is the package's to read properly.
 
 ## Commands
 

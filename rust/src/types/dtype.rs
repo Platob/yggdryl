@@ -102,6 +102,9 @@ pub enum DataType {
     Mic,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
     Cfi,
+    /// ISO 6166: a securities identification number, twelve ASCII bytes
+    /// closed by a check digit.
+    Isin,
     /// FIX's side of a trade, four ASCII bytes.
     Side,
     /// What state one thing is in, eight ASCII bytes.
@@ -256,6 +259,7 @@ impl DataType {
             Self::Currency => DataTypeId::Currency,
             Self::Mic => DataTypeId::Mic,
             Self::Cfi => DataTypeId::Cfi,
+            Self::Isin => DataTypeId::Isin,
             Self::Side => DataTypeId::Side,
             Self::MsgDirection => DataTypeId::MsgDirection,
             Self::State => DataTypeId::State,
@@ -559,6 +563,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::State => 55,
         DataType::TimeInForce => 56,
         DataType::Url => 57,
+        DataType::Isin => 58,
     }
 }
 

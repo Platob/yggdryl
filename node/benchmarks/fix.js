@@ -233,9 +233,9 @@ try {
   for (const size of [1, 32, 64]) {
     const body = wildcard(size)
     if (drain(ulcodec.transformLine(body)) !== size) throw new Error('bulk cardinality mismatch')
-    const selected = fix.Ulconfig.fromJsonBytes(body)[Symbol.iterator]().next().value
-    benchmark(`fix/ulconfigs_first/${size}`, () => fix.Ulconfig.fromJsonBytes(body)[Symbol.iterator]().next().value)
-    benchmark(`fix/ulconfigs_drain/${size}`, () => drain(fix.Ulconfig.fromJsonBytes(body)))
+    const selected = fix.UlPlugin.fromJsonBytes(body)[Symbol.iterator]().next().value
+    benchmark(`fix/ulconfigs_first/${size}`, () => fix.UlPlugin.fromJsonBytes(body)[Symbol.iterator]().next().value)
+    benchmark(`fix/ulconfigs_drain/${size}`, () => drain(fix.UlPlugin.fromJsonBytes(body)))
     benchmark(`fix/messages_first/${size}`, () => ulcodec.transformLine(body).next().value)
     benchmark(`fix/messages_drain/${size}`, () => drain(ulcodec.transformLine(body)))
     benchmark(`fix/records_drain/${size}`, () => drain(ulcodec.transformRecord({ url: 'capture.log', body })))

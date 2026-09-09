@@ -10,7 +10,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, types
-from yggdryl.fix import FixBranch, FixCodec, FixMessages, FixRegistry, MsgType, Ulconfig, Ulconfigs, fix_crate_fields, fix_ulbridge_fields, parse_arrow_reader
+from yggdryl.fix import FixBranch, FixCodec, FixMessages, FixRegistry, MsgType, UlPlugin, UlPlugins, fix_crate_fields, fix_ulbridge_fields, parse_arrow_reader
 
 
 def _field(name: str, tag: int, dtype: str = "utf8") -> Field:
@@ -168,8 +168,8 @@ def _wildcard(size: int = 2) -> dict[str, Any]:
 
 def test_wildcard_values_are_lazy_owned_views_with_envelope_identity() -> None:
     document = _wildcard()
-    iterator = Ulconfig.from_json_scalar(document)
-    assert isinstance(iterator, Ulconfigs)
+    iterator = UlPlugin.from_json_scalar(document)
+    assert isinstance(iterator, UlPlugins)
     assert iter(iterator) is iterator
     first = next(iterator)
     document["value"].clear()
@@ -178,22 +178,22 @@ def test_wildcard_values_are_lazy_owned_views_with_envelope_identity() -> None:
     assert next(iterator, None) is None
     sibling = _wildcard()
     list(sibling["value"].values())[1]["CurrentPort"] = 9999
-    same = next(Ulconfig.from_json_scalar(sibling))
+    same = next(UlPlugin.from_json_scalar(sibling))
     assert same == first
     assert hash(same) == hash(first)
     assert same.stable_hash() == first.stable_hash()
     sibling["status"] = 503
-    changed = next(Ulconfig.from_json_scalar(sibling))
+    changed = next(UlPlugin.from_json_scalar(sibling))
     assert changed != first
     assert changed.stable_hash() != first.stable_hash()
-    rebuilt = Ulconfig(first.attributes, mbean=first.mbean, envelope=first.envelope)
+    rebuilt = UlPlugin(first.attributes, mbean=first.mbean, envelope=first.envelope)
     assert rebuilt == first
     assert rebuilt.stable_hash() == first.stable_hash()
     restored = pickle.loads(pickle.dumps(first))
     assert restored == first
     assert restored.envelope == first.envelope
     with pytest.raises(ValueError, match=r"ulconfig\[1\]"):
-        Ulconfig.from_json_scalar([_wildcard(), None])
+        UlPlugin.from_json_scalar([_wildcard(), None])
 
 
 def test_bulk_messages_preserve_error_requests_source_columns_and_fuse() -> None:
@@ -222,7 +222,7 @@ def test_bulk_messages_preserve_error_requests_source_columns_and_fuse() -> None
     assert output.column("url").to_pylist() == ["capture.log"] * 4
     assert output.column("rownum").to_pylist() == [17] * 4
     assert output.column("body").to_pylist() == [raw] * 4
-    config = Ulconfig({"CurrentPort": float("nan")})
+    config = UlPlugin({"CurrentPort": float("nan")})
     with pytest.raises(ValueError, match="non-finite"):
         config.into_fixmsg(FixCodec(registry))
 

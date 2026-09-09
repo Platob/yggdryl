@@ -178,6 +178,7 @@ function createFields(DataType, Field, native) {
     currency: simple('currency'),
     mic: simple('mic'),
     cfi: simple('cfi'),
+    isin: simple('isin'),
 
     list: list('list'),
     listView: list('list_view'),

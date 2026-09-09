@@ -182,9 +182,9 @@ function wildcard(size = 2) {
   }
 }
 
-test('Ulconfig iterators own selected values and exchange identity', () => {
+test('UlPlugin iterators own selected values and exchange identity', () => {
   const document = wildcard()
-  const cursor = fix.Ulconfig.fromJsonScalar(document)[Symbol.iterator]()
+  const cursor = fix.UlPlugin.fromJsonScalar(document)[Symbol.iterator]()
   const first = cursor.next().value
   document.value = {}
   assert.equal(cursor.next().value.name, 'Item1')
@@ -192,19 +192,19 @@ test('Ulconfig iterators own selected values and exchange identity', () => {
   assert.equal(cursor.next().done, true)
   const sibling = wildcard()
   Object.values(sibling.value)[1].CurrentPort = 9999
-  const same = fix.Ulconfig.fromJsonScalar(sibling)[Symbol.iterator]().next().value
+  const same = fix.UlPlugin.fromJsonScalar(sibling)[Symbol.iterator]().next().value
   assert.ok(same.equals(first))
   assert.equal(same.stableHash(), first.stableHash())
   sibling.status = 503
-  const changed = fix.Ulconfig.fromJsonScalar(sibling)[Symbol.iterator]().next().value
+  const changed = fix.UlPlugin.fromJsonScalar(sibling)[Symbol.iterator]().next().value
   assert.equal(changed.equals(first), false)
   assert.notEqual(changed.stableHash(), first.stableHash())
-  const rebuilt = new fix.Ulconfig(first.mbean, first.asAttributes(), first.asEnvelope())
+  const rebuilt = new fix.UlPlugin(first.mbean, first.asAttributes(), first.asEnvelope())
   assert.ok(rebuilt.equals(first))
   assert.ok(first.clone().equals(first))
   assert.equal(rebuilt.stableHash(), first.stableHash())
-  assert.throws(() => fix.Ulconfig.fromJsonScalar([wildcard(), null]), /ulconfig\[1\]/)
-  assert.equal([...fix.Ulconfig.fromJsonBytes(Buffer.from(JSON.stringify(wildcard())))].length, 2)
+  assert.throws(() => fix.UlPlugin.fromJsonScalar([wildcard(), null]), /ulconfig\[1\]/)
+  assert.equal([...fix.UlPlugin.fromJsonBytes(Buffer.from(JSON.stringify(wildcard())))].length, 2)
 })
 
 test('bulk message streams preserve flat configuration rows and fuse', () => {
@@ -228,10 +228,10 @@ test('bulk message streams preserve flat configuration rows and fuse', () => {
   assert.equal(cursor.next().done, true)
   assert.equal([...codec.transformUlconfigLine(body)].length, 4)
   assert.equal([...codec.transformRecord({ url: 'capture.log', rownum: 17, body })].length, 4)
-  const selected = fix.Ulconfig.fromFixmsg(values[0])
+  const selected = fix.UlPlugin.fromFixmsg(values[0])
   assert.equal(selected.name, 'Item0')
   assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Item0')
-  const invalid = new fix.Ulconfig(null, { CurrentPort: NaN }, {})
+  const invalid = new fix.UlPlugin(null, { CurrentPort: NaN }, {})
   assert.throws(() => invalid.intoFixmsg(codec), /non-finite/)
   const schema = fix.schema(registry)
   assert.equal(values[0].intoRow(schema).asJs().length, schema.fieldLen)

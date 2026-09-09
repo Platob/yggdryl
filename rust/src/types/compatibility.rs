@@ -357,7 +357,8 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Country
         | D::Currency
         | D::Mic
-        | D::Cfi => Ok((D::Utf8, true)),
+        | D::Cfi
+        | D::Isin => Ok((D::Utf8, true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::Utf8, true)),
@@ -458,7 +459,8 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Country
         | D::Currency
         | D::Mic
-        | D::Cfi => Ok((D::Utf8, true)),
+        | D::Cfi
+        | D::Isin => Ok((D::Utf8, true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::Utf8, true)),
@@ -551,7 +553,8 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Country
         | D::Currency
         | D::Mic
-        | D::Cfi => Ok((D::Utf8, true)),
+        | D::Cfi
+        | D::Isin => Ok((D::Utf8, true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::Utf8, true)),
@@ -652,7 +655,8 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         | D::Country
         | D::Currency
         | D::Mic
-        | D::Cfi => Ok((D::Utf8, true)),
+        | D::Cfi
+        | D::Isin => Ok((D::Utf8, true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {

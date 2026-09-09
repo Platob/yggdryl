@@ -14,7 +14,7 @@ Search the native FIX catalog and inspect the fields, messages, components and g
 
 ## Use
 
-A count and its logical collection have separate definitions. `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components.
+A count and its logical collection have separate definitions. `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The count below is the dictionary this repository ships plus the twenty fields of the crate's own that every registry holds.
 
 === "Rust"
 
@@ -23,13 +23,17 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
     use yggdryl::holder::local::Folder;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = FixRegistry::from_handle(&Folder::new(root)?)?.with_crate_fields()?;
-    assert_eq!(registry.len(), 6_210);
+    let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    assert_eq!(registry.len(), 6_222);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.definition(FixCategory::Groups, "parties", None)?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert_eq!(parties.as_fix().component(), Some("party"));
     assert_eq!(registry.msgtype("D", None)?.as_str(), "D");
+    // The crate's own columns are standard fields from tag 65000, held by every registry.
+    let timestamp = registry.field_by_id("65003:".parse()?)?;
+    assert_eq!(timestamp.name(), "timestamp");
+    assert_eq!(timestamp.display(), Some("Timestamp"));
     ```
 
 === "Python"
@@ -39,13 +43,16 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
     from yggdryl.fix import FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    registry.with_crate_fields()
-    assert len(registry) == 6_210
+    assert len(registry) == 6_222
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.definition("groups", "parties")
     assert parties.fix.counter == 453
     assert parties.fix.component == "party"
     assert registry.msgtype("D").value == "D"
+    # The crate's own columns are standard fields from tag 65000, held by every registry.
+    timestamp = registry.field_by_id("65003:")
+    assert timestamp.name == "timestamp"
+    assert timestamp.display == "Timestamp"
     ```
 
 === "JavaScript"
@@ -56,13 +63,16 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
     const { fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    registry.withCrateFields()
-    assert.equal(registry.size, 6_210)
+    assert.equal(registry.size, 6_222)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.definition('groups', 'parties')
     assert.equal(parties.fix.counter, 453)
     assert.equal(parties.fix.component, 'party')
     assert.equal(registry.msgtype('D').asStr(), 'D')
+    // The crate's own columns are standard fields from tag 65000, held by every registry.
+    const timestamp = registry.fieldById('65003:')
+    assert.equal(timestamp.name, 'timestamp')
+    assert.equal(timestamp.display, 'Timestamp')
     ```
 
 ## What the registry holds
@@ -83,7 +93,7 @@ Codes appear inside their owning field's detail panel. A group has a `fix:counte
 
 ## The capture row
 
-The [Capture](capture.md#find-a-column) page searches the fixed columns projected by the native schema. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar`, raw arrivals, facets and anomalies.
+The [Capture](capture.md#find-a-column) page searches the ninety-three fixed columns projected by the native schema. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar`, raw arrivals, facets and anomalies.
 
 ## Where it came from
 

@@ -49,7 +49,7 @@ pub(crate) use ascii::{
     code_for_extension,
 };
 pub use ascii::{
-    AsciiScalar, CfiScalar, CountryScalar, CurrencyScalar, FixedAsciiScalar, MicScalar,
+    AsciiScalar, CfiScalar, CountryScalar, CurrencyScalar, FixedAsciiScalar, IsinScalar, MicScalar,
 };
 #[cfg(feature = "arrow")]
 pub(crate) use ascii::{

@@ -133,6 +133,7 @@ impl<'msg> NumericContext<'msg> {
     }
 }
 
+#[derive(Clone, Copy)]
 struct GroupValue<'msg> {
     field: &'msg Field,
     counter: Option<&'msg Scalar>,
@@ -176,6 +177,13 @@ struct GroupCursor<'msg> {
     tag: i32,
     root: Option<GroupNode<'msg>>,
     stack: Vec<GroupFrame<'msg>>,
+    /// The last instance this cursor answered.
+    ///
+    /// A counter a frame states twice at one level appends to the group the
+    /// first statement opened rather than opening a second one, so the row
+    /// holds one instance for two arrivals and every arrival is measured
+    /// against it.
+    last: Option<GroupValue<'msg>>,
 }
 
 impl<'msg> GroupCursor<'msg> {
@@ -185,7 +193,9 @@ impl<'msg> GroupCursor<'msg> {
                 root
             } else {
                 loop {
-                    let level = self.stack.last_mut()?;
+                    let Some(level) = self.stack.last_mut() else {
+                        return self.last;
+                    };
                     if let Some(node) = level.next() {
                         break node;
                     }
@@ -222,11 +232,13 @@ impl<'msg> GroupCursor<'msg> {
                             })?;
                             row.get(index)
                         });
-                        return Some(GroupValue {
+                        let value = GroupValue {
                             field: node.field,
                             counter,
                             occurrences: values,
-                        });
+                        };
+                        self.last = Some(value);
+                        return Some(value);
                     }
                 }
                 _ => {}
@@ -253,6 +265,7 @@ fn group_cursors<'msg>(
                 parent: None,
             }),
             stack: Vec::new(),
+            last: None,
         });
     }
     match field.dtype() {
@@ -380,7 +393,17 @@ impl<'msg> FixAnomalies<'msg> {
     fn miscount(entry: &'msg FixEntry, group: &GroupValue<'msg>) -> Option<FixAnomaly<'msg>> {
         // A count outside int32 is an untyped scalar, even if its raw spelling
         // fits the wider arithmetic used for comparing occurrence lengths.
-        group.counter?.as_integer()?;
+        // A counter the frame states twice at one level lands in a List of the
+        // counts it stated, so the typed reading is looked for through the
+        // column's own occurrences as well as in the column itself.
+        let counter = group.counter?;
+        if counter.as_integer().is_none()
+            && !counter
+                .as_sequence()
+                .is_some_and(|stated| stated.iter().any(|held| held.as_integer().is_some()))
+        {
+            return None;
+        }
         let stated = entry.value().parse::<i64>().ok()?;
         let held = group.occurrences;
         let column = group.field;

@@ -2,20 +2,20 @@
 
 use napi::bindgen_prelude::{Buffer, Generator, Result};
 use napi_derive::napi;
-use yggdryl::{FixMessages, Ulconfig, Ulconfigs};
+use yggdryl::{FixMessages, UlPlugin, UlPlugins};
 
 use super::{JsFixCodec, JsFixMsg};
 use crate::napi_error;
 use crate::text::codec::JsScalar;
 
 /// One selected configuration; its shared source response remains native.
-#[napi(js_name = "Ulconfig")]
-pub struct JsUlconfig {
-    inner: Ulconfig,
+#[napi(js_name = "UlPlugin")]
+pub struct JsUlPlugin {
+    inner: UlPlugin,
 }
 
 #[napi]
-impl JsUlconfig {
+impl JsUlPlugin {
     /// Construct from a selected `ObjectName`, attributes, and source response.
     #[napi(
         constructor,
@@ -23,7 +23,7 @@ impl JsUlconfig {
     )]
     pub fn new(mbean: Option<String>, attributes: &JsScalar, envelope: &JsScalar) -> Self {
         Self {
-            inner: Ulconfig::new(
+            inner: UlPlugin::new(
                 mbean.as_deref(),
                 attributes.inner.clone(),
                 envelope.inner.clone(),
@@ -33,24 +33,24 @@ impl JsUlconfig {
 
     /// Parse and validate a response before returning its lazy configurations.
     #[napi]
-    pub fn from_json_bytes(body: Buffer) -> Result<JsUlconfigs> {
-        Ulconfig::from_json_bytes(&body)
-            .map(|inner| JsUlconfigs { inner })
+    pub fn from_json_bytes(body: Buffer) -> Result<JsUlPlugins> {
+        UlPlugin::from_json_bytes(&body)
+            .map(|inner| JsUlPlugins { inner })
             .map_err(napi_error)
     }
 
     /// Validate a native response and iterate its selected configurations.
     #[napi]
-    pub fn from_json_scalar(document: &JsScalar) -> Result<JsUlconfigs> {
-        Ulconfig::from_json_scalar(&document.inner)
-            .map(|inner| JsUlconfigs { inner })
+    pub fn from_json_scalar(document: &JsScalar) -> Result<JsUlPlugins> {
+        UlPlugin::from_json_scalar(&document.inner)
+            .map(|inner| JsUlPlugins { inner })
             .map_err(napi_error)
     }
 
     /// Recover one configuration from a flat native message.
     #[napi(factory)]
     pub fn from_fixmsg(message: &JsFixMsg) -> Result<Self> {
-        Ulconfig::from_fixmsg(&message.inner)
+        UlPlugin::from_fixmsg(&message.inner)
             .map(|inner| Self { inner })
             .map_err(napi_error)
     }
@@ -120,7 +120,7 @@ impl JsUlconfig {
 
     /// Compare the complete native values.
     #[napi]
-    pub fn equals(&self, other: &JsUlconfig) -> bool {
+    pub fn equals(&self, other: &JsUlPlugin) -> bool {
         self.inner == other.inner
     }
 
@@ -140,17 +140,17 @@ impl JsUlconfig {
 }
 
 /// A lazy iterator of validated native configurations.
-#[napi(iterator, js_name = "Ulconfigs")]
-pub struct JsUlconfigs {
-    inner: Ulconfigs,
+#[napi(iterator, js_name = "UlPlugins")]
+pub struct JsUlPlugins {
+    inner: UlPlugins,
 }
 
-impl Generator for JsUlconfigs {
-    type Yield = JsUlconfig;
+impl Generator for JsUlPlugins {
+    type Yield = JsUlPlugin;
     type Next = ();
     type Return = ();
     fn next(&mut self, _: Option<Self::Next>) -> Option<Self::Yield> {
-        self.inner.next().map(|inner| JsUlconfig { inner })
+        self.inner.next().map(|inner| JsUlPlugin { inner })
     }
 }
 

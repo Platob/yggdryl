@@ -151,6 +151,10 @@ typed_array!(
     arrow_array::FixedSizeBinaryArray
 );
 typed_array!(
+    crate::types::ascii::IsinType,
+    arrow_array::FixedSizeBinaryArray
+);
+typed_array!(
     crate::types::ascii::SideType,
     arrow_array::FixedSizeBinaryArray
 );

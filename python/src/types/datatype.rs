@@ -439,6 +439,7 @@ impl PyDataType {
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
+            "isin" => CoreDataType::Isin,
             "side" => CoreDataType::Side,
             "msgdirection" => CoreDataType::MsgDirection,
             "state" => CoreDataType::State,

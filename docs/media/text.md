@@ -148,7 +148,9 @@ The source field is complete before any source bytes are read.
 Named `rowheader` captures follow these columns and stay nullable in both modes.
 [`DataType::from_regex`](../types/text.md) types captures constrained to
 booleans, signed 64-bit integers, finite floats, ISO dates, times, and
-datetimes.
+datetimes. `yggdryl::ULBRIDGE_ROWHEADER` is the header a bridge log writes,
+its captures named for the [FIX columns they fill](../fix/arrow.md#a-bridge-log-names-what-it-fills)
+when the read goes on into a FIX batch.
 
 ### Classifying each record
 
@@ -215,6 +217,7 @@ column and appending the terminator.
 - `max_record_byte_size` unset -> no `dropped_byte_size` column; set but never exceeded -> null.
 - strip match off the physical-line body edge -> nothing removed.
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.
+- classification columns ahead of the captures -> the captures keep the types their patterns gave them; a `thread` capture is `utf8` whatever `msgtype` read before it.
 - an unlocated buffer -> `url` and `mtime` are both null: a buffer has no location and records no modification time, and neither the empty string nor a clock reading is one.
 - Python `read_records()` over a file whose modification time is finer than a microsecond -> the `datetime` a record hands back is floored to the microsecond it can hold, never refused. The batch path carries the full nanosecond reading.
 - a row header declaring an `mtime` capture with `parse_mtime` off -> an ordinary capture, typed by its own syntax.

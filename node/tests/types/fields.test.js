@@ -229,6 +229,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['currency', fields.currency('value')],
     ['mic', fields.mic('value')],
     ['cfi', fields.cfi('value')],
+    ['isin', fields.isin('value')],
     ['uuid', fields.uuid('value')],
     ['version', fields.version('value')],
     ['url', fields.url('value')],
@@ -254,7 +255,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['geography', fields.geography('value', 'OGC:CRS84', 'vincenty')],
   ])
 
-  assert.equal(byId.size, 54)
+  assert.equal(byId.size, 55)
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
   // factories default the same way, so one declared schema cannot disagree
@@ -379,14 +380,15 @@ test('the url factory builds a validated, canonical location column', () => {
 })
 
 test('the registered codes build their own datatype at their own width', () => {
-  // ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, and ISO 10962
-  // six: each factory builds the code, never the ASCII width that would hold
-  // the same bytes without the identity.
+  // ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, ISO 10962 six
+  // and ISO 6166 twelve: each factory builds the code, never the ASCII width
+  // that would hold the same bytes without the identity.
   const declared = new Map([
     ['country', [fields.country('venue_country'), 2]],
     ['currency', [fields.currency('settlement_ccy'), 3]],
     ['mic', [fields.mic('venue'), 4]],
     ['cfi', [fields.cfi('classification'), 6]],
+    ['isin', [fields.isin('instrument'), 12]],
   ])
 
   for (const [name, [value, width]] of declared) {

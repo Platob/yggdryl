@@ -25,6 +25,31 @@ use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFam
 /// assert_eq!(version.to_string(), "5.0.250");
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
+///
+/// # The patch is best effort
+///
+/// Major and minor are strict: a version whose first two components are not
+/// decimal numbers under 256 is refused, and so is empty text. The patch is
+/// not. A tail stating no number - a qualifier, a fourth component, an
+/// extension pack - folds into the patch's sixteen bits through the crate's
+/// stable XXH3 rather than refusing the version, so anything that names a
+/// major parses.
+///
+/// A folded patch is an identity, not a quantity: it orders arbitrarily
+/// against a stated one, two unlike tails can fold together, and the
+/// canonical text states the fold rather than the tail it came from. What it
+/// buys is that the same tail always reads as the same version.
+///
+/// ```
+/// use yggdryl::Version;
+/// let qualified = "1.0-rc1".parse::<Version>()?;
+/// assert_eq!((qualified.major(), qualified.minor()), (1, 0));
+/// assert_eq!(qualified, "1.0-rc1".parse::<Version>()?);
+/// assert_ne!(qualified, "1.0-rc2".parse::<Version>()?);
+/// assert!("".parse::<Version>().is_err());
+/// assert!("256.0".parse::<Version>().is_err());
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 #[repr(C)]
 pub struct Version {
@@ -108,69 +133,103 @@ impl FromStr for Version {
     #[allow(clippy::cast_possible_truncation)] // Each component is bounded before its narrowing cast.
     fn from_str(text: &str) -> Result<Self> {
         let bytes = text.as_bytes();
-        if bytes.is_empty() {
-            return Err(parse_error(0, "expected a decimal major version"));
+        let (major, mut position) = component(bytes, 0, u32::from(u8::MAX), "major")?;
+        let mut minor = 0_u32;
+        if bytes.get(position) == Some(&b'.') && digit_at(bytes, position + 1) {
+            let (value, after) = component(bytes, position + 1, u32::from(u8::MAX), "minor")?;
+            minor = value;
+            position = after;
         }
-        let mut parts = [0_u16; Self::MAX_PARTS];
-        let mut count = 0;
-        let mut position = 0;
-        loop {
-            if count == Self::MAX_PARTS {
-                return Err(parse_error(
-                    position,
-                    "expected at most three numeric version components",
-                ));
-            }
-            let start = position;
-            let maximum = if count == 2 {
-                u32::from(u16::MAX)
-            } else {
-                u32::from(u8::MAX)
-            };
-            let mut value = 0_u32;
-            while let Some(byte @ b'0'..=b'9') = bytes.get(position).copied() {
-                value = value * 10 + u32::from(byte - b'0');
-                if value > maximum {
-                    return Err(parse_error(
-                        position,
-                        if count == 2 {
-                            "expected a patch version in 0..=65535"
-                        } else {
-                            "expected a major or minor version in 0..=255"
-                        },
-                    ));
-                }
-                position += 1;
-            }
-            if position == start {
-                return Err(parse_error(
-                    position,
-                    "expected a decimal version component",
-                ));
-            }
-            parts[count] = value as u16;
-            count += 1;
-            match bytes.get(position) {
-                None => break,
-                Some(b'S' | b's')
-                    if count == 2 && matches!(bytes.get(position + 1), Some(b'P' | b'p')) =>
-                {
-                    position += 2;
-                }
-                Some(b'.') if position + 1 < bytes.len() => position += 1,
-                Some(b'.') => {
-                    return Err(parse_error(position, "expected a component after the dot"));
-                }
-                Some(_) => {
-                    return Err(parse_error(
-                        position,
-                        "expected a dot, SP after the minor version, or the end of a version",
-                    ));
-                }
-            }
-        }
-        Ok(Self::new(parts[0] as u8, parts[1] as u8, parts[2]))
+        Ok(Self::new(
+            major as u8,
+            minor as u8,
+            patch_of(&text[position..]),
+        ))
     }
+}
+
+/// Whether a decimal digit stands at `position`.
+fn digit_at(bytes: &[u8], position: usize) -> bool {
+    matches!(bytes.get(position), Some(b'0'..=b'9'))
+}
+
+/// One strict decimal component, bounded before it narrows.
+///
+/// Major and minor stay strict because they are what a version is ordered by
+/// first: a byte that is not a digit there is a refusal, not a fallback.
+fn component(bytes: &[u8], start: usize, maximum: u32, what: &'static str) -> Result<(u32, usize)> {
+    let mut position = start;
+    let mut value = 0_u32;
+    while let Some(byte @ b'0'..=b'9') = bytes.get(position).copied() {
+        value = value * 10 + u32::from(byte - b'0');
+        if value > maximum {
+            return Err(parse_error(
+                position,
+                if what == "major" {
+                    "expected a major version in 0..=255"
+                } else {
+                    "expected a minor version in 0..=255"
+                },
+            ));
+        }
+        position += 1;
+    }
+    if position == start {
+        return Err(parse_error(
+            start,
+            if what == "major" {
+                "expected a decimal major version"
+            } else {
+                "expected a decimal minor version"
+            },
+        ));
+    }
+    Ok((value, position))
+}
+
+/// The patch a tail states, or the stable hash of a tail that states no number.
+///
+/// The tail is whatever follows the major and minor. `.250` and a
+/// case-insensitive FIX `sp250` both state the number 250. Anything else -
+/// a qualifier, a fourth component, an extension pack, trailing bytes - is
+/// hashed into the patch rather than refused, so a version always parses.
+fn patch_of(tail: &str) -> u16 {
+    if tail.is_empty() {
+        return 0;
+    }
+    let digits = match tail.as_bytes() {
+        [b'.', rest @ ..] => Some(rest),
+        [b'S' | b's', b'P' | b'p', rest @ ..] => Some(rest),
+        _ => None,
+    };
+    if let Some(digits) = digits
+        && !digits.is_empty()
+        && digits.iter().all(u8::is_ascii_digit)
+    {
+        let mut value = 0_u32;
+        for byte in digits {
+            value = value * 10 + u32::from(byte - b'0');
+            if value > u32::from(u16::MAX) {
+                return hashed_patch(tail);
+            }
+        }
+        return value as u16;
+    }
+    hashed_patch(tail)
+}
+
+/// A tail no number can be read from, folded into the patch's sixteen bits.
+///
+/// The fold lands in `1..=65535` so a tail that says something never renders
+/// as a version that says nothing. Sixteen bits cannot separate every tail
+/// there is: two unlike tails can fold together, and a fold can equal a patch
+/// some other version states as a number.
+fn hashed_patch(tail: &str) -> u16 {
+    let mut hasher = crate::xxhash::Xxh3::new();
+    hasher.write_bytes(tail.as_bytes());
+    let hash = hasher.as_u64();
+    let folded = (hash ^ (hash >> 16) ^ (hash >> 32) ^ (hash >> 48)) as u16;
+    1 + (folded % u16::MAX)
 }
 
 fn parse_error(position: usize, reason: &'static str) -> Error {

@@ -140,7 +140,7 @@ test('ASCII is one variable form and one fixed width', () => {
     /expected an ASCII width of at least 1 byte, got 0/,
   )
   assert.throws(() => DataType.ascii(2.5), /width must be a signed 32-bit integer/)
-  assert.throws(() => DataType.fromLogicalName('isin'), /currency/)
+  assert.throws(() => DataType.fromLogicalName('sedol'), /currency/)
 })
 
 test('a registered code is its own datatype over its standard width', () => {
@@ -162,6 +162,8 @@ test('a registered code is its own datatype over its standard width', () => {
     ['mic', 4],
     // Six bytes, which is a width no ASCII variant has.
     ['cfi', 6],
+    // Twelve: two letters of prefix, nine of national number, one check digit.
+    ['isin', 12],
   ]) {
     const dtype = new DataType(name)
     assert.equal(dtype.id, name)
@@ -174,7 +176,7 @@ test('a registered code is its own datatype over its standard width', () => {
   assert.equal(currency.asciiPacked('USD'), DataType.ascii(3).asciiPacked('USD'))
   assert.equal(currency.asciiValue(0x555344n), 'USD')
   assert.throws(() => new DataType('country').asciiPacked('USD'), /at most 2 bytes/)
-  assert.throws(() => DataType.fromString('isin'), /unknown datatype/)
+  assert.throws(() => DataType.fromString('sedol'), /unknown datatype/)
 })
 
 test('the uuid is sixteen bytes spelled as one identifier', () => {
@@ -330,7 +332,9 @@ test('a prebuilt vocabulary names the ISO codes a column carries', () => {
   // A registered name with no prebuilt listing answers an enum of no members,
   // and one that is no registration at all is refused by the vocabulary.
   assert.equal(AsciiEnum.fromLogicalName('tenor').length, 0)
-  assert.throws(() => AsciiEnum.fromLogicalName('isin'), /currency/)
+  // An open identifier space has no listing to prebuild either.
+  assert.equal(AsciiEnum.fromLogicalName('isin').length, 0)
+  assert.throws(() => AsciiEnum.fromLogicalName('sedol'), /currency/)
 })
 
 test('the generated enum names each value by the integer it packs into', () => {

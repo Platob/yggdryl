@@ -26,7 +26,7 @@ import timeit
 from collections.abc import Callable
 
 from yggdryl import DataType, Field, MimeType, types
-from yggdryl.fix import STANDARD_BRANCH, FixCodec, FixMsg, FixRegistry, Ulconfig
+from yggdryl.fix import STANDARD_BRANCH, FixCodec, FixMsg, FixRegistry, UlPlugin
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
@@ -341,15 +341,15 @@ def main() -> None:
         _measure("numeric group, compiled plan", lambda: CODEC.transform_fix_line(NUMERIC_GROUP), args.iterations)
         for count in (1, 32, 64):
             body = _wildcard(count)
-            assert len(list(Ulconfig.from_json_bytes(body))) == count
+            assert len(list(UlPlugin.from_json_bytes(body))) == count
             assert len(list(BRIDGE_CODEC.transform_line(body))) == count
-            _measure(f"Ulconfigs first/{count}", lambda body=body: next(Ulconfig.from_json_bytes(body)), args.iterations)
-            _measure(f"Ulconfigs drain/{count}", lambda body=body: list(Ulconfig.from_json_bytes(body)), args.iterations)
+            _measure(f"UlPlugins first/{count}", lambda body=body: next(UlPlugin.from_json_bytes(body)), args.iterations)
+            _measure(f"UlPlugins drain/{count}", lambda body=body: list(UlPlugin.from_json_bytes(body)), args.iterations)
             _measure(f"FixMessages first/{count}", lambda body=body: next(BRIDGE_CODEC.transform_line(body)), args.iterations)
             _measure(f"FixMessages drain/{count}", lambda body=body: list(BRIDGE_CODEC.transform_line(body)), args.iterations)
             _measure(f"record messages drain/{count}", lambda body=body: list(BRIDGE_CODEC.transform_record({"body": body})), args.iterations)
-            first = next(Ulconfig.from_json_bytes(body))
-            _measure(f"Ulconfig hash/{count}", first.stable_hash, args.iterations)
+            first = next(UlPlugin.from_json_bytes(body))
+            _measure(f"UlPlugin hash/{count}", first.stable_hash, args.iterations)
         loads = max(1, args.iterations // 100)
         _measure(
             "from_handle, the seed",

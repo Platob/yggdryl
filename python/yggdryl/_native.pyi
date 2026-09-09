@@ -532,8 +532,8 @@ class Scalar:
         "null", "boolean", "i8", "i16", "i32", "i64", "u8", "u16", "u32",
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
         "d256", "string", "large_utf8", "utf8_view", "ascii", "fixed_ascii",
-        "country", "currency", "mic", "cfi", "uuid", "version", "enum", "bytes",
-        "fixed_size_binary", "large_binary", "binary_view", "geospatial",
+        "country", "currency", "mic", "cfi", "isin", "uuid", "version", "enum",
+        "bytes", "fixed_size_binary", "large_binary", "binary_view", "geospatial",
         "geography", "date32", "date64", "time32", "time64", "datetime64",
         "duration32", "duration64", "interval", "sequence", "mapping", "record",
     ]: ...
@@ -4350,6 +4350,12 @@ class FixRegistry:
     best match. Absence is a ``KeyError`` carrying the native message, a refusal a
     ``ValueError``. The registry is mutable, so it is unhashable, and a mutation
     raises ``ValueError`` while a message or the process default shares it.
+
+    Every registry holds this crate's own fields from construction - the
+    twenty standard fields from tag 65000 that ``fix_crate_fields`` lists, so
+    ``FixRegistry()`` is those and the standard branch they are on - and
+    ``len`` counts them beside whatever was inserted or loaded; a store never
+    writes them.
     """
 
     def __init__(self) -> None: ...
@@ -4374,7 +4380,6 @@ class FixRegistry:
         branch: str | None = None,
         aliases: Sequence[str] | None = None,
     ) -> tuple[int, int]: ...
-    def with_crate_fields(self) -> None: ...
     def with_ulbridge_fields(self) -> None: ...
     def register_msgtype(
         self,
@@ -4451,6 +4456,12 @@ class FixMsg:
     the root's own order - and ``registry`` defaults to the process one. The
     message is immutable: it hashes, pickles, copies and compares by the
     schema and the value it carries, against that registry.
+
+    A message ``FixCodec`` built opens with ``beginstring`` - the wire's own,
+    else the version it was read at - and closes with the crate's
+    ``timestamp``, so ``market_timestamp`` answers for it and ``into_row`` fills
+    both columns. Neither is an entry unless the wire sent it, so ``into_bytes``
+    re-emits the line byte for byte.
     """
 
     def __init__(
@@ -4513,9 +4524,18 @@ class FixCodec:
 
     """One dictionary, reading captured lines into messages.
 
-    Generic lines, records, and ULconfig documents yield lazy ``FixMessages``;
-    specialized FIX, Ullink, FIXML, and pair transforms answer one ``FixMsg``.
-    A branch and version cross as ``str`` and resolve at the boundary.
+    Every entry point redirects to the core reader of the same name:
+    ``transform_line`` takes a captured line whatever it is wrapped in,
+    ``transform_record`` a record already parsed, ``transform_fix_line`` a
+    numeric frame with the separator stated, ``transform_ullink_line`` a
+    bridge frame whose keys are names, ``transform_fixml_line`` a FIXML row,
+    ``transform_ulconfig_line`` a bridge configuration document, and
+    ``transform_pairs`` what a caller already split. Generic lines, records
+    and bridge configuration documents yield lazy ``FixMessages``; the FIX,
+    Ullink, FIXML and pair readers answer one ``FixMsg``. Each builds a
+    message that opens with ``beginstring`` and closes with the crate's
+    ``timestamp``. A branch and a version cross as ``str`` and are parsed
+    once at the boundary.
     """
 
     def __init__(
@@ -4556,16 +4576,37 @@ class FixCodec:
     ) -> FixMsg: ...
     def enrich_fixmsg(self, message: FixMsg) -> FixMsg: ...
     def enrich_fixmsgs(self, messages: Sequence[FixMsg]) -> list[FixMsg]: ...
+    def lifecycle(self, messages: Iterable[FixMsg]) -> list[FixMsg]: ...
     def __copy__(self) -> FixCodec: ...
     def __deepcopy__(self, memo: Any) -> FixCodec: ...
     def __repr__(self) -> str: ...
 
-class Ulconfigs(Iterator[Ulconfig]):
+class FixLifecycle:
     __hash__: ClassVar[None]  # type: ignore[assignment]
-    def __iter__(self) -> Ulconfigs: ...
-    def __next__(self) -> Ulconfig: ...
 
-class Ulconfig:
+    """The state a stream of messages has reached, one chain per order alive.
+
+    Built once per stream over a registry - the process default when none is
+    given - and fed every message in order through ``fill``, which stamps the
+    crate's ``instid``, ``id`` and ``persistentid`` columns: the instrument,
+    the message and the order chain the message's identifiers reach. A
+    terminal state closes the chain, so ``alive`` counts the orders still
+    open and ``clear`` forgets them all. A stated value is never overwritten
+    and the entries are untouched. Mutable, so unhashable.
+    """
+
+    def __init__(self, registry: FixRegistry | None = None) -> None: ...
+    def fill(self, message: FixMsg) -> FixMsg: ...
+    def alive(self) -> int: ...
+    def clear(self) -> None: ...
+    def __repr__(self) -> str: ...
+
+class UlPlugins(Iterator[UlPlugin]):
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+    def __iter__(self) -> UlPlugins: ...
+    def __next__(self) -> UlPlugin: ...
+
+class UlPlugin:
     """One plugin a bridge configuration document answers for.
 
     A Jolokia read answers one MBean's attributes or a map of them keyed by
@@ -4576,7 +4617,7 @@ class Ulconfig:
 
     A ``dict`` states a document as well as parsed bytes do: a mapping crossing
     the boundary is folded into the same record at every depth, so
-    ``Ulconfig({"Name": "OrderRouting"})`` and the bytes spelling it are one
+    ``UlPlugin({"Name": "OrderRouting"})`` and the bytes spelling it are one
     value. ``attributes`` keeps the document's own spelling; ``get`` and ``in``
     fold a name the way every other name in this crate is folded.
 
@@ -4585,13 +4626,13 @@ class Ulconfig:
 
     def __init__(self, attributes: object, mbean: str | None = None, envelope: object = None) -> None: ...
     @staticmethod
-    def _from_pickle(attributes: str, mbean: str | None, envelope: str) -> Ulconfig: ...
+    def _from_pickle(attributes: str, mbean: str | None, envelope: str) -> UlPlugin: ...
     @staticmethod
-    def from_json_bytes(body: bytes | bytearray | memoryview) -> Ulconfigs: ...
+    def from_json_bytes(body: bytes | bytearray | memoryview) -> UlPlugins: ...
     @staticmethod
-    def from_json_scalar(document: object) -> Ulconfigs: ...
+    def from_json_scalar(document: object) -> UlPlugins: ...
     @staticmethod
-    def from_fixmsg(message: FixMsg) -> Ulconfig: ...
+    def from_fixmsg(message: FixMsg) -> UlPlugin: ...
     def into_fixmsg(self, codec: FixCodec, enrich: bool = False) -> FixMsg: ...
     @property
     def mbean(self) -> str | None: ...
@@ -4617,8 +4658,8 @@ class Ulconfig:
     def __eq__(self, other: object) -> bool: ...
     def __contains__(self, attribute: str) -> bool: ...
     def __len__(self) -> int: ...
-    def __copy__(self) -> Ulconfig: ...
-    def __deepcopy__(self, memo: Any) -> Ulconfig: ...
+    def __copy__(self) -> UlPlugin: ...
+    def __deepcopy__(self, memo: Any) -> UlPlugin: ...
     def __reduce__(self) -> tuple[Any, tuple[str, str | None, str]]: ...
     def __repr__(self) -> str: ...
 
@@ -4641,6 +4682,8 @@ def fix_parse_arrow_reader(
     direction: str | None = None,
     null_values: list[str] | None = None,
     dedup: bool = False,
+    enrich: bool = False,
+    lifecycle: bool = False,
     batch_row_size: int | None = None,
     batch_byte_size: int | None = None,
 ) -> pyarrow.RecordBatchReader: ...

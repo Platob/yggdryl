@@ -1203,6 +1203,7 @@ fn feed_cell(
         | DataType::Currency
         | DataType::Mic
         | DataType::Cfi
+        | DataType::Isin
         | DataType::Side
         | DataType::MsgDirection
         | DataType::State

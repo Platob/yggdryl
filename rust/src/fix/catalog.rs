@@ -325,6 +325,47 @@ pub(super) fn validate_name(field: &Field) -> Result<()> {
     Ok(())
 }
 
+/// Drops from a reference occurrence the identity only its target owns.
+///
+/// A named definition's derived tag is what identifies it in the catalog; a
+/// reference to it restates its tree, not its identity, which is why a store
+/// writes an occurrence as a bare marker and `store::Resolver::occurrence`
+/// expands one without the tag. A caller building the same definition in
+/// memory has no compact form to hand over - `validate_references` demands the
+/// target's exact datatype, so the occurrence can only be a clone of the
+/// stored definition - so the tag is dropped here instead. One shape whatever
+/// built it: a hand-built catalog equals the catalog a store reads back.
+fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
+    if !root
+        && field.as_fix().field_ref().is_none()
+        && (field.as_fix().group().is_some() || field.as_fix().component().is_some())
+    {
+        field.remove_metadata(super::field::TAG_KEY);
+    }
+    let dtype = match field.dtype() {
+        DataType::Struct(children) => Some(DataType::from_fields(
+            children
+                .iter()
+                .cloned()
+                .map(|child| canonical_occurrences(child, false))
+                .collect::<Result<Vec<_>>>()?,
+        )?),
+        DataType::List(item) => Some(DataType::list(canonical_occurrences(
+            item.as_ref().clone(),
+            false,
+        )?)),
+        DataType::LargeList(item) => Some(DataType::large_list(canonical_occurrences(
+            item.as_ref().clone(),
+            false,
+        )?)),
+        _ => None,
+    };
+    if let Some(dtype) = dtype {
+        field.set_dtype(dtype)?;
+    }
+    Ok(field)
+}
+
 impl FixRegistry {
     /// Borrows the unique message definition named by an exact wire code,
     /// folded canonical name, or tag 35's enum alias, in that order.
@@ -456,7 +497,11 @@ impl FixRegistry {
                 let branch = field.as_fix().branch()?;
                 let component = self.definition(FixCategory::Components, &name, Some(&branch))?;
                 if let DataType::List(item) | DataType::LargeList(item) = field.dtype() {
-                    if item.dtype() != component.dtype() {
+                    // Against the canonical shape: the stored component holds
+                    // no derived tag on its own occurrences, and an item a
+                    // caller cloned out of the catalog still does.
+                    let stated = canonical_occurrences(item.as_ref().clone(), true)?;
+                    if stated.dtype() != component.dtype() {
                         return Err(invalid(
                             &field,
                             format_args!("component {name:?} datatype {}", component.dtype()),
@@ -473,8 +518,26 @@ impl FixRegistry {
                 }
             }
         }
-        self.validate_definition(category, &field)?;
+        // After the group's item takes its component marker, and before this
+        // definition's own tag is derived: an occurrence a caller cloned out of
+        // the catalog arrives carrying its target's derived tag, which no
+        // stored reference restates and no loaded one carries.
+        field = canonical_occurrences(field, true)?;
         let branch = field.as_fix().branch()?;
+        if field.as_fix().tag()?.is_none() {
+            let tag = match self.get_definition(category, field.name(), Some(&branch)) {
+                // An update keeps the identity the definition already has:
+                // a derived tag is stable for the definition, not for the
+                // registry it was derived against.
+                Some(stored) => match stored.as_fix().tag()? {
+                    Some(tag) => tag,
+                    None => self.derived_definition_tag(field.name())?,
+                },
+                None => self.derived_definition_tag(field.name())?,
+            };
+            field.as_fix_mut().set_tag(tag)?;
+        }
+        self.validate_definition(category, &field)?;
         self.check_branch(&branch)?;
         if let Some(stored) = self.get_definition(category, field.name(), Some(&branch)) {
             if stored.name().eq_ignore_ascii_case(field.name()) {
@@ -590,14 +653,81 @@ impl FixRegistry {
             .ok_or_else(|| Error::absent("one unambiguous FIX group", id))
     }
 
+    /// Whether anything in this registry already answers to `tag`.
+    ///
+    /// A published tag can never reach the derived block - a dialect's own
+    /// tags stop at [`FixId::USER_TAG_MAX`] and this crate's at
+    /// [`crate::CRATE_TAG_MAX`] - so the only thing that can occupy a slot is
+    /// another derived definition. The scalar index is asked anyway, because
+    /// a dictionary read from a store is whatever that store held.
+    fn definition_tag_in_use(&self, tag: i32) -> bool {
+        if self.get_field_by_tag(tag).is_some() {
+            return true;
+        }
+        [
+            FixCategory::Components,
+            FixCategory::Groups,
+            FixCategory::Messages,
+        ]
+        .into_iter()
+        .any(|category| {
+            self.catalog
+                .iter(category)
+                .any(|held| held.as_fix().tag().ok().flatten() == Some(tag))
+        })
+    }
+
+    /// The tag a named definition takes, derived from its name.
+    ///
+    /// XXH32 of the name places it in the derived block; a slot already taken
+    /// is stepped past, wrapping, until a free one is found. Probing rather
+    /// than refusing means a name is always registrable, at the cost of a tag
+    /// that depends on what was registered before it - which is why the tag
+    /// is stored on the definition rather than recomputed on every read.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] when every slot in the block is
+    /// taken, which needs a million definitions in one registry.
+    fn derived_definition_tag(&self, name: &str) -> Result<i32> {
+        let span = FixId::DEFINITION_TAG_MAX - FixId::DEFINITION_TAG_MIN;
+        let mut hasher = crate::xxhash::Xxh32::new();
+        hasher.write_bytes(name.as_bytes());
+        #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
+        let start = (hasher.as_u32() % (span as u32)) as i32;
+        for step in 0..span {
+            let tag = FixId::DEFINITION_TAG_MIN + (start + step) % span;
+            if !self.definition_tag_in_use(tag) {
+                return Ok(tag);
+            }
+        }
+        Err(Error::InvalidRecord {
+            path: name.into(),
+            reason: crate::text::expected_got(
+                "a free derived definition tag",
+                format_args!("all {span} slots taken"),
+            ),
+        })
+    }
+
     pub(super) fn validate_definition(&self, category: FixCategory, field: &Field) -> Result<()> {
         if category != FixCategory::Fields {
             validate_name(field)?;
         }
-        if category != FixCategory::Fields && field.as_fix().tag()?.is_some() {
+        if category != FixCategory::Fields
+            && let Some(tag) = field.as_fix().tag()?
+            && !FixId::is_definition_tag(tag)
+        {
             return Err(Error::InvalidRecord {
                 path: field.name().into(),
-                reason: "named FIX definitions carry no fix:tag".into(),
+                reason: crate::text::expected_got(
+                    "a named FIX definition's derived tag",
+                    format_args!(
+                        "tag {tag} outside [{}, {})",
+                        FixId::DEFINITION_TAG_MIN,
+                        FixId::DEFINITION_TAG_MAX
+                    ),
+                ),
             });
         }
         match category {
@@ -696,14 +826,19 @@ impl FixRegistry {
                 FixCategory::Groups => "fix:group",
                 _ => "fix:component",
             };
+            // A named definition carries a derived tag of its own, which is
+            // its identity in the catalog rather than anything a reference
+            // restates - so an occurrence never carries it and it is not part
+            // of what "unchanged" means here. A field reference does carry its
+            // target's tag, and the identity check above already proved it.
+            let carried = |(key, _): &(&str, &str)| {
+                *key != marker && (category == FixCategory::Fields || *key != super::field::TAG_KEY)
+            };
             if !occurrence
                 .as_metadata()
                 .iter()
-                .filter(|(key, _)| *key != marker)
-                .eq(target
-                    .as_metadata()
-                    .iter()
-                    .filter(|(key, _)| *key != marker))
+                .filter(carried)
+                .eq(target.as_metadata().iter().filter(carried))
             {
                 return Err(Error::conflict(
                     "referenced metadata unchanged apart from its reference marker",

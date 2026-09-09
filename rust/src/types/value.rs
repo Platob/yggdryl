@@ -126,6 +126,21 @@ impl Field {
         canonicalize_row(self, value)
     }
 
+    /// Rewrites one row value under a root already proven to be a Struct.
+    ///
+    /// [`Self::canonicalize_value`] re-checks the root before every row; a
+    /// reader that checked it once when it published its schema pays that
+    /// per stream, and this is the per-row half - the row's own validation
+    /// and its rewrite, and nothing about the root.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::canonicalize_value`] returns for the row.
+    pub(crate) fn canonicalize_row_value(&self, value: Scalar) -> Result<Scalar> {
+        validate_row(self, &value)?;
+        canonicalize_row(self, value)
+    }
+
     /// Recovers this field's exact value from a natural text value.
     ///
     /// # Errors
@@ -777,6 +792,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Currency
         | D::Mic
         | D::Cfi
+        | D::Isin
         | D::Side
         | D::MsgDirection
         | D::State
@@ -787,6 +803,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                     | (D::Currency, Scalar::Ascii(AsciiFamily::Currency(_)))
                     | (D::Mic, Scalar::Ascii(AsciiFamily::Mic(_)))
                     | (D::Cfi, Scalar::Ascii(AsciiFamily::Cfi(_)))
+                    | (D::Isin, Scalar::Ascii(AsciiFamily::Isin(_)))
                     | (D::Side, Scalar::Ascii(AsciiFamily::Side(_)))
                     | (D::MsgDirection, Scalar::Ascii(AsciiFamily::MsgDirection(_)))
                     | (D::State, Scalar::Ascii(AsciiFamily::State(_)))
@@ -807,11 +824,16 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }
                 D::Mic => Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(text)?)),
                 D::Cfi => Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(text)?)),
+                D::Isin => Scalar::Ascii(AsciiFamily::Isin(crate::types::Isin::new(text)?)),
                 D::Side => Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(text)?)),
                 D::MsgDirection => Scalar::Ascii(AsciiFamily::MsgDirection(
                     crate::types::MsgDirection::new(text)?,
                 )),
-                D::State => Scalar::Ascii(AsciiFamily::State(crate::types::State::new(text)?)),
+                // A state is read by its spelling: the wire code, the
+                // specification's name or a stored value all reach the one
+                // ranked value, and a spelling that names no state is refused
+                // rather than stored unranked.
+                D::State => Scalar::Ascii(AsciiFamily::State(crate::types::State::read(text)?)),
                 D::TimeInForce => Scalar::Ascii(AsciiFamily::TimeInForce(
                     crate::types::TimeInForce::new(text)?,
                 )),
@@ -1457,6 +1479,7 @@ fn validate_dtype_value(
         | D::Currency
         | D::Mic
         | D::Cfi
+        | D::Isin
         | D::Side
         | D::MsgDirection
         | D::State

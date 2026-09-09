@@ -113,6 +113,11 @@ fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
     assert_eq!(DataType::ascii(6).unwrap(), DataType::FixedAscii(6));
     assert_ne!(DataType::Cfi, DataType::FixedAscii(6));
     assert!(!DataType::FixedAscii(6).is_code());
+    // ISO 6166 is twelve characters closed by a check digit, and `isin`
+    // stores exactly those twelve.
+    assert_eq!("isin".parse::<DataType>().unwrap(), DataType::Isin);
+    assert_eq!(DataType::Isin.ascii_width(), Some(12));
+    assert_ne!(DataType::Isin, DataType::FixedAscii(12));
 
     // A code name is a grammar keyword like every other, so the parser
     // reads it case-insensitively and trimmed.
@@ -121,8 +126,8 @@ fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
         DataType::Currency
     );
     // The grammar reports a word that names nothing as unknown.
-    let error = "isin".parse::<DataType>().unwrap_err().to_string();
-    assert!(error.contains("unknown datatype \"isin\""), "{error}");
+    let error = "sedol".parse::<DataType>().unwrap_err().to_string();
+    assert!(error.contains("unknown datatype \"sedol\""), "{error}");
 }
 
 #[test]

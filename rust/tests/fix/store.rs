@@ -35,8 +35,15 @@ fn catalog() -> FixRegistry {
         .unwrap()
         .required_field("Party");
     registry
-        .insert_definition(FixCategory::Components, component.clone())
+        .insert_definition(FixCategory::Components, component)
         .unwrap();
+    // The occurrence is the stored definition, derived tag and all, the way
+    // the message below takes the stored group rather than the field it was
+    // built from.
+    let component = registry
+        .definition(FixCategory::Components, "Party", None)
+        .unwrap()
+        .clone();
     let mut group = DataType::list(component).nullable_field("Parties");
     group.as_fix_mut().set_counter(453).unwrap();
     group.as_fix_mut().set_component("Party").unwrap();
@@ -142,7 +149,7 @@ fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
         }
         assert_eq!(registry.field("quoteackstatus").unwrap(), &current);
         assert_eq!(registry.field(1865).unwrap(), &current);
-        assert_eq!(registry.len(), 2);
+        assert_eq!(registry.len(), 2 + super::crated());
         let loaded = FixRegistry::from_json(&registry.into_json().unwrap()).unwrap();
         assert_eq!(loaded, registry);
         let document = yggdryl::from_json_scalar(registry.into_json().unwrap()).unwrap();
@@ -186,7 +193,7 @@ fn the_complete_committed_catalog_round_trips_through_one_snapshot() {
     assert_eq!(&loaded, registry.as_ref());
     assert_eq!(loaded.stable_hash(), registry.stable_hash());
     assert_eq!(loaded.into_json().unwrap(), document);
-    assert_eq!(loaded.len(), 6203);
+    assert_eq!(loaded.len(), 6203 + super::crated());
     assert_eq!(loaded.definitions(FixCategory::Messages).count(), 181);
     assert_eq!(loaded.definitions(FixCategory::Components).count(), 747);
     assert_eq!(loaded.definitions(FixCategory::Groups).count(), 580);
@@ -269,9 +276,28 @@ fn categories_round_trip_compact_references_and_counter_fields() {
     };
     assert_eq!(item.dtype(), &DataType::Null);
     assert_eq!(item.as_fix().component(), Some("party"));
-    assert_eq!(document.as_fix().tag().unwrap(), None);
+    // The stored group carries the identity the catalog derived for its name,
+    // which is never the wire tag of the counter it heads.
+    let derived = document
+        .as_fix()
+        .tag()
+        .unwrap()
+        .expect("a derived definition tag");
+    assert!(FixId::is_definition_tag(derived), "{derived}");
+    assert_ne!(derived, 453);
+    assert_eq!(document.as_fix().counter().unwrap(), Some(453));
     let loaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(loaded, registry);
+    assert_eq!(
+        loaded
+            .definition(FixCategory::Groups, "Parties", None)
+            .unwrap()
+            .as_fix()
+            .tag()
+            .unwrap(),
+        Some(derived),
+        "the derived tag survives the round trip"
+    );
     assert_eq!(loaded.field(453).unwrap().dtype(), &DataType::Int32);
     assert_eq!(
         loaded
@@ -494,7 +520,7 @@ fn malformed_shards_and_folder_disagreements_are_located() {
 fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
-    assert_eq!(registry.len(), 6203);
+    assert_eq!(registry.len(), 6203 + super::crated());
     for (category, count) in [
         (FixCategory::Components, 747),
         (FixCategory::Groups, 580),
