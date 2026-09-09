@@ -1506,12 +1506,12 @@ pub fn fix_schema(
 /// it was, what stamped it - and its columns lead the row, because that is what
 /// a monitor orders and joins on. A carried column whose folded name a FIX
 /// column already takes - `senderSessionId` and `sendersessionid` are one name - is dropped
-/// rather than renamed: the FIX column is the one a reader spelling it means,
-/// and `sendersessionid` means the session the message itself states. A bridge's own
-/// session instance is captured as `sessionUid` for that reason and leads the
-/// row beside `threadId` and `level`, while its `plugin` capture fills the
-/// plugin session the line's direction names: the sender's for a line it
-/// sent, the target's for one it received.
+/// rather than renamed: the FIX column is the one a reader spelling it means.
+/// A bridge's own row header spells the session instance it handled a line on
+/// as `senderSessionId` for that reason, so the value reaches the FIX column
+/// rather than leading the row - and never over a reading the message stated
+/// itself. Its `plugin` capture fills the session the line's direction names:
+/// the sender's for a line it sent, the target's for one it received.
 #[napi(js_name = "fixSchemaCarrying")]
 pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField> {
     yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)

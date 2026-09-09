@@ -176,14 +176,14 @@ A fill is named the way a key is: a column whose folded name resolves in the mes
 `yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text.md#row-schema) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level - with every capture named for what it fills. Rust names the constant; the regex is the same text, ending in one space, in any binding's `rowheader`.
 
 ```text
-^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<sessionUid>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) 
+^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<senderSessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) 
 ```
 
 | Capture | Typed as | In a batch read |
 | --- | --- | --- |
 | `timestamp` | datetime | the row's clock, so the message's `timestamp` |
 | `threadId` | int64 | the capture's own column, leading the row |
-| `sessionUid` | utf8, nullable | the bridge's own session instance, carried in front; `sendersessionid` (65007) stays what the message states |
+| `senderSessionId` | utf8, nullable | the session instance the bridge handled the line on; folds onto `sendersessionid` (65007), so it fills that column rather than leading the row, and never over a reading the message stated |
 | `msgCtxId` | utf8, nullable | fills `msgctxid` (65008) |
 | `seqNum` | int64, nullable | fills `msgseqnum` (34) where the frame did not carry it; carried in front too, since no FIX column is named `seqnum` |
 | `plugin` | utf8 | carried in front, and a parameter: fills `sendersessionname` (65011) for a line the row says was sent and `targetsessionname` (65012) for one it received |
@@ -202,7 +202,7 @@ The plugin is the one capture read as a parameter rather than as a fill by name:
     let options = TextOptions::new().try_with_rowheader(ULBRIDGE_ROWHEADER)?;
     let captures = options.source_field()?;
     let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-    assert!(names.ends_with(&["timestamp", "threadId", "sessionUid", "msgCtxId", "seqNum", "plugin", "level"]));
+    assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "plugin", "level"]));
     // Typed from the pattern before a byte is read.
     assert_eq!(captures.field("seqNum")?.dtype(), &DataType::Int64);
     ```

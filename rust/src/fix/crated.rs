@@ -321,17 +321,17 @@ fn build() -> Result<Vec<Field>> {
             "The venue order identifier this order descends from, which no \
              standard tag names.",
         )?,
-        // The session a message came from, as the message itself states it,
-        // and half of a pair whose target side takes the block's next free tag
-        // below. A bridge row spells only its own `SESSIONID`, which this side
-        // keeps as an alias; the row header's own bracket is the bridge's, not
-        // the message's, so it never fills either of them.
+        // The session a message came from, and half of a pair whose target
+        // side takes the block's next free tag below. A bridge row spells only
+        // its own `SESSIONID`, which this side keeps as an alias; where a row
+        // spells none, the session instance the bridge's own row header
+        // brackets fills it, never over a reading the message stated itself.
         aliased(
             "sendersessionid",
             "SenderSessionId",
             SENDERSESSIONID_TAG,
             DataType::Utf8,
-            "The session a message came from, as the message states it.",
+            "The session a message came from: the message's own statement,              else the session instance its bridge handled the line on.",
             &["SessionId"],
         )?,
         // The message context a bridge handled the line in, from the bracket

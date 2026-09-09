@@ -1289,21 +1289,21 @@ test("a capture's own columns lead the row", () => {
   // front: `senderSessionId` and `sendersessionid` are one name, and the FIX column is
   // the one a reader spelling it means - the session the message itself
   // states. A bridge's own session instance is therefore captured as
-  // `sessionUid`, a name no FIX column takes, and leads the row.
+  // `senderSessionId`, a name no FIX column takes, and leads the row.
   const stamped = fields.struct(
     'line',
     [
       fields.utf8('url', { nullable: false }),
       fields.binary('body', { nullable: false }),
       fields.utf8('senderSessionId'),
-      fields.utf8('sessionUid'),
+      fields.utf8('senderSessionId'),
     ],
     { nullable: false },
   )
   const folded = fix.schemaCarrying(stamped, plain)
   assert.equal(folded.fieldLen, plain.fieldLen + 3)
   assert.equal(folded.indexOf('senderSessionId'), null)
-  assert.equal(folded.indexOf('sessionUid'), 2)
+  assert.equal(folded.indexOf('senderSessionId'), 2)
   assert.equal(folded.indexOf('sendersessionid'), plain.indexOf('sendersessionid') + 3)
 })
 

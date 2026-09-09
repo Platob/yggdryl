@@ -95,10 +95,12 @@ const SESSIONINTERFACE_NAME: &str = "SessionInterface";
 /// session that logged the line, which fills
 /// [`SenderSessionName`](super::SENDERSESSIONNAME_TAG) for a line it
 /// sent and [`TargetSessionName`](super::TARGETSESSIONNAME_TAG) for one
-/// it received; `sessionUid` is the bridge's own session instance, not the
-/// message's session, so it leads the row as the capture's own column beside
-/// `threadId` and `level` and leaves [`SenderSessionId`](super::SENDERSESSIONID_TAG) to
-/// what the message itself states.
+/// it received; `senderSessionId` is the session instance the bridge handled
+/// the line on, and fills
+/// [`SenderSessionId`](super::SENDERSESSIONID_TAG) - but only where the
+/// message states none of its own, because a fill never lands over a value the
+/// message already stated. A row spelling `SESSIONID` therefore keeps its own
+/// reading, and a line that spells nothing takes the bracket's.
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
@@ -106,12 +108,12 @@ const SESSIONINTERFACE_NAME: &str = "SessionInterface";
 ///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
 /// let captures = options.source_field()?;
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-/// assert!(names.ends_with(&["timestamp", "threadId", "sessionUid", "msgCtxId", "seqNum", "plugin", "level"]));
+/// assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "plugin", "level"]));
 /// assert_eq!(captures.field("seqNum")?.dtype(), &yggdryl::DataType::Int64);
 /// # Ok(())
 /// # }
 /// ```
-pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<sessionUid>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<senderSessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
 
 /// The standard tag one of the bridge's own capture spellings fills.
 ///

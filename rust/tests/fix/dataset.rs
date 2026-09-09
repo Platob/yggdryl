@@ -386,7 +386,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
 fn every_row_is_dated_versioned_and_named_by_its_bracket() {
     let (text_names, text) = text_rows();
     let batch = batches(None);
-    let (names, rows) = rows_of(&batch);
+    let (_, rows) = rows_of(&batch);
     let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
     let column =
         |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
@@ -424,16 +424,20 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             context,
             "row {row} context"
         );
-        let uid = &text[line_of(row)][at(&text_names, "sessionUid")];
-        assert_eq!(&held[at(&names, "sessionUid")], uid, "row {row} uid");
+        // The session column reads the message's own statement where the line
+        // makes one, and the instance its bridge bracketed in front of the
+        // line where it does not - a fill never lands over a stated reading.
+        let uid = &text[line_of(row)][at(&text_names, "senderSessionId")];
+        let session = &held[column(yggdryl::SENDERSESSIONID_TAG)];
         let line = body(&text_names, &text[line_of(row)]);
-        assert_eq!(
-            held[column(yggdryl::SENDERSESSIONID_TAG)]
-                .as_str()
-                .is_some(),
-            line.contains("|SESSIONID="),
-            "row {row} session is the message's own"
-        );
+        if line.contains("|SESSIONID=") {
+            assert!(
+                session.as_str().is_some(),
+                "row {row} states its own session"
+            );
+        } else {
+            assert_eq!(session, uid, "row {row} session from the bracket");
+        }
         // The plugin that logged the line is the plugin session it moved
         // from or to, by the direction it moved - unless the row spelled the
         // session itself, which a bridge row does as `ULFROMSESSIONNAME`.
@@ -471,7 +475,6 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         .position(|held| body(&text_names, held).starts_with("URI: /jolokia"))
         .expect("the Jolokia read");
     let jolokia = row_of(jolokia);
-    assert!(rows[jolokia][at(&names, "sessionUid")].is_null());
     assert!(rows[jolokia][column(yggdryl::SENDERSESSIONID_TAG)].is_null());
     assert!(rows[jolokia][column(yggdryl::MSGCTXID_TAG)].is_null());
     let stating = |key: &str| {
