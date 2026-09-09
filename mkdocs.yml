@@ -169,6 +169,7 @@ nav:
       - Parquet footer: media/parquet-footer.md
       - Avro: media/avro.md
       - Text records: media/text.md
+      - XML: media/xml.md
     - Iceberg:
       - media/iceberg/index.md
       - Reading: media/iceberg/read.md
@@ -182,6 +183,7 @@ nav:
       - JSON: text/json.md
       - YAML: text/yaml.md
       - TOML: text/toml.md
+      - XML: text/xml.md
   - URI:
     - uri/index.md
     - Path: uri/path.md

@@ -1229,6 +1229,67 @@ pub struct LineSep
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
 
+### yggdryl::media::xml::arrow  [rust\src\media\xml\arrow.rs]
+pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &XmlOptions) -> Result<Field>
+  pub fn row_size<H: IOBase + ?Sized>(handle: &H, options: &XmlOptions) -> Result<u64>
+  pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, declared: Option<&Field>, options: &XmlOptions, ) -> Result<BatchReader>
+  pub fn overwrite_arrow_reader<H: IOBase + ?Sized>( handle: &mut H, batches: BatchReader, options: &XmlOptions, ) -> Result<()>
+  pub fn append_arrow_reader<H: IOBase + ?Sized>( handle: &mut H, batches: BatchReader, options: &XmlOptions, ) -> Result<()>
+
+### yggdryl::media::xml::handle  [rust\src\media\xml\handle.rs]
+pub struct Xml<H: IOBase>
+  pub fn new(handle: H) -> Self
+  pub fn with_options(self, options: XmlOptions) -> Self
+  pub fn with_field(self, field: Field) -> Self
+  pub fn with_name(self, name: impl Into<SmolStr>) -> Self
+  pub const fn options(&self) -> &XmlOptions
+  pub fn options_mut(&mut self) -> &mut XmlOptions
+  pub const fn handle(&self) -> &H
+  pub fn handle_mut(&mut self) -> &mut H
+  pub fn into_handle(self) -> H
+  pub fn into_xml(self) -> Self
+  pub fn into_xml_with(self, options: XmlOptions) -> Self
+  pub fn read_row_index(&self) -> Result<Arc<RowIndex>>
+  pub fn read_row_scalar(&self, row: u64) -> Result<Scalar>
+  pub fn read_range_scalars(&self, offset: u64, count: usize) -> Result<Vec<Scalar>>
+  pub fn read_range_arrow_reader(&self, offset: u64, count: usize) -> Result<BatchReader>
+  pub fn write_row_scalar(&mut self, row: u64, value: &Scalar) -> Result<()>
+  pub fn append_row_scalars<I>(&mut self, values: I) -> Result<u64> where I: IntoIterator, I::Item: std::borrow::Borrow<Scalar>,
+  pub fn remove_row(&mut self, row: u64) -> Result<()>
+  pub fn write_range_arrow_reader( &mut self, offset: u64, count: usize, batches: BatchReader, ) -> Result<u64>
+
+### yggdryl::media::xml::index  [rust\src\media\xml\index.rs]
+pub struct RowSpan
+  pub start: u64
+  pub end: u64
+  pub const fn byte_size(self) -> u64
+  pub struct RowIndex
+  pub fn root(&self) -> Option<&str>
+  pub fn row(&self) -> Option<&str>
+  pub fn spans(&self) -> &[RowSpan]
+  pub fn get(&self, row: u64) -> Option<RowSpan>
+  pub fn len(&self) -> u64
+  pub fn is_empty(&self) -> bool
+  pub const fn content_end(&self) -> u64
+  pub const fn is_self_closed(&self) -> bool
+  pub const fn byte_size(&self) -> u64
+
+### yggdryl::media::xml::options  [rust\src\media\xml\options.rs]
+pub const DEFAULT_DOCUMENT_ELEMENT: &str = "rows";
+  pub struct XmlOptions
+  pub fn new() -> Self
+  pub fn root(&self) -> Option<&str>
+  pub fn set_root(&mut self, root: Option<&str>) -> Result<()>
+  pub fn with_root(self, root: &str) -> Result<Self>
+  pub fn row(&self) -> Option<&str>
+  pub fn set_row(&mut self, row: Option<&str>) -> Result<()>
+  pub fn with_row(self, row: &str) -> Result<Self>
+  pub fn write_root(&self) -> &str
+  pub fn write_row(&self) -> &str
+  pub const fn formatting(&self) -> Formatting
+  pub const fn set_formatting(&mut self, formatting: Formatting)
+  pub const fn with_formatting(self, formatting: Formatting) -> Self
+
 ### yggdryl::metadata  [rust\src\metadata.rs]
 pub struct Metadata(Arc<MetadataMap>);
   pub fn new() -> Self
@@ -1632,6 +1693,60 @@ pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported
   pub fn into_utf8_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<String>
   pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
   pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
+
+### yggdryl::text::xml  [rust\src\text\xml\mod.rs]
+pub fn from_xml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn from_xml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn into_xml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
+  pub const ATTRIBUTE_PREFIX: char = '@';
+  pub const TEXT_KEY: &str = "#text";
+  pub const MAX_PARSER_DEPTH: usize = 384;
+  pub fn from_utf8(input: &str) -> Result<Scalar>
+  pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes(input: &[u8]) -> Result<Scalar>
+  pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Scalar>
+  pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Scalar>
+  pub fn from_utf8_with_field_and_limits( input: &str, field: &Field, limits: Limits, ) -> Result<Scalar>
+  pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Scalar>
+  pub fn from_bytes_with_field_and_limits( input: &[u8], field: &Field, limits: Limits, ) -> Result<Scalar>
+  pub fn from_reader<R: Read>(reader: R) -> Result<Scalar>
+  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Scalar>
+  pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Scalar>
+  pub fn from_reader_with_field_and_limits<R: Read>( reader: R, field: &Field, limits: Limits, ) -> Result<Scalar>
+  pub fn from_utf8_all(input: &str) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field_and_limits( input: &str, field: &Field, limits: Limits, ) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field_and_limits( input: &[u8], field: &Field, limits: Limits, ) -> Result<Vec<Scalar>>
+  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field_and_limits<R: Read>( reader: R, field: &Field, limits: Limits, ) -> Result<Vec<Scalar>>
+  pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ScalarIter<'a>
+  pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ScalarIter<'a>
+  pub fn from_reader_iter_with_field<'a, R: Read + 'a>( reader: &'a mut R, field: &'a Field, ) -> ScalarIter<'a>
+  pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>( reader: &'a mut R, field: &'a Field, limits: Limits, ) -> ScalarIter<'a>
+  pub struct Reader<R: Read>
+  pub fn new(reader: R) -> Self
+  pub const fn with_limits(reader: R, limits: Limits) -> Self
+  pub const fn byte_offset(&self) -> usize
+  pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>>
+  pub fn into_bytes_with_formatting(value: &Scalar, formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8(value: &Scalar) -> Result<String>
+  pub fn into_utf8_with_formatting(value: &Scalar, formatting: Formatting) -> Result<String>
+  pub fn validate_for_write(value: &Scalar) -> Result<()>
+  pub fn validate_for_write_with_limits(value: &Scalar, limits: Limits) -> Result<()>
+  pub fn into_writer<W: Write>(value: &Scalar, writer: W) -> Result<()>
+  pub fn into_writer_with_formatting<W: Write>( value: &Scalar, writer: W, formatting: Formatting, ) -> Result<()>
+  pub fn into_bytes_all(values: &[Scalar]) -> Result<Vec<u8>>
+  pub fn into_bytes_all_with_formatting( values: &[Scalar], formatting: Formatting, ) -> Result<Vec<u8>>
+  pub fn into_utf8_all(values: &[Scalar]) -> Result<String>
+  pub fn into_utf8_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<String>
+  pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
+  pub fn into_writer_all_with_formatting<W, I, V>( values: I, writer: W, formatting: Formatting, ) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
 
 ### yggdryl::text::yaml  [rust\src\text\yaml\mod.rs]
 pub fn from_yaml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)

@@ -6,8 +6,8 @@
 
 | Key | Value |
 | --- | --- |
-| Owns | `Media`, `Media::open`, `open_as`, `ipc`, `parquet`, `avro`, `text`, `handle`, `into_handle` |
-| Variants | `Ipc`, `Parquet`, `Avro`, `Text` |
+| Owns | `Media`, `Media::open`, `open_as`, `ipc`, `parquet`, `avro`, `text`, `xml`, `handle`, `into_handle` |
+| Variants | `Ipc`, `Parquet`, `Avro`, `Text`, `Xml` |
 | Selects on | the handle's declared media type; nothing is read to decide |
 | Every variant | implements [`IOMedia`](../holder/iobase/records.md): `record_options`, `read_arrow_field`, `read_arrow_reader`, three write methods |
 | Writes take | an [`arrow::BatchReader`](../arrow/readers.md); signatures and validation live in [Records](../holder/iobase/records.md) |

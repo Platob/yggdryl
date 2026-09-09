@@ -9,6 +9,8 @@ mod iceberg;
 #[cfg(feature = "parquet")]
 #[path = "media/io.rs"]
 mod io;
+#[path = "media/xml.rs"]
+mod xml;
 
 use criterion::{Criterion, criterion_group};
 
@@ -35,6 +37,8 @@ criterion_group!(
     avro::codecs::codec_benchmarks,
     avro::projection::projection_benchmarks,
     avro::resolution::resolution_benchmarks,
+    xml::xml_benchmarks,
+    xml::record_benchmarks,
     io_benchmarks,
     iceberg_benchmarks,
 );

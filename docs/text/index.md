@@ -1,6 +1,6 @@
 # Structured text
 
-`yggdryl::text` reads and writes JSON, JSON Lines, YAML, and TOML over the shared native `Scalar`; the bindings only translate native and Arrow values.
+`yggdryl::text` reads and writes JSON, JSON Lines, YAML, TOML, and XML over the shared native `Scalar`; the bindings only translate native and Arrow values.
 
 ## Pages
 
@@ -9,7 +9,8 @@
 | [JSON](json.md) | JSON and JSON Lines; placeholders refused |
 | [YAML](yaml.md) | Syntax-proven natural types, document streams, block or flow style |
 | [TOML](toml.md) | One string-key record, syntax-proven temporals, inline tables |
-| [Placeholders](placeholders.md) | The Jinja-style `{{ }}` contract for YAML and TOML |
+| [XML](xml.md) | One document element as a record, attributes and text as fields, repetition as a sequence |
+| [Placeholders](placeholders.md) | The Jinja-style `{{ }}` contract for YAML, TOML, and XML |
 
 ## Contract
 
@@ -21,7 +22,7 @@
 | Order | parse, then [placeholder](placeholders.md) substitution, then Field interpretation |
 | Content | `&str`, `String`, byte slices, and Python `str` are content, never a path; a path is `pathlib.Path`; destination strings are paths |
 | Inference | `inferred_scalar_field` / `inferred_array_field` / `inferred_struct_field`, names `value`, `item`, `row`; one path for every runtime |
-| `Format` | `Json`, `JsonLines`, `Yaml`, `Toml`; extension, path, MIME, and content sniff share one vocabulary; sniff tries JSON before YAML; anonymous output is JSON |
+| `Format` | `Json`, `JsonLines`, `Yaml`, `Toml`, `Xml`; extension, path, MIME, and content sniff share one vocabulary; sniff answers markup first, then tries JSON before YAML; anonymous output is JSON |
 | `Limits` | input bytes, nesting, decoded nodes, document count, enforced while streaming; four nullable spellings in both bindings; omitted uses the safe core default |
 | Errors | name the format and byte offset, cumulative across documents; readers fuse after the first error |
 | Coding | `text::from_io` / `into_io` infer format and coding from the handle `MediaType`, so `quotes.json.gz` is JSON through gzip; `from_io_with_field` types strictly |
