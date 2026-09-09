@@ -161,6 +161,24 @@ pub(super) fn timestamp_field() -> Option<&'static Field> {
     TIMESTAMP_FIELD.as_ref()
 }
 
+/// The crate's `version` field, non-null, built once, for the reason the
+/// clock's is: every built message carries one and looking it up per line
+/// would be a dictionary probe per line.
+static VERSION_FIELD: LazyLock<Option<Field>> = LazyLock::new(|| {
+    let held = FIELDS
+        .as_deref()?
+        .iter()
+        .find(|field| field.as_fix().tag().ok().flatten() == Some(VERSION_TAG))?;
+    let mut field = held.clone();
+    field.set_nullable(false);
+    Some(field)
+});
+
+/// The crate's `version` field, non-null, built once.
+pub(super) fn version_field() -> Option<&'static Field> {
+    VERSION_FIELD.as_ref()
+}
+
 /// One field of the crate's own, with its folded identity and FIX-style display.
 ///
 /// Display and description use generic field metadata rather than the `fix:`

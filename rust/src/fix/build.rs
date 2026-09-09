@@ -1138,14 +1138,18 @@ impl<'registry> Builder<'registry> {
     /// builder resolved every tag once already and the message would only
     /// read them back out of the fields it just wrote.
     ///
-    /// Two children every message has, whatever its line carried, and
-    /// neither is an entry because neither arrived. `BeginString` is filled
-    /// from the version the message was read at where the line stated none,
-    /// so a bridge row and a configuration document say which FIX they were
-    /// read as exactly as a frame does. The crate's `timestamp` closes the
-    /// message: `clock` where the row stated one, else the first clock the
-    /// message carries, else the epoch - so a row is always dated, and a row
-    /// nobody dated sorts first and visibly.
+    /// Three children every message has, whatever its line carried, and none
+    /// of them is an entry because none of them arrived. `BeginString` is
+    /// filled from the version the message was read at where the line stated
+    /// none, so a bridge row and a configuration document say which FIX they
+    /// were read as exactly as a frame does. The crate's `version` states
+    /// that version outright - the codec's target where the caller pinned
+    /// one - because `BeginString` is what the message says about *itself*
+    /// and the two differ every time a session carries a row written to a
+    /// later FIX than it speaks. The crate's `timestamp` closes the message:
+    /// `clock` where the row stated one, else the first clock the message
+    /// carries, else the epoch - so a row is always dated, and a row nobody
+    /// dated sorts first and visibly.
     pub(super) fn finish(self, name: &str, clock: Option<&Scalar>) -> Result<Built> {
         let Self {
             beginstring,
@@ -1171,6 +1175,28 @@ impl<'registry> Builder<'registry> {
                 group: false,
                 occurrences: Vec::new(),
             });
+        }
+        // The version the read used, on every message it produced: the
+        // codec's target where the caller pinned one, else what the line's
+        // own frame implied, else the dictionary's newest. `BeginString` is
+        // what the message says about itself and is left exactly as it
+        // arrived; this is what answered it, and the two differ every time a
+        // session carries a row written to a later FIX than it speaks.
+        if !slots.iter().any(|slot| slot.tag == super::VERSION_TAG) {
+            if let Some(field) = super::crated::version_field() {
+                let spelled = format_smolstr!("{}", version.unwrap_or_else(default_version));
+                let value = field
+                    .scalar(Scalar::from(spelled.as_str()))
+                    .unwrap_or_else(|_| Scalar::from(spelled.as_str()));
+                slots.push(Slot {
+                    field: field.clone(),
+                    tag: super::VERSION_TAG,
+                    known: true,
+                    values: vec![value],
+                    group: false,
+                    occurrences: Vec::new(),
+                });
+            }
         }
         let stamp = stamped(&slots, clock);
         // Each slot's place is read once, as a rank, rather than once per

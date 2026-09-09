@@ -698,6 +698,7 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
             "bodylength",
             "msgtype",
             "symbol",
+            "version",
             "checksum",
             "timestamp"
         ],
@@ -992,9 +993,10 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
                 "msgtype",
                 "nopartyids",
                 "parties",
+                "version",
                 "timestamp"
             ],
-            "the counter and the group, beside the two children every message has"
+            "the counter and the group, beside the three children every message has"
         );
         assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
         let occurrences = message.by_name("parties").unwrap().as_sequence().unwrap();
@@ -1063,6 +1065,7 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
             "msgtype",
             "nolinesoftext",
             "linesoftextgrp",
+            "version",
             "timestamp"
         ],
         "{names:?}"
@@ -1639,4 +1642,72 @@ fn a_row_inside_a_data_field_is_read_at_its_own_version_and_not_the_frames() {
         .transform_fix_line(frame, false)
         .unwrap();
     assert_eq!(dated.by_tag(150).unwrap().as_str(), Some("1"));
+}
+
+#[test]
+fn a_fixml_document_in_a_data_field_fills_the_line_that_carried_it() {
+    let reader = reader();
+    // A bridge relaying an execution report writes the whole document into
+    // `XmlData(213)`, which is the field FIX names for exactly that.
+    let document = br#"<FIXML v="5.0 SP2"><ExecRpt ExecID="E1" ClOrdID="ORDER-1" LastQty="21" LastPx="83.08"><Instrmt Symbol="HOLN" /></ExecRpt></FIXML>"#;
+    let mut frame = Vec::new();
+    frame.extend_from_slice(b"8=FIX.4.2|9=0|35=n|212=");
+    frame.extend_from_slice(document.len().to_string().as_bytes());
+    frame.push(b'|');
+    frame.extend_from_slice(b"213=");
+    frame.extend_from_slice(document);
+    frame.extend_from_slice(b"|10=0|");
+    let message = reader.one_line(&frame, false).unwrap();
+
+    // The frame's own statements stay the frame's, and the document inside
+    // fills what the frame never said - resolved to real tags, typed by the
+    // dictionary rather than kept as one opaque value.
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("n"));
+    assert_eq!(message.by_tag(17).unwrap().as_str(), Some("E1"));
+    assert_eq!(message.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
+    assert_eq!(message.by_tag(32).unwrap().as_f64(), Some(21.0));
+    assert_eq!(message.by_tag(31).unwrap().as_f64(), Some(83.08));
+    // A nested element's attributes are the same pairs, flattened - FIXML
+    // spells a component as an element and a field as an attribute.
+    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("HOLN"));
+
+    // `XmlData` itself is still the bytes it arrived as, and the wire
+    // re-emits byte for byte: a reading of a value is not a second arrival.
+    assert_eq!(message.by_tag(213).unwrap().as_bytes(), Some(&document[..]));
+    assert_eq!(message.into_bytes(b'|'), frame);
+}
+
+#[test]
+fn every_generated_message_carries_the_version_the_read_used() {
+    let frame: &[u8] = b"8=FIX.4.2|35=D|55=AAPL|54=1|10=0|";
+
+    // With nothing pinned, the frame's own `BeginString` is what answered it,
+    // so the two agree and the message says so once.
+    let read = reader().one_line(frame, false).unwrap();
+    assert_eq!(read.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
+    assert_eq!(read.version(), Some(Version::new(4, 2, 0)));
+
+    // A pinned version is the caller speaking for the whole run: every
+    // message the codec makes is read at that target and carries it, while
+    // the frame keeps saying what the session said.
+    let dated = codec()
+        .with_version(Version::new(4, 4, 0))
+        .one_line(frame, false)
+        .unwrap();
+    assert_eq!(dated.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
+    assert_eq!(
+        dated.by_tag(yggdryl::VERSION_TAG).unwrap().as_str(),
+        Some("4.4")
+    );
+    assert_eq!(dated.version(), Some(Version::new(4, 4, 0)));
+
+    // A row that dates itself not at all is read at the dictionary's newest,
+    // and the `BeginString` it never stated is filled from the same answer.
+    let newest = registry().newest().expect("the seed's newest").version();
+    let bare = reader().one_line(b"MSGTYPE=D|SYMBOL=AAPL", false).unwrap();
+    assert_eq!(bare.version(), Some(newest));
+    assert_eq!(
+        bare.by_tag(8).unwrap().as_str(),
+        Some(format!("FIX.{newest}").as_str())
+    );
 }

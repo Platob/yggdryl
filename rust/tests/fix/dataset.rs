@@ -7,9 +7,9 @@
 //! `<SOH>`, a FIXT logon, a `35=UL` frame with exact lengths and real
 //! control-byte separators, one more carrying a trade capture whose payload
 //! packs a group inside a group inside a group and separates their members
-//! with the glyphs a viewer prints for those bytes, a bridge row with null
-//! spellings, a marked frame, a statistics line, an empty body and a
-//! warning. The text reader frames every line under the bridge's own row
+//! with the glyphs a viewer prints for those bytes, one carrying a FIXML
+//! document in the same field instead, a bridge row with null spellings, a
+//! marked frame, a statistics line, an empty body and a warning. The text reader frames every line under the bridge's own row
 //! header; each row is then read on its own as a record and as a batch of
 //! one shape, with enrichment on, and the two readings are required to agree
 //! line for line.
@@ -32,7 +32,7 @@ use yggdryl::{
 const LOG: &[u8] = include_bytes!("ulbridge.log");
 
 /// How many lines the capture holds.
-const LINES: usize = 112;
+const LINES: usize = 113;
 
 /// The one line that reads as two rows: a wildcard Jolokia read, which
 /// answers for two MBeans and so yields one message per MBean.
@@ -941,6 +941,46 @@ fn packed_group<'held>(group: &'held yggdryl::Field, name: &str) -> &'held yggdr
         .iter()
         .find(|held| held.name() == name)
         .unwrap_or_else(|| panic!("{name} inside {}", group.name()))
+}
+
+#[test]
+fn a_document_in_a_data_field_fills_the_frame_that_carried_it() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let line = text
+        .iter()
+        .position(|held| body(&text_names, held).contains("213=<FIXML"))
+        .expect("the frame carrying a document");
+    let message = codec
+        .transform_record(&record(&text_names, &text[line]), true)
+        .and_then(|mut messages| messages.next().expect("a message"))
+        .expect("the frame reads");
+
+    // The frame's own statements stay the frame's, and the document inside
+    // `XmlData` fills what the frame never said - real tags, typed by the
+    // dictionary, a nested element's attributes flattened like any other.
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("n"));
+    assert_eq!(
+        message.by_tag(17).unwrap().as_str(),
+        Some("00011377096XEEA0")
+    );
+    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("HOLN"));
+    assert_eq!(message.by_tag(32).unwrap().as_f64(), Some(120.0));
+    assert_eq!(message.by_tag(452).unwrap().as_i64(), Some(11));
+
+    // The field still holds the bytes it arrived as: a reading of a value is
+    // not a second arrival, so the wire re-emits the line exactly.
+    let xml = message.by_tag(213).unwrap().as_bytes().expect("XmlData");
+    assert!(
+        xml.starts_with(b"<FIXML"),
+        "{}",
+        String::from_utf8_lossy(xml)
+    );
+    let entries = message.entries().len();
+    assert_eq!(
+        entries, 10,
+        "the frame's own pairs and nothing the document said"
+    );
 }
 
 #[test]
