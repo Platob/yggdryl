@@ -19,7 +19,7 @@
 | Owns | `Uri`, the narrowed [`Url` / `Urn`](url-urn.md), `UriPath`, query [`Parameters`](parameters.md), path [patterns](patterns.md) |
 | Components | Scheme, authority, path: concrete, empty when absent; query, fragment: optional |
 | Validates | [`Scheme`](../types/index.md) and `UriPath` validate on construction |
-| Canonical form | Lowercase scheme, uppercase percent escapes, `/` for `\` under `file:`; re-parses to the same value |
+| Canonical form | Lowercase scheme, uppercase percent escapes, `/` for `\` under `file:`, the authority marker on every absolute `file:` path; re-parses to the same value |
 | `file:` fallback | Only with no scheme token at all |
 | Errors | Bad scheme token, percent escape, space, or bracket: parse error with the failing byte offset |
 | Escapes | Stored as written; `path_text`, `query`, and `fragment` take `decode` to answer with the text they stand for. Rust and Python; JavaScript reads the stored form only |
@@ -240,6 +240,8 @@ Both are read off the authority without a network request.
 
 - Invalid scheme token before the colon -> parse error, no `file:` fallback.
 - `/data/2026-08-16T00:00:00/part.parquet` -> colon after the first separator is data; scheme `file`.
+- `file:/data` -> `file:///data`; one absolute local path has one spelling.
+- `a://host/p` and `a:/b?q=1#f` -> the one-letter scheme `a`; a backslash, or a slash with no `//`, `?` or `#` after it, keeps the drive reading (`C:/x`, `C:\x`).
 - Python setter after `hash(uri)` -> `TypeError`; `copy.copy` and pickle give unlocked wrappers.
 - Rust -> ownership protects hashed keys; JavaScript -> call `stableHash()` explicitly.
 

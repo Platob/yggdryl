@@ -39,9 +39,9 @@ pub(super) const fn is_query_fragment_byte(byte: u8) -> bool {
 /// and `/` is escaped rather than kept: a name a backend gave us is one
 /// segment, and letting a slash through would make it two.
 ///
-/// Only a backend that names resources with raw text needs this; the S3 one
-/// is the only such backend in the crate today.
-#[cfg(feature = "s3")]
+/// This is the door raw text comes through: [`Url::join_path`] spells one
+/// platform component with it, and a backend that names resources with raw
+/// text - the S3 one - spells one object name.
 pub(crate) fn percent_encode_segment(value: &str) -> Cow<'_, str> {
     percent_encode(value, |byte| is_path_byte(byte) && byte != b'/')
 }
@@ -120,6 +120,14 @@ pub(super) fn validate_optional_component(
         .transpose()
 }
 
+/// Return whether one segment is structure rather than a name.
+///
+/// `.` and `..` address a directory, so a path that gains one addresses
+/// something other than the resource the caller was naming.
+pub(super) fn is_dot_segment(value: &str) -> bool {
+    matches!(value, "." | "..")
+}
+
 pub(super) fn normalize_resource_segment(
     value: &str,
     target: &'static str,
@@ -133,6 +141,13 @@ pub(super) fn normalize_resource_segment(
             target,
             position,
             "resource path value must contain exactly one segment",
+        ));
+    }
+    if is_dot_segment(value) {
+        return Err(parse_error(
+            target,
+            0,
+            "a dot segment addresses a directory rather than naming a resource",
         ));
     }
     validate_component(value, target, 0, is_path_byte)?;
@@ -161,7 +176,16 @@ impl FromStr for Uri {
                 return Self::from_str(&normalized);
             }
         }
-        if is_windows_drive_absolute(value)
+        // A one-letter scheme and a Windows drive are spelled the same way, so
+        // the drive reading is taken wherever nothing else can be meant. A
+        // backslash settles it outright - URI syntax carries none - and so does
+        // a single slash. Only `X://` is ambiguous, and there the two slashes
+        // are the authority marker: `a://host/p` has to stay the URI that
+        // `from_parts` builds from the one-letter scheme `a`.
+        let bytes = value.as_bytes();
+        let drive_designator = is_windows_drive_absolute(value)
+            && (bytes[2] == b'\\' || !(bytes.get(3) == Some(&b'/') || value.contains(['?', '#'])));
+        if drive_designator
             || value.starts_with("\\\\")
             || (!value.contains(':') && value.contains('\\'))
         {
@@ -415,15 +439,40 @@ pub(super) fn file_path_from_uri(value: &Uri) -> Result<PathBuf> {
         ));
     }
     if value.query.is_some() || value.fragment.is_some() {
+        // The offset names the delimiter in the URI the caller wrote, so the
+        // authority marker and the authority itself count toward it.
+        let authority_len = if value.has_authority() {
+            2 + value.authority().as_str().len()
+        } else {
+            0
+        };
         return Err(parse_error(
             "path",
-            value.scheme().as_str().len() + 1 + value.path().as_str().len(),
+            value.scheme().as_str().len() + 1 + authority_len + value.path().as_str().len(),
             "file URI query and fragment components cannot be represented by a path",
         ));
     }
 
     let path = decode_file_component(value.path().as_str(), "file URI path")?;
+    if let Some(position) = escaped_dot_segment_position(value.path().as_str(), &path) {
+        return Err(parse_error(
+            "file URI path",
+            position,
+            "percent escapes cannot create a dot segment",
+        ));
+    }
     if value.authority().is_empty() {
+        // With no authority to spell it, a path opening on two slashes would
+        // come back out as `//server/share`: the UNC form, naming a host this
+        // URI never carried. `Uri::from_path` cannot produce one, so refusing
+        // is what keeps the two directions each other's inverse.
+        if path.starts_with("//") {
+            return Err(parse_error(
+                "file URI path",
+                0,
+                "a path opening on two slashes would name a UNC server this URI has no authority for",
+            ));
+        }
         if let Some(position) = encoded_windows_drive_position(value.path().as_str(), &path) {
             return Err(parse_error(
                 "file URI path",
@@ -455,6 +504,32 @@ pub(super) fn file_path_from_uri(value: &Uri) -> Result<PathBuf> {
         return Ok(PathBuf::from(&path[1..]));
     }
     Ok(PathBuf::from(path.as_ref()))
+}
+
+/// Find an escape that turns a path segment into `.` or `..`.
+///
+/// Every structural view - `parts`, `normalize`, `segments_under` - reads the
+/// encoded path, so an escaped dot segment is invisible to all of them and then
+/// resolves as a real one the moment a platform walks the path: `lake/%2E%2E/x`
+/// reads as a name under `lake` and addresses its parent. That is the same
+/// reason an escaped separator is refused, so the escape is refused here rather
+/// than quietly deciding which of the two readings the caller meant.
+fn escaped_dot_segment_position(encoded: &str, decoded: &str) -> Option<usize> {
+    if !encoded.contains('%') {
+        return None;
+    }
+    let mut decoded_offset = 0;
+    for segment in decoded.split('/') {
+        if matches!(segment, "." | "..") {
+            let position = encoded_position_for_decoded_byte(encoded, decoded_offset);
+            let spelled = encoded[position..].split('/').next().unwrap_or_default();
+            if spelled != segment {
+                return Some(position);
+            }
+        }
+        decoded_offset += segment.len() + 1;
+    }
+    None
 }
 
 pub(super) fn encoded_windows_drive_position(encoded: &str, decoded: &str) -> Option<usize> {
@@ -599,10 +674,16 @@ pub(super) fn percent_encode(value: &str, allowed: impl Fn(u8) -> bool) -> Cow<'
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
 
     let bytes = value.as_bytes();
-    if bytes.iter().all(|byte| *byte != b'%' && allowed(*byte)) {
+    // Proving the text needs no escape reads every byte anyway, so counting
+    // while proving it buys the exact capacity for the case that does.
+    let escapes = bytes
+        .iter()
+        .filter(|byte| **byte == b'%' || !allowed(**byte))
+        .count();
+    if escapes == 0 {
         return Cow::Borrowed(value);
     }
-    let mut encoded = String::with_capacity(bytes.len() + 2);
+    let mut encoded = String::with_capacity(bytes.len() + 2 * escapes);
     for byte in bytes {
         if *byte != b'%' && allowed(*byte) {
             encoded.push(*byte as char);
@@ -685,6 +766,12 @@ pub(super) fn canonicalize_file_drive(
         return;
     }
 
+    if !authority.is_empty() {
+        // What follows a UNC server is a share name: there is no drive at
+        // `\\server\c:`, and RFC 8089 s2 keeps a file path's case as given.
+        return;
+    }
+
     let value = path.as_str();
     let drive_offset = if is_windows_drive_absolute(value) {
         Some(0)
@@ -694,6 +781,11 @@ pub(super) fn canonicalize_file_drive(
         None
     };
     let Some(drive_offset) = drive_offset else {
+        // `file:/data` and `file:///data` name the same local path, so an
+        // absolute one always carries the authority marker. Without the one
+        // spelling, the URI a platform path converts to is not the URI that
+        // parses back, and two values of one file compare and hash apart.
+        *has_authority |= value.starts_with('/');
         return;
     };
     let drive = value.as_bytes()[drive_offset].to_ascii_uppercase();

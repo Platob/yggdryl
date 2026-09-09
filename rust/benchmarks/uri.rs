@@ -9,6 +9,8 @@ const WINDOWS_PATH: &str = r"C:\Users\Ada Lovelace\market data\trades.parquet";
 const UNC_PATH: &str = r"\\market-data\shared\prices\2026\ticks.arrow";
 const S3_URI: &str = "s3://market-data.s3.eu-west-3.amazonaws.com/2026/trades.parquet";
 const ESCAPED_URI: &str = "https://example.test/archive/Ada%20Lovelace/report.csv?as%20of=2026-01-02&note=a%26b&venue=XNAS";
+/// A platform name every byte of which the segment syntax has to escape.
+const ESCAPING_NAME: &str = "Ada Lovelace 100% caf\u{e9}/report #1?draft.csv";
 
 fn parsing_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("resource_parse");
@@ -61,6 +63,7 @@ fn value_benchmarks(criterion: &mut Criterion) {
         .expect("the static encodings must be valid");
     let credentials = Uri::from_str(NETWORK_URI).expect("the static URI must parse");
     let s3 = Uri::from_str(S3_URI).expect("the static S3 URI must parse");
+    let lake = Url::from_str("file:///lake").expect("the static lake URL must parse");
 
     group.bench_function("clone", |bencher| {
         bencher.iter(|| black_box(&uri).clone());
@@ -164,6 +167,29 @@ fn value_benchmarks(criterion: &mut Criterion) {
                 .clone()
                 .into_path()
                 .expect("the static file URI must project")
+        });
+    });
+    // The two join doors, measured against each other: the platform one pays
+    // for encoding every component, the URI one takes text already spelled.
+    group.bench_function("platform_join_clean", |bencher| {
+        bencher.iter(|| {
+            black_box(&lake)
+                .join_path(black_box("year=2026/part-0.parquet"))
+                .expect("a clean platform name must join")
+        });
+    });
+    group.bench_function("platform_join_escaping", |bencher| {
+        bencher.iter(|| {
+            black_box(&lake)
+                .join_path(black_box(ESCAPING_NAME))
+                .expect("an escaping platform name must join")
+        });
+    });
+    group.bench_function("uri_join", |bencher| {
+        bencher.iter(|| {
+            black_box(&lake)
+                .joinpath(black_box("year=2026/part-0.parquet"))
+                .expect("the static URI path must join")
         });
     });
     group.finish();
