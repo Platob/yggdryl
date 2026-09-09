@@ -514,15 +514,15 @@ class Trade:
 trade = Trade(trade_id=1, symbol="AAPL")
 
 assert dataclasses.is_dataclass(Trade)
-trade_field = Trade.field()
-assert Trade.field() is trade_field
+trade_field = Trade.into_field()
+assert Trade.into_field() is trade_field
 assert field(Trade) is trade_field
 assert field(trade) is trade_field
 assert trade_field.name == "Trade"
 assert [child.name for child in trade_field] == ["trade_id", "symbol"]
 ```
 
-`@scalar(...)` forwards every dataclass option, and `Class.field()` caches one frozen Struct field per decorated class. Global conversion also accepts a native [`Field`](../types/field.md), a PyArrow Schema, Field, or DataType, or a dataclass class or instance.
+`@scalar(...)` forwards every dataclass option, and `Class.into_field()` caches one frozen Struct field per decorated class. Global conversion also accepts a native [`Field`](../types/field.md), a PyArrow Schema, Field, or DataType, or a dataclass class or instance.
 
 ```python
 import pyarrow as pa
@@ -535,8 +535,8 @@ row = Field.from_arrow_schema(
 )
 Trade = row.into_dataclass()
 
-assert Trade.field() is row
-assert Trade.field().into_arrow_schema().field("trade_id").type == pa.uint32()
+assert Trade.into_field() is row
+assert Trade.into_field().into_arrow_schema().field("trade_id").type == pa.uint32()
 ```
 
 The import preserves exact physical layout and metadata, and `into_dataclass` derives its annotations from that native graph.
@@ -600,7 +600,7 @@ class Side(fixed_ascii(4)):
     BUY = "B"
     SELL = "S"
 
-field = Side.field("side", nullable=False)
+field = Side.into_field("side", nullable=False)
 assert field.dtype.id == "fixed_ascii"
 assert field.ascii_enum == AsciiEnum("Side", {"BUY": "B", "SELL": "S"})
 assert field.get_property("field", "enum") == field.ascii_enum.into_json()
@@ -640,7 +640,7 @@ finally:
 assert [record.getMessage() for record in records] == [f"Side registered 'X' as {0x58000000}"]
 ```
 
-The declared members are the declaration, so `as_enum()` and `field()` carry only what the class body names.
+The declared members are the declaration, so `as_enum()` and `into_field()` carry only what the class body names. A member also takes the name it is spelled with, so the seven names the class API owns - `as_enum`, `dtype`, `from_code`, `from_field`, `from_str`, `into_field`, `into_str` - are refused as member names rather than replacing the method: declaring one is a `TypeError` at class creation, and a stored declaration naming one is a `ValueError` from `from_field`. Every other name, `field` included, is the vocabulary's.
 
 ### The registered vocabularies
 
@@ -672,7 +672,7 @@ class Fill:
     venue: MIC
     settlement: Currency
 
-venue, settlement = Fill.field()
+venue, settlement = Fill.into_field()
 assert (venue.dtype.id, settlement.dtype.id) == ("mic", "currency")
 assert settlement.ascii_enum.name == "Currency"
 assert settlement.ascii_enum.get("USD") == "USD"
@@ -978,9 +978,9 @@ class Trade:
     venue: str | None
 
 handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-cached = Trade.field()
+cached = Trade.into_field()
 handle.overwrite_records([Trade(1, "XNAS"), Trade(2, None)])
-assert Trade.field() is cached
+assert Trade.into_field() is cached
 assert list(handle.read_records(Trade)) == [Trade(1, "XNAS"), Trade(2, None)]
 assert list(handle.read_records()) == [
     {"id": 1, "venue": "XNAS"},
@@ -988,7 +988,7 @@ assert list(handle.read_records()) == [
 ]
 
 empty = handle.record_options()
-empty.field = Trade.field()
+empty.field = Trade.into_field()
 handle.overwrite_records([], options=empty)
 ```
 
@@ -1111,7 +1111,7 @@ shutil.rmtree(warehouse.parent)
 
 ## Reading a class back
 
-Nothing in a document names a Python class, so the class comes from the call. `cls=` converts the decoded mapping through the native Struct `Field` cached behind the class's `field()` staticmethod.
+Nothing in a document names a Python class, so the class comes from the call. `cls=` converts the decoded mapping through the native Struct `Field` cached behind the class's `into_field()` staticmethod.
 
 ```python
 from yggdryl import scalar
@@ -1127,7 +1127,7 @@ encoded = json.dumps(Trade(1, "AAPL"))
 # Without a target the document is what it says it is: data.
 assert json.loads(encoded) == {"trade_id": 1, "symbol": "AAPL"}
 assert json.loads(encoded, cls=Trade) == Trade(1, "AAPL")
-assert Trade.field()["trade_id"].dtype.id == "int64"
+assert Trade.into_field()["trade_id"].dtype.id == "int64"
 ```
 
 A dataclass used as a dictionary *key* reads back as the tuple of its entries, because JSON and YAML have no non-string keys. Supplying the decorated class as the target restores the declared shape.

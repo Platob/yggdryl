@@ -721,7 +721,7 @@ def test_protocol_view_refuses_writes_to_a_generated_field_class() -> None:
     row_type = Field.from_arrow_schema(
         pa.schema([pa.field("id", pa.int64(), nullable=False)])
     ).into_dataclass(name="FrozenViewField")
-    frozen = row_type.field()
+    frozen = row_type.into_field()
     child = frozen.dtype[0]
     view = child.iceberg
 
@@ -919,9 +919,9 @@ def test_typed_int32_field_id_is_canonical_atomic_and_arrow_compatible() -> None
     row_type = Field.from_arrow_schema(
         pa.schema([imported.into_arrow()])
     ).into_dataclass(name="IdentifiedField")
-    child = row_type.field().dtype[0]
+    child = row_type.into_field().dtype[0]
     assert child.parquet_field_id == 17
-    assert row_type.field().into_arrow_schema().field(0).metadata[
+    assert row_type.into_field().into_arrow_schema().field(0).metadata[
         b"PARQUET:field_id"
     ] == b"17"
     with pytest.raises(TypeError, match="read-only"):

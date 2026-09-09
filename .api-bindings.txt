@@ -43,11 +43,11 @@
   __version__: (module or value)
   enums: AsciiCode, CFI, CODECS, COMPATIBILITY_SCHEMES, CfiCode, Country, CountryCode, Currency, CurrencyCode, DATA_TYPE_IDS, DATA_TYPE_KINDS, DIGEST_ALGORITHMS, EDGE_ALGORITHMS, FORMATS, IO_KINDS, IO_MODES, IO_WRITE_MODES, LEADING_FRAGMENTS, LEVELS, MIC, MicCode, NULLABILITIES, REPRESENTATIONS, TIME_UNITS, UNION_MODES, fixed_ascii
   enums.AsciiCode: the base of the six declared ASCII widths (Ascii16 through Ascii128) and the four registered code bases (CountryCode, CurrencyCode, MicCode, CfiCode)
-    classmethods: as_enum, dtype, field, from_code, from_field, from_str, into_dictionary
+    classmethods: as_enum, dtype, from_code, from_field, from_str, into_field
     instance: into_str
-    protocol: an open IntEnum whose member is its packed ASCII value and whose str/format is that value's text
+    protocol: an open IntEnum whose member is its packed ASCII value and whose str/format is that value's text; a subclass body is the caller's vocabulary, so a member spelled as any of the seven names listed above is refused at class creation rather than shadowing it, and a stored declaration naming one is a ValueError
   enums.Country / enums.Currency / enums.MIC / enums.CFI: the shipped vocabularies, over CountryCode, CurrencyCode, MicCode, and CfiCode
-  scalar classes: field (cached staticmethod)
+  scalar classes: into_field (cached staticmethod; the class's non-null Struct root, not the leaf conversion Scalar.into_field names)
   combined: (module or value)
   refresh_logging: drops the cached Python log levels, so a level set after import applies
   coding: Coded, Gzip, Identity, Zlib, Zstd, gzip, zlib, zstd
@@ -102,7 +102,7 @@
     instance: get(attribute: str) -> Scalar | None; into_fixmsg(codec: FixCodec, enrich: bool = False) -> FixMsg; stable_hash() -> int
     protocol: one immutable ObjectName, attributes and response envelope; native equality/hash, copy/deepcopy -> Ulconfig; __reduce__() -> tuple[object, tuple[str, str | None, str]]; __len__ counts stated attributes, __contains__(attribute: str) -> bool folds names; one flat message per configuration
   media.iceberg: Catalog, Compaction, DataFile, IcebergOptions, ManifestFile, Namespace, Namespaces, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table, Tables, assign_field_ids, can_promote, schema_from_json, schema_into_json
-  scalar: decorator installing cached static field()
+  scalar: decorator installing cached static into_field()
   media.avro
     exports: Block, BlockIterator, Container, Schema, blocks, dumps, dumps_single, loads, loads_single
     decode limits: max_depth, max_input_bytes, max_nodes; blocks is a fused lazy iterator

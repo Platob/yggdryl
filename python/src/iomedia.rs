@@ -359,7 +359,7 @@ pub(crate) fn batch_reader_from_any(
 /// Build one streamed reader from Python row records.
 ///
 /// A decorated dataclass instance supplies its class's cached
-/// `field()` when no field was declared explicitly. Empty input
+/// `into_field()` when no field was declared explicitly. Empty input
 /// cannot infer a shape, so it is accepted only when `options.field` already
 /// names one.
 pub(crate) fn batch_reader_from_records(
