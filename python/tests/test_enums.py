@@ -247,6 +247,19 @@ def test_a_member_may_not_shadow_the_class_api(reserved: str) -> None:
         exec(body, {"fixed_ascii": fixed_ascii})
 
 
+def test_a_stored_declaration_naming_the_class_api_is_bad_data() -> None:
+    # Member names in a stored declaration are data another writer produced,
+    # so one the class API owns is reported like every other bad declaration.
+    field = Field("side", DataType.ascii(4), nullable=False)
+    field.set_ascii_enum(AsciiEnum("Wire", {"into_str": "A", "OK": "B"}))
+
+    with pytest.raises(ValueError, match="which name the class API"):
+        AsciiCode.from_field(field)
+
+    field.set_ascii_enum(AsciiEnum("Wire", {"field": "A", "OK": "B"}))
+    assert set(AsciiCode.from_field(field).__members__) == {"field", "OK"}
+
+
 def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> None:
     # Each class is the Python spelling of one registered code in the grammar,
     # over the code's own datatype rather than an ASCII width.

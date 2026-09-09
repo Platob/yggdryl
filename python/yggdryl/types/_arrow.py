@@ -49,17 +49,10 @@ _LIST_KINDS = frozenset(
     ("list", "list_view", "fixed_size_list", "large_list", "large_list_view")
 )
 _DECIMAL_KINDS = frozenset(("decimal32", "decimal64", "decimal128", "decimal256"))
-_RESERVED_NAMES = frozenset(
-    {
-        "into_field",
-        "__dict__",
-        "__slots__",
-        "__weakref__",
-        "__yggdryl_class_schema__",
-        "__yggdryl_field_class__",
-        "__yggdryl_scalar_fields__",
-    }
-)
+#: The only ordinary name a generated class owns: every other name it carries -
+#: `__slots__`, the schema cache, the decoration markers - is dunder-shaped and
+#: is refused by the `__` rule beside this one.
+_RESERVED_NAMES = frozenset({"into_field"})
 
 
 def _valid_identifier(value: object) -> bool:

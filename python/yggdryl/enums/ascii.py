@@ -26,9 +26,10 @@ members under `field:enum`, so the enum crosses Arrow, a file, and another
 runtime as ordinary field metadata; `from_field()` reads that declaration back
 as a class.
 
-A subclass body is the caller's vocabulary, so the names this class API owns are
-refused as member names rather than shadowed: a member spelled like one of them
-would replace the method and fail only later, at the call site.
+A subclass body is the caller's vocabulary, so the seven names this class API
+owns - `as_enum`, `dtype`, `from_code`, `from_field`, `from_str`, `into_field`,
+`into_str` - are refused as member names rather than shadowed: a member spelled
+like one of them would replace the method and fail only later, at the call site.
 
 The worked example is in the Python extension documentation, beside the field
 the declaration builds.
@@ -69,14 +70,42 @@ _RESERVED_MEMBER_NAMES = frozenset(
 )
 
 
-def _reserved_member_error(cls: type[Any], names: Iterable[str]) -> TypeError:
+def _reserved_member_error(
+    module: str, qualname: str, names: Iterable[str]
+) -> TypeError:
     """The one message every shadowed class API name is refused with."""
 
     shadowed = ", ".join(sorted(names))
     return TypeError(
-        f"{cls.__module__}.{cls.__qualname__} reserves {shadowed} for its "
-        "class API; name the member for its value instead"
+        f"{module}.{qualname} reserves {shadowed} for its class API; name the "
+        "member for its value instead"
     )
+
+
+class _AsciiCodeMeta(enum.EnumMeta):
+    """Refuse a vocabulary member spelled as one of the class API names.
+
+    The class body is what is checked, before the enum machinery turns a name
+    into a member. Nothing later is early enough on every supported
+    interpreter: a member named `dtype` breaks while the first member is built,
+    and `__init_subclass__` sees no members at all before Python 3.11.
+    """
+
+    def __new__(
+        metacls,
+        name: str,
+        bases: tuple[type, ...],
+        classdict: Any,
+        **options: Any,
+    ) -> _AsciiCodeMeta:
+        shadowed = _RESERVED_MEMBER_NAMES.intersection(classdict._member_names)
+        if shadowed:
+            raise _reserved_member_error(
+                classdict.get("__module__", "<unknown>"),
+                classdict.get("__qualname__", name),
+                shadowed,
+            )
+        return super().__new__(metacls, name, bases, classdict, **options)
 
 
 _COUNTRY = DataType("country")
@@ -85,7 +114,7 @@ _MIC = DataType("mic")
 _CFI = DataType("cfi")
 
 
-class AsciiCode(enum.IntEnum):
+class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
     """The shared base of the fixed widths and the four registered codes.
 
     Subclass `fixed_ascii(width)` or one of the codes rather than this: each
@@ -96,25 +125,13 @@ class AsciiCode(enum.IntEnum):
     _text: str
 
     def __new__(cls, value: str | bytes) -> Self:
-        # A member named `dtype` has already replaced the classmethod by the
-        # time the first member is built, which is before `__init_subclass__`
-        # runs; refusing it here is what keeps that failure readable.
-        declared = cls.dtype
-        if not callable(declared):
-            raise _reserved_member_error(cls, ("dtype",))
-        dtype = declared()
+        dtype = cls.dtype()
         code = dtype.ascii_packed(value)
         member = int.__new__(cls, code)
         member._value_ = code
         # The stored spelling, which is the padded value read back trimmed.
         member._text = dtype.ascii_value(code)
         return member
-
-    def __init_subclass__(cls, **options: Any) -> None:
-        super().__init_subclass__(**options)
-        shadowed = _RESERVED_MEMBER_NAMES.intersection(cls.__members__)
-        if shadowed:
-            raise _reserved_member_error(cls, shadowed)
 
     # -- what a member says of itself ---------------------------------------
 
@@ -228,13 +245,24 @@ class AsciiCode(enum.IntEnum):
         """The class one field declares, over that field's own datatype.
 
         Raises:
-            ValueError: when the field declares no enum, or its datatype is
-                neither an ASCII width nor a registered code.
+            ValueError: when the field declares no enum, its datatype is
+                neither an ASCII width nor a registered code, or the
+                declaration names a member the class API owns.
         """
 
         declared = field.ascii_enum
         if declared is None:
             raise ValueError(f"the field {field.name!r} declares no enum")
+        # A stored declaration is data another writer produced, so a member
+        # name the class API owns is reported as bad data here rather than
+        # raised by the metaclass while the class is rebuilt below.
+        shadowed = _RESERVED_MEMBER_NAMES.intersection(declared.members)
+        if shadowed:
+            raise ValueError(
+                f"the field {field.name!r} declares "
+                f"{', '.join(sorted(shadowed))}, which name the class API "
+                "rather than a value"
+            )
         # Read off the datatype, not the width alone: `currency` and
         # `ascii(3)` are three bytes each and are not the same base.
         base = _base_for(field.dtype)

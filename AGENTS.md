@@ -749,8 +749,8 @@ Python-only:
   nullability, explicit annotation options win, defaults/factories affect
   construction rather than schema, and generated dataclasses derive annotations
   from the exact native field graph.
-- No second row decorator or class, static field constant, `schema`/`field`
-  alias beside `into_field`, or retired public surface.
+- No second row decorator or class, static field constant, library-installed
+  `schema` or `field` alias beside `into_field`, or retired public surface.
 - `pyarrow.RecordBatchReader` is the primitive record shape - table, batch, and
   dataclass row methods redirect through it over the C Stream interface, on the C
   Data Interface and PyArrow holders.

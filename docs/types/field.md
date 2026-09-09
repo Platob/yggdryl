@@ -489,6 +489,8 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 
 No name, `None`/`null`, or the existing name returns the cached native value; another name returns a renamed clone. The root must be a non-null struct field.
 
+Python spells the class accessor `into_field` because a `@scalar` class converts only as a struct root and has no leaf form to tell it apart from. On a *value* Python keeps the pair the other two rows have: [`Scalar.into_field`](scalar.md) for the leaf and `Scalar.into_struct_field` for the root.
+
 ## Applying a schema's declarations
 
 A `Field` states more about a batch than its shape. A

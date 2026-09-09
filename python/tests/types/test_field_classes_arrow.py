@@ -164,6 +164,22 @@ def test_into_field_is_reserved_for_generated_classes() -> None:
         root.into_dataclass()
 
 
+@pytest.mark.parametrize(
+    "column", ["__dict__", "__slots__", "__weakref__", "__yggdryl_class_schema__"]
+)
+def test_a_dunder_column_is_reserved_for_generated_classes(column: str) -> None:
+    # A generated class carries its slots, its schema cache and its decoration
+    # markers under dunder names, so the whole shape is refused rather than
+    # each name listed.
+    root = Field.from_arrow_schema(
+        pa.schema([pa.field(column, pa.int64(), nullable=False)]),
+        name="row",
+    )
+
+    with pytest.raises(TypeError, match="conflicts with the field-class API"):
+        root.into_dataclass()
+
+
 def test_field_column_materializes_for_generated_classes() -> None:
     root = Field.from_arrow_schema(
         pa.schema([pa.field("field", pa.int64(), nullable=False)]),

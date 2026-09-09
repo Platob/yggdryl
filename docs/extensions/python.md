@@ -595,7 +595,7 @@ finally:
 assert [record.getMessage() for record in records] == [f"Side registered 'X' as {0x58000000}"]
 ```
 
-The declared members are the declaration, so `as_enum()` and `into_field()` carry only what the class body names.
+The declared members are the declaration, so `as_enum()` and `into_field()` carry only what the class body names. A member also takes the name it is spelled with, so the seven names the class API owns - `as_enum`, `dtype`, `from_code`, `from_field`, `from_str`, `into_field`, `into_str` - are refused as member names rather than replacing the method: declaring one is a `TypeError` at class creation, and a stored declaration naming one is a `ValueError` from `from_field`. Every other name, `field` included, is the vocabulary's.
 
 ### The registered vocabularies
 

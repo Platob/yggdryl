@@ -43,9 +43,9 @@
   enums.AsciiCode: the base of the six declared ASCII widths (Ascii16 through Ascii128) and the four registered code bases (CountryCode, CurrencyCode, MicCode, CfiCode)
     classmethods: as_enum, dtype, from_code, from_field, from_str, into_field
     instance: into_str
-    protocol: an open IntEnum whose member is its packed ASCII value and whose str/format is that value's text; a subclass body is the caller's vocabulary, so a member spelled as one of the class API names above (or into_str) is refused rather than shadowing it
+    protocol: an open IntEnum whose member is its packed ASCII value and whose str/format is that value's text; a subclass body is the caller's vocabulary, so a member spelled as any of the seven names listed above is refused at class creation rather than shadowing it, and a stored declaration naming one is a ValueError
   enums.Country / enums.Currency / enums.MIC / enums.CFI: the shipped vocabularies, over CountryCode, CurrencyCode, MicCode, and CfiCode
-  scalar classes: into_field (cached staticmethod)
+  scalar classes: into_field (cached staticmethod; the class's non-null Struct root, not the leaf conversion Scalar.into_field names)
   combined: (module or value)
   refresh_logging: drops the cached Python log levels, so a level set after import applies
   coding: Coded, Gzip, Identity, Zlib, Zstd, gzip, zlib, zstd
