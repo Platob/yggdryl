@@ -230,7 +230,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     # Every field is a specification field or one of the crate's own, and
     # both are standard, so none states a branch.
     assert sum("fix:branch" in field.metadata for field in registry) == 0
-    assert len(fix_crate_fields()) == 19
+    assert len(fix_crate_fields()) == 20
     # The whole published dictionary, not a sample of it.
     assert len(registry) > 6_000
     ```
@@ -255,7 +255,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     // Every field is a specification field or one of the crate's own, and
     // both are standard, so none states a branch.
     assert.equal([...registry].filter((field) => field.has('fix:branch')).length, 0)
-    assert.equal(fix.crateFields().length, 19)
+    assert.equal(fix.crateFields().length, 20)
     // The whole published dictionary, not a sample of it.
     assert.ok(registry.size > 6_000)
     ```
