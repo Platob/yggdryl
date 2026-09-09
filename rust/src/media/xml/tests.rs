@@ -761,3 +761,69 @@ fn a_declared_read_answers_without_scanning_for_a_shape() {
     assert_eq!(column(&batches, "c"), vec![Scalar::Null, Scalar::Null]);
     assert_eq!(batches[0].schema().fields().len(), 2);
 }
+
+#[test]
+fn a_folder_of_documents_reads_as_one_table() {
+    let mut root = crate::holder::local::Folder::temporary()
+        .unwrap()
+        .path()
+        .unwrap();
+    root.push(format!("yggdryl-xml-lake-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+
+    for (venue, id) in [("XLON", "2"), ("XNAS", "1")] {
+        let mut leaf = crate::holder::Holder::folder(root.join(format!("venue={venue}")))
+            .unwrap()
+            .child_by_path("part-0.xml")
+            .unwrap();
+        leaf.write_all_bytes(format!("<rows><row><id>{id}</id></row></rows>").as_bytes())
+            .unwrap();
+    }
+
+    let folder = crate::holder::Holder::folder(&root).unwrap();
+    let options = folder.record_options().unwrap();
+    assert!(matches!(options, RecordOptions::Xml(_)));
+    assert_eq!(folder.row_size().unwrap(), 2);
+
+    let batches: Vec<RecordBatch> = folder
+        .read_arrow_reader(&options)
+        .unwrap()
+        .map(|batch| batch.unwrap())
+        .collect();
+    // The directory the leaf sits in is a column of the table it belongs to.
+    let mut venues = column(&batches, "venue");
+    venues.sort();
+    assert_eq!(venues, text(&["XLON", "XNAS"]));
+    let mut ids = column(&batches, "id");
+    ids.sort();
+    assert_eq!(ids, text(&["1", "2"]));
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_handle_becomes_xml_media_and_stays_one() {
+    // The trait method wraps any handle, and the inherent one is idempotent.
+    let media = handle("trades.xml").into_xml().into_xml();
+    assert!(media.is_tabular());
+    assert!(!media.is_atomic());
+
+    // A holder promotes itself to the implementation its name declares.
+    let mut holder = crate::holder::Holder::buffer(handle("trades.xml"));
+    holder.write_all_bytes(rows_document().as_bytes()).unwrap();
+    holder.open().unwrap();
+    assert!(matches!(
+        &holder,
+        crate::holder::Holder::Media(media)
+            if matches!(media.as_ref(), crate::media::Media::Xml(_))
+    ));
+    assert_eq!(holder.row_size().unwrap(), 3);
+    assert_eq!(
+        crate::IOMedia::read_arrow_reader(&holder, &holder.record_options().unwrap())
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum::<usize>(),
+        3
+    );
+}
