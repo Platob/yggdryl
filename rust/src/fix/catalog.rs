@@ -891,9 +891,7 @@ impl FixRegistry {
                 .as_fix()
                 .tag()?
                 .ok_or_else(|| Error::absent(super::field::TAG_KEY, name))?;
-            if let Some(held) = derived.insert(tag, name)
-                && held != name
-            {
+            if let Some(held) = derived.insert(tag, name).filter(|held| *held != name) {
                 return Err(Error::conflict(
                     "one FIX definition per derived tag",
                     "two definitions on one tag",
