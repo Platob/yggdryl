@@ -484,7 +484,7 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 | | typed value | struct root |
 | --- | --- | --- |
 | Rust | `TypedField<K>::into_field(self)` | `StructField::into_struct_field(self)` |
-| Python | `field(value, name=None)` | cached `Class.field() -> StructField`, installed by `@scalar` |
+| Python | `field(value, name=None)` | cached `Class.into_field() -> StructField`, installed by `@scalar` |
 | JavaScript | `intoField(value, name = null)` | static getter `Class.intoStructField`, memoized by `intoField` |
 
 No name, `None`/`null`, or the existing name returns the cached native value; another name returns a renamed clone. The root must be a non-null struct field.
@@ -877,7 +877,7 @@ Rust times both consuming typed accessors, construction outside the timer; the b
 | --- | ---: |
 | Rust `TypedField::into_field` | 41.5 ns |
 | Rust `StructField::into_struct_field` | 34.7 ns |
-| Python cached `Class.field()` | 677 ns |
+| Python cached `Class.into_field()` | 677 ns |
 | Python global `field(Class)` | 1.27 us |
 | Python renamed `field(Class, name=...)` | 9.26 us |
 | JavaScript `intoField(nativeField)` | 40.0 ns (25.0M calls/s) |

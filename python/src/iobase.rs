@@ -2409,7 +2409,7 @@ impl PyIOBase {
     ///
     /// A requested stdlib or `@scalar` dataclass is instantiated one row at a
     /// time. When that class is decorated and `options.field` is absent, its
-    /// cached `field()` drives projection and casting on the read.
+    /// cached `into_field()` drives projection and casting on the read.
     #[pyo3(signature = (cls = None, *, options = None))]
     fn read_records<'py>(
         &self,
@@ -2464,7 +2464,7 @@ impl PyIOBase {
     /// Replace this resource from an iterable of Python row records.
     ///
     /// A decorated dataclass instance infers its class's cached
-    /// `field()` when no field was declared. Empty input has no
+    /// `into_field()` when no field was declared. Empty input has no
     /// class to inspect and therefore requires `options.field`.
     #[pyo3(signature = (records, *, options = None))]
     fn overwrite_records(

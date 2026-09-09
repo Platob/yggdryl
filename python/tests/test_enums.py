@@ -194,7 +194,7 @@ def test_a_declaration_travels_on_the_field_it_names() -> None:
         BUY = "B"
         SELL = "S"
 
-    field = Side.field("side", nullable=False)
+    field = Side.into_field("side", nullable=False)
     assert field.dtype == DataType.ascii(4)
     assert field.nullable is False
     assert field.ascii_enum == AsciiEnum("Side", {"BUY": "B", "SELL": "S"})
@@ -223,6 +223,30 @@ def test_a_declaration_travels_on_the_field_it_names() -> None:
         )
 
 
+def test_a_vocabulary_owns_every_name_the_class_api_does_not() -> None:
+    class Venue(fixed_ascii(4)):
+        field = "FLD"
+        NYSE = "XNYS"
+
+    assert [member.name for member in Venue] == ["field", "NYSE"]
+    assert Venue.field.into_str() == "FLD"
+    assert Venue.into_field("venue").ascii_enum == AsciiEnum(
+        "Venue", {"field": "FLD", "NYSE": "XNYS"}
+    )
+
+
+@pytest.mark.parametrize(
+    "reserved",
+    ["as_enum", "dtype", "from_code", "from_field", "from_str", "into_field", "into_str"],
+)
+def test_a_member_may_not_shadow_the_class_api(reserved: str) -> None:
+    # An enum member takes the name it is spelled with, so a member named for a
+    # class API name would replace it and fail only at the call site.
+    body = f"class Probe(fixed_ascii(4)):\n    OK = 'OK'\n    {reserved} = 'AAA'\n"
+    with pytest.raises(TypeError, match=f"reserves {reserved} for its class API"):
+        exec(body, {"fixed_ascii": fixed_ascii})
+
+
 def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> None:
     # Each class is the Python spelling of one registered code in the grammar,
     # over the code's own datatype rather than an ASCII width.
@@ -235,7 +259,7 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
         assert declared.dtype() == DataType(spelling) == base.dtype()
         assert issubclass(declared, base)
         assert declared.as_enum().name == declared.__name__
-        assert declared.field(spelling).dtype == declared.dtype()
+        assert declared.into_field(spelling).dtype == declared.dtype()
 
     # ISO 3166-1 is two bytes, ISO 4217 three and ISO 10962 six, so each packs
     # with none of the padding a wider width would have stored.
@@ -253,7 +277,9 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
     # A declaration reads back as the class that wrote it, over the code's
     # datatype: `currency` and `ascii(3)` are both three bytes and are not the
     # same vocabulary base.
-    recovered = AsciiCode.from_field(Field.from_arrow(Currency.field("ccy").into_arrow()))
+    recovered = AsciiCode.from_field(
+        Field.from_arrow(Currency.into_field("ccy").into_arrow())
+    )
     assert recovered.__name__ == "Currency"
     assert recovered.dtype() == DataType("currency")
     assert int(recovered.USD) == int(Currency.USD)
@@ -271,7 +297,7 @@ def test_an_annotation_infers_the_vocabulary_it_names() -> None:
         home: Country
         width: FixedAscii3
 
-    row = Trade.field()
+    row = Trade.into_field()
     declared = {child.name: child for child in row}
 
     assert declared["ccy"].dtype == DataType("currency")

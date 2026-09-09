@@ -201,8 +201,8 @@ impl<K: FieldType> TypedField<K> {
 impl TypedField<super::nested::StructType> {
     /// Consumes a checked Struct wrapper and returns its generic Struct field.
     ///
-    /// This typed spelling is the Rust counterpart of the cached
-    /// `into_struct_field` class accessor exposed by field-decorated dataclasses.
+    /// This typed spelling is the Rust counterpart of the cached `into_field`
+    /// class accessor exposed by field-decorated dataclasses.
     /// The returned value is still the one canonical [`Field`]; the marker has
     /// already proved that its datatype is Struct.
     pub fn into_struct_field(self) -> Field {

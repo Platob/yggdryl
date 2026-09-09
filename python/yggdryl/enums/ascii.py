@@ -21,9 +21,14 @@ The vocabulary stays open: a valid value that was not declared reads back as a
 member under its own packed code, registered once and announced once on the
 `yggdryl.enums.ascii` logger.
 
-A class declares itself onto a field with `field()`, which stores the members
-under `field:enum`, so the enum crosses Arrow, a file, and another runtime as
-ordinary field metadata; `from_field()` reads that declaration back as a class.
+A class declares itself onto a field with `into_field()`, which stores the
+members under `field:enum`, so the enum crosses Arrow, a file, and another
+runtime as ordinary field metadata; `from_field()` reads that declaration back
+as a class.
+
+A subclass body is the caller's vocabulary, so the names this class API owns are
+refused as member names rather than shadowed: a member spelled like one of them
+would replace the method and fail only later, at the call site.
 
 The worked example is in the Python extension documentation, beside the field
 the declaration builds.
@@ -46,6 +51,34 @@ if TYPE_CHECKING:
 #: a vocabulary read past its declaration is emitted once per value.
 _LOGGER = logging.getLogger(__name__)
 
+#: What the class API owns. A subclass body is the caller's vocabulary, and an
+#: enum member takes the name it is spelled with, so a member named for one of
+#: these replaces the method it names. The call that needed it then fails far
+#: from the declaration, and the shadow travels: a declaration read back through
+#: `field:enum` rebuilds the same broken class in every process.
+_RESERVED_MEMBER_NAMES = frozenset(
+    {
+        "as_enum",
+        "dtype",
+        "from_code",
+        "from_field",
+        "from_str",
+        "into_field",
+        "into_str",
+    }
+)
+
+
+def _reserved_member_error(cls: type[Any], names: Iterable[str]) -> TypeError:
+    """The one message every shadowed class API name is refused with."""
+
+    shadowed = ", ".join(sorted(names))
+    return TypeError(
+        f"{cls.__module__}.{cls.__qualname__} reserves {shadowed} for its "
+        "class API; name the member for its value instead"
+    )
+
+
 _COUNTRY = DataType("country")
 _CURRENCY = DataType("currency")
 _MIC = DataType("mic")
@@ -63,13 +96,25 @@ class AsciiCode(enum.IntEnum):
     _text: str
 
     def __new__(cls, value: str | bytes) -> Self:
-        dtype = cls.dtype()
+        # A member named `dtype` has already replaced the classmethod by the
+        # time the first member is built, which is before `__init_subclass__`
+        # runs; refusing it here is what keeps that failure readable.
+        declared = cls.dtype
+        if not callable(declared):
+            raise _reserved_member_error(cls, ("dtype",))
+        dtype = declared()
         code = dtype.ascii_packed(value)
         member = int.__new__(cls, code)
         member._value_ = code
         # The stored spelling, which is the padded value read back trimmed.
         member._text = dtype.ascii_value(code)
         return member
+
+    def __init_subclass__(cls, **options: Any) -> None:
+        super().__init_subclass__(**options)
+        shadowed = _RESERVED_MEMBER_NAMES.intersection(cls.__members__)
+        if shadowed:
+            raise _reserved_member_error(cls, shadowed)
 
     # -- what a member says of itself ---------------------------------------
 
@@ -161,7 +206,7 @@ class AsciiCode(enum.IntEnum):
         )
 
     @classmethod
-    def field(
+    def into_field(
         cls,
         name: str,
         *,

@@ -52,12 +52,12 @@ def test_scalar_decorator_builds_an_ordinary_dataclass_with_native_field() -> No
         "note",
     )
 
-    root = Order.field()
+    root = Order.into_field()
     assert isinstance(root, Field)
-    assert isinstance(Order.__dict__["field"], staticmethod)
-    assert Order.__dict__["field"].__func__.__name__ == "field"
-    assert root is Order.field()
-    assert root is value.field()
+    assert isinstance(Order.__dict__["into_field"], staticmethod)
+    assert Order.__dict__["into_field"].__func__.__name__ == "into_field"
+    assert root is Order.into_field()
+    assert root is value.into_field()
     assert root is field(Order)
     assert root is field(value)
     assert root.name == "Order"
@@ -91,9 +91,9 @@ def test_field_accessor_signatures_are_uniform_and_class_metadata_is_argument_fr
 
     assert tuple(signature.parameters) == ("value", "name")
     assert signature.parameters["name"].default is None
-    assert tuple(inspect.signature(Order.field).parameters) == ()
+    assert tuple(inspect.signature(Order.into_field).parameters) == ()
     with pytest.raises(TypeError):
-        Order.field("renamed")  # type: ignore[call-arg]
+        Order.into_field("renamed")  # type: ignore[call-arg]
 
 
 def test_codec_materialization_is_recursive_and_schema_checked() -> None:
@@ -151,8 +151,8 @@ def test_later_local_annotations_are_resolved_lazily() -> None:
         count: int
 
     assert (
-        Parent.field().dtype["child"].dtype
-        == Child.field().dtype
+        Parent.into_field().dtype["child"].dtype
+        == Child.into_field().dtype
     )
     assert json.loads('{"child":{"count":"4"}}', cls=Parent) == Parent(Child(4))
 
@@ -170,9 +170,9 @@ def test_nested_field_class_keeps_its_native_datatype() -> None:
     class Envelope:
         payload: Payload
 
-    assert Payload.field() is child
+    assert Payload.into_field() is child
     assert (
-        Envelope.field()
+        Envelope.into_field()
         .dtype["payload"]
         .dtype["narrow"]
         .dtype.id
@@ -193,7 +193,7 @@ def test_generated_class_field_is_authoritative_for_pyhint_inference() -> None:
     )
     Generated = root.into_dataclass(name="Generated")
 
-    assert Generated.field() is root
+    assert Generated.into_field() is root
     assert DataType.from_pyhint(Generated) == root.dtype
     inferred = Field.from_pyhint("generated", Generated)
     assert inferred.dtype == root.dtype
@@ -237,7 +237,7 @@ def test_inherited_generated_fields_keep_their_exact_native_layout() -> None:
     class PlainChild(Base):
         extra: int
 
-    for child in (DecoratedChild.field(), field(PlainChild)):
+    for child in (DecoratedChild.into_field(), field(PlainChild)):
         assert child["narrow"] == root["narrow"]
         assert child["lookup"] == root["lookup"]
         assert child["category"] == root["category"]
@@ -271,9 +271,9 @@ def test_nested_subclasses_keep_exact_fields_before_their_own_field_access() -> 
         child: LazyChild
 
     assert "__yggdryl_class_schema__" not in LazyChild.__dict__
-    assert DecoratedParent.field()["child"]["narrow"] == root["narrow"]
-    lazy_root = LazyChild.field()
-    assert lazy_root is LazyChild.field()
+    assert DecoratedParent.into_field()["child"]["narrow"] == root["narrow"]
+    lazy_root = LazyChild.into_field()
+    assert lazy_root is LazyChild.into_field()
     assert lazy_root["narrow"] == root["narrow"]
 
     @dataclasses.dataclass
@@ -286,7 +286,7 @@ def test_nested_subclasses_keep_exact_fields_before_their_own_field_access() -> 
     class PlainParent:
         child: PlainChild
 
-    assert PlainParent.field()["child"]["narrow"] == root["narrow"]
+    assert PlainParent.into_field()["child"]["narrow"] == root["narrow"]
 
     ItemT = TypeVar("ItemT")
 
@@ -298,12 +298,12 @@ def test_nested_subclasses_keep_exact_fields_before_their_own_field_access() -> 
     class GenericParent:
         child: GenericChild[str]
 
-    nested = GenericParent.field()["child"]
+    nested = GenericParent.into_field()["child"]
     assert nested["narrow"] == root["narrow"]
     assert nested["item"].dtype.id == "utf8"
 
 
-def test_plain_dataclass_field_attribute_does_not_override_annotations() -> None:
+def test_plain_dataclass_into_field_attribute_does_not_override_annotations() -> None:
     unrelated = Field("unrelated", "utf8", nullable=False)
 
     @dataclasses.dataclass
@@ -311,10 +311,10 @@ def test_plain_dataclass_field_attribute_does_not_override_annotations() -> None
         value: int
 
         @staticmethod
-        def field() -> Field:
+        def into_field() -> Field:
             return unrelated
 
-    assert Plain.field() is unrelated
+    assert Plain.into_field() is unrelated
     assert DataType.from_pyhint(Plain)["value"].dtype.id == "int64"
     assert Field.from_pyhint("plain", Plain)["value"].dtype.id == "int64"
     assert field(Plain)["value"].dtype.id == "int64"
@@ -331,8 +331,8 @@ def test_generic_inheritance_reinfers_a_specialized_member() -> None:
     class IntegerBox(Box[int]):
         pass
 
-    assert Box.field()["item"].dtype.id == "null"
-    assert IntegerBox.field()["item"].dtype.id == "int64"
+    assert Box.into_field()["item"].dtype.id == "null"
+    assert IntegerBox.into_field()["item"].dtype.id == "int64"
 
     LeftT = TypeVar("LeftT")
     RightT = TypeVar("RightT")
@@ -350,8 +350,8 @@ def test_generic_inheritance_reinfers_a_specialized_member() -> None:
     class Concrete(Swapped[int, str]):
         pass
 
-    assert Concrete.field()["left"].dtype.id == "utf8"
-    assert Concrete.field()["right"].dtype.id == "int64"
+    assert Concrete.into_field()["left"].dtype.id == "utf8"
+    assert Concrete.into_field()["right"].dtype.id == "int64"
     assert json.loads('{"left":"x","right":"3"}', cls=Concrete) == Concrete(
         left="x",
         right=3,
@@ -367,7 +367,7 @@ def test_field_cache_is_thread_safe_and_published_once() -> None:
 
     def read() -> Field:
         barrier.wait()
-        return Reading.field()
+        return Reading.into_field()
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         roots = tuple(pool.map(lambda _: read(), range(8)))
@@ -375,7 +375,7 @@ def test_field_cache_is_thread_safe_and_published_once() -> None:
     assert all(root is roots[0] for root in roots)
 
 
-def test_decorator_options_and_reserved_field_collision() -> None:
+def test_decorator_options_and_reserved_into_field_collision() -> None:
     @scalar(kw_only=True, order=True)
     class Quote:
         bid: float
@@ -384,25 +384,25 @@ def test_decorator_options_and_reserved_field_collision() -> None:
     quote = Quote(bid=1.0, ask=2.0)
     assert quote < Quote(bid=2.0, ask=3.0)
 
-    with pytest.raises(TypeError, match="reserves field"):
+    with pytest.raises(TypeError, match="reserves into_field"):
 
         @scalar
         class Invalid:
-            field = "custom"
+            into_field = "custom"
             value: int
 
-    with pytest.raises(TypeError, match="reserves field"):
+    with pytest.raises(TypeError, match="reserves into_field"):
 
         @scalar
         class InvalidAnnotation:
-            field: int
+            into_field: int
             value: int
 
     @dataclasses.dataclass
     class InheritedMember:
-        field: int
+        into_field: int
 
-    with pytest.raises(TypeError, match="reserves field"):
+    with pytest.raises(TypeError, match="reserves into_field"):
 
         @scalar
         class InvalidInheritedMember(InheritedMember):
@@ -414,23 +414,38 @@ def test_decorator_options_and_reserved_field_collision() -> None:
 
     class OverriddenAccessor(FieldBase):
         @staticmethod
-        def field() -> Field:
+        def into_field() -> Field:
             return Field("unrelated", DataType.int64())
 
-    with pytest.raises(TypeError, match="reserves field"):
+    with pytest.raises(TypeError, match="reserves into_field"):
 
         @scalar
         class InvalidInheritedOverride(OverriddenAccessor):
             extra: int
 
     class HiddenAccessor(FieldBase):
-        field = None
+        into_field = None
 
-    with pytest.raises(TypeError, match="reserves field"):
+    with pytest.raises(TypeError, match="reserves into_field"):
 
         @scalar
         class InvalidHiddenOverride(HiddenAccessor):
             extra: int
+
+
+def test_field_is_an_ordinary_member_name() -> None:
+    """The accessor is named `into_field`, so `field` is the caller's to use."""
+
+    @scalar
+    class Row:
+        field: str
+        value: int
+
+    root = Row.into_field()
+    assert tuple(child.name for child in root.dtype) == ("field", "value")
+    assert root.dtype["field"].dtype.id == "utf8"
+    assert Row("custom", 1).field == "custom"
+    assert field(Row) is root
 
 
 def test_inherited_staticmethod_keeps_its_decorated_owner() -> None:
@@ -445,9 +460,9 @@ def test_inherited_staticmethod_keeps_its_decorated_owner() -> None:
     class Decorated(Base):
         extra: int
 
-    assert "field" not in Undecorated.__dict__
-    assert Undecorated.field() is Base.field()
-    assert field(Undecorated) is Base.field()
-    assert Decorated.field() is Decorated.field()
-    assert field(Decorated) is Decorated.field()
-    assert Decorated.field() is not Base.field()
+    assert "into_field" not in Undecorated.__dict__
+    assert Undecorated.into_field() is Base.into_field()
+    assert field(Undecorated) is Base.into_field()
+    assert Decorated.into_field() is Decorated.into_field()
+    assert field(Decorated) is Decorated.into_field()
+    assert Decorated.into_field() is not Base.into_field()

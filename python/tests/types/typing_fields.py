@@ -34,7 +34,7 @@ order: TypedOrder = json.loads('{"order_id":"42"}', cls=TypedOrder)
 same: TypedOrder = json.loads(json.dumps(order), cls=TypedOrder)
 payload = cast(dict[str, object], json.loads(json.dumps(same)))
 root: Field = field(TypedOrder)
-class_root: StructField = TypedOrder.field()
+class_root: StructField = TypedOrder.into_field()
 same_root: Field = field(TypedOrder)
 native_root: Field = field(order)
 renamed_root: Field = field(TypedOrder, name="order")
@@ -72,7 +72,7 @@ assert root is class_root is same_root is native_root
 assert datatype.is_nested
 assert optional.nullable
 assert from_yaml == from_toml == from_json == order
-assert dynamic_class.field() is imported  # type: ignore[attr-defined]
+assert dynamic_class.into_field() is imported  # type: ignore[attr-defined]
 assert currency_default_scalar.as_py() == ""
 assert version_default_scalar.as_py() == "0"
 assert location_dtype == DataType("url")

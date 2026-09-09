@@ -447,13 +447,13 @@ class TestDataclassRecords:
     def test_decorated_dataclass_infers_its_cached_struct_field(
         self, tmp_path: pathlib.Path
     ) -> None:
-        cached = Trade.field()
-        assert Trade.field() is cached
+        cached = Trade.into_field()
+        assert Trade.into_field() is cached
         handle = IOBase(tmp_path / "dataclass.parquet")
 
         handle.overwrite_records([Trade(1, "XNAS"), Trade(2, None)])
 
-        assert Trade.field() is cached
+        assert Trade.into_field() is cached
         assert [field.name for field in handle.read_arrow_field().dtype] == ["id", "venue"]
         assert list(handle.read_records(Trade)) == [Trade(1, "XNAS"), Trade(2, None)]
         assert list(handle.read_records()) == [

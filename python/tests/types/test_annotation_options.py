@@ -320,7 +320,7 @@ def test_nullable_options_compile_recursively_into_native_fields() -> None:
         values: dict[str, Annotated[int, ("nullable", True)]]
         choice: Annotated[Child | str, ("nullable", True)]
 
-    root = Envelope.field()
+    root = Envelope.into_field()
     children = root.dtype["children"].dtype[0]
     values = (
         root.dtype["values"]
@@ -332,8 +332,8 @@ def test_nullable_options_compile_recursively_into_native_fields() -> None:
     assert children.nullable
     assert values.nullable
     assert choice.nullable
-    assert not Child.field().dtype["required"].nullable
-    assert Child.field().dtype["relaxed"].nullable
+    assert not Child.into_field().dtype["required"].nullable
+    assert Child.into_field().dtype["relaxed"].nullable
 
 
 def test_parent_arrow_type_owns_the_subtree() -> None:
@@ -360,7 +360,7 @@ def test_parent_arrow_type_owns_the_subtree() -> None:
             ),
         ]
 
-    physical = Mismatch.field().dtype["child"].dtype
+    physical = Mismatch.into_field().dtype["child"].dtype
     assert tuple(child.name for child in physical) == ("different",)
     assert physical["different"].dtype.id == "int64"
 
@@ -390,7 +390,7 @@ def test_explicit_union_override_is_the_physical_authority() -> None:
     class Misaligned:
         value: Annotated[int | str, ("arrow_type", one_child)]
 
-    physical = Misaligned.field().dtype["value"].dtype
+    physical = Misaligned.into_field().dtype["value"].dtype
     assert physical.id == "union"
     assert len(physical) == 1
     assert physical[0].name == "integer"
@@ -410,7 +410,7 @@ def test_pep695_aliases_compile_to_optional_and_union_fields() -> None:
         either: Either
         generic: GenericMaybe[int]
 
-    root = Aliases.field()
+    root = Aliases.into_field()
     assert root.dtype["maybe"].nullable
     assert root.dtype["either"].dtype.id == "union"
     assert root.dtype["generic"].nullable
@@ -423,6 +423,6 @@ def test_a_field_annotation_contributes_its_metadata() -> None:
     class Reading:
         value: Annotated[int, tag]
 
-    column = Reading.field().dtype["value"]
+    column = Reading.into_field().dtype["value"]
     assert column.metadata["unit"] == "ms"
     assert column.metadata["iceberg:doc"] == "elapsed"

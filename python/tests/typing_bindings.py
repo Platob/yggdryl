@@ -411,7 +411,7 @@ ascii_parsed: TypedCurrency = TypedCurrency.from_str("JPY")
 ascii_by_code: TypedCurrency = TypedCurrency.from_code(0x55534400)
 ascii_declared_dtype: DataType = TypedCurrency.dtype()
 ascii_declared_enum: AsciiEnum = TypedCurrency.as_enum()
-ascii_declared_field: Field = TypedCurrency.field("ccy", nullable=False)
+ascii_declared_field: Field = TypedCurrency.into_field("ccy", nullable=False)
 ascii_recovered_class: type[AsciiCode] = AsciiCode.from_field(ascii_declared_field)
 ascii_base: type[AsciiCode] = TypedCurrency
 

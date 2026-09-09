@@ -124,10 +124,10 @@ measuring a representative workload.
 
 - Compile annotations once per dataclass. Cache the native root `Field`, the
   ordered child-Field tuple, and resolved hints together. Cached access through
-  the static `Class.field()` accessor and pure `field(Class)` builder must use a
-  class-local fast path without acquiring the schema-construction lock.
-- A scalar-decorated dataclass builds its native field on the first `field()`
-  call. Keep that lazy construction synchronized; remove
+  the static `Class.into_field()` accessor and pure `field(Class)` builder must
+  use a class-local fast path without acquiring the schema-construction lock.
+- A scalar-decorated dataclass builds its native field on the first
+  `into_field()` call. Keep that lazy construction synchronized; remove
   pending namespace state immediately after success and do not let a
   weak-cache value retain its own class key.
 - Keep Python typing introspection in Python, but construct only native
@@ -202,10 +202,10 @@ correctness baselines because malformed-input timing is not an optimization
 target.
 `BatchSize::SmallInput` keeps construction of cold fixtures outside their timed
 projection routines.
-The Python script separately measures cached `Class.field()` and `field(Class)`
-calls, annotation inference, nested dataclass fields, and cold `@scalar`
-decoration. Use the same interpreter/build mode; never compare debug and release
-extension results.
+The Python script separately measures cached `Class.into_field()` and
+`field(Class)` calls, annotation inference, nested dataclass fields, and cold
+`@scalar` decoration. Use the same interpreter/build mode; never compare debug
+and release extension results.
 
 - Compare on the same machine, power mode, Rust toolchain, target features, and
   benchmark fixture. Record the command and commit IDs for both baseline and

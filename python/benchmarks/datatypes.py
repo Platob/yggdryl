@@ -217,7 +217,7 @@ def _cold_field_class() -> object:
         venues: list[str]
         comment: str | None = None
 
-    return Quote.field()
+    return Quote.into_field()
 
 
 def _cold_customized_field_class() -> object:
@@ -229,7 +229,7 @@ def _cold_customized_field_class() -> object:
             {"nullable": False, "metadata": {"unit": "EUR"}, "id": 7},
         ]
 
-    return PreciseQuote.field()
+    return PreciseQuote.into_field()
 
 
 def _default_arrow_scalar() -> object:
@@ -366,15 +366,15 @@ def main() -> None:
         _measure("default Scalar", _default_scalar, args.iterations)
         _measure("default Python value", _default_python_value, args.iterations)
         _measure(
-            "cached static field",
-            Order.field,
+            "cached static into_field",
+            Order.into_field,
             args.iterations,
         )
         _measure("global field", _global_field, args.iterations)
         _measure("renamed field", _renamed_field, args.iterations)
         _measure(
             "cached class child",
-            lambda: Order.field().dtype["order_id"],
+            lambda: Order.into_field().dtype["order_id"],
             args.iterations,
         )
         _measure(

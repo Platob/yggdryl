@@ -294,7 +294,8 @@ No project-defined plain `to_*`; foreign protocols (`ToString`, JS `toString`)
 keep their spelling. Implement `From`, `TryFrom`, `FromStr`, `AsRef` where
 coherent; bindings redirect through stable inherent methods. Exceptions:
 
-- `field`, never `schema`, in options and accessors.
+- `field`, never `schema`, in options and accessors; the Python class accessor
+  is `into_field`, leaving `field` to the caller's own members.
   `as_<protocol>`/`as_<protocol>_mut` borrow one protocol's view beside the
   runtime-scheme `protocol`/`protocol_mut` pair; `as_field_properties` and
   `as_arrow_properties` are the deliberate spellings in that family.
@@ -738,17 +739,18 @@ Python-only:
 - Public decorator `@scalar` (beside the Python `Scalar` boundary), pure field
   builder `field(value, name=None)`, typed field factories below
   `yggdryl/fields/`. `@scalar` forwards every stdlib dataclass option, installs
-  one cached argument-free `staticmethod field()`, rejects a pre-existing `field`
-  member, and reserves no static metadata constant.
-- `Class.field()` returns one frozen non-null Struct `Field`, preserving
+  one cached argument-free `staticmethod into_field()`, rejects a pre-existing
+  `into_field` member, leaves every other member name - `field` included - to the
+  caller, and reserves no static metadata constant.
+- `Class.into_field()` returns one frozen non-null Struct `Field`, preserving
   dataclass order and metadata, excluding `ClassVar`/`InitVar`/private working
   annotations, resolving forward and generic annotations once, detecting
   recursion, synchronized on first access. Optionality defines default
   nullability, explicit annotation options win, defaults/factories affect
   construction rather than schema, and generated dataclasses derive annotations
   from the exact native field graph.
-- No second row decorator or class, static field constant, schema/into-field
-  alias, or retired public surface.
+- No second row decorator or class, static field constant, `schema`/`field`
+  alias beside `into_field`, or retired public surface.
 - `pyarrow.RecordBatchReader` is the primitive record shape - table, batch, and
   dataclass row methods redirect through it over the C Stream interface, on the C
   Data Interface and PyArrow holders.
