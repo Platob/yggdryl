@@ -11,8 +11,8 @@
 //! over its UTF-8 bytes - so both are undone, as botocore (`unquote_plus`)
 //! and the Java SDK (`URLDecoder`) do.
 
-use super::super::answer::{DeleteFailure, ErrorBody, ListPage, ObjectSummary};
-use super::super::xml::{Element, XmlError, escape_text, parse_document, parse_root};
+use super::super::answer::{DeleteFailure, ListPage, ObjectSummary};
+use super::super::xml::{XmlError, error_body, escape_text, parse_document, parse_root};
 
 /// Read one `ListObjectsV2` page.
 ///
@@ -57,14 +57,6 @@ pub(crate) fn parse_list_objects(xml: &[u8]) -> Result<ListPage, XmlError> {
         .filter(|token| !token.is_empty())
         .map(str::to_owned);
     Ok(page)
-}
-
-/// `None` when the bytes are not an `<Error>` document.
-pub(crate) fn parse_error(xml: &[u8]) -> Option<ErrorBody> {
-    let root = parse_document(xml)
-        .ok()
-        .filter(|root| root.name() == "Error")?;
-    Some(error_body(&root))
 }
 
 /// `<InitiateMultipartUploadResult><UploadId>`.
@@ -188,18 +180,6 @@ pub(crate) fn render_complete_multipart(parts: &[(u32, String)]) -> String {
     xml
 }
 
-/// The fields of one `<Error>` element; an absent code or message reads as
-/// empty rather than failing, since the document still says something went
-/// wrong.
-fn error_body(error: &Element) -> ErrorBody {
-    ErrorBody {
-        code: error.child_text("Code").unwrap_or_default().to_owned(),
-        message: error.child_text("Message").unwrap_or_default().to_owned(),
-        request_id: error.child_text("RequestId").map(str::to_owned),
-        resource: error.child_text("Resource").map(str::to_owned),
-    }
-}
-
 /// `text` with form-encoding undone: `+` is a space and `%XX` a byte. A
 /// malformed escape stays as spelled and a result that is not UTF-8 leaves
 /// the whole text as it stands, so a key S3 gave us is never silently
@@ -212,34 +192,41 @@ fn decode_url(text: &str) -> String {
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;
     while index < bytes.len() {
-        if bytes[index] == b'%' {
-            if let Some(byte) = bytes.get(index + 1..index + 3).and_then(hex_byte) {
+        match bytes[index] {
+            b'+' => {
+                decoded.push(b' ');
+                index += 1;
+            }
+            b'%' if index + 2 < bytes.len() => match hex_byte(&bytes[index + 1..index + 3]) {
+                Some(byte) => {
+                    decoded.push(byte);
+                    index += 3;
+                }
+                None => {
+                    decoded.push(bytes[index]);
+                    index += 1;
+                }
+            },
+            byte => {
                 decoded.push(byte);
-                index += 3;
-                continue;
+                index += 1;
             }
         }
-        decoded.push(if bytes[index] == b'+' {
-            b' '
-        } else {
-            bytes[index]
-        });
-        index += 1;
     }
     String::from_utf8(decoded).unwrap_or_else(|_| text.to_owned())
 }
 
-/// The byte two hex digits spell.
+/// One `%XX` pair as the byte it spells.
 fn hex_byte(pair: &[u8]) -> Option<u8> {
-    if pair.len() != 2 || !pair.iter().all(u8::is_ascii_hexdigit) {
-        return None;
-    }
-    u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok()
+    let digit = |byte: u8| match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    };
+    Some(digit(*pair.first()?)? * 16 + digit(*pair.get(1)?)?)
 }
 
-/// One scanned element: its local name, the character data directly inside
-/// it (entities and CDATA resolved, whitespace kept, since a key may start
-/// or end with a space), and its children in document order.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,42 +448,6 @@ mod tests {
         assert!(
             parse_document(format!("{}{}", "<a>".repeat(30), "</a>".repeat(30)).as_bytes()).is_ok()
         );
-    }
-
-    #[test]
-    fn an_error_document_is_read_with_its_ids() {
-        let xml = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-             <Error xmlns=\"{XMLNS}\"><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message>
-             <Key>missing.txt</Key><RequestId>4442587FB7D0A2F9</RequestId><HostId>abc=</HostId></Error>"
-        );
-        assert_eq!(
-            parse_error(xml.as_bytes()),
-            Some(ErrorBody {
-                code: "NoSuchKey".to_owned(),
-                message: "The specified key does not exist.".to_owned(),
-                request_id: Some("4442587FB7D0A2F9".to_owned()),
-                resource: None,
-            })
-        );
-        let xml = "<Error><Code>AccessDenied</Code><Message>Access Denied</Message><Resource>/bucket/key</Resource></Error>";
-        assert_eq!(
-            parse_error(xml.as_bytes()).unwrap().resource.as_deref(),
-            Some("/bucket/key")
-        );
-        assert_eq!(parse_error(b"<Error/>").unwrap().code, "");
-    }
-
-    #[test]
-    fn bytes_that_are_not_an_error_document_answer_none() {
-        assert_eq!(parse_error(b""), None);
-        assert_eq!(
-            parse_error(b"<html><body>502 Bad Gateway</body></html>"),
-            None
-        );
-        assert_eq!(parse_error(b"not xml at all"), None);
-        assert_eq!(parse_error(listing("").as_bytes()), None);
-        assert_eq!(parse_error(b"<Error><Code>Unclosed</Error>"), None);
     }
 
     #[test]

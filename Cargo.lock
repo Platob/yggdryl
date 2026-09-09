@@ -4230,6 +4230,7 @@ dependencies = [
  "regex",
  "regex-automata",
  "regex-syntax",
+ "ring",
  "saphyr-parser",
  "serde",
  "serde_json",

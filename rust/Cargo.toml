@@ -35,7 +35,7 @@ iceberg = ["arrow", "parquet", "dep:iceberg-official", "dep:uuid"]
 # local or schema-only consumer never pays. Every protocol is spoken directly -
 # SigV4, OAuth 2.0 bearer tokens, and Azure Shared Key over a synchronous
 # HTTP/1.1 client - so no SDK, runtime, or async executor rides in.
-object = ["dep:hmac", "dep:md-5", "dep:sha2", "dep:ureq"]
+object = ["dep:hmac", "dep:md-5", "dep:ring", "dep:sha2", "dep:ureq"]
 
 [dependencies]
 arrow-array = { workspace = true, optional = true }
@@ -72,6 +72,11 @@ memchr = "2.7"
 # No `encoding` feature - a CBlock is ASCII, which quick-xml reads as UTF-8.
 quick-xml = { version = "=0.41.0", default-features = false }
 regex = "1.11"
+# RSASSA-PKCS1-v1_5 with SHA-256, for the JWT a Google service-account key
+# signs to obtain a token. The TLS stack this feature already compiles brings
+# `ring` in, so naming it costs no crate a build was not paying, and it reads
+# a PKCS#8 key directly - no second key parser.
+ring = { version = "0.17", optional = true }
 regex-automata = "0.4"
 regex-syntax = "0.8"
 serde = { version = "1.0", features = ["derive", "rc"] }

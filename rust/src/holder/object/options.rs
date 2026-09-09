@@ -8,9 +8,10 @@
 //!
 //! A knob all three stores have is here. A knob one store has is on that
 //! store's own options - [`AwsOptions`](super::AwsOptions),
-//! [`GoogleOptions`](super::GoogleOptions), [`AzureOptions`](super::AzureOptions)
-//! - reached through [`ObjectOptions::with_aws`] and its two siblings, so a
-//! knob has exactly one owner and nothing pretends the three stores are one.
+//! [`GoogleOptions`](super::GoogleOptions), and
+//! [`AzureOptions`](super::AzureOptions), reached through
+//! [`ObjectOptions::with_aws`] and its two siblings. A knob therefore has
+//! exactly one owner, and nothing pretends the three stores are one store.
 
 use std::time::Duration;
 

@@ -435,7 +435,7 @@ pub(crate) fn parse_iso8601_utc(text: &str) -> Option<SystemTime> {
 }
 
 /// Days since 1970-01-01 for a proleptic Gregorian date.
-fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
+pub(crate) fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
     let year = if month <= 2 { year - 1 } else { year };
     let era = year.div_euclid(400);
     let year_of_era = year.rem_euclid(400);

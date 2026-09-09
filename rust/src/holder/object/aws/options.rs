@@ -37,18 +37,15 @@ pub struct AwsOptions {
 ///
 /// S3 verifies what it received against the value the request states, and keeps
 /// it so a later read can be checked without transferring the object again.
-/// `CRC32` is what the AWS tools default to; `CRC64NVME` is the one S3 can
-/// compose across a multipart upload's parts.
+/// `CRC32` is what the AWS tools default to; `SHA256` is the strong one.
+///
+/// The two S3 also accepts - `CRC32C` and `CRC64NVME` - are refused by name
+/// rather than silently ignored: each is a second polynomial this crate would
+/// carry for a value nothing else here needs.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Checksum {
     /// CRC-32, the AWS tools' default.
     Crc32,
-    /// CRC-32C.
-    Crc32c,
-    /// CRC-64/NVME.
-    Crc64Nvme,
-    /// SHA-1.
-    Sha1,
     /// SHA-256.
     Sha256,
 }
@@ -58,24 +55,50 @@ impl Checksum {
     pub(crate) const fn header(&self) -> &'static str {
         match self {
             Self::Crc32 => "x-amz-checksum-crc32",
-            Self::Crc32c => "x-amz-checksum-crc32c",
-            Self::Crc64Nvme => "x-amz-checksum-crc64nvme",
-            Self::Sha1 => "x-amz-checksum-sha1",
             Self::Sha256 => "x-amz-checksum-sha256",
         }
     }
 
-    /// The name `x-amz-checksum-algorithm` and `x-amz-sdk-checksum-algorithm`
-    /// state.
+    /// The name `x-amz-sdk-checksum-algorithm` states.
     pub(crate) const fn as_str(&self) -> &'static str {
         match self {
             Self::Crc32 => "CRC32",
-            Self::Crc32c => "CRC32C",
-            Self::Crc64Nvme => "CRC64NVME",
-            Self::Sha1 => "SHA1",
             Self::Sha256 => "SHA256",
         }
     }
+
+    /// This checksum over `bytes`, base64 as the header spells it.
+    pub(crate) fn of(&self, bytes: &[u8]) -> String {
+        use base64::Engine as _;
+        let engine = base64::engine::general_purpose::STANDARD;
+        match self {
+            Self::Crc32 => engine.encode(crc32(bytes).to_be_bytes()),
+            Self::Sha256 => {
+                use sha2::Digest as _;
+                engine.encode(sha2::Sha256::digest(bytes))
+            }
+        }
+    }
+}
+
+/// CRC-32 over `bytes`, the reflected IEEE 802.3 polynomial every tool means
+/// by `CRC32`.
+///
+/// Computed a bit at a time rather than from a table: a checksum is taken once
+/// per write of a whole value, so the table would be state held for nothing.
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = u32::MAX;
+    for byte in bytes {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            let carry = crc & 1;
+            crc >>= 1;
+            if carry != 0 {
+                crc ^= 0xEDB8_8320;
+            }
+        }
+    }
+    !crc
 }
 
 impl std::str::FromStr for Checksum {
@@ -89,17 +112,11 @@ impl std::str::FromStr for Checksum {
             .as_str()
         {
             "crc32" => Ok(Self::Crc32),
-            "crc32c" => Ok(Self::Crc32c),
-            "crc64nvme" | "crc64" => Ok(Self::Crc64Nvme),
-            "sha1" => Ok(Self::Sha1),
             "sha256" => Ok(Self::Sha256),
             _ => Err(crate::Error::Parse {
                 target: "s3 checksum algorithm",
                 position: 0,
-                reason: format!(
-                    "expected CRC32, CRC32C, CRC64NVME, SHA1, or SHA256, got {value:?}"
-                )
-                .into(),
+                reason: format!("expected CRC32 or SHA256, got {value:?}").into(),
             }),
         }
     }

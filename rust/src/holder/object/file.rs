@@ -246,41 +246,8 @@ impl File {
                 .client
                 .put_object(&self.bucket, &self.key, bytes, Some(content_type));
         }
-        let part_size = usize::try_from(self.client.part_size())
-            .map_err(|_| crate::iobase::oversized(self.client.part_size()))?;
-        let upload = self
-            .client
-            .create_multipart(&self.bucket, &self.key, Some(content_type))?;
-        let mut parts = Vec::with_capacity(bytes.len().div_ceil(part_size));
-        for (index, chunk) in bytes.chunks(part_size).enumerate() {
-            let number = u32::try_from(index + 1).map_err(|_| too_many_parts())?;
-            match self
-                .client
-                .upload_part(&self.bucket, &self.key, &upload, number, chunk)
-            {
-                Ok(etag) => parts.push((number, etag)),
-                Err(error) => {
-                    // Abandon the upload so its parts are not billed forever;
-                    // the original failure is what the caller hears about.
-                    let _ = self
-                        .client
-                        .abort_multipart(&self.bucket, &self.key, &upload);
-                    return Err(error);
-                }
-            }
-        }
-        match self
-            .client
-            .complete_multipart(&self.bucket, &self.key, &upload, &parts)
-        {
-            Ok(etag) => Ok(etag),
-            Err(error) => {
-                let _ = self
-                    .client
-                    .abort_multipart(&self.bucket, &self.key, &upload);
-                Err(error)
-            }
-        }
+        self.client
+            .put_chunked(&self.bucket, &self.key, bytes, content_type)
     }
 
     /// Drop the stage without publishing it.
@@ -785,13 +752,6 @@ fn resize(bytes: &mut Vec<u8>, size: usize) -> Result<()> {
         .map_err(|_| crate::iobase::oversized(size as u64))?;
     bytes.resize(size, 0);
     Ok(())
-}
-
-/// Report a value needing more parts than S3 allows.
-fn too_many_parts() -> Error {
-    Error::Io(std::io::Error::other(
-        "expected a value of at most 10,000 multipart parts; raise the part size to upload it",
-    ))
 }
 
 /// Report a poisoned state lock without panicking a caller.

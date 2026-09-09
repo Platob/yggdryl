@@ -341,7 +341,7 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
 }
 
 /// Proleptic Gregorian `(year, month, day)` of a day count since 1970-01-01.
-fn civil_from_days(days: u64) -> (u64, u64, u64) {
+pub(crate) fn civil_from_days(days: u64) -> (u64, u64, u64) {
     // Howard Hinnant's algorithm, shifted so eras start on March 1st, 0000.
     let shifted = days + 719_468;
     let era = shifted / 146_097;

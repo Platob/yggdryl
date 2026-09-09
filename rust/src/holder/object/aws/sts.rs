@@ -212,7 +212,7 @@ pub(crate) fn assume(
         .read_to_vec()
         .map_err(|error| transport_failure(&endpoint, &error))?;
     if status >= 300 {
-        let (code, message) = super::xml::parse_error(&body).map_or_else(
+        let (code, message) = super::super::xml::parse_error(&body).map_or_else(
             || ("AssumeRoleFailed".to_owned(), String::new()),
             |error| (error.code, error.message),
         );

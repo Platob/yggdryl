@@ -5,6 +5,10 @@
 //! from staged blocks rather than from numbered parts. Those three facts are
 //! what this dialect owns; everything above it is the backend's.
 
+pub(crate) mod auth;
+pub(crate) mod dialect;
 pub(crate) mod options;
+pub(crate) mod sign;
+pub(crate) mod xml;
 
 pub use options::{AzureOptions, BlobType, DEFAULT_API_VERSION, DEVELOPMENT_ACCOUNT};

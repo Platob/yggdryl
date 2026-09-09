@@ -113,6 +113,7 @@ mod options;
 mod path;
 mod properties;
 mod provider;
+mod request;
 mod sigv4;
 mod xml;
 

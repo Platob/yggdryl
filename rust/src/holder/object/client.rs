@@ -26,6 +26,7 @@ use super::aws::xml;
 use super::encryption::Encryption;
 use super::options::ObjectOptions;
 use super::provider::Provider;
+use super::request::Request;
 use super::sigv4::{self, Signer};
 use crate::{Error, Result, Url};
 
@@ -195,111 +196,6 @@ impl Endpoint {
     }
 }
 
-/// One request, before it is signed and sent.
-struct Request<'body> {
-    method: &'static str,
-    /// What the store calls this operation, for the error it may answer with.
-    operation: &'static str,
-    bucket: String,
-    /// The raw object key, unencoded.
-    key: String,
-    /// Raw query pairs; the canonical form is built once, at signing.
-    query: Vec<(String, String)>,
-    /// Headers beyond the ones signing always adds.
-    headers: Vec<(String, String)>,
-    /// The body, which is re-sent verbatim on a retry.
-    body: &'body [u8],
-    /// The wire path, when the dialect's operation does not live under the
-    /// container's own. Already encoded; the endpoint is not consulted for it.
-    target: Option<String>,
-}
-
-impl<'body> Request<'body> {
-    fn new(method: &'static str, operation: &'static str, bucket: &str, key: &str) -> Self {
-        Self {
-            method,
-            operation,
-            bucket: bucket.to_owned(),
-            key: key.to_owned(),
-            query: Vec::new(),
-            headers: Vec::new(),
-            body: &[],
-            target: None,
-        }
-    }
-
-    /// Send this request to `path` rather than to the container's own path.
-    fn target(mut self, path: impl Into<String>) -> Self {
-        self.target = Some(path.into());
-        self
-    }
-
-    fn query(mut self, name: &str, value: impl Into<String>) -> Self {
-        self.query.push((name.to_owned(), value.into()));
-        self
-    }
-
-    fn header(mut self, name: &str, value: impl Into<String>) -> Self {
-        self.headers.push((name.to_owned(), value.into()));
-        self
-    }
-
-    fn body(mut self, body: &'body [u8]) -> Self {
-        self.body = body;
-        self
-    }
-
-    /// Carry the metadata every write of this client's carries.
-    ///
-    /// A name the request already set wins, so a content type a handle
-    /// inferred is never overridden by a default. The name a caller gave is
-    /// mapped to the header the store carries it in here rather than when the
-    /// options were built, because the three stores prefix user metadata
-    /// differently and the options do not yet know which store answers.
-    fn with_metadata(mut self, provider: Provider, metadata: &[(String, String)]) -> Self {
-        for (name, value) in metadata {
-            let name = header_name(provider, name);
-            if !self
-                .headers
-                .iter()
-                .any(|(held, _)| held.eq_ignore_ascii_case(&name))
-            {
-                self.headers.push((name, value.clone()));
-            }
-        }
-        self
-    }
-
-    /// Say how the object this request stores is to be encrypted.
-    ///
-    /// The request that creates an object is the one that decides it, and on
-    /// Google that decision is a query parameter rather than a header.
-    fn storing(mut self, provider: Provider, encryption: &Encryption) -> Self {
-        self.headers.extend(
-            encryption
-                .write_headers(provider)
-                .into_iter()
-                .map(|(name, value)| (name.to_owned(), value)),
-        );
-        self.query.extend(encryption.write_query(provider));
-        self
-    }
-
-    /// Carry the key needed to touch an already-encrypted object's bytes.
-    ///
-    /// Nothing at all unless the key is the caller's, which is the whole
-    /// difference a customer-supplied key makes to a read.
-    fn keyed(mut self, provider: Provider, encryption: &Encryption) -> Self {
-        self.headers.extend(
-            encryption
-                .read_headers(provider)
-                .into_iter()
-                .map(|(name, value)| (name.to_owned(), value)),
-        );
-        self
-    }
-}
-
 /// A live response: its status, its headers, and its body still on the wire.
 type Streamed = (u16, Vec<(String, String)>, Box<dyn Read + Send>);
 
@@ -337,6 +233,12 @@ pub(super) struct Client {
     credentials: CredentialCache,
     /// The signer for the current key and region, rebuilt when either changes.
     signer: Mutex<Option<(String, String, Arc<Signer>)>>,
+    /// The bearer token Google's dialect authorizes with, obtained on the first
+    /// request that needs one and refreshed shortly before it lapses.
+    tokens: super::google::token::TokenCache,
+    /// What Azure's dialect authorizes with: a signature, a token in the query,
+    /// a bearer token, or nothing.
+    azure: super::azure::auth::Authorization,
     options: ObjectOptions,
     stats: Stats,
     /// What is left to spend on retries.
@@ -376,7 +278,13 @@ impl Client {
             })?,
             false => options,
         };
+        // A shape this store does not have is refused here rather than
+        // silently dropped or discovered from the store on the first write.
+        options.encryption().validate(provider)?;
         let endpoint = Self::endpoint_of(provider, url, &options)?;
+        // The account the endpoint settled on is what a shared-key signature
+        // names, so it is read back rather than resolved a second time.
+        let endpoint_account = endpoint.account.clone();
         let region = Self::region_of(url, &options);
         let credentials = if options.anonymous() {
             CredentialSource::Anonymous
@@ -410,6 +318,19 @@ impl Client {
             region: RwLock::new(region),
             credentials: CredentialCache::new(credentials),
             signer: Mutex::new(None),
+            tokens: super::google::token::TokenCache::new(
+                options.google(),
+                options.anonymous(),
+                options.reads_environment(),
+            )?,
+            azure: super::azure::auth::Authorization::new(
+                options.azure(),
+                endpoint_account.as_deref(),
+                options
+                    .credentials()
+                    .map(super::aws::credentials::Credentials::secret_access_key),
+                options.anonymous(),
+            )?,
             options,
             stats: Stats::default(),
             retries: RetryBudget::default(),
@@ -427,11 +348,6 @@ impl Client {
             return shared_agent().clone();
         }
         build_agent(options)
-    }
-
-    /// The store this client speaks to.
-    pub(super) const fn provider(&self) -> Provider {
-        self.provider
     }
 
     /// Bytes per part, clamped to what this store accepts.
@@ -831,51 +747,113 @@ impl Client {
         }
     }
 
-    /// Sign and send one attempt.
-    fn attempt(&self, request: &Request<'_>) -> std::result::Result<Answer, ureq::Error> {
-        let now = SystemTime::now();
+    /// The wire target and the headers one attempt goes out with.
+    ///
+    /// Every request crosses here, so this is the one place a store's identity
+    /// reaches the wire: a Signature Version 4 header, a bearer token, an Azure
+    /// shared-key signature, or a token already in the query. The dialect's own
+    /// headers are set first, so authorization can never be shadowed by one.
+    fn prepare(
+        &self,
+        request: &Request<'_>,
+        payload: Option<&[u8]>,
+        now: SystemTime,
+    ) -> Result<(String, Vec<(String, String)>)> {
+        // A store that handed a whole location back owns it entirely, so it is
+        // sent as it stands rather than rebuilt from the endpoint.
+        if let Some(url) = &request.url {
+            let (host, path) = split_url(url);
+            let mut headers = request.headers.clone();
+            headers.extend(self.authorize(request, &host, &path, payload, now)?);
+            return Ok((url.clone(), headers));
+        }
         let host = self.endpoint.host_header(&request.bucket);
         let path = request
             .target
             .clone()
             .unwrap_or_else(|| self.endpoint.path(&request.bucket, &request.key));
-        let query = sigv4::canonical_query(&request.query);
+        let mut query = sigv4::canonical_query(&request.query);
+        // A shared access signature is already a signature over the request, so
+        // it rides in the query and nothing signs it again.
+        if let Some(token) = self.azure.query_suffix() {
+            if query.is_empty() {
+                query = token.to_owned();
+            } else {
+                query.push('&');
+                query.push_str(token);
+            }
+        }
         let target = if query.is_empty() {
             format!("{}://{host}{path}", self.endpoint.scheme)
         } else {
             format!("{}://{host}{path}?{query}", self.endpoint.scheme)
         };
-
         let mut headers = request.headers.clone();
-        // The signer is asked for last so its own headers cannot be shadowed.
-        match self.signer(now) {
-            Ok(Some(signer)) => {
+        headers.extend(self.authorize(request, &host, &path, payload, now)?);
+        Ok((target, headers))
+    }
+
+    /// The headers that say who is asking, in this store's own terms.
+    fn authorize(
+        &self,
+        request: &Request<'_>,
+        host: &str,
+        path: &str,
+        payload: Option<&[u8]>,
+        now: SystemTime,
+    ) -> Result<Vec<(String, String)>> {
+        match self.provider {
+            Provider::Aws => {
+                let Some(signer) = self.signer(now)? else {
+                    return Ok(Vec::new());
+                };
                 // Hashing a large body costs more than the rest of the request
                 // put together, so it is only done where it buys something.
-                let payload = if request.body.is_empty() {
-                    sigv4::EMPTY_PAYLOAD_SHA256.to_owned()
-                } else if self.options.signs_payload(&self.endpoint.scheme) {
-                    sigv4::sha256_hex(request.body)
-                } else {
-                    sigv4::UNSIGNED_PAYLOAD.to_owned()
+                let hash = match payload {
+                    None | Some([]) => sigv4::EMPTY_PAYLOAD_SHA256.to_owned(),
+                    Some(body) if self.options.signs_payload(&self.endpoint.scheme) => {
+                        sigv4::sha256_hex(body)
+                    }
+                    Some(_) => sigv4::UNSIGNED_PAYLOAD.to_owned(),
                 };
-                headers.extend(signer.sign(
+                Ok(signer.sign(
                     request.method,
-                    &host,
-                    &path,
+                    host,
+                    path,
                     &request.query,
                     &request.headers,
-                    &payload,
+                    &hash,
                     now,
-                ));
+                ))
             }
-            Ok(None) => {}
-            // A credential chain that failed is reported as a transport
-            // failure, which is what it is from the request's point of view.
-            Err(error) => {
-                return Err(ureq::Error::Io(std::io::Error::other(error.to_string())));
+            Provider::Google => {
+                let Some(token) = self.tokens.resolve_token(&self.agent, now)? else {
+                    return Ok(Vec::new());
+                };
+                Ok(vec![(
+                    "authorization".to_owned(),
+                    format!("Bearer {}", token.value()),
+                )])
             }
+            Provider::Azure => self.azure.headers(
+                &self.agent,
+                request.method,
+                path,
+                &request.query,
+                &request.headers,
+                now,
+            ),
         }
+    }
+
+    /// Sign and send one attempt.
+    fn attempt(&self, request: &Request<'_>) -> std::result::Result<Answer, ureq::Error> {
+        let now = SystemTime::now();
+        // A credential chain that failed is reported as a transport failure,
+        // which is what it is from the request's point of view.
+        let (target, headers) = self
+            .prepare(request, Some(request.body), now)
+            .map_err(|error| ureq::Error::Io(std::io::Error::other(error.to_string())))?;
 
         self.stats.record(request.method);
         let mut wire = ureq::http::Request::builder()
@@ -979,31 +957,9 @@ impl Client {
     /// One attempt at opening a streamed response.
     fn open_stream(&self, request: &Request<'_>) -> std::result::Result<Streamed, ureq::Error> {
         let now = SystemTime::now();
-        let host = self.endpoint.host_header(&request.bucket);
-        let path = request
-            .target
-            .clone()
-            .unwrap_or_else(|| self.endpoint.path(&request.bucket, &request.key));
-        let query = sigv4::canonical_query(&request.query);
-        let target = if query.is_empty() {
-            format!("{}://{host}{path}", self.endpoint.scheme)
-        } else {
-            format!("{}://{host}{path}?{query}", self.endpoint.scheme)
-        };
-        let mut headers = request.headers.clone();
-        match self.signer(now) {
-            Ok(Some(signer)) => headers.extend(signer.sign(
-                request.method,
-                &host,
-                &path,
-                &request.query,
-                &request.headers,
-                sigv4::EMPTY_PAYLOAD_SHA256,
-                now,
-            )),
-            Ok(None) => {}
-            Err(error) => return Err(ureq::Error::Io(std::io::Error::other(error.to_string()))),
-        }
+        let (target, headers) = self
+            .prepare(request, None, now)
+            .map_err(|error| ureq::Error::Io(std::io::Error::other(error.to_string())))?;
         self.stats.record(request.method);
         let mut wire = ureq::http::Request::builder()
             .method(request.method)
@@ -1056,7 +1012,10 @@ impl Client {
     /// Turn a non-2xx answer into the typed failure it means.
     fn failure(&self, request: &Request<'_>, answer: &Answer) -> Error {
         let path = self.location(request);
-        let body = xml::parse_error(&answer.body);
+        let body = match self.provider {
+            Provider::Aws | Provider::Azure => super::xml::parse_error(&answer.body),
+            Provider::Google => super::google::json::parse_error(&answer.body),
+        };
         let code = body.as_ref().map_or_else(
             || status_code_name(answer.status),
             |error| error.code.clone(),
@@ -1070,7 +1029,7 @@ impl Client {
             // A conditional write lost, which is what a create reports.
             409 | 412 => Error::conflict(absent_kind(request), absent_kind(request), path),
             _ => Error::remote(
-                SERVICE,
+                self.provider.service(),
                 request.operation,
                 answer.status,
                 code,
@@ -1078,6 +1037,42 @@ impl Client {
                 path,
             ),
         }
+    }
+
+    /// The request that reads one object's bytes.
+    ///
+    /// Two of the three stores address an object by its own path; Google's JSON
+    /// API puts it below `/storage/v1` and switches metadata for bytes with a
+    /// query parameter, so there the path is the dialect's to build.
+    fn get_request<'body>(&self, bucket: &str, key: &str) -> Request<'body> {
+        let request = match self.provider {
+            Provider::Aws | Provider::Azure => Request::new("GET", "GetObject", bucket, key),
+            Provider::Google => super::google::dialect::get_request(bucket, key),
+        };
+        self.common(request).keyed(self.provider, self.encryption())
+    }
+
+    /// What every request this client sends carries, whatever the operation.
+    fn common<'body>(&self, request: Request<'body>) -> Request<'body> {
+        let mut request = request;
+        match self.provider {
+            Provider::Aws => {
+                if self.options.aws().requester_pays() {
+                    request = request.header("x-amz-request-payer", "requester");
+                }
+            }
+            Provider::Google => {
+                for (name, value) in super::google::dialect::common_query(&self.options) {
+                    request = request.query(&name, value);
+                }
+            }
+            // Azure versions its API by header, and a stored value is a
+            // contract: every request states which version it was written for.
+            Provider::Azure => {
+                request = request.header("x-ms-version", self.options.azure().api_version());
+            }
+        }
+        request
     }
 
     /// Read one object's metadata.
@@ -1089,14 +1084,25 @@ impl Client {
     ///
     /// Returns the store's refusal for anything that is not a 404.
     pub(super) fn head_object(&self, bucket: &str, key: &str) -> Result<Option<ObjectMeta>> {
-        let request =
-            Request::new("HEAD", "HeadObject", bucket, key).keyed(self.provider, self.encryption());
+        let request = match self.provider {
+            Provider::Aws | Provider::Azure => self
+                .common(Request::new("HEAD", "HeadObject", bucket, key))
+                .keyed(self.provider, self.encryption()),
+            Provider::Google => self.common(super::google::dialect::head_request(bucket, key)),
+        };
         let answer = self.send(&request)?;
         if answer.status == 404 {
             return Ok(None);
         }
         if answer.status >= 300 {
             return Err(self.failure(&request, &answer));
+        }
+        // Two of the three answer the metadata in headers; Google answers a
+        // JSON resource, whose `size` is a string because it is 64-bit.
+        if matches!(self.provider, Provider::Google) {
+            return super::google::json::parse_object(&answer.body)
+                .map(Some)
+                .map_err(|error| malformed(request.operation, &self.location(&request), &error.0));
         }
         Ok(Some(ObjectMeta {
             size: answer
@@ -1205,8 +1211,8 @@ impl Client {
         length: u64,
     ) -> Result<Option<(Box<dyn Read + Send>, Window)>> {
         let last = offset.saturating_add(length - 1);
-        let request = Request::new("GET", "GetObject", bucket, key)
-            .keyed(self.provider, self.encryption())
+        let request = self
+            .get_request(bucket, key)
             .header("range", format!("bytes={offset}-{last}"));
         let (status, headers, mut reader) = self.stream(&request)?;
         let answer = Answer {
@@ -1266,8 +1272,7 @@ impl Client {
     ///
     /// Returns the store's refusal, or a read failure part way through.
     pub(super) fn get_all(&self, bucket: &str, key: &str) -> Result<Vec<u8>> {
-        let request =
-            Request::new("GET", "GetObject", bucket, key).keyed(self.provider, self.encryption());
+        let request = self.get_request(bucket, key);
         let (status, headers, mut reader) = self.stream(&request)?;
         let answer = Answer {
             status,
@@ -1351,8 +1356,7 @@ impl Client {
         offset: u64,
         last: Option<u64>,
     ) -> Result<Box<dyn Read + Send>> {
-        let mut request =
-            Request::new("GET", "GetObject", bucket, key).keyed(self.provider, self.encryption());
+        let mut request = self.get_request(bucket, key);
         match last {
             Some(last) => request = request.header("range", format!("bytes={offset}-{last}")),
             None if offset > 0 => request = request.header("range", format!("bytes={offset}-")),
@@ -1405,18 +1409,78 @@ impl Client {
         bytes: &[u8],
         content_type: Option<&str>,
     ) -> Result<Option<String>> {
-        let mut request = Request::new("PUT", "PutObject", bucket, key)
-            .storing(self.provider, self.encryption())
-            .body(bytes);
-        if let Some(content_type) = content_type {
-            request = request.header("content-type", content_type);
+        let content_type = content_type.unwrap_or("application/octet-stream");
+        // Google carries the object's metadata in the same request as its
+        // bytes, which is what `multipart/related` is for; the other two put
+        // both in headers.
+        let google = matches!(self.provider, Provider::Google);
+        let (body, boundary) = if google {
+            let metadata = self.google_metadata(key, content_type)?;
+            let boundary = super::google::dialect::boundary(bytes);
+            (
+                super::google::dialect::multipart_body(&metadata, content_type, bytes, &boundary),
+                boundary,
+            )
+        } else {
+            (Vec::new(), String::new())
+        };
+        let mut request = if google {
+            super::google::dialect::put_request(bucket, key, &body, &boundary)
+        } else {
+            let mut request = Request::new("PUT", "PutObject", bucket, key)
+                .body(bytes)
+                .header("content-type", content_type);
+            if matches!(self.provider, Provider::Azure) {
+                request = request
+                    .header("x-ms-blob-type", self.options.azure().blob_type().as_str())
+                    .header("content-length", bytes.len().to_string());
+                if let Some(tier) = self.options.azure().access_tier() {
+                    request = request.header("x-ms-access-tier", tier);
+                }
+            }
+            request.with_metadata(self.provider, self.options.default_metadata())
+        };
+        request = self
+            .common(request)
+            .storing(self.provider, self.encryption());
+        if let (Provider::Aws, Some(class)) = (self.provider, self.options.aws().storage_class()) {
+            request = request.header("x-amz-storage-class", class);
         }
-        request = request.with_metadata(self.provider, self.options.default_metadata());
+        // S3 computes the checksum the request names, verifies what it received
+        // against it, and keeps it so a later read can be checked without
+        // transferring the object again.
+        if let (Provider::Aws, Some(checksum)) = (self.provider, self.options.aws().checksum()) {
+            request = request
+                .header("x-amz-sdk-checksum-algorithm", checksum.as_str())
+                .header(checksum.header(), checksum.of(bytes));
+        }
+        if let (Provider::Google, Some(class)) =
+            (self.provider, self.options.google().storage_class())
+        {
+            request = request.query("storageClass", class);
+        }
         let answer = self.send(&request)?;
         if answer.status >= 300 {
             return Err(self.failure(&request, &answer));
         }
         Ok(answer.header("etag").map(str::to_owned))
+    }
+
+    /// The JSON resource a Google write sends beside its bytes.
+    fn google_metadata(&self, key: &str, content_type: &str) -> Result<String> {
+        let mut headers: Vec<(String, String)> = self
+            .options
+            .default_metadata()
+            .iter()
+            .map(|(name, value)| {
+                (
+                    super::request::header_name(self.provider, name),
+                    value.clone(),
+                )
+            })
+            .collect();
+        headers.push(("content-type".to_owned(), content_type.to_owned()));
+        super::google::json::object_metadata(key, &headers)
     }
 
     /// Delete one object.
@@ -1428,7 +1492,12 @@ impl Client {
     ///
     /// Returns the store's refusal.
     pub(super) fn delete_object(&self, bucket: &str, key: &str) -> Result<()> {
-        let request = Request::new("DELETE", "DeleteObject", bucket, key);
+        let request = match self.provider {
+            Provider::Aws | Provider::Azure => {
+                self.common(Request::new("DELETE", "DeleteObject", bucket, key))
+            }
+            Provider::Google => self.common(super::google::dialect::delete_request(bucket, key)),
+        };
         let answer = self.send(&request)?;
         if answer.status == 404 || answer.status < 300 {
             return Ok(());
@@ -1448,10 +1517,21 @@ impl Client {
         if keys.is_empty() {
             return Ok(());
         }
+        match self.provider {
+            Provider::Aws => self.delete_objects_xml(bucket, keys),
+            // Google and Azure both batch whole sub-requests into one
+            // `multipart/mixed` body rather than taking a list of keys.
+            Provider::Google | Provider::Azure => self.delete_objects_batched(bucket, keys),
+        }
+    }
+
+    /// S3's own bulk delete: one document naming every key.
+    fn delete_objects_xml(&self, bucket: &str, keys: &[String]) -> Result<()> {
         let document = xml::render_delete_objects(keys, true);
         let bytes = document.as_bytes();
         let digest = base64::engine::general_purpose::STANDARD.encode(md5_of(bytes));
-        let request = Request::new("POST", "DeleteObjects", bucket, "")
+        let request = self
+            .common(Request::new("POST", "DeleteObjects", bucket, ""))
             .query("delete", String::new())
             .header("content-md5", digest)
             .header("content-type", "application/xml")
@@ -1465,14 +1545,74 @@ impl Client {
         match failures.first() {
             None => Ok(()),
             Some(failure) => Err(Error::remote(
-                SERVICE,
+                self.provider.service(),
                 "DeleteObjects",
                 answer.status,
                 &failure.code,
                 &failure.message,
-                format!("s3://{bucket}/{}", failure.key),
+                format!("{}://{bucket}/{}", self.scheme.as_str(), failure.key),
             )),
         }
+    }
+
+    /// A batch of whole sub-requests, which is how the other two spell it.
+    ///
+    /// The answer is a multipart document of sub-answers; a key that was not
+    /// there is a success, as it is for a single delete, so only a status that
+    /// says something else went wrong is reported.
+    fn delete_objects_batched(&self, bucket: &str, keys: &[String]) -> Result<()> {
+        let boundary = match self.provider {
+            Provider::Google => super::google::dialect::boundary(bucket.as_bytes()),
+            _ => super::azure::dialect::batch_boundary(bucket.as_bytes()),
+        };
+        let body = match self.provider {
+            Provider::Google => super::google::dialect::batch_body(bucket, keys, &boundary),
+            Provider::Azure => super::azure::dialect::batch_body(
+                self.endpoint.account.as_deref().unwrap_or_default(),
+                bucket,
+                keys,
+                self.options.azure().api_version(),
+                &boundary,
+                self.endpoint.account_in_path,
+            ),
+            Provider::Aws => return Err(self.provider.unsupported("a batched delete")),
+        };
+        let request = match self.provider {
+            Provider::Google => self.common(super::google::dialect::batch_request(
+                bucket, &body, &boundary,
+            )),
+            _ => self.common(super::azure::dialect::batch_request(
+                bucket, &body, &boundary,
+            )),
+        };
+        let answer = self.send(&request)?;
+        if answer.status >= 300 {
+            return Err(self.failure(&request, &answer));
+        }
+        // A sub-answer that failed for a reason other than absence is the one
+        // thing worth reporting; the batch itself succeeded.
+        let text = String::from_utf8_lossy(&answer.body);
+        for line in text.lines() {
+            let Some(status) = line.strip_prefix("HTTP/1.1 ") else {
+                continue;
+            };
+            let code: u16 = status
+                .split_whitespace()
+                .next()
+                .and_then(|code| code.parse().ok())
+                .unwrap_or(200);
+            if code >= 300 && code != 404 {
+                return Err(Error::remote(
+                    self.provider.service(),
+                    "DeleteObjects",
+                    code,
+                    status_code_name(code),
+                    "a batched delete was refused",
+                    self.location(&request),
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Read one page of a listing.
@@ -1492,29 +1632,216 @@ impl Client {
         continuation: Option<&str>,
         max_keys: u16,
     ) -> Result<ListPage> {
-        let mut request = Request::new("GET", "ListObjectsV2", bucket, "")
-            .query("list-type", "2")
-            .query("max-keys", max_keys.to_string())
-            // Keys are arbitrary UTF-8, and a control character would make the
-            // page malformed XML; asking for URL encoding keeps every key
-            // readable and the document well-formed.
-            .query("encoding-type", "url");
-        if !prefix.is_empty() {
-            request = request.query("prefix", prefix);
-        }
-        if let Some(delimiter) = delimiter {
-            request = request.query("delimiter", delimiter);
-        }
-        if let Some(token) = continuation {
-            request = request.query("continuation-token", token);
-        }
+        let request = match self.provider {
+            Provider::Aws => {
+                let mut request = Request::new("GET", "ListObjectsV2", bucket, "")
+                    .query("list-type", "2")
+                    .query("max-keys", max_keys.to_string())
+                    // Keys are arbitrary UTF-8, and a control character would
+                    // make the page malformed XML; asking for URL encoding
+                    // keeps every key readable and the document well-formed.
+                    .query("encoding-type", "url");
+                if !prefix.is_empty() {
+                    request = request.query("prefix", prefix);
+                }
+                if let Some(delimiter) = delimiter {
+                    request = request.query("delimiter", delimiter);
+                }
+                if let Some(token) = continuation {
+                    request = request.query("continuation-token", token);
+                }
+                request
+            }
+            Provider::Google => super::google::dialect::list_request(
+                bucket,
+                prefix,
+                delimiter,
+                continuation,
+                max_keys,
+            ),
+            Provider::Azure => super::azure::dialect::list_request(
+                bucket,
+                prefix,
+                delimiter,
+                continuation,
+                max_keys,
+            ),
+        };
+        let request = self.common(request);
         self.stats.lists.fetch_add(1, Ordering::Relaxed);
         let answer = self.send(&request)?;
         if answer.status >= 300 {
             return Err(self.failure(&request, &answer));
         }
-        xml::parse_list_objects(&answer.body)
-            .map_err(|error| malformed(request.operation, &self.location(&request), &error.0))
+        match self.provider {
+            Provider::Aws => xml::parse_list_objects(&answer.body),
+            Provider::Google => super::google::json::parse_list(&answer.body),
+            Provider::Azure => super::azure::xml::parse_list(&answer.body),
+        }
+        .map_err(|error| malformed(request.operation, &self.location(&request), &error.0))
+    }
+
+    /// Write one large object in chunks, in whatever shape this store has.
+    ///
+    /// Three stores, three protocols for the same thing. S3 creates an upload,
+    /// sends numbered parts, and completes it from their entity tags: `parts +
+    /// 2` requests. Google opens a resumable session and sends chunks into it,
+    /// each stating the byte range it carries: `chunks + 1`. Azure stages
+    /// blocks under ids it chooses and commits the list: `blocks + 1`. What
+    /// they share is the reason for doing it at all - a failure re-sends one
+    /// chunk rather than the whole value.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's refusal. A failure part way through abandons what
+    /// was staged where the store has a way to, so parts are not billed
+    /// forever; the original failure is what the caller hears about.
+    pub(super) fn put_chunked(
+        &self,
+        bucket: &str,
+        key: &str,
+        bytes: &[u8],
+        content_type: &str,
+    ) -> Result<Option<String>> {
+        let part_size = usize::try_from(self.part_size())
+            .map_err(|_| crate::iobase::oversized(self.part_size()))?;
+        match self.provider {
+            Provider::Aws => self.put_multipart(bucket, key, bytes, content_type, part_size),
+            Provider::Google => self.put_resumable(bucket, key, bytes, content_type, part_size),
+            Provider::Azure => self.put_blocks(bucket, key, bytes, content_type, part_size),
+        }
+    }
+
+    /// S3's shape: create, send numbered parts, complete from their tags.
+    fn put_multipart(
+        &self,
+        bucket: &str,
+        key: &str,
+        bytes: &[u8],
+        content_type: &str,
+        part_size: usize,
+    ) -> Result<Option<String>> {
+        let upload = self.create_multipart(bucket, key, Some(content_type))?;
+        let mut parts = Vec::with_capacity(bytes.len().div_ceil(part_size));
+        for (index, chunk) in bytes.chunks(part_size).enumerate() {
+            let number = u32::try_from(index + 1).map_err(|_| too_many_parts())?;
+            match self.upload_part(bucket, key, &upload, number, chunk) {
+                Ok(etag) => parts.push((number, etag)),
+                Err(error) => {
+                    let _ = self.abort_multipart(bucket, key, &upload);
+                    return Err(error);
+                }
+            }
+        }
+        match self.complete_multipart(bucket, key, &upload, &parts) {
+            Ok(etag) => Ok(etag),
+            Err(error) => {
+                let _ = self.abort_multipart(bucket, key, &upload);
+                Err(error)
+            }
+        }
+    }
+
+    /// Google's shape: one session, then chunks that state their own range.
+    ///
+    /// Every chunk but the last is a multiple of 256 KiB, which is the one
+    /// framing rule the protocol has; the answer to the last one is the object.
+    fn put_resumable(
+        &self,
+        bucket: &str,
+        key: &str,
+        bytes: &[u8],
+        content_type: &str,
+        part_size: usize,
+    ) -> Result<Option<String>> {
+        let granularity =
+            usize::try_from(super::google::dialect::CHUNK_GRANULARITY).unwrap_or(usize::MAX);
+        let part_size = (part_size / granularity).max(1) * granularity;
+        let total = bytes.len() as u64;
+        let metadata = self.google_metadata(key, content_type)?;
+        let request = self.common(super::google::dialect::initiate_request(
+            bucket,
+            key,
+            metadata.as_bytes(),
+            content_type,
+            total,
+        ));
+        let answer = self.send(&request)?;
+        if answer.status >= 300 {
+            return Err(self.failure(&request, &answer));
+        }
+        let session = answer
+            .header("location")
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                malformed(
+                    request.operation,
+                    &self.location(&request),
+                    &super::google::json::missing_session().0,
+                )
+            })?;
+        let mut start = 0u64;
+        for chunk in bytes.chunks(part_size) {
+            let request =
+                super::google::dialect::chunk_request(&session, bucket, key, chunk, start, total);
+            let answer = self.send(&request)?;
+            // 308 is the store saying the chunk landed and more is expected;
+            // it is the protocol's own use of the code, not a redirect.
+            if answer.status != 308 && answer.status >= 300 {
+                let _ = self.send(&super::google::dialect::cancel_request(
+                    &session, bucket, key,
+                ));
+                return Err(self.failure(&request, &answer));
+            }
+            start += chunk.len() as u64;
+        }
+        Ok(None)
+    }
+
+    /// Azure's shape: stage blocks under ids of one width, then commit them.
+    fn put_blocks(
+        &self,
+        bucket: &str,
+        key: &str,
+        bytes: &[u8],
+        content_type: &str,
+        part_size: usize,
+    ) -> Result<Option<String>> {
+        let mut ids = Vec::with_capacity(bytes.len().div_ceil(part_size));
+        for (index, chunk) in bytes.chunks(part_size).enumerate() {
+            let number = u32::try_from(index).map_err(|_| too_many_parts())?;
+            let id = super::azure::dialect::block_id(number);
+            let request = self
+                .common(super::azure::dialect::put_block_request(
+                    bucket, key, &id, chunk,
+                ))
+                .keyed(self.provider, self.encryption());
+            let answer = self.send(&request)?;
+            if answer.status >= 300 {
+                return Err(self.failure(&request, &answer));
+            }
+            ids.push(id);
+        }
+        // Nothing is committed until the list is, so an abandoned upload leaves
+        // uncommitted blocks the account's own rule expires; there is no abort.
+        let document = super::azure::xml::render_block_list(&ids);
+        let mut request = self
+            .common(super::azure::dialect::put_block_list_request(
+                bucket,
+                key,
+                document.as_bytes(),
+            ))
+            .storing(self.provider, self.encryption())
+            .header("x-ms-blob-content-type", content_type)
+            .with_metadata(self.provider, self.options.default_metadata());
+        if let Some(tier) = self.options.azure().access_tier() {
+            request = request.header("x-ms-access-tier", tier);
+        }
+        let answer = self.send(&request)?;
+        if answer.status >= 300 {
+            return Err(self.failure(&request, &answer));
+        }
+        Ok(answer.header("etag").map(str::to_owned))
     }
 
     /// Begin a multipart upload, answering its identifier.
@@ -1631,7 +1958,11 @@ impl Client {
     ///
     /// Returns the store's refusal for anything that is not a 404.
     pub(super) fn head_bucket(&self, bucket: &str) -> Result<bool> {
-        let request = Request::new("HEAD", "HeadBucket", bucket, "");
+        let request = match self.provider {
+            Provider::Aws => self.common(Request::new("HEAD", "HeadBucket", bucket, "")),
+            Provider::Google => self.common(super::google::dialect::head_bucket_request(bucket)),
+            Provider::Azure => self.common(super::azure::dialect::head_container_request(bucket)),
+        };
         let answer = self.send(&request)?;
         if answer.status == 404 {
             return Ok(false);
@@ -1650,19 +1981,57 @@ impl Client {
     pub(super) fn create_bucket(&self, bucket: &str) -> Result<()> {
         let region = self.region();
         // `us-east-1` is the only region a location constraint must not name.
-        let document = if region == DEFAULT_REGION {
-            String::new()
-        } else {
-            xml::render_create_bucket(&region)
+        let document = match self.provider {
+            Provider::Aws if region == DEFAULT_REGION => String::new(),
+            Provider::Aws => xml::render_create_bucket(&region),
+            // Google's bucket resource states its own location; Azure's
+            // container has none to state.
+            Provider::Google => {
+                let mut entries = vec![("name", crate::Scalar::from(bucket))];
+                let location = region.to_ascii_uppercase();
+                entries.push(("location", crate::Scalar::from(location.as_str())));
+                if let Some(class) = self.options.google().storage_class() {
+                    entries.push(("storageClass", crate::Scalar::from(class)));
+                }
+                crate::text::json::into_utf8(&crate::Scalar::from_record(entries)?)?
+            }
+            Provider::Azure => String::new(),
         };
-        let request = Request::new("PUT", "CreateBucket", bucket, "").body(document.as_bytes());
+        let request = match self.provider {
+            Provider::Aws => self
+                .common(Request::new("PUT", "CreateBucket", bucket, ""))
+                .body(document.as_bytes()),
+            Provider::Google => {
+                // A bucket lives in a project, and there is no default one.
+                let project = self.options.google().project().ok_or_else(|| {
+                    Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "expected a Google project to own the bucket: name one with \
+                         GoogleOptions::with_project or the project_id property",
+                    ))
+                })?;
+                self.common(super::google::dialect::create_bucket_request(
+                    bucket,
+                    project,
+                    document.as_bytes(),
+                ))
+            }
+            Provider::Azure => self.common(super::azure::dialect::create_container_request(bucket)),
+        };
         let answer = self.send(&request)?;
         // Owning it already is what a repeated create means, not a conflict.
         if answer.status < 300 {
             return Ok(());
         }
-        let code = xml::parse_error(&answer.body).map(|error| error.code);
-        if code.as_deref() == Some("BucketAlreadyOwnedByYou") {
+        let code = match self.provider {
+            Provider::Aws | Provider::Azure => super::xml::parse_error(&answer.body),
+            Provider::Google => super::google::json::parse_error(&answer.body),
+        }
+        .map(|error| error.code);
+        if matches!(
+            code.as_deref(),
+            Some("BucketAlreadyOwnedByYou" | "ContainerAlreadyExists" | "conflict")
+        ) {
             return Ok(());
         }
         Err(self.failure(&request, &answer))
@@ -1674,7 +2043,11 @@ impl Client {
     ///
     /// Returns the store's refusal, including the one naming it non-empty.
     pub(super) fn delete_bucket(&self, bucket: &str) -> Result<()> {
-        let request = Request::new("DELETE", "DeleteBucket", bucket, "");
+        let request = match self.provider {
+            Provider::Aws => self.common(Request::new("DELETE", "DeleteBucket", bucket, "")),
+            Provider::Google => self.common(super::google::dialect::delete_bucket_request(bucket)),
+            Provider::Azure => self.common(super::azure::dialect::delete_container_request(bucket)),
+        };
         let answer = self.send(&request)?;
         if answer.status == 404 || answer.status < 300 {
             return Ok(());
@@ -1683,25 +2056,24 @@ impl Client {
     }
 }
 
-/// The header a metadata name goes over as, on `provider`.
+/// Refuse a value too large for the store's part count.
+fn too_many_parts() -> Error {
+    Error::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "expected a value small enough to upload in the parts this store accepts",
+    ))
+}
+
+/// The host and the path-with-query of a whole URL.
 ///
-/// Every store defines a handful of names itself - the content headers HTTP
-/// already has - and treats every other name as user metadata under its own
-/// prefix. A caller who spells a store's prefix is taken at their word.
-fn header_name(provider: Provider, name: &str) -> String {
-    const OWN: [&str; 6] = [
-        "cache-control",
-        "content-disposition",
-        "content-encoding",
-        "content-language",
-        "content-type",
-        "expires",
-    ];
-    let lowered = name.trim().to_ascii_lowercase();
-    if OWN.contains(&lowered.as_str()) || lowered.starts_with(provider.header_prefix()) {
-        lowered
-    } else {
-        format!("{}{lowered}", provider.metadata_prefix())
+/// A store that hands a location back states the host it is to be reached at,
+/// and a signature covers the path as sent, so both are taken from the URL
+/// rather than from the endpoint the client was built with.
+fn split_url(url: &str) -> (String, String) {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    match rest.split_once('/') {
+        Some((host, path)) => (host.to_owned(), format!("/{path}")),
+        None => (rest.to_owned(), "/".to_owned()),
     }
 }
 
@@ -2026,7 +2398,7 @@ fn bucket_region_of(answer: &Answer) -> Option<String> {
         .header("x-amz-bucket-region")
         .map(str::to_owned)
         .or_else(|| {
-            xml::parse_error(&answer.body)
+            super::xml::parse_error(&answer.body)
                 .filter(|error| error.code == "AuthorizationHeaderMalformed")
                 .and_then(|error| {
                     // The message names the region when the header does not.
