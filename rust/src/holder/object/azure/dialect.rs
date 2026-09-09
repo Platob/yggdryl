@@ -103,8 +103,10 @@ pub(crate) fn batch_request<'body>(
 
 /// The body of a batch of deletes: one embedded HTTP request per blob.
 ///
-/// Each sub-request is signed by the outer request rather than on its own, so
-/// what a part carries is the verb, the path, and the version.
+/// Each sub-request is authorized on its own. That is Azure's rule and it is
+/// the one a hand-written client misses: the outer request's signature covers
+/// the envelope, and a shared key that did not also sign each part inside it
+/// answers `403` for the whole batch.
 pub(crate) fn batch_body(
     account: &str,
     container: &str,
@@ -112,25 +114,33 @@ pub(crate) fn batch_body(
     version: &str,
     boundary: &str,
     account_in_path: bool,
+    mut authorize: impl FnMut(&str, &[(String, String)]) -> Vec<(String, String)>,
 ) -> Vec<u8> {
     let mut body = String::new();
     for (index, key) in keys.iter().enumerate() {
+        let prefix = if account_in_path {
+            format!("/{}", super::super::sigv4::encode_key(account))
+        } else {
+            String::new()
+        };
+        let path = format!(
+            "{prefix}/{}/{}",
+            super::super::sigv4::encode_key(container),
+            super::super::sigv4::encode_key(key)
+        );
+        let headers = vec![
+            ("x-ms-version".to_owned(), version.to_owned()),
+            ("content-length".to_owned(), "0".to_owned()),
+        ];
         body.push_str(&format!("--{boundary}\r\n"));
         body.push_str("Content-Type: application/http\r\n");
         body.push_str("Content-Transfer-Encoding: binary\r\n");
         body.push_str(&format!("Content-ID: {index}\r\n\r\n"));
-        let prefix = if account_in_path {
-            format!("/{account}")
-        } else {
-            String::new()
-        };
-        body.push_str(&format!(
-            "DELETE {prefix}/{}/{} HTTP/1.1\r\n",
-            super::super::sigv4::encode_key(container),
-            super::super::sigv4::encode_key(key)
-        ));
-        body.push_str(&format!("x-ms-version: {version}\r\n"));
-        body.push_str("Content-Length: 0\r\n\r\n");
+        body.push_str(&format!("DELETE {path} HTTP/1.1\r\n"));
+        for (name, value) in headers.iter().chain(authorize(&path, &headers).iter()) {
+            body.push_str(&format!("{name}: {value}\r\n"));
+        }
+        body.push_str("\r\n");
     }
     body.push_str(&format!("--{boundary}--\r\n"));
     body.into_bytes()

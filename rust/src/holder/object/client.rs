@@ -1591,14 +1591,22 @@ impl Client {
         };
         let body = match self.provider {
             Provider::Google => super::google::dialect::batch_body(bucket, keys, &boundary),
-            Provider::Azure => super::azure::dialect::batch_body(
-                self.endpoint.account.as_deref().unwrap_or_default(),
-                bucket,
-                keys,
-                self.options.azure().api_version(),
-                &boundary,
-                self.endpoint.account_in_path,
-            ),
+            Provider::Azure => {
+                let now = SystemTime::now();
+                super::azure::dialect::batch_body(
+                    self.endpoint.account.as_deref().unwrap_or_default(),
+                    bucket,
+                    keys,
+                    self.options.azure().api_version(),
+                    &boundary,
+                    self.endpoint.account_in_path,
+                    |path, headers| {
+                        self.azure
+                            .headers(&self.agent, "DELETE", path, &[], headers, now)
+                            .unwrap_or_default()
+                    },
+                )
+            }
             Provider::Aws => return Err(self.provider.unsupported("a batched delete")),
         };
         let request = match self.provider {

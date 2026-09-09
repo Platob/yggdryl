@@ -6,7 +6,7 @@ mod avro;
 #[path = "interop/iceberg.rs"]
 mod iceberg;
 #[cfg(feature = "object")]
-#[path = "interop/object.rs"]
+#[path = "interop/object/mod.rs"]
 mod object;
 #[path = "interop/zip.rs"]
 mod zip;

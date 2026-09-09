@@ -11,4 +11,6 @@ pub(crate) mod options;
 pub(crate) mod sign;
 pub(crate) mod xml;
 
-pub use options::{AzureOptions, BlobType, DEFAULT_API_VERSION, DEVELOPMENT_ACCOUNT};
+pub use options::{
+    AzureOptions, BlobType, DEFAULT_API_VERSION, DEVELOPMENT_ACCOUNT, DEVELOPMENT_KEY,
+};

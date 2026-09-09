@@ -640,7 +640,25 @@ different as a URL component, as a signed canonical path, and as a raw key.
 python scripts/check_object_interop.py
 ```
 
-The Google and Azure halves are Rust-only today: the dialects are exercised
-against the in-process fake, and no driver yet runs them against
-`fake-gcs-server` or Azurite. That gap is stated rather than hidden, because a
-skipped half is not a pass.
+The other two stores have their own drivers, and each is checked by the client
+its own vendor ships:
+
+```console
+python scripts/check_azure_interop.py
+python scripts/check_gcs_interop.py
+```
+
+Azurite is the one that matters most, because it is the one that checks the
+*signature*: it recomputes the Shared Key `StringToSign` exactly as the service
+does and answers `403` for anything that does not match, so the order of the
+thirteen signed lines, the empty `Content-Length` for a zero-length body, the
+account appearing twice in a path-style canonicalized resource, and the rule
+that every sub-request of a batch is authorized on its own are all checked by a
+server that never read this crate's source.
+
+`fake-gcs-server` checks the *shape* of every request - the `/storage/v1` and
+`/upload/storage/v1` paths, the object name escaped into one path segment,
+`alt=media`, the `multipart/related` framing, and the resumable protocol's
+`Content-Range` and 308 answers - and accepts any bearer token. So that driver
+proves the dialect and not the identity, and it says so rather than implying
+more.

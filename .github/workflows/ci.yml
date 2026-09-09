@@ -201,6 +201,62 @@ jobs:
       - name: Exchange objects with MinIO and boto3
         run: python scripts/check_object_interop.py
 
+  azure-interop:
+    # The Azure exchange with Azurite, cross-checked by azure-storage-blob.
+    # Azurite is the server that matters most for this store: it recomputes the
+    # Shared Key StringToSign exactly as the service does and answers 403 for
+    # anything that does not match, so a signature built wrong here is a
+    # failure rather than an agreement between two halves of one mistake. The
+    # script installs Azurite with npm, so the job provisions nothing itself.
+    name: Azure exchange
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-full
+          save-if: false
+      - name: Install the reference client
+        run: python -m pip install "azure-storage-blob>=12"
+      - name: Exchange blobs with Azurite and azure-storage-blob
+        run: python scripts/check_azure_interop.py
+
+  gcs-interop:
+    # The Google exchange with fake-gcs-server, cross-checked by
+    # google-cloud-storage. The emulator checks the shape of every request -
+    # the /storage/v1 paths, the name escaped into one segment, alt=media, the
+    # multipart/related framing, the resumable protocol's Content-Range and 308
+    # answers - and accepts any bearer token, so this lane proves the dialect
+    # and not the identity. The script builds the emulator with Go.
+    name: Google exchange
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-full
+          save-if: false
+      - name: Install the reference client
+        run: python -m pip install "google-cloud-storage>=2"
+      - name: Exchange objects with fake-gcs-server and google-cloud-storage
+        run: python scripts/check_gcs_interop.py
+
   zip-interop:
     # The ZIP exchange with Python's `zipfile`, from the standard library.
     #

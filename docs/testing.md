@@ -105,6 +105,8 @@ A block that cannot stand alone is tagged `{ .rust .ignore }`, `{ .python .ignor
 ```bash
 python scripts/check_avro_interop.py
 python scripts/check_object_interop.py
+python scripts/check_azure_interop.py
+python scripts/check_gcs_interop.py
 python scripts/check_iceberg_interop.py
 python scripts/setup_spark_interop.py
 python -m pytest python/tests -m spark_interop
@@ -114,7 +116,9 @@ AVRO_FUZZ_ITERATIONS=200000 cargo test -p yggdryl --lib media::avro::tests::fuzz
 | Script | Exchanges |
 | --- | --- |
 | `check_avro_interop.py` | Avro containers with fastavro both ways, logical types included, plus the `apache-avro` crate |
-| `check_object_interop.py` | S3 objects with boto3 both ways against MinIO: awkward keys, ranged reads, and a multipart upload verified from the outside. The Google and Azure dialects are exercised against the in-process fake only |
+| `check_object_interop.py` | S3 objects with boto3 both ways against MinIO: awkward keys, ranged reads, and a multipart upload verified from the outside |
+| `check_azure_interop.py` | Blobs with azure-storage-blob both ways against Azurite, which recomputes the Shared Key signature itself: awkward names, ranged reads, and a block-list upload verified from the outside |
+| `check_gcs_interop.py` | Objects with google-cloud-storage both ways against fake-gcs-server: names escaped into one path segment, and a resumable upload verified from the outside. The emulator accepts any token, so this proves the dialect and not the identity |
 | `check_iceberg_interop.py` | Whole Iceberg tables with PyIceberg both ways, format versions 1 to 3 |
 | `setup_spark_interop.py` + the `spark_interop` marker | One Hadoop warehouse shared with Apache Spark, both directions |
 | `AVRO_FUZZ_ITERATIONS` | Seeded Avro mutations; the ordinary pass runs a short sweep |
