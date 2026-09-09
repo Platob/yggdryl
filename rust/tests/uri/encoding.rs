@@ -940,3 +940,121 @@ fn a_query_pair_escape_failure_names_its_byte_in_the_query() {
         .expect_err("the escape must not decode");
     assert_eq!(parse_failure(&error).1, 9);
 }
+
+/// An absolute component replaces the URL rather than extending it twice.
+///
+/// `Path::components` yields the root and then the names under it, so the
+/// conversion of the whole path already holds them: continuing the loop past
+/// the root appends every one of them a second time.
+#[test]
+fn join_path_replaces_the_url_when_the_component_is_absolute() {
+    let lake = Url::from_str("file:///lake/trades").unwrap();
+
+    for (joined, expected) in [
+        ("/a/b", "file:///a/b"),
+        ("/x", "file:///x"),
+        ("/a/b/100%.csv", "file:///a/b/100%25.csv"),
+        ("/", "file:///"),
+    ] {
+        assert_eq!(
+            lake.join_path(joined).unwrap().to_string(),
+            expected,
+            "{joined:?}"
+        );
+    }
+
+    // A relative component still extends, and `.` and `..` still resolve.
+    assert_eq!(
+        lake.join_path("../lake2/a b.csv").unwrap().to_string(),
+        "file:///lake/lake2/a%20b.csv"
+    );
+    assert_eq!(
+        lake.join_path("./x").unwrap().to_string(),
+        "file:///lake/trades/x"
+    );
+}
+
+/// A file name is a name, so no mutation may turn one into a dot segment.
+///
+/// `..a` has the extension `a` and the stem `.`, so dropping the extension used
+/// to leave the path addressing the directory that holds the file instead of
+/// the file. The suffix removers keep the name; the setters refuse the value.
+#[test]
+fn a_filename_mutation_never_produces_a_dot_segment() {
+    // Removing the one extension these names have would leave `.` or `..`.
+    for name in ["..a", "...a"] {
+        let source = Url::from_str(&format!("file:///lake/{name}")).unwrap();
+
+        let mut removed = source.clone();
+        assert!(!removed.remove_extension(), "{name:?}");
+        assert_eq!(removed, source, "{name:?}");
+
+        let mut cleared = source.clone();
+        assert!(!cleared.clear_extensions(), "{name:?}");
+        assert_eq!(cleared, source, "{name:?}");
+
+        assert_eq!(source.parts(), ["lake", name], "{name:?}");
+    }
+
+    // A compound name keeps a usable stem, so one suffix comes off; clearing
+    // every suffix would leave `.` again, so that one does not.
+    let mut compound = Url::from_str("file:///lake/..a.b.c").unwrap();
+    assert!(compound.remove_extension());
+    assert_eq!(compound.to_string(), "file:///lake/..a.b");
+    assert!(!compound.clear_extensions());
+    assert_eq!(compound.to_string(), "file:///lake/..a.b");
+
+    // The setters refuse a dot segment outright, and leave the path alone.
+    let mut url = Url::from_str("file:///lake/report.csv").unwrap();
+    for value in [".", ".."] {
+        assert!(url.set_file_name(value).is_err(), "{value:?}");
+        assert!(url.set_stem(value).is_err(), "{value:?}");
+        assert_eq!(url.to_string(), "file:///lake/report.csv", "{value:?}");
+    }
+
+    // An ordinary dotfile is untouched by the rule.
+    let mut hidden = Url::from_str("file:///lake/.env.local").unwrap();
+    assert!(hidden.remove_extension());
+    assert_eq!(hidden.to_string(), "file:///lake/.env");
+}
+
+/// A drive letter and a one-letter scheme are told apart by what follows.
+///
+/// A backslash is not URI syntax, so it settles the reading outright. After a
+/// slash, syntax only a URI carries decides it: the `//` authority marker, a
+/// `?`, or a `#`. Otherwise the drive reading stands, because a Windows path is
+/// what that spelling means here.
+#[test]
+fn uri_only_syntax_after_a_drive_letter_makes_the_value_a_uri() {
+    // The components survive as components rather than being escaped into the
+    // path, which is what `from_parts` spells and has to parse back.
+    let built = Uri::from_parts(
+        yggdryl::Scheme::from_str("a").unwrap(),
+        Authority::from_str("").unwrap(),
+        UriPath::from_str("/b").unwrap(),
+        Some("q=1".into()),
+        Some("f".into()),
+    )
+    .unwrap();
+    assert_eq!(built.to_string(), "a:/b?q=1#f");
+    assert_eq!(Uri::from_str("a:/b?q=1#f").unwrap(), built);
+    assert_eq!(
+        Uri::from_str("a:/b?q=1#f")
+            .unwrap()
+            .query(false)
+            .unwrap()
+            .as_deref(),
+        Some("q=1")
+    );
+
+    // A backslash keeps the drive reading whatever follows it, so a Windows
+    // name carrying a `#` still becomes an escaped path segment.
+    assert_eq!(
+        Uri::from_str(r"C:\Users\a#b.txt").unwrap().to_string(),
+        "file:///C:/Users/a%23b.txt"
+    );
+    assert_eq!(
+        Uri::from_str("C:/Users/x").unwrap().to_string(),
+        "file:///C:/Users/x"
+    );
+}

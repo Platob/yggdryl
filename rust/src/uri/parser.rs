@@ -120,6 +120,14 @@ pub(super) fn validate_optional_component(
         .transpose()
 }
 
+/// Return whether one segment is structure rather than a name.
+///
+/// `.` and `..` address a directory, so a path that gains one addresses
+/// something other than the resource the caller was naming.
+pub(super) fn is_dot_segment(value: &str) -> bool {
+    matches!(value, "." | "..")
+}
+
 pub(super) fn normalize_resource_segment(
     value: &str,
     target: &'static str,
@@ -133,6 +141,13 @@ pub(super) fn normalize_resource_segment(
             target,
             position,
             "resource path value must contain exactly one segment",
+        ));
+    }
+    if is_dot_segment(value) {
+        return Err(parse_error(
+            target,
+            0,
+            "a dot segment addresses a directory rather than naming a resource",
         ));
     }
     validate_component(value, target, 0, is_path_byte)?;
@@ -168,8 +183,8 @@ impl FromStr for Uri {
         // are the authority marker: `a://host/p` has to stay the URI that
         // `from_parts` builds from the one-letter scheme `a`.
         let bytes = value.as_bytes();
-        let drive_designator =
-            is_windows_drive_absolute(value) && !(bytes[2] == b'/' && bytes.get(3) == Some(&b'/'));
+        let drive_designator = is_windows_drive_absolute(value)
+            && (bytes[2] == b'\\' || !(bytes.get(3) == Some(&b'/') || value.contains(['?', '#'])));
         if drive_designator
             || value.starts_with("\\\\")
             || (!value.contains(':') && value.contains('\\'))

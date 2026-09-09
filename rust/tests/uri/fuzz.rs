@@ -465,6 +465,30 @@ fn generated_identifiers_hold_every_component_invariant() {
                             format!("{input:?} changed rootedness under normalize")
                         });
                     }
+
+                    // No name or suffix mutation may leave the path addressing
+                    // a directory instead of the resource it was naming.
+                    let dot_segments = |value: &UriPath| {
+                        value
+                            .segments()
+                            .filter(|segment| matches!(*segment, "." | ".."))
+                            .count()
+                    };
+                    let spelled = dot_segments(&path);
+                    let mutations: [&dyn Fn(&mut UriPath); 5] = [
+                        &|value| _ = value.set_extension("csv"),
+                        &|value| _ = value.set_file_name("x"),
+                        &|value| _ = value.set_stem("x"),
+                        &|value| _ = value.clear_extensions(),
+                        &|value| _ = value.remove_extension(),
+                    ];
+                    for mutate in mutations {
+                        let mut mutated = path.clone();
+                        mutate(&mut mutated);
+                        failures.check(dot_segments(&mutated) <= spelled, || {
+                            format!("{input:?} gained a dot segment as {mutated}")
+                        });
+                    }
                 }
                 Err(error) => failures.located_in("UriPath::from_str", &input, &error),
             }
@@ -574,6 +598,15 @@ fn every_generated_file_name_survives_a_platform_join() {
             }
             built
         };
+        // An absolute component replaces the URL, so it is checked against the
+        // conversion of the whole path rather than against a join under `lake`.
+        if name.starts_with('/') {
+            failures.check(
+                lake.join_path(&name).ok() == Url::from_path(&name).ok(),
+                || format!("{name:?} did not replace the URL it was joined to"),
+            );
+            continue;
+        }
         // A component a platform path cannot carry is not a name to begin with.
         if name.is_empty()
             || name.contains(['/', '\\', '\0'])

@@ -101,7 +101,10 @@ impl Url {
         let mut joined = self.clone();
         for component in path.components() {
             joined = match component {
-                Component::Prefix(_) | Component::RootDir => Self::from_path(path)?,
+                // An absolute path replaces this URL outright, so the whole
+                // of it is converted and the components after the root are
+                // already in that result.
+                Component::Prefix(_) | Component::RootDir => return Self::from_path(path),
                 Component::CurDir => continue,
                 Component::ParentDir => joined.joinpath("..")?,
                 Component::Normal(segment) => {

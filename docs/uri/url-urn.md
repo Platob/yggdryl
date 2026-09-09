@@ -145,7 +145,7 @@ Rust and Python; JavaScript reaches none of this section. The `exists`, `is_dir`
 - `urn:a$:value` -> parse error with target `urn` and the offending byte offset, 5.
 - `urn:example:reports/data.csv` -> file name `data.csv`; `set_file_name("bad/name")` refuses, URN unchanged.
 - `https://example.test:8443` -> `default_port` is still `Some(443)`; a written port is never read.
-- `join_path` with an absolute path -> replaces the path; a non-UTF-8 component -> refused.
+- `join_path` with an absolute path -> replaces the path outright, components and all; a non-UTF-8 component -> refused.
 - `join_path("100%.csv")` -> `.../100%25.csv`; `joinpath("100%.csv")` -> refused, because that door takes URI text.
 
 ## Commands

@@ -417,6 +417,7 @@ This page owns the path as a sequence of names: segments, filenames, media type,
 - `\lake\x` and `/lake/x` -> the same `file:///lake/x`; `lake\x` stays the relative `file:lake/x`.
 - `//server/c:/x` -> `c:` is a share name and keeps its case; only an authority-less path reads it as a drive.
 - `./` normalized -> `""`; resolving `.` and `..` never makes a relative path absolute.
+- `.` or `..` as a file name, stem, or the base a suffix removal would leave (`..a`) -> refused; a name never becomes a dot segment.
 - Absolute `joinpath` argument -> replaces the path.
 - `/../../a` -> `..` past an absolute root is clamped to `a`; relative `../../a` keeps both steps.
 - A drive or UNC path on any host -> detection is textual, so the result is the same everywhere.

@@ -241,7 +241,7 @@ Both are read off the authority without a network request.
 - Invalid scheme token before the colon -> parse error, no `file:` fallback.
 - `/data/2026-08-16T00:00:00/part.parquet` -> colon after the first separator is data; scheme `file`.
 - `file:/data` -> `file:///data`; one absolute local path has one spelling.
-- `a://host/p` -> the one-letter scheme `a`; `C:/x` and `C:\x` stay the drive reading, which is the only spelling those two share.
+- `a://host/p` and `a:/b?q=1#f` -> the one-letter scheme `a`; a backslash, or a slash with no `//`, `?` or `#` after it, keeps the drive reading (`C:/x`, `C:\x`).
 - Python setter after `hash(uri)` -> `TypeError`; `copy.copy` and pickle give unlocked wrappers.
 - Rust -> ownership protects hashed keys; JavaScript -> call `stableHash()` explicitly.
 
