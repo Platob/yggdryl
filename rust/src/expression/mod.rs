@@ -75,10 +75,15 @@ pub use selector::{Attributes, Cost, Handle, Selector, read_handle};
 
 /// How deep an expression may nest before the parser and every walk refuse.
 ///
-/// The limit is the schema grammar's, because the two parsers run over the same
-/// kind of caller-controlled text and a stack is a stack: an expression that
-/// nests past it is a typed error naming the limit, never an aborted process.
-pub const RECURSION_LIMIT: usize = DataType::PARSE_RECURSION_LIMIT;
+/// An expression that nests past it is a typed error naming the limit, never an
+/// aborted process - which is what decides the number. This grammar's descent
+/// spends far more stack per level than the schema grammar's, so the two cannot
+/// share one: measured on a two-mebibyte thread, the size a test thread and a
+/// modest spawned thread both get, an unoptimised build reaches 56 levels and
+/// overflows before 64. Half of what it reaches is the limit, so the refusal
+/// arrives with the stack still less than half spent and the promise above
+/// holds on the smallest stack a caller is likely to run on.
+pub const RECURSION_LIMIT: usize = 32;
 
 /// How many nodes one expression may hold.
 ///

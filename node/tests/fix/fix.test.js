@@ -1286,16 +1286,16 @@ test("a capture's own columns lead the row", () => {
   assert.equal(row[carried.indexOf('msgtype')], 'D')
 
   // A capture column whose folded name a FIX column takes is not carried in
-  // front: `senderSessionId` and `sendersessionid` are one name, and the FIX column is
-  // the one a reader spelling it means - the session the message itself
-  // states. A bridge's own session instance is therefore captured as
-  // `senderSessionId`, a name no FIX column takes, and leads the row.
+  // front: `senderSessionId` and `sendersessionid` are one name, and the FIX
+  // column is the one a reader spelling it means - so the bracket's session
+  // instance reaches that column instead of riding in front. `threadId` names
+  // no FIX column, so it is carried and leads the row.
   const stamped = fields.struct(
     'line',
     [
       fields.utf8('url', { nullable: false }),
       fields.binary('body', { nullable: false }),
-      fields.utf8('senderSessionId'),
+      fields.utf8('threadId'),
       fields.utf8('senderSessionId'),
     ],
     { nullable: false },
@@ -1303,7 +1303,7 @@ test("a capture's own columns lead the row", () => {
   const folded = fix.schemaCarrying(stamped, plain)
   assert.equal(folded.fieldLen, plain.fieldLen + 3)
   assert.equal(folded.indexOf('senderSessionId'), null)
-  assert.equal(folded.indexOf('senderSessionId'), 2)
+  assert.equal(folded.indexOf('threadId'), 2)
   assert.equal(folded.indexOf('sendersessionid'), plain.indexOf('sendersessionid') + 3)
 })
 
