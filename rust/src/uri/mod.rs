@@ -31,9 +31,7 @@ pub use authority::Authority;
 pub use extensions::Extensions;
 pub(crate) use hive::hive_partitions_of;
 pub use parameters::Parameters;
-pub(crate) use parser::percent_decode;
-#[cfg(feature = "s3")]
-pub(crate) use parser::percent_encode_segment;
+pub(crate) use parser::{percent_decode, percent_encode_segment};
 pub use path::{Parents, PathSegments, UriParents, UriPath};
 pub use url::{Url, UrlParents};
 pub use urn::Urn;
@@ -176,9 +174,12 @@ impl Uri {
         }
 
         let drive_absolute = is_windows_drive_absolute(value);
-        let local_absolute = value.starts_with('/');
+        // Either separator roots a path: `\\data` is the Windows spelling of
+        // `/data`, so both reach the same absolute `file:///data` rather than
+        // one of them landing in the authority-less `file:/data` form.
+        let local_absolute = value.starts_with(['/', '\\']);
         let (path_input, prefix_slash) = if local_absolute {
-            (value.trim_start_matches('/'), true)
+            (value.trim_start_matches(['/', '\\']), true)
         } else {
             (value, drive_absolute)
         };

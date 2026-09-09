@@ -475,7 +475,10 @@ fn normalize_path_text(value: &str, absolute: bool) -> String {
         }
     }
     let mut rendered = join_parts(&parts, absolute);
-    if trailing_slash && !rendered.ends_with('/') {
+    // A relative path that resolves to no name at all is where it started, not
+    // the root: `./` must not come back absolute just because it ended in a
+    // separator.
+    if trailing_slash && !rendered.is_empty() && !rendered.ends_with('/') {
         rendered.push('/');
     }
     rendered

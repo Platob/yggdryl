@@ -13,7 +13,8 @@ This page owns the path as a sequence of names: segments, filenames, media type,
 | `stem` | filename minus last extension; dotfiles keep the dot |
 | Mutators | atomic; a rejected name changes nothing |
 | `mime_type`, `media_type` | last suffix; whole chain as base plus encodings |
-| `from_path`, `into_path` | drive: first segment, empty authority; UNC server: authority |
+| `from_path`, `into_path` | drive: first segment, empty authority; UNC server: authority; either separator roots a path |
+| Escapes across the bridge | `from_path` encodes a name, `into_path` decodes one; an escape that would become a separator, a dot segment, a drive, or a UNC name is refused instead |
 | Navigation | `UriPath`, lifted onto `Uri` and `Url`; scheme, authority, query, fragment survive; `Urn` has none |
 
 ## Use
@@ -410,7 +411,12 @@ This page owns the path as a sequence of names: segments, filenames, media type,
 - `bad/name`, `bad?name`, or a bare `%` -> filename refused, URI unchanged.
 - Unknown suffix -> `application/octet-stream`, not an error.
 - `application/vnd.example` -> `set_mime_type` refuses; a `+json` suffix writes `json`.
-- Query, fragment, `%2F`, `%5C`, an escape forming `C:`, or a non-`file:` value -> `into_path` refuses.
+- Query, fragment, `%2F`, `%5C`, `%00`, an escape forming `C:` or a dot segment, a path opening on `//` with no authority, or a non-`file:` value -> `into_path` refuses.
+- `100%.csv`, `a b.csv`, `café.csv` -> `from_path` and `Url::join_path` encode them; `joinpath` takes URI text and refuses them.
+- `lake/%2E%2E/x` -> one ordinary segment everywhere structure is read, and refused by `into_path` rather than becoming `..`.
+- `\lake\x` and `/lake/x` -> the same `file:///lake/x`; `lake\x` stays the relative `file:lake/x`.
+- `//server/c:/x` -> `c:` is a share name and keeps its case; only an authority-less path reads it as a drive.
+- `./` normalized -> `""`; resolving `.` and `..` never makes a relative path absolute.
 - Absolute `joinpath` argument -> replaces the path.
 - `/../../a` -> `..` past an absolute root is clamped to `a`; relative `../../a` keeps both steps.
 - A drive or UNC path on any host -> detection is textual, so the result is the same everywhere.
@@ -422,8 +428,10 @@ This page owns the path as a sequence of names: segments, filenames, media type,
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --test uri -- path unc escaped_ascii identifiers_infer parts_resolves parents_walks navigation --skip receive_file_scheme
+    cargo test --features "parquet iceberg" -p yggdryl --test uri -- encoding:: fuzz::
     cargo bench -p yggdryl --bench uri -- "resource_parse/windows_(drive|unc)_normalization"
     cargo bench -p yggdryl --bench uri -- "resource_value/(path_segment_iteration|extension_iteration|stem_access|media_type_inference|media_type_mutation|file_path_projection)"
+    cargo bench -p yggdryl --bench uri -- "resource_value/(platform_join_clean|platform_join_escaping|uri_join)"
     ```
 
 === "Python"

@@ -11,7 +11,9 @@ use std::borrow::Cow;
 
 use smol_str::SmolStr;
 
-use super::parser::{is_query_fragment_byte, percent_decode, percent_encode, validate_component};
+use super::parser::{
+    is_query_fragment_byte, offset_parse_error, percent_decode, percent_encode, validate_component,
+};
 use crate::Result;
 
 /// Whether one byte may stand for itself inside a pair's key or value.
@@ -94,12 +96,30 @@ impl<'uri> Parameters<'uri> {
     /// for UTF-8.
     pub fn from_query(query: &'uri str, decode: bool) -> Result<Self> {
         let mut pairs = Vec::new();
-        for pair in query.split('&').filter(|pair| !pair.is_empty()) {
+        // The cursor is what lets a failing escape name its byte in the query
+        // the caller passed, rather than in the half-pair it was sliced out of.
+        let mut cursor = 0;
+        for pair in query.split('&') {
+            let pair_at = cursor;
+            cursor += pair.len() + 1;
+            if pair.is_empty() {
+                continue;
+            }
             let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
             pairs.push(if decode {
+                let value_at = pair_at + pair.len() - value.len();
                 (
-                    percent_decode(key, "uri query key")?,
-                    percent_decode(value, "uri query value")?,
+                    percent_decode(key, "uri query key").map_err(|error| {
+                        offset_parse_error(error, "uri query key", pair_at, "invalid query key")
+                    })?,
+                    percent_decode(value, "uri query value").map_err(|error| {
+                        offset_parse_error(
+                            error,
+                            "uri query value",
+                            value_at,
+                            "invalid query value",
+                        )
+                    })?,
                 )
             } else {
                 (Cow::Borrowed(key), Cow::Borrowed(value))
