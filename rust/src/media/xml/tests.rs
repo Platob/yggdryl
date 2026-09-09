@@ -827,3 +827,191 @@ fn a_handle_becomes_xml_media_and_stays_one() {
         3
     );
 }
+
+/// A handle that counts what actually reaches the bytes underneath it.
+///
+/// The positional write claims to touch one row's bytes and nothing else, and
+/// a byte comparison cannot tell that from a rewrite that happens to produce
+/// the same document. Counting can.
+#[derive(Debug)]
+struct Counted {
+    handle: Buffer,
+    writes: std::sync::atomic::AtomicUsize,
+    written: std::sync::atomic::AtomicU64,
+    read: std::sync::atomic::AtomicU64,
+}
+
+impl Counted {
+    fn new(document: &str) -> Self {
+        let mut handle = handle("trades.xml");
+        handle.write_all_bytes(document.as_bytes()).unwrap();
+        Self {
+            handle,
+            writes: std::sync::atomic::AtomicUsize::new(0),
+            written: std::sync::atomic::AtomicU64::new(0),
+            read: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// Answer the three counters and start them again.
+    fn take(&self) -> (usize, u64, u64) {
+        use std::sync::atomic::Ordering::Relaxed;
+        (
+            self.writes.swap(0, Relaxed),
+            self.written.swap(0, Relaxed),
+            self.read.swap(0, Relaxed),
+        )
+    }
+}
+
+impl IOMedia for Counted {
+    // Not `delegate_iomedia!`: that answers with the handle underneath, and a
+    // double that is not asked its own questions counts nothing.
+    fn as_io_base(&self) -> &dyn IOBase {
+        self
+    }
+
+    fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
+        self
+    }
+
+    fn overwrite_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> crate::Result<()> {
+        crate::iobase::overwrite_arrow_reader_default(self, batches, options)
+    }
+}
+
+impl IOBase for Counted {
+    crate::delegate_iobase!(handle: read_all_bytes, pstream_bytes, size, capacity, reserve,
+        truncate, url, bound_location, media_type, set_media_type, flush, open, opened, close,
+        parent, child_by_path, ls, kind, clear, remove, is_atomic, is_tabular, is_io);
+
+    fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
+        let read = self.handle.pread(offset, buffer)?;
+        self.read
+            .fetch_add(read as u64, std::sync::atomic::Ordering::Relaxed);
+        Ok(read)
+    }
+
+    fn read_range_bytes(&self, offset: u64, length: usize) -> crate::Result<Vec<u8>> {
+        let bytes = self.handle.read_range_bytes(offset, length)?;
+        self.read
+            .fetch_add(bytes.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        Ok(bytes)
+    }
+
+    fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
+        self.writes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.written
+            .fetch_add(bytes.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        self.handle.pwrite(offset, bytes)
+    }
+}
+
+/// A document of `rows` rows, each the same width.
+fn wide_document(rows: usize) -> String {
+    let mut document = String::from("<rows>");
+    for index in 0..rows {
+        document.push_str(&format!(
+            "\n  <row><id>{index:04}</id><symbol>AAPL</symbol></row>"
+        ));
+    }
+    document.push_str("\n</rows>");
+    document
+}
+
+#[test]
+fn a_same_length_replacement_writes_that_row_and_reads_almost_nothing() {
+    let document = wide_document(200);
+    let size = document.len() as u64;
+    let mut media = Xml::new(Counted::new(&document));
+    media.open().unwrap();
+    let span = media.read_row_index().unwrap().require(100).unwrap();
+    media.handle().take();
+
+    media
+        .write_row_scalar(
+            100,
+            &Scalar::from_record([
+                ("id", Scalar::from("0100")),
+                ("symbol", Scalar::from("MSFT")),
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+
+    let (writes, written, read) = media.handle().take();
+    // One write, of exactly the row that changed and the layout that leads it.
+    assert_eq!(writes, 1);
+    assert_eq!(written, span.byte_size() + "\n  ".len() as u64);
+    // And nothing read but the whitespace that introduces it.
+    assert!(read <= 64, "read {read} bytes of a {size}-byte document");
+}
+
+#[test]
+fn a_longer_replacement_moves_only_what_follows_the_row() {
+    let document = wide_document(200);
+    let size = document.len() as u64;
+    let mut media = Xml::new(Counted::new(&document));
+    media.open().unwrap();
+    let last = media.read_row_index().unwrap().len() - 1;
+    media.handle().take();
+
+    media
+        .write_row_scalar(
+            last,
+            &Scalar::from_record([
+                ("id", Scalar::from("0199")),
+                ("symbol", Scalar::from("A-MUCH-LONGER-SYMBOL")),
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+
+    let (_, written, read) = media.handle().take();
+    // The last row has no tail, so the write is the row and the read is its
+    // layout - both a small fraction of the document either way.
+    assert!(written < size / 8, "wrote {written} of {size} bytes");
+    assert!(read < size / 8, "read {read} of {size} bytes");
+
+    // Changing the same one row through the whole-document surface writes
+    // every row instead, which is the difference an index buys.
+    let values: Vec<String> = (0..200).map(|index| format!("{index:04}")).collect();
+    let mut whole = Xml::new(Counted::new(&document)).with_field(text_field());
+    let options = whole.record_options().unwrap();
+    whole.handle().take();
+    whole
+        .overwrite_arrow_reader(
+            text_reader(values.iter().map(String::as_str).collect()),
+            &options,
+        )
+        .unwrap();
+    let (_, rewritten, _) = whole.handle().take();
+    assert!(
+        rewritten > size / 2,
+        "an overwrite writes the document, got {rewritten} of {size} bytes"
+    );
+}
+
+#[test]
+fn an_append_writes_the_rows_it_adds_and_the_end_tag() {
+    let document = wide_document(200);
+    let size = document.len() as u64;
+    let mut media = Xml::new(Counted::new(&document));
+    media.open().unwrap();
+    media.read_row_index().unwrap();
+    media.handle().take();
+
+    media
+        .append_row_scalars([Scalar::from_record([("id", Scalar::from("0200"))]).unwrap()])
+        .unwrap();
+
+    let (_, written, read) = media.handle().take();
+    assert!(written < size / 8, "wrote {written} of {size} bytes");
+    assert!(read < size / 8, "read {read} of {size} bytes");
+    assert_eq!(media.row_size().unwrap(), 201);
+}
