@@ -9,9 +9,8 @@ use crate::types::budget::{
 };
 use crate::types::{
     AsciiFamily, Bytes, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, Decimal,
-    ISIN_WIDTH, MIC_WIDTH, MSGTYPE_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, Temporal,
-    Text, ascii_bytes, ascii_free_text, ascii_padded, ascii_text, code_cell_text, uuid_bytes,
-    uuid_parse,
+    ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, Temporal, Text, ascii_bytes,
+    ascii_free_text, ascii_padded, ascii_text, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::types::{
@@ -182,7 +181,6 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Cfi => code_array::<CFI_WIDTH>(dtype, values)?,
         DataType::Isin => code_array::<ISIN_WIDTH>(dtype, values)?,
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
-        DataType::MsgType => code_array::<MSGTYPE_WIDTH>(dtype, values)?,
         DataType::MsgDirection => code_array::<DIRECTION_WIDTH>(dtype, values)?,
         DataType::State => code_array::<STATE_WIDTH>(dtype, values)?,
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
@@ -500,12 +498,6 @@ pub(crate) fn value_from_array(
                 dtype,
                 fixed.value(index),
             )?)?))
-        }
-        DataType::MsgType => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::MsgType(crate::types::MsgType::new(
-                code_cell_text(dtype, fixed.value(index))?,
-            )?))
         }
         DataType::MsgDirection => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;

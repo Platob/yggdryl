@@ -1,0 +1,23 @@
+{
+  "name": "transactionattributegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "transactionattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "transactionattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTransactionAttributes(2871) > 0.",
+    "display": "TransactionAttributeGrp",
+    "fix:component": "transactionattribute",
+    "fix:counter": "2871"
+  }
+}

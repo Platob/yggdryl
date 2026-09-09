@@ -1,0 +1,23 @@
+{
+  "name": "legfinancingcontractualdefinitionsgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legfinancingcontractualdefinition",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legfinancingcontractualdefinition"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegContractualDefinitions(42198) > 0.",
+    "display": "LegFinancingContractualDefinitionsGrp",
+    "fix:component": "legfinancingcontractualdefinition",
+    "fix:counter": "42198"
+  }
+}

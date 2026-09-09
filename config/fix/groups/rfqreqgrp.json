@@ -1,0 +1,23 @@
+{
+  "name": "rfqreqgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "rfqreq",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "rfqreq"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of related symbols (instruments) in Request",
+    "display": "RFQReqGrp",
+    "fix:component": "rfqreq",
+    "fix:counter": "146"
+  }
+}

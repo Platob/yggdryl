@@ -1,0 +1,23 @@
+{
+  "name": "underlyingreturnrategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingreturnrate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingreturnrate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingReturnRates(43034) > 0.",
+    "display": "UnderlyingReturnRateGrp",
+    "fix:component": "underlyingreturnrate",
+    "fix:counter": "43034"
+  }
+}

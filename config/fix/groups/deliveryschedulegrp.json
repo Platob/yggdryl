@@ -1,0 +1,23 @@
+{
+  "name": "deliveryschedulegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "deliveryschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "deliveryschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoDeliverySchedules(41037) > 0.",
+    "display": "DeliveryScheduleGrp",
+    "fix:component": "deliveryschedule",
+    "fix:counter": "41037"
+  }
+}

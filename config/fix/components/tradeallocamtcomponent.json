@@ -1,0 +1,62 @@
+{
+  "name": "tradeallocamtcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "tradeallocamttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeallocamttype"
+        }
+      },
+      {
+        "name": "tradeallocamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeallocamt"
+        }
+      },
+      {
+        "name": "tradealloccurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradealloccurrency"
+        }
+      },
+      {
+        "name": "tradealloccurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradealloccurrencycodesource"
+        }
+      },
+      {
+        "name": "tradeallocamtreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeallocamtreason"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TradeAllocAmt"
+  }
+}

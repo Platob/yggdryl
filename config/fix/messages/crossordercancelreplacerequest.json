@@ -1,0 +1,754 @@
+{
+  "name": "crossordercancelreplacerequest",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "orderid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderid"
+        }
+      },
+      {
+        "name": "orderrequestid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderrequestid"
+        }
+      },
+      {
+        "name": "crossid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "crossid"
+        }
+      },
+      {
+        "name": "origcrossid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "origcrossid"
+        }
+      },
+      {
+        "name": "hostcrossid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "hostcrossid"
+        }
+      },
+      {
+        "name": "crosstype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "crosstype"
+        }
+      },
+      {
+        "name": "crossprioritization",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "crossprioritization"
+        }
+      },
+      {
+        "name": "norootpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norootpartyids"
+        }
+      },
+      {
+        "name": "rootparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "rootparties"
+        }
+      },
+      {
+        "name": "nosides",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "nosides"
+        }
+      },
+      {
+        "name": "sidecrossordmodgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "sidecrossordmodgrp"
+        }
+      },
+      {
+        "name": "instrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "instrument"
+        }
+      },
+      {
+        "name": "nounderlyings",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyings"
+        }
+      },
+      {
+        "name": "undinstrmtgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "undinstrmtgrp"
+        }
+      },
+      {
+        "name": "nolegs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegs"
+        }
+      },
+      {
+        "name": "instrmtleggrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "instrmtleggrp"
+        }
+      },
+      {
+        "name": "settltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settltype"
+        }
+      },
+      {
+        "name": "settldate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settldate"
+        }
+      },
+      {
+        "name": "handlinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "handlinst"
+        }
+      },
+      {
+        "name": "execinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "execinst"
+        }
+      },
+      {
+        "name": "minqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "minqty"
+        }
+      },
+      {
+        "name": "minqtymethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "minqtymethod"
+        }
+      },
+      {
+        "name": "matchincrement",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchincrement"
+        }
+      },
+      {
+        "name": "maxpricelevels",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "maxpricelevels"
+        }
+      },
+      {
+        "name": "displayinstruction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "displayinstruction"
+        }
+      },
+      {
+        "name": "maxfloor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "maxfloor"
+        }
+      },
+      {
+        "name": "marketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketsegmentid"
+        }
+      },
+      {
+        "name": "exdestination",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exdestination"
+        }
+      },
+      {
+        "name": "exdestinationidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exdestinationidsource"
+        }
+      },
+      {
+        "name": "notradingsessions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notradingsessions"
+        }
+      },
+      {
+        "name": "trdgsesgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "trdgsesgrp"
+        }
+      },
+      {
+        "name": "processcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "processcode"
+        }
+      },
+      {
+        "name": "prevclosepx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "prevclosepx"
+        }
+      },
+      {
+        "name": "locatereqd",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "locatereqd"
+        }
+      },
+      {
+        "name": "transacttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "transacttime"
+        }
+      },
+      {
+        "name": "transbkdtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "transbkdtime"
+        }
+      },
+      {
+        "name": "nostipulations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nostipulations"
+        }
+      },
+      {
+        "name": "stipulations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "stipulations"
+        }
+      },
+      {
+        "name": "ordtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "ordtype"
+        }
+      },
+      {
+        "name": "pricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricetype"
+        }
+      },
+      {
+        "name": "price",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "price"
+        }
+      },
+      {
+        "name": "priceprotectionscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "priceprotectionscope"
+        }
+      },
+      {
+        "name": "stoppx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "stoppx"
+        }
+      },
+      {
+        "name": "triggeringinstruction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "triggeringinstruction"
+        }
+      },
+      {
+        "name": "spreadorbenchmarkcurvedata",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "spreadorbenchmarkcurvedata"
+        }
+      },
+      {
+        "name": "yielddata",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "yielddata"
+        }
+      },
+      {
+        "name": "currency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "currency"
+        }
+      },
+      {
+        "name": "currencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "currencycodesource"
+        }
+      },
+      {
+        "name": "complianceid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complianceid"
+        }
+      },
+      {
+        "name": "ioiid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ioiid"
+        }
+      },
+      {
+        "name": "quoteid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quoteid"
+        }
+      },
+      {
+        "name": "timeinforce",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "timeinforce"
+        }
+      },
+      {
+        "name": "effectivetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "effectivetime"
+        }
+      },
+      {
+        "name": "expiredate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "expiredate"
+        }
+      },
+      {
+        "name": "expiretime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "expiretime"
+        }
+      },
+      {
+        "name": "gtbookinginst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "gtbookinginst"
+        }
+      },
+      {
+        "name": "exposureduration",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exposureduration"
+        }
+      },
+      {
+        "name": "exposuredurationunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exposuredurationunit"
+        }
+      },
+      {
+        "name": "tradingcapacity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingcapacity"
+        }
+      },
+      {
+        "name": "maxshow",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "maxshow"
+        }
+      },
+      {
+        "name": "peginstructions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "peginstructions"
+        }
+      },
+      {
+        "name": "discretioninstructions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "discretioninstructions"
+        }
+      },
+      {
+        "name": "targetstrategy",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "targetstrategy"
+        }
+      },
+      {
+        "name": "nostrategyparameters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nostrategyparameters"
+        }
+      },
+      {
+        "name": "strategyparametersgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "strategyparametersgrp"
+        }
+      },
+      {
+        "name": "targetstrategyparameters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "targetstrategyparameters"
+        }
+      },
+      {
+        "name": "participationrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "participationrate"
+        }
+      },
+      {
+        "name": "cancellationrights",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cancellationrights"
+        }
+      },
+      {
+        "name": "moneylaunderingstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "moneylaunderingstatus"
+        }
+      },
+      {
+        "name": "registid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "registid"
+        }
+      },
+      {
+        "name": "designation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "designation"
+        }
+      },
+      {
+        "name": "throttleinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttleinst"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = t (lowercase T)",
+    "display": "CrossOrderCancelReplaceRequest",
+    "fix:msgtype": "t"
+  }
+}

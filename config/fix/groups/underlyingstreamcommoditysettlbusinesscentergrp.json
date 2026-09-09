@@ -1,0 +1,23 @@
+{
+  "name": "underlyingstreamcommoditysettlbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcommoditysettlbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingstreamcommoditysettlbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingStreamCommoditySettlBusinessCenters(41962) > 0.",
+    "display": "UnderlyingStreamCommoditySettlBusinessCenterGrp",
+    "fix:component": "underlyingstreamcommoditysettlbusinesscentercomponent",
+    "fix:counter": "41962"
+  }
+}

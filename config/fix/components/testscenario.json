@@ -1,0 +1,232 @@
+{
+  "name": "testscenario",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "testscenarioid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testscenarioid"
+        }
+      },
+      {
+        "name": "testscenariostatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testscenariostatus"
+        }
+      },
+      {
+        "name": "testscenariostarttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testscenariostarttime"
+        }
+      },
+      {
+        "name": "testscenarioendtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testscenarioendtime"
+        }
+      },
+      {
+        "name": "notestscenarioparameters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notestscenarioparameters"
+        }
+      },
+      {
+        "name": "testscenarioparametergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "testscenarioparametergrp"
+        }
+      },
+      {
+        "name": "nonestedpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonestedpartyids"
+        }
+      },
+      {
+        "name": "nestedparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties"
+        }
+      },
+      {
+        "name": "noinstrumentscopes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noinstrumentscopes"
+        }
+      },
+      {
+        "name": "instrumentscopegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "instrumentscopegrp"
+        }
+      },
+      {
+        "name": "mdorigintype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdorigintype"
+        }
+      },
+      {
+        "name": "mdorigindesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdorigindesc"
+        }
+      },
+      {
+        "name": "mdorigintime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdorigintime"
+        }
+      },
+      {
+        "name": "teststepgroupid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststepgroupid"
+        }
+      },
+      {
+        "name": "noteststeps",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noteststeps"
+        }
+      },
+      {
+        "name": "teststepgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "teststepgrp"
+        }
+      },
+      {
+        "name": "notestsystemmodules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notestsystemmodules"
+        }
+      },
+      {
+        "name": "testsystemmodulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "testsystemmodulegrp"
+        }
+      },
+      {
+        "name": "notestmeasures",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notestmeasures"
+        }
+      },
+      {
+        "name": "testmeasuregrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "testmeasuregrp"
+        }
+      },
+      {
+        "name": "notestorders",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notestorders"
+        }
+      },
+      {
+        "name": "testordergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "testordergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TestScenario"
+  }
+}

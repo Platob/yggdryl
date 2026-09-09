@@ -1,0 +1,22 @@
+{
+  "name": "underlyingcomplexeventcrediteventsourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventcrediteventsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventcrediteventsource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventCreditEventSource"
+  }
+}

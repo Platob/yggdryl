@@ -1,0 +1,72 @@
+{
+  "name": "leginstrumentparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "leginstrumentpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leginstrumentpartyid"
+        }
+      },
+      {
+        "name": "leginstrumentpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leginstrumentpartyidsource"
+        }
+      },
+      {
+        "name": "leginstrumentpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leginstrumentpartyrole"
+        }
+      },
+      {
+        "name": "leginstrumentpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leginstrumentpartyrolequalifier"
+        }
+      },
+      {
+        "name": "noleginstrumentpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noleginstrumentpartysubids"
+        }
+      },
+      {
+        "name": "leginstrumentptyssubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "leginstrumentptyssubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegInstrumentParty"
+  }
+}

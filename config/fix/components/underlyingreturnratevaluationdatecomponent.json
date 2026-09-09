@@ -1,0 +1,32 @@
+{
+  "name": "underlyingreturnratevaluationdatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingreturnratevaluationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationdate"
+        }
+      },
+      {
+        "name": "underlyingreturnratevaluationdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingreturnratevaluationdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingReturnRateValuationDate"
+  }
+}

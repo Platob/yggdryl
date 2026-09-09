@@ -1,0 +1,23 @@
+{
+  "name": "legcomplexeventperioddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventperioddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcomplexeventperioddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegComplexEventPeriodDateTimes(41376) > 0.",
+    "display": "LegComplexEventPeriodDateGrp",
+    "fix:component": "legcomplexeventperioddatecomponent",
+    "fix:counter": "41376"
+  }
+}

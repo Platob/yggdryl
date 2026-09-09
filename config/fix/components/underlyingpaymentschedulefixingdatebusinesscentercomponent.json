@@ -1,0 +1,22 @@
+{
+  "name": "underlyingpaymentschedulefixingdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentschedulefixingdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentschedulefixingdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPaymentScheduleFixingDateBusinessCenter"
+  }
+}

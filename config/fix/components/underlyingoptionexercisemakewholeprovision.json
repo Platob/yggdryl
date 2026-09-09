@@ -1,0 +1,83 @@
+{
+  "name": "underlyingoptionexercisemakewholeprovision",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingmakewholedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmakewholedate"
+        }
+      },
+      {
+        "name": "underlyingmakewholeamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmakewholeamount"
+        }
+      },
+      {
+        "name": "underlyingmakewholebenchmarkcurvename",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmakewholebenchmarkcurvename"
+        }
+      },
+      {
+        "name": "underlyingmakewholebenchmarkcurvepoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmakewholebenchmarkcurvepoint"
+        }
+      },
+      {
+        "name": "underlyingmakewholerecallspread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmakewholerecallspread"
+        }
+      },
+      {
+        "name": "underlyingmakewholebenchmarkquote",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmakewholebenchmarkquote"
+        }
+      },
+      {
+        "name": "underlyingmakewholeinterpolationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmakewholeinterpolationmethod"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "UnderlyingOptionExerciseMakeWholeProvision is a subcomponent of the UnderlyingOptionExercise component used to specify the set of rules of maintaining balance when an option is exercised.",
+    "display": "UnderlyingOptionExerciseMakeWholeProvision"
+  }
+}

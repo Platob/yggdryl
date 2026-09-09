@@ -18,9 +18,6 @@ use crate::MimeType;
 /// FIX's official `XmlData` payload tag.
 const XML_DATA_TAG: i32 = 213;
 
-/// The one routing name for FIX user-defined MsgTypes (`U` plus a suffix).
-const UDF_MSGTYPE: &[u8] = b"UDF";
-
 /// The namespace every ULBridge MBean is named under.
 ///
 /// One vendor string carries the whole reading: it is what makes a JSON
@@ -131,7 +128,6 @@ impl<'line> LineInference<'line> {
     pub(crate) fn msgtype(&self) -> Option<&'line [u8]> {
         self.name_msgtype
             .or(self.tag_msgtype)
-            .map(route_msgtype)
             .or(self.ulconfig_msgtype)
     }
 
@@ -167,13 +163,14 @@ fn find_named_value<'line>(line: &'line [u8], wanted: &[u8]) -> Option<&'line [u
             continue;
         }
         let value_start = equals + 1;
+        let explicit_separator = line[value_start..]
+            .iter()
+            .any(|byte| matches!(byte, 0x01 | b'|'));
         let mut end = value_start;
         while end < line.len()
             && !matches!(
                 line[end],
                 0x01 | b'|'
-                    | b' '
-                    | b'\t'
                     | b'\r'
                     | b'\n'
                     | b','
@@ -187,22 +184,27 @@ fn find_named_value<'line>(line: &'line [u8], wanted: &[u8]) -> Option<&'line [u
                     | b'\\'
             )
         {
+            if matches!(line[end], b' ' | b'\t') {
+                let next = line[end..]
+                    .iter()
+                    .position(|byte| !matches!(byte, b' ' | b'\t'))
+                    .map_or(line.len(), |offset| end + offset);
+                if !explicit_separator || pair_at(line, next).is_some() {
+                    break;
+                }
+                end = next;
+                continue;
+            }
             end += 1;
+        }
+        while end > value_start && matches!(line[end - 1], b' ' | b'\t') {
+            end -= 1;
         }
         if end > value_start {
             return Some(&line[value_start..end]);
         }
     }
     None
-}
-
-/// Route the standard's `U*` user-defined range through one dictionary root.
-fn route_msgtype(value: &[u8]) -> &[u8] {
-    if value.len() > 1 && value[0] == b'U' && value[1..].iter().all(u8::is_ascii_alphanumeric) {
-        UDF_MSGTYPE
-    } else {
-        value
-    }
 }
 
 fn locate_frame(line: &[u8]) -> Option<LineFrame> {
@@ -235,14 +237,20 @@ fn frame(line: &[u8], (start, numeric): (usize, bool)) -> LineFrame {
 /// recognized once rather than in each place that reads a frame.
 pub(crate) const SOH_MARKERS: [&[u8]; 4] = [b"^A", b"\\x01", b"<SOH>", b"{SOH}"];
 
+/// The delimiter of a named bridge frame, preserving spaces inside delimited values.
+pub(crate) fn ullink_separator(line: &[u8]) -> u8 {
+    // The outer delimiter precedes any separators packed inside an indexed
+    // group's value. A later inner SOH must not override an earlier pipe.
+    memchr::memchr2(0x01, b'|', line).map_or(b' ', |position| line[position])
+}
+
 impl LineSeparator {
     fn for_line(line: &[u8], start: usize, numeric: bool) -> Self {
         let tail = &line[start..];
         if !numeric {
-            return if memchr::memchr(b'|', tail).is_some() {
-                Self::Byte(b'|')
-            } else {
-                Self::Whitespace
+            return match ullink_separator(tail) {
+                b' ' => Self::Whitespace,
+                byte => Self::Byte(byte),
             };
         }
 

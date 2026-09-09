@@ -53,8 +53,8 @@ pub use ascii::{
 };
 #[cfg(feature = "arrow")]
 pub(crate) use ascii::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, MIC_WIDTH, MSGTYPE_WIDTH,
-    SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal, code_text,
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
+    TIMEINFORCE_WIDTH, code_refusal, code_text,
 };
 pub use boolean::*;
 pub use boolean::{BooleanScalar, NullScalar};

@@ -1,0 +1,244 @@
+{
+  "name": "massquote",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "quotereqid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotereqid"
+        }
+      },
+      {
+        "name": "quoteid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "quoteid"
+        }
+      },
+      {
+        "name": "quotetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotetype"
+        }
+      },
+      {
+        "name": "quotemodeltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotemodeltype"
+        }
+      },
+      {
+        "name": "quoteresponselevel",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quoteresponselevel"
+        }
+      },
+      {
+        "name": "nopartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartyids"
+        }
+      },
+      {
+        "name": "parties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "parties"
+        }
+      },
+      {
+        "name": "account",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "account"
+        }
+      },
+      {
+        "name": "acctidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "acctidsource"
+        }
+      },
+      {
+        "name": "accounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "accounttype"
+        }
+      },
+      {
+        "name": "defbidsize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "defbidsize"
+        }
+      },
+      {
+        "name": "defoffersize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "defoffersize"
+        }
+      },
+      {
+        "name": "noquotesets",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "noquotesets"
+        }
+      },
+      {
+        "name": "quotsetgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "quotsetgrp"
+        }
+      },
+      {
+        "name": "selfmatchpreventionid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "selfmatchpreventionid"
+        }
+      },
+      {
+        "name": "selfmatchpreventioninstruction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "selfmatchpreventioninstruction"
+        }
+      },
+      {
+        "name": "throttleinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "throttleinst"
+        }
+      },
+      {
+        "name": "complianceid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complianceid"
+        }
+      },
+      {
+        "name": "compliancetext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "compliancetext"
+        }
+      },
+      {
+        "name": "encodedcompliancetextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedcompliancetextlen"
+        }
+      },
+      {
+        "name": "encodedcompliancetext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedcompliancetext"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = i (lowercase I)",
+    "display": "MassQuote",
+    "fix:msgtype": "i"
+  }
+}

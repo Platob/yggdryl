@@ -1,0 +1,22 @@
+{
+  "name": "underlyingdividendaccrualpaymentdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingdividendaccrualpaymentdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendaccrualpaymentdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingDividendAccrualPaymentDateBusinessCenter"
+  }
+}

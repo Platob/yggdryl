@@ -1,0 +1,32 @@
+{
+  "name": "newsref",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "newsrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "newsrefid"
+        }
+      },
+      {
+        "name": "newsreftype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "newsreftype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "NewsRef"
+  }
+}

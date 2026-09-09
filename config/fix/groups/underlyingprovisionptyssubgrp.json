@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprovisionptyssubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprovisionptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprovisionptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProvisionPartySubIDs(42177) > 0.",
+    "display": "UnderlyingProvisionPtysSubGrp",
+    "fix:component": "underlyingprovisionptyssub",
+    "fix:counter": "42177"
+  }
+}

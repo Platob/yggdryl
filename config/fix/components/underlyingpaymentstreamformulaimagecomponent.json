@@ -1,0 +1,33 @@
+{
+  "name": "underlyingpaymentstreamformulaimagecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreamformulaimagelength",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamformulaimagelength"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamformulaimage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamformulaimage"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when UnderlyingPaymentStreamFormulaImage(42948) is specified.",
+    "display": "UnderlyingPaymentStreamFormulaImage"
+  }
+}

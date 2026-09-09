@@ -1,0 +1,23 @@
+{
+  "name": "preallocgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "prealloc",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "prealloc"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of repeating groups for pre-trade allocation",
+    "display": "PreAllocGrp",
+    "fix:component": "prealloc",
+    "fix:counter": "78"
+  }
+}

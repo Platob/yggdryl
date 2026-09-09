@@ -1,0 +1,23 @@
+{
+  "name": "legcomplexeventdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcomplexeventdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegComplexEventDateBusinessCenters(41387) > 0.",
+    "display": "LegComplexEventDateBusinessCenterGrp",
+    "fix:component": "legcomplexeventdatebusinesscentercomponent",
+    "fix:counter": "41387"
+  }
+}

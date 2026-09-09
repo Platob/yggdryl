@@ -1,0 +1,23 @@
+{
+  "name": "affectedordgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "affectedord",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "affectedord"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAffectedOrders(534) > 0.",
+    "display": "AffectedOrdGrp",
+    "fix:component": "affectedord",
+    "fix:counter": "534"
+  }
+}

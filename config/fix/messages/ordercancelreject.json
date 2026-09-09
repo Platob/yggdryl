@@ -1,0 +1,324 @@
+{
+  "name": "ordercancelreject",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "orderid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "orderid"
+        }
+      },
+      {
+        "name": "orderrequestid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderrequestid"
+        }
+      },
+      {
+        "name": "secondaryorderid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryorderid"
+        }
+      },
+      {
+        "name": "secondaryclordid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryclordid"
+        }
+      },
+      {
+        "name": "clordid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "clordid"
+        }
+      },
+      {
+        "name": "clordlinkid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clordlinkid"
+        }
+      },
+      {
+        "name": "origclordid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "origclordid"
+        }
+      },
+      {
+        "name": "ordstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "ordstatus"
+        }
+      },
+      {
+        "name": "workingindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "workingindicator"
+        }
+      },
+      {
+        "name": "origordmodtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "origordmodtime"
+        }
+      },
+      {
+        "name": "listid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "listid"
+        }
+      },
+      {
+        "name": "account",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "account"
+        }
+      },
+      {
+        "name": "acctidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "acctidsource"
+        }
+      },
+      {
+        "name": "accounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "accounttype"
+        }
+      },
+      {
+        "name": "tradeoriginationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeoriginationdate"
+        }
+      },
+      {
+        "name": "tradedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradedate"
+        }
+      },
+      {
+        "name": "transacttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "transacttime"
+        }
+      },
+      {
+        "name": "cxlrejresponseto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "cxlrejresponseto"
+        }
+      },
+      {
+        "name": "cxlrejreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "cxlrejreason"
+        }
+      },
+      {
+        "name": "rejecttext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rejecttext"
+        }
+      },
+      {
+        "name": "encodedrejecttextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedrejecttextlen"
+        }
+      },
+      {
+        "name": "encodedrejecttext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedrejecttext"
+        }
+      },
+      {
+        "name": "exdestination",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exdestination"
+        }
+      },
+      {
+        "name": "exdestinationidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exdestinationidsource"
+        }
+      },
+      {
+        "name": "nopartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartyids"
+        }
+      },
+      {
+        "name": "parties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "parties"
+        }
+      },
+      {
+        "name": "text",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "text"
+        }
+      },
+      {
+        "name": "encodedtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtextlen"
+        }
+      },
+      {
+        "name": "encodedtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtext"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = 9",
+    "display": "OrderCancelReject",
+    "fix:msgtype": "9"
+  }
+}

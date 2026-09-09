@@ -1,0 +1,23 @@
+{
+  "name": "partydetailaltsubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "partydetailaltsub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "partydetailaltsub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoPartyDetailAltSubIDs > 0.",
+    "display": "PartyDetailAltSubGrp",
+    "fix:component": "partydetailaltsub",
+    "fix:counter": "1519"
+  }
+}

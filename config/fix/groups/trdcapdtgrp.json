@@ -1,0 +1,23 @@
+{
+  "name": "trdcapdtgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdcapdt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "trdcapdt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of date ranges provided (must be 1 or 2 if specified)",
+    "display": "TrdCapDtGrp",
+    "fix:component": "trdcapdt",
+    "fix:counter": "580"
+  }
+}

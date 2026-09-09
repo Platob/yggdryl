@@ -1,0 +1,42 @@
+{
+  "name": "legreturnrateinformationsourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legreturnrateinformationsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnrateinformationsource"
+        }
+      },
+      {
+        "name": "legreturnratereferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratereferencepage"
+        }
+      },
+      {
+        "name": "legreturnratereferencepageheading",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratereferencepageheading"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegReturnRateInformationSource"
+  }
+}

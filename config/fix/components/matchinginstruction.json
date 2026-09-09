@@ -1,0 +1,52 @@
+{
+  "name": "matchinginstruction",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "matchinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchinst"
+        }
+      },
+      {
+        "name": "matchinstmarketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchinstmarketid"
+        }
+      },
+      {
+        "name": "matchattribtagid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchattribtagid"
+        }
+      },
+      {
+        "name": "matchattribvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "matchattribvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MatchingInstruction"
+  }
+}

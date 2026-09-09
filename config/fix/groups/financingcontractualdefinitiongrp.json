@@ -1,0 +1,23 @@
+{
+  "name": "financingcontractualdefinitiongrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "financingcontractualdefinition",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "financingcontractualdefinition"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoContractualDefinitions(40040) > 0.",
+    "display": "FinancingContractualDefinitionGrp",
+    "fix:component": "financingcontractualdefinition",
+    "fix:counter": "40040"
+  }
+}

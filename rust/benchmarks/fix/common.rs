@@ -44,14 +44,22 @@ fn vendored(count: usize) -> Vec<Field> {
 
 /// The tracked seed beside a venue dictionary of `count` fields.
 pub(crate) fn two_branches(count: usize) -> FixRegistry {
-    FixRegistry::from_fields(seed().iter().cloned().chain(vendored(count)))
-        .expect("the generated dictionary has no conflict")
+    let mut registry = seed();
+    registry
+        .add_fields(vendored(count))
+        .expect("the generated dictionary has no conflict");
+    registry
 }
 
-/// The tracked seed dictionary, loaded.
+/// One immutable seed for setup; storage benchmarks load their handles directly.
 pub(crate) fn seed() -> FixRegistry {
-    let folder = Folder::new(seed_root()).expect("the seed folder is a local path");
-    FixRegistry::from_handle(&folder).expect("the tracked seed loads")
+    static REGISTRY: std::sync::OnceLock<FixRegistry> = std::sync::OnceLock::new();
+    REGISTRY
+        .get_or_init(|| {
+            let folder = Folder::new(seed_root()).expect("the seed folder is a local path");
+            FixRegistry::from_handle(&folder).expect("the tracked seed loads")
+        })
+        .clone()
 }
 
 /// `count` generated fields with tags from 5000 up, each carrying an alias.
@@ -70,27 +78,17 @@ pub(crate) fn generated(count: usize) -> Vec<Field> {
         .collect()
 }
 
-/// One in fifty generated fields is a repeating group.
-///
-/// A dictionary's components and repeating groups are a small minority of it,
-/// and that ratio keeps the benchmark corpus representative while both shapes
-/// resolve through the same indexes.
-const NESTED_EVERY: usize = 50;
+/// One in fifty generated scalar fields counts a repeating group.
+const COUNTER_EVERY: usize = 50;
 
 /// `count` generated fields with tags from 5000 up, one in
-/// [`NESTED_EVERY`] of them a repeating group.
-///
-/// The nested tags are exactly `5000 + NESTED_EVERY * k`, so a benchmark
-/// names a primitive hit and a nested hit by arithmetic.
-pub(crate) fn mixed_nestedness(count: usize) -> Vec<Field> {
+/// [`COUNTER_EVERY`] of them an int32 group counter.
+pub(crate) fn mixed_categories(count: usize) -> Vec<Field> {
     (0..count)
         .map(|index| {
             let tag = i32::try_from(5_000 + index).expect("a small tag");
-            let mut field = if index % NESTED_EVERY == 0 {
-                let item = DataType::from_fields([DataType::Utf8.nullable_field("Member")])
-                    .expect("a struct item")
-                    .required_field("item");
-                DataType::list(item).nullable_field(format!("NoGroup{index:05}"))
+            let mut field = if index % COUNTER_EVERY == 0 {
+                DataType::Int32.nullable_field(format!("NoGroup{index:05}"))
             } else {
                 DataType::Int64.nullable_field(format!("Generated{index:05}"))
             };

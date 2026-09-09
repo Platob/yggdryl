@@ -1,0 +1,172 @@
+{
+  "name": "securityriskmetric",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrument"
+        }
+      },
+      {
+        "name": "pricedelta",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricedelta"
+        }
+      },
+      {
+        "name": "gamma",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "gamma"
+        }
+      },
+      {
+        "name": "rho",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rho"
+        }
+      },
+      {
+        "name": "theta",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "theta"
+        }
+      },
+      {
+        "name": "vega",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "vega"
+        }
+      },
+      {
+        "name": "price",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "price"
+        }
+      },
+      {
+        "name": "bidpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "bidpx"
+        }
+      },
+      {
+        "name": "offerpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "offerpx"
+        }
+      },
+      {
+        "name": "volatilitytime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "volatilitytime"
+        }
+      },
+      {
+        "name": "volatility",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "volatility"
+        }
+      },
+      {
+        "name": "bidvolatility",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "bidvolatility"
+        }
+      },
+      {
+        "name": "offervolatility",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "offervolatility"
+        }
+      },
+      {
+        "name": "midvolatility",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "midvolatility"
+        }
+      },
+      {
+        "name": "norelativevalues",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norelativevalues"
+        }
+      },
+      {
+        "name": "relativevaluegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "relativevaluegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SecurityRiskMetric"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "pricingdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "pricingdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricingdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PricingDateBusinessCenter"
+  }
+}

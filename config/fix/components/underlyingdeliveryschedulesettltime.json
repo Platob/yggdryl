@@ -1,0 +1,42 @@
+{
+  "name": "underlyingdeliveryschedulesettltime",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingdeliveryschedulesettlstart",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulesettlstart"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulesettlend",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulesettlend"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulesettltimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulesettltimetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingDeliveryScheduleSettlTime"
+  }
+}

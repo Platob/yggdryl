@@ -1,0 +1,72 @@
+{
+  "name": "settldetail",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "settlobligsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlobligsource"
+        }
+      },
+      {
+        "name": "standinstdbtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "standinstdbtype"
+        }
+      },
+      {
+        "name": "standinstdbname",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "standinstdbname"
+        }
+      },
+      {
+        "name": "standinstdbid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "standinstdbid"
+        }
+      },
+      {
+        "name": "nosettlpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nosettlpartyids"
+        }
+      },
+      {
+        "name": "settlparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "settlparties"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SettlDetail"
+  }
+}

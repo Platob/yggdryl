@@ -1,0 +1,42 @@
+{
+  "name": "teststepparameter",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "teststepparametername",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststepparametername"
+        }
+      },
+      {
+        "name": "teststepparametertype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststepparametertype"
+        }
+      },
+      {
+        "name": "teststepparametervalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "teststepparametervalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TestStepParameter"
+  }
+}

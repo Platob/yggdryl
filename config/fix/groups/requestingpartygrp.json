@@ -1,0 +1,23 @@
+{
+  "name": "requestingpartygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "requestingparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "requestingparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoRequestingPartyIDs > 0.",
+    "display": "RequestingPartyGrp",
+    "fix:component": "requestingparty",
+    "fix:counter": "1657"
+  }
+}

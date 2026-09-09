@@ -1,0 +1,32 @@
+{
+  "name": "legpaymentstreamfixingdatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamfixingdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfixingdate"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixingdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfixingdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPaymentStreamFixingDate"
+  }
+}

@@ -1,53 +1,52 @@
 # Encode
 
-Compose a frame from a message type's own layout: required fields first, coded values by name, and the two self-describing tags computed from the bytes as you type.
+`FixMsg::into_bytes` emits the message's original arrival record with the chosen
+separator. The typed row is a projection; emission uses the retained raw values
+and their wire order.
 
 ## Contract
 
-| | |
+| Aspect | Rule |
 | --- | --- |
-| Offers | From `assets/fix.json`: the fields its layout requires, those plus the ones a frame always carries, or the ones the message declares itself — and any other by tag or by name |
-| Values | A field carrying a code set becomes a list of its codes, each shown as the specification words it |
-| Writes | Header tags in the standard header's own order, then the body, then the [two self-describing tags](decode.md#what-is-checked) over the bytes it wrote |
-| Separator | SOH for the wire, `\|` for reading, `^A` for a log; the arithmetic is always over SOH, whatever is shown |
-| Package | [`FixMsg::to_bytes`](message.md) re-emits the wire record from a message's entries; a composed frame is checked against it by round-tripping through [Decode](decode.md) |
+| Source | Original entries held by a parsed `FixMsg` |
+| Order | A group's members follow its scalar counter in arrival order |
+| Separator | One byte; SOH by default in Python and JavaScript |
+| Values | Original wire values, including values represented as null in the typed row |
+| Browser | Displays bytes already emitted by the native package for each stored sample |
 
 ## Use
 
-A message re-emits exactly what arrived, so a frame written by hand and read back must match byte for byte.
+The specialized numeric-frame reader returns one message. Generic captured-line
+and bulk readers return [message iterators](capture.md#a-reader-is-the-whole-parse-surface).
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
-
     use yggdryl::holder::local::Folder;
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
-    let frame = "8=FIX.4.4|9=56|35=D|49=BUYSIDE|56=VENUE|11=ORDER-1|55=AAPL|54=1|38=100|10=043|";
-
-    let message = reader.transform_line(frame.as_bytes(), false)?;
-    // The emit is the wire record, so a translated code cannot leak into it.
-    assert_eq!(message.into_text('|')?, frame);
-    // Read back, the round trip is the same message and not merely the same text.
-    assert_eq!(reader.transform_line(message.into_text('|')?.as_bytes(), false)?, message);
+    let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    let frame = b"8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|";
+    let message = codec.transform_fix_line(frame, false)?;
+    let emitted = message.into_bytes(b'|');
+    assert_eq!(emitted, frame);
+    assert_eq!(codec.transform_fix_line(&emitted, false)?, message);
     ```
 
 === "Python"
 
     ```python
     from pathlib import Path
-
     from yggdryl.fix import FixCodec, FixRegistry
 
-    reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
-    frame = "8=FIX.4.4|9=56|35=D|49=BUYSIDE|56=VENUE|11=ORDER-1|55=AAPL|54=1|38=100|10=043|"
-
-    message = reader.transform_line(frame.encode())
-    assert message.to_bytes(ord("|")) == frame.encode()
-    assert reader.transform_line(frame.encode()) == message
+    codec = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
+    frame = b"8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|"
+    message = codec.transform_fix_line(frame, separator=ord("|"))
+    emitted = message.into_bytes(ord("|"))
+    assert emitted == frame
+    assert codec.transform_fix_line(emitted, separator=ord("|")) == message
     ```
 
 === "JavaScript"
@@ -57,45 +56,36 @@ A message re-emits exactly what arrived, so a frame written by hand and read bac
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
-    const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
-    const frame = '8=FIX.4.4|9=56|35=D|49=BUYSIDE|56=VENUE|11=ORDER-1|55=AAPL|54=1|38=100|10=043|'
-
-    const message = reader.transformLine(Buffer.from(frame))
-    assert.equal(Buffer.from(message.toBytes(0x7c)).toString(), frame)
-    assert.ok(reader.transformLine(Buffer.from(frame)).equals(message))
+    const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config/fix')))
+    const frame = Buffer.from('8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|')
+    const message = codec.transformFixLine(frame, 124)
+    const emitted = Buffer.from(message.intoBytes(124))
+    assert.deepEqual(emitted, frame)
+    assert.ok(codec.transformFixLine(emitted, 124).equals(message))
     ```
 
-## Write a frame
+## Inspect emitted bytes
 
-Pick a message type. The form is its layout, and the frame under it is rebuilt on every keystroke, with `BodyLength` and `CheckSum` recomputed each time. Read it back in the decoder when it looks right.
+Select a native sample and copy its emitted text. The viewer does not synthesize
+new orders, recalculate framing tags or run a separate FIX encoder.
 
 <div class="ygg-fx" data-fix="encode" markdown="1">
 This section renders `assets/fix.json` and needs JavaScript.
 </div>
 
-### How the frame is ordered
-
-| Position | Holds |
-| --- | --- |
-| First | `BeginString(8)`, then `BodyLength(9)`, then `MsgType(35)` — the three the specification fixes |
-| Then | The rest of the standard header, in the order the header component declares |
-| Then | The body, by tag |
-| Last | `CheckSum(10)` |
-
-Both are computed here rather than asked for, by the [rule the decoder checks them against](decode.md#what-is-checked).
-
 ## Edges
 
-- The composer writes flat tags. A repeating group is written by sending its counter and then its members, which is what a numeric frame does on the wire; the [decoder](decode.md) gathers them back under the counter.
-- A field with more than sixty codes stays a text box rather than becoming a list nobody can scroll.
-- `MsgType(35)` follows the chosen message type and cannot be edited away from it.
-- An empty value is not sent. `54=` is a malformed message, not an absent side, and the package refuses to read one.
-- A composed frame is not a validated message. It says what it says; whether a venue accepts it is the venue's answer.
+- `BodyLength` and `CheckSum` retain the values that arrived; emission does not
+  repair an invalid frame.
+- Enum display names in a typed row do not replace the original wire codes.
+- Direction verbs and surrounding capture prose are outside the emitted frame.
+- For streamed Arrow output, Rust's [`write_fix`](arrow.md#back-to-the-wire)
+  reads the `nofixentries` column one row at a time.
 
 ## Commands
 
 ```bash
-cargo test -p yggdryl --test fix reader::a_message_re_emits
-node --test node/tests/fix/fix.test.js
+cargo test -p yggdryl --test fix
+node --test "node/tests/fix/*.test.js"
 node scripts/build_docs_fix.js --check
 ```

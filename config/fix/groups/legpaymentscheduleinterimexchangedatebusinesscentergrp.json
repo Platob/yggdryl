@@ -1,0 +1,23 @@
+{
+  "name": "legpaymentscheduleinterimexchangedatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentscheduleinterimexchangedatebusinesscenter",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentscheduleinterimexchangedatebusinesscenter"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentScheduleInterimExchangeDateBusinessCenters(40928) > 0.",
+    "display": "LegPaymentScheduleInterimExchangeDateBusinessCenterGrp",
+    "fix:component": "legpaymentscheduleinterimexchangedatebusinesscenter",
+    "fix:counter": "40928"
+  }
+}

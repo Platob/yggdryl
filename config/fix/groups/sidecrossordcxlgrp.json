@@ -1,0 +1,23 @@
+{
+  "name": "sidecrossordcxlgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "sidecrossordcxl",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "sidecrossordcxl"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Must be 1 or 2",
+    "display": "SideCrossOrdCxlGrp",
+    "fix:component": "sidecrossordcxl",
+    "fix:counter": "552"
+  }
+}

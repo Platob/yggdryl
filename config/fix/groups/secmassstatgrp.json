@@ -1,0 +1,23 @@
+{
+  "name": "secmassstatgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "secmassstat",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "secmassstat"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of exceptions with a trading status different from SecurityMassTradingStatus (1679).",
+    "display": "SecMassStatGrp",
+    "fix:component": "secmassstat",
+    "fix:counter": "146"
+  }
+}

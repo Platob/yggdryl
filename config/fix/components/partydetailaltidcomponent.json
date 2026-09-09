@@ -1,0 +1,52 @@
+{
+  "name": "partydetailaltidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "partydetailaltid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partydetailaltid"
+        }
+      },
+      {
+        "name": "partydetailaltidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partydetailaltidsource"
+        }
+      },
+      {
+        "name": "nopartydetailaltsubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartydetailaltsubids"
+        }
+      },
+      {
+        "name": "partydetailaltsubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "partydetailaltsubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PartyDetailAltID"
+  }
+}

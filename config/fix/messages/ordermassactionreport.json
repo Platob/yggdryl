@@ -1,0 +1,444 @@
+{
+  "name": "ordermassactionreport",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "clordid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clordid"
+        }
+      },
+      {
+        "name": "secondaryclordid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryclordid"
+        }
+      },
+      {
+        "name": "massactionreportid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "massactionreportid"
+        }
+      },
+      {
+        "name": "massactiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "massactiontype"
+        }
+      },
+      {
+        "name": "massactionscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "massactionscope"
+        }
+      },
+      {
+        "name": "massactionreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "massactionreason"
+        }
+      },
+      {
+        "name": "massactionresponse",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "massactionresponse"
+        }
+      },
+      {
+        "name": "massactionrejectreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "massactionrejectreason"
+        }
+      },
+      {
+        "name": "totalaffectedorders",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "totalaffectedorders"
+        }
+      },
+      {
+        "name": "totalnotaffectedorders",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "totalnotaffectedorders"
+        }
+      },
+      {
+        "name": "lastfragment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastfragment"
+        }
+      },
+      {
+        "name": "noaffectedorders",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noaffectedorders"
+        }
+      },
+      {
+        "name": "affectedordgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "affectedordgrp"
+        }
+      },
+      {
+        "name": "nonotaffectedorders",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonotaffectedorders"
+        }
+      },
+      {
+        "name": "notaffectedordgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "notaffectedordgrp"
+        }
+      },
+      {
+        "name": "noaffectedmarketsegments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noaffectedmarketsegments"
+        }
+      },
+      {
+        "name": "affectedmarketsegmentgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "affectedmarketsegmentgrp"
+        }
+      },
+      {
+        "name": "nonotaffectedmarketsegments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonotaffectedmarketsegments"
+        }
+      },
+      {
+        "name": "notaffectedmarketsegmentgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "notaffectedmarketsegmentgrp"
+        }
+      },
+      {
+        "name": "marketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketid"
+        }
+      },
+      {
+        "name": "marketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketsegmentid"
+        }
+      },
+      {
+        "name": "notargetmarketsegments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notargetmarketsegments"
+        }
+      },
+      {
+        "name": "targetmarketsegmentgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "targetmarketsegmentgrp"
+        }
+      },
+      {
+        "name": "tradingsessionid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionid"
+        }
+      },
+      {
+        "name": "tradingsessionsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionsubid"
+        }
+      },
+      {
+        "name": "nopartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartyids"
+        }
+      },
+      {
+        "name": "parties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "parties"
+        }
+      },
+      {
+        "name": "notargetpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notargetpartyids"
+        }
+      },
+      {
+        "name": "targetparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "targetparties"
+        }
+      },
+      {
+        "name": "instrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrument"
+        }
+      },
+      {
+        "name": "underlyinginstrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyinginstrument"
+        }
+      },
+      {
+        "name": "side",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "side"
+        }
+      },
+      {
+        "name": "price",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "price"
+        }
+      },
+      {
+        "name": "transacttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "transacttime"
+        }
+      },
+      {
+        "name": "complianceid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complianceid"
+        }
+      },
+      {
+        "name": "compliancetext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "compliancetext"
+        }
+      },
+      {
+        "name": "encodedcompliancetextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedcompliancetextlen"
+        }
+      },
+      {
+        "name": "encodedcompliancetext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedcompliancetext"
+        }
+      },
+      {
+        "name": "text",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "text"
+        }
+      },
+      {
+        "name": "encodedtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtextlen"
+        }
+      },
+      {
+        "name": "encodedtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtext"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = BZ",
+    "display": "OrderMassActionReport",
+    "fix:msgtype": "BZ"
+  }
+}

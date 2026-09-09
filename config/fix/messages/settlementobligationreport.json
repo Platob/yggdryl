@@ -1,0 +1,144 @@
+{
+  "name": "settlementobligationreport",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "applicationsequencecontrol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "applicationsequencecontrol"
+        }
+      },
+      {
+        "name": "clearingbusinessdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clearingbusinessdate"
+        }
+      },
+      {
+        "name": "settlementcycleno",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlementcycleno"
+        }
+      },
+      {
+        "name": "settlobligmsgid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "settlobligmsgid"
+        }
+      },
+      {
+        "name": "settlobligmode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "settlobligmode"
+        }
+      },
+      {
+        "name": "text",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "text"
+        }
+      },
+      {
+        "name": "encodedtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtextlen"
+        }
+      },
+      {
+        "name": "encodedtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtext"
+        }
+      },
+      {
+        "name": "transacttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "transacttime"
+        }
+      },
+      {
+        "name": "nosettloblig",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "nosettloblig"
+        }
+      },
+      {
+        "name": "settlobligationinstructions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "settlobligationinstructions"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = BQ",
+    "display": "SettlementObligationReport",
+    "fix:msgtype": "BQ"
+  }
+}

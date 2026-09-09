@@ -1,0 +1,22 @@
+{
+  "name": "derivativeinstrumentpartysubidsgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "derivativeinstrumentpartysubidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "derivativeinstrumentpartysubidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DerivativeInstrumentPartySubIDsGrp",
+    "fix:component": "derivativeinstrumentpartysubidcomponent",
+    "fix:counter": "1296"
+  }
+}

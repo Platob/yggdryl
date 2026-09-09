@@ -1,0 +1,23 @@
+{
+  "name": "pricequalifiergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "pricequalifiercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "pricequalifiercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPriceQualifiers(2709) > 0.",
+    "display": "PriceQualifierGrp",
+    "fix:component": "pricequalifiercomponent",
+    "fix:counter": "2709"
+  }
+}

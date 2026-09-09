@@ -1,0 +1,42 @@
+{
+  "name": "legpaymentscheduleratesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentscheduleratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentscheduleratesource"
+        }
+      },
+      {
+        "name": "legpaymentscheduleratesourcetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentscheduleratesourcetype"
+        }
+      },
+      {
+        "name": "legpaymentschedulereferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentschedulereferencepage"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPaymentScheduleRateSource"
+  }
+}

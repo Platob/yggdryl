@@ -26,10 +26,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
-use yggdryl::types::{MsgDirection, MsgType};
+use yggdryl::types::MsgDirection;
 use yggdryl::{
-    DataType, Field, FixBranch, FixCode, FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry,
-    MediaType, MimeType, Scalar, Timezone, Version,
+    DataType, Field, FixBranch, FixCode, FixCodec, FixId, FixLineageEntry, FixMsg, FixPedigree,
+    FixRegistry, MediaType, MimeType, Scalar, Timezone, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -143,13 +143,18 @@ impl fmt::Write for StackText {
 
 #[test]
 fn version_parse_compare_and_render_allocate_nothing() {
-    assert_eq!(std::mem::size_of::<Version>(), 16);
+    assert_eq!(std::mem::size_of::<Version>(), 4);
     free("parsing an inline version", || {
-        black_box("5.0SP10".parse::<Version>().expect("a static version"));
+        black_box("5.0.10".parse::<Version>().expect("a static version"));
     });
+    for text in ["5.0sp250", "005.000Sp00250", "5.0SP256", "255.255sP65535"] {
+        free("parsing a compact FIX version", || {
+            black_box(text.parse::<Version>().expect("a static FIX version"));
+        });
+    }
 
-    let left = "5.0SP2".parse::<Version>().expect("a static version");
-    let right = "5.0SP10".parse::<Version>().expect("a static version");
+    let left = "5.0.2".parse::<Version>().expect("a static version");
+    let right = "5.0.10".parse::<Version>().expect("a static version");
     free("comparing inline versions", || {
         black_box(left.cmp(&right));
     });
@@ -228,12 +233,13 @@ fn fix_registry(extra: usize) -> FixRegistry {
     let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])
         .expect("a struct item")
         .required_field("item");
-    let mut parties = DataType::list(item).nullable_field("NoPartyIDs");
-    parties.as_fix_mut().set_tag(453).expect("a static tag");
+    let mut parties = DataType::list(item).nullable_field("Parties");
     parties
         .as_fix_mut()
-        .set_aliases(["Parties"])
-        .expect("a static alias");
+        .set_counter(453)
+        .expect("a static counter");
+    let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
+    counter.as_fix_mut().set_tag(453).expect("a static tag");
     let mut symbol = DataType::Utf8.nullable_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a static tag");
     symbol
@@ -265,12 +271,16 @@ fn fix_registry(extra: usize) -> FixRegistry {
             .expect("a generated alias");
         field
     });
-    FixRegistry::from_fields(
-        [symbol, msgtype, trade, parties]
+    let mut registry = FixRegistry::from_fields(
+        [symbol, msgtype, trade, counter]
             .into_iter()
             .chain(generated),
     )
-    .expect("the generated dictionary has no conflict")
+    .expect("the generated dictionary has no conflict");
+    registry
+        .insert_definition(yggdryl::FixCategory::Groups, parties)
+        .expect("the group definition");
+    registry
 }
 
 #[test]
@@ -281,18 +291,21 @@ fn a_fix_registry_lookup_allocates_nothing() {
     let venue = venue();
     let vendor = FixId::from_parts(&venue, 5_001).expect("a vendor identifier");
 
-    // Scalar and nested definitions share the same compact indexes.
-    free("get_field_by_tag primitive hit", || {
+    free("get_field_by_tag scalar hit", || {
         let _ = black_box(registry.get_field_by_tag(55));
     });
-    free("get_field_by_tag nested hit", || {
+    free("get_field_by_tag counter hit", || {
         let _ = black_box(registry.get_field_by_tag(453));
     });
-    free("get_field_by_name nested hit", || {
+    free("get_field_by_name counter hit", || {
         let _ = black_box(registry.get_field_by_name("nopartyids", Some(&standard)));
     });
-    free("get_field_by_name nested alias hit", || {
-        let _ = black_box(registry.get_field_by_name("PARTIES", Some(&standard)));
+    free("get_definition group hit", || {
+        let _ = black_box(registry.get_definition(
+            yggdryl::FixCategory::Groups,
+            "PARTIES",
+            Some(&standard),
+        ));
     });
     free("get_field_by_tag alternate hit", || {
         let _ = black_box(registry.get_field_by_tag(65));
@@ -352,10 +365,14 @@ fn a_fix_registry_lookup_allocates_nothing() {
         let _ = black_box(MimeType::infer_text(black_box("MsgType=D Symbol=AAPL")));
     });
     free("infer_bytes_msgtype FIX", || {
-        let _ = black_box(MsgType::infer_bytes(black_box(b"8=FIX.4.4|35=D|55=AAPL|")));
+        let _ = black_box(FixCodec::infer_msgtype_bytes(black_box(
+            b"8=FIX.4.4|35=D|55=AAPL|",
+        )));
     });
     free("infer_text_msgtype UL", || {
-        let _ = black_box(MsgType::infer_text(black_box("MsgType=D Symbol=AAPL")));
+        let _ = black_box(FixCodec::infer_msgtype_text(black_box(
+            "MsgType=D Symbol=AAPL",
+        )));
     });
     // A bridge configuration is read the same way a frame is: the namespace,
     // the ObjectName's type and the answer keys are all found in the caller's
@@ -365,7 +382,7 @@ fn a_fix_registry_lookup_allocates_nothing() {
         let _ = black_box(MimeType::infer_bytes(black_box(ULCONFIG)));
     });
     free("infer_bytes_msgtype ULCONFIG", || {
-        let _ = black_box(MsgType::infer_bytes(black_box(ULCONFIG)));
+        let _ = black_box(FixCodec::infer_msgtype_bytes(black_box(ULCONFIG)));
     });
     free("infer_bytes_direction ULCONFIG", || {
         let _ = black_box(MsgDirection::infer_bytes(black_box(ULCONFIG)));
@@ -373,6 +390,155 @@ fn a_fix_registry_lookup_allocates_nothing() {
     free("iter", || {
         let _ = black_box(registry.iter().count());
     });
+}
+
+#[test]
+fn parsed_ulconfig_wildcards_iterate_without_allocating_results() {
+    for size in [1, 32, 256] {
+        let values = Scalar::from_record((0..size).map(|index| {
+            let name = format!("Configuration{index:04}");
+            let mbean = format!(
+                "com.ullink.ulbridge.sessioninterfaces.plugins:name={name},type=ConfigurationPlugin"
+            );
+            let attributes = Scalar::from_record([("Name", Scalar::from(name))]).unwrap();
+            (mbean, attributes)
+        }))
+        .unwrap();
+        let document = Scalar::from_record([("value", values)]).unwrap();
+
+        let (first_allocations, first) = counted(|| {
+            yggdryl::UlPlugin::from_json_scalar(black_box(&document))
+                .expect("validated wildcard response")
+                .next()
+                .expect("the wildcard has configurations")
+        });
+        assert_eq!(first.name(), Some("Configuration0000"));
+        // The shared stable hash owns one XXH3 secret buffer; feeding the
+        // selected configuration allocates nothing proportional to its siblings.
+        costs("hashing one selected UL configuration", 1, || {
+            black_box(first.stable_hash());
+        });
+        assert_eq!(
+            first_allocations, 0,
+            "first result for {size} configurations"
+        );
+
+        let (drain_allocations, read) = counted(|| {
+            yggdryl::UlPlugin::from_json_scalar(black_box(&document))
+                .expect("validated wildcard response")
+                .inspect(|configuration| {
+                    black_box(configuration.name());
+                })
+                .count()
+        });
+        assert_eq!(read, size);
+        assert_eq!(drain_allocations, 0, "draining {size} configurations");
+    }
+}
+
+#[test]
+fn registry_message_singletons_and_scoped_groups_are_borrowed() {
+    let mut registry = fix_registry(512);
+    let mut message = DataType::from_fields([
+        registry.field_by_tag(453).unwrap().clone(),
+        registry
+            .definition(yggdryl::FixCategory::Groups, "Parties", None)
+            .unwrap()
+            .clone(),
+    ])
+    .unwrap()
+    .required_field("newordersingle");
+    message.as_fix_mut().set_msgtype("D").unwrap();
+    registry
+        .insert_definition(yggdryl::FixCategory::Messages, message)
+        .unwrap();
+    let held = registry.msgtype("D", None).unwrap();
+    let counter = FixId::standard(453);
+    assert_eq!(
+        held.get_group_by_counter(counter).unwrap().name(),
+        "Parties"
+    );
+    free("registry message singleton", || {
+        black_box(registry.get_msgtype("D", None));
+        black_box(registry.msgtypes().next());
+    });
+    free("borrowed message fields and scoped group", || {
+        black_box(held.as_field());
+        black_box(held.name());
+        black_box(held.as_str());
+        black_box(held.get_group_by_counter(counter));
+    });
+}
+
+#[test]
+fn fix_hash_state_allocation_is_constant_across_catalog_sizes() {
+    for size in [1, 32, 512] {
+        let mut registry = fix_registry(size);
+        let mut definition = DataType::from_fields(registry.iter().cloned())
+            .unwrap()
+            .required_field("HashFixture");
+        definition.as_fix_mut().set_msgtype("H").unwrap();
+        registry
+            .create_definition(yggdryl::FixCategory::Messages, definition)
+            .unwrap();
+        let held = registry.msgtype("H", None).unwrap();
+        // Each call constructs one shared XXH3 state. The native structural
+        // feed adds no allocations as the fields and message schema grow.
+        costs("registry stable hash", 1, || {
+            black_box(registry.stable_hash());
+        });
+        costs("message definition stable hash", 1, || {
+            black_box(held.stable_hash());
+        });
+        let message = FixCodec::new(std::sync::Arc::new(registry))
+            .transform_fix_line(b"35=H|55=AAPL|", false)
+            .unwrap();
+        costs("message value stable hash", 1, || {
+            black_box(message.stable_hash());
+        });
+    }
+}
+
+#[test]
+fn fix_field_code_metadata_and_category_cursors_allocate_nothing() {
+    for size in [1, 32, 512] {
+        let mut registry = FixRegistry::new();
+        for index in 0..size {
+            let mut field = DataType::Utf8.nullable_field(format!("Code{index}"));
+            field.as_fix_mut().set_tag(index).unwrap();
+            field
+                .as_fix_mut()
+                .set_codes(&[FixCode::new("Buy", "1")])
+                .unwrap();
+            registry.insert(field).unwrap();
+        }
+        registry
+            .insert_definition(
+                yggdryl::FixCategory::Components,
+                DataType::from_fields([])
+                    .unwrap()
+                    .required_field("component"),
+            )
+            .unwrap();
+        let field = registry.field(size - 1).unwrap();
+        free("field code metadata lookup", || {
+            assert_eq!(black_box(field.as_fix().code_name("1")), Some("Buy"));
+        });
+        free("category cursor and iteration setup", || {
+            assert!(
+                black_box(registry.definition_at(yggdryl::FixCategory::Components, 0)).is_some()
+            );
+            assert!(
+                black_box(
+                    registry
+                        .definitions(yggdryl::FixCategory::Components)
+                        .next()
+                )
+                .is_some()
+            );
+            assert!(black_box(registry.definition_at(yggdryl::FixCategory::Fields, 0)).is_some());
+        });
+    }
 }
 
 #[test]
@@ -409,7 +575,7 @@ fn a_fix_lineage_read_allocates_nothing() {
         .expect("a lineage agreeing with its field");
 
     let view = field.as_fix();
-    let newest = "5.0SP2".parse::<Version>().expect("a version");
+    let newest = "5.0.2".parse::<Version>().expect("a version");
     let old = "4.2".parse::<Version>().expect("a version");
 
     free("lineage walk", || {

@@ -1,0 +1,143 @@
+{
+  "name": "paymentstreamnondeliverablesettlterms",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreamnondeliverablerefcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamnondeliverablerefcurrency"
+        }
+      },
+      {
+        "name": "paymentstreamnondeliverablefixingdatesbusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamnondeliverablefixingdatesbusinessdayconvention"
+        }
+      },
+      {
+        "name": "nopaymentstreamnondeliverablefixingdatesbusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopaymentstreamnondeliverablefixingdatesbusinesscenters"
+        }
+      },
+      {
+        "name": "paymentstreamnondeliverablefixingdatesbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentstreamnondeliverablefixingdatesbusinesscentergrp"
+        }
+      },
+      {
+        "name": "paymentstreamnondeliverablefixingdatesrelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamnondeliverablefixingdatesrelativeto"
+        }
+      },
+      {
+        "name": "paymentstreamnondeliverablefixingdatesoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetperiod"
+        }
+      },
+      {
+        "name": "paymentstreamnondeliverablefixingdatesoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetunit"
+        }
+      },
+      {
+        "name": "paymentstreamnondeliverablefixingdatesoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetdaytype"
+        }
+      },
+      {
+        "name": "paymentstreamnondeliverablesettlratesourcecomponent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "paymentstreamnondeliverablesettlratesourcecomponent"
+        }
+      },
+      {
+        "name": "nonondeliverablefixingdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonondeliverablefixingdates"
+        }
+      },
+      {
+        "name": "paymentstreamnondeliverablefixingdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "paymentstreamnondeliverablefixingdategrp"
+        }
+      },
+      {
+        "name": "nosettlratefallbacks",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nosettlratefallbacks"
+        }
+      },
+      {
+        "name": "settlratedisruptionfallbackgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "settlratedisruptionfallbackgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the payment stream's non-deliverable fixing dates.",
+    "display": "PaymentStreamNonDeliverableSettlTerms"
+  }
+}

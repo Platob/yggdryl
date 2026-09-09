@@ -1,0 +1,214 @@
+{
+  "name": "quotecancel",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "quotereqid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotereqid"
+        }
+      },
+      {
+        "name": "quoteid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quoteid"
+        }
+      },
+      {
+        "name": "secondaryquoteid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryquoteid"
+        }
+      },
+      {
+        "name": "quotemsgid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotemsgid"
+        }
+      },
+      {
+        "name": "quotecanceltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "quotecanceltype"
+        }
+      },
+      {
+        "name": "quotetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quotetype"
+        }
+      },
+      {
+        "name": "quoteresponselevel",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quoteresponselevel"
+        }
+      },
+      {
+        "name": "nopartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartyids"
+        }
+      },
+      {
+        "name": "parties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "parties"
+        }
+      },
+      {
+        "name": "notargetpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notargetpartyids"
+        }
+      },
+      {
+        "name": "targetparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "targetparties"
+        }
+      },
+      {
+        "name": "account",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "account"
+        }
+      },
+      {
+        "name": "acctidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "acctidsource"
+        }
+      },
+      {
+        "name": "accounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "accounttype"
+        }
+      },
+      {
+        "name": "tradingsessionid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionid"
+        }
+      },
+      {
+        "name": "tradingsessionsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionsubid"
+        }
+      },
+      {
+        "name": "noquoteentries",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noquoteentries"
+        }
+      },
+      {
+        "name": "quotcxlentriesgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "quotcxlentriesgrp"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = Z",
+    "display": "QuoteCancel",
+    "fix:msgtype": "Z"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "underlyingprovisioncashsettlpaymentdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisioncashsettlpaymentdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisioncashsettlpaymentdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProvisionCashSettlPaymentDateBusinessCenter"
+  }
+}

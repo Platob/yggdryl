@@ -1,0 +1,32 @@
+{
+  "name": "legphysicalsettldeliverableobligation",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legphysicalsettldeliverableobligationtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legphysicalsettldeliverableobligationtype"
+        }
+      },
+      {
+        "name": "legphysicalsettldeliverableobligationvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legphysicalsettldeliverableobligationvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPhysicalSettlDeliverableObligation"
+  }
+}

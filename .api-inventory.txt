@@ -172,7 +172,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
 
 ### yggdryl::root::datatype_id  [rust\src\datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 62] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
+  pub const ALL: [Self; 55] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8
@@ -469,6 +469,11 @@ impl<'field> FixField<'field>
   pub fn tags(&self) -> Result<Vec<i32>>
   pub fn aliases(&self) -> FixAliases<'field>
   pub fn description(&self) -> Option<&'field str>
+  pub fn component(&self) -> Option<&'field str>
+  pub fn field_ref(&self) -> Option<&'field str>
+  pub fn group(&self) -> Option<&'field str>
+  pub fn msgtype(&self) -> Option<&'field str>
+  pub fn counter(&self) -> Result<Option<i32>>
   impl FixFieldMut<'_>
   pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()>
   pub fn set_id(&mut self, branch: &FixBranch, tag: i32) -> Result<()>
@@ -476,6 +481,16 @@ impl<'field> FixField<'field>
   pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>
   pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
   pub fn set_description(&mut self, value: impl Into<String>) -> Result<()>
+  pub fn set_component(&mut self, name: &str) -> Result<()>
+  pub fn remove_component(&mut self) -> Option<String>
+  pub fn set_field_ref(&mut self, name: &str) -> Result<()>
+  pub fn remove_field_ref(&mut self) -> Option<String>
+  pub fn set_group(&mut self, name: &str) -> Result<()>
+  pub fn remove_group(&mut self) -> Option<String>
+  pub fn set_msgtype(&mut self, name: &str) -> Result<()>
+  pub fn remove_msgtype(&mut self) -> Option<String>
+  pub fn set_counter(&mut self, tag: i32) -> Result<()>
+  pub fn remove_counter(&mut self) -> Result<Option<i32>>
   pub struct FixAliases<'field>
   impl<'field> Iterator for FixAliases<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
 
@@ -515,10 +530,52 @@ pub struct FixBranch(SmolStr)  (re-exported at the crate root beside FixAliases,
   impl<'a> From<&'a String> for FixKey<'a>
   impl fmt::Display for FixKey<'_>
 
+### yggdryl::fix::codec  [rust\src\fix\codec.rs]
+pub struct FixCodec
+  pub fn new(registry: Arc<FixRegistry>) -> Self
+  pub const fn registry(&self) -> &Arc<FixRegistry>
+  pub const fn version(&self) -> Option<Version>
+  pub const fn branch(&self) -> Option<&FixBranch>
+  pub fn with_branch(mut self, branch: &FixBranch) -> Self
+  pub const fn with_version(mut self, version: Version) -> Self
+  pub const fn with_separator(mut self, separator: u8) -> Self
+  pub fn with_payload_column(mut self, column: impl Into<SmolStr>) -> Self
+  pub fn with_null_values<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: Into<String>
+  pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]>
+  pub fn infer_msgtype_text(line: &str) -> Option<&str>
+  pub fn transform_line(&self, row: &[u8], enrich: bool) -> Result<FixMessages>
+  pub fn transform_fix_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg>
+  pub fn transform_ullink_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg>
+  pub fn transform_fixml_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg>
+  pub fn transform_pairs<'a, I>(&self, pairs: I, enrich: bool) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>
+  pub fn transform_record(&self, record: &Scalar, enrich: bool) -> Result<FixMessages>
+  pub fn transform_records<'codec, I>(&'codec self, records: I, enrich: bool) -> impl Iterator<Item = Result<FixMsg>> + 'codec where I: IntoIterator<Item = Scalar>, I::IntoIter: 'codec
+  pub fn transform_arrow_batch(&self, batch: &RecordBatch, options: &FixOptions, enrich: bool) -> Result<RecordBatch>
+  pub fn transform_arrow_reader(&self, source: BatchReader, options: &FixOptions, enrich: bool) -> Result<BatchReader>
+  pub fn enrich_arrow_batch(&self, batch: &RecordBatch, options: &FixOptions) -> Result<RecordBatch>
+  pub fn enrich_arrow_reader(&self, source: BatchReader, options: &FixOptions) -> Result<BatchReader>
+  pub fn enrich_fixmsg(&self, message: FixMsg) -> Result<FixMsg>
+  pub fn enrich_fixmsgs<'codec, I>(&'codec self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + 'codec where I: IntoIterator<Item = FixMsg>, I::IntoIter: 'codec
+
+### yggdryl::fix::messages  [rust\src\fix\messages.rs]
+pub struct FixMessages
+  impl Iterator for FixMessages  (Item = Result<FixMsg>; fused after exhaustion or the first error; no collection of ULconfig results)
+  impl FusedIterator for FixMessages
+
+### yggdryl::fix::crated  [rust\src\fix\crated.rs]
+impl FixRegistry
+  pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<&MsgType>
+
 ### yggdryl::fix::msg  [rust\src\fix\msg.rs]
 pub struct FixMsg
+  pub fn stable_hash(&self) -> u64
   pub fn new(field: Field, value: Scalar) -> Result<Self>
   pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self>
+  pub fn entries(&self) -> &[FixEntry]
+  pub fn anomalies(&self) -> FixAnomalies<'_>
+  pub fn into_bytes(&self, separator: u8) -> Vec<u8>
+  pub fn into_text(&self, separator: char) -> Result<String>
+  pub fn version(&self) -> Option<Version>
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn branch(&self) -> &FixBranch
   pub const fn as_field(&self) -> &Field
@@ -535,12 +592,36 @@ pub struct FixMsg
   pub fn value<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Scalar>
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg
 
+### yggdryl::fix::entry  [rust\src\fix\entry.rs]
+pub struct FixEntry
+  pub fn new(tag: i32, key: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self
+  pub fn with_branch(mut self, branch: &FixBranch) -> Self
+  pub const fn tag(&self) -> i32
+  pub const fn branch(&self) -> i32
+  pub fn children(&self) -> &[FixEntry]
+  pub fn key(&self) -> &str
+  pub fn value(&self) -> &str
+  pub fn id(&self) -> Option<FixId>
+  impl Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord for FixEntry
+
+### yggdryl::fix::anomaly  [rust\src\fix\anomaly.rs]
+pub enum FixAnomaly<'msg>
+  Untyped { tag: i32, key: &'msg str, value: &'msg str }
+  Miscounted { tag: i32, name: &'msg str, stated: i64, held: usize }
+  Lossy { tag: i32, key: &'msg str }
+  pub const fn tag(&self) -> i32
+  impl Clone, Copy, Debug, PartialEq, Eq, Display for FixAnomaly<'_>
+pub struct FixAnomalies<'msg>
+  impl<'msg> Iterator for FixAnomalies<'msg>  (Item = FixAnomaly<'msg>)
+  impl FusedIterator for FixAnomalies<'_>
+
 ### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
-pub struct UlPlugin  (re-exported at the crate root beside UlPlugins and fix_ulbridge_fields)
-  pub fn new(mbean: Option<&str>, attributes: Scalar) -> Self
-  pub fn from_json_bytes(body: &[u8]) -> Result<UlPlugins>
-  pub fn from_json_scalar(document: &Scalar) -> UlPlugins
-  pub fn from_fixmsg(message: &FixMsg) -> UlPlugins
+pub struct Ulconfig  (re-exported at the crate root beside Ulconfigs and fix_ulbridge_fields)
+  pub fn stable_hash(&self) -> u64
+  pub fn new(mbean: Option<&str>, attributes: Scalar, envelope: Scalar) -> Self
+  pub fn from_json_bytes(body: &[u8]) -> Result<Ulconfigs>
+  pub fn from_json_scalar(document: &Scalar) -> Result<Ulconfigs>
+  pub fn from_fixmsg(message: &FixMsg) -> Result<Ulconfig>
   pub fn into_fixmsg(&self, codec: &FixCodec, enrich: bool) -> Result<FixMsg>
   pub fn mbean(&self) -> Option<&str>
   pub fn mbean_type(&self) -> Option<&str>
@@ -550,24 +631,59 @@ pub struct UlPlugin  (re-exported at the crate root beside UlPlugins and fix_ulb
   pub fn category(&self) -> Option<&str>
   pub fn state(&self) -> Option<&str>
   pub fn get(&self, attribute: &str) -> Option<&Scalar>
-  pub fn as_attributes(&self) -> &Scalar
+  pub const fn as_attributes(&self) -> &Scalar
+  pub const fn as_envelope(&self) -> &Scalar
   pub fn attributes(&self) -> impl Iterator<Item = (&str, &Scalar)>
-  impl Clone, Debug, PartialEq, Eq, Hash for UlPlugin
-  pub struct UlPlugins
-  impl Iterator for UlPlugins  (Item = UlPlugin; also DoubleEndedIterator, ExactSizeIterator and FusedIterator)
+  impl Clone, Debug, PartialEq, Eq, Hash for Ulconfig
+  pub struct Ulconfigs
+  impl Iterator for Ulconfigs  (Item = Ulconfig; also FusedIterator; lazy over shared Scalar)
+
+### yggdryl::FixCategory  [rust\src\fix_category.rs]
+pub enum FixCategory { Fields, Messages, Components, Groups }
+  pub const ALL: [Self; 4]
+  pub const fn as_str(self) -> &'static str
+  pub fn from_str(value: &str) -> Result<Self>
+  impl Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize, FromStr, Display, AsRef<str> for FixCategory
+
+### yggdryl::fix::MsgType  [rust\src\fix\msgtype.rs]
+pub struct MsgType  (registry-owned non-null Struct Field with a compiled group path index; no public constructor)
+  pub fn stable_hash(&self) -> u64
+  pub const fn as_field(&self) -> &Field
+  pub fn name(&self) -> &str
+  pub fn as_str(&self) -> &str
+  pub fn get_group_by_counter(&self, id: FixId) -> Option<&Field>
+  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, AsRef<Field> for MsgType
+
+### yggdryl::fix::catalog  [rust\src\fix\catalog.rs]
+impl FixRegistry
+  pub fn get_msgtype(&self, spelling: &str, branch: Option<&FixBranch>) -> Option<&MsgType>
+  pub fn msgtype(&self, spelling: &str, branch: Option<&FixBranch>) -> Result<&MsgType>
+  pub fn msgtypes(&self) -> impl Iterator<Item = &MsgType>
+  pub fn msgtype_at(&self, index: usize) -> Option<&MsgType>
+  pub fn get_definition(&self, category: FixCategory, name: &str, branch: Option<&FixBranch>) -> Option<&Field>
+  pub fn definition(&self, category: FixCategory, name: &str, branch: Option<&FixBranch>) -> Result<&Field>
+  pub fn definitions(&self, category: FixCategory) -> impl Iterator<Item = &Field>
+  pub fn definition_at(&self, category: FixCategory, index: usize) -> Option<&Field>
+  pub fn insert_definition(&mut self, category: FixCategory, field: Field) -> Result<Option<Field>>
+  pub fn create_definition(&mut self, category: FixCategory, field: Field) -> Result<()>
+  pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field>
+  pub fn remove_definition(&mut self, category: FixCategory, name: &str, branch: Option<&FixBranch>) -> Result<Option<Field>>
+  pub fn get_group_by_counter(&self, id: FixId) -> Option<&Field>
+  pub fn group_by_counter(&self, id: FixId) -> Result<&Field>
 
 ### yggdryl::fix::registry  [rust\src\fix\registry.rs]
 pub struct FixRegistry
+  pub fn stable_hash(&self) -> u64
   pub fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
   pub fn get_field_by_id(&self, id: FixId) -> Option<&Field>
   pub fn field_by_id(&self, id: FixId) -> Result<&Field>
   pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>
   pub fn field_by_tag(&self, tag: i32) -> Result<&Field>
-  pub fn get_field_by_name(&self, branch: &FixBranch, name: &str) -> Option<&Field>
-  pub fn field_by_name(&self, branch: &FixBranch, name: &str) -> Result<&Field>
-  pub fn get_field_by_path(&self, branch: &FixBranch, path: &str) -> Option<&Field>
-  pub fn field_by_path(&self, branch: &FixBranch, path: &str) -> Result<&Field>
+  pub fn get_field_by_name(&self, name: &str, branch: Option<&FixBranch>) -> Option<&Field>
+  pub fn field_by_name(&self, name: &str, branch: Option<&FixBranch>) -> Result<&Field>
+  pub fn get_field_by_path(&self, path: &str, branch: Option<&FixBranch>) -> Option<&Field>
+  pub fn field_by_path(&self, path: &str, branch: Option<&FixBranch>) -> Result<&Field>
   pub fn get_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field>
   pub fn field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field>
   pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool
@@ -575,8 +691,8 @@ pub struct FixRegistry
   pub fn update(&mut self, field: Field) -> Result<()>
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field>
   pub fn branch_of(&self, id: FixId) -> Option<&FixBranch>
-  pub fn get_branch_by_bid(&self, bid: i64) -> Option<&FixBranch>
-  pub fn branch_by_bid(&self, bid: i64) -> Result<&FixBranch>
+  pub fn get_branch_by_digest(&self, digest: i32) -> Option<&FixBranch>
+  pub fn branch_by_digest(&self, digest: i32) -> Result<&FixBranch>
   pub fn branch_named(&self, name: &str) -> Option<&FixBranch>
   pub fn branches(&self) -> impl Iterator<Item = &FixBranch>
   pub fn set_branch(&mut self, branch: FixBranch) -> Result<()>
@@ -584,52 +700,10 @@ pub struct FixRegistry
   pub fn iter(&self) -> FixFieldIter<'_>
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
-  impl Clone, Default, Debug, PartialEq, Eq for FixRegistry
+  impl Clone, Default, Debug, PartialEq, Eq, Hash for FixRegistry
   impl<'registry> IntoIterator for &'registry FixRegistry  (IntoIter = FixFieldIter<'registry>)
   pub struct FixFieldIter<'registry>
   impl<'registry> Iterator for FixFieldIter<'registry>  (Item = &'registry Field; also DoubleEndedIterator, ExactSizeIterator and FusedIterator)
-
-### yggdryl::fix::crated  [rust\src\fix\crated.rs]
-pub const CRATE_TAG_MIN: i32 = 65_000;
-pub const MSGHASH_TAG: i32 = 65_000;
-pub const VERSION_TAG: i32 = 65_001;
-pub const SYMBOLTICKER_TAG: i32 = 65_002;
-pub const TIMESTAMP_TAG: i32 = 65_003;
-pub const UNIXPARTITION_TAG: i32 = 65_004;
-pub const PARENTCLORDID_TAG: i32 = 65_005;
-pub const PARENTORDERID_TAG: i32 = 65_006;
-pub const SESSIONID_TAG: i32 = 65_007;
-pub const MSGCTXID_TAG: i32 = 65_008;
-pub const SENDERPLUGINID_TAG: i32 = 65_009;
-pub const TARGETPLUGINID_TAG: i32 = 65_010;
-pub const SENDERPLUGINSESSION_TAG: i32 = 65_011;
-pub const TARGETPLUGINSESSION_TAG: i32 = 65_012;
-pub const ISINCODE_TAG: i32 = 65_013;
-pub const MICCODE_TAG: i32 = 65_014;
-pub const STATE_TAG: i32 = 65_015;
-pub const INSTID_TAG: i32 = 65_016;
-pub const ID_TAG: i32 = 65_017;
-pub const PERSISTENTID_TAG: i32 = 65_018;
-pub const TIMESTAMP_NAME: &str = "timestamp";
-pub const MSGDIRECTION_TAG: i32 = 385;
-pub const MSGTYPE_TAG: i32 = 35;
-pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
-pub const fn is_crate_tag(tag: i32) -> bool  (a standard tag from CRATE_TAG_MIN up)
-pub fn fix_crate_fields() -> Result<&'static [Field]>  (nineteen standard fields in tag order; every FixRegistry holds them from construction and no store writes them)
-impl FixRegistry
-  pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<MsgType>
-
-### yggdryl::fix::lifecycle  [rust\src\fix\lifecycle.rs]
-pub struct FixLifecycle  (re-exported at the crate root; one order stream's state: the chains still alive, keyed by every identifier they were seen under)
-  pub fn new(registry: Arc<FixRegistry>) -> Self
-  pub fn alive(&self) -> usize
-  pub fn clear(&mut self)
-  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (stamps instid, id and persistentid, never over a stated value; a terminal state closes the chain)
-impl FixCodec
-  pub fn lifecycle<'codec, I>(&'codec self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + 'codec where I: IntoIterator<Item = FixMsg>, I::IntoIter: 'codec
-impl FixOptions  (the arrow read; `enrich: bool` and `lifecycle: bool` are public fields, both off by default)
-  pub const fn with_enrich(mut self, enrich: bool) -> Self
-  pub const fn with_lifecycle(mut self, lifecycle: bool) -> Self
 
 ### yggdryl::fix::schema  [rust\src\fix\schema.rs]
 pub const HEADER_TAGS: [i32; 24]
@@ -641,16 +715,16 @@ pub const UNMAPPED_COLUMN: &str = "nounmappedfixentries";
 pub fn fix_schema_tags() -> Vec<i32>
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>
-pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize>
-pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>
 impl FixMsg
-  pub fn to_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its folded name and filled by its field's tag, so `schema.index_of("msgtype")` is where the type sits)
+  pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits)
   pub fn symbol_ticker(&self) -> Scalar
   pub fn market_timestamp(&self) -> Scalar
   pub fn unix_partition(&self, seconds: i64) -> Scalar
 
 ### yggdryl::fix::store  [rust\src\fix\store.rs]
 impl FixRegistry
+  pub fn from_json(input: &str) -> Result<Self>
+  pub fn into_json(&self) -> Result<String>
   pub fn from_handle(handle: &dyn IOBase) -> Result<Self>
   pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>
 
@@ -661,13 +735,11 @@ pub const MBEAN_TAG: i32 = 20_001;
 pub const OPERATION_TAG: i32 = 20_002;
 pub const STATUS_TAG: i32 = 20_003;
 pub const ERROR_TAG: i32 = 20_004;
-pub const SESSIONINTERFACES_TAG: i32 = 20_005;
-pub const ULBRIDGE_ROWHEADER: &str  (the row header a bridge log writes: timestamp, threadId with optional sessionUid, msgCtxId and seqNum, plugin, level)
 pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
 impl FixRegistry
   pub fn with_ulbridge_fields(mut self) -> Result<Self>
 impl FixCodec
-  pub fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg>
+  pub fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> Result<FixMessages>
 
 ### yggdryl::holder::buffer  [rust\src\holder\buffer.rs]
 pub struct Buffer
@@ -2193,12 +2265,11 @@ pub fn ascii(width: i32) -> Result<Self>
   pub fn iter(&self) -> impl Iterator<Item = (&str, &str)>
   pub fn member_name(value: &str) -> SmolStr
   pub fn into_members(&self, width: &DataType) -> Result<Vec<(SmolStr, i128)>>
-pub const CODES: &'static [(&'static str, DataType, i32)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("side", DataType::Side, 4), ("msgtype", DataType::MsgType, 8), ("msgdirection", DataType::MsgDirection, 4), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8)];
+pub const CODES: &'static [(&'static str, DataType, i32)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6)];
   pub const fn country() -> Self
   pub const fn currency() -> Self
   pub const fn mic() -> Self
   pub const fn cfi() -> Self
-  pub const fn isin() -> Self
   pub const fn code_name(&self) -> Option<&'static str>
   pub const fn is_code(&self) -> bool
 
@@ -2207,29 +2278,11 @@ pub trait AsciiValue: ScalarValue
   const WIDTH: Option<i32>;
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
-  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi, Isin, Side, MsgType, MsgDirection, State, TimeInForce
-  pub fn new(value: impl AsRef<str>) -> Result<Self>  // FixedAscii::new(value, width); Isin::new folds case and checks the closing digit
+  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi, Side, MsgDirection
+  pub fn new(value: impl AsRef<str>) -> Result<Self>  // FixedAscii::new(value, width)
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
   pub const fn width(&self) -> i32  // FixedAscii only
-  pub fn prefix(&self) -> &str  // Isin only
-  pub fn nsin(&self) -> &str  // Isin only
-  pub fn check_digit(&self) -> u8  // Isin only
-  pub fn is_valid(text: &str) -> bool  // Isin only
-  pub fn closing_digit(body: &str) -> Option<u8>  // Isin only
-  pub fn is_canonical(text: &str) -> bool  // Isin only: valid, upper-case, no folding needed
-  pub fn read(spelling: &str) -> Result<Self>  // State only: a rank, a code or a name, refused when unknown
-  pub fn from_spelling(spelling: &str) -> Option<Self>  // State only
-  pub fn rank(&self) -> Option<u8>  // State only
-  pub fn is_live(&self) -> bool  // State only
-  pub fn is_done(&self) -> bool  // State only
-  pub fn is_cancelled(&self) -> bool  // State only
-  pub fn is_failed(&self) -> bool  // State only
-  pub const SYNTHETIC_MARK: u8 = b'~';  // MsgType only
-  pub fn coerce(spelling: &str) -> Self  // MsgType only
-  pub fn is_synthetic(&self) -> bool  // MsgType only
-  pub fn infer_bytes(line: &[u8]) -> Option<&[u8]>  // MsgType only
-  pub fn infer_text(line: &str) -> Option<&str>  // MsgType only
   pub const SENT: &'static str = "SENT";  // MsgDirection only
   pub const RECV: &'static str = "RECV";  // MsgDirection only
   pub fn infer_bytes(line: &[u8]) -> Option<&'static str>  // MsgDirection only
@@ -2390,7 +2443,6 @@ pub type NullField = TypedField<scalar::Null>;
   pub type CurrencyField = TypedField<ascii::Currency>;
   pub type MicField = TypedField<ascii::Mic>;
   pub type CfiField = TypedField<ascii::Cfi>;
-  pub type IsinField = TypedField<ascii::Isin>;
   pub type ListField = TypedField<nested::List>;
   pub type ListViewField = TypedField<nested::ListView>;
   pub type FixedSizeListField = TypedField<nested::FixedSizeList>;
@@ -2607,9 +2659,13 @@ pub const fn uuid() -> Self
 
 ### yggdryl::types::version  [rust\src\types\version\mod.rs]
 pub struct Version
-  pub const MAX_PARTS: usize = 4;
+  pub const MAX_PARTS: usize = 3;
   pub const MIN: Self
   pub const MAX: Self
+  pub const fn new(major: u8, minor: u8, patch: u16) -> Self
+  pub const fn major(self) -> u8
+  pub const fn minor(self) -> u8
+  pub const fn patch(self) -> u16
   pub struct VersionType
   pub type VersionScalar = TypedScalar<VersionType>;
   pub type VersionField = TypedField<VersionType>;
@@ -3020,7 +3076,7 @@ pub struct TypedScalar<K: FieldType = AnyType>
   pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
-  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, IsinScalar, UuidScalar, VersionScalar included)
+  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, UuidScalar, VersionScalar included)
 pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
   pub struct TypedField<K: FieldType>

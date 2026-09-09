@@ -1,0 +1,84 @@
+{
+  "name": "liststrikeprice",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "listid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "listid"
+        }
+      },
+      {
+        "name": "totnostrikes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "totnostrikes"
+        }
+      },
+      {
+        "name": "lastfragment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastfragment"
+        }
+      },
+      {
+        "name": "nostrikes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "nostrikes"
+        }
+      },
+      {
+        "name": "instrmtstrkpxgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "instrmtstrkpxgrp"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = m (lowercase M)",
+    "display": "ListStrikePrice",
+    "fix:msgtype": "m"
+  }
+}

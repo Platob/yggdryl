@@ -1,0 +1,353 @@
+{
+  "name": "underlyingpaymentstream",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreamtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamtype"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreammarketrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreammarketrate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamdelayindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamdelayindicator"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcashsettlindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcashsettlindicator"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamsettlcurrency"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamdaycount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamdaycount"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamotherdaycount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamotherdaycount"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamaccrualdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamaccrualdays"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamdiscounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamdiscounttype"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamdiscountrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamdiscountrate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamdiscountratedaycount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamdiscountratedaycount"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingmethod"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingxidref"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingspread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingspread"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreaminterpolationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreaminterpolationmethod"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreaminterpolationperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreaminterpolationperiod"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreaminitialprincipalexchangeindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreaminitialprincipalexchangeindicator"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreaminterimprincipalexchangeindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreaminterimprincipalexchangeindicator"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfinalprincipalexchangeindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfinalprincipalexchangeindicator"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamflatrateindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamflatrateindicator"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamflatrateamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamflatrateamount"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamflatratecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamflatratecurrency"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreammaximumpaymentamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreammaximumpaymentamount"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreammaximumpaymentcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreammaximumpaymentcurrency"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreammaximumtransactionamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreammaximumtransactionamount"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreammaximumtransactioncurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreammaximumtransactioncurrency"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreampaymentdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstreampaymentdates"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamresetdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstreamresetdates"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfixedrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstreamfixedrate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfloatingrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstreamfloatingrate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingfixedrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingfixedrate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingfloatingrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstreamcompoundingfloatingrate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstreamcompoundingdates"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamnondeliverablesettlterms",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstreamnondeliverablesettlterms"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "May be used to specify a count method not listed in UnderlyingPaymentStreamDayCount(40572).",
+    "display": "UnderlyingPaymentStream"
+  }
+}

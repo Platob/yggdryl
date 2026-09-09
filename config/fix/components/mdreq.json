@@ -1,0 +1,22 @@
+{
+  "name": "mdreq",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "mdentrytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "mdentrytype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MDReq"
+  }
+}

@@ -1,0 +1,342 @@
+{
+  "name": "legreturnrate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legreturnratepricesequence",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratepricesequence"
+        }
+      },
+      {
+        "name": "legreturnratecommissionbasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratecommissionbasis"
+        }
+      },
+      {
+        "name": "legreturnratecommissionamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratecommissionamount"
+        }
+      },
+      {
+        "name": "legreturnratecommissioncurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratecommissioncurrency"
+        }
+      },
+      {
+        "name": "legreturnratetotalcommissionpertrade",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratetotalcommissionpertrade"
+        }
+      },
+      {
+        "name": "legreturnratedeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratedeterminationmethod"
+        }
+      },
+      {
+        "name": "nolegreturnrateprices",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegreturnrateprices"
+        }
+      },
+      {
+        "name": "legreturnratepricegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legreturnratepricegrp"
+        }
+      },
+      {
+        "name": "nolegreturnratefxconversions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegreturnratefxconversions"
+        }
+      },
+      {
+        "name": "legreturnratefxconversiongrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legreturnratefxconversiongrp"
+        }
+      },
+      {
+        "name": "legreturnrateamountrelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnrateamountrelativeto"
+        }
+      },
+      {
+        "name": "legreturnratequotemeasuretype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequotemeasuretype"
+        }
+      },
+      {
+        "name": "legreturnratequoteunits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequoteunits"
+        }
+      },
+      {
+        "name": "legreturnratequotemethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequotemethod"
+        }
+      },
+      {
+        "name": "legreturnratequotecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequotecurrency"
+        }
+      },
+      {
+        "name": "legreturnratequotecurrencytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequotecurrencytype"
+        }
+      },
+      {
+        "name": "legreturnratequotetimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequotetimetype"
+        }
+      },
+      {
+        "name": "legreturnratequotetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequotetime"
+        }
+      },
+      {
+        "name": "legreturnratequotedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequotedate"
+        }
+      },
+      {
+        "name": "legreturnratequoteexpirationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequoteexpirationtime"
+        }
+      },
+      {
+        "name": "legreturnratequotebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequotebusinesscenter"
+        }
+      },
+      {
+        "name": "legreturnratequoteexchange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequoteexchange"
+        }
+      },
+      {
+        "name": "nolegreturnrateinformationsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegreturnrateinformationsources"
+        }
+      },
+      {
+        "name": "legreturnrateinformationsourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legreturnrateinformationsourcegrp"
+        }
+      },
+      {
+        "name": "legreturnratequotepricingmodel",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratequotepricingmodel"
+        }
+      },
+      {
+        "name": "legreturnratecashflowtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratecashflowtype"
+        }
+      },
+      {
+        "name": "nolegreturnratedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegreturnratedates"
+        }
+      },
+      {
+        "name": "legreturnratedategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legreturnratedategrp"
+        }
+      },
+      {
+        "name": "legreturnratevaluationtimetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationtimetype"
+        }
+      },
+      {
+        "name": "legreturnratevaluationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationtime"
+        }
+      },
+      {
+        "name": "legreturnratevaluationtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationtimebusinesscenter"
+        }
+      },
+      {
+        "name": "legreturnratevaluationpriceoption",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationpriceoption"
+        }
+      },
+      {
+        "name": "legreturnratefinalpricefallback",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratefinalpricefallback"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegReturnRate"
+  }
+}

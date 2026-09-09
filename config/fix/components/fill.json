@@ -1,0 +1,112 @@
+{
+  "name": "fill",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "fillexecid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fillexecid"
+        }
+      },
+      {
+        "name": "fillpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fillpx"
+        }
+      },
+      {
+        "name": "fillqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fillqty"
+        }
+      },
+      {
+        "name": "fillmatchid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fillmatchid"
+        }
+      },
+      {
+        "name": "fillmatchsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fillmatchsubid"
+        }
+      },
+      {
+        "name": "fillliquidityind",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fillliquidityind"
+        }
+      },
+      {
+        "name": "fillyieldtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fillyieldtype"
+        }
+      },
+      {
+        "name": "fillyield",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fillyield"
+        }
+      },
+      {
+        "name": "nonested4partyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonested4partyids"
+        }
+      },
+      {
+        "name": "nestedparties4",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties4"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Fill"
+  }
+}

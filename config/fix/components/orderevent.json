@@ -1,0 +1,82 @@
+{
+  "name": "orderevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "ordereventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordereventtype"
+        }
+      },
+      {
+        "name": "ordereventexecid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordereventexecid"
+        }
+      },
+      {
+        "name": "ordereventreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordereventreason"
+        }
+      },
+      {
+        "name": "ordereventpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordereventpx"
+        }
+      },
+      {
+        "name": "ordereventqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordereventqty"
+        }
+      },
+      {
+        "name": "ordereventliquidityindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordereventliquidityindicator"
+        }
+      },
+      {
+        "name": "ordereventtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordereventtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "OrderEvent"
+  }
+}

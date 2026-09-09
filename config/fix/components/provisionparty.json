@@ -1,0 +1,72 @@
+{
+  "name": "provisionparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "provisionpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionpartyid"
+        }
+      },
+      {
+        "name": "provisionpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionpartyidsource"
+        }
+      },
+      {
+        "name": "provisionpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionpartyrole"
+        }
+      },
+      {
+        "name": "provisionpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionpartyrolequalifier"
+        }
+      },
+      {
+        "name": "noprovisionpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprovisionpartysubids"
+        }
+      },
+      {
+        "name": "provisionptyssubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "provisionptyssubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ProvisionParty"
+  }
+}

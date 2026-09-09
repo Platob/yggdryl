@@ -1,0 +1,32 @@
+{
+  "name": "legprovisionptyssub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprovisionpartysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionpartysubid"
+        }
+      },
+      {
+        "name": "legprovisionpartysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionpartysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProvisionPtysSub"
+  }
+}

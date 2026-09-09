@@ -32,7 +32,7 @@ use yggdryl::{
 };
 
 use crate::types::timezone::{TimezoneInput, timezone_from_input};
-use crate::{JsDataType, JsField, JsUri, JsUrl, JsUrn, napi_error};
+use crate::{JsDataType, JsField, JsUri, JsUrl, JsUrn, JsVersion, napi_error};
 
 /// Preserve the core's typed arithmetic failures as JavaScript error classes.
 fn arithmetic_error(env: Env, error: yggdryl::Error) -> napi::Error {
@@ -127,7 +127,7 @@ impl JsScalar {
 
 #[napi]
 impl JsScalar {
-    /// Convert one JavaScript value into the native value it becomes.
+    /// Convert a JavaScript value, applying its declared core Field when supplied.
     #[napi(factory, js_name = "_fromJsNative", skip_typescript)]
     pub fn from_js_native(
         env: Env,
@@ -135,15 +135,20 @@ impl JsScalar {
         max_depth: Option<u32>,
         native_wrapper_prototypes: Array<'_>,
         native_intrinsics: Array<'_>,
+        field: Option<&JsField>,
     ) -> Result<Self> {
-        encode_js_value(
+        let inner = encode_js_value(
             env,
             value,
             checked_depth(max_depth)?,
             &native_wrapper_prototypes,
             &native_intrinsics,
-        )
-        .map(|inner| Self { inner })
+        )?;
+        let inner = match field {
+            Some(field) => field.inner.scalar(inner).map_err(napi_error)?,
+            None => inner,
+        };
+        Ok(Self { inner })
     }
 
     /// Project this value into the transport the JavaScript loader completes.
@@ -1742,7 +1747,7 @@ struct JsEncoder<'env> {
     map_entries: Function<'env, (), Unknown<'env>>,
     map_is_map: Function<'env, Object<'env>, bool>,
     map_prototype: Object<'env>,
-    native_wrapper_prototypes: [Object<'env>; 6],
+    native_wrapper_prototypes: [Object<'env>; 7],
     regexp_constructor: Function<'env, (), Unknown<'env>>,
     regexp_flags_getter: Function<'env, Object<'env>, String>,
     regexp_is_regexp: Function<'env, Object<'env>, bool>,
@@ -2103,6 +2108,9 @@ impl<'env> JsEncoder<'env> {
         native_wrapper!(JsUrn, "Urn", 5, |inner| Scalar::from(ToString::to_string(
             inner
         )));
+        native_wrapper!(JsVersion, "Version", 6, |inner: &yggdryl::Version| {
+            Scalar::from(*inner)
+        });
         Ok(None)
     }
 
@@ -2267,10 +2275,10 @@ fn constructor_prototype<'env>(global: &JsGlobal<'env>, name: &str) -> Result<Ob
     constructor.get_named_property("prototype")
 }
 
-fn wrapper_prototypes<'env>(values: &Array<'env>) -> Result<[Object<'env>; 6]> {
-    if values.len() != 6 {
+fn wrapper_prototypes<'env>(values: &Array<'env>) -> Result<[Object<'env>; 7]> {
+    if values.len() != 7 {
         return Err(napi_error(
-            "native wrapper prototype table must contain exactly six entries",
+            "native wrapper prototype table must contain exactly seven entries",
         ));
     }
     Ok([
@@ -2280,6 +2288,7 @@ fn wrapper_prototypes<'env>(values: &Array<'env>) -> Result<[Object<'env>; 6]> {
         required_array_object(values, 3, "Uri")?,
         required_array_object(values, 4, "Url")?,
         required_array_object(values, 5, "Urn")?,
+        required_array_object(values, 6, "Version")?,
     ])
 }
 
@@ -2362,7 +2371,14 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::Text(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         Scalar::Ascii(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         Scalar::Uuid(value) => Ok(JsonValue::String(value.to_string())),
-        Scalar::Version(value) => Ok(JsonValue::String(value.to_string())),
+        Scalar::Version(value) => Ok(marker(
+            "version",
+            [
+                ("major", JsonValue::Number(JsonNumber::from(value.major()))),
+                ("minor", JsonValue::Number(JsonNumber::from(value.minor()))),
+                ("patch", JsonValue::Number(JsonNumber::from(value.patch()))),
+            ],
+        )),
         // A location crosses as the canonical text it validated to.
         Scalar::Url(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Enum(value) => Ok(JsonValue::String(value.as_str().to_owned())),

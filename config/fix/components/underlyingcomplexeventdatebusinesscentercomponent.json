@@ -1,0 +1,22 @@
+{
+  "name": "underlyingcomplexeventdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventDateBusinessCenter"
+  }
+}

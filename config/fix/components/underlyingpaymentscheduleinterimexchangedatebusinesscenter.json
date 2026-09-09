@@ -1,0 +1,22 @@
+{
+  "name": "underlyingpaymentscheduleinterimexchangedatebusinesscenter",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentscheduleinterimexchangedatesbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentscheduleinterimexchangedatesbusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPaymentScheduleInterimExchangeDateBusinessCenter"
+  }
+}

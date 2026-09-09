@@ -1,0 +1,23 @@
+{
+  "name": "legprotectiontermgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprotectionterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprotectionterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProtectionTerms(41616) > 0.",
+    "display": "LegProtectionTermGrp",
+    "fix:component": "legprotectionterm",
+    "fix:counter": "41616"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "undlyinstrumentptyssubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "undlyinstrumentptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "undlyinstrumentptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UndlyInstrumentPtysSubGrp",
+    "fix:component": "undlyinstrumentptyssub",
+    "fix:counter": "1062"
+  }
+}

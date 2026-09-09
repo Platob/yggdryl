@@ -1,0 +1,23 @@
+{
+  "name": "legdeliveryschedulegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdeliveryschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legdeliveryschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegDeliverySchedules(41408) > 0.",
+    "display": "LegDeliveryScheduleGrp",
+    "fix:component": "legdeliveryschedule",
+    "fix:counter": "41408"
+  }
+}

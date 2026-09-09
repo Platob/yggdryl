@@ -1,0 +1,23 @@
+{
+  "name": "underlyingphysicalsettldeliverableobligationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingphysicalsettldeliverableobligation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingphysicalsettldeliverableobligation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingPhysicalSettlDeliverableObligations(42065) > 0.",
+    "display": "UnderlyingPhysicalSettlDeliverableObligationGrp",
+    "fix:component": "underlyingphysicalsettldeliverableobligation",
+    "fix:counter": "42065"
+  }
+}

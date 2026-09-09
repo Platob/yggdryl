@@ -1,0 +1,32 @@
+{
+  "name": "paymentstreamnondeliverablefixingdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "nondeliverablefixingdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nondeliverablefixingdate"
+        }
+      },
+      {
+        "name": "nondeliverablefixingdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nondeliverablefixingdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentStreamNonDeliverableFixingDate"
+  }
+}

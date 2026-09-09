@@ -1,0 +1,162 @@
+{
+  "name": "bidcomprsp",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "commissiondata",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "commissiondata"
+        }
+      },
+      {
+        "name": "listid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "listid"
+        }
+      },
+      {
+        "name": "country",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "country"
+        }
+      },
+      {
+        "name": "side",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "side"
+        }
+      },
+      {
+        "name": "price",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "price"
+        }
+      },
+      {
+        "name": "pricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricetype"
+        }
+      },
+      {
+        "name": "fairvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fairvalue"
+        }
+      },
+      {
+        "name": "netgrossind",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "netgrossind"
+        }
+      },
+      {
+        "name": "settltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settltype"
+        }
+      },
+      {
+        "name": "settldate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settldate"
+        }
+      },
+      {
+        "name": "tradingsessionid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionid"
+        }
+      },
+      {
+        "name": "tradingsessionsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionsubid"
+        }
+      },
+      {
+        "name": "text",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "text"
+        }
+      },
+      {
+        "name": "encodedtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtextlen"
+        }
+      },
+      {
+        "name": "encodedtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "BidCompRsp"
+  }
+}

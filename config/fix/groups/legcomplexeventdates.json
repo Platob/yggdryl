@@ -1,0 +1,23 @@
+{
+  "name": "legcomplexeventdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventdate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcomplexeventdate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegComplexEventDates(2250) > 0.",
+    "display": "LegComplexEventDates",
+    "fix:component": "legcomplexeventdate",
+    "fix:counter": "2250"
+  }
+}

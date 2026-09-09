@@ -1,0 +1,23 @@
+{
+  "name": "provisioncashsettlpaymentfixeddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "provisioncashsettlpaymentfixeddate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "provisioncashsettlpaymentfixeddate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProvisionCashSettlPaymentDates (40171) > 0.",
+    "display": "ProvisionCashSettlPaymentFixedDateGrp",
+    "fix:component": "provisioncashsettlpaymentfixeddate",
+    "fix:counter": "40171"
+  }
+}

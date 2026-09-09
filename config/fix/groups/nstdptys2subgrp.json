@@ -1,0 +1,22 @@
+{
+  "name": "nstdptys2subgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "nstdptys2sub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "nstdptys2sub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "NstdPtys2SubGrp",
+    "fix:component": "nstdptys2sub",
+    "fix:counter": "806"
+  }
+}

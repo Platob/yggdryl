@@ -1,0 +1,102 @@
+{
+  "name": "bidcompreq",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "listid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "listid"
+        }
+      },
+      {
+        "name": "side",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "side"
+        }
+      },
+      {
+        "name": "tradingsessionid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionid"
+        }
+      },
+      {
+        "name": "tradingsessionsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionsubid"
+        }
+      },
+      {
+        "name": "netgrossind",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "netgrossind"
+        }
+      },
+      {
+        "name": "settltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settltype"
+        }
+      },
+      {
+        "name": "settldate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settldate"
+        }
+      },
+      {
+        "name": "account",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "account"
+        }
+      },
+      {
+        "name": "acctidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "acctidsource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "BidCompReq"
+  }
+}

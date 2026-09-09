@@ -1,0 +1,103 @@
+{
+  "name": "spreadorbenchmarkcurvedata",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "spread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "spread"
+        }
+      },
+      {
+        "name": "benchmarkcurvecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "benchmarkcurvecurrency"
+        }
+      },
+      {
+        "name": "benchmarkcurvecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "benchmarkcurvecurrencycodesource"
+        }
+      },
+      {
+        "name": "benchmarkcurvename",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "benchmarkcurvename"
+        }
+      },
+      {
+        "name": "benchmarkcurvepoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "benchmarkcurvepoint"
+        }
+      },
+      {
+        "name": "benchmarkprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "benchmarkprice"
+        }
+      },
+      {
+        "name": "benchmarkpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "benchmarkpricetype"
+        }
+      },
+      {
+        "name": "benchmarksecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "benchmarksecurityid"
+        }
+      },
+      {
+        "name": "benchmarksecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "benchmarksecurityidsource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "For Fixed Income",
+    "display": "SpreadOrBenchmarkCurveData"
+  }
+}

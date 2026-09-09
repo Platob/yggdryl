@@ -1,0 +1,32 @@
+{
+  "name": "auctiontyperule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "auctiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "auctiontype"
+        }
+      },
+      {
+        "name": "auctiontypeproductcomplex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "auctiontypeproductcomplex"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "AuctionTypeRule"
+  }
+}

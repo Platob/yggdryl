@@ -1,0 +1,32 @@
+{
+  "name": "tradetypecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "tradetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradetype"
+        }
+      },
+      {
+        "name": "tradesubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradesubtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TradeType"
+  }
+}

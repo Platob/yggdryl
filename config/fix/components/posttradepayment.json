@@ -1,0 +1,163 @@
+{
+  "name": "posttradepayment",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "posttradepaymenttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "posttradepaymenttype"
+        }
+      },
+      {
+        "name": "posttradepaymentamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "posttradepaymentamount"
+        }
+      },
+      {
+        "name": "posttradepaymentcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posttradepaymentcurrency"
+        }
+      },
+      {
+        "name": "posttradepaymentcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posttradepaymentcurrencycodesource"
+        }
+      },
+      {
+        "name": "posttradepaymentcalculationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "posttradepaymentcalculationdate"
+        }
+      },
+      {
+        "name": "posttradepaymentvaluedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "posttradepaymentvaluedate"
+        }
+      },
+      {
+        "name": "posttradepaymentfinalvaluedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posttradepaymentfinalvaluedate"
+        }
+      },
+      {
+        "name": "posttradepaymentdebitorcredit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "posttradepaymentdebitorcredit"
+        }
+      },
+      {
+        "name": "posttradepaymentaccount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "posttradepaymentaccount"
+        }
+      },
+      {
+        "name": "posttradepaymentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posttradepaymentid"
+        }
+      },
+      {
+        "name": "posttradepaymentdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posttradepaymentdesc"
+        }
+      },
+      {
+        "name": "encodedposttradepaymentdesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedposttradepaymentdesclen"
+        }
+      },
+      {
+        "name": "encodedposttradepaymentdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedposttradepaymentdesc"
+        }
+      },
+      {
+        "name": "posttradepaymentlinkid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posttradepaymentlinkid"
+        }
+      },
+      {
+        "name": "posttradepaymentstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posttradepaymentstatus"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The date payment calculations are made. This may be earlier than the date in ClearingBusinessDate(715).",
+    "display": "PostTradePayment"
+  }
+}

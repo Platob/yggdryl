@@ -1,0 +1,123 @@
+{
+  "name": "complexeventrelativedate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventdateunadjusted"
+        }
+      },
+      {
+        "name": "complexeventdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventdaterelativeto"
+        }
+      },
+      {
+        "name": "complexeventdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventdateoffsetperiod"
+        }
+      },
+      {
+        "name": "complexeventdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventdateoffsetunit"
+        }
+      },
+      {
+        "name": "complexeventdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "complexeventdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nocomplexeventdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nocomplexeventdatebusinesscenters"
+        }
+      },
+      {
+        "name": "complexeventdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "complexeventdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "complexeventdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventdateadjusted"
+        }
+      },
+      {
+        "name": "complexeventfixingtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventfixingtime"
+        }
+      },
+      {
+        "name": "complexeventfixingtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventfixingtimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when ComplexEventDateOffsetUnit(41023) is specified.",
+    "display": "ComplexEventRelativeDate"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "paymentschedulegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentSchedules(40828) > 0.",
+    "display": "PaymentScheduleGrp",
+    "fix:component": "paymentschedule",
+    "fix:counter": "40828"
+  }
+}

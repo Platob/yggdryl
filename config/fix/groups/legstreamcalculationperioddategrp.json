@@ -1,0 +1,23 @@
+{
+  "name": "legstreamcalculationperioddategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamcalculationperioddatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legstreamcalculationperioddatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegStreamCalculationPeriodDates(41638) > 0.",
+    "display": "LegStreamCalculationPeriodDateGrp",
+    "fix:component": "legstreamcalculationperioddatecomponent",
+    "fix:counter": "41638"
+  }
+}

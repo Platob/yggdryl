@@ -1,0 +1,164 @@
+{
+  "name": "adjustedpositionreport",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "posmaintrptid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "posmaintrptid"
+        }
+      },
+      {
+        "name": "posreqtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posreqtype"
+        }
+      },
+      {
+        "name": "clearingbusinessdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "clearingbusinessdate"
+        }
+      },
+      {
+        "name": "settlsessid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlsessid"
+        }
+      },
+      {
+        "name": "posmaintrptrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posmaintrptrefid"
+        }
+      },
+      {
+        "name": "nopartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "nopartyids"
+        }
+      },
+      {
+        "name": "parties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "parties"
+        }
+      },
+      {
+        "name": "nopositions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "nopositions"
+        }
+      },
+      {
+        "name": "positionqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "positionqty"
+        }
+      },
+      {
+        "name": "norelatedsym",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norelatedsym"
+        }
+      },
+      {
+        "name": "instrmtgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "instrmtgrp"
+        }
+      },
+      {
+        "name": "settlprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlprice"
+        }
+      },
+      {
+        "name": "priorsettlprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "priorsettlprice"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = BL",
+    "display": "AdjustedPositionReport",
+    "fix:msgtype": "BL"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "legstreamcalculationperiodbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamcalculationperiodbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legstreamcalculationperiodbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegStreamCalculationPeriodBusinessCenters(40940) > 0.",
+    "display": "LegStreamCalculationPeriodBusinessCenterGrp",
+    "fix:component": "legstreamcalculationperiodbusinesscentercomponent",
+    "fix:counter": "40940"
+  }
+}

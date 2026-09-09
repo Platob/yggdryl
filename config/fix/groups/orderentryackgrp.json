@@ -1,0 +1,23 @@
+{
+  "name": "orderentryackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "orderentryack",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "orderentryack"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoOrderEntries(2428) > 0.",
+    "display": "OrderEntryAckGrp",
+    "fix:component": "orderentryack",
+    "fix:counter": "2428"
+  }
+}

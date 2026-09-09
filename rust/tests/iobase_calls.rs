@@ -43,6 +43,42 @@ fn costs(what: &str, calls: &Arc<Calls>, expected: &str, operation: impl FnOnce(
 }
 
 #[test]
+fn fix_catalog_storage_resolves_each_root_path_once() {
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{DataType, FixRegistry};
+
+    let path = Folder::temporary()
+        .unwrap()
+        .path()
+        .unwrap()
+        .join(format!("yggdryl-fix-root-calls-{}", std::process::id()));
+    let mut folder = Counted::new(Folder::new(&path).unwrap());
+    let calls = Arc::clone(folder.calls());
+    let mut field = DataType::Utf8.nullable_field("Symbol");
+    field.as_fix_mut().set_tag(55).unwrap();
+    let registry = FixRegistry::from_fields([field]).unwrap();
+    // Counted measures navigation at this root; child handles own the
+    // document reads and writes and are outside this tally.
+    costs(
+        "one field shard, four categories, one manifest",
+        &calls,
+        "child_by_path=6",
+        || {
+            registry.write_into(&mut folder).unwrap();
+        },
+    );
+    costs(
+        "four category roots and one manifest",
+        &calls,
+        "child_by_path=5",
+        || {
+            assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
+        },
+    );
+    folder.remove(true).unwrap();
+}
+
+#[test]
 fn a_byte_read_is_one_call_whichever_shape_it_takes() {
     let handle = source(&payload(4096), "file:///lake/part.bin");
     let calls = Arc::clone(handle.calls());

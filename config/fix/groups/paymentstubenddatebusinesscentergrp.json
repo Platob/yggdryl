@@ -1,0 +1,23 @@
+{
+  "name": "paymentstubenddatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstubenddatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentstubenddatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentStubEndDateBusinessCenters(42696) > 0.",
+    "display": "PaymentStubEndDateBusinessCenterGrp",
+    "fix:component": "paymentstubenddatebusinesscentercomponent",
+    "fix:counter": "42696"
+  }
+}

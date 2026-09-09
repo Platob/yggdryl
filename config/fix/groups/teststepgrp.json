@@ -1,0 +1,23 @@
+{
+  "name": "teststepgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "teststep",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "teststep"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTestSteps(3036) > 0.",
+    "display": "TestStepGrp",
+    "fix:component": "teststep",
+    "fix:counter": "3036"
+  }
+}

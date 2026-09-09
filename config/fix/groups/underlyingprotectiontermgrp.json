@@ -1,0 +1,23 @@
+{
+  "name": "underlyingprotectiontermgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingprotectionterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingprotectionterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingProtectionTerms(42068) > 0.",
+    "display": "UnderlyingProtectionTermGrp",
+    "fix:component": "underlyingprotectionterm",
+    "fix:counter": "42068"
+  }
+}

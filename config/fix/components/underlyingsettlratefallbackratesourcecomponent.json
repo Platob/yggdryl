@@ -1,0 +1,33 @@
+{
+  "name": "underlyingsettlratefallbackratesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingsettlratefallbackratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsettlratefallbackratesource"
+        }
+      },
+      {
+        "name": "underlyingsettlratefallbackreferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsettlratefallbackreferencepage"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when UnderlyingSettlRateFallbackRateSource(40904) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
+    "display": "UnderlyingSettlRateFallbackRateSource"
+  }
+}

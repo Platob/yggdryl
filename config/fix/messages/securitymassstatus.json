@@ -1,0 +1,234 @@
+{
+  "name": "securitymassstatus",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "applicationsequencecontrol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "applicationsequencecontrol"
+        }
+      },
+      {
+        "name": "securitystatusreqid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securitystatusreqid"
+        }
+      },
+      {
+        "name": "securitylistid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securitylistid"
+        }
+      },
+      {
+        "name": "marketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketid"
+        }
+      },
+      {
+        "name": "marketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketsegmentid"
+        }
+      },
+      {
+        "name": "tradedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradedate"
+        }
+      },
+      {
+        "name": "tradingsessionid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionid"
+        }
+      },
+      {
+        "name": "tradingsessionsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionsubid"
+        }
+      },
+      {
+        "name": "instrumentscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrumentscope"
+        }
+      },
+      {
+        "name": "unsolicitedindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "unsolicitedindicator"
+        }
+      },
+      {
+        "name": "securitymasstradingstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securitymasstradingstatus"
+        }
+      },
+      {
+        "name": "fastmarketindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fastmarketindicator"
+        }
+      },
+      {
+        "name": "securitymasstradingevent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securitymasstradingevent"
+        }
+      },
+      {
+        "name": "masshaltreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "masshaltreason"
+        }
+      },
+      {
+        "name": "mdbooktype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdbooktype"
+        }
+      },
+      {
+        "name": "marketdepth",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdepth"
+        }
+      },
+      {
+        "name": "transacttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "transacttime"
+        }
+      },
+      {
+        "name": "adjustment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "adjustment"
+        }
+      },
+      {
+        "name": "norelatedsym",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norelatedsym"
+        }
+      },
+      {
+        "name": "secmassstatgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "secmassstatgrp"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = CO",
+    "display": "SecurityMassStatus",
+    "fix:msgtype": "CO"
+  }
+}

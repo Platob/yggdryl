@@ -1,0 +1,23 @@
+{
+  "name": "instrumentscopegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrumentscopecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "instrumentscopecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoInstrumentScopes > 0.",
+    "display": "InstrumentScopeGrp",
+    "fix:component": "instrumentscopecomponent",
+    "fix:counter": "1656"
+  }
+}

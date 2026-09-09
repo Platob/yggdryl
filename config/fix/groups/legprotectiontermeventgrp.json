@@ -1,0 +1,23 @@
+{
+  "name": "legprotectiontermeventgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprotectiontermevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprotectiontermevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProtectionTermEvents(41625) > 0.",
+    "display": "LegProtectionTermEventGrp",
+    "fix:component": "legprotectiontermevent",
+    "fix:counter": "41625"
+  }
+}

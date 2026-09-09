@@ -1,0 +1,32 @@
+{
+  "name": "legpaymentstreamnondeliverablefixingdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legnondeliverablefixingdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legnondeliverablefixingdate"
+        }
+      },
+      {
+        "name": "legnondeliverablefixingdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legnondeliverablefixingdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPaymentStreamNonDeliverableFixingDate"
+  }
+}

@@ -1,0 +1,184 @@
+{
+  "name": "marketdataincrementalrefresh",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "applicationsequencecontrol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "applicationsequencecontrol"
+        }
+      },
+      {
+        "name": "mdmsgid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdmsgid"
+        }
+      },
+      {
+        "name": "mdbooktype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdbooktype"
+        }
+      },
+      {
+        "name": "mdfeedtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdfeedtype"
+        }
+      },
+      {
+        "name": "mdsubfeedtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdsubfeedtype"
+        }
+      },
+      {
+        "name": "tradedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradedate"
+        }
+      },
+      {
+        "name": "mdreqid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdreqid"
+        }
+      },
+      {
+        "name": "marketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketid"
+        }
+      },
+      {
+        "name": "marketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketsegmentid"
+        }
+      },
+      {
+        "name": "nomdentries",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "nomdentries"
+        }
+      },
+      {
+        "name": "mdincgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "mdincgrp"
+        }
+      },
+      {
+        "name": "applqueuedepth",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "applqueuedepth"
+        }
+      },
+      {
+        "name": "applqueueresolution",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "applqueueresolution"
+        }
+      },
+      {
+        "name": "noroutingids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noroutingids"
+        }
+      },
+      {
+        "name": "routinggrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "routinggrp"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = X",
+    "display": "MarketDataIncrementalRefresh",
+    "fix:msgtype": "X"
+  }
+}

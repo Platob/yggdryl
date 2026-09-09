@@ -1,0 +1,23 @@
+{
+  "name": "protectiontermeventqualifiergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "protectiontermeventqualifiercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "protectiontermeventqualifiercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProtectionTermEventQualifiers(40199) > 0.",
+    "display": "ProtectionTermEventQualifierGrp",
+    "fix:component": "protectiontermeventqualifiercomponent",
+    "fix:counter": "40199"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "partyrelationshipcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "partyrelationship",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partyrelationship"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PartyRelationship"
+  }
+}

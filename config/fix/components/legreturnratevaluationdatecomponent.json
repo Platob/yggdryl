@@ -1,0 +1,32 @@
+{
+  "name": "legreturnratevaluationdatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legreturnratevaluationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationdate"
+        }
+      },
+      {
+        "name": "legreturnratevaluationdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratevaluationdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegReturnRateValuationDate"
+  }
+}

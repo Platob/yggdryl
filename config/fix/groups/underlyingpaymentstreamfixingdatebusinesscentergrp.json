@@ -1,0 +1,23 @@
+{
+  "name": "underlyingpaymentstreamfixingdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentstreamfixingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingpaymentstreamfixingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingPaymentStreamFixingDateBusinessCenters(40972) > 0.",
+    "display": "UnderlyingPaymentStreamFixingDateBusinessCenterGrp",
+    "fix:component": "underlyingpaymentstreamfixingdatebusinesscentercomponent",
+    "fix:counter": "40972"
+  }
+}

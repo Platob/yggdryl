@@ -1,0 +1,23 @@
+{
+  "name": "mdackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "mdack",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "mdack"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of entries following.",
+    "display": "MDAckGrp",
+    "fix:component": "mdack",
+    "fix:counter": "268"
+  }
+}

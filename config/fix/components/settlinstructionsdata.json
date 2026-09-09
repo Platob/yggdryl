@@ -1,0 +1,73 @@
+{
+  "name": "settlinstructionsdata",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "settldeliverytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settldeliverytype"
+        }
+      },
+      {
+        "name": "standinstdbtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "standinstdbtype"
+        }
+      },
+      {
+        "name": "standinstdbname",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "standinstdbname"
+        }
+      },
+      {
+        "name": "standinstdbid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "standinstdbid"
+        }
+      },
+      {
+        "name": "nodlvyinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nodlvyinst"
+        }
+      },
+      {
+        "name": "dlvyinstgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "dlvyinstgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if AllocSettlInstType = 1 or 2",
+    "display": "SettlInstructionsData"
+  }
+}

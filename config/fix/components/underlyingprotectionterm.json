@@ -1,0 +1,152 @@
+{
+  "name": "underlyingprotectionterm",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprotectiontermnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermnotional"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermcurrency"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermsellernotifies",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermsellernotifies"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermbuyernotifies",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermbuyernotifies"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventbusinesscenter"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermstandardsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermstandardsources"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventminimumsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventminimumsources"
+        }
+      },
+      {
+        "name": "nounderlyingprotectiontermeventnewssources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprotectiontermeventnewssources"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventnewssourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprotectiontermeventnewssourcegrp"
+        }
+      },
+      {
+        "name": "nounderlyingprotectiontermevents",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprotectiontermevents"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprotectiontermeventgrp"
+        }
+      },
+      {
+        "name": "nounderlyingprotectiontermobligations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprotectiontermobligations"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermobligationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprotectiontermobligationgrp"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermxid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProtectionTerm"
+  }
+}

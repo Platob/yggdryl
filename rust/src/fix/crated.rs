@@ -42,8 +42,16 @@ use std::sync::LazyLock;
 
 use crate::{DataType, DigestAlgorithm, Field, Result, TimeUnit, Timezone};
 
-/// The first tag this crate claims: everything from here up is the crate's.
+/// The first tag this crate claims.
 pub const CRATE_TAG_MIN: i32 = 65_000;
+
+/// One past the last tag this crate claims.
+///
+/// Bounded rather than open-ended, because a derived definition tag lives
+/// above it: see [`crate::FixId::DEFINITION_TAG_MIN`]. A hundred slots is
+/// several times the twenty fields this crate defines, so the block has room
+/// to grow without ever reaching the one above it.
+pub const CRATE_TAG_MAX: i32 = 65_100;
 
 /// The tag carrying a message's value digest.
 pub const MSGHASH_TAG: i32 = 65_000;
@@ -66,8 +74,8 @@ pub const PARENTCLORDID_TAG: i32 = 65_005;
 /// The tag carrying the venue order identifier this one descends from.
 pub const PARENTORDERID_TAG: i32 = 65_006;
 
-/// The tag carrying the session a message belongs to, as the message states it.
-pub const SESSIONID_TAG: i32 = 65_007;
+/// The tag carrying the session a message came from, as the message states it.
+pub const SENDERSESSIONID_TAG: i32 = 65_007;
 
 /// The tag carrying the message context a bridge handled the message in.
 pub const MSGCTXID_TAG: i32 = 65_008;
@@ -78,11 +86,11 @@ pub const SENDERPLUGINID_TAG: i32 = 65_009;
 /// The tag carrying the plugin a message went to, as a bridge names it.
 pub const TARGETPLUGINID_TAG: i32 = 65_010;
 
-/// The tag carrying the plugin session a message came from.
-pub const SENDERPLUGINSESSION_TAG: i32 = 65_011;
+/// The tag carrying the name of the session a message came from.
+pub const SENDERSESSIONNAME_TAG: i32 = 65_011;
 
-/// The tag carrying the plugin session a message went to.
-pub const TARGETPLUGINSESSION_TAG: i32 = 65_012;
+/// The tag carrying the name of the session a message went to.
+pub const TARGETSESSIONNAME_TAG: i32 = 65_012;
 
 /// The tag carrying the instrument's ISIN.
 pub const ISINCODE_TAG: i32 = 65_013;
@@ -102,13 +110,16 @@ pub const ID_TAG: i32 = 65_017;
 /// The tag carrying the order chain's identity.
 pub const PERSISTENTID_TAG: i32 = 65_018;
 
+/// The tag carrying the session a message went to, as the message states it.
+pub const TARGETSESSIONID_TAG: i32 = 65_019;
+
 /// The column the timestamp takes, which is also what its partition names.
 pub const TIMESTAMP_NAME: &str = "timestamp";
 
 /// Whether a tag is one of this crate's own.
 #[must_use]
 pub const fn is_crate_tag(tag: i32) -> bool {
-    tag >= CRATE_TAG_MIN
+    tag >= CRATE_TAG_MIN && tag < CRATE_TAG_MAX
 }
 
 /// FIX's own tag for which way a message moved.
@@ -310,15 +321,18 @@ fn build() -> Result<Vec<Field>> {
             "The venue order identifier this order descends from, which no \
              standard tag names.",
         )?,
-        // The session a message belongs to, as the message itself states it:
-        // a bridge row spells `SESSIONID`, and the row header's own bracket
-        // is the bridge's, not the message's, so it never fills this.
-        crated(
-            "sessionid",
-            "SessionId",
-            SESSIONID_TAG,
+        // The session a message came from, as the message itself states it,
+        // and half of a pair whose target side takes the block's next free tag
+        // below. A bridge row spells only its own `SESSIONID`, which this side
+        // keeps as an alias; the row header's own bracket is the bridge's, not
+        // the message's, so it never fills either of them.
+        aliased(
+            "sendersessionid",
+            "SenderSessionId",
+            SENDERSESSIONID_TAG,
             DataType::Utf8,
-            "The session a message belongs to, as the message states it.",
+            "The session a message came from, as the message states it.",
+            &["SessionId"],
         )?,
         // The message context a bridge handled the line in, from the bracket
         // its row header writes after the clock.
@@ -350,25 +364,26 @@ fn build() -> Result<Vec<Field>> {
             "The plugin a message went to inside a bridge, as the bridge \
              names it.",
         )?,
-        // The plugin sessions a message moved between: what a bridge row
+        // The sessions a message moved between, by name: what a bridge row
         // spells as `ULFROMSESSIONNAME` and `ULTOSESSIONNAME`, and what the
-        // row header names in front of a line the plugin sent or received.
+        // row header names in front of a line the session sent or received.
+        // The identifier is the pair above; this is what an operator calls it.
         aliased(
-            "senderpluginsession",
-            "SenderPluginSession",
-            SENDERPLUGINSESSION_TAG,
+            "sendersessionname",
+            "SenderSessionName",
+            SENDERSESSIONNAME_TAG,
             DataType::Utf8,
-            "The plugin session a message came from: the bridge row's own \
-             statement, else the plugin that logged the line it sent.",
+            "The name of the session a message came from: the bridge row's own \
+             statement, else the session that logged the line it sent.",
             &["ULFromSessionName"],
         )?,
         aliased(
-            "targetpluginsession",
-            "TargetPluginSession",
-            TARGETPLUGINSESSION_TAG,
+            "targetsessionname",
+            "TargetSessionName",
+            TARGETSESSIONNAME_TAG,
             DataType::Utf8,
-            "The plugin session a message went to: the bridge row's own \
-             statement, else the plugin that logged the line it received.",
+            "The name of the session a message went to: the bridge row's own \
+             statement, else the session that logged the line it received.",
             &["ULToSessionName"],
         )?,
         // The instrument and the market, one spelling each: an ISIN as a
@@ -428,6 +443,15 @@ fn build() -> Result<Vec<Field>> {
              xxh3 digest of its instrument and first identifier, carried by \
              every later message sharing one of its identifiers.",
         )?,
+        // The target side of the session pair, which the block's next free tag
+        // takes rather than displacing a tag already published.
+        crated(
+            "targetsessionid",
+            "TargetSessionId",
+            TARGETSESSIONID_TAG,
+            DataType::Utf8,
+            "The session a message went to, as the message states it.",
+        )?,
     ])
 }
 
@@ -476,65 +500,25 @@ pub fn fix_crate_fields() -> Result<&'static [Field]> {
 pub const MSGTYPE_TAG: i32 = 35;
 
 impl super::FixRegistry {
-    /// Registers one message type, answering the value it takes.
+    /// Registers a message code and returns its registry-owned Struct definition.
     ///
-    /// A dictionary is never complete. Venues invent message types, bridges
-    /// write composite keys like `P Report Ack`, and a reader that refused
-    /// what it had not been told about would drop exactly the traffic someone
-    /// is trying to understand. So a type the code set does not have is added
-    /// to it rather than rejected, and the value it takes is
-    /// [`MsgType::coerce`](crate::types::MsgType::coerce)'s - itself where it
-    /// fits, a stable synthesized value where it does not.
-    ///
-    /// `spelling` is what the wire, the bridge or the configuration calls it.
-    /// `name` is the symbolic name the set files it under, and the spelling
-    /// becomes an alias of it when the two differ, so both still reach the
-    /// value; with none named the spelling is the name. `description` is the
-    /// source's own wording for it.
-    ///
-    /// Nothing is hard-coded: the vocabulary is the dictionary's own code set
-    /// on tag 35, and this adds to it exactly as a generator would.
-    ///
-    /// Idempotent, and enriching rather than replacing: registering a type the
-    /// dictionary already spells answers its existing value, adds a spelling
-    /// the set did not answer to, and fills a description it did not have -
-    /// but never rewrites a name or a wording a source already gave it. A
-    /// reader may call it per row without growing the code set per row.
-    ///
-    /// # Errors
-    ///
-    /// Returns the registry's own refusal when tag 35 is absent, when its
-    /// code set will not read, when the synthesized value collides with a
-    /// different spelling - which is a real conflict and not something to
-    /// resolve by picking one - or when a name or spelling another code
-    /// already answers to would be added, because a spelling two codes reach
-    /// resolves to neither.
+    /// Existing names and descriptions are preserved; new spellings become aliases.
+    /// Unknown codes retain their full text and acquire an empty message Struct.
+    /// Code and message insertion succeed atomically, including collision checks.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
-    /// # use yggdryl::holder::local::Folder;
-    /// # use yggdryl::FixRegistry;
-    /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// let mut registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    ///
-    /// // One the specification publishes is already there.
-    /// assert_eq!(registry.register_msgtype("NewOrderSingle", None, None)?.as_str(), "D");
-    ///
-    /// // One a bridge invents is added, and stays put.
-    /// let held = registry.register_msgtype("P Report Ack", None, None)?;
-    /// assert!(held.is_synthetic());
-    /// assert_eq!(registry.register_msgtype("P Report Ack", None, None)?, held);
-    ///
-    /// // A later source describing the same type fills what it was missing.
-    /// registry.register_msgtype("P Report Ack", None, Some("Allocation Report ACK"))?;
-    /// let field = registry.field_by_tag(35)?;
-    /// assert_eq!(
-    ///     field
-    ///         .as_fix()
-    ///         .code_by_name("P Report Ack")
-    ///         .and_then(|code| code.parse_doc().ok().flatten()),
-    ///     Some("Allocation Report ACK".to_owned()),
-    /// );
+    /// use yggdryl::{DataType, FixRegistry};
+    /// let mut field = DataType::Utf8.nullable_field("msgtype");
+    /// field.as_fix_mut().set_tag(35)?;
+    /// let mut registry = FixRegistry::from_fields([field])?;
+    /// let message = registry.register_msgtype("P Report Ack", Some("AllocationReportAck"), None)?;
+    /// assert_eq!(message.as_str(), "P Report Ack");
+    /// assert!(matches!(message.as_field().dtype(), DataType::Struct(_)));
+    /// assert!(std::ptr::eq(
+    ///     registry.msgtype("P Report Ack", None)?,
+    ///     registry.msgtype("AllocationReportAck", None)?,
+    /// ));
     /// # Ok(())
     /// # }
     /// ```
@@ -543,21 +527,20 @@ impl super::FixRegistry {
         spelling: &str,
         name: Option<&str>,
         description: Option<&str>,
-    ) -> Result<crate::types::MsgType> {
+    ) -> Result<&super::MsgType> {
         let field = self.field_by_tag(MSGTYPE_TAG)?;
         let view = field.as_fix();
         let mut codes: Vec<super::FixCode> = view
             .codes()
-            .filter_map(std::result::Result::ok)
-            .map(super::FixCode::from)
-            .collect();
+            .map(|code| code.map(super::FixCode::from))
+            .collect::<Result<_>>()?;
         // Every spelling this registration states, the value's own first.
         let named = name.unwrap_or(spelling);
         let (value, at) = match view.code_value(spelling) {
             // Already spelled, by name, alias or wire value: the set answers,
             // and this states whatever it did not already hold.
             Some(held) => {
-                let value = crate::types::MsgType::new(held)?;
+                let value = held.to_owned();
                 let at = codes
                     .iter()
                     .position(|code| code.value() == value.as_str())
@@ -567,17 +550,7 @@ impl super::FixRegistry {
                 (value, at)
             }
             None => {
-                let value = crate::types::MsgType::coerce(spelling);
-                if let Some(taken) = view.code_name(value.as_str()) {
-                    return Err(crate::Error::Conflict {
-                        expected: "a free message type value",
-                        actual: "one another spelling holds",
-                        path: crate::text::expected_got(
-                            format_args!("{spelling:?} at {:?}", value.as_str()),
-                            format_args!("{taken:?}"),
-                        ),
-                    });
-                }
+                let value = spelling.to_owned();
                 codes.push(super::FixCode::new(named, value.as_str()));
                 (value, codes.len() - 1)
             }
@@ -606,9 +579,36 @@ impl super::FixRegistry {
                 codes[at] = codes[at].clone().with_description(description);
             }
         }
+        let mut next = self.clone();
         let mut field = field.clone();
         field.as_fix_mut().set_codes(&codes)?;
-        self.update(field)?;
-        Ok(value)
+        next.update(field)?;
+        let branch = super::FixBranch::STANDARD;
+        if next.get_msgtype(&value, Some(&branch)).is_none() {
+            let normalized = crate::types::normalized(codes[at].name());
+            let canonical = if !normalized.is_empty()
+                && !matches!(normalized.as_str(), "." | "..")
+                && normalized
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.')
+            {
+                normalized.to_string()
+            } else {
+                let mut name = String::from("message");
+                for byte in value.bytes() {
+                    use std::fmt::Write;
+                    write!(name, "{byte:02x}")
+                        .map_err(|error| crate::Error::absent("message name", error))?;
+                }
+                name
+            };
+            let mut message = crate::DataType::from_fields([])?.required_field(canonical);
+            message.as_fix_mut().set_msgtype(&value)?;
+            next.create_definition(crate::FixCategory::Messages, message)?;
+        }
+        // Resolution also rejects a code shared by several contextual definitions.
+        next.msgtype(&value, Some(&branch))?;
+        *self = next;
+        self.msgtype(&value, Some(&branch))
     }
 }

@@ -1,0 +1,72 @@
+{
+  "name": "relatedorder",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "relatedorderid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedorderid"
+        }
+      },
+      {
+        "name": "relatedorderidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedorderidsource"
+        }
+      },
+      {
+        "name": "relatedordertime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedordertime"
+        }
+      },
+      {
+        "name": "relatedorderqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedorderqty"
+        }
+      },
+      {
+        "name": "orderrelationship",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderrelationship"
+        }
+      },
+      {
+        "name": "orderoriginationfirmid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderoriginationfirmid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RelatedOrder"
+  }
+}

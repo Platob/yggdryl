@@ -1,0 +1,102 @@
+{
+  "name": "underlyingprotectiontermevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprotectiontermeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventtype"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventvalue"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventcurrency"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventperiod"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventunit"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventdaytype"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprotectiontermeventratesource"
+        }
+      },
+      {
+        "name": "nounderlyingprotectiontermeventqualifiers",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingprotectiontermeventqualifiers"
+        }
+      },
+      {
+        "name": "underlyingprotectiontermeventqualifiergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingprotectiontermeventqualifiergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProtectionTermEvent"
+  }
+}

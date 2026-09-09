@@ -1,0 +1,23 @@
+{
+  "name": "deliverystreamcyclegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "deliverystreamcycle",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "deliverystreamcycle"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoDeliveryStreamCycles(41081) > 0.",
+    "display": "DeliveryStreamCycleGrp",
+    "fix:component": "deliverystreamcycle",
+    "fix:counter": "41081"
+  }
+}

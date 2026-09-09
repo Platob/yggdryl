@@ -1,0 +1,23 @@
+{
+  "name": "extraordinaryeventgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "extraordinaryevent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "extraordinaryevent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoExtraordinaryEvents(42296) > 0.",
+    "display": "ExtraordinaryEventGrp",
+    "fix:component": "extraordinaryevent",
+    "fix:counter": "42296"
+  }
+}

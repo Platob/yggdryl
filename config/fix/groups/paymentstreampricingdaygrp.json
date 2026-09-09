@@ -1,0 +1,23 @@
+{
+  "name": "paymentstreampricingdaygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreampricingday",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentstreampricingday"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentStreamPricingDays(41227) > 0.",
+    "display": "PaymentStreamPricingDayGrp",
+    "fix:component": "paymentstreampricingday",
+    "fix:counter": "41227"
+  }
+}

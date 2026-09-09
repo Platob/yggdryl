@@ -1,0 +1,142 @@
+{
+  "name": "ordliststat",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "clordid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clordid"
+        }
+      },
+      {
+        "name": "orderid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderid"
+        }
+      },
+      {
+        "name": "secondaryclordid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryclordid"
+        }
+      },
+      {
+        "name": "cumqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "cumqty"
+        }
+      },
+      {
+        "name": "ordstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "ordstatus"
+        }
+      },
+      {
+        "name": "workingindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "workingindicator"
+        }
+      },
+      {
+        "name": "leavesqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "leavesqty"
+        }
+      },
+      {
+        "name": "cxlqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "cxlqty"
+        }
+      },
+      {
+        "name": "avgpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "avgpx"
+        }
+      },
+      {
+        "name": "ordrejreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordrejreason"
+        }
+      },
+      {
+        "name": "text",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "text"
+        }
+      },
+      {
+        "name": "encodedtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtextlen"
+        }
+      },
+      {
+        "name": "encodedtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "OrdListStat"
+  }
+}

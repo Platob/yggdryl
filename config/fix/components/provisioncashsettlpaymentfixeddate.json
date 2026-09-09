@@ -1,0 +1,32 @@
+{
+  "name": "provisioncashsettlpaymentfixeddate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "provisioncashsettlpaymentdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlpaymentdate"
+        }
+      },
+      {
+        "name": "provisioncashsettlpaymentdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisioncashsettlpaymentdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ProvisionCashSettlPaymentFixedDate"
+  }
+}

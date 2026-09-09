@@ -1,0 +1,152 @@
+{
+  "name": "protectionterm",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "protectiontermnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermnotional"
+        }
+      },
+      {
+        "name": "protectiontermcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermcurrency"
+        }
+      },
+      {
+        "name": "protectiontermsellernotifies",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermsellernotifies"
+        }
+      },
+      {
+        "name": "protectiontermbuyernotifies",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermbuyernotifies"
+        }
+      },
+      {
+        "name": "protectiontermeventbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermeventbusinesscenter"
+        }
+      },
+      {
+        "name": "protectiontermstandardsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermstandardsources"
+        }
+      },
+      {
+        "name": "protectiontermeventminimumsources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermeventminimumsources"
+        }
+      },
+      {
+        "name": "noprotectiontermeventnewssources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprotectiontermeventnewssources"
+        }
+      },
+      {
+        "name": "protectiontermeventnewssourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "protectiontermeventnewssourcegrp"
+        }
+      },
+      {
+        "name": "noprotectiontermevents",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprotectiontermevents"
+        }
+      },
+      {
+        "name": "protectiontermeventgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "protectiontermeventgrp"
+        }
+      },
+      {
+        "name": "noprotectiontermobligations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noprotectiontermobligations"
+        }
+      },
+      {
+        "name": "protectiontermobligationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "protectiontermobligationgrp"
+        }
+      },
+      {
+        "name": "protectiontermxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "protectiontermxid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ProtectionTerm"
+  }
+}

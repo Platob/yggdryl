@@ -1,0 +1,22 @@
+{
+  "name": "settlptyssubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "settlptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "settlptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SettlPtysSubGrp",
+    "fix:component": "settlptyssub",
+    "fix:counter": "801"
+  }
+}

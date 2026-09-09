@@ -348,6 +348,31 @@
   }
 
   /** Say what failed and how to put it back, rather than showing nothing. */
+  /** Numeric version results and refusals recorded by the native parser. */
+  const renderVersions = (root, data) => {
+    const view = make('div', 'ygg-pg__view')
+    const cases = data.versions.map((entry) => ({
+      ...entry,
+      label: entry.ok ? 'Accepted' : 'Refused',
+    }))
+    const choices = list(cases, (entry) => entry.input, (position) => show(position))
+    const show = (position) => {
+      const entry = cases[position]
+      choices.press(position)
+      view.replaceChildren(
+        detail([
+          ['input', entry.input],
+          ...(entry.ok
+            ? [['canonical text', entry.text], ['major / minor / patch', entry.parts.join(' / ')], ['native hash', entry.hash]]
+            : [['native refusal', entry.error, false]]),
+        ]),
+        call(entry.call),
+      )
+    }
+    root.append(make('p', 'ygg-pg__counter', 'Select a recorded native result. These controls do not parse a new version.'), choices.items, view)
+    show(0)
+  }
+
   const fail = (roots, reason) => {
     for (const root of roots) {
       root.textContent = ''
@@ -374,6 +399,7 @@
           root.textContent = ''
           if (role === 'widths') renderWidths(root, data)
           else if (role === 'vocabulary') renderVocabulary(root, data)
+          else if (role === 'versions') renderVersions(root, data)
           else if (role === 'encode' || role === 'decode') {
             views[role] = renderCases(root, data, role)
           }

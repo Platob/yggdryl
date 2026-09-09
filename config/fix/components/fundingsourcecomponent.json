@@ -1,0 +1,52 @@
+{
+  "name": "fundingsourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "fundingsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fundingsource"
+        }
+      },
+      {
+        "name": "fundingsourcemarketvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fundingsourcemarketvalue"
+        }
+      },
+      {
+        "name": "fundingsourcecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fundingsourcecurrency"
+        }
+      },
+      {
+        "name": "fundingsourcecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fundingsourcecurrencycodesource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "FundingSource"
+  }
+}

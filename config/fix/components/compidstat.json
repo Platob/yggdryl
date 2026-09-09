@@ -1,0 +1,72 @@
+{
+  "name": "compidstat",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "refcompid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "refcompid"
+        }
+      },
+      {
+        "name": "refsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "refsubid"
+        }
+      },
+      {
+        "name": "locationid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "locationid"
+        }
+      },
+      {
+        "name": "deskid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deskid"
+        }
+      },
+      {
+        "name": "statusvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "statusvalue"
+        }
+      },
+      {
+        "name": "statustext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "statustext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "CompIDStat"
+  }
+}

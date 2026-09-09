@@ -1,0 +1,72 @@
+{
+  "name": "instrumentparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrumentpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentpartyid"
+        }
+      },
+      {
+        "name": "instrumentpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentpartyidsource"
+        }
+      },
+      {
+        "name": "instrumentpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentpartyrole"
+        }
+      },
+      {
+        "name": "instrumentpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "instrumentpartyrolequalifier"
+        }
+      },
+      {
+        "name": "noinstrumentpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noinstrumentpartysubids"
+        }
+      },
+      {
+        "name": "instrumentptyssubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "instrumentptyssubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "InstrumentParty"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "name": "physicalsettlterm",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "nophysicalsettldeliverableobligations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nophysicalsettldeliverableobligations"
+        }
+      },
+      {
+        "name": "physicalsettldeliverableobligationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "physicalsettldeliverableobligationgrp"
+        }
+      },
+      {
+        "name": "physicalsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "physicalsettlcurrency"
+        }
+      },
+      {
+        "name": "physicalsettlbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "physicalsettlbusinessdays"
+        }
+      },
+      {
+        "name": "physicalsettlmaximumbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "physicalsettlmaximumbusinessdays"
+        }
+      },
+      {
+        "name": "physicalsettltermxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "physicalsettltermxid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PhysicalSettlTerm"
+  }
+}

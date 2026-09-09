@@ -1,0 +1,94 @@
+{
+  "name": "paymanagementreportack",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "payreportid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "payreportid"
+        }
+      },
+      {
+        "name": "payreportstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "payreportstatus"
+        }
+      },
+      {
+        "name": "paydisputereason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paydisputereason"
+        }
+      },
+      {
+        "name": "rejecttext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rejecttext"
+        }
+      },
+      {
+        "name": "encodedrejecttextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedrejecttextlen"
+        }
+      },
+      {
+        "name": "encodedrejecttext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedrejecttext"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = EB",
+    "display": "PayManagementReportAck",
+    "fix:msgtype": "EB"
+  }
+}

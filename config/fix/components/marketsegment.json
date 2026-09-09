@@ -1,0 +1,62 @@
+{
+  "name": "marketsegment",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "marketid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketid"
+        }
+      },
+      {
+        "name": "marketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketsegmentid"
+        }
+      },
+      {
+        "name": "securitytradingrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "securitytradingrules"
+        }
+      },
+      {
+        "name": "nostrikerules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nostrikerules"
+        }
+      },
+      {
+        "name": "strikerules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "strikerules"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MarketSegment"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "underlyingoptionexerciseexpirationdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingoptionexerciseexpirationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingoptionexerciseexpirationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingOptionExerciseExpirationDateBusinessCenters(41844) > 0.",
+    "display": "UnderlyingOptionExerciseExpirationDateBusinessCenterGrp",
+    "fix:component": "underlyingoptionexerciseexpirationdatebusinesscentercomponent",
+    "fix:counter": "41844"
+  }
+}

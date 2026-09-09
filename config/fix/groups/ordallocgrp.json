@@ -1,0 +1,23 @@
+{
+  "name": "ordallocgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "ordalloc",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "ordalloc"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Indicates number of orders to be combined for allocation. If order(s) were manually delivered set to 1 (one).Required when AllocNoOrdersType = 1",
+    "display": "OrdAllocGrp",
+    "fix:component": "ordalloc",
+    "fix:counter": "73"
+  }
+}

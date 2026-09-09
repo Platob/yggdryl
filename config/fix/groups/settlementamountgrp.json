@@ -1,0 +1,23 @@
+{
+  "name": "settlementamountgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "settlementamountcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "settlementamountcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoSettlementAmounts > 0.",
+    "display": "SettlementAmountGrp",
+    "fix:component": "settlementamountcomponent",
+    "fix:counter": "1700"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "relatedinstrumentgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedinstrument",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "relatedinstrument"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when NoRelatedInstruments > 0",
+    "display": "RelatedInstrumentGrp",
+    "fix:component": "relatedinstrument",
+    "fix:counter": "1647"
+  }
+}

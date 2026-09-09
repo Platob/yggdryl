@@ -1,0 +1,32 @@
+{
+  "name": "allocgroupsubqtyattribute",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "allocgroupsubqtytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocgroupsubqtytype"
+        }
+      },
+      {
+        "name": "allocgroupsubqtyvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocgroupsubqtyvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "AllocGroupSubQtyAttribute"
+  }
+}

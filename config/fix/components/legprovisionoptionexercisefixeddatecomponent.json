@@ -1,0 +1,32 @@
+{
+  "name": "legprovisionoptionexercisefixeddatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprovisionoptionexercisefixeddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionexercisefixeddate"
+        }
+      },
+      {
+        "name": "legprovisionoptionexercisefixeddatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisionoptionexercisefixeddatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProvisionOptionExerciseFixedDate"
+  }
+}

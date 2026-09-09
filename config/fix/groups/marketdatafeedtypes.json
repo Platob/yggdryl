@@ -1,0 +1,23 @@
+{
+  "name": "marketdatafeedtypes",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "marketdatafeedtype",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "marketdatafeedtype"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoMDFeedTypes(1141) > 0.",
+    "display": "MarketDataFeedTypes",
+    "fix:component": "marketdatafeedtype",
+    "fix:counter": "1141"
+  }
+}

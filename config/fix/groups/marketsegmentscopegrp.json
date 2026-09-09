@@ -1,0 +1,23 @@
+{
+  "name": "marketsegmentscopegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "marketsegmentscope",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "marketsegmentscope"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoMarketSegments(1310) > 0.",
+    "display": "MarketSegmentScopeGrp",
+    "fix:component": "marketsegmentscope",
+    "fix:counter": "1310"
+  }
+}

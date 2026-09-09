@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::{FixBranch, FixCodec, Version};
+use yggdryl::{DataType, FixBranch, FixCategory, FixCodec, FixRegistry, Version};
 
 use super::seed;
 
@@ -17,6 +17,45 @@ const BARE: &str = "8=FIX.4.4|9=176|35=D|11=ORDER-1|55=AAPL|54=1|38=100|40=2|10=
 const NAMED: &str =
     "ACCOUNT=A1|MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|ORDTYPE=2";
 const GROUPED: &str = "MSGTYPE=D|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=SYNTH-01\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=SYNTH-02\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=3";
+const NUMERIC_GROUPED: &str = "35=D|453=2|448=SYNTH-01|447=D|452=1|802=1|523=DESK|803=1|448=SYNTH-02|447=D|452=3|55=AAPL|10=0|";
+const PINNED_NUMERIC: &[u8] = b"6000=1|6001=42|6002=7|";
+
+fn pinned_numeric_reader() -> FixCodec {
+    let mut registry = FixRegistry::new();
+    for (branch, name, dtype) in [
+        ("alpha", "Alpha", DataType::Int32),
+        ("beta", "Beta", DataType::Utf8),
+    ] {
+        let branch = FixBranch::from_str(branch).unwrap();
+        let field = |name: String, tag, dtype: DataType| {
+            let mut field = dtype.nullable_field(name);
+            field.as_fix_mut().set_tag(tag).unwrap();
+            field.as_fix_mut().set_branch(&branch).unwrap();
+            field
+        };
+        let counter = field(format!("No{name}Rows"), 6000, DataType::Int32);
+        let member = field(format!("{name}ID"), 6001, dtype.clone());
+        let tail = field(format!("{name}Value"), 6002, dtype);
+        registry
+            .add_fields([counter, member.clone(), tail])
+            .unwrap();
+        let mut component = DataType::from_fields([member])
+            .unwrap()
+            .required_field(format!("{name}Entry"));
+        component.as_fix_mut().set_branch(&branch).unwrap();
+        registry
+            .create_definition(FixCategory::Components, component.clone())
+            .unwrap();
+        let mut group = DataType::list(component.clone()).nullable_field(format!("{name}Rows"));
+        group.as_fix_mut().set_branch(&branch).unwrap();
+        group.as_fix_mut().set_counter(6000).unwrap();
+        group.as_fix_mut().set_component(component.name()).unwrap();
+        registry
+            .create_definition(FixCategory::Groups, group)
+            .unwrap();
+    }
+    FixCodec::new(Arc::new(registry)).with_branch(&FixBranch::from_str("beta").unwrap())
+}
 /// A bridge row keyed by `#` names, one of them twinned by its bare spelling.
 ///
 /// The twin is what makes the shape its own benchmark: whether one `#` drops
@@ -45,12 +84,34 @@ const ULCONFIG: &str = concat!(
 pub fn benchmarks(criterion: &mut Criterion) {
     let reader = FixCodec::new(Arc::new(seed()));
     let mut group = criterion.benchmark_group("fix/read");
+    let message = reader
+        .transform_fix_line(NUMERIC_GROUPED.as_bytes(), false)
+        .unwrap();
+    assert_eq!(message.by_tag(453).unwrap(), &yggdryl::Scalar::from(2_i32));
+    assert_eq!(message.by_name("Parties").unwrap().len(), 2);
+    assert_eq!(
+        message
+            .by_path("Parties.0.PtysSubGrp.0.PartySubID")
+            .unwrap()
+            .as_str(),
+        Some("DESK")
+    );
+    assert_eq!(message.into_bytes(b'|'), NUMERIC_GROUPED.as_bytes());
+    let bridge = reader
+        .transform_ullink_line(GROUPED.as_bytes(), false)
+        .unwrap();
+    assert_eq!(bridge.by_tag(453).unwrap(), &yggdryl::Scalar::from(2_i32));
+    assert_eq!(bridge.by_name("Parties").unwrap().len(), 2);
+    group.bench_function("message_stable_hash_one_state_allocation", |bencher| {
+        bencher.iter(|| black_box(message.stable_hash()));
+    });
 
     for (label, row) in [
         ("tagged", TAGGED),
         ("bare", BARE),
         ("named", NAMED),
         ("grouped", GROUPED),
+        ("numeric_grouped", NUMERIC_GROUPED),
         ("hashed", HASHED),
     ] {
         group.throughput(Throughput::Bytes(row.len() as u64));
@@ -59,9 +120,30 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 black_box(&reader)
                     .transform_line(black_box(row).as_bytes(), false)
                     .expect("a readable row")
+                    .next()
+                    .expect("one message")
+                    .expect("a typed message")
             });
         });
     }
+
+    let pinned = pinned_numeric_reader();
+    let decoded = pinned.transform_fix_line(PINNED_NUMERIC, false).unwrap();
+    assert_eq!(
+        decoded.by_path("BetaRows.0.BetaID").unwrap().as_str(),
+        Some("42")
+    );
+    assert_eq!(decoded.by_name("BetaValue").unwrap().as_str(), Some("7"));
+    assert!(decoded.get_by_name("AlphaRows").is_none());
+    assert_eq!(decoded.into_bytes(b'|'), PINNED_NUMERIC);
+    group.throughput(Throughput::Bytes(PINNED_NUMERIC.len() as u64));
+    group.bench_function("numeric_grouped_pinned_branch", |bencher| {
+        bencher.iter(|| {
+            black_box(&pinned)
+                .transform_fix_line(black_box(PINNED_NUMERIC), false)
+                .expect("a pinned numeric group")
+        });
+    });
 
     // The twin scan at width: hundreds of `#` keys around one bare twin, so
     // how the scan scales shows here rather than hiding inside the short rows
@@ -78,6 +160,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
             black_box(&reader)
                 .transform_line(black_box(&wide).as_bytes(), false)
                 .expect("a readable row")
+                .next()
+                .expect("one message")
+                .expect("a typed message")
         });
     });
 
@@ -92,6 +177,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
             black_box(&dated)
                 .transform_line(black_box(BARE).as_bytes(), false)
                 .expect("a readable row")
+                .next()
+                .expect("one message")
+                .expect("a typed message")
         });
     });
 
@@ -111,6 +199,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 black_box(reader)
                     .transform_line(black_box(ULCONFIG).as_bytes(), false)
                     .expect("a readable document")
+                    .try_fold(0_usize, |count, message| message.map(|_| count + 1))
+                    .expect("typed messages")
             });
         });
     }
@@ -118,7 +208,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The emit that closes the round trip, from the entries rather than the row.
     let message = reader
         .transform_line(BARE.as_bytes(), false)
-        .expect("a readable row");
+        .expect("a readable row")
+        .next()
+        .expect("one message")
+        .expect("a typed message");
     group.bench_function("emit", |bencher| {
         bencher.iter(|| black_box(&message).into_bytes(black_box(b'|')));
     });

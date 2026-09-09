@@ -1,0 +1,42 @@
+{
+  "name": "financingcontractualmatrix",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "contractualmatrixsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contractualmatrixsource"
+        }
+      },
+      {
+        "name": "contractualmatrixdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contractualmatrixdate"
+        }
+      },
+      {
+        "name": "contractualmatrixterm",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contractualmatrixterm"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "FinancingContractualMatrix"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "instrmtlegioigrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrmtlegioi",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "instrmtlegioi"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required for multileg IOIs",
+    "display": "InstrmtLegIOIGrp",
+    "fix:component": "instrmtlegioi",
+    "fix:counter": "555"
+  }
+}

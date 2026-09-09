@@ -1,0 +1,23 @@
+{
+  "name": "quotqualgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "quotqual",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "quotqual"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoQuoteQualifiers > 1",
+    "display": "QuotQualGrp",
+    "fix:component": "quotqual",
+    "fix:counter": "735"
+  }
+}

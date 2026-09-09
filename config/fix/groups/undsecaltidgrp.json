@@ -1,0 +1,22 @@
+{
+  "name": "undsecaltidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "undsecaltid",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "undsecaltid"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UndSecAltIDGrp",
+    "fix:component": "undsecaltid",
+    "fix:counter": "457"
+  }
+}

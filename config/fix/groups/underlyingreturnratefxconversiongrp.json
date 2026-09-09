@@ -1,0 +1,23 @@
+{
+  "name": "underlyingreturnratefxconversiongrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingreturnratefxconversion",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingreturnratefxconversion"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingReturnRateFXConversions(43030) > 0.",
+    "display": "UnderlyingReturnRateFXConversionGrp",
+    "fix:component": "underlyingreturnratefxconversion",
+    "fix:counter": "43030"
+  }
+}

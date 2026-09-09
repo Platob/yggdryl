@@ -12,7 +12,8 @@
 //! | `Side`, `side`, `" Side "`, `msg_type`, `Msg Type` | a name, trimmed and folded |
 //! | `Instrument.Symbol` | a path |
 //! | `PartyID[0]`, `PartyID[1]` | one field, two occurrences, in order |
-//! | `NoPartyIDs[0].PartyID` | which group, which occurrence, which member |
+//! | `Parties[0].PartyID` | which group, which occurrence, which member |
+//! | `NoPartyIDs[0].PartyID` | a wire counter resolving the same group |
 //! | `VenueOwnThing` | an unknown name, kept |
 //! | `""`, `"   "` | dropped |
 //!
@@ -28,6 +29,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::entry::FixEntry;
+use super::group_plan::GroupPlan;
 use super::{FixBranch, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::types::State;
 use crate::types::ascii::AsciiFamily;
@@ -227,7 +229,7 @@ pub(super) fn fill_field<'registry>(
         return Some((field, tag));
     }
     let tag = super::ulbridge::capture_tag(key)?;
-    let field = registry.get_primitive_field(tag)?;
+    let field = registry.get_field_by_tag(tag)?;
     Some((field, tag))
 }
 
@@ -242,6 +244,9 @@ fn default_version() -> Version {
 /// Builds a message's field and value from pairs, with the entries beside it.
 pub(super) struct Builder<'registry> {
     registry: &'registry FixRegistry,
+    /// The message the row typed itself as, where the dictionary declares
+    /// one: its own group plans answer before the registry's.
+    message: Option<&'registry super::MsgType>,
     /// The `BeginString` child a message that stated none is given,
     /// resolved once per codec rather than once per line.
     beginstring: &'registry Field,
@@ -303,6 +308,7 @@ impl<'registry> Builder<'registry> {
     /// Opens a build against one dictionary, dialect and version.
     pub(super) fn new(
         registry: &'registry FixRegistry,
+        message: Option<&'registry super::MsgType>,
         beginstring: &'registry Field,
         branch: FixBranch,
         version: Option<Version>,
@@ -310,6 +316,7 @@ impl<'registry> Builder<'registry> {
     ) -> Self {
         Self {
             registry,
+            message,
             beginstring,
             branch,
             version,
@@ -320,6 +327,117 @@ impl<'registry> Builder<'registry> {
             outer: None,
             open: Vec::new(),
         }
+    }
+
+    /// Numeric counters open schema-scoped groups; indexed/name keys retain
+    /// their explicit addressing. Only received pairs advance or allocate rows.
+    pub(super) fn push_pairs(&mut self, pairs: &[(&[u8], &[u8])], absent: impl Fn(&[u8]) -> bool) {
+        let mut cursor = 0;
+        while let Some((key, value)) = pairs.get(cursor) {
+            cursor += 1;
+            if absent(value) || value.is_empty() {
+                continue;
+            }
+            let group = std::str::from_utf8(key)
+                .ok()
+                .and_then(super::field::parse_tag)
+                .and_then(|tag| {
+                    let field = self.by_tag(tag)?;
+                    let id = field.as_fix().id().ok()??;
+                    Some((tag, self.numeric_plan(id)?))
+                });
+            self.push(key, value);
+            if let Some((tag, plan)) = group {
+                let value = self.read_numeric_group(tag, plan, pairs, &mut cursor, &absent);
+                // Not `known`: the group is addressed by the counter's tag
+                // on the wire but does not carry it - the counter's own column
+                // does. Indexing both under one tag makes `by_tag` answer with
+                // whichever the binary search lands on.
+                let slot = self.slot_for(plan.field().clone(), tag, false);
+                slot.field = plan.field().clone();
+                // A counter the frame states twice at one level appends to what
+                // the first statement gathered rather than writing over it: a
+                // dictionary that does not nest one group inside another reads
+                // the inner counter twice at one level, and nothing it gathered
+                // is lost for that.
+                let mut rows: Vec<Scalar> = slot
+                    .values
+                    .pop()
+                    .as_ref()
+                    .and_then(Scalar::as_sequence)
+                    .map_or_else(Vec::new, <[Scalar]>::to_vec);
+                if let Some(read) = value.as_sequence() {
+                    rows.extend(read.iter().cloned());
+                }
+                slot.values = vec![Scalar::from_sequence(rows)];
+                slot.group = false;
+                slot.occurrences.clear();
+            }
+        }
+    }
+
+    fn numeric_plan(&self, id: super::FixId) -> Option<&'registry GroupPlan> {
+        match self.message.filter(|message| message.has_group_counter(id)) {
+            Some(message) => message.get_group_plan_by_counter(id),
+            None => self.registry.get_group_plan_by_counter(id),
+        }
+    }
+
+    fn numeric_group(&self, id: super::FixId) -> Option<&'registry Field> {
+        match self.message.filter(|message| message.has_group_counter(id)) {
+            Some(message) => message.get_group_by_counter(id),
+            None => self.registry.get_group_by_counter(id),
+        }
+    }
+
+    /// Reads one numeric group's occurrences, recording each member under the
+    /// counter pair that heads it.
+    ///
+    /// `counter` is that pair's tag: the entries are the arrival record, and a
+    /// repeating group's members ride under the counter that introduced them,
+    /// exactly as a bridge's indexed keys state them.
+    fn read_numeric_group(
+        &mut self,
+        counter: i32,
+        plan: &'registry GroupPlan,
+        pairs: &[(&[u8], &[u8])],
+        cursor: &mut usize,
+        absent: &impl Fn(&[u8]) -> bool,
+    ) -> Scalar {
+        let mut rows = Vec::new();
+        let mut current = None;
+        while let Some((key, raw)) = pairs.get(*cursor) {
+            if absent(raw) || raw.is_empty() {
+                *cursor += 1;
+                continue;
+            }
+            let Ok(key) = std::str::from_utf8(key) else {
+                break;
+            };
+            let Some(tag) = super::field::parse_tag(key) else {
+                break;
+            };
+            let Some(column) = plan.tag_index(tag) else {
+                break;
+            };
+            if plan.delimiter() == Some(tag) {
+                if let Some(values) = current.take() {
+                    rows.push(plan.row(values));
+                }
+            }
+            let values = current.get_or_insert_with(|| vec![Scalar::Null; plan.columns_len()]);
+            let text = String::from_utf8_lossy(raw);
+            values[column] = self.typed(plan.column(column), raw, &text);
+            self.record_under(counter, key, &text, tag);
+            *cursor += 1;
+            if let Some((column, nested)) = plan.nested(tag) {
+                values[column] = self.read_numeric_group(tag, nested, pairs, cursor, absent);
+            }
+        }
+        if let Some(values) = current {
+            rows.push(plan.row(values));
+        }
+        Scalar::from_sequence(rows)
     }
 
     /// Opens the reading of a row nested inside one of the line's data
@@ -415,15 +533,13 @@ impl<'registry> Builder<'registry> {
     /// could ask for them.
     fn resolve(&self, key: &str) -> Option<(&'registry Field, i32)> {
         let field = if let Some(tag) = super::field::parse_tag(key) {
-            self.registry.get_primitive_field(tag)
+            self.by_tag(tag)
         } else {
-            self.by_path(key, &self.branch)
-                .or_else(|| {
-                    (!self.branch.is_standard())
-                        .then(|| self.by_path(key, &super::FixBranch::STANDARD))
-                        .flatten()
-                })
-                .filter(|field| !super::registry::is_nested(field))
+            self.by_path(key, &self.branch).or_else(|| {
+                (!self.branch.is_standard())
+                    .then(|| self.by_path(key, &super::FixBranch::STANDARD))
+                    .flatten()
+            })
         }?;
         let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
         Some((field, tag))
@@ -434,15 +550,47 @@ impl<'registry> Builder<'registry> {
         self.registry.get_field_by_path(key, Some(branch))
     }
 
+    /// A pinned dialect may fall back to standard fields, never another venue.
+    fn by_tag(&self, tag: i32) -> Option<&'registry Field> {
+        if self.branch.is_standard() {
+            return self.registry.get_field_by_tag(tag);
+        }
+        if super::FixId::is_admissible(&self.branch, tag) {
+            let id = super::FixId::new(tag, self.branch.digest_signed());
+            if let Some(field) = self.registry.get_field_by_id(id) {
+                return Some(field);
+            }
+        }
+        self.registry.get_field_by_id(super::FixId::standard(tag))
+    }
+
+    /// The group a counter tag heads, under the tier a member resolves by.
+    ///
+    /// Counters are scalar fields and the groups they head are catalog
+    /// definitions, so this is the one lookup that crosses the two.
+    fn by_counter(&self, tag: i32) -> Option<&'registry Field> {
+        if !self.branch.is_standard() && super::FixId::is_admissible(&self.branch, tag) {
+            let id = super::FixId::new(tag, self.branch.digest_signed());
+            if let Some(group) = self.registry.get_group_by_counter(id) {
+                return Some(group);
+            }
+        }
+        self.registry
+            .get_group_by_counter(super::FixId::standard(tag))
+    }
+
     /// A group's own field, under the same tier a member resolves by.
     fn by_group(&self, group: &str) -> Option<&'registry Field> {
         self.registry
-            .get_field_by_name(group, Some(&self.branch))
+            .get_definition(crate::FixCategory::Groups, group, Some(&self.branch))
             .or_else(|| {
                 (!self.branch.is_standard())
                     .then(|| {
-                        self.registry
-                            .get_field_by_name(group, Some(&FixBranch::STANDARD))
+                        self.registry.get_definition(
+                            crate::FixCategory::Groups,
+                            group,
+                            Some(&FixBranch::STANDARD),
+                        )
                     })
                     .flatten()
             })
@@ -537,11 +685,11 @@ impl<'registry> Builder<'registry> {
 
     /// One flat child, appended in arrival order.
     fn push_flat(&mut self, key: &str, text: &str, raw: &[u8]) {
-        // A flat key naming a repeating group is that group's counter. The
-        // row holds the group as a List and its length *is* the count, so the
-        // number that arrived stays in the entries and the two are compared
-        // on demand through `anomalies()`. Writing it into the row as well
-        // would put two facts about one thing at one tag.
+        // A flat key naming a repeating group is that group's counter: it
+        // opens the group slot the members land in, and the number that
+        // arrived stays in the counter's own child beside it. The group's
+        // length and the stated count are two readings of one line, compared
+        // on demand through `anomalies()`.
         //
         // A tag reaches the dictionary once, and which half it is in decides
         // the rest: the counter and the scalar readings are the same probe
@@ -556,10 +704,13 @@ impl<'registry> Builder<'registry> {
                 return;
             }
             self.open.clear();
-            match self.registry.get_field_by_tag(parsed) {
+            // The pinned dialect's own field, then the standard one, never
+            // another venue's - the same tiering `push_pairs` reads under.
+            // A blind probe here answers with whichever branch holds the tag.
+            match self.by_tag(parsed) {
                 Some(found) => {
                     let tag = found.as_fix().tag().ok().flatten().unwrap_or(0);
-                    if super::registry::is_nested(found) {
+                    if found.dtype().is_nested() {
                         if self.shadowed(found.name()) {
                             return;
                         }
@@ -587,15 +738,6 @@ impl<'registry> Builder<'registry> {
                 ),
             }
         } else {
-            if let Some((field, tag)) = self.counter(key) {
-                if self.shadowed(field.name()) {
-                    return;
-                }
-                self.record(key, text, tag);
-                let slot = self.slot_for(field, tag, true);
-                slot.group = true;
-                return;
-            }
             self.field_for(key)
         };
         if self.shadowed(field.name()) {
@@ -604,21 +746,29 @@ impl<'registry> Builder<'registry> {
         let value = self.typed(&field, raw, text);
         self.record(key, text, tag);
         self.slot_for(field, tag, known).values.push(value);
+        // The counter's child is built first, so the count keeps the column
+        // its own field names; the group it heads is opened after it, empty
+        // until a member arrives - located, indexed or numbered.
+        if let Some((group, counter)) = self.counter(key) {
+            if !self.shadowed(group.name()) {
+                // Not `known`, for the reason the numeric path states: the
+                // counter holds the tag, the group it heads does not.
+                self.slot_for(group, counter, false).group = true;
+            }
+        }
     }
 
     /// The repeating group a flat key names, when it names one.
     ///
-    /// Only the nested half is probed, which is what makes this a counter
-    /// rather than a second reading of an ordinary key: a scalar reaches its
-    /// field through `get_primitive_field` and neither half can answer for
-    /// the other.
+    /// Counters resolve as scalar fields; the catalog supplies the group.
     fn counter(&self, key: &str) -> Option<(Field, i32)> {
-        let field = match super::field::parse_tag(key) {
-            Some(tag) => self.registry.get_nested_field(tag),
-            None => self.registry.get_nested_field(key),
-        }?;
-        let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
-        Some((stated(field), tag))
+        if let Some(group) = self.by_group(key) {
+            return Some((stated(group), group.as_fix().counter().ok()??));
+        }
+        let (counter, tag) = self.resolve(key)?;
+        let id = counter.as_fix().id().ok()??;
+        let group = self.numeric_group(id)?;
+        Some((stated(group), tag))
     }
 
     /// The depth of the open group that declares `tag`, closing every group
@@ -672,7 +822,7 @@ impl<'registry> Builder<'registry> {
         self.push_grouped(top_name.as_str(), top_occurrence, &member, key, text, raw);
         // A member that is itself a counter opens its group inside the
         // occurrence, and what follows fills that group first.
-        if let Some(nested) = self.registry.get_nested_field(tag) {
+        if let Some(nested) = self.by_counter(tag) {
             let members = declared_members(nested);
             self.open.push(OpenGroup {
                 name: SmolStr::new(nested.name()),
@@ -686,6 +836,22 @@ impl<'registry> Builder<'registry> {
 
     /// One occurrence of a repeated flat field, placed by index.
     fn push_repeated(&mut self, name: &str, occurrence: usize, key: &str, text: &str, raw: &[u8]) {
+        // An indexed counter is the group stated per occurrence: the group
+        // slot holds what each index said, and no scalar column is built
+        // beside it.
+        if let Some((field, tag)) = self.counter(name) {
+            if self.shadowed(field.name()) {
+                return;
+            }
+            self.record_under(tag, key, text, 0);
+            let slot = self.slot_for(field, tag, true);
+            slot.group = true;
+            while slot.values.len() <= occurrence {
+                slot.values.push(Scalar::Null);
+            }
+            slot.values[occurrence] = Scalar::from(text);
+            return;
+        }
         let (field, tag, known) = self.field_for(name);
         if self.shadowed(field.name()) {
             return;
@@ -1149,16 +1315,14 @@ impl Slot {
                 let value = Scalar::from_sequence(Vec::new());
                 return Ok((self.field, value));
             }
-            // An occurrence that named no member is still one: a bridge writes
-            // `NOPARTYIDS[0]=ONE` where it has nothing to name, and dropping
-            // those would lose what arrived to say the group held nothing.
-            // They have no field of their own, so they are what `field_for`
-            // typed them as - text.
-            let absent = self.values.iter().any(Scalar::is_null);
-            // One group has one occurrence name whatever the occurrence's
-            // type, so the stand-in is named exactly as a member-bearing one.
-            let item = DataType::Utf8.named_field(occurrence_name(&self.field), absent);
-            let values = Scalar::from_sequence(self.values);
+            // An unlabeled value cannot type as a component. Preserve its
+            // raw entry and occurrence position; the typed occurrence is null.
+            let mut item = match self.field.dtype() {
+                DataType::List(item) | DataType::LargeList(item) => item.as_ref().clone(),
+                _ => DataType::from_fields([])?.required_field(occurrence_name(&self.field)),
+            };
+            item.set_nullable(true);
+            let values = Scalar::from_sequence(self.values.into_iter().map(|_| Scalar::Null));
             let mut list = DataType::list(item).required_field(self.field.name());
             let _ = list.set_metadata(self.field.as_metadata().iter());
             return Ok((list, values));
@@ -1190,8 +1354,8 @@ impl Slot {
             return Ok((list, values));
         }
 
-        // A group is a List of a non-null `item` Struct, and the occurrences
-        // are built by index, so a gap is an empty one rather than a shift.
+        // A group is a List of its named component. Occurrence indices retain
+        // gaps as null and never shift subsequent entries.
         // In first-seen order across every occurrence, so a member only the
         // second occurrence carries is still a column and still in its
         // arrival place. Nullable, because an occurrence need not state one.
@@ -1470,9 +1634,8 @@ fn folded_name(key: &str) -> String {
 /// A message is typed by `35=` in a FIX frame or `MSGTYPE=` in a bridge one.
 /// Where a row carries neither it is built anyway and named `unknown`: every
 /// pair that parsed becomes a field, the entries record the whole row, and
-/// nothing is dropped. `unknown` is safe for the same reason tag `0` is -
-/// every `MsgType` the code set declares is one or two characters, so none
-/// can collide with it.
+/// nothing is dropped. This fallback names the row only; it does not register
+/// a message type or supply a value for the missing tag.
 pub(super) const UNKNOWN_MSGTYPE: &str = "unknown";
 
 /// The root name one message type gives a row.

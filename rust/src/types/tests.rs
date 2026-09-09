@@ -576,7 +576,7 @@ mod uuid;
 /// One validated location with canonical text storage.
 mod url;
 
-/// One sixteen-byte version with numeric ordering and canonical text storage.
+/// One four-byte version with numeric ordering and canonical text storage.
 mod version;
 
 /// The enum a field declares, and the codes its members name.

@@ -1,0 +1,72 @@
+{
+  "name": "settlparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "settlpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlpartyid"
+        }
+      },
+      {
+        "name": "settlpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlpartyidsource"
+        }
+      },
+      {
+        "name": "settlpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlpartyrole"
+        }
+      },
+      {
+        "name": "settlpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlpartyrolequalifier"
+        }
+      },
+      {
+        "name": "nosettlpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nosettlpartysubids"
+        }
+      },
+      {
+        "name": "settlptyssubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "settlptyssubgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SettlParty"
+  }
+}

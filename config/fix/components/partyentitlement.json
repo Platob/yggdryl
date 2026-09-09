@@ -1,0 +1,62 @@
+{
+  "name": "partyentitlement",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "nopartydetails",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartydetails"
+        }
+      },
+      {
+        "name": "partydetailgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "partydetailgrp"
+        }
+      },
+      {
+        "name": "entitlementstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementstatus"
+        }
+      },
+      {
+        "name": "noentitlements",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noentitlements"
+        }
+      },
+      {
+        "name": "entitlementgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "entitlementgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PartyEntitlement"
+  }
+}

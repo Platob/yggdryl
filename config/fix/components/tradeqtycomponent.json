@@ -1,0 +1,32 @@
+{
+  "name": "tradeqtycomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "tradeqtytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeqtytype"
+        }
+      },
+      {
+        "name": "tradeqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeqty"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TradeQty"
+  }
+}

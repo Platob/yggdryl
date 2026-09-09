@@ -55,7 +55,7 @@ use super::build::Fill;
 use super::codec::FixCodec;
 use super::msg::FixMsg;
 use super::record::{RowParameters, empty, transform_bytes};
-use super::{ENTRIES_COLUMN, FixBranch, FixRegistry};
+use super::{ENTRIES_COLUMN, FixBranch, FixMessages, FixRegistry};
 
 /// The column a payload is read from when the options name none.
 ///
@@ -129,10 +129,8 @@ pub struct FixOptions {
     pub direction: Option<&'static str>,
     /// Whether an adjacent republication is dropped.
     ///
-    /// Off by default, and it must be: with it on, the output row count no
-    /// longer equals the input line count, so a batch stops aligning with its
-    /// source by position and cannot be joined back to it. What went is
-    /// counted rather than silent.
+    /// Off by default. Bulk configuration documents already expand into one
+    /// row per configuration; enabling this also removes adjacent duplicates.
     pub dedup: bool,
     /// Whether each message is filled with what it implies.
     ///
@@ -249,9 +247,7 @@ impl FixOptions {
 
     /// Drops each row whose digest equals the one before it.
     ///
-    /// Switching this on surrenders the row-in/row-out correspondence every
-    /// other path here keeps: the output no longer aligns with the input by
-    /// position. What was dropped is counted, never silent.
+    /// This also applies to successive messages expanded from a bulk document.
     #[must_use]
     pub const fn with_dedup(mut self, dedup: bool) -> Self {
         self.dedup = dedup;
@@ -319,12 +315,10 @@ pub struct FixBatchReader;
 impl FixBatchReader {
     /// Rows of bytes in, batches out.
     ///
-    /// A row in is a row out. Nothing in a row's content can fail a batch: a
-    /// row that could not be typed is `unknown`, a row with no pairs is a row
-    /// with no entries, and the `Result` is for I/O only. The output row count
-    /// equals the input line count, which is what lets a capture be joined
-    /// back to its source by position - the one exception is `dedup`, which
-    /// says so where it is switched on.
+    /// Ordinary lines yield one message; bulk configuration documents yield
+    /// one per configuration. Empty or unrecognized ordinary lines retain an
+    /// empty message. Input I/O and errors yielded by a parsed document stop
+    /// the output stream after its completed prefix.
     ///
     /// # Errors
     ///
@@ -343,16 +337,19 @@ impl FixBatchReader {
         let reader = options.reader(Arc::clone(&registry));
         let default = options.direction;
         let enrich = options.enrich;
-        let messages = rows.into_iter().map(move |row| {
-            let row = row?;
-            // A row in is a row out: a line the reader refuses is not a line
-            // lost, it is a message with nothing in it, and the count still
-            // matches the capture's.
-            let message = reader
-                .transform_line(&row, enrich)
-                .unwrap_or_else(|_| empty(&reader, super::build::RowExtras::NONE));
-            let direction = direction_of(&row, default);
-            Ok((message, direction, Vec::new()))
+        let messages = rows.into_iter().flat_map(move |row| {
+            let (messages, direction) = match row {
+                Ok(row) => (
+                    // A line the reader refuses is not a line lost, it is a
+                    // message with nothing in it.
+                    reader.transform_line(&row, enrich).unwrap_or_else(|_| {
+                        FixMessages::one(empty(&reader, super::build::RowExtras::NONE))
+                    }),
+                    direction_of(&row, default),
+                ),
+                Err(error) => (FixMessages::from_result(Err(error)), None),
+            };
+            messages.map(move |message| message.map(|message| (message, direction, Vec::new())))
         });
         let messages = lifecycled(messages, &registry, options.lifecycle);
         Self::stream(field, messages, &options)
@@ -360,12 +357,9 @@ impl FixBatchReader {
 
     /// A column of frames in, batches out - a capture already in Arrow.
     ///
-    /// The source's other columns are carried through unchanged, ahead of the
-    /// FIX columns: a capture's arrival timestamp and file offset are what a
-    /// monitor orders and joins on, and because the row counts match exactly
-    /// carrying them is a slice rather than a join. A column that was read as
-    /// a parameter is still carried, because a monitor needs to see the value
-    /// it supplied rather than infer that it was used.
+    /// Each emitted message carries its source row's other columns ahead of
+    /// the FIX columns. An expanded configuration document repeats the source
+    /// timestamp, offset, and stated direction on every emitted row.
     ///
     /// This is [`Self::from_rows`] with one column named, over the record
     /// constructor - not a second body of code that would drift from it.
@@ -411,6 +405,15 @@ impl FixBatchReader {
             enrich: options.enrich,
             held: None,
         };
+        // A bulk configuration document expands into one row per
+        // configuration, each repeating its source row's carried columns.
+        let rows = rows.flat_map(|held| {
+            let (messages, direction, front) = match held {
+                Ok((messages, direction, front)) => (messages, direction, front),
+                Err(error) => (FixMessages::from_result(Err(error)), None, Vec::new()),
+            };
+            messages.map(move |message| message.map(|message| (message, direction, front.clone())))
+        });
         let rows = lifecycled(rows, &registry, options.lifecycle);
         Self::stream(field, rows, options)
     }
@@ -484,9 +487,7 @@ impl FixBatchReader {
 /// One message as the fixed row its columns are read from.
 ///
 /// `front` is the capture's own columns, already in schema order, and it leads
-/// the row: a monitor orders and joins on the arrival time and the file offset
-/// the capture supplied, and because the row counts match exactly, carrying
-/// them is a slice rather than a join.
+/// the row. Expanded messages repeat this same source-row prefix.
 fn row_of(
     message: &FixMsg,
     schema: &Field,
@@ -695,7 +696,7 @@ impl Columns {
     }
 }
 
-/// The capture's rows, one message each, read a batch at a time.
+/// The capture's rows, the messages each carries, read a batch at a time.
 ///
 /// One batch is held and read cell by cell, straight out of its arrays: the
 /// payload as the bytes it is, a parameter column as the text it holds, a
@@ -713,13 +714,16 @@ struct Rows {
 }
 
 impl Rows {
-    /// One row of one batch as the message it is, the direction it moved and
-    /// the capture's own columns carried in front of it.
+    /// One row of one batch as the messages it carries, the direction it moved
+    /// and the capture's own columns carried in front of it.
+    ///
+    /// An ordinary line is one message; a bulk configuration document is one
+    /// per configuration, and the row's carried columns lead each of them.
     fn row(
         &self,
         batch: &RecordBatch,
         row: usize,
-    ) -> Result<(FixMsg, Option<&'static str>, Vec<Scalar>)> {
+    ) -> Result<(FixMessages, Option<&'static str>, Vec<Scalar>)> {
         let cell = |at: usize| {
             value_from_array(&self.columns.dtypes[at], batch.column(at).as_ref(), row)
                 .map_err(Error::from)
@@ -784,7 +788,7 @@ impl Rows {
             clock: clock.as_ref(),
             fills: &fills,
         };
-        let message = transform_bytes(&self.reader, parameters, &payload, self.enrich)?;
+        let messages = transform_bytes(&self.reader, parameters, &payload, self.enrich)?;
         // By position: the columns kept were decided from the schema, and a
         // row of that schema arrives in that order.
         let front = self
@@ -793,12 +797,12 @@ impl Rows {
             .iter()
             .map(|at| cell(*at))
             .collect::<Result<Vec<_>>>()?;
-        Ok((message, direction, front))
+        Ok((messages, direction, front))
     }
 }
 
 impl Iterator for Rows {
-    type Item = Result<(FixMsg, Option<&'static str>, Vec<Scalar>)>;
+    type Item = Result<(FixMessages, Option<&'static str>, Vec<Scalar>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -817,6 +821,17 @@ impl Iterator for Rows {
             // The batch is spent, or none is held yet: the next one is pulled
             // and the spent one dropped, so one batch is ever in hand.
             match self.source.next() {
+                Some(Ok(batch)) if batch.schema() != self.source.schema() => {
+                    // Every column is read by the position the declared schema
+                    // gave it, so a batch of another schema is a conflict
+                    // rather than a row read from the wrong column.
+                    self.held = None;
+                    return Some(Err(Error::conflict(
+                        "the capture reader's declared Arrow schema",
+                        "a different batch schema",
+                        "FIX capture",
+                    )));
+                }
                 Some(Ok(batch)) => self.held = Some((batch, 0)),
                 Some(Err(error)) => {
                     self.held = None;
@@ -926,16 +941,33 @@ impl FixMsg {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when the value is not a record at all.
+    /// Returns [`Error::Parse`] for a non-record, the first emitted failure,
+    /// or [`Error::InvalidRecord`] when the record expands to zero or multiple
+    /// messages. Use [`FixCodec::transform_record`] for bulk documents.
     pub fn from_record(
         registry: Arc<FixRegistry>,
         record: &Scalar,
         options: &FixOptions,
     ) -> Result<Self> {
-        options
+        let mut messages = options
             .reader(registry)
             .with_payload_column(options.payload_column.clone())
-            .transform_record(record, options.enrich)
+            .transform_record(record, options.enrich)?;
+        let message = messages
+            .next()
+            .transpose()?
+            .ok_or_else(|| Error::InvalidRecord {
+                path: options.payload_column.clone(),
+                reason: "expected exactly one FIX message, got zero messages".into(),
+            })?;
+        if let Some(next) = messages.next() {
+            next?;
+            return Err(Error::InvalidRecord {
+                path: options.payload_column.clone(),
+                reason: "expected exactly one FIX message, got multiple messages".into(),
+            });
+        }
+        Ok(message)
     }
 }
 

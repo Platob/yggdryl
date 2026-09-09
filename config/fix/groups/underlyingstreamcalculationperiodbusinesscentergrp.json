@@ -1,0 +1,23 @@
+{
+  "name": "underlyingstreamcalculationperiodbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcalculationperiodbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingstreamcalculationperiodbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingStreamCalculationPeriodBusinessCenters(40973) > 0.",
+    "display": "UnderlyingStreamCalculationPeriodBusinessCenterGrp",
+    "fix:component": "underlyingstreamcalculationperiodbusinesscentercomponent",
+    "fix:counter": "40973"
+  }
+}

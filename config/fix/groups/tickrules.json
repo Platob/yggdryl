@@ -1,0 +1,23 @@
+{
+  "name": "tickrules",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tickrule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "tickrule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTickRules(1205) > 0.",
+    "display": "TickRules",
+    "fix:component": "tickrule",
+    "fix:counter": "1205"
+  }
+}

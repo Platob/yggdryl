@@ -1,0 +1,32 @@
+{
+  "name": "financingtermsupplement",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "financingtermsupplementdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "financingtermsupplementdesc"
+        }
+      },
+      {
+        "name": "financingtermsupplementdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "financingtermsupplementdate"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "FinancingTermSupplement"
+  }
+}

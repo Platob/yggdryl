@@ -1,0 +1,23 @@
+{
+  "name": "legpaymentstubenddatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstubenddatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentstubenddatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentStubEndDateBusinessCenters(42495) > 0.",
+    "display": "LegPaymentStubEndDateBusinessCenterGrp",
+    "fix:component": "legpaymentstubenddatebusinesscentercomponent",
+    "fix:counter": "42495"
+  }
+}

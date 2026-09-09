@@ -1,0 +1,82 @@
+{
+  "name": "mdstatisticrpt",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "mdstatisticparameters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "mdstatisticparameters"
+        }
+      },
+      {
+        "name": "mdstatisticid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticid"
+        }
+      },
+      {
+        "name": "mdstatistictime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatistictime"
+        }
+      },
+      {
+        "name": "mdstatisticstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticstatus"
+        }
+      },
+      {
+        "name": "mdstatisticvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticvalue"
+        }
+      },
+      {
+        "name": "mdstatisticvaluetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticvaluetype"
+        }
+      },
+      {
+        "name": "mdstatisticvalueunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mdstatisticvalueunit"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MDStatisticRpt"
+  }
+}

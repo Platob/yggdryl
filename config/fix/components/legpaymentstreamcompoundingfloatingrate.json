@@ -1,0 +1,193 @@
+{
+  "name": "legpaymentstreamcompoundingfloatingrate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamcompoundingrateindex",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingrateindex"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingrateindexcurveperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingrateindexcurveperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingrateindexcurveunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingrateindexcurveunit"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingratemultiplier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingratemultiplier"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingratespread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingratespread"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingratespreadpositiontype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingratespreadpositiontype"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingratetreatment"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingcaprate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingcaprate"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingcapratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingcapratebuyside"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingcapratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingcapratesellside"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingfloorrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingfloorrate"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingfloorratebuyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingfloorratebuyside"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingfloorratesellside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingfloorratesellside"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundinginitialrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundinginitialrate"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingfinalrateroundingdirection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingfinalrateroundingdirection"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingfinalrateprecision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingfinalrateprecision"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingaveragingmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingaveragingmethod"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingnegativeratetreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingnegativeratetreatment"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required if LegPaymentStreamCompoundingRateIndexCurveUnit(42429) is specified.",
+    "display": "LegPaymentStreamCompoundingFloatingRate"
+  }
+}

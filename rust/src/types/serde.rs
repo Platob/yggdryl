@@ -118,8 +118,6 @@ enum DataTypeRef<'a> {
     Cfi {},
     Isin {},
     Side {},
-    #[serde(rename = "msgtype")]
-    MsgType {},
     // Both spellings are one word on the wire, so neither takes the
     // snake_case the rest of this enum derives.
     #[serde(rename = "msgdirection")]
@@ -257,7 +255,6 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Cfi => Self::Cfi {},
             D::Isin => Self::Isin {},
             D::Side => Self::Side {},
-            D::MsgType => Self::MsgType {},
             D::MsgDirection => Self::MsgDirection {},
             D::State => Self::State {},
             D::TimeInForce => Self::TimeInForce {},
@@ -379,8 +376,6 @@ enum DataTypeValue {
     Cfi {},
     Isin {},
     Side {},
-    #[serde(rename = "msgtype")]
-    MsgType {},
     // Both spellings are one word on the wire, so neither takes the
     // snake_case the rest of this enum derives.
     #[serde(rename = "msgdirection")]
@@ -503,7 +498,6 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Cfi {} => Self::Cfi,
             DataTypeValue::Isin {} => Self::Isin,
             DataTypeValue::Side {} => Self::Side,
-            DataTypeValue::MsgType {} => Self::MsgType,
             DataTypeValue::MsgDirection {} => Self::MsgDirection,
             DataTypeValue::State {} => Self::State,
             DataTypeValue::TimeInForce {} => Self::TimeInForce,
@@ -637,7 +631,6 @@ impl DataType {
             D::Cfi => tag("cfi"),
             D::Isin => tag("isin"),
             D::Side => tag("side"),
-            D::MsgType => tag("msgtype"),
             D::MsgDirection => tag("msgdirection"),
             D::State => tag("state"),
             D::TimeInForce => tag("timeinforce"),
@@ -879,7 +872,6 @@ impl DataType {
             "cfi" => Self::Cfi,
             "isin" => Self::Isin,
             "side" => Self::Side,
-            "msgtype" => Self::MsgType,
             // `direction` was this datatype's first spelling; a schema
             // written under it still reads.
             "msgdirection" | "direction" => Self::MsgDirection,

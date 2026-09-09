@@ -1,0 +1,162 @@
+{
+  "name": "execalloc",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "lastqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastqty"
+        }
+      },
+      {
+        "name": "execid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "execid"
+        }
+      },
+      {
+        "name": "secondaryexecid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryexecid"
+        }
+      },
+      {
+        "name": "lastpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastpx"
+        }
+      },
+      {
+        "name": "lastparpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastparpx"
+        }
+      },
+      {
+        "name": "lastcapacity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastcapacity"
+        }
+      },
+      {
+        "name": "tradeid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradeid"
+        }
+      },
+      {
+        "name": "firmtradeid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "firmtradeid"
+        }
+      },
+      {
+        "name": "trdmatchid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "trdmatchid"
+        }
+      },
+      {
+        "name": "executiontimestamp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "executiontimestamp"
+        }
+      },
+      {
+        "name": "tradereportingindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradereportingindicator"
+        }
+      },
+      {
+        "name": "notrdregpublications",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notrdregpublications"
+        }
+      },
+      {
+        "name": "trdregpublicationgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "trdregpublicationgrp"
+        }
+      },
+      {
+        "name": "notradepriceconditions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "notradepriceconditions"
+        }
+      },
+      {
+        "name": "tradepriceconditiongrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "tradepriceconditiongrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ExecAlloc"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "entitlementattribgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "entitlementattrib",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "entitlementattrib"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoEntitlementAttrib(1777) > 0.",
+    "display": "EntitlementAttribGrp",
+    "fix:component": "entitlementattrib",
+    "fix:counter": "1777"
+  }
+}

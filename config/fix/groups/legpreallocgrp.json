@@ -1,0 +1,23 @@
+{
+  "name": "legpreallocgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprealloc",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprealloc"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Only used for specific lot trades.",
+    "display": "LegPreAllocGrp",
+    "fix:component": "legprealloc",
+    "fix:counter": "670"
+  }
+}

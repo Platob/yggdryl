@@ -23,7 +23,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { AsciiEnum, DataType, fields } = require('../node/binding.js')
+const { AsciiEnum, DataType, Version, fields } = require('../node/binding.js')
 
 const ROOT = path.join(__dirname, '..')
 const MANIFEST = path.join(ROOT, 'docs', 'assets', 'playground.json')
@@ -478,6 +478,26 @@ function vocabulary() {
   }
 }
 
+/** Native numeric version intake, including each physical width boundary. */
+function versions() {
+  return ['5', '5.0', '5.0.2', '5.0.300', '255.255.65535', '256.0', '5.256', '5.0.65536', '5.0SP2', '5.0.2.1']
+    .map((input) => {
+      const head = { input, call: `Version.fromStr(${literal(input)})` }
+      try {
+        const value = Version.fromStr(input)
+        return {
+          ...head,
+          ok: true,
+          text: value.toString(),
+          parts: [value.major, value.minor, value.patch],
+          hash: String(value.stableHash()),
+        }
+      } catch (error) {
+        return { ...head, ok: false, error: error.message }
+      }
+    })
+}
+
 /** Build the whole manifest, in the order it is written. */
 function manifest() {
   const encode = []
@@ -492,6 +512,7 @@ function manifest() {
     encode,
     decode,
     vocabulary: vocabulary(),
+    versions: versions(),
   }
 }
 

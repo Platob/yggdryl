@@ -1,0 +1,32 @@
+{
+  "name": "legpaymentstreampricingday",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreampricingdayofweek",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreampricingdayofweek"
+        }
+      },
+      {
+        "name": "legpaymentstreampricingdaynumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreampricingdaynumber"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPaymentStreamPricingDay"
+  }
+}

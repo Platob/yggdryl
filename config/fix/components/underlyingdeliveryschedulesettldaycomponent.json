@@ -1,0 +1,52 @@
+{
+  "name": "underlyingdeliveryschedulesettldaycomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingdeliveryschedulesettlday",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulesettlday"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulesettltotalhours",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulesettltotalhours"
+        }
+      },
+      {
+        "name": "nounderlyingdeliveryschedulesettltimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingdeliveryschedulesettltimes"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulesettltimegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingdeliveryschedulesettltimegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingDeliveryScheduleSettlDay"
+  }
+}

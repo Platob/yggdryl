@@ -1,0 +1,212 @@
+{
+  "name": "settlobligationinstruction",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "netgrossind",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "netgrossind"
+        }
+      },
+      {
+        "name": "settlobligid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlobligid"
+        }
+      },
+      {
+        "name": "settlobligtranstype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlobligtranstype"
+        }
+      },
+      {
+        "name": "settlobligrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlobligrefid"
+        }
+      },
+      {
+        "name": "ccyamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ccyamt"
+        }
+      },
+      {
+        "name": "settlcurramt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlcurramt"
+        }
+      },
+      {
+        "name": "currency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "currency"
+        }
+      },
+      {
+        "name": "currencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "currencycodesource"
+        }
+      },
+      {
+        "name": "settlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlcurrency"
+        }
+      },
+      {
+        "name": "settlcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlcurrencycodesource"
+        }
+      },
+      {
+        "name": "settlcurrfxrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlcurrfxrate"
+        }
+      },
+      {
+        "name": "settldate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settldate"
+        }
+      },
+      {
+        "name": "instrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrument"
+        }
+      },
+      {
+        "name": "nopartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartyids"
+        }
+      },
+      {
+        "name": "parties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "parties"
+        }
+      },
+      {
+        "name": "effectivetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "effectivetime"
+        }
+      },
+      {
+        "name": "expiretime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "expiretime"
+        }
+      },
+      {
+        "name": "lastupdatetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastupdatetime"
+        }
+      },
+      {
+        "name": "nosettldetails",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nosettldetails"
+        }
+      },
+      {
+        "name": "settldetails",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "settldetails"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SettlObligationInstruction"
+  }
+}

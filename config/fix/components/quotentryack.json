@@ -1,0 +1,342 @@
+{
+  "name": "quotentryack",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "quoteentryid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quoteentryid"
+        }
+      },
+      {
+        "name": "instrument",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrument"
+        }
+      },
+      {
+        "name": "nolegs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegs"
+        }
+      },
+      {
+        "name": "instrmtleggrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "instrmtleggrp"
+        }
+      },
+      {
+        "name": "bidpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "bidpx"
+        }
+      },
+      {
+        "name": "offerpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "offerpx"
+        }
+      },
+      {
+        "name": "bidsize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "bidsize"
+        }
+      },
+      {
+        "name": "offersize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "offersize"
+        }
+      },
+      {
+        "name": "validuntiltime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "validuntiltime"
+        }
+      },
+      {
+        "name": "bidspotrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "bidspotrate"
+        }
+      },
+      {
+        "name": "offerspotrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "offerspotrate"
+        }
+      },
+      {
+        "name": "bidforwardpoints",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "bidforwardpoints"
+        }
+      },
+      {
+        "name": "offerforwardpoints",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "offerforwardpoints"
+        }
+      },
+      {
+        "name": "midpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "midpx"
+        }
+      },
+      {
+        "name": "bidyield",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "bidyield"
+        }
+      },
+      {
+        "name": "midyield",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "midyield"
+        }
+      },
+      {
+        "name": "offeryield",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "offeryield"
+        }
+      },
+      {
+        "name": "transacttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "transacttime"
+        }
+      },
+      {
+        "name": "tradingsessionid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionid"
+        }
+      },
+      {
+        "name": "tradingsessionsubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingsessionsubid"
+        }
+      },
+      {
+        "name": "settldate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settldate"
+        }
+      },
+      {
+        "name": "ordtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordtype"
+        }
+      },
+      {
+        "name": "settldate2",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settldate2"
+        }
+      },
+      {
+        "name": "orderqty2",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderqty2"
+        }
+      },
+      {
+        "name": "bidforwardpoints2",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "bidforwardpoints2"
+        }
+      },
+      {
+        "name": "offerforwardpoints2",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "offerforwardpoints2"
+        }
+      },
+      {
+        "name": "currency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "currency"
+        }
+      },
+      {
+        "name": "currencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "currencycodesource"
+        }
+      },
+      {
+        "name": "bookingtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "bookingtype"
+        }
+      },
+      {
+        "name": "ordercapacity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ordercapacity"
+        }
+      },
+      {
+        "name": "orderrestrictions",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "orderrestrictions"
+        }
+      },
+      {
+        "name": "quoteentrystatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quoteentrystatus"
+        }
+      },
+      {
+        "name": "quoteentryrejectreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quoteentryrejectreason"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "QuotEntryAck"
+  }
+}

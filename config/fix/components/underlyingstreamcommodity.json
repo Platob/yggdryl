@@ -1,0 +1,383 @@
+{
+  "name": "underlyingstreamcommodity",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamcommoditybase",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditybase"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditytype"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysecurityid"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysecurityidsource"
+        }
+      },
+      {
+        "name": "nounderlyingstreamcommodityaltids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingstreamcommodityaltids"
+        }
+      },
+      {
+        "name": "underlyingstreamcommodityaltidgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingstreamcommodityaltidgrp"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditydesc"
+        }
+      },
+      {
+        "name": "encodedunderlyingstreamcommoditydesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingstreamcommoditydesclen"
+        }
+      },
+      {
+        "name": "encodedunderlyingstreamcommoditydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingstreamcommoditydesc"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditydeliverypricingregion",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditydeliverypricingregion"
+        }
+      },
+      {
+        "name": "nounderlyingstreamassetattributes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingstreamassetattributes"
+        }
+      },
+      {
+        "name": "underlyingstreamassetattributegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingstreamassetattributegrp"
+        }
+      },
+      {
+        "name": "underlyingstreamcommodityunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommodityunitofmeasure"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditycurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditycurrency"
+        }
+      },
+      {
+        "name": "underlyingstreamcommodityexchange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommodityexchange"
+        }
+      },
+      {
+        "name": "underlyingstreamcommodityratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommodityratesource"
+        }
+      },
+      {
+        "name": "underlyingstreamcommodityratereferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommodityratereferencepage"
+        }
+      },
+      {
+        "name": "underlyingstreamcommodityratereferencepageheading",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommodityratereferencepageheading"
+        }
+      },
+      {
+        "name": "underlyingstreamdataprovider",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamdataprovider"
+        }
+      },
+      {
+        "name": "nounderlyingstreamcommoditydatasources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingstreamcommoditydatasources"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditydatasourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingstreamcommoditydatasourcegrp"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditypricingtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditypricingtype"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditynearbysettldayperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditynearbysettldayperiod"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditynearbysettldayunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditynearbysettldayunit"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettldateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettldateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettldatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettldatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingstreamcommoditysettlbusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingstreamcommoditysettlbusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingstreamcommoditysettlbusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettldateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettldateadjusted"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlmonth",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlmonth"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettldaterollperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettldaterollperiod"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettldaterollunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettldaterollunit"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettldaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettldaytype"
+        }
+      },
+      {
+        "name": "nounderlyingstreamcommoditysettlperiods",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingstreamcommoditysettlperiods"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlperiodgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingstreamcommoditysettlperiodgrp"
+        }
+      },
+      {
+        "name": "underlyingstreamcommodityxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommodityxid"
+        }
+      },
+      {
+        "name": "underlyingstreamcommodityxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommodityxidref"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when UnderlyingStreamCommoditySecurityIDSource(41967) is specified.",
+    "display": "UnderlyingStreamCommodity"
+  }
+}

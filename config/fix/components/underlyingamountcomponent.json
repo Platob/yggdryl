@@ -1,0 +1,52 @@
+{
+  "name": "underlyingamountcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpayamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpayamount"
+        }
+      },
+      {
+        "name": "underlyingcollectamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcollectamount"
+        }
+      },
+      {
+        "name": "underlyingsettlementdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsettlementdate"
+        }
+      },
+      {
+        "name": "underlyingsettlementstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsettlementstatus"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingAmount"
+  }
+}

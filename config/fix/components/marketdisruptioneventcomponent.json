@@ -1,0 +1,32 @@
+{
+  "name": "marketdisruptioneventcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "marketdisruptionevent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionevent"
+        }
+      },
+      {
+        "name": "marketdisruptionvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MarketDisruptionEvent"
+  }
+}

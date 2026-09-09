@@ -1,0 +1,32 @@
+{
+  "name": "trdrepindicatorcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "trdreppartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "trdreppartyrole"
+        }
+      },
+      {
+        "name": "trdrepindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "trdrepindicator"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TrdRepIndicator"
+  }
+}

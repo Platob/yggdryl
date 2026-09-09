@@ -1,0 +1,23 @@
+{
+  "name": "settlobligationinstructions",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "settlobligationinstruction",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "settlobligationinstruction"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of Settlement Obligations",
+    "display": "SettlObligationInstructions",
+    "fix:component": "settlobligationinstruction",
+    "fix:counter": "1165"
+  }
+}

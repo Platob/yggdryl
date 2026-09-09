@@ -1,71 +1,40 @@
-//! `ygg fix` - manage a yggdryl FIX dictionary from a terminal.
-//!
-//! Everything a desk does to a registry: read it, search it, change it,
-//! ingest a counterparty's configuration into it, and check that what came
-//! out is right. Two audiences, one implementation - a person at a prompt
-//! and a workflow gating a pull request run the same code, and the only
-//! difference is that one of them gets colour.
-//!
-//! # The commands
-//!
-//! | command | what it does |
-//! | --- | --- |
-//! | *none* | all of the below, interactively, with completion |
-//! | `list` | every field, filtered |
-//! | `show` | one field: identity, lineage, codes |
-//! | `set` | create or replace a field |
-//! | `rm` | remove a field |
-//! | `ingest` | read a `.cfb` into the dictionary, creating or merging |
-//! | `schema` | the one row shape a whole capture lands in |
-//! | `check` | what the dictionary is wrong about |
-//! | `diff` | what changed against another dictionary |
+//! Categorical FIX CRUD, ingestion, inspection, and one shared shell dispatcher.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::Subcommand;
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use yggdryl::holder::Holder;
 use yggdryl::holder::local::Folder;
-use yggdryl::{FixBranch, FixRegistry, IOKind, Result};
+use yggdryl::{DataType, Field, FixBranch, FixCategory, FixCode, FixRegistry, IOKind, Result};
 
 use crate::{diff, quality, registry, schema, shell, style};
 
 /// What the dictionary tool was asked to do.
 #[derive(Subcommand)]
+#[command(
+    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix messages create --input Order.json\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nField enums live in fix:codes metadata; --codes accepts that JSON document."
+)]
 pub enum Command {
-    /// List the fields a dictionary holds.
-    List {
-        /// Keep only fields whose name or tag contains this.
-        filter: Option<String>,
-        /// How many to print.
-        #[arg(long, default_value_t = 40)]
-        limit: usize,
+    /// Tagged scalar fields, including int32 repeating-group counters.
+    Fields {
+        #[command(subcommand)]
+        command: CategoryCommand,
     },
-    /// Show one field in full.
-    Show {
-        /// A tag, an identifier, a name, or a dotted path.
-        key: String,
+    /// Message definitions: named structs with a FIX message type.
+    Messages {
+        #[command(subcommand)]
+        command: CategoryCommand,
     },
-    /// Create or replace one field.
-    Set {
-        /// What it is called.
-        name: String,
-        /// Its datatype, in the schema grammar's own spelling.
-        dtype: String,
-        /// Its tag.
-        #[arg(long)]
-        tag: i32,
-        /// The dialect it belongs to, where it is not the standard one.
-        #[arg(long)]
-        branch: Option<String>,
-        /// What it is for.
-        #[arg(long)]
-        description: Option<String>,
+    /// Reusable named structs, including one occurrence of a group.
+    Components {
+        #[command(subcommand)]
+        command: CategoryCommand,
     },
-    /// Remove one field.
-    Rm {
-        /// A tag, an identifier, or a name.
-        key: String,
+    /// Repeating lists with a separate counter tag and component.
+    Groups {
+        #[command(subcommand)]
+        command: CategoryCommand,
     },
     /// Read an Ullink `CBlock` into the dictionary.
     Ingest {
@@ -115,6 +84,143 @@ pub enum Command {
     },
 }
 
+/// Operations common to each explicitly selected category.
+#[derive(Subcommand)]
+#[command(
+    after_help = "Create refuses an existing definition; update replaces a definition and refuses absence.\nRead --json emits the native Field document accepted by create/update --input.\nDelete refuses definitions still referenced by other definitions.\nCreate/update omit --branch for standard definitions. Read/delete without --branch use the registry's best match; list includes every branch."
+)]
+pub enum CategoryCommand {
+    /// List definitions, optionally filtered by name/tag and branch.
+    List {
+        /// Match part of a name or decimal tag, ignoring case.
+        filter: Option<String>,
+        /// Only definitions in this branch.
+        #[arg(long)]
+        branch: Option<String>,
+        /// Maximum number of rows printed.
+        #[arg(long, default_value_t = 40)]
+        limit: usize,
+    },
+    /// Read one definition, its references, lineage, and inline enum codes.
+    Read {
+        /// Definition name; fields also accept a tag or FIX identifier.
+        key: String,
+        /// Resolve in this branch.
+        #[arg(long)]
+        branch: Option<String>,
+        /// Emit a native Field JSON document for create/update --input.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Create a definition; an existing name or identity is an error.
+    Create(DefinitionArgs),
+    /// Replace an existing definition in full, preserving its identity.
+    ///
+    /// Omitted metadata is removed. For metadata-only edits, read --json,
+    /// edit that document, then update --input; name, branch, and field tag
+    /// remain the same.
+    Update(DefinitionArgs),
+    /// Delete a definition; absence or a live reference is an error.
+    Delete {
+        /// Definition name; fields also accept a tag or FIX identifier.
+        key: String,
+        /// Resolve in this branch.
+        #[arg(long)]
+        branch: Option<String>,
+    },
+}
+
+/// Native Field intake; category semantics remain in the core registry.
+#[derive(Args)]
+#[command(
+    after_help = "Examples:\n  ygg fix fields create NoPartyIDs int32 --tag 453\n  ygg fix fields create --input Side.json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix messages create Order 'struct<ClOrdID: utf8>' --msgtype D\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nField enum records belong to fix:codes metadata. --codes accepts compact JSON with value before name, for example {\"codes\":[{\"value\":\"1\",\"name\":\"Buy\"}]}."
+)]
+pub struct DefinitionArgs {
+    /// Canonical definition name, preserving its spelling.
+    #[arg(required_unless_present = "input")]
+    name: Option<String>,
+    /// Core datatype expression: int32, utf8, struct<...>, list<...>.
+    #[arg(required_unless_present = "input")]
+    dtype: Option<String>,
+    /// Read one native Field JSON document; replaces positional inputs and flags.
+    #[arg(long, conflicts_with_all = ["name", "dtype", "tag", "branch", "description", "counter", "component", "codes", "msgtype", "required"])]
+    input: Option<PathBuf>,
+    /// Numeric tag for a scalar field, including a group counter.
+    #[arg(long)]
+    tag: Option<i32>,
+    /// Dialect name; omit for standard definitions.
+    #[arg(long)]
+    branch: Option<String>,
+    /// Definition's purpose.
+    #[arg(long)]
+    description: Option<String>,
+    /// Counter field's numeric tag for a group (for example, 453).
+    #[arg(long)]
+    counter: Option<i32>,
+    /// Existing component defining one occurrence of this group.
+    #[arg(long)]
+    component: Option<String>,
+    /// Compact inline enum JSON, with value before name: {"codes":[{"value":"1","name":"Buy"}]}.
+    #[arg(long)]
+    codes: Option<String>,
+    /// FIX message type for a message definition (for example, D).
+    #[arg(long)]
+    msgtype: Option<String>,
+    /// Make the value required. Messages are always required.
+    #[arg(long)]
+    required: bool,
+}
+
+impl DefinitionArgs {
+    fn field(&self, category: FixCategory) -> Result<Field> {
+        if let Some(path) = &self.input {
+            return Field::from_json_bytes(&std::fs::read(path)?);
+        }
+        let name = self.name.as_deref().ok_or_else(|| yggdryl::Error::Absent {
+            expected: "a definition name or --input",
+            path: "fix".into(),
+        })?;
+        let dtype = self
+            .dtype
+            .as_deref()
+            .ok_or_else(|| yggdryl::Error::Absent {
+                expected: "a datatype or --input",
+                path: name.into(),
+            })?;
+        let mut field = DataType::from_str(dtype)?.nullable_field(name);
+        field.set_nullable(!self.required && category != FixCategory::Messages);
+        if let Some(document) = &self.codes {
+            field.set_metadata([("fix:codes", document.clone())])?;
+            let codes = field
+                .as_fix()
+                .codes()
+                .map(|code| code.map(FixCode::from))
+                .collect::<Result<Vec<_>>>()?;
+            field.as_fix_mut().set_codes(&codes)?;
+        }
+        let mut view = field.as_fix_mut();
+        if let Some(branch) = &self.branch {
+            view.set_branch(&FixBranch::from_str(branch)?)?;
+        }
+        if let Some(tag) = self.tag {
+            view.set_tag(tag)?;
+        }
+        if let Some(value) = &self.description {
+            view.set_description(value)?;
+        }
+        if let Some(value) = self.counter {
+            view.set_counter(value)?;
+        }
+        if let Some(value) = &self.component {
+            view.set_component(value)?;
+        }
+        if let Some(value) = &self.msgtype {
+            view.set_msgtype(value)?;
+        }
+        Ok(field)
+    }
+}
+
 /// Runs one dictionary command, answering what the process should exit with.
 ///
 /// No command is the interactive shell rather than a usage error: every
@@ -125,43 +231,28 @@ pub fn run(root: &Path, annotate: bool, command: Option<&Command>) -> Result<Exi
     let Some(command) = command else {
         return interactive(&mut store).map(|()| ExitCode::SUCCESS);
     };
+    let outcome = execute(&mut store, annotate, command)?;
+    if store.changed() {
+        store.save()?;
+    }
+    Ok(outcome)
+}
+
+fn execute(store: &mut registry::Store, annotate: bool, command: &Command) -> Result<ExitCode> {
     match command {
-        Command::List { filter, limit } => {
-            registry::list(&store, filter.as_deref(), *limit);
-        }
-        Command::Show { key } => registry::show(&store, key)?,
-        Command::Set {
-            name,
-            dtype,
-            tag,
-            branch,
-            description,
-        } => {
-            registry::put(
-                &mut store,
-                name,
-                dtype,
-                *tag,
-                branch.as_deref(),
-                description.as_deref(),
-            )?;
-            store.save()?;
-        }
-        Command::Rm { key } => {
-            registry::remove(&mut store, key)?;
-            store.save()?;
-        }
+        Command::Fields { command } => category(store, FixCategory::Fields, command)?,
+        Command::Messages { command } => category(store, FixCategory::Messages, command)?,
+        Command::Components { command } => category(store, FixCategory::Components, command)?,
+        Command::Groups { command } => category(store, FixCategory::Groups, command)?,
         Command::Ingest {
             path,
             branch,
             merge,
         } => {
-            ingest(&mut store, path, branch.as_deref(), *merge)?;
-            store.save()?;
+            ingest(store, path, branch.as_deref(), *merge)?;
         }
         Command::Sync { source, branch } => {
-            sync(&mut store, source, branch.as_deref())?;
-            store.save()?;
+            sync(store, source, branch.as_deref())?;
         }
         Command::Schema {
             rowheader,
@@ -193,6 +284,33 @@ pub fn run(root: &Path, annotate: bool, command: Option<&Command>) -> Result<Exi
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+fn category(
+    store: &mut registry::Store,
+    category: FixCategory,
+    command: &CategoryCommand,
+) -> Result<()> {
+    match command {
+        CategoryCommand::List {
+            filter,
+            branch,
+            limit,
+        } => {
+            let branch = branch.as_deref().map(FixBranch::from_str).transpose()?;
+            registry::list(store, category, filter.as_deref(), branch.as_ref(), *limit)
+        }
+        CategoryCommand::Read { key, branch, json } => {
+            let branch = branch.as_deref().map(FixBranch::from_str).transpose()?;
+            registry::read(store, category, key, branch.as_ref(), *json)
+        }
+        CategoryCommand::Create(args) => registry::create(store, category, args.field(category)?),
+        CategoryCommand::Update(args) => registry::update(store, category, args.field(category)?),
+        CategoryCommand::Delete { key, branch } => {
+            let branch = branch.as_deref().map(FixBranch::from_str).transpose()?;
+            registry::delete(store, category, key, branch.as_ref())
+        }
+    }
 }
 
 /// Folds whatever one location holds into the dictionary.
@@ -273,12 +391,27 @@ fn ingest(
     progress.tick();
 
     let (added, folded) = if merge {
-        store.registry_mut().add_fields(parsed.iter().cloned())?
+        store.registry_mut().merge_with(&parsed)?
     } else {
-        for field in &parsed {
-            store.registry_mut().insert(field.clone())?;
+        let mut next = store.registry().clone();
+        let mut added = 0;
+        let mut replaced = 0;
+        for category in [
+            FixCategory::Fields,
+            FixCategory::Components,
+            FixCategory::Groups,
+            FixCategory::Messages,
+        ] {
+            for field in parsed.definitions(category) {
+                if next.insert_definition(category, field.clone())?.is_some() {
+                    replaced += 1;
+                } else {
+                    added += 1;
+                }
+            }
         }
-        (parsed.len(), 0)
+        *store.registry_mut() = next;
+        (added, replaced)
     };
     progress.finish(&format!(
         "{added} added, {folded} merged, {} message root(s) read",
@@ -291,11 +424,27 @@ fn ingest(
 fn interactive(store: &mut registry::Store) -> Result<()> {
     style::heading("yggdryl fix");
     style::entry("dictionary", &store.root().display().to_string());
-    style::entry("fields", &store.registry().len().to_string());
+    for category in FixCategory::ALL {
+        style::entry(
+            category.as_str(),
+            &store.registry().definitions(category).count().to_string(),
+        );
+    }
     style::note("tab completes · ↑ recalls · ctrl-d leaves · `help` lists commands");
 
     let commands: Vec<String> = [
-        "list", "show", "set", "rm", "ingest", "schema", "check", "diff", "save", "help", "quit",
+        "fields",
+        "messages",
+        "components",
+        "groups",
+        "ingest",
+        "sync",
+        "schema",
+        "check",
+        "diff",
+        "save",
+        "help",
+        "quit",
     ]
     .iter()
     .map(|held| (*held).to_owned())
@@ -333,83 +482,69 @@ fn interactive(store: &mut registry::Store) -> Result<()> {
 
 /// Every word the shell completes a field from.
 fn dictionary_words(registry: &FixRegistry) -> Vec<String> {
-    let mut words = Vec::with_capacity(registry.len() * 2);
-    for field in registry {
-        words.push(field.name().to_owned());
-        if let Ok(Some(tag)) = field.as_fix().tag() {
-            words.push(tag.to_string());
+    let mut words: Vec<String> = [
+        "list",
+        "read",
+        "create",
+        "update",
+        "delete",
+        "--help",
+        "--input",
+        "--json",
+        "--branch",
+        "--tag",
+        "--counter",
+        "--component",
+        "--codes",
+        "--msgtype",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    for category in FixCategory::ALL {
+        for field in registry.definitions(category) {
+            words.push(field.name().to_owned());
+            if let Ok(Some(tag)) = field.as_fix().tag() {
+                words.push(tag.to_string());
+            }
         }
     }
+    words.sort();
+    words.dedup();
     words
+}
+
+#[derive(Parser)]
+#[command(name = "fix")]
+struct ShellCommand {
+    #[command(subcommand)]
+    command: Command,
 }
 
 /// Runs one shell line through the same commands the flags reach.
 fn dispatch(store: &mut registry::Store, line: &str) -> Result<()> {
-    let mut words = line.split_whitespace();
-    let Some(command) = words.next() else {
+    if line == "save" {
+        store.save()?;
+        style::good("written");
         return Ok(());
-    };
-    let rest: Vec<&str> = words.collect();
-    match command {
-        "help" => {
-            style::heading("commands");
-            for (name, about) in [
-                ("list [filter]", "every field, filtered"),
-                ("show <key>", "one field: identity, lineage, codes"),
-                ("set <name> <type> <tag>", "create or replace a field"),
-                ("rm <key>", "remove a field"),
-                ("ingest <path.cfb>", "read a CBlock in"),
-                ("schema", "the one row shape a capture lands in"),
-                ("check", "what the dictionary is wrong about"),
-                ("save", "write the dictionary back"),
-                ("quit", "leave"),
-            ] {
-                style::entry(name, about);
-            }
+    }
+    if line == "help" {
+        ShellCommand::command().print_long_help()?;
+        println!();
+        style::note(
+            "save writes pending changes; quit leaves. Category commands use the same flags as ygg fix.",
+        );
+        return Ok(());
+    }
+    let words = shlex::split(line).ok_or_else(|| yggdryl::Error::InvalidRecord {
+        path: "fix shell".into(),
+        reason: "expected balanced quotes and escapes".into(),
+    })?;
+    match ShellCommand::try_parse_from(std::iter::once("fix".to_owned()).chain(words)) {
+        Ok(command) => {
+            execute(store, false, &command.command)?;
         }
-        "list" => registry::list(store, rest.first().copied(), 40),
-        "show" => {
-            let Some(key) = rest.first() else {
-                style::warn("show needs a tag or a name");
-                return Ok(());
-            };
-            registry::show(store, key)?;
-        }
-        "set" => {
-            let [name, dtype, tag, ..] = rest.as_slice() else {
-                style::warn("set needs a name, a type and a tag");
-                return Ok(());
-            };
-            let tag: i32 = tag.parse().map_err(|_| yggdryl::Error::InvalidRecord {
-                path: (*tag).into(),
-                reason: "expected a decimal tag".into(),
-            })?;
-            registry::put(store, name, dtype, tag, None, None)?;
-        }
-        "rm" => {
-            let Some(key) = rest.first() else {
-                style::warn("rm needs a tag or a name");
-                return Ok(());
-            };
-            registry::remove(store, key)?;
-        }
-        "ingest" => {
-            let Some(path) = rest.first() else {
-                style::warn("ingest needs a path");
-                return Ok(());
-            };
-            ingest(store, std::path::Path::new(path), None, true)?;
-        }
-        "schema" => {
-            let field = schema::build(store.registry(), None, "FixMessage")?;
-            schema::render(&field, rest.first().map(std::path::Path::new))?;
-        }
-        "check" => quality::render(&quality::check(store.registry())),
-        "save" => {
-            store.save()?;
-            style::good("written");
-        }
-        _ => style::warn(&format!("no command {command:?} - `help` lists them")),
+        Err(error) => error.print()?,
     }
     Ok(())
 }

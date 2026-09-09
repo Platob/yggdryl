@@ -1,0 +1,23 @@
+{
+  "name": "settlinstgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "settlinst",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "settlinst"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required except where SettlInstMode is 5=Reject SSI request",
+    "display": "SettlInstGrp",
+    "fix:component": "settlinst",
+    "fix:counter": "778"
+  }
+}

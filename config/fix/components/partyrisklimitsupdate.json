@@ -1,0 +1,92 @@
+{
+  "name": "partyrisklimitsupdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "listupdateaction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "listupdateaction"
+        }
+      },
+      {
+        "name": "nopartydetails",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nopartydetails"
+        }
+      },
+      {
+        "name": "partydetailgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "partydetailgrp"
+        }
+      },
+      {
+        "name": "norisklimits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norisklimits"
+        }
+      },
+      {
+        "name": "risklimitsgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "risklimitsgrp"
+        }
+      },
+      {
+        "name": "risklimitid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitid"
+        }
+      },
+      {
+        "name": "risklimitcheckmodeltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "risklimitcheckmodeltype"
+        }
+      },
+      {
+        "name": "partyrisklimitstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "partyrisklimitstatus"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PartyRiskLimitsUpdate"
+  }
+}

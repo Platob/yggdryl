@@ -1,0 +1,102 @@
+{
+  "name": "legprotectiontermevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprotectiontermeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventtype"
+        }
+      },
+      {
+        "name": "legprotectiontermeventvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventvalue"
+        }
+      },
+      {
+        "name": "legprotectiontermeventcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventcurrency"
+        }
+      },
+      {
+        "name": "legprotectiontermeventperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventperiod"
+        }
+      },
+      {
+        "name": "legprotectiontermeventunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventunit"
+        }
+      },
+      {
+        "name": "legprotectiontermeventdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventdaytype"
+        }
+      },
+      {
+        "name": "legprotectiontermeventratesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventratesource"
+        }
+      },
+      {
+        "name": "nolegprotectiontermeventqualifiers",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegprotectiontermeventqualifiers"
+        }
+      },
+      {
+        "name": "legprotectiontermeventqualifiergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legprotectiontermeventqualifiergrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProtectionTermEvent"
+  }
+}

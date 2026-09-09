@@ -1,0 +1,42 @@
+{
+  "name": "testsystemmodule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "testsystemmodulename",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testsystemmodulename"
+        }
+      },
+      {
+        "name": "testsystemmoduleversion",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testsystemmoduleversion"
+        }
+      },
+      {
+        "name": "testsystemmodulelastupdatetime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testsystemmodulelastupdatetime"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TestSystemModule"
+  }
+}

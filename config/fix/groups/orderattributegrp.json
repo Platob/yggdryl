@@ -1,0 +1,23 @@
+{
+  "name": "orderattributegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "orderattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "orderattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoOrderAttributes(2593) > 0.",
+    "display": "OrderAttributeGrp",
+    "fix:component": "orderattribute",
+    "fix:counter": "2593"
+  }
+}

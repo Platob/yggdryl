@@ -1,0 +1,23 @@
+{
+  "name": "requestingpartysubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "requestingpartysub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "requestingpartysub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoRequestingPartySubIDs > 0.",
+    "display": "RequestingPartySubGrp",
+    "fix:component": "requestingpartysub",
+    "fix:counter": "1661"
+  }
+}

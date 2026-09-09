@@ -1,0 +1,22 @@
+{
+  "name": "derivativeinstrumentattribute",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "derivativeinstrumentattributecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "derivativeinstrumentattributecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DerivativeInstrumentAttribute",
+    "fix:component": "derivativeinstrumentattributecomponent",
+    "fix:counter": "1311"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "underlyingstreamassetattributegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamassetattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingstreamassetattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingStreamAssetAttributes(41800) > 0.",
+    "display": "UnderlyingStreamAssetAttributeGrp",
+    "fix:component": "underlyingstreamassetattribute",
+    "fix:counter": "41800"
+  }
+}

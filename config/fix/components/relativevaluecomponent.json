@@ -1,0 +1,52 @@
+{
+  "name": "relativevaluecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "relativevaluetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relativevaluetype"
+        }
+      },
+      {
+        "name": "relativevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relativevalue"
+        }
+      },
+      {
+        "name": "relativevalueside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relativevalueside"
+        }
+      },
+      {
+        "name": "relativevaluetimestamp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relativevaluetimestamp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RelativeValue"
+  }
+}

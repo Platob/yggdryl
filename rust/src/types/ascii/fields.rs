@@ -17,7 +17,6 @@ define_field_types!(MicType, "mic", crate::DataType::Mic);
 define_field_types!(CfiType, "cfi", crate::DataType::Cfi);
 define_field_types!(IsinType, "isin", crate::DataType::Isin);
 define_field_types!(SideType, "side", crate::DataType::Side);
-define_field_types!(MsgTypeType, "msgtype", crate::DataType::MsgType);
 define_field_types!(MsgDirectionType, "direction", crate::DataType::MsgDirection);
 define_field_types!(StateType, "state", crate::DataType::State);
 define_field_types!(TimeInForceType, "timeinforce", crate::DataType::TimeInForce);
@@ -38,8 +37,6 @@ pub type CfiField = TypedField<CfiType>;
 pub type IsinField = TypedField<IsinType>;
 /// A side-typed field: FIX's side of a trade.
 pub type SideField = TypedField<SideType>;
-/// A message-type-typed field: FIX's `MsgType`.
-pub type MsgTypeField = TypedField<MsgTypeType>;
 /// A direction-typed field: which way a captured line moved.
 pub type DirectionField = TypedField<MsgDirectionType>;
 /// A field declared as a thing's state.

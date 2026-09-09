@@ -1,0 +1,72 @@
+{
+  "name": "regulatorytradeidcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "regulatorytradeid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "regulatorytradeid"
+        }
+      },
+      {
+        "name": "regulatorytradeidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "regulatorytradeidsource"
+        }
+      },
+      {
+        "name": "regulatorytradeidevent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "regulatorytradeidevent"
+        }
+      },
+      {
+        "name": "regulatorytradeidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "regulatorytradeidtype"
+        }
+      },
+      {
+        "name": "regulatorylegrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "regulatorylegrefid"
+        }
+      },
+      {
+        "name": "regulatorytradeidscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "regulatorytradeidscope"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RegulatoryTradeID"
+  }
+}

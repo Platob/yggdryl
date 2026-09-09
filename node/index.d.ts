@@ -1098,20 +1098,22 @@ export type JsField = Field
  * name/value text, or pairs a caller already has. Each redirects to the core
  * method of the same name, so nothing here decides a dialect, a version or a
  * separator - it only carries what JavaScript said across.
- *
- * Every message it builds opens with `beginstring` - the wire's own, else
- * the version the message was read at - and closes with the crate's
- * `timestamp`: the first clock the message carries, else the epoch. Neither
- * is an entry unless the line carried it, so `toBytes` re-emits the line
- * byte for byte.
  */
 export declare class FixCodec {
   /** Open a reader over one dictionary, or over the process default. */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this reader resolves against, sharing it. */
   get registry(): FixRegistry
-  /** One captured line, whatever it is wrapped in. */
-  transformLine(row: Buffer, enrich?: boolean | undefined | null): FixMsg
+  /** Messages in one captured line, including every bulk configuration. */
+  transformLine(row: Buffer, enrich?: boolean | undefined | null): FixMessages
+  /** Messages in a bulk or wildcard UL configuration response, lazily. */
+  transformUlconfigLine(body: Buffer, enrich?: boolean | undefined | null): FixMessages
+  /** Messages carried by one native record. */
+  transformRecord(record: JsScalar, enrich?: boolean | undefined | null): FixMessages
+  /** The complete raw message code declared by captured bytes. */
+  static inferMsgtypeBytes(body: Buffer): Buffer | null
+  /** The complete raw message code declared by captured text. */
+  static inferMsgtypeText(body: string): string | null
   /** One numeric frame, split on the separator stated or inferred. */
   transformFixLine(body: Buffer, separator?: number | undefined | null, enrich?: boolean | undefined | null): FixMsg
   /** One bridge frame, whose keys are names rather than tags. */
@@ -1125,27 +1127,30 @@ export declare class FixCodec {
    *
    * An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
    * Only the row is filled: the arrival record is what the wire carried and
-   * is left alone, so `toBytes` re-emits the received line either way, and
+   * is left alone, so `intoBytes` re-emits the received line either way, and
    * a stated value is never replaced.
    */
   enrichFixmsg(message: FixMsg): FixMsg
-  /**
-   * Stamps an array of messages with the identities it implies, in order.
-   *
-   * One `FixLifecycle` over the whole array: each message gets its
-   * `instid`, its `id` and - where it carries an order identifier - the
-   * `persistentid` of the chain that identifier reaches, and a terminal
-   * state closes the chain. The array is the stream, so the chain a
-   * message joins depends on the messages before it; a stream longer than
-   * one array is fed to one `FixLifecycle` instead.
-   */
-  lifecycle(messages: Array<FixMsg>): Array<FixMsg>
   /** A cheap clone: the dictionary is shared and the pins are copied. */
   clone(): FixCodec
   /** How this reader renders: the dictionary it reads against. */
   toString(): string
 }
 export type JsFixCodec = FixCodec
+
+/**
+ * Lazy category definitions with a retained native registry.
+ *
+ * This type implements JavaScript's iterable iterator protocol.
+ * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
+ */
+export declare class FixDefinitionIterator {
+
+}
+export type JsFixDefinitionIterator = FixDefinitionIterator
 
 /**
  * The fields of a registry, in ascending canonical-identifier order.
@@ -1168,47 +1173,12 @@ export declare class FixFieldIterator {
 }
 export type JsFixFieldIterator = FixFieldIterator
 
-/**
- * The state a stream of messages has reached, one chain per order alive.
- *
- * Built once per stream, over one dictionary or the process default, and fed
- * every message in order through `fill`, which stamps the three identities
- * the stream implies: `instid`, the instrument; `id`, the message, sorting by
- * the market's own clock; `persistentid`, the order chain that every message
- * sharing one of its identifiers carries. A terminal state closes the chain
- * and forgets its identifiers, so what is held is the orders still alive.
- * `FixCodec.lifecycle` runs one of these over an array.
- */
-export declare class FixLifecycle {
-  /**
-   * A stream with no order alive yet.
-   *
-   * The three columns are the registry's own crate fields, which every
-   * registry this package builds holds.
-   */
-  constructor(registry?: FixRegistry | undefined | null)
-  /**
-   * Stamps one message with its three identities and moves the chain it
-   * belongs to along.
-   *
-   * A stated value is never overwritten: a message already carrying an
-   * `id` keeps it, and one carrying a `persistentid` joins nothing new,
-   * which is what makes a second pass over a stamped stream a no-op. Only
-   * the row is stamped: the arrival record is what the wire carried, so
-   * `toBytes` re-emits the received line either way.
-   */
-  fill(message: FixMsg): FixMsg
-  /**
-   * How many orders are alive: opened by a message and not yet closed by
-   * a terminal state.
-   */
-  get alive(): number
-  /** Forgets every chain, as a new session or a new day would. */
-  clear(): void
-  /** How this stream renders: the orders alive in it. */
-  toString(): string
+/** A native fallible cursor; the JavaScript loader supplies `Symbol.iterator`. */
+export declare class FixMessages {
+  /** Advance the native cursor, propagating an error or returning null at its end. */
+  next(): IteratorResult<FixMsg>
 }
-export type JsFixLifecycle = FixLifecycle
+export type JsFixMessages = FixMessages
 
 /**
  * A FIX message: a value plus the registry that types it.
@@ -1309,14 +1279,7 @@ export declare class FixMsg {
   digest(): Buffer
   /** One instrument symbol that is the same across venues, or `null`. */
   symbolTicker(): JsScalar | null
-  /**
-   * The timestamp a capture is ordered by, or `null`.
-   *
-   * The crate's `timestamp` child every built message closes with: the
-   * first clock the message carries, else the epoch - so a message the
-   * reader built always answers, and only a message built by hand without
-   * that child does not.
-   */
+  /** The timestamp a capture is ordered by, or `null`. */
   marketTimestamp(): JsScalar | null
   /** The partition that timestamp falls in, in whole seconds. */
   unixPartition(seconds: number): JsScalar | null
@@ -1349,14 +1312,12 @@ export declare class FixMsg {
    * This message as the fixed row a table holds.
    *
    * `schema` is the fixed root `fixSchema` builds: every column is filled by
-   * the tag its field carries - never by its spelling - so a message that
-   * carried nothing at a column answers null there rather than shifting its
-   * neighbours, and a column no tag names answers null because it is the
-   * capture's rather than the message's.
+   * the tag its name spells, and a column no tag names answers null because
+   * it is the capture's rather than the message's.
    */
-  toRow(schema: JsField): JsScalar
+  intoRow(schema: JsField): JsScalar
   /** Re-emit this message on the wire, separated by `separator`. */
-  toBytes(separator?: number | undefined | null): Buffer
+  intoBytes(separator?: number | undefined | null): Buffer
   /** Whether two messages carry the same schema, value and dictionary. */
   equals(other: FixMsg): boolean
   /** Deterministic hash bits over the schema and the value. */
@@ -1394,16 +1355,33 @@ export type JsFixMsgEntries = FixMsgEntries
  * changing a dictionary underneath a message that already used it.
  */
 export declare class FixRegistry {
-  /**
-   * A registry holding nothing but this crate's own fields.
-   *
-   * Every registry starts here: the nineteen standard fields from tag 65000
-   * that `fixCrateFields` lists - the digest, the clock and its partition,
-   * the session a message states, the bridge's message context, the
-   * plugin sessions a line moved between and the identities a lifecycle
-   * pass stamps - are what a row is typed by, so a dictionary loaded from
-   * a store, built from fields or left alone holds them alike.
-   */
+  /** Look up a globally unique group by its scalar counter identifier. */
+  getGroupByCounter(id: string): JsField | null
+  /** Look up a globally unique group, failing when absent or ambiguous. */
+  groupByCounter(id: string): JsField
+  /** Look up a category definition, returning null when absent. */
+  getDefinition(category: string, name: string, branch?: string | undefined | null): JsField | null
+  /** Look up a category definition, failing when absent. */
+  definition(category: string, name: string, branch?: string | undefined | null): JsField
+  /** Definitions in native category order, retaining the registry while active. */
+  definitions(category: string): FixDefinitionIterator
+  /** Insert or replace a complete native category definition atomically. */
+  insertDefinition(category: string, field: JsField): JsField | null
+  /** Create a definition, refusing an existing identity. */
+  createDefinition(category: string, field: JsField): void
+  /** Replace an existing definition atomically, preserving identity. */
+  updateDefinition(category: string, field: JsField): JsField
+  /** Remove a definition, refusing dangling references. */
+  removeDefinition(category: string, name: string, branch?: string | undefined | null): JsField | null
+  /** Borrow the message singleton named by wire code, canonical name, or alias. */
+  getMsgtype(spelling: string, branch?: string | undefined | null): MsgType | null
+  /** Borrow a message singleton, failing when absent. */
+  msgtype(spelling: string, branch?: string | undefined | null): MsgType
+  /** Iterate native message singletons in canonical order. */
+  msgtypes(): MsgTypeIterator
+  /** Add native scalar `ULBridge` fields atomically. */
+  withUlbridgeFields(): void
+  /** The empty registry. */
   constructor()
   /**
    * Build a registry by inserting `fields` in order.
@@ -1412,16 +1390,13 @@ export declare class FixRegistry {
    */
   static fromFields(fields: Array<JsField>): FixRegistry
   /**
-   * Load every shard under `<location>/primitive` and `<location>/nested`.
+   * Load the fields, messages, components, and groups categories.
    *
    * `location` is an `IOBase` handle, a `Url`, or the string naming one, run
    * through the coercion every folder-shaped entry point uses. A folder that
-   * is not there loads as a new registry - the crate's own fields and
-   * nothing else - and is not created; a stored copy of one of the crate's
-   * own fields, a standard field from 65000 up, is read past, because the
-   * crate's own definition is the one that types a row. A shard that does
-   * not parse, and a root still holding the retired `records/` layout,
-   * throw with the URL named.
+   * is not there loads as the empty registry and is not created; a shard
+   * that does not parse, and a root still holding the retired `records/`
+   * layout, throw with the URL named.
    */
   static fromHandle(location: LocationInput): FixRegistry
   /**
@@ -1437,27 +1412,22 @@ export declare class FixRegistry {
    */
   static fromCfbFile(location: LocationInput, branch?: string | undefined | null): [FixRegistry, Array<Field>]
   /**
-   * Register one message type, answering the value it takes.
+   * Add the fields this crate defines on its own branch.
    *
-   * A type the code set does not have is added to it rather than rejected,
-   * and the value it takes is the core's: itself where it fits, a stable
-   * synthesized value where it does not. `name` is the symbolic name the
-   * set files it under, with the spelling kept as an alias when the two
-   * differ, and `description` is the source's own wording. Idempotent and
-   * enriching: a type already spelled answers its value, gains a spelling
-   * the set did not answer to and a description it did not have, and keeps
-   * everything it already held.
+   * A dictionary that has them can type a `msghash` or `timestamp` column
+   * from the registry like any other. One that does not is unchanged:
+   * nothing in reading a message needs them, because every one of them is a
+   * fact about the capture rather than about the wire.
    */
-  registerMsgtype(spelling: string, name?: string | undefined | null, description?: string | undefined | null): string
+  withCrateFields(): void
+  /** Register a full wire code and borrow its immutable message definition. */
+  registerMsgtype(spelling: string, name?: string | undefined | null, description?: string | undefined | null): MsgType
   /**
    * Write every populated shard under `<location>/<tree>/<branch>`, removing
-   * the shards, branch folders and trees no field populates any more. The
-   * crate's own fields - the standard fields from 65000 up - are never
-   * written: they are the crate's rather than the store's, and every
-   * registry holds them already.
+   * the shards, branch folders and trees no field populates any more.
    */
   writeInto(location: LocationInput): void
-  /** How many fields are held, the crate's own nineteen among them. */
+  /** How many fields are registered. */
   get size(): number
   /**
    * The field a canonical or alternate identifier names, or `null`.
@@ -1557,14 +1527,18 @@ export declare class FixRegistry {
    * order.
    */
   equals(other: FixRegistry): boolean
-  /** Deterministic hash bits over the fields, shared with the core. */
+  /** Deterministic hash bits over all categories and branch definitions. */
   stableHash(): bigint
   /** A deep copy that is independently mutable. */
   clone(): FixRegistry
   /** A one-line summary: the dictionary itself is reached by iterating it. */
   toString(): string
-  /** The fields as their own JSON documents, in canonical-identifier order. */
-  toJSON(): Array<any>
+  /** A complete native catalog snapshot, including branch definitions. */
+  toJSON(): any
+  /** Load a complete native catalog snapshot. */
+  static fromJson(input: string): FixRegistry
+  /** Render a complete native catalog snapshot. */
+  intoJson(): string
 }
 export type JsFixRegistry = FixRegistry
 
@@ -2322,10 +2296,6 @@ export declare class MimeType {
   static inferBytes(line: Buffer): MimeType
   /** Classify one captured text line, without a dictionary. */
   static inferText(line: string): MimeType
-  /** Read the message type one captured byte line declares. */
-  static inferBytesMsgtype(line: Buffer): Buffer | null
-  /** Read the message type one captured text line declares. */
-  static inferTextMsgtype(line: string): string | null
   /** Read which way one captured byte line moved. */
   static inferBytesDirection(line: Buffer): string | null
   /** Read which way one captured text line moved. */
@@ -2408,6 +2378,45 @@ export declare class MimeType {
   toJSON(): any
 }
 export type JsMimeType = MimeType
+
+/** An immutable singleton view; retaining its registry keeps its index stable. */
+export declare class MsgType {
+  /** The native canonical name. */
+  get name(): string
+  /** The complete wire message code. */
+  asStr(): string
+  /** Project an independent copy of the native message Struct field. */
+  asField(): JsField
+  /** Look up the unique repeating group for a native counter identifier. */
+  getGroupByCounter(id: string): JsField | null
+  /** Compare the complete native values. */
+  equals(other: MsgType): boolean
+  /** Compare native message definitions using their total ordering. */
+  compare(other: MsgType): number
+  /** Deterministic hash bits from the native value. */
+  stableHash(): bigint
+  /** Clone the native value, retaining shared backing. */
+  clone(): MsgType
+  /** Render the canonical native text. */
+  toString(): string
+  /** Project the native JSON representation. */
+  toJSON(): any
+}
+export type JsMsgType = MsgType
+
+/**
+ * Lazy immutable message singletons with a retained native registry.
+ *
+ * This type implements JavaScript's iterable iterator protocol.
+ * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
+ */
+export declare class MsgTypeIterator {
+
+}
+export type JsMsgTypeIterator = MsgTypeIterator
 
 /**
  * One namespace of a catalog: identity, plus its two collection views.
@@ -2631,6 +2640,30 @@ export declare class ProtocolField {
   get tag(): number | null
   /** Record the canonical FIX tag, rejecting anything but an exact `i32`. */
   set tag(value: number)
+  /** The scalar counter referenced by a repeating group. */
+  get counter(): number | null
+  /** Set a repeating group's exact signed 32-bit counter tag. */
+  set counter(value: number)
+  /** The component definition named by this FIX occurrence. */
+  get component(): string | null
+  /** Set this occurrence's component definition. */
+  set component(value: string)
+  /** The group definition named by this FIX occurrence. */
+  get group(): string | null
+  /** Set this occurrence's group definition. */
+  set group(value: string)
+  /** The scalar field definition named by this FIX occurrence. */
+  get fieldRef(): string | null
+  /** Set this occurrence's scalar field definition. */
+  set fieldRef(value: string)
+  /** The complete wire message code named by this FIX occurrence. */
+  get msgtype(): string | null
+  /** Set this occurrence's complete wire message code. */
+  set msgtype(value: string)
+  /** The symbolic name of a wire value in this field's inline enumeration. */
+  codeName(value: string): string | null
+  /** The wire value of a symbolic name or value in this field's inline enumeration. */
+  codeValue(text: string): string | null
   /**
    * The alternate tags, highest priority first.
    *
@@ -3856,6 +3889,61 @@ export declare class TxHasher {
 }
 export type JsTxHasher = TxHasher
 
+/** One selected configuration; its shared source response remains native. */
+export declare class Ulconfig {
+  /** Construct from a selected `ObjectName`, attributes, and source response. */
+  constructor(mbean: string | null, attributes: Scalar, envelope: Scalar)
+  /** Parse and validate a response before returning its lazy configurations. */
+  static fromJsonBytes(body: Buffer): JsUlconfigs
+  /** Validate a native response and iterate its selected configurations. */
+  static fromJsonScalar(document: JsScalar): JsUlconfigs
+  /** Recover one configuration from a flat native message. */
+  static fromFixmsg(message: JsFixMsg): Ulconfig
+  /** Convert this selected configuration to one flat native message. */
+  intoFixmsg(codec: JsFixCodec, enrich?: boolean | undefined | null): JsFixMsg
+  /** The selected actual `ObjectName`, when present. */
+  get mbean(): string | null
+  /** The type property of the selected `ObjectName`. */
+  get mbeanType(): string | null
+  /** The declared plugin type. */
+  get pluginType(): string | null
+  /** The native canonical name. */
+  get name(): string | null
+  /** The declared configuration version. */
+  get version(): string | null
+  /** The declared configuration category. */
+  get category(): string | null
+  /** The declared configuration state. */
+  get state(): string | null
+  /** Look up one native configuration attribute. */
+  get(name: string): JsScalar | null
+  /** Share the selected native attribute value. */
+  asAttributes(): JsScalar
+  /** Shares the complete source response, which may contain sibling values. */
+  asEnvelope(): JsScalar
+  /** Compare the complete native values. */
+  equals(other: Ulconfig): boolean
+  /** Deterministic hash bits from the native value. */
+  stableHash(): bigint
+  /** Clone the native value, retaining shared backing. */
+  clone(): Ulconfig
+}
+export type JsUlconfig = Ulconfig
+
+/**
+ * A lazy iterator of validated native configurations.
+ *
+ * This type implements JavaScript's iterable iterator protocol.
+ * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
+ */
+export declare class Ulconfigs {
+
+}
+export type JsUlconfigs = Ulconfigs
+
 /** A normalized URI backed by the validated Rust core. */
 export declare class Uri {
   /** Parse a URI expression or cheaply clone another native `Uri`. */
@@ -4202,6 +4290,33 @@ export declare class Urn {
 }
 export type JsUrn = Urn
 
+/** An immutable native version with major, minor, and patch components. */
+export declare class Version {
+  /** Major and minor fit unsigned bytes; patch fits an unsigned 16-bit value. */
+  constructor(major: number, minor?: number | undefined | null, patch?: number | undefined | null)
+  /** Parse the native numeric version grammar. */
+  static fromStr(text: string): Version
+  /** The unsigned 8-bit major component. */
+  get major(): number
+  /** The unsigned 8-bit minor component. */
+  get minor(): number
+  /** The unsigned 16-bit patch component. */
+  get patch(): number
+  /** Compare the complete native values. */
+  equals(other: Version): boolean
+  /** Compare native values in canonical order. */
+  compare(other: Version): number
+  /** Deterministic hash bits from the native value. */
+  stableHash(): bigint
+  /** Copy the native four-byte value. */
+  clone(): Version
+  /** Render the canonical native text. */
+  toString(): string
+  /** Project the native JSON representation. */
+  toJSON(): string
+}
+export type JsVersion = Version
+
 /** A resumable XXH3 state answering 128 bits. */
 export declare class Xxh128 {
   /** The canonical algorithm token. */
@@ -4430,18 +4545,7 @@ export interface FixCodecOptions {
   nullValues?: Array<string>
 }
 
-/**
- * The nineteen fields this crate defines, in tag order: standard fields from
- * 65000 up, above every tag FIX or a venue publishes.
- *
- * The digest, the version read at, the ticker, the clock and its partition,
- * the parent identifiers, the session the message states, the bridge's
- * message context, the plugins and plugin sessions a line moved between, the
- * ISIN, MIC and order state a row derives, and the instrument, message and
- * order-chain identities a lifecycle pass stamps. Every registry already
- * holds them, so this is the listing a schema or a document walks rather than
- * something a caller registers.
- */
+/** The fields this crate defines on its own branch, in tag order. */
 export declare function fixCrateFields(): Array<JsField>
 
 /**
@@ -4449,9 +4553,8 @@ export declare function fixCrateFields(): Array<JsField>
  *
  * Header, the fields a consumer reads, the groups worth persisting whole, the
  * trailer, this crate's own derived facts, and the two lists that close every
- * row. Columns are spelled by the dictionary's folded canonical names -
- * `msgtype`, never `35` - so a row reads the way a message reads; the tag
- * stays each column's identity, on its `fix:tag`, and is what fills it.
+ * row. Columns are named by tag, because a tag is the one name a field has in
+ * every version and every dialect.
  */
 export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
 
@@ -4460,19 +4563,17 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
  *
  * `carrier` is a capture's own root - where a line was read from, which line
  * it was, what stamped it - and its columns lead the row, because that is what
- * a monitor orders and joins on. A carried column whose folded name a FIX
- * column already takes - `sessionId` and `sessionid` are one name - is dropped
- * rather than renamed: the FIX column is the one a reader spelling it means,
- * and `sessionid` means the session the message itself states. A bridge's own
- * session instance is captured as `sessionUid` for that reason and leads the
- * row beside `threadId` and `level`, while its `plugin` capture fills the
- * plugin session the line's direction names: the sender's for a line it
- * sent, the target's for one it received.
+ * a monitor orders and joins on. A carried column whose name a FIX column
+ * already takes is dropped rather than renamed: the FIX column is the one a
+ * reader spelling it means.
  */
 export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsField
 
 /** One row's columns, in order, as tags. */
 export declare function fixSchemaTags(): Array<number>
+
+/** The scalar fields owned by `ULBridge`. */
+export declare function fixUlbridgeFields(): Array<JsField>
 
 /**
  * The Iceberg option fields, as one JavaScript options object.

@@ -1,0 +1,23 @@
+{
+  "name": "underlyingpaymentstreamfixingdategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentstreamfixingdatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingpaymentstreamfixingdatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingPaymentStreamFixingDates(42955) > 0.",
+    "display": "UnderlyingPaymentStreamFixingDateGrp",
+    "fix:component": "underlyingpaymentstreamfixingdatecomponent",
+    "fix:counter": "42955"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "legpaymentstubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentstub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentStubs(40418) > 0.",
+    "display": "LegPaymentStubGrp",
+    "fix:component": "legpaymentstub",
+    "fix:counter": "40418"
+  }
+}

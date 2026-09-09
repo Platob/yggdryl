@@ -1,0 +1,23 @@
+{
+  "name": "underlyingstreamcommodityaltidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcommodityaltidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingstreamcommodityaltidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingStreamCommodityAltIDs(41990) > 0.",
+    "display": "UnderlyingStreamCommodityAltIDGrp",
+    "fix:component": "underlyingstreamcommodityaltidcomponent",
+    "fix:counter": "41990"
+  }
+}

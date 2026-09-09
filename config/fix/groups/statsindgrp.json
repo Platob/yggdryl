@@ -1,0 +1,23 @@
+{
+  "name": "statsindgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "statsind",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "statsind"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of statistics indicators",
+    "display": "StatsIndGrp",
+    "fix:component": "statsind",
+    "fix:counter": "1175"
+  }
+}

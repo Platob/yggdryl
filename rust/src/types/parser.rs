@@ -88,7 +88,6 @@ impl fmt::Display for DataType {
             D::Cfi => formatter.write_str("cfi"),
             D::Isin => formatter.write_str("isin"),
             D::Side => formatter.write_str("side"),
-            D::MsgType => formatter.write_str("msgtype"),
             D::State => formatter.write_str("state"),
             D::TimeInForce => formatter.write_str("timeinforce"),
             D::MsgDirection => formatter.write_str("msgdirection"),

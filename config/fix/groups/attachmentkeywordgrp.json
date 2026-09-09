@@ -1,0 +1,23 @@
+{
+  "name": "attachmentkeywordgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "attachmentkeywordcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "attachmentkeywordcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAttachmentKeywords(2113) > 0.",
+    "display": "AttachmentKeywordGrp",
+    "fix:component": "attachmentkeywordcomponent",
+    "fix:counter": "2113"
+  }
+}

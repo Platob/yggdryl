@@ -6,7 +6,7 @@ use yggdryl::FixCodec;
 
 use super::seed;
 
-/// A wide order: every facet a book asks for, plus a Parties group.
+/// A wide order carrying the ordinary book facets.
 const ORDER: &str = "8=FIX.4.4|9=176|35=D|49=SENDER|56=TARGET|34=7|52=20240102-10:15:30.000|11=ORDER-1|55=AAPL|54=1|38=100|44=12.5|15=USD|60=20240102-10:15:30.000|10=203|";
 
 /// The same shape a bridge writes, with a group to walk.
@@ -15,11 +15,19 @@ const PARTIED: &str = "MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1|ORDERQTY=100
 pub fn benchmarks(criterion: &mut Criterion) {
     let reader = FixCodec::new(Arc::new(seed()));
     let order = reader
-        .transform_line(ORDER.as_bytes(), false)
+        .transform_fix_line(ORDER.as_bytes(), false)
         .expect("a readable order");
     let partied = reader
-        .transform_line(PARTIED.as_bytes(), false)
+        .transform_ullink_line(PARTIED.as_bytes(), false)
         .expect("a readable bridge row");
+    assert_eq!(partied.by_tag(453).unwrap(), &yggdryl::Scalar::from(2_i32));
+    assert_eq!(
+        partied
+            .party("ClearingFirm")
+            .and_then(|party| party.id())
+            .and_then(yggdryl::Scalar::as_str),
+        Some("CLEARER-9")
+    );
     let mut group = criterion.benchmark_group("fix/lift");
 
     // One facet, which is what a monitor asks for per row.
@@ -41,7 +49,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("source", |bencher| {
         bencher.iter(|| black_box(&order).lift_source(black_box("quantity")));
     });
-    // The two role-addressed accessors, which walk a group.
+    // The role-addressed accessor walks the logical Parties group.
     group.bench_function("party", |bencher| {
         bencher.iter(|| black_box(&partied).party(black_box("ClearingFirm")));
     });

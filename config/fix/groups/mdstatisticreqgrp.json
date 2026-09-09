@@ -1,0 +1,23 @@
+{
+  "name": "mdstatisticreqgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "mdstatisticreq",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "mdstatisticreq"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoMDStatistics(2474) > 0.",
+    "display": "MDStatisticReqGrp",
+    "fix:component": "mdstatisticreq",
+    "fix:counter": "2474"
+  }
+}

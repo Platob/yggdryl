@@ -1,0 +1,32 @@
+{
+  "name": "securityclassification",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "securityclassificationreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securityclassificationreason"
+        }
+      },
+      {
+        "name": "securityclassificationvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "securityclassificationvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SecurityClassification"
+  }
+}

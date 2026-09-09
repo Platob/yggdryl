@@ -1,0 +1,23 @@
+{
+  "name": "complexeventaveragingobservationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventaveragingobservation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "complexeventaveragingobservation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoComplexEventAveragingObservations(40994) > 0.",
+    "display": "ComplexEventAveragingObservationGrp",
+    "fix:component": "complexeventaveragingobservation",
+    "fix:counter": "40994"
+  }
+}

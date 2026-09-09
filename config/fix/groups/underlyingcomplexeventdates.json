@@ -1,0 +1,23 @@
+{
+  "name": "underlyingcomplexeventdates",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventdate",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcomplexeventdate"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingComplexEventDates(2054) > 0.",
+    "display": "UnderlyingComplexEventDates",
+    "fix:component": "underlyingcomplexeventdate",
+    "fix:counter": "2053"
+  }
+}

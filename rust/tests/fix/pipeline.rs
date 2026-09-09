@@ -13,13 +13,13 @@
 //! own tags, and the batched read agrees with the line read on every tag
 //! both can answer.
 
-use std::path::PathBuf;
+use super::OneMessage;
+
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use arrow_array::cast::AsArray;
 use yggdryl::holder::Buffer;
-use yggdryl::holder::local::Folder;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::{
@@ -29,16 +29,7 @@ use yggdryl::{
 
 /// The committed dictionary beside the bridge's own vocabulary.
 fn registry() -> Arc<FixRegistry> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
-    let held = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
-    Arc::new(
-        held.with_ulbridge_fields()
-            .expect("the bridge's own fields"),
-    )
+    super::ulbridge_registry()
 }
 
 /// The Jolokia answer, which is the one line that is a document.
@@ -228,7 +219,13 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         ["beginstring", "bodylength", "msgtype"],
         "{names:?}"
     );
-    for once in ["msgtype", "timestamp", "sessionid", "msgctxid", "msgseqnum"] {
+    for once in [
+        "msgtype",
+        "timestamp",
+        "sendersessionid",
+        "msgctxid",
+        "msgseqnum",
+    ] {
         assert_eq!(
             names.iter().filter(|held| **held == once).count(),
             1,
@@ -319,10 +316,10 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     // The bracket's context is a capture named after the crate's own field,
     // so it lands in that column rather than in front: the routed row's
     // bracket stated it, the heartbeat's did not. The bracket's session uid
-    // is the bridge's, carried in front, and `sessionid` stays the message's
+    // is the bridge's, carried in front, and `sendersessionid` stays the message's
     // own - which no line here spells.
     let uid = text_column(&read, "sessionUid");
-    let session = tag_text(&read, yggdryl::SESSIONID_TAG);
+    let session = tag_text(&read, yggdryl::SENDERSESSIONID_TAG);
     let context = tag_text(&read, yggdryl::MSGCTXID_TAG);
     assert_eq!(uid[ROUTED_ROW].as_deref(), Some("e7254b22"));
     assert_eq!(context[ROUTED_ROW].as_deref(), Some("9f015ee861"));
@@ -333,8 +330,8 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     // The plugin that logged a line is the plugin session it moved from or
     // to, by the direction the line took: the heartbeat was sent, the fill
     // received, and the routed row - no verb - takes the default, sent.
-    let sender = tag_text(&read, yggdryl::SENDERPLUGINSESSION_TAG);
-    let target = tag_text(&read, yggdryl::TARGETPLUGINSESSION_TAG);
+    let sender = tag_text(&read, yggdryl::SENDERSESSIONNAME_TAG);
+    let target = tag_text(&read, yggdryl::TARGETSESSIONNAME_TAG);
     assert_eq!(
         sender[HEARTBEAT_ROW].as_deref(),
         Some("OMS_X1_TradeCapture")
@@ -423,7 +420,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     assert_eq!(tag_column(&read, 151)[FILL_ROW].as_f64(), Some(0.0));
     // A state column holds the ranked spelling the code names, never the
     // code: `2` is a filled order, and sorts after every live state.
-    assert_eq!(tag_text(&read, 150)[FILL_ROW].as_deref(), Some("80FILLED"));
+    assert_eq!(tag_text(&read, 39)[FILL_ROW].as_deref(), Some("80FILLED"));
 
     // The routed row states the same trade under names, and lands on the
     // same tags.
@@ -524,7 +521,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     let body = &RESPONSE[ROWHEADER_WIDTH..];
     assert!(body.starts_with("Response: {"), "{body}");
     let message = codec
-        .transform_line(body.as_bytes(), false)
+        .one_line(body.as_bytes(), false)
         .expect("the document the line carries");
 
     // The envelope is what the exchange was, and it types.
@@ -536,47 +533,33 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
         message.by_tag(yggdryl::STATUS_TAG).unwrap(),
         &Scalar::from(200_i64)
     );
-    // The one session interface it answered for is one occurrence: FIX's own
-    // names keep FIX's own tags inside it, and the bridge's attributes land
-    // on the bridge's tags as the values they are.
+    // A session interface is one flat message. Standard and bridge attributes
+    // retain their own tags and datatypes.
     for (path, expected) in [
-        (
-            "SessionInterfaces.0.SenderCompID",
-            Scalar::from("CLIENTFIS"),
-        ),
-        ("SessionInterfaces.0.TargetCompID", Scalar::from("VENUEADC")),
-        ("SessionInterfaces.0.BeginString", Scalar::from("FIX.4.2")),
-        ("SessionInterfaces.0.MBeanType", Scalar::from("Plugin")),
-        ("SessionInterfaces.0.PluginType", Scalar::from("FIX")),
-        (
-            "SessionInterfaces.0.Name",
-            Scalar::from("Router_TradeCapture"),
-        ),
-        ("SessionInterfaces.0.CurrentPort", Scalar::from(9726_i64)),
-        ("SessionInterfaces.0.BackupPort", Scalar::from(-1_i64)),
-        (
-            "SessionInterfaces.0.IncomingMsgSeqNum",
-            Scalar::from(4507_i64),
-        ),
-        ("SessionInterfaces.0.NeedReload", Scalar::from(false)),
-        ("SessionInterfaces.0.State", Scalar::from("logged")),
+        ("SenderCompID", Scalar::from("CLIENTFIS")),
+        ("TargetCompID", Scalar::from("VENUEADC")),
+        ("BeginString", Scalar::from("FIX.4.2")),
+        ("MBeanType", Scalar::from("Plugin")),
+        ("PluginType", Scalar::from("FIX")),
+        ("Name", Scalar::from("Router_TradeCapture")),
+        ("CurrentPort", Scalar::from(9726_i64)),
+        ("BackupPort", Scalar::from(-1_i64)),
+        ("IncomingMsgSeqNum", Scalar::from(4507_i64)),
+        ("NeedReload", Scalar::from(false)),
+        ("State", Scalar::from("logged")),
     ] {
         assert_eq!(message.by_path(path).unwrap(), &expected, "{path}");
     }
     // A stated null is an absence, and an array is kept as the JSON it is.
+    assert!(message.get_by_path("BackupHost").is_none());
     assert!(
         message
-            .get_by_path("SessionInterfaces.0.BackupHost")
-            .is_none()
-    );
-    assert!(
-        message
-            .by_path("SessionInterfaces.0.ExtendedActions")
+            .by_path("ExtendedActions")
             .unwrap()
             .as_str()
             .is_some_and(|held| held.contains("send-test-request"))
     );
-    // The occurrence's member fields carry the tags they resolved to, so a
+    // The configuration's scalar fields carry the tags they resolved to, so a
     // reader filtering the arrival record by tag finds them.
     let tags: Vec<i32> = message.entries().iter().map(FixEntry::tag).collect();
     assert!(tags.contains(&49), "{tags:?}");
@@ -584,7 +567,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     assert!(tags.contains(&20_027), "CurrentPort: {tags:?}");
 
     // In the batch the same document is the same row: the envelope on its
-    // tags, and the occurrence in the arrival record, one entry per member
+    // tags, and the attributes in the arrival record, one entry per field
     // under the key the document spelled it by.
     let read = read(&CAPTURE);
     let entries = column(&read, "nofixentries");
@@ -600,11 +583,11 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
         })
         .collect();
     assert!(
-        keyed.contains(&(49, "SessionInterfaces[0].SenderCompID".to_owned())),
+        keyed.contains(&(49, "SenderCompID".to_owned())),
         "{keyed:?}"
     );
     assert!(
-        keyed.contains(&(20_027, "SessionInterfaces[0].CurrentPort".to_owned())),
+        keyed.contains(&(20_027, "CurrentPort".to_owned())),
         "{keyed:?}"
     );
     // Nothing in the document went unexplained on a dictionary that has the
@@ -651,7 +634,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         for (row, body) in bodies.iter().enumerate() {
             let body = body.as_bytes().expect("a body");
             let message = codec
-                .transform_line(body, false)
+                .one_line(body, false)
                 .unwrap_or_else(|error| panic!("row {row}: {error}"));
             let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
             let expected = match (tag, &alone) {
@@ -673,7 +656,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // session, the context or the clock - so the arrival record is still the
     // line alone.
     let routed = bodies[ROUTED_ROW].as_bytes().expect("a body");
-    let alone = codec.transform_line(routed, false).expect("the routed row");
+    let alone = codec.one_line(routed, false).expect("the routed row");
     assert!(alone.get_by_tag(34).is_none());
     assert_eq!(tag_column(&read, 34)[ROUTED_ROW].as_i64(), Some(4_507));
     let entries = column(&read, "nofixentries");
@@ -691,7 +674,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     for filled in [
         34,
         yggdryl::MSGCTXID_TAG,
-        yggdryl::SENDERPLUGINSESSION_TAG,
+        yggdryl::SENDERSESSIONNAME_TAG,
         yggdryl::TIMESTAMP_TAG,
     ] {
         assert!(

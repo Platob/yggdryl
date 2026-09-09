@@ -1,0 +1,33 @@
+{
+  "name": "legprovisioncashsettlquotesourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprovisioncashsettlquotesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlquotesource"
+        }
+      },
+      {
+        "name": "legprovisioncashsettlquotereferencepage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprovisioncashsettlquotereferencepage"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The LegProvisionCashSettlQuoteSource is a subcomponent of the LEgProvisionGrp component used to specify the reference source for currency or rate quote for cash settlement purposes.",
+    "display": "LegProvisionCashSettlQuoteSource"
+  }
+}

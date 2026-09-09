@@ -1,0 +1,23 @@
+{
+  "name": "referencedatadategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "referencedatadatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "referencedatadatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoReferenceDataDates(2746) > 0.",
+    "display": "ReferenceDataDateGrp",
+    "fix:component": "referencedatadatecomponent",
+    "fix:counter": "2746"
+  }
+}

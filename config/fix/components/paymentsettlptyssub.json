@@ -1,0 +1,32 @@
+{
+  "name": "paymentsettlptyssub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentsettlpartysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentsettlpartysubid"
+        }
+      },
+      {
+        "name": "paymentsettlpartysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentsettlpartysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PaymentSettlPtysSub"
+  }
+}

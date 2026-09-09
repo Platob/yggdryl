@@ -200,7 +200,6 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Cfi(_)) => Ok(DataType::Cfi),
             Self::Ascii(AsciiFamily::Isin(_)) => Ok(DataType::Isin),
             Self::Ascii(AsciiFamily::Side(_)) => Ok(DataType::Side),
-            Self::Ascii(AsciiFamily::MsgType(_)) => Ok(DataType::MsgType),
             Self::Ascii(AsciiFamily::MsgDirection(_)) => Ok(DataType::MsgDirection),
             Self::Ascii(AsciiFamily::State(_)) => Ok(DataType::State),
             Self::Ascii(AsciiFamily::TimeInForce(_)) => Ok(DataType::TimeInForce),

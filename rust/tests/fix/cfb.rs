@@ -7,7 +7,9 @@ use yggdryl::holder::local::Folder;
 
 use yggdryl::holder::Buffer;
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
-use yggdryl::{DataType, Error, Field, FixBranch, FixField, FixRegistry, IOBase, Version};
+use yggdryl::{
+    DataType, Error, Field, FixBranch, FixCategory, FixField, FixId, FixRegistry, IOBase, Version,
+};
 
 /// A CBlock in the exact shape a production file has: the same element order,
 /// the same attribute order, the same escaping, the same self-closing forms.
@@ -331,6 +333,7 @@ fn a_grammar_becomes_one_root_flattened_across_part() {
             "timeinforce",
             "avgpx",
             "nolegs",
+            "legs",
             "beginstring2"
         ],
     );
@@ -338,7 +341,7 @@ fn a_grammar_becomes_one_root_flattened_across_part() {
     // The duplicate keeps the tag, which is what recovers it.
     let fields = root.dtype().as_fields().unwrap();
     assert_eq!(fields[0].as_fix().tag().unwrap(), Some(8));
-    assert_eq!(fields[6].as_fix().tag().unwrap(), Some(8));
+    assert_eq!(fields[7].as_fix().tag().unwrap(), Some(8));
 }
 
 #[test]
@@ -361,44 +364,44 @@ fn required_decides_nullability_and_an_expression_counts_as_absent() {
 }
 
 #[test]
-fn a_nested_grammar_is_a_group_whose_counter_names_it_and_is_consumed() {
-    let (_, roots) = parse(CBLOCK);
+fn a_nested_grammar_keeps_its_counter_and_names_its_group_separately() {
+    let (registry, roots) = parse(CBLOCK);
     let fields = roots[0].dtype().as_fields().unwrap();
-    let group = fields.iter().find(|held| held.name() == "nolegs").unwrap();
-
-    // The group takes the counter's name and tag; the counter's own integer
-    // type is gone, because a list's length already carries it.
-    assert_eq!(group.as_fix().tag().unwrap(), Some(555));
+    let count = fields.iter().find(|held| held.name() == "nolegs").unwrap();
+    assert_eq!(count.dtype(), &DataType::Int32);
+    assert_eq!(count.as_fix().tag().unwrap(), Some(555));
+    assert_eq!(
+        registry.field_by_tag(555).unwrap().dtype(),
+        &DataType::Int32
+    );
+    let group = fields.iter().find(|held| held.name() == "legs").unwrap();
+    assert_eq!(group.as_fix().tag().unwrap(), None);
+    assert_eq!(group.as_fix().counter().unwrap(), Some(555));
     let DataType::List(item) = group.dtype() else {
         panic!("a list, got {}", group.dtype());
     };
-    // The occurrence carries the component the counter heads: `NoLegs`
-    // heads occurrences called `Leg`.
     assert_eq!(item.name(), "leg");
     assert!(!item.is_nullable());
-
-    // Everything after the counter, in document order, by the same rules.
     let members = item.dtype().as_fields().expect("an item struct");
     assert_eq!(
         members.iter().map(yggdryl::Field::name).collect::<Vec<_>>(),
-        ["legcurrency", "nolegsecurityaltid"],
+        ["legcurrency", "nolegsecurityaltid", "legsecurityaltidgrp"]
     );
     assert!(!members[0].is_nullable(), "556 is required");
-
-    // And it recurses: a group inside a group.
-    let DataType::List(inner) = members[1].dtype() else {
-        panic!("a nested list, got {}", members[1].dtype());
-    };
+    assert_eq!(members[1].dtype(), &DataType::Int32);
     assert_eq!(members[1].as_fix().tag().unwrap(), Some(604));
+    let DataType::List(inner) = members[2].dtype() else {
+        panic!("a nested list, got {}", members[2].dtype());
+    };
+    assert_eq!(members[2].as_fix().tag().unwrap(), None);
+    assert_eq!(members[2].as_fix().counter().unwrap(), Some(604));
     assert_eq!(
         inner
-            .dtype()
-            .as_fields()
-            .unwrap()
+            .fields()
             .iter()
             .map(yggdryl::Field::name)
             .collect::<Vec<_>>(),
-        ["legsecurityaltid"],
+        ["legsecurityaltid"]
     );
 }
 
@@ -426,30 +429,128 @@ fn the_root_element_is_the_branch_record() {
 }
 
 #[test]
-fn merging_a_cblock_vocabulary_replaces_on_an_identity_match() {
+fn replacing_a_referenced_cblock_field_is_atomic_and_unreferenced_fields_replace() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("config")
         .join("fix");
-    let folder = Folder::new(root).expect("the seed folder");
-    let mut seeded = FixRegistry::from_handle(&folder).expect("the committed dictionary");
-    // The committed dictionary spells tag 6 as money.
-    assert!(matches!(
-        seeded.field_by_tag(6).unwrap().dtype(),
-        DataType::Decimal128 { .. } | DataType::Decimal64 { .. } | DataType::Float64
-    ));
-
+    let mut seeded = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
     let (vocabulary, _) = FixRegistry::from_cfb_file(&handle(CBLOCK), None).unwrap();
     let avgpx = vocabulary.field_by_tag(6).unwrap().clone();
-    seeded.insert(avgpx).expect("same tag, same name replaces");
-    // The phase's principal known loss, stated rather than hidden: a CBlock
-    // says nothing about which tag is money, so the generic answer wins.
-    assert_eq!(seeded.field_by_tag(6).unwrap().dtype(), &DataType::Float32);
-
-    // Same tag, a different name, is a conflict rather than a silent replace.
-    let mut renamed = vocabulary.field_by_tag(35).unwrap().clone();
+    let before = seeded.clone();
+    let error = seeded.insert(avgpx.clone()).unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    assert!(error.to_string().contains("avgpx"), "{error}");
+    assert_eq!(
+        seeded, before,
+        "referenced layouts remain coherent after refusal"
+    );
+    let mut standalone =
+        FixRegistry::from_fields([seeded.field_by_tag(6).unwrap().clone()]).unwrap();
+    standalone.insert(avgpx).unwrap();
+    assert_eq!(
+        standalone.field_by_tag(6).unwrap().dtype(),
+        &DataType::Float32
+    );
+    let mut renamed = vocabulary.field_by_tag(6).unwrap().clone();
     renamed.set_name("somethingelse");
-    assert!(seeded.insert(renamed).is_err());
+    assert!(standalone.insert(renamed).is_err());
+}
+
+#[test]
+fn catalog_members_resolve_codes_declared_after_their_grammar() {
+    let (registry, roots) = parse(CBLOCK);
+    let message = registry.msgtype("7", Some(&branch())).unwrap();
+    assert_eq!(roots.len(), 1);
+    assert_eq!(roots[0].name(), "7");
+    assert!(!roots[0].is_nullable());
+    for (name, tag, nullable) in [("msgtype", 35, false), ("timeinforce", 59, true)] {
+        let occurrence = message.as_field().get_field(name).unwrap();
+        let canonical = registry.field_by_tag(tag).unwrap();
+        assert_eq!(roots[0].get_field(name), Some(occurrence));
+        assert_eq!(occurrence.as_fix().field_ref(), Some(canonical.name()));
+        assert_eq!(occurrence.is_nullable(), nullable);
+        assert_eq!(
+            occurrence
+                .as_fix()
+                .codes()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
+            canonical
+                .as_fix()
+                .codes()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        );
+    }
+    let repeated = message.as_field().get_field("beginstring2").unwrap();
+    assert_eq!(roots[0].get_field("beginstring2"), Some(repeated));
+    assert!(repeated.is_nullable());
+    assert_eq!(repeated.as_fix().field_ref(), Some("beginstring"));
+}
+
+#[test]
+fn venue_groups_and_their_components_keep_the_counter_branch() {
+    let body = r#"<cplugin-configuration fix-version="4.4">
+      <vocabulary>
+        <vocabulary-tag name="55" alt="Symbol" type="string" />
+        <vocabulary-tag name="5000" alt="NoVendorEntries" type="integer" />
+        <vocabulary-tag name="5001" alt="VendorID" type="string" />
+        <vocabulary-tag name="5002" alt="NoVendorSubEntries" type="integer" />
+        <vocabulary-tag name="5003" alt="VendorSubID" type="string" />
+      </vocabulary>
+      <grammar-binding type="D"><grammar>
+        <grammar rg-name="VendorEntries">
+          <tag-constraint name="5000" />
+          <tag-constraint name="5001" required="true" />
+          <tag-constraint name="55" />
+          <grammar rg-name="VendorSubEntries">
+            <tag-constraint name="5002" />
+            <tag-constraint name="5003" required="true" />
+          </grammar>
+        </grammar>
+      </grammar></grammar-binding>
+    </cplugin-configuration>"#;
+    let branch = FixBranch::from_str("venue").unwrap();
+    let (registry, roots) = FixRegistry::from_cfb_file(&handle(body), Some(&branch)).unwrap();
+    for (counter, name, component) in [
+        (5000, "VendorEntries", "VendorEntry"),
+        (5002, "VendorSubEntries", "VendorSubEntry"),
+    ] {
+        let group = registry
+            .definition(FixCategory::Groups, name, Some(&branch))
+            .unwrap();
+        let component = registry
+            .definition(FixCategory::Components, component, Some(&branch))
+            .unwrap();
+        assert_eq!(group.as_fix().branch().unwrap().name(), "venue");
+        assert_eq!(component.as_fix().branch().unwrap().name(), "venue");
+        let id = FixId::from_parts(&branch, counter).unwrap();
+        assert_eq!(registry.field(id).unwrap().dtype(), &DataType::Int32);
+        assert!(
+            registry
+                .msgtype("D", Some(&branch))
+                .unwrap()
+                .get_group_by_counter(id)
+                .is_some()
+        );
+    }
+    let DataType::List(item) = roots[0].get_field("vendorentries").unwrap().dtype() else {
+        panic!("a list group");
+    };
+    assert_eq!(item.as_fix().branch().unwrap().name(), "venue");
+    assert!(
+        item.get_field("symbol")
+            .unwrap()
+            .as_fix()
+            .branch()
+            .unwrap()
+            .is_standard()
+    );
+    assert_eq!(
+        FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
+        registry
+    );
 }
 
 #[test]
@@ -1122,23 +1223,29 @@ fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
         FixRegistry::from_handle(&Folder::new(root).expect("the seed folder")).expect("the seed");
     let before = seeded.clone();
 
-    // A CBlock says nothing about which tag is money or which is a MsgType, so
-    // its generic answers disagree with the committed dictionary's typed ones.
-    // The fold refuses rather than widening, which is the phase's principal
-    // known loss stated as a refusal instead of a silent replacement.
+    // The imported AvgPx datatype disagrees with its committed physical width.
     let fields = FixField::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).unwrap();
-    let error = seeded.add_fields(fields).unwrap_err();
+    let error = seeded.add_fields(fields.clone()).unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    assert!(error.to_string().contains("float32"), "{error}");
+    assert_eq!(
+        seeded, before,
+        "a conflicting scalar datatype does not mutate the catalog"
+    );
+    let avgpx = fields
+        .into_iter()
+        .find(|field| field.as_fix().tag().unwrap() == Some(6))
+        .unwrap();
+    let error = seeded.add_fields([avgpx]).unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
     let message = error.to_string();
     assert!(
-        message.contains("msgtype") && message.contains("utf8"),
+        message.contains("avgpx") && message.contains("float32"),
         "{message}"
     );
-    assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::MsgType);
+    assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::Utf8);
     assert_eq!(seeded.field_by_tag(6).unwrap().dtype(), &DataType::Float64);
 
-    // The fold is one mutation, so the tags read before the refusal - 8 and 9,
-    // which agree and would have merged - are not in the dictionary either.
     assert_eq!(seeded, before, "a refused fold writes nothing");
 }
 
@@ -1256,8 +1363,7 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
 
 #[test]
 fn reading_a_cblock_in_whole_is_one_mutation() {
-    // The committed dictionary types tag 35 as a MsgType, which a CBlock's
-    // generic `string` disagrees with - so this file refuses partway.
+    // A changed scalar width refuses the whole imported document.
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("config")
@@ -1270,6 +1376,7 @@ fn reading_a_cblock_in_whole_is_one_mutation() {
         .add_cfb_file(&handle(CBLOCK), Some("bloomberg"), None)
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    assert!(error.to_string().contains("float32"), "{error}");
     assert_eq!(seeded, before, "neither the branch nor a field arrived");
     assert!(seeded.branch_named("bloomberg").is_none());
 }

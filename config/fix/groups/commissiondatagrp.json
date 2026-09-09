@@ -1,0 +1,23 @@
+{
+  "name": "commissiondatagrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "commissiondatacomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "commissiondatacomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoCommissions(2639) > 0.",
+    "display": "CommissionDataGrp",
+    "fix:component": "commissiondatacomponent",
+    "fix:counter": "2639"
+  }
+}

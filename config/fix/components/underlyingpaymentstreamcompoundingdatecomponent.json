@@ -1,0 +1,32 @@
+{
+  "name": "underlyingpaymentstreamcompoundingdatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreamcompoundingdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingdate"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamcompoundingdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamcompoundingdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPaymentStreamCompoundingDate"
+  }
+}

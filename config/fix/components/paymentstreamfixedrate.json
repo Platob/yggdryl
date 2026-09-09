@@ -1,0 +1,113 @@
+{
+  "name": "paymentstreamfixedrate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreamrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamrate"
+        }
+      },
+      {
+        "name": "paymentstreamfixedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfixedamount"
+        }
+      },
+      {
+        "name": "paymentstreamrateoramountcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamrateoramountcurrency"
+        }
+      },
+      {
+        "name": "paymentstreamfixedamountunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfixedamountunitofmeasure"
+        }
+      },
+      {
+        "name": "paymentstreamtotalfixedamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamtotalfixedamount"
+        }
+      },
+      {
+        "name": "paymentstreamfuturevaluenotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfuturevaluenotional"
+        }
+      },
+      {
+        "name": "paymentstreamfuturevaluedateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfuturevaluedateadjusted"
+        }
+      },
+      {
+        "name": "paymentstreamworldscalerate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamworldscalerate"
+        }
+      },
+      {
+        "name": "paymentstreamcontractprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcontractprice"
+        }
+      },
+      {
+        "name": "paymentstreamcontractpricecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamcontractpricecurrency"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Mutually exclusive with PaymentStreamFixedAmount(40785).",
+    "display": "PaymentStreamFixedRate"
+  }
+}

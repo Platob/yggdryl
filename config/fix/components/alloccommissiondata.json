@@ -1,0 +1,172 @@
+{
+  "name": "alloccommissiondata",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "alloccommissionamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionamount"
+        }
+      },
+      {
+        "name": "alloccommissionamounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionamounttype"
+        }
+      },
+      {
+        "name": "alloccommissionamountsubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionamountsubtype"
+        }
+      },
+      {
+        "name": "alloccommissionbasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionbasis"
+        }
+      },
+      {
+        "name": "alloccommissioncurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissioncurrency"
+        }
+      },
+      {
+        "name": "alloccommissioncurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissioncurrencycodesource"
+        }
+      },
+      {
+        "name": "alloccommissionunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionunitofmeasure"
+        }
+      },
+      {
+        "name": "alloccommissionunitofmeasurecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionunitofmeasurecurrency"
+        }
+      },
+      {
+        "name": "alloccommissionunitofmeasurecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionunitofmeasurecurrencycodesource"
+        }
+      },
+      {
+        "name": "alloccommissionrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionrate"
+        }
+      },
+      {
+        "name": "alloccommissionsharedindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionsharedindicator"
+        }
+      },
+      {
+        "name": "alloccommissionamountshared",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionamountshared"
+        }
+      },
+      {
+        "name": "alloccommissionlegrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissionlegrefid"
+        }
+      },
+      {
+        "name": "alloccommissiondesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccommissiondesc"
+        }
+      },
+      {
+        "name": "encodedalloccommissiondesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedalloccommissiondesclen"
+        }
+      },
+      {
+        "name": "encodedalloccommissiondesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedalloccommissiondesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "AllocCommissionData"
+  }
+}

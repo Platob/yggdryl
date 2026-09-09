@@ -356,7 +356,7 @@ impl FixMsg {
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
     /// let reader = FixCodec::new(Arc::new(registry));
-    /// let order = reader.transform_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=0|", false)?;
+    /// let order = reader.transform_fix_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=0|", false)?;
     ///
     /// assert_eq!(order.lifted("id").and_then(yggdryl::Scalar::as_str), Some("ORDER-1"));
     /// assert_eq!(order.lifted("symbol").and_then(yggdryl::Scalar::as_str), Some("AAPL"));
@@ -537,9 +537,9 @@ impl FixMsg {
 
     /// A group's `item` field and the occurrences it holds.
     fn group(&self, tag: i32) -> Option<(&Field, &[Scalar])> {
-        let index = self.index_of_tag(tag)?;
+        let index = self.index_of_group(tag)?;
         let field = self.as_field().dtype().as_fields()?.get(index)?;
-        let occurrences = self.get_by_tag(tag)?.as_sequence()?;
+        let occurrences = self.as_value().get(index)?.as_sequence()?;
         Some((item_of(field)?, occurrences))
     }
 

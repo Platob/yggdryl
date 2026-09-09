@@ -1,0 +1,23 @@
+{
+  "name": "underlyingdeliveryschedulegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdeliveryschedule",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingdeliveryschedule"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingDeliverySchedules(41756) > 0.",
+    "display": "UnderlyingDeliveryScheduleGrp",
+    "fix:component": "underlyingdeliveryschedule",
+    "fix:counter": "41756"
+  }
+}

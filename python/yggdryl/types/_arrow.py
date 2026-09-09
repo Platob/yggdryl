@@ -14,7 +14,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from .._native import DataType, Field as NativeField, Scalar, Uri, Url, Urn
+from .._native import DataType, Field as NativeField, Scalar, Uri, Url, Urn, Version
 from ._classes import _PhysicalUnionValue, _adopt_materialized_schema
 
 _IDENTITY_KEYS = (
@@ -161,6 +161,8 @@ def _hint_from_datatype(
     materialize_schema: bool = True,
 ) -> Any:
     kind = dtype.id
+    if kind == "version":
+        return Version
     if kind == "null":
         return type(None)
     if kind == "boolean":

@@ -1,0 +1,23 @@
+{
+  "name": "orderentrygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "orderentry",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "orderentry"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoOrderEntries(2428) > 0.",
+    "display": "OrderEntryGrp",
+    "fix:component": "orderentry",
+    "fix:counter": "2428"
+  }
+}

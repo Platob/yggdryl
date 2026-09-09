@@ -26,7 +26,7 @@ import typing
 import uuid
 from typing import Any
 
-from .._native import DataType, Field, Uri, Url, Urn
+from .._native import DataType, Field, Uri, Url, Urn, Version
 from ..enums.ascii import AsciiCode
 
 try:  # Python 3.10 gets newer annotation wrappers from typing_extensions.
@@ -511,6 +511,8 @@ class _Inference:
                 return self._list(int, path=path, depth=depth)
             return _native_datatype(direct)
 
+        if hint is Version:
+            return _native_datatype("version")
         if hint in (Uri, Url, Urn):
             return _native_datatype("utf8")
         # A declared ASCII vocabulary is its width, not the integer its

@@ -1,0 +1,52 @@
+{
+  "name": "riskwarninglevel",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "riskwarninglevelaction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "riskwarninglevelaction"
+        }
+      },
+      {
+        "name": "riskwarninglevelpercent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "riskwarninglevelpercent"
+        }
+      },
+      {
+        "name": "riskwarninglevelamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "riskwarninglevelamount"
+        }
+      },
+      {
+        "name": "riskwarninglevelname",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "riskwarninglevelname"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RiskWarningLevel"
+  }
+}

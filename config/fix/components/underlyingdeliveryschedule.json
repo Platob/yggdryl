@@ -1,0 +1,162 @@
+{
+  "name": "underlyingdeliveryschedule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingdeliveryscheduletype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryscheduletype"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulexid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulexid"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulenotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulenotional"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulenotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulenotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulenotionalcommodityfrequency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulenotionalcommodityfrequency"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulenegativetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulenegativetolerance"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulepositivetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulepositivetolerance"
+        }
+      },
+      {
+        "name": "underlyingdeliveryscheduletoleranceunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryscheduletoleranceunitofmeasure"
+        }
+      },
+      {
+        "name": "underlyingdeliveryscheduletolerancetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryscheduletolerancetype"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulesettlcountry",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulesettlcountry"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulesettltimezone",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulesettltimezone"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulesettlflowtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulesettlflowtype"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulesettlholidaysprocessinginstruction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliveryschedulesettlholidaysprocessinginstruction"
+        }
+      },
+      {
+        "name": "nounderlyingdeliveryschedulesettldays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingdeliveryschedulesettldays"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulesettldaygrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingdeliveryschedulesettldaygrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingDeliverySchedule"
+  }
+}

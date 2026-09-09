@@ -1,0 +1,23 @@
+{
+  "name": "relatedpartydetailgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedpartydetail",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "relatedpartydetail"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoRelatedPartyDetails > 0.",
+    "display": "RelatedPartyDetailGrp",
+    "fix:component": "relatedpartydetail",
+    "fix:counter": "1562"
+  }
+}

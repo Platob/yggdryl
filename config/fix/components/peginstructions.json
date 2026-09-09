@@ -1,0 +1,123 @@
+{
+  "name": "peginstructions",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "pegoffsetvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pegoffsetvalue"
+        }
+      },
+      {
+        "name": "pegpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pegpricetype"
+        }
+      },
+      {
+        "name": "pegmovetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pegmovetype"
+        }
+      },
+      {
+        "name": "pegoffsettype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pegoffsettype"
+        }
+      },
+      {
+        "name": "peglimittype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "peglimittype"
+        }
+      },
+      {
+        "name": "pegrounddirection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pegrounddirection"
+        }
+      },
+      {
+        "name": "pegscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pegscope"
+        }
+      },
+      {
+        "name": "pegsecurityidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pegsecurityidsource"
+        }
+      },
+      {
+        "name": "pegsecurityid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pegsecurityid"
+        }
+      },
+      {
+        "name": "pegsymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pegsymbol"
+        }
+      },
+      {
+        "name": "pegsecuritydesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pegsecuritydesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Amount (signed) added to the peg for a pegged order in the context of the PegOffsetType",
+    "display": "PegInstructions"
+  }
+}

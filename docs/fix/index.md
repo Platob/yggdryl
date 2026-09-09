@@ -2,7 +2,7 @@
 
 FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](../types/field.md), a [registry](registry.md) resolving them, [shards](store.md) persisting them, a [message](message.md) typed against one, an [Arrow boundary](arrow.md) streaming a whole capture through it, a [capture](capture.md) landing in one fixed row, and a [tool](cli.md) to manage all of it.
 
-The dictionary is also open in the browser: [explore](explorer.md) it, [decode](decode.md) a frame against it, or [compose](encode.md) one from a message type's layout.
+The dictionary is also open in the browser: [explore](explorer.md) it, [decode](decode.md) a frame against it, or inspect its native [wire emission](encode.md).
 
 ## Pages
 
@@ -11,12 +11,12 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [FIX](index.md) | This page: vocabulary, `FixBranch`, `FixId`, nesting |
 | [Explorer](explorer.md) | The whole dictionary live: counts, field search, message layouts, provenance |
 | [Decode](decode.md) | A frame in, an explanation out; every shape a capture holds, read by the package |
-| [Encode](encode.md) | A frame composed from a message type's own layout, checked as it is written |
+| [Encode](encode.md) | Native wire emission from captured message entries |
 | [Registry](registry.md) | `FixRegistry`: tiered resolution, `FixKey`, mutation, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees and the branch manifest under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
 | [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |
 | [Arrow](arrow.md) | `FixBatchReader`, `FixOptions`, `classify_arrow_array`: a capture already in Arrow, streamed through a dictionary |
-| [Capture](capture.md) | `FixCodec`, `fix_schema`, `FixMsg::to_row`: a day of session log as one table |
+| [Capture](capture.md) | `FixCodec`, `fix_schema`, `FixMsg::into_row`: a day of session log as one table |
 | [Lifecycle](lifecycle.md) | `FixLifecycle`, `FixCodec::lifecycle`: the instrument, the message and the order chain, stamped across a stream |
 | [CLI](cli.md) | `ygg`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
@@ -36,7 +36,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | Tag gate | `FixId::from_parts` is the one gate, for canonical and alternate tags; a refusal names both bounds |
 | List properties | Comma-separated text; `aliases()` lazy slices, `tags()` a parsed `Vec`; empty list removes the key |
 | Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
-| Nesting | Struct = component, List of that Struct = group; `dtype().is_nested()` routes a field into the [store](store.md)'s `nested/` tree |
+| Categories | `fields/` stores tagged scalar fields; `components/` reusable Structs; `groups/` Lists of components; `messages/` required Struct definitions |
 | Bindings | Python `field.fix` and [`yggdryl.fix`](../extensions/python.md); JavaScript `field.fix` and the [`fix` namespace](../extensions/javascript.md); branch and id cross as text |
 
 ## Use
@@ -175,7 +175,12 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `tags` | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 | `aliases` | `fix:aliases` | ordered name list | alternate names, highest priority first |
 | `description` | `description` | text | the specification's wording, on the generic key every catalog reads |
-| `codes` | `fix:codes` | canonical JSON, by wire value | the FIX code set this field's values are drawn from; see [Registry](registry.md#a-field-carries-its-code-set) |
+| `codes` | `fix:codes` | canonical JSON, by wire value | the inline enum values declared by this field; see [Registry](registry.md#a-field-carries-its-code-set) |
+| `counter` | `fix:counter` | `i32` | the scalar count field's tag, on a group definition |
+| `component` | `fix:component` | name | component reference, including a group's occurrence |
+| `field_ref` / `fieldRef` | `fix:field` | name | scalar field reference in a definition |
+| `group` | `fix:group` | name | group reference in a definition |
+| `msgtype` | `fix:msgtype` | text | complete case-sensitive wire code on a message Struct |
 | `lineage` | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version; see [Registry](registry.md#versions-are-a-filter-on-the-read) |
 
 ## Identity is a branch and a tag
@@ -229,7 +234,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
     assert trade.fix.id is None
 
     # A branch and an identifier cross as text, parsed once at the boundary,
-    # so there is no class for either in Python.
+    # while `FixBranch` also has a native Python value wrapper.
     trade.fix.id = "5001:CME"
     assert trade.fix.id == "5001:cme", "folded once, on the way in"
     assert trade.fix.branch == "cme"
@@ -290,76 +295,61 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 
 ## Nesting needs no second type
 
-A component is a Struct field; a repeating group is a List of that Struct, its counter tag the group's own `fix:tag`. The occurrence carries the component's own name, derived from the counter's - `NoPartyIDs` heads a `PartyID` - and a read steps through the list without spending a path segment on it, so `NoPartyIDs.PartyID` reaches the member tag 448 rather than the occurrence that shares its name.
+`NoPartyIDs` is an `int32` field at tag 453. `Parties` is a separate List of the
+`Party` Struct, linked to that count through `fix:counter`. Fields, components,
+groups and messages are independently addressable registry categories; a group
+member is also a scalar field in the field catalog.
+
+The published FIX component names guide the catalog: [FIX message structures](https://fixtrading.org/concepts-part1-messagestructures/)
+and [FIX Orchestra](https://github.com/FIXTradingCommunity/fix-orchestra-spec/blob/master/v1-0-STANDARD/orchestra_spec.md)
+distinguish fields, components, messages and repeating groups. The generator
+uses a standard name when it fits the role, then a deterministic descriptive
+name checked against existing field and definition names. The native canonical
+names are folded; `display` keeps the specification's spelling.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixBranch, FixRegistry};
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{DataType, FixCategory, FixRegistry};
 
-    let standard = FixBranch::STANDARD;
-    let mut party_id = DataType::Utf8.nullable_field("PartyID");
-    party_id.as_fix_mut().set_tag(448)?;
-    let mut role = DataType::Int32.nullable_field("PartyRole");
-    role.as_fix_mut().set_tag(452)?;
-    let item = DataType::from_fields([party_id, role])?.required_field("PartyID");
-    let mut group = DataType::list(item).nullable_field("NoPartyIDs");
-    group.as_fix_mut().set_tag(453)?;
-
-    let registry = FixRegistry::from_fields([group])?;
-    assert_eq!(registry.field_by_path("NoPartyIDs", Some(&standard))?.as_fix().tag()?, Some(453));
-    assert_eq!(registry.field_by_path("NoPartyIDs.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
-    assert_eq!(registry.field_by_path("NoPartyIDs.PartyRole", Some(&standard))?.name(), "PartyRole");
-    // A member is reached through its group, not registered on its own.
-    assert!(registry.get_field_by_name("PartyID", Some(&standard)).is_none());
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
+    let parties = registry.definition(FixCategory::Groups, "Parties", None)?;
+    assert_eq!(parties.as_fix().counter()?, Some(453));
+    assert!(!registry.definition(FixCategory::Components, "Party", None)?.fields().is_empty());
+    assert_eq!(registry.field_by_path("Parties.PartyID", None)?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_name("PartyID", None)?.as_fix().tag()?, Some(448));
     ```
 
 === "Python"
 
     ```python
-    from yggdryl import DataType, Field, types
-    from yggdryl.fix import STANDARD_BRANCH, FixRegistry
+    from pathlib import Path
+    from yggdryl.fix import FixRegistry
 
-    party_id = Field("PartyID", "utf8")
-    party_id.fix.tag = 448
-    role = Field("PartyRole", "int32")
-    role.fix.tag = 452
-    item = Field("PartyID", DataType.from_fields([party_id, role]), nullable=False)
-    group = types.list("NoPartyIDs", item)
-    group.fix.tag = 453
-
-    registry = FixRegistry.from_fields([group])
-    assert registry.field_by_path("NoPartyIDs", STANDARD_BRANCH).fix.tag == 453
-    assert registry.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH).fix.tag == 448
-    assert (
-        registry.field_by_path("NoPartyIDs.PartyRole", STANDARD_BRANCH).name
-        == "PartyRole"
-    )
-    # A member is reached through its group, not registered on its own.
-    assert registry.get_field_by_name("PartyID", STANDARD_BRANCH) is None
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    assert str(registry.field_by_tag(453).dtype) == "int32"
+    assert registry.definition("groups", "Parties").fix.counter == 453
+    assert registry.definition("components", "Party").is_struct
+    assert registry.field_by_path("Parties.PartyID").fix.tag == 448
+    assert registry.field_by_name("PartyID").fix.tag == 448
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field, fields, fix } = require('yggdryl')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
 
-    const partyId = Field.from('PartyID: utf8')
-    partyId.fix.tag = 448
-    const role = Field.from('PartyRole: int32')
-    role.fix.tag = 452
-    const item = fields.struct('PartyID', [partyId, role], { nullable: false })
-    const group = fields.list('NoPartyIDs', item)
-    group.fix.tag = 453
-
-    const standard = fix.STANDARD_BRANCH
-    const registry = fix.FixRegistry.fromFields([group])
-    assert.equal(registry.fieldByPath('NoPartyIDs', standard).fix.tag, 453)
-    assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', standard).fix.tag, 448)
-    assert.equal(registry.fieldByPath('NoPartyIDs.PartyRole', standard).name, 'PartyRole')
-    // A member is reached through its group, not registered on its own.
-    assert.equal(registry.getFieldByName(standard, 'PartyID'), null)
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
+    assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
+    assert.equal(registry.definition('groups', 'Parties').fix.counter, 453)
+    assert.ok(registry.definition('components', 'Party').fieldLen > 0)
+    assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
+    assert.equal(registry.fieldByName('PartyID').fix.tag, 448)
     ```
 
 ## Edges
@@ -372,8 +362,8 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
 - A tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` on a named branch, canonical or alternate -> refused naming `fix:branch` and both bounds, from a setter, a read, an insert, or a shard load.
 - `FixBranch::from_str("standard")` -> an ordinary named branch whose `is_standard()` is `false`; only the empty name is the standard branch.
 - `FixId::from_parts` takes the branch by reference and `set_id` takes the branch and the tag, so neither clones a branch.
-- `get_field_by_path` steps through a list on a read, so `NoPartyIDs.PartyID` is the member; the core walk `set_field_by_path` / `remove_field_by_path` take is not transparent, so a mutation names the occurrence too (`NoPartyIDs.PartyID.PartyID`).
-- A group member is reached only through its group; `get_field_by_name("PartyID")` answers none.
+- `get_field_by_path` traverses a declared group without an occurrence index; a message value uses an index, for example `Parties.0.PartyID`.
+- A shared count tag can describe different group layouts. A message singleton selects its own group context; an ambiguous registry-wide counter lookup fails.
 
 ## Commands
 

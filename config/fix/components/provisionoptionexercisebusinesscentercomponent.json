@@ -1,0 +1,22 @@
+{
+  "name": "provisionoptionexercisebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "provisionoptionexercisebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "provisionoptionexercisebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ProvisionOptionExerciseBusinessCenter"
+  }
+}

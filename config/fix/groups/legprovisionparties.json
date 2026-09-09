@@ -1,0 +1,23 @@
+{
+  "name": "legprovisionparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legprovisionparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legprovisionparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegProvisionPartyIDs(40533) > 0.",
+    "display": "LegProvisionParties",
+    "fix:component": "legprovisionparty",
+    "fix:counter": "40533"
+  }
+}

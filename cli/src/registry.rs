@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, Field, FixBranch, FixCodeValue, FixRegistry, Result};
+use yggdryl::{Field, FixBranch, FixCategory, FixRegistry, Result};
 
 use crate::style;
 
@@ -47,11 +47,7 @@ impl Store {
     /// hold a dictionary.
     pub fn open(root: &Path) -> Result<Self> {
         let root = located(root)?;
-        let registry = if root.join("primitive").exists() || root.join("nested").exists() {
-            FixRegistry::from_handle(&Folder::new(root.clone())?)?
-        } else {
-            FixRegistry::new()
-        };
+        let registry = FixRegistry::from_handle(&Folder::new(root.clone())?)?;
         Ok(Self {
             root,
             original: registry.clone(),
@@ -82,7 +78,6 @@ impl Store {
     ///
     /// Returns the store's own refusal when the folder cannot be written.
     pub fn save(&mut self) -> Result<()> {
-        std::fs::create_dir_all(&self.root)?;
         let mut folder = Folder::new(self.root.clone())?;
         self.registry.write_into(&mut folder)?;
         self.original = self.registry.clone();
@@ -109,30 +104,35 @@ fn row(field: &Field) -> Vec<String> {
         .ok()
         .filter(|held| !held.is_standard())
         .map_or_else(String::new, |held| held.name().to_owned());
-    let codes = view.codes().count();
     vec![
         tag,
         field.name().to_owned(),
         field.dtype().to_string(),
         branch,
-        if codes == 0 {
-            String::new()
-        } else {
-            codes.to_string()
-        },
         view.description().unwrap_or_default().to_owned(),
     ]
 }
 
 /// The header every listing shares.
-const COLUMNS: [&str; 6] = ["tag", "name", "type", "branch", "codes", "description"];
+const COLUMNS: [&str; 5] = ["tag", "name", "type", "branch", "description"];
 
 /// Lists the fields whose name or tag contains `filter`.
-pub fn list(store: &Store, filter: Option<&str>, limit: usize) {
+pub fn list(
+    store: &Store,
+    category: FixCategory,
+    filter: Option<&str>,
+    branch: Option<&FixBranch>,
+    limit: usize,
+) -> Result<()> {
     let folded = filter.map(str::to_lowercase);
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut matched = 0_usize;
-    for field in store.registry() {
+    for field in store.registry().definitions(category) {
+        if let Some(branch) = branch {
+            if &field.as_fix().branch()? != branch {
+                continue;
+            }
+        }
         if let Some(held) = &folded {
             let tag = field
                 .as_fix()
@@ -156,16 +156,28 @@ pub fn list(store: &Store, filter: Option<&str>, limit: usize) {
             rows.len()
         ));
     } else {
-        style::note(&format!("{matched} field(s)"));
+        style::note(&format!("{matched} {category}"));
     }
+    Ok(())
 }
 
 /// Shows one field in full: what it is, what it was, and what it may hold.
-pub fn show(store: &Store, key: &str) -> Result<()> {
-    let field = resolve(store.registry(), key)?;
+pub fn read(
+    store: &Store,
+    category: FixCategory,
+    key: &str,
+    branch: Option<&FixBranch>,
+    json: bool,
+) -> Result<()> {
+    let field = resolve(store.registry(), category, key, branch)?;
+    if json {
+        println!("{}", field.clone().into_json()?);
+        return Ok(());
+    }
     let view = field.as_fix();
 
     style::heading(field.name());
+    style::entry("category", category.as_str());
     style::entry(
         "tag",
         &view.tag()?.map_or_else(|| "-".into(), |t| t.to_string()),
@@ -184,6 +196,14 @@ pub fn show(store: &Store, key: &str) -> Result<()> {
     if let Some(described) = view.description() {
         style::entry("description", described);
     }
+    if let Some(counter) = view.counter()? {
+        style::entry("counter", &counter.to_string());
+    }
+    for (key, value) in [("component", view.component()), ("msgtype", view.msgtype())] {
+        if let Some(value) = value {
+            style::entry(key, value);
+        }
+    }
     let aliases: Vec<&str> = view.aliases().collect();
     if !aliases.is_empty() {
         style::entry("aliases", &aliases.join(", "));
@@ -191,16 +211,14 @@ pub fn show(store: &Store, key: &str) -> Result<()> {
 
     let lineage: Vec<Vec<String>> = view
         .lineage()
-        .filter_map(std::result::Result::ok)
         .map(|entry| {
-            vec![
+            let entry = entry?;
+            Ok(vec![
                 entry.since().to_string(),
                 entry.ep().map_or_else(String::new, |ep| ep.to_string()),
                 entry.name().unwrap_or_default().to_owned(),
                 entry
-                    .parse_dtype()
-                    .ok()
-                    .flatten()
+                    .parse_dtype()?
                     .map(|dtype| dtype.to_string())
                     .unwrap_or_default(),
                 if entry.is_deprecated() {
@@ -209,9 +227,9 @@ pub fn show(store: &Store, key: &str) -> Result<()> {
                     ""
                 }
                 .to_owned(),
-            ]
+            ])
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     if !lineage.is_empty() {
         style::heading("lineage");
         style::table(&["since", "ep", "name", "type", "state"], &lineage);
@@ -219,9 +237,9 @@ pub fn show(store: &Store, key: &str) -> Result<()> {
 
     let codes: Vec<Vec<String>> = view
         .codes()
-        .filter_map(std::result::Result::ok)
         .map(|code| {
-            vec![
+            let code = code?;
+            Ok(vec![
                 code.value().to_owned(),
                 code.name().to_owned(),
                 code.since().map_or_else(String::new, |v| v.to_string()),
@@ -229,9 +247,9 @@ pub fn show(store: &Store, key: &str) -> Result<()> {
                     .map_or_else(String::new, |v| v.to_string()),
                 code.aliases().collect::<Vec<_>>().join(", "),
                 code.doc().unwrap_or_default().to_owned(),
-            ]
+            ])
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     if !codes.is_empty() {
         style::heading("codes");
         style::table(
@@ -243,47 +261,54 @@ pub fn show(store: &Store, key: &str) -> Result<()> {
 }
 
 /// The field a key reaches, by tag, identifier, name or path.
-pub fn resolve<'registry>(registry: &'registry FixRegistry, key: &str) -> Result<&'registry Field> {
-    if let Ok(tag) = key.parse::<i32>() {
-        return registry.field_by_tag(tag);
+pub fn resolve<'registry>(
+    registry: &'registry FixRegistry,
+    category: FixCategory,
+    key: &str,
+    branch: Option<&FixBranch>,
+) -> Result<&'registry Field> {
+    if category == FixCategory::Fields {
+        if let Ok(tag) = key.parse::<i32>() {
+            return match branch {
+                Some(branch) => registry.field_by_id(yggdryl::FixId::from_parts(branch, tag)?),
+                None => registry.field_by_tag(tag),
+            };
+        }
+        if key.contains(':') {
+            let id: yggdryl::FixId = key.parse()?;
+            if let Some(branch) = branch {
+                if id != yggdryl::FixId::from_parts(branch, id.tag())? {
+                    return Err(yggdryl::Error::conflict(
+                        "a FIX identifier agreeing with --branch",
+                        "a different branch",
+                        key,
+                    ));
+                }
+            }
+            return registry.field_by_id(id);
+        }
     }
-    if key.contains(':') {
-        return registry.field_by_id(key.parse()?);
-    }
-    registry.field_by_path(key, None)
+    registry.definition(category, key, branch)
 }
 
-/// Creates or replaces one field.
+/// Creates a definition, refusing an existing identity atomically.
 ///
 /// # Errors
 ///
 /// Returns the schema grammar's refusal when the type does not parse, or the
 /// registry's when the identity is taken by something else.
-pub fn put(
-    store: &mut Store,
-    name: &str,
-    dtype: &str,
-    tag: i32,
-    branch: Option<&str>,
-    description: Option<&str>,
-) -> Result<()> {
-    let parsed = DataType::from_str(dtype)?;
-    let mut field = parsed.nullable_field(name.to_ascii_lowercase());
-    match branch {
-        Some(held) => field
-            .as_fix_mut()
-            .set_id(&FixBranch::from_str(held)?, tag)?,
-        None => field.as_fix_mut().set_tag(tag)?,
-    }
-    if let Some(described) = description {
-        field.as_fix_mut().set_description(described)?;
-    }
-    let replaced = store.registry_mut().insert(field)?;
-    if replaced.is_some() {
-        style::good(&format!("replaced {name} at tag {tag}"));
-    } else {
-        style::good(&format!("added {name} at tag {tag}"));
-    }
+pub fn create(store: &mut Store, category: FixCategory, field: Field) -> Result<()> {
+    let name = field.name().to_owned();
+    store.registry_mut().create_definition(category, field)?;
+    style::good(&format!("created {category}/{name}"));
+    Ok(())
+}
+
+/// Replaces an existing definition, refusing absence atomically.
+pub fn update(store: &mut Store, category: FixCategory, field: Field) -> Result<()> {
+    let name = field.name().to_owned();
+    store.registry_mut().update_definition(category, field)?;
+    style::good(&format!("updated {category}/{name}"));
     Ok(())
 }
 
@@ -292,29 +317,22 @@ pub fn put(
 /// # Errors
 ///
 /// Returns a typed absence when nothing holds that key.
-pub fn remove(store: &mut Store, key: &str) -> Result<()> {
-    let name = resolve(store.registry(), key)?.name().to_owned();
-    let tag = resolve(store.registry(), key)?
-        .as_fix()
-        .tag()?
-        .unwrap_or_default();
+pub fn delete(
+    store: &mut Store,
+    category: FixCategory,
+    key: &str,
+    branch: Option<&FixBranch>,
+) -> Result<()> {
+    let field = resolve(store.registry(), category, key, branch)?;
+    let name = field.name().to_owned();
+    let branch = field.as_fix().branch()?;
     store
         .registry_mut()
-        .remove(tag)
+        .remove_definition(category, &name, Some(&branch))?
         .ok_or_else(|| yggdryl::Error::Absent {
-            expected: "a field",
+            expected: "a FIX definition",
             path: name.clone().into(),
         })?;
-    style::good(&format!("removed {name}"));
+    style::good(&format!("deleted {category}/{name}"));
     Ok(())
-}
-
-/// What one field's code set holds, for a caller rendering it.
-#[allow(dead_code)]
-pub fn codes(field: &Field) -> Vec<FixCodeValue<'_>> {
-    field
-        .as_fix()
-        .codes()
-        .filter_map(std::result::Result::ok)
-        .collect()
 }

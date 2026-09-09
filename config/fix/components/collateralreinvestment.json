@@ -1,0 +1,52 @@
+{
+  "name": "collateralreinvestment",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "collateralreinvestmenttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralreinvestmenttype"
+        }
+      },
+      {
+        "name": "collateralreinvestmentamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralreinvestmentamount"
+        }
+      },
+      {
+        "name": "collateralreinvestmentcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralreinvestmentcurrency"
+        }
+      },
+      {
+        "name": "collateralreinvestmentcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "collateralreinvestmentcurrencycodesource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "CollateralReinvestment"
+  }
+}

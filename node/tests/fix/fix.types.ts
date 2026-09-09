@@ -9,6 +9,10 @@ import {
   type FixCodec,
   type FixLifecycle,
   type FixRegistry,
+  type FixMessages,
+  type MsgType,
+  type UlPlugin,
+  type UlPlugins,
   type FixValueInput,
   type LocationInput,
 } from '../..'
@@ -18,7 +22,7 @@ declare const handle: IOBase
 declare const url: Url
 declare const value: Scalar
 
-// The namespace holds two classes, two functions and the three constants.
+// The namespace holds native FIX values and iterators.
 const standardBranch: string = fix.STANDARD_BRANCH
 const userTagMin: number = fix.USER_TAG_MIN
 const userTagMax: number = fix.USER_TAG_MAX
@@ -44,12 +48,12 @@ const byTag: Field | null = loaded.getFieldByTag(55)
 const requiredByTag: Field = loaded.fieldByTag(55)
 const byName: Field | null = loaded.getFieldByName('Symbol', standardBranch)
 const requiredByName: Field = loaded.fieldByName('Symbol', '')
-const byPath: Field | null = loaded.getFieldByPath('NoPartyIDs.PartyID', '')
-const requiredByPath: Field = loaded.fieldByPath('NoPartyIDs.PartyID', '')
+const byPath: Field | null = loaded.getFieldByPath('Parties.PartyID', '')
+const requiredByPath: Field = loaded.fieldByPath('Parties.PartyID', '')
 const bytesProtocol: MimeType = MimeType.inferBytes(Buffer.from('35=D|'))
 const textProtocol: MimeType = MimeType.inferText('35=D|')
-const bytesMsgtype: Buffer | null = MimeType.inferBytesMsgtype(Buffer.from('35=D|'))
-const textMsgtype: string | null = MimeType.inferTextMsgtype('35=D|')
+const bytesMsgtype: Buffer | null = fix.FixCodec.inferMsgtypeBytes(Buffer.from('35=D|'))
+const textMsgtype: string | null = fix.FixCodec.inferMsgtypeText('35=D|')
 const byKey: Field | null = loaded.getField(55)
 const byNameKey: Field | null = loaded.getField('Symbol')
 const requiredByKey: Field = loaded.field('Symbol')
@@ -68,7 +72,7 @@ const same: boolean = loaded.equals(built)
 const registryHash: bigint = loaded.stableHash()
 const copy: FixRegistry = loaded.clone()
 const rendered: string = loaded.toString()
-const document: unknown[] = loaded.toJSON()
+const document: unknown = loaded.toJSON()
 
 void size
 void userTagMin
@@ -133,8 +137,8 @@ const valueByTag: Scalar | null = message.getByTag(55)
 const requiredValueByTag: Scalar = message.byTag(55)
 const valueByName: Scalar | null = message.getByName('Symbol')
 const requiredValueByName: Scalar = message.byName('Symbol')
-const valueByPath: Scalar | null = message.getByPath('NoPartyIDs.0.PartyID')
-const requiredValueByPath: Scalar = message.byPath('NoPartyIDs.0.PartyID')
+const valueByPath: Scalar | null = message.getByPath('Parties.0.PartyID')
+const requiredValueByPath: Scalar = message.byPath('Parties.0.PartyID')
 const valueByKey: Scalar | null = message.get(55)
 const requiredValueByKey: Scalar = message.at('Symbol')
 const pairs: Generator<[string, Scalar]> = message.entries()
@@ -222,8 +226,8 @@ const pinned: FixCodec = new fix.FixCodec(loaded, {
 const stalePin: FixCodec = new fix.FixCodec(loaded, { sourceVersion: '4.2' })
 void stalePin
 const readRegistry: FixRegistry = reader.registry
-const fromText: FixMsg = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
-const fromBytes: FixMsg = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
+const fromText: FixMsg = reader.transformFixLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
+const fromBytes: FixMessages = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
 const fromFrame: FixMsg = reader.transformFixLine(Buffer.from('8=FIX.4.4'), 1)
 const fromBridge: FixMsg = reader.transformUllinkLine(Buffer.from('#SYMBOL=TTF'))
 const fromPairs: FixMsg = reader.transformPairs([['55', 'AAPL']])
@@ -259,7 +263,7 @@ life.alive = 0
 const fixedSchema: Field = fix.schema(loaded, 'FixMessage')
 const carried: Field = fix.schemaCarrying(field, fixedSchema)
 const at: number | null = fixedSchema.indexOf('msgtype')
-const fixedRow: Scalar = fromText.toRow(fixedSchema)
+const fixedRow: Scalar = fromText.intoRow(fixedSchema)
 const fixedSchemaTags: number[] = fix.schemaTags()
 const crateFields: Field[] = fix.crateFields()
 
@@ -275,7 +279,7 @@ const party: Array<Scalar | null> | null = fromText.party('1')
 const regulatory: Scalar | null = fromText.trdRegTimestamp('1')
 const anomalies: string[] = fromText.anomalies()
 const arrivals: Array<[number, number, string, string]> = fromText.arrivals()
-const wire: Buffer = fromText.toBytes(124)
+const wire: Buffer = fromText.intoBytes(124)
 
 void branchName
 void branchOrNull
@@ -308,3 +312,75 @@ void wire
 
 // @ts-expect-error a fixed schema is built from a registry, never from a number
 fix.schema(55)
+
+// Categories contain native Fields; a counter remains scalar beside its list.
+const group: Field = loaded.definition('groups', 'parties')
+const counter: Field = loaded.definition('fields', 'nopartyids')
+const component: Field | null = loaded.getDefinition('components', 'party')
+const definitions: IterableIterator<Field> = loaded.definitions('messages')
+const previous: Field | null = loaded.insertDefinition('components', field)
+loaded.createDefinition('components', field)
+const replaced: Field = loaded.updateDefinition('components', field)
+const deleted: Field | null = loaded.removeDefinition('components', 'party')
+const groupByCounter: Field | null = loaded.getGroupByCounter('453:')
+const requiredGroup: Field = loaded.groupByCounter('453:')
+const snapshot: string = loaded.intoJson()
+const restored: FixRegistry = fix.FixRegistry.fromJson(snapshot)
+loaded.withUlbridgeFields()
+
+const order: MsgType = loaded.msgtype('D')
+const optionalOrder: MsgType | null = loaded.getMsgtype('newordersingle', '')
+const messageTypes: IterableIterator<MsgType> = loaded.msgtypes()
+const registered: MsgType = loaded.registerMsgtype('ConfigurationPlugin', 'configurationplugin')
+const wireCode: string = order.asStr()
+const messageDefinition: Field = order.asField()
+const scoped: Field | null = order.getGroupByCounter('453:')
+const singletonHash: bigint = order.stableHash()
+const singletonEqual: boolean = order.equals(order.clone())
+const singletonOrder: number = order.compare(order)
+
+field.fix.counter = 453
+const counterTag: number | null = field.fix.counter
+field.fix.component = 'party'
+field.fix.group = 'parties'
+field.fix.fieldRef = 'partyid'
+field.fix.msgtype = 'ConfigurationPlugin'
+const componentRef: string | null = field.fix.component
+const groupRef: string | null = field.fix.group
+const fieldRef: string | null = field.fix.fieldRef
+const messageCode: string | null = field.fix.msgtype
+
+const selected: UlPlugin = new fix.UlPlugin('d:name=A,type=ConfigurationPlugin', { Name: 'A' }, {})
+const configurations: UlPlugins = fix.UlPlugin.fromJsonScalar({ value: { Name: 'A' } })
+const parsedConfigurations: UlPlugins = fix.UlPlugin.fromJsonBytes(new Uint8Array())
+const nativeConfigurations: UlPlugin[] = [...configurations]
+const configAttributes: Scalar = selected.asAttributes()
+const configEnvelope: Scalar = selected.asEnvelope()
+const configMessage: FixMsg = selected.intoFixmsg(reader)
+const recovered: UlPlugin = fix.UlPlugin.fromFixmsg(configMessage)
+const configHash: bigint = selected.stableHash()
+const bulk: FixMessages = reader.transformUlconfigLine(Buffer.from('{}'))
+const records: FixMessages = reader.transformRecord({ body: Buffer.from('35=D|') })
+const nextMessage: IteratorResult<FixMsg> = bulk.next()
+const allMessages: FixMsg[] = [...records]
+
+// @ts-expect-error the generic transform returns a cursor
+const single: FixMsg = reader.transformLine(Buffer.from('35=D|'))
+// @ts-expect-error retired projection spelling
+message.toRow(field)
+// @ts-expect-error retired projection spelling
+message.toBytes()
+// @ts-expect-error message type is a registry singleton, not a datatype constructor
+new fix.MsgType('D')
+// @ts-expect-error singleton classes have no public constructor
+new fix.MsgType()
+// @ts-expect-error message cursors are constructed by the native codec
+new fix.FixMessages()
+// @ts-expect-error counter metadata requires a number
+field.fix.counter = '453'
+
+void [group, counter, component, definitions, previous, replaced, deleted, groupByCounter,
+  requiredGroup, restored, order, optionalOrder, messageTypes, registered, wireCode,
+  messageDefinition, scoped, singletonHash, singletonEqual, singletonOrder, counterTag,
+  componentRef, groupRef, fieldRef, messageCode, parsedConfigurations, nativeConfigurations,
+  configAttributes, configEnvelope, recovered, configHash, nextMessage, allMessages, single]
