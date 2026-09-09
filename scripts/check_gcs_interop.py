@@ -43,9 +43,12 @@ Point it at a store you already have, and nothing is provisioned::
 from __future__ import annotations
 
 import os
+import platform
 import shutil
+import stat
 import subprocess
 import sys
+import tarfile
 import time
 import urllib.error
 import urllib.request
@@ -59,7 +62,7 @@ FROM_REFERENCE = "from-google"
 PORT = 4499
 # Pinned: the emulator is a checking tool, and a moving one would make a
 # failure ambiguous between this crate and its next release.
-EMULATOR = "github.com/fsouza/fake-gcs-server@v1.52.2"
+EMULATOR_VERSION = "1.52.2"
 
 # The names the reference client writes: the JSON API escapes every separator
 # into one path segment, which is where a hand-written client addresses the
@@ -82,21 +85,39 @@ def emulator_url() -> str:
     return f"http://127.0.0.1:{PORT}"
 
 
+def emulator_release_url() -> str:
+    """The published `fake-gcs-server` build for this platform."""
+    system = {"Linux": "Linux", "Darwin": "Darwin", "Windows": "Windows"}[platform.system()]
+    machine = {"x86_64": "amd64", "AMD64": "amd64", "arm64": "arm64", "aarch64": "arm64"}[
+        platform.machine()
+    ]
+    return (
+        "https://github.com/fsouza/fake-gcs-server/releases/download/"
+        f"v{EMULATOR_VERSION}/fake-gcs-server_{EMULATOR_VERSION}_{system}_{machine}.tar.gz"
+    )
+
+
 def provision_emulator() -> subprocess.Popen[bytes]:
-    """Start `fake-gcs-server`, building it with Go if it is not already there."""
-    binary = EMULATOR_DIR / "bin" / "fake-gcs-server"
+    """Start `fake-gcs-server`, fetching the published build if it is not here."""
+    name = "fake-gcs-server.exe" if platform.system() == "Windows" else "fake-gcs-server"
+    binary = EMULATOR_DIR / "bin" / name
     if not binary.exists():
-        go = shutil.which("go")
-        if go is None:
-            raise SystemExit("go is needed to build fake-gcs-server, and is not on PATH")
-        EMULATOR_DIR.mkdir(parents=True, exist_ok=True)
-        print(f"building {EMULATOR}")
-        subprocess.run(
-            [go, "install", EMULATOR],
-            cwd=EMULATOR_DIR,
-            check=True,
-            env=dict(os.environ, GOBIN=str(EMULATOR_DIR / "bin"), GOFLAGS="-mod=mod"),
-        )
+        # The published build, not `go install`: building it from source pulls
+        # the whole Google Cloud and OpenTelemetry module graph over the network
+        # on every run, and a single stream the Go proxy drops fails the lane
+        # for a reason that has nothing to do with this crate. One archive is
+        # one request, and it is the same binary.
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        archive = EMULATOR_DIR / "fake-gcs-server.tar.gz"
+        print(f"downloading {emulator_release_url()}")
+        with urllib.request.urlopen(emulator_release_url()) as response, archive.open("wb") as out:
+            shutil.copyfileobj(response, out)
+        with tarfile.open(archive) as tar:
+            member = tar.getmember(name)
+            member.name = name
+            tar.extract(member, binary.parent, filter="data")
+        archive.unlink()
+        binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
     print(f"starting fake-gcs-server on {emulator_url()}")
     process = subprocess.Popen(
         [
