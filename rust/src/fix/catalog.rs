@@ -724,22 +724,21 @@ impl FixRegistry {
     pub(super) fn validate_definition(&self, category: FixCategory, field: &Field) -> Result<()> {
         if category != FixCategory::Fields {
             validate_name(field)?;
-        }
-        if category != FixCategory::Fields
-            && let Some(tag) = field.as_fix().tag()?
-            && !FixId::is_definition_tag(tag)
-        {
-            return Err(Error::InvalidRecord {
-                path: field.name().into(),
-                reason: crate::text::expected_got(
-                    "a named FIX definition's derived tag",
-                    format_args!(
-                        "tag {tag} outside [{}, {})",
-                        FixId::DEFINITION_TAG_MIN,
-                        FixId::DEFINITION_TAG_MAX
-                    ),
-                ),
-            });
+            if let Some(tag) = field.as_fix().tag()? {
+                if !FixId::is_definition_tag(tag) {
+                    return Err(Error::InvalidRecord {
+                        path: field.name().into(),
+                        reason: crate::text::expected_got(
+                            "a named FIX definition's derived tag",
+                            format_args!(
+                                "tag {tag} outside [{}, {})",
+                                FixId::DEFINITION_TAG_MIN,
+                                FixId::DEFINITION_TAG_MAX
+                            ),
+                        ),
+                    });
+                }
+            }
         }
         match category {
             FixCategory::Fields if field.dtype().is_nested() => {

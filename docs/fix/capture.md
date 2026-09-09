@@ -402,7 +402,7 @@ The root's children are the standard header in its declared order, the body as i
     let reader = FixCodec::new(registry).with_version("4.4".parse()?);
 
     // A frame stating neither its version nor a clock is still dated and versioned.
-    let bare = reader.transform_line(b"35=D|55=AAPL|10=0|", false)?;
+    let bare = reader.transform_line(b"35=D|55=AAPL|10=0|", false)?.next().expect("one frame")?;
     assert_eq!(bare.by_tag(8)?.as_str(), Some("FIX.4.4"));
     assert_eq!(bare.version().map(|version| version.to_string()), Some("4.4".to_owned()));
     assert_eq!(bare.market_timestamp().temporal_count_at(TimeUnit::Second), Some(0));
@@ -410,7 +410,7 @@ The root's children are the standard header in its declared order, the body as i
     assert_eq!(bare.into_bytes(b'|'), b"35=D|55=AAPL|10=0|");
 
     // A frame stating both keeps its own, and a sub-second clock has a partition.
-    let sent = reader.transform_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|", false)?;
+    let sent = reader.transform_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|", false)?.next().expect("one frame")?;
     assert_eq!(sent.by_tag(8)?.as_str(), Some("FIX.4.2"));
     assert_eq!(sent.market_timestamp().temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_200_415));
     assert_eq!(sent.unix_partition(3_600).as_i64(), Some(1_787_306_400));
@@ -427,12 +427,12 @@ The root's children are the standard header in its declared order, the body as i
     reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()), version="FIX.4.4")
 
     # A frame stating neither its version nor a clock is still dated and versioned.
-    bare = reader.transform_line(b"35=D|55=AAPL|10=0|")
+    bare = next(reader.transform_line(b"35=D|55=AAPL|10=0|"))
     assert bare.by_tag(8).as_py() == "FIX.4.4"
     assert bare.market_timestamp().as_py() == datetime(1970, 1, 1, tzinfo=timezone.utc)
 
     # A frame stating both keeps its own, and a sub-second clock has a partition.
-    sent = reader.transform_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|")
+    sent = next(reader.transform_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|"))
     assert sent.by_tag(8).as_py() == "FIX.4.2"
     assert sent.market_timestamp().as_py() == datetime(2026, 8, 21, 10, 30, 0, 415000, tzinfo=timezone.utc)
     assert sent.unix_partition(3_600).as_py() == 1_787_306_400
@@ -449,14 +449,14 @@ The root's children are the standard header in its declared order, the body as i
     const reader = new fix.FixCodec(registry, { version: 'FIX.4.4' })
 
     // A frame stating neither its version nor a clock is still dated and versioned.
-    const bare = reader.transformLine(Buffer.from('35=D|55=AAPL|10=0|'))
+    const bare = reader.transformLine(Buffer.from('35=D|55=AAPL|10=0|')).next().value
     assert.equal(bare.byTag(8).toJSON(), 'FIX.4.4')
     assert.ok(bare.marketTimestamp() !== null)
     // Neither became an entry, so the wire comes back byte for byte.
-    assert.equal(bare.toBytes('|'.charCodeAt(0)).toString(), '35=D|55=AAPL|10=0|')
+    assert.equal(bare.intoBytes('|'.charCodeAt(0)).toString(), '35=D|55=AAPL|10=0|')
 
     // A frame stating both keeps its own, and a sub-second clock has a partition.
-    const sent = reader.transformLine(Buffer.from('8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|'))
+    const sent = reader.transformLine(Buffer.from('8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|')).next().value
     assert.equal(sent.byTag(8).toJSON(), 'FIX.4.2')
     assert.ok(sent.unixPartition(3600) !== null)
     ```
@@ -504,7 +504,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
 
     // A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|";
-    let held = reader.transform_line(line, true)?;
+    let held = reader.transform_line(line, true)?.next().expect("one frame")?;
     assert_eq!(held.by_tag(22)?.as_str(), Some("4"));
     assert_eq!(held.by_tag(yggdryl::ISINCODE_TAG)?.as_str(), Some("US0378331005"));
     assert_eq!(held.by_tag(470)?.as_str(), Some("US"));
@@ -532,7 +532,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
 
     # A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
     line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|"
-    held = reader.transform_line(line, True)
+    held = next(reader.transform_line(line, True))
     assert held.by_tag(22).as_py() == "4"
     assert held.by_tag(65013).as_py() == "US0378331005"  # isincode
     assert held.by_tag(470).as_py() == "US"
@@ -544,7 +544,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
     assert held.by_tag(59).as_py() == "0"  # a day order
 
     # Only the row was filled: the wire comes back byte for byte.
-    assert held.to_bytes(ord("|")) == line
+    assert held.into_bytes(ord("|")) == line
     # And a second pass changes nothing.
     assert reader.enrich_fixmsg(held) == held
     ```
@@ -560,7 +560,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
 
     // A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
     const line = '8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|'
-    const held = reader.transformLine(Buffer.from(line), true)
+    const held = reader.transformLine(Buffer.from(line), true).next().value
     assert.equal(held.byTag(22).toJSON(), '4')
     assert.equal(held.byTag(65013).toJSON(), 'US0378331005') // isincode
     assert.equal(held.byTag(470).toJSON(), 'US')
@@ -572,7 +572,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
     assert.equal(held.byTag(59).toJSON(), '0') // a day order
 
     // Only the row was filled: the wire comes back byte for byte.
-    assert.equal(held.toBytes('|'.charCodeAt(0)).toString(), line)
+    assert.equal(held.intoBytes('|'.charCodeAt(0)).toString(), line)
     // And a second pass changes nothing.
     assert.ok(reader.enrichFixmsg(held).equals(held))
     ```

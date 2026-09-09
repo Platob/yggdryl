@@ -45,7 +45,7 @@ One order's life, six messages long, on one persistent identity.
     ];
     let mut stamped = Vec::new();
     for line in lines {
-        stamped.push(life.fill(reader.transform_line(line, false)?)?);
+        stamped.push(life.fill(reader.transform_line(line, false)?.next().expect("one frame")?)?);
     }
 
     // One chain from the order to the fill, whatever identifier each
@@ -65,7 +65,9 @@ One order's life, six messages long, on one persistent identity.
 
     // Over an iterator, the codec runs one lifecycle for the whole stream.
     let again: Vec<_> = reader
-        .lifecycle(lines.iter().map(|line| reader.transform_line(line, false).unwrap()))
+        .lifecycle(lines.iter().map(|line| {
+            reader.transform_line(line, false).unwrap().next().expect("one frame").unwrap()
+        }))
         .collect::<yggdryl::Result<_>>()?;
     assert_eq!(again[3].by_tag(PERSISTENTID_TAG)?, chain);
     ```
@@ -90,7 +92,7 @@ One order's life, six messages long, on one persistent identity.
         b"8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|60=20260102-10:15:32.000|10=0|",
         b"8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:33.000|10=0|",
     ]
-    stamped = [life.fill(reader.transform_line(line)) for line in lines]
+    stamped = [life.fill(next(reader.transform_line(line))) for line in lines]
 
     # One chain from the order to the fill, whatever identifier each
     # message chose, and one instrument.
@@ -105,10 +107,10 @@ One order's life, six messages long, on one persistent identity.
 
     # The fill ended the chain: nothing is alive, and the wire is untouched.
     assert life.alive() == 0
-    assert stamped[3].to_bytes(ord("|")) == lines[3]
+    assert stamped[3].into_bytes(ord("|")) == lines[3]
 
     # Over an iterable, the codec runs one lifecycle for the whole stream.
-    again = reader.lifecycle(reader.transform_line(line) for line in lines)
+    again = reader.lifecycle(next(reader.transform_line(line)) for line in lines)
     assert again[3].by_tag(PERSISTENTID) == chain
     ```
 
@@ -131,7 +133,7 @@ One order's life, six messages long, on one persistent identity.
       '8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|60=20260102-10:15:32.000|10=0|',
       '8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:33.000|10=0|',
     ]
-    const stamped = lines.map((line) => life.fill(reader.transformLine(Buffer.from(line))))
+    const stamped = lines.map((line) => life.fill(reader.transformLine(Buffer.from(line)).next().value))
 
     // One chain from the order to the fill, whatever identifier each
     // message chose, and one instrument.
@@ -146,10 +148,10 @@ One order's life, six messages long, on one persistent identity.
 
     // The fill ended the chain: nothing is alive, and the wire is untouched.
     assert.equal(life.alive, 0)
-    assert.equal(stamped[3].toBytes('|'.charCodeAt(0)).toString(), lines[3])
+    assert.equal(stamped[3].intoBytes('|'.charCodeAt(0)).toString(), lines[3])
 
     // Over an array, the reader runs one lifecycle for the whole stream.
-    const again = reader.lifecycle(lines.map((line) => reader.transformLine(Buffer.from(line))))
+    const again = reader.lifecycle(lines.map((line) => reader.transformLine(Buffer.from(line)).next().value))
     assert.ok(again[3].byTag(65018).equals(chain))
     ```
 

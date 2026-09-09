@@ -80,7 +80,9 @@ def test_category_crud_refreshes_references_and_refuses_atomically(tmp_path: Any
         assert registry.remove_definition(category, name) is not None
         assert registry.get_definition(category, name) is None
         assert registry.remove_definition(category, name) is None
-    assert not registry
+    # Only the crate's own fields are left: they seed every registry and
+    # are never a definition a caller can remove.
+    assert len(registry) == len(fix_crate_fields())
 
 
 def test_inline_codes_are_per_field_and_snapshot_preserves_all_categories() -> None:
@@ -227,7 +229,9 @@ def test_bulk_messages_preserve_error_requests_source_columns_and_fuse() -> None
         config.into_fixmsg(FixCodec(registry))
 
 
-@pytest.mark.parametrize("method, vocabulary", [("with_crate_fields", fix_crate_fields), ("with_ulbridge_fields", fix_ulbridge_fields)])
+# Only `ulbridge` is registered on request: the crate's own fields seed every
+# registry, so there is no `with_crate_fields` left to refuse.
+@pytest.mark.parametrize("method, vocabulary", [("with_ulbridge_fields", fix_ulbridge_fields)])
 def test_registering_vocabulary_refusals_preserve_every_category(method: str, vocabulary: Any) -> None:
     registry = _catalog()
     conflict = vocabulary()[-1]

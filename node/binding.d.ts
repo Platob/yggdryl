@@ -82,8 +82,8 @@ import {
   FixMessages,
   MsgType,
   MsgTypeIterator,
-  Ulconfig,
-  Ulconfigs,
+  UlPlugin,
+  UlPlugins,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -113,8 +113,8 @@ export type {
   FixMessages,
   MsgType,
   MsgTypeIterator,
-  Ulconfig,
-  Ulconfigs,
+  UlPlugin,
+  UlPlugins,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -444,7 +444,7 @@ declare module './index' {
 
   interface FixDefinitionIterator extends IterableIterator<Field> {}
   interface MsgTypeIterator extends IterableIterator<MsgType> {}
-  interface Ulconfigs extends IterableIterator<Ulconfig> {}
+  interface UlPlugins extends IterableIterator<UlPlugin> {}
   interface FixMessages extends IterableIterator<FixMsg> {
     next(): IteratorResult<FixMsg>
   }
@@ -2814,12 +2814,12 @@ export interface FixMsgConstructor {
 }
 
 /** One native configuration with ordinary JavaScript scalar intake. */
-export interface UlconfigConstructor {
-  new (mbean: string | null, attributes: unknown, envelope: unknown): Ulconfig
-  readonly prototype: Ulconfig
-  fromJsonBytes(body: string | ArrayBufferLike | ArrayBufferView): Ulconfigs
-  fromJsonScalar(document: unknown): Ulconfigs
-  fromFixmsg(message: FixMsg): Ulconfig
+export interface UlPluginConstructor {
+  new (mbean: string | null, attributes: unknown, envelope: unknown): UlPlugin
+  readonly prototype: UlPlugin
+  fromJsonBytes(body: string | ArrayBufferLike | ArrayBufferView): UlPlugins
+  fromJsonScalar(document: unknown): UlPlugins
+  fromFixmsg(message: FixMsg): UlPlugin
 }
 
 /** `yggdryl::fix`: the FIX dictionary, its message, and the process default. */
@@ -2845,8 +2845,8 @@ export interface Fix {
   /** Immutable registry-owned message definitions. */
   readonly MsgType: abstract new () => MsgType
   readonly FixMessages: abstract new () => FixMessages
-  readonly Ulconfig: UlconfigConstructor
-  readonly Ulconfigs: abstract new () => Ulconfigs
+  readonly UlPlugin: UlPluginConstructor
+  readonly UlPlugins: abstract new () => UlPlugins
   /**
    * The state a stream of messages has reached, one chain per order alive:
    * `fill` stamps each message with its instrument, its own identity and

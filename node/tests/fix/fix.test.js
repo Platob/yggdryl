@@ -23,7 +23,7 @@ const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 // What every registry holds before anything is inserted: the crate's own
 // twenty fields, standard fields from tag 65000 up, which
 // `new fix.FixRegistry()` seeds and `fix.crateFields()` lists.
-const CRATED = 19
+const CRATED = 20
 // The first tag the crate claims; every tag from it up is one of its own.
 const CRATE_TAG_MIN = 65000
 
@@ -882,7 +882,8 @@ test('a registry is a value: equality, hash, clone, JSON and text', () => {
   assert.equal(new fix.FixRegistry().toString(), `FixRegistry(${CRATED} fields)`)
 
   const document = registry.toJSON()
-  assert.equal(document.fields.length, 6203 + CRATED)
+  // The crate's own are seeded, never stored, so only the store's own are written.
+  assert.equal(document.fields.length, 6203)
   assert.deepEqual(document.fields[0], JSON.parse(JSON.stringify(registry.fieldByTag(1))))
   assert.equal(document.fields[0].metadata['fix:tag'], '1')
   assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
@@ -988,7 +989,7 @@ test('a reader parses every frame shape the core reads', () => {
   assert.deepEqual([...pairs].map(([name]) => name), ['beginstring', 'symbol', 'timestamp'])
   assert.equal(pairs.byTag(8).toJSON(), 'FIX.4.2')
   assert.deepEqual(pairs.arrivals().map(([tag]) => tag), [55])
-  assert.equal(pairs.toBytes(124).toString(), '55=AAPL|')
+  assert.equal(pairs.intoBytes(124).toString(), '55=AAPL|')
 
   // A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
   // whose value packs its members behind the two control bytes ULLINK uses.
@@ -1044,25 +1045,25 @@ test('a reader fills what the line implied and leaves the wire alone', () => {
   // check digit closes has stated its source, and under that source the
   // crate's `isincode` column and the country its prefix names.
   const line = '8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|'
-  const filled = reader.transformLine(Buffer.from(line), true)
+  const filled = reader.transformLine(Buffer.from(line), true).next().value
   assert.equal(filled.byTag(22).toJSON(), '4')
   assert.equal(filled.byTag(65013).toJSON(), 'US0378331005')
   assert.equal(filled.byTag(470).toJSON(), 'US')
   assert.equal(filled.byTag(59).toJSON(), '0', 'an order stating no time in force is a day order')
 
   // Without the flag the line states none of them.
-  const bare = reader.transformLine(Buffer.from(line))
+  const bare = reader.transformLine(Buffer.from(line)).next().value
   assert.equal(bare.getByTag(22), null)
   assert.equal(bare.getByTag(65013), null)
   assert.equal(bare.getByTag(470), null)
 
   // Only the row was filled: the wire comes back byte for byte, and a second
   // pass changes nothing.
-  assert.equal(filled.toBytes('|'.charCodeAt(0)).toString(), line)
+  assert.equal(filled.intoBytes('|'.charCodeAt(0)).toString(), line)
   assert.ok(reader.enrichFixmsg(filled).equals(filled))
 
   // A value no standard closes answers nothing rather than a guess.
-  const opaque = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|'), true)
+  const opaque = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|'), true).next().value
   assert.equal(opaque.getByTag(22), null)
   assert.equal(opaque.getByTag(65013), null)
 })
@@ -1099,7 +1100,7 @@ test('every message of one order carries the chain identity until it ends', () =
   const life = new fix.FixLifecycle(registry)
   const stamped = []
   for (const line of LIFE) {
-    stamped.push(life.fill(reader.transformLine(Buffer.from(line))))
+    stamped.push(life.fill(reader.transformLine(Buffer.from(line)).next().value))
     // Alive from the first message to the fill that ends it.
     assert.equal(life.alive, stamped.length < LIFE.length ? 1 : 0)
   }
@@ -1127,14 +1128,14 @@ test('every message of one order carries the chain identity until it ends', () =
 
   // Nothing here is an entry: the wire re-emits byte for byte.
   for (const [at, line] of LIFE.entries()) {
-    assert.equal(stamped[at].toBytes(PIPE).toString(), line)
+    assert.equal(stamped[at].intoBytes(PIPE).toString(), line)
   }
 
   // The identifier a venue reuses tomorrow opens a new chain rather than
   // joining yesterday's, which ended: dated by its own clock, it is another
   // identity.
   const tomorrow = LIFE[0].replaceAll('20260102', '20260103')
-  const again = life.fill(reader.transformLine(Buffer.from(tomorrow)))
+  const again = life.fill(reader.transformLine(Buffer.from(tomorrow)).next().value)
   assert.equal(identity(again, PERSISTENTID).equals(chains[0]), false)
   assert.equal(life.alive, 1)
   assert.equal(life.toString(), 'FixLifecycle(1 alive)')
@@ -1143,13 +1144,13 @@ test('every message of one order carries the chain identity until it ends', () =
   assert.equal(String(life), 'FixLifecycle(0 alive)')
   // The same line at the same instant is the same chain identity, which is
   // what makes two reads of one capture agree.
-  const replayed = life.fill(reader.transformLine(Buffer.from(LIFE[0])))
+  const replayed = life.fill(reader.transformLine(Buffer.from(LIFE[0])).next().value)
   assert.ok(identity(replayed, PERSISTENTID).equals(chains[0]))
   assert.ok(identity(replayed, ID).equals(ids[0]))
 
   // Over an array, the reader runs one lifecycle for the whole stream, and a
   // stamped stream read again keeps what it carries.
-  const once = reader.lifecycle(LIFE.map((line) => reader.transformLine(Buffer.from(line))))
+  const once = reader.lifecycle(LIFE.map((line) => reader.transformLine(Buffer.from(line)).next().value))
   const twice = reader.lifecycle(once)
   assert.equal(once.length, LIFE.length)
   for (const [at, first] of once.entries()) {
@@ -1165,7 +1166,7 @@ test('every message of one order carries the chain identity until it ends', () =
 test('a message naming no order has an id and no chain', () => {
   const reader = new fix.FixCodec(seed())
   const [heartbeat] = reader.lifecycle([
-    reader.transformLine(Buffer.from('8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|')),
+    reader.transformLine(Buffer.from('8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|')).next().value,
   ])
   const sent = identity(heartbeat, ID)
   assert.notEqual(sent, null, 'every message has an id')
@@ -1174,7 +1175,7 @@ test('a message naming no order has an id and no chain', () => {
   // The impact clock is the sending time where no transaction time is
   // stated, and the epoch where the message states no clock at all.
   assert.equal(sent.readBigInt64BE(0), 1_767_348_930_000_000n)
-  const [undated] = reader.lifecycle([reader.transformLine(Buffer.from('8=FIX.4.4|35=0|10=0|'))])
+  const [undated] = reader.lifecycle([reader.transformLine(Buffer.from('8=FIX.4.4|35=0|10=0|')).next().value])
   assert.ok(identity(undated, ID).subarray(0, 8).equals(Buffer.alloc(8)))
 
   // A lifecycle over the process default is the same pass: the columns are
@@ -1190,7 +1191,7 @@ test('the instrument identity is the same across spellings and venues', () => {
   const registry = seed()
   const reader = new fix.FixCodec(registry)
   const life = new fix.FixLifecycle(registry)
-  const instrument = (line) => identity(life.fill(reader.transformLine(Buffer.from(line))), INSTID)
+  const instrument = (line) => identity(life.fill(reader.transformLine(Buffer.from(line)).next().value), INSTID)
   // An ISIN outranks a symbol, so the same security under two symbols is one
   // instrument, and case is not a difference.
   const byIsin = instrument('8=FIX.4.4|35=D|11=B1|48=US0378331005|22=4|55=AAPL|207=XNAS|15=USD|10=0|')
@@ -1222,9 +1223,10 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
   // The crate's own facts close the columns, and FIX's own `MsgDirection`
   // after them, because no message carries it on the wire.
-  assert.deepEqual(fix.schemaTags().slice(-20), [
+  assert.deepEqual(fix.schemaTags().slice(-21), [
     65000, 65001, 65002, 65003, 65004, 65005, 65006, 65007, 65008, 65009,
-    65010, 65011, 65012, 65013, 65014, 65015, 65016, 65017, 65018, 385,
+    65010, 65011, 65012, 65013, 65014, 65015, 65016, 65017, 65018, 65019,
+    385,
   ])
 
   // A column is found by its folded name, and nothing else is needed.
@@ -1330,6 +1332,7 @@ test('the crate fields declare their own protocols', () => {
       'instid',
       'id',
       'persistentid',
+      'targetsessionid',
     ],
   )
   assert.deepEqual(
@@ -1354,6 +1357,7 @@ test('the crate fields declare their own protocols', () => {
       'InstId',
       'Id',
       'PersistentId',
+      'TargetSessionId',
     ],
   )
   // In tag order, on the standard branch, from 65000 up: above every tag FIX
@@ -1420,7 +1424,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   // And the three identities a lifecycle pass stamps - the instrument, the
   // message and the order chain - sixteen bytes each, so a monitor joins on
   // them as it joins on the digest.
-  const identities = fix.crateFields().slice(16)
+  const identities = fix.crateFields().slice(16, 19)
   assert.deepEqual(
     identities.map((field) => [field.name, field.display, field.fix.id, field.dtype.toString()]),
     [
@@ -1475,7 +1479,7 @@ test('a message says everything the core derives about it', () => {
   // A row derives the market from the first MIC the message names, and
   // leaves the ISIN and the state null when it stated no source for either.
   const schema = fix.schema(registry, 'FixMessage')
-  const row = message.toRow(schema).toJSON()
+  const row = message.intoRow(schema).toJSON()
   assert.equal(row[schema.indexOf('miccode')], 'XNAS')
   assert.equal(row[schema.indexOf('isincode')], null)
   assert.equal(row[schema.indexOf('state')], null)
