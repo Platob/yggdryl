@@ -10,8 +10,8 @@
 //! [`Counted`] is the instrument. It wraps the byte handle, forwards every
 //! call unchanged, and tallies it, so the stack built on top of it is measured
 //! rather than argued about. The counts here are what a *layer* asks of
-//! storage; how many requests a backend then makes of the network is the S3
-//! client's own `Stats`, asserted in `src/holder/s3/tests/accounting.rs`.
+//! storage; how many requests a backend then makes of the network is the object
+//! client's own `Stats`, asserted in `src/holder/object/tests/accounting.rs`.
 
 use std::sync::Arc;
 

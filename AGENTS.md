@@ -97,7 +97,7 @@ directions against an outside implementation.
 
 Every member has `src/`, `tests/`, `benchmarks/`; root owns pins and lints with
 `default-members = ["rust"]`; features are `default = ["arrow"]`, `parquet`,
-`iceberg` (implies `parquet`), `s3`. Examples live in docs - no `examples/` dir -
+`iceberg` (implies `parquet`), `object`. Examples live in docs - no `examples/` dir -
 and tests, benchmarks, bindings, and docs mirror these layers. A root file is not
 an implementation layer, a layer is not a facade over root-owned vocabulary, and
 a module owns implementation rather than an empty facade.
@@ -109,7 +109,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
 | `iobase.rs` | the single `IOBase` trait and its behavior modules |
 | `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, datatype families |
-| `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `s3/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
+| `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
@@ -399,8 +399,8 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 - Every derived surface states its cost in call counts, pins it in
   `rust/tests/iobase_calls.rs`, and reports it in the `holder` benchmark beside
   the timing; adding a call means editing the assertion naming it.
-  `holder::counted::Counted` tallies forwarded calls by name, S3 `Stats` counts
-  the requests one call becomes.
+  `holder::counted::Counted` tallies forwarded calls by name, the object
+  backend's `Stats` counts the requests one call becomes.
 - Derived reads and appends name the core type they answer, since the same verbs
   address rows: `read_all_bytes`, `read_range_bytes`, `write_all_bytes`,
   `append_bytes`, `read_scalar`, `read_arrow_reader`. Bare `read`, `write`,
@@ -469,23 +469,46 @@ one entry in it, `Path` resolves to whichever is there.
   handle beneath it; the cost model in `docs/holder/backends/zip.md` is stated
   and asserted in those terms.
 
-### S3 (`holder/s3/`, non-default `s3` feature)
+### Object stores (`holder/object/`, non-default `object` feature)
 
-S3 REST spoken directly - SigV4 over a synchronous HTTP/1.1 client, no SDK,
-runtime, or object-store layer. Each method states its request count and the
-accounting tests assert it exactly:
+One backend, one location/container/leaf trio, three stores: Amazon S3, Google
+Cloud Storage, Azure Blob Storage. Each REST API is spoken directly - SigV4,
+OAuth 2.0 bearer tokens, Azure Shared Key over a synchronous HTTP/1.1 client -
+with no SDK, runtime, or object-store layer.
 
-| Operation | Requests |
-| --- | --- |
-| ranged read | 1 ranged `GET` |
-| whole read, full stream drain | 1 `GET` |
-| listing, flat or recursive | 1 per 1000 entries |
-| prefix removal | 1 listing + 1 bulk delete per 1000 keys |
-| construction, child resolution, trailing-slash location | 0 |
+`Provider` is the sole dispatcher: one value says which store answers, and every
+place the three differ reads it and nothing else. A dialect owns only what its
+store spells for itself - `aws/` the credential chain, the STS exchange, the
+shared files and the S3 XML; `google/` the Application Default Credentials
+chain, the RS256 assertion, and the JSON API; `azure/` the Shared Key signature,
+the SAS and bearer paths, and the Blob XML. `sigv4.rs` and `xml.rs` are shared
+because Signature Version 4 and the `<Error>` document are not one store's
+alone; `answer.rs` holds what an answer *says* in shapes no store owns, so the
+transport, the retry, the staging model, the listing pipeline and the three
+roles are written once.
+
+`ObjectOptions` holds what all three stores have; `AwsOptions`, `GoogleOptions`
+and `AzureOptions` hold what one has, so a knob has exactly one owner. A
+property name two stores both have is applied to both, because only the store
+that answers reads its own options.
+
+Each method states its request count and the accounting tests assert it exactly:
+
+| Operation | S3 | Google | Azure |
+| --- | --- | --- | --- |
+| ranged read | 1 ranged `GET` | 1 `GET` with `alt=media` | 1 `GET` with `x-ms-range` |
+| whole read, full stream drain | 1 `GET` | 1 `GET` | 1 `GET` |
+| whole write | 1 `PUT` | 1 `multipart/related` `POST` | 1 `PUT` |
+| large write | parts + 2 | chunks + 1 | blocks + 1 |
+| listing, flat or recursive | 1 per 1000 entries | 1 per 1000 | 1 per 1000 |
+| prefix removal | 1 listing + 1 bulk delete per 1000 keys | per 100 | per 256 |
+| construction, child resolution, trailing-slash location | 0 | 0 | 0 |
 
 A listing states every entry's size, so a listed object never re-asks; `open`
 caches metadata, never bytes; pooled connections mean a body is always drained;
-payloads are signed over plain HTTP, unsigned over HTTPS.
+a 3xx is never followed, because the one redirect that matters corrects the
+signing region here and Google reuses 308 for a chunk that landed. Payload
+signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
 
 ## IOMedia and records
 
@@ -680,7 +703,7 @@ MSRV, and the feature-off builds a schema-only consumer gets:
 ```bash
 cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets
 cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --lib
-cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --features s3 --lib
+cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --no-default-features --features object --lib
 cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg
 ```
 
@@ -697,7 +720,7 @@ half is a failure, not a pass:
 ```bash
 python scripts/check_zip_interop.py       # Python zipfile
 python scripts/check_avro_interop.py      # fastavro, plus the apache-avro probe
-python scripts/check_s3_interop.py        # MinIO + boto3
+python scripts/check_object_interop.py        # MinIO + boto3
 python scripts/check_iceberg_interop.py   # PyIceberg, v1/v2/v3 tables
 ```
 
@@ -853,7 +876,7 @@ section change together. What binds every page:
 Blocking.
 
 ```bash
-python scripts/check_docs_examples.py --lang rust         # compiled against parquet iceberg s3
+python scripts/check_docs_examples.py --lang rust         # compiled against parquet iceberg object
 python scripts/check_docs_examples.py --lang python       # runs under python/.venv
 python scripts/check_docs_examples.py --lang javascript   # needs the built addon beside Arrow JS
 python -m mkdocs build --strict --config-file mkdocs.yml

@@ -4063,14 +4063,23 @@ export declare class Uri {
   get user(): string | null
   /** Password after the first user-information colon. */
   get password(): string | null
-  /** Network hostname under the core S3-aware rules. */
+  /** Network hostname under the core store-aware rules. */
   get hostname(): string | null
-  /** S3 bucket name, or `null` for another scheme. */
+  /**
+   * Container name - a bucket on S3 and Google, a container on Azure - or
+   * `null` for a scheme that names no store.
+   */
   get bucket(): string | null
-  /** S3 object key: the path below the bucket, as the path spells it. */
+  /** Azure storage account this location names, when it names one. */
+  get account(): string | null
+  /** Object key: the path below the container, as the path spells it. */
   get key(): string | null
-  /** AWS region inferred from a recognized S3 hostname. */
+  /** Region inferred from a recognized store hostname. */
   get region(): string | null
+  /** Store endpoint host with its explicit port, without a virtual container. */
+  get storeEndpoint(): string | null
+  /** Whether this location writes its container into the hostname. */
+  isVirtualHosted(): boolean
   /** Normalized slash-separated URI path. */
   get path(): string
   /** Query text without the leading question mark. */
@@ -4157,14 +4166,23 @@ export declare class Url {
   get user(): string | null
   /** Password after the first user-information colon. */
   get password(): string | null
-  /** Network hostname under the core S3-aware rules. */
+  /** Network hostname under the core store-aware rules. */
   get hostname(): string | null
-  /** S3 bucket name, or `null` for another scheme. */
+  /**
+   * Container name - a bucket on S3 and Google, a container on Azure - or
+   * `null` for a scheme that names no store.
+   */
   get bucket(): string | null
-  /** S3 object key: the path below the bucket, as the path spells it. */
+  /** Azure storage account this location names, when it names one. */
+  get account(): string | null
+  /** Object key: the path below the container, as the path spells it. */
   get key(): string | null
-  /** AWS region inferred from a recognized S3 hostname. */
+  /** Region inferred from a recognized store hostname. */
   get region(): string | null
+  /** Store endpoint host with its explicit port, without a virtual container. */
+  get storeEndpoint(): string | null
+  /** Whether this location writes its container into the hostname. */
+  isVirtualHosted(): boolean
   /** Normalized slash-separated URL path. */
   get path(): string
   /** Query text without the leading question mark. */

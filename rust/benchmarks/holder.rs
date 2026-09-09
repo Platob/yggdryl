@@ -9,22 +9,23 @@ mod calls;
 mod fs;
 #[path = "holder/listing.rs"]
 mod listing;
-// Amazon S3 against `object_store` on one in-process store. The backend is a
-// non-default feature, so the group compiles in only when it is.
-#[cfg(feature = "s3")]
-#[path = "holder/s3/mod.rs"]
-mod s3;
+// The object stores against `object_store` on one in-process store. The
+// backend is a non-default feature, so the group compiles in only when it is.
+#[cfg(feature = "object")]
+#[path = "holder/object/mod.rs"]
+mod object;
 #[path = "holder/zip.rs"]
 mod zip;
 
 use criterion::{criterion_group, criterion_main};
 
-/// The S3 groups when the backend is not compiled in: nothing to register.
+/// The object-store groups when the backend is not compiled in: nothing to
+/// register.
 ///
 /// Stubs rather than a second `criterion_group!` list, so the target's
 /// benchmarks are named in one place whatever the feature state.
-#[cfg(not(feature = "s3"))]
-mod s3 {
+#[cfg(not(feature = "object"))]
+mod object {
     pub(crate) mod bytes {
         pub(crate) fn byte_benchmarks(_: &mut criterion::Criterion) {}
     }
@@ -45,9 +46,9 @@ criterion_group!(
     buffered::buffered_benchmarks,
     calls::call_benchmarks,
     listing::listing_benchmarks,
-    s3::bytes::byte_benchmarks,
-    s3::listing::listing_benchmarks,
-    s3::records::record_benchmarks,
+    object::bytes::byte_benchmarks,
+    object::listing::listing_benchmarks,
+    object::records::record_benchmarks,
     zip::zip_benchmarks,
 );
 criterion_main!(holder);

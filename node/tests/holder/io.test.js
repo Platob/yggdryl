@@ -1068,13 +1068,29 @@ test('compressInto and decompressInto round-trip through a real .gz', (t) => {
   )
 })
 
-test('every s3 url spelling reaches the native backend without touching it', () => {
-  // `s3`, `s3a`, and `s3n` name one protocol - the Hadoop spellings differ
-  // only in the connector that once read them - so all three select the same
-  // backend. Nothing here contacts a store: the point is that the scheme
+test('every object store url spelling reaches the native backend without touching it', () => {
+  // Ten spellings, three stores: `s3`/`s3a`/`s3n` name Amazon S3, `gs`/`gcs`
+  // name Google Cloud Storage, and `az`/`abfs`/`abfss`/`wasb`/`wasbs` name
+  // Azure Blob Storage - the extra names differ only in the connector that once
+  // read them, so every one selects the same backend. Azure writes its
+  // container beside the account's own host, which is the one location shape
+  // that says where the store is; `az://container/blob` leaves that to
+  // configuration. Nothing here contacts a store: the point is that the scheme
   // selects the backend and that construction stays lazy across the boundary.
-  for (const scheme of ['s3', 's3a', 's3n']) {
-    const handle = new IOBase(`${scheme}://trades/lake/year=2026/part.parquet`)
+  const spellings = [
+    ['s3', 'trades'],
+    ['s3a', 'trades'],
+    ['s3n', 'trades'],
+    ['gs', 'trades'],
+    ['gcs', 'trades'],
+    ['az', 'trades@lake.blob.core.windows.net'],
+    ['abfs', 'trades@lake.dfs.core.windows.net'],
+    ['abfss', 'trades@lake.dfs.core.windows.net'],
+    ['wasb', 'trades@lake.blob.core.windows.net'],
+    ['wasbs', 'trades@lake.blob.core.windows.net'],
+  ]
+  for (const [scheme, authority] of spellings) {
+    const handle = new IOBase(`${scheme}://${authority}/lake/year=2026/part.parquet`)
 
     assert.equal(handle.url.scheme, scheme)
     assert.equal(handle.url.bucket, 'trades')
@@ -1086,7 +1102,7 @@ test('every s3 url spelling reaches the native backend without touching it', () 
 
     // A child resolves without asking the store anything, and it reports the
     // spelling the caller used.
-    const child = new IOBase(`${scheme}://trades/lake/`).joinpath('year=2026', 'part.parquet')
-    assert.equal(child.url.toString(), `${scheme}://trades/lake/year=2026/part.parquet`)
+    const child = new IOBase(`${scheme}://${authority}/lake/`).joinpath('year=2026', 'part.parquet')
+    assert.equal(child.url.toString(), `${scheme}://${authority}/lake/year=2026/part.parquet`)
   }
 })

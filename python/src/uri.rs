@@ -315,15 +315,22 @@ impl PyUri {
         self.inner.region()
     }
 
-    /// The S3 endpoint host with its explicit port, without a virtual bucket.
+    /// The Azure storage account this location names, when it names one.
     #[getter]
-    fn s3_endpoint(&self) -> Option<&str> {
-        self.inner.s3_endpoint()
+    fn account(&self) -> Option<&str> {
+        self.inner.account()
     }
 
-    /// Return whether an S3 location writes its bucket into the hostname.
-    fn is_s3_virtual(&self) -> bool {
-        self.inner.is_s3_virtual()
+    /// The store endpoint host with its explicit port, without a virtual
+    /// container.
+    #[getter]
+    fn store_endpoint(&self) -> Option<&str> {
+        self.inner.store_endpoint()
+    }
+
+    /// Return whether a store location writes its container into the hostname.
+    fn is_virtual_hosted(&self) -> bool {
+        self.inner.is_virtual_hosted()
     }
 
     /// The host with its optional port, without user information.
@@ -758,15 +765,22 @@ impl PyUrl {
         self.inner.region()
     }
 
-    /// The S3 endpoint host with its explicit port, without a virtual bucket.
+    /// The Azure storage account this location names, when it names one.
     #[getter]
-    fn s3_endpoint(&self) -> Option<&str> {
-        self.inner.s3_endpoint()
+    fn account(&self) -> Option<&str> {
+        self.inner.account()
     }
 
-    /// Return whether an S3 location writes its bucket into the hostname.
-    fn is_s3_virtual(&self) -> bool {
-        self.inner.is_s3_virtual()
+    /// The store endpoint host with its explicit port, without a virtual
+    /// container.
+    #[getter]
+    fn store_endpoint(&self) -> Option<&str> {
+        self.inner.store_endpoint()
+    }
+
+    /// Return whether a store location writes its container into the hostname.
+    fn is_virtual_hosted(&self) -> bool {
+        self.inner.is_virtual_hosted()
     }
 
     /// The host with its optional port, without user information.

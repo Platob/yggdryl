@@ -10,8 +10,8 @@ pub mod buffered;
 pub mod counted;
 pub mod fs;
 pub mod local;
-#[cfg(feature = "s3")]
-pub mod s3;
+#[cfg(feature = "object")]
+pub mod object;
 pub mod zip;
 
 pub use buffer::Buffer;
@@ -85,15 +85,15 @@ pub enum Holder {
     FsPath(crate::holder::fs::Path),
     /// A stream-backed file on an Arrow-compatible filesystem.
     FsFile(crate::holder::fs::File),
-    /// A key prefix, or a bucket, on Amazon S3.
-    #[cfg(feature = "s3")]
-    S3Folder(crate::holder::s3::Folder),
-    /// An S3 location that resolves to whatever it turns out to be.
-    #[cfg(feature = "s3")]
-    S3Path(crate::holder::s3::Path),
-    /// One Amazon S3 object.
-    #[cfg(feature = "s3")]
-    S3File(crate::holder::s3::File),
+    /// A key prefix, or a whole container, on an object store.
+    #[cfg(feature = "object")]
+    ObjectFolder(crate::holder::object::Folder),
+    /// An object-store location that resolves to whatever it turns out to be.
+    #[cfg(feature = "object")]
+    ObjectPath(crate::holder::object::Path),
+    /// One object on an object store.
+    #[cfg(feature = "object")]
+    ObjectFile(crate::holder::object::File),
     /// A prefix of one ZIP archive's members, or the archive root.
     ZipNode(crate::holder::zip::Node),
     /// A location inside a ZIP archive that resolves to whatever it holds.
@@ -485,12 +485,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Folder(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Path(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3File(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectFolder(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectPath(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectFile(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -512,12 +512,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Folder(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Path(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3File(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectFolder(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectPath(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectFile(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -540,12 +540,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Folder(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Path(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3File(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectFolder(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectPath(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectFile(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -568,12 +568,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Folder(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3Path(inner) => inner,
-            #[cfg(feature = "s3")]
-            Self::S3File(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectFolder(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectPath(inner) => inner,
+            #[cfg(feature = "object")]
+            Self::ObjectFile(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,

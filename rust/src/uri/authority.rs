@@ -281,13 +281,19 @@ impl<'de> Deserialize<'de> for Authority {
 }
 
 impl Uri {
-    pub(super) fn s3_location(&self) -> Option<S3Location<'_>> {
-        if !self.scheme.is_s3() {
+    /// The object-store location this URI names, when its scheme names a store.
+    ///
+    /// One walk of the authority and the path serves all three stores, because
+    /// the question is the same in each: which part is the endpoint, which is
+    /// the container, and what is left is the key. Only *recognizing a
+    /// hostname* differs, and that is what [`StoreHost`] answers per store.
+    pub(super) fn store_location(&self) -> Option<StoreLocation<'_>> {
+        if !self.scheme.is_object_store() {
             return None;
         }
 
-        // The cursor walks the path so whatever the endpoint and the bucket do
-        // not consume is the key, spelled exactly as the path spells it.
+        // The cursor walks the path so whatever the endpoint and the container
+        // do not consume is the key, spelled exactly as the path spells it.
         let mut cursor = 0;
         let next_segment = |cursor: &mut usize| {
             let (next, segment) = self.path.next_segment(*cursor)?;
@@ -304,14 +310,33 @@ impl Uri {
 
         let authority =
             (self.has_authority && !self.authority.is_empty()).then_some(&self.authority);
-        // A port is something no bucket name carries, so it names the endpoint
-        // before any suffix rule runs.
+        // The Hadoop Azure spellings put the container in the user position -
+        // `abfss://data@account.dfs.core.windows.net/lake` - which no other
+        // store does and no container name can be mistaken for.
+        let attached = authority
+            .filter(|_| self.scheme.is_az())
+            .and_then(Authority::user)
+            .filter(|container| !container.is_empty());
+        // A port is something no container name carries, so it names the
+        // endpoint before any suffix rule runs.
         if let Some(authority) = authority.filter(|authority| authority.port().is_some()) {
-            let bucket = next_segment(&mut cursor);
-            return Some(S3Location {
-                hostname: Some(authority.host()),
+            let host = authority.host();
+            // An Azure endpoint that is not one of the published hosts names no
+            // account, so the emulators put it first in the path -
+            // `az://127.0.0.1:10000/devstoreaccount1/lake/blob`. A container
+            // attached to the authority already said which is which.
+            let (account, bucket) = match (self.scheme.is_az(), attached) {
+                (true, None) => {
+                    let account = next_segment(&mut cursor);
+                    (account, next_segment(&mut cursor))
+                }
+                (_, attached) => (None, attached.or_else(|| next_segment(&mut cursor))),
+            };
+            return Some(StoreLocation {
+                hostname: Some(host),
                 endpoint: Some(authority.host_port()),
                 bucket,
+                account,
                 region: None,
                 virtual_addressing: false,
                 key: key_of(cursor),
@@ -323,38 +348,37 @@ impl Uri {
             None => next_segment(&mut cursor)?,
         };
 
-        if let Some(aws) = parse_aws_s3_hostname(first) {
-            let endpoint = aws
-                .bucket
-                .map_or(first, |bucket| &first[bucket.len() + 1..]);
-            let bucket = match aws.bucket {
-                Some(bucket) => Some(bucket),
-                None => next_segment(&mut cursor),
-            };
-            return Some(S3Location {
+        if let Some(host) = StoreHost::parse(&self.scheme, first) {
+            let bucket = attached
+                .or(host.bucket)
+                .or_else(|| next_segment(&mut cursor));
+            return Some(StoreLocation {
                 hostname: Some(first),
-                endpoint: Some(endpoint),
+                endpoint: Some(host.endpoint),
                 bucket,
-                region: aws.region,
-                virtual_addressing: aws.bucket.is_some(),
+                account: host.account,
+                region: host.region,
+                virtual_addressing: host.bucket.is_some(),
                 key: key_of(cursor),
             });
         }
-        if is_s3_hostname(first) {
-            let bucket = next_segment(&mut cursor);
-            return Some(S3Location {
+        if is_store_hostname(first) {
+            let bucket = attached.or_else(|| next_segment(&mut cursor));
+            return Some(StoreLocation {
                 hostname: Some(first),
                 endpoint: Some(first),
                 bucket,
+                account: None,
                 region: None,
                 virtual_addressing: false,
                 key: key_of(cursor),
             });
         }
-        Some(S3Location {
+        Some(StoreLocation {
             hostname: None,
             endpoint: None,
             bucket: Some(first),
+            account: None,
             region: None,
             virtual_addressing: false,
             key: key_of(cursor),
@@ -362,14 +386,136 @@ impl Uri {
     }
 }
 
+/// What an object-store location names, whichever store it addresses.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct S3Location<'a> {
+pub(super) struct StoreLocation<'a> {
     pub(super) hostname: Option<&'a str>,
     pub(super) endpoint: Option<&'a str>,
+    /// The bucket on Amazon S3 and Google Cloud Storage, the container on Azure.
     pub(super) bucket: Option<&'a str>,
+    /// The Azure storage account, when the hostname or the path names one.
+    pub(super) account: Option<&'a str>,
     pub(super) region: Option<&'a str>,
     pub(super) virtual_addressing: bool,
     pub(super) key: &'a str,
+}
+
+/// A hostname a store publishes, split into what it says.
+#[derive(Clone, Copy, Debug)]
+struct StoreHost<'a> {
+    /// The endpoint, which is the hostname without a virtual container.
+    endpoint: &'a str,
+    /// The container the hostname carries, when it is virtual-hosted.
+    bucket: Option<&'a str>,
+    /// The region the hostname states, where a store puts one there.
+    region: Option<&'a str>,
+    /// The Azure storage account the hostname names.
+    account: Option<&'a str>,
+}
+
+impl<'a> StoreHost<'a> {
+    /// Read `hostname` as the store `scheme` names publishes it.
+    fn parse(scheme: &Scheme, hostname: &'a str) -> Option<Self> {
+        if scheme.is_s3() {
+            let aws = parse_aws_s3_hostname(hostname)?;
+            return Some(Self {
+                endpoint: aws
+                    .bucket
+                    .map_or(hostname, |bucket| &hostname[bucket.len() + 1..]),
+                bucket: aws.bucket,
+                region: aws.region,
+                account: None,
+            });
+        }
+        if scheme.is_gs() {
+            return parse_google_hostname(hostname);
+        }
+        parse_azure_hostname(hostname)
+    }
+}
+
+/// Every Azure Storage host suffix, longest first so a nested one still wins.
+const AZURE_SUFFIXES: [&str; 4] = [
+    ".core.windows.net",
+    ".core.chinacloudapi.cn",
+    ".core.usgovcloudapi.net",
+    ".core.cloudapi.de",
+];
+
+/// The blob and Data Lake services an Azure host can name.
+const AZURE_SERVICES: [&str; 2] = ["blob", "dfs"];
+
+/// Read `hostname` as a Google Cloud Storage endpoint.
+///
+/// `storage.googleapis.com` is the endpoint, `<bucket>.storage.googleapis.com`
+/// the virtual-hosted form of the XML API, and
+/// `storage.<region>.rep.googleapis.com` a regional endpoint that states its
+/// own region.
+fn parse_google_hostname(hostname: &str) -> Option<StoreHost<'_>> {
+    let body = strip_suffix_ascii_case(hostname, ".googleapis.com")?;
+    if is_google_endpoint(body) {
+        return Some(StoreHost {
+            endpoint: hostname,
+            bucket: None,
+            region: google_endpoint_region(body),
+            account: None,
+        });
+    }
+    // Whatever precedes a recognized endpoint is the bucket, and a bucket name
+    // may itself hold dots, so the split is found from the right.
+    let mut start = 0;
+    loop {
+        let dot = body[start..].find('.')?;
+        start += dot + 1;
+        if is_google_endpoint(&body[start..]) {
+            return Some(StoreHost {
+                endpoint: &hostname[start..],
+                bucket: Some(&body[..start - 1]),
+                region: google_endpoint_region(&body[start..]),
+                account: None,
+            });
+        }
+    }
+}
+
+/// The region a `storage.<region>.rep` endpoint states, when it states one.
+fn google_endpoint_region(value: &str) -> Option<&str> {
+    strip_prefix_ascii_case(value, "storage.")
+        .and_then(|rest| strip_suffix_ascii_case(rest, ".rep"))
+        .filter(|region| !region.is_empty() && !region.contains('.'))
+}
+
+/// Return whether `value` is a Google Cloud Storage endpoint's own label.
+fn is_google_endpoint(value: &str) -> bool {
+    value.eq_ignore_ascii_case("storage")
+        || value.eq_ignore_ascii_case("www")
+        || value.eq_ignore_ascii_case("storage.mtls")
+        || google_endpoint_region(value).is_some()
+}
+
+/// Read `hostname` as an Azure Storage endpoint, naming the account it carries.
+///
+/// `account.blob.core.windows.net` is the blob service and
+/// `account.dfs.core.windows.net` the Data Lake one; the container is never in
+/// the hostname, so nothing here answers a bucket.
+fn parse_azure_hostname(hostname: &str) -> Option<StoreHost<'_>> {
+    let body = AZURE_SUFFIXES
+        .iter()
+        .find_map(|suffix| strip_suffix_ascii_case(hostname, suffix))?;
+    let (account, service) = body.split_once('.')?;
+    if account.is_empty()
+        || !AZURE_SERVICES
+            .iter()
+            .any(|known| service.eq_ignore_ascii_case(known))
+    {
+        return None;
+    }
+    Some(StoreHost {
+        endpoint: hostname,
+        bucket: None,
+        region: None,
+        account: Some(account),
+    })
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -378,17 +524,17 @@ struct AwsS3Hostname<'a> {
     region: Option<&'a str>,
 }
 
-/// Return whether a first component spells an endpoint rather than a bucket.
+/// Return whether a first component spells an endpoint rather than a container.
 ///
-/// A name ending in `.com` or `.io` is a hostname, and so is `localhost` or an
-/// IP literal: no bucket is named either, and a local S3-compatible store is
-/// what those spellings mean. A port settles it earlier still, in
-/// [`Uri::s3_location`].
-fn is_s3_hostname(value: &str) -> bool {
+/// A name ending in `.com`, `.io`, or `.net` is a hostname, and so is
+/// `localhost` or an IP literal: no container is named either, and a local
+/// store speaking one of the three protocols is what those spellings mean. A
+/// port settles it earlier still, in [`Uri::store_location`].
+fn is_store_hostname(value: &str) -> bool {
     if value.eq_ignore_ascii_case("localhost") || value.parse::<std::net::IpAddr>().is_ok() {
         return true;
     }
-    [".com", ".io"].iter().any(|suffix| {
+    [".com", ".io", ".net"].iter().any(|suffix| {
         value
             .get(value.len().saturating_sub(suffix.len())..)
             .is_some_and(|ending| ending.eq_ignore_ascii_case(suffix))

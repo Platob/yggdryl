@@ -12,7 +12,7 @@ Every derived operation makes the fewest calls to [`IOBase`](bytes.md) it needs,
 | Retention | A handle that resolves a role or a length keeps it for the scope that retains it, and drops it where the answer can change |
 | Measured by | `holder::counted::Counted` wraps a handle, forwards every call unchanged, and tallies it by name |
 | Asserted by | `rust/tests/iobase_calls.rs`, exactly rather than as a bound; the `holder` benchmark reports the same counts beside the timings |
-| Not this | How many *requests* a backend makes of the network to answer one call. That is the backend's own counter - see [Amazon S3](../backends/s3.md) |
+| Not this | How many *requests* a backend makes of the network to answer one call. That is the backend's own counter - see [Object stores](../backends/object.md) |
 
 ## Use
 

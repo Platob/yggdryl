@@ -41,7 +41,7 @@ pub(super) const fn is_query_fragment_byte(byte: u8) -> bool {
 ///
 /// This is the door raw text comes through: [`Url::join_path`] spells one
 /// platform component with it, and a backend that names resources with raw
-/// text - the S3 one - spells one object name.
+/// text - the object one - spells one object name.
 pub(crate) fn percent_encode_segment(value: &str) -> Cow<'_, str> {
     percent_encode(value, |byte| is_path_byte(byte) && byte != b'/')
 }

@@ -179,28 +179,47 @@ impl JsUri {
         self.inner.password().map(ToOwned::to_owned)
     }
 
-    /// Network hostname under the core S3-aware rules.
+    /// Network hostname under the core store-aware rules.
     #[napi(getter)]
     pub fn hostname(&self) -> Option<String> {
         self.inner.hostname().map(ToOwned::to_owned)
     }
 
-    /// S3 bucket name, or `null` for another scheme.
+    /// Container name - a bucket on S3 and Google, a container on Azure - or
+    /// `null` for a scheme that names no store.
     #[napi(getter)]
     pub fn bucket(&self) -> Option<String> {
         self.inner.bucket().map(ToOwned::to_owned)
     }
 
-    /// S3 object key: the path below the bucket, as the path spells it.
+    /// Azure storage account this location names, when it names one.
+    #[napi(getter)]
+    pub fn account(&self) -> Option<String> {
+        self.inner.account().map(ToOwned::to_owned)
+    }
+
+    /// Object key: the path below the container, as the path spells it.
     #[napi(getter)]
     pub fn key(&self) -> Option<String> {
         self.inner.key().map(ToOwned::to_owned)
     }
 
-    /// AWS region inferred from a recognized S3 hostname.
+    /// Region inferred from a recognized store hostname.
     #[napi(getter)]
     pub fn region(&self) -> Option<String> {
         self.inner.region().map(ToOwned::to_owned)
+    }
+
+    /// Store endpoint host with its explicit port, without a virtual container.
+    #[napi(getter)]
+    pub fn store_endpoint(&self) -> Option<String> {
+        self.inner.store_endpoint().map(ToOwned::to_owned)
+    }
+
+    /// Whether this location writes its container into the hostname.
+    #[napi]
+    pub fn is_virtual_hosted(&self) -> bool {
+        self.inner.is_virtual_hosted()
     }
 
     /// Normalized slash-separated URI path.
@@ -522,28 +541,47 @@ impl JsUrl {
         self.inner.password().map(ToOwned::to_owned)
     }
 
-    /// Network hostname under the core S3-aware rules.
+    /// Network hostname under the core store-aware rules.
     #[napi(getter)]
     pub fn hostname(&self) -> Option<String> {
         self.inner.hostname().map(ToOwned::to_owned)
     }
 
-    /// S3 bucket name, or `null` for another scheme.
+    /// Container name - a bucket on S3 and Google, a container on Azure - or
+    /// `null` for a scheme that names no store.
     #[napi(getter)]
     pub fn bucket(&self) -> Option<String> {
         self.inner.bucket().map(ToOwned::to_owned)
     }
 
-    /// S3 object key: the path below the bucket, as the path spells it.
+    /// Azure storage account this location names, when it names one.
+    #[napi(getter)]
+    pub fn account(&self) -> Option<String> {
+        self.inner.account().map(ToOwned::to_owned)
+    }
+
+    /// Object key: the path below the container, as the path spells it.
     #[napi(getter)]
     pub fn key(&self) -> Option<String> {
         self.inner.key().map(ToOwned::to_owned)
     }
 
-    /// AWS region inferred from a recognized S3 hostname.
+    /// Region inferred from a recognized store hostname.
     #[napi(getter)]
     pub fn region(&self) -> Option<String> {
         self.inner.region().map(ToOwned::to_owned)
+    }
+
+    /// Store endpoint host with its explicit port, without a virtual container.
+    #[napi(getter)]
+    pub fn store_endpoint(&self) -> Option<String> {
+        self.inner.store_endpoint().map(ToOwned::to_owned)
+    }
+
+    /// Whether this location writes its container into the hostname.
+    #[napi]
+    pub fn is_virtual_hosted(&self) -> bool {
+        self.inner.is_virtual_hosted()
     }
 
     /// Normalized slash-separated URL path.

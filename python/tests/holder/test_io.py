@@ -758,19 +758,38 @@ def test_a_handle_retains_the_record_encoding_it_turns_out_to_hold() -> None:
         spent.into_media()
 
 
-@pytest.mark.parametrize("scheme", ["s3", "s3a", "s3n"])
-def test_an_s3_location_reaches_the_native_backend_without_touching_it(
+@pytest.mark.parametrize(
+    ("scheme", "authority"),
+    [
+        ("s3", "trades"),
+        ("s3a", "trades"),
+        ("s3n", "trades"),
+        ("gs", "trades"),
+        ("gcs", "trades"),
+        ("az", "trades@lake.blob.core.windows.net"),
+        ("abfs", "trades@lake.dfs.core.windows.net"),
+        ("abfss", "trades@lake.dfs.core.windows.net"),
+        ("wasb", "trades@lake.blob.core.windows.net"),
+        ("wasbs", "trades@lake.blob.core.windows.net"),
+    ],
+)
+def test_an_object_store_location_reaches_the_native_backend_without_touching_it(
     scheme: str,
+    authority: str,
 ) -> None:
-    """An S3 URL is a handle like any other, and building one is free.
+    """An object-store URL is a handle like any other, and building one is free.
 
-    ``s3``, ``s3a``, and ``s3n`` name one protocol - the Hadoop spellings
-    differ only in the connector that once read them - so all three select the
-    same backend. Nothing here contacts a store: the point is that the scheme
-    selects the backend and that construction stays lazy across the boundary,
-    exactly as it does for a local path.
+    Ten spellings, three stores: ``s3``/``s3a``/``s3n`` name Amazon S3,
+    ``gs``/``gcs`` name Google Cloud Storage, and ``az``/``abfs``/``abfss``/
+    ``wasb``/``wasbs`` name Azure Blob Storage - the extra names differ only in
+    the connector that once read them, so every one selects the same backend.
+    Azure writes its container beside the account's own host, which is the one
+    location shape that says where the store is; ``az://container/blob`` leaves
+    that to configuration. Nothing here contacts a store: the point is that the
+    scheme selects the backend and that construction stays lazy across the
+    boundary, exactly as it does for a local path.
     """
-    handle = IOBase(f"{scheme}://trades/lake/year=2026/part.parquet")
+    handle = IOBase(f"{scheme}://{authority}/lake/year=2026/part.parquet")
 
     assert handle.url is not None
     assert handle.url.scheme == scheme
@@ -784,6 +803,6 @@ def test_an_s3_location_reaches_the_native_backend_without_touching_it(
     # A child resolves without asking the store anything, and a trailing
     # slash names a container by its spelling. The spelling the caller used is
     # what the child reports, so a location survives the round trip.
-    child = IOBase(f"{scheme}://trades/lake/").joinpath("year=2026", "part.parquet")
+    child = IOBase(f"{scheme}://{authority}/lake/").joinpath("year=2026", "part.parquet")
     assert child.url is not None
-    assert str(child.url) == f"{scheme}://trades/lake/year=2026/part.parquet"
+    assert str(child.url) == f"{scheme}://{authority}/lake/year=2026/part.parquet"

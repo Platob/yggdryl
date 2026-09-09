@@ -25,13 +25,13 @@ from yggdryl.holder import (
     Buffer,
     Buffered,
     File,
-    S3File,
-    S3Folder,
-    S3Path,
     Folder,
     FsFile,
     FsFolder,
     FsPath,
+    ObjectFile,
+    ObjectFolder,
+    ObjectPath,
     Path,
 )
 from yggdryl.media import Avro, Ipc, Media, Parquet, Text
@@ -316,23 +316,23 @@ class TestTheCacheSurface:
         assert not cached.has_cached_page(0)
 
 
-class TestTheS3Roles:
-    """A bucket has the same three roles a disk does, and naming one is free.
+class TestTheObjectStoreRoles:
+    """A container has the same three roles a disk does, and naming one is free.
 
-    None of this contacts a store: an S3 handle is described exactly as a
+    None of this contacts a store: a store handle is described exactly as a
     local one is, so every assertion here is about what the name alone says.
     """
 
     def test_each_role_commits_to_what_it_is(self) -> None:
-        assert isinstance(S3File("s3://trades/lake/part.parquet"), S3File)
-        assert isinstance(S3Folder("s3://trades/lake/"), S3Folder)
-        assert isinstance(S3Path("s3://trades/lake/part.parquet"), S3Path)
+        assert isinstance(ObjectFile("s3://trades/lake/part.parquet"), ObjectFile)
+        assert isinstance(ObjectFolder("s3://trades/lake/"), ObjectFolder)
+        assert isinstance(ObjectPath("s3://trades/lake/part.parquet"), ObjectPath)
 
         # A prefix always ends in the delimiter, whether or not one was written.
-        assert S3Folder("s3://trades/lake").name == "lake"
-        assert S3Folder("s3://trades/lake").is_dir()
+        assert ObjectFolder("s3://trades/lake").name == "lake"
+        assert ObjectFolder("s3://trades/lake").is_dir()
         # A leaf reports what its name says, without asking the store.
-        leaf = S3File("s3://trades/lake/part.parquet")
+        leaf = ObjectFile("s3://trades/lake/part.parquet")
         assert str(leaf.media_type) == "application/vnd.apache.parquet"
         assert leaf.url is not None
         assert leaf.url.bucket == "trades"
@@ -341,16 +341,16 @@ class TestTheS3Roles:
     def test_a_bucket_and_a_raw_key_name_an_object_a_url_cannot_spell(self) -> None:
         # `a b/c.txt` is an ordinary key and not a URL, so the second argument
         # takes the name a store uses and the escaping belongs to the handle.
-        handle = S3File("trades", "lake/a b/part.parquet")
+        handle = ObjectFile("trades", "lake/a b/part.parquet", provider="s3")
         assert handle.url is not None
         assert str(handle.url) == "s3://trades/lake/a%20b/part.parquet"
         assert handle.url.key == "lake/a%20b/part.parquet"
 
         # The same name reaches the same object through the generic role.
-        assert str(S3Path("trades", "lake/a b/part.parquet").url) == str(handle.url)
-        assert str(S3Folder("trades", "lake/a b").url) == "s3://trades/lake/a%20b"
+        assert str(ObjectPath("trades", "lake/a b/part.parquet", provider="s3").url) == str(handle.url)
+        assert str(ObjectFolder("trades", "lake/a b", provider="s3").url) == "s3://trades/lake/a%20b"
 
-    def test_an_s3_location_is_a_handle_like_any_other(self) -> None:
+    def test_an_object_store_location_is_a_handle_like_any_other(self) -> None:
         # The scheme is what selects the backend, so the ordinary constructor
         # reaches the same storage; the record implementation the name
         # declares still wraps it.
@@ -362,44 +362,77 @@ class TestTheS3Roles:
         partitioned = IOBase("s3://trades/lake/year=2026/part.parquet")
         assert partitioned.partitions == (("year", "2026"),)
 
-    def test_the_ordinary_constructor_answers_the_s3_role_it_reached(self) -> None:
+    def test_the_ordinary_constructor_answers_the_store_role_it_reached(self) -> None:
         # A name that declares no record encoding answers the role doing the
         # work, exactly as a local location does - `type(handle)` is how a
         # caller reads which implementation it got.
         located = IOBase("s3://trades/lake/part.bin")
-        assert isinstance(located, S3Path)
+        assert isinstance(located, ObjectPath)
 
         # What a handle derives stays on the store rather than dropping to the
         # base class on the way out.
-        assert isinstance(located.parent, S3Folder)
-        assert isinstance(IOBase("s3://trades/lake/").joinpath("part.bin"), S3Path)
+        assert isinstance(located.parent, ObjectFolder)
+        assert isinstance(IOBase("s3://trades/lake/").joinpath("part.bin"), ObjectPath)
 
-    @pytest.mark.parametrize("scheme", ["s3", "s3a", "s3n"])
-    def test_every_s3_spelling_selects_this_backend(self, scheme: str) -> None:
-        # `s3`, `s3a`, and `s3n` name one protocol - the Hadoop spellings
-        # differ only in the connector that once read them - so all three
-        # reach the same handles, through the roles and the generic
-        # constructor alike. Nothing here contacts a store.
-        assert isinstance(IOBase(f"{scheme}://trades/lake/part.bin"), S3Path)
-        assert isinstance(S3File(f"{scheme}://trades/lake/part.bin"), S3File)
-        assert isinstance(S3Folder(f"{scheme}://trades/lake/"), S3Folder)
+    @pytest.mark.parametrize(
+        ("scheme", "authority"),
+        [
+            ("s3", "trades"),
+            ("s3a", "trades"),
+            ("s3n", "trades"),
+            ("gs", "trades"),
+            ("gcs", "trades"),
+            ("az", "trades@lake.blob.core.windows.net"),
+            ("abfs", "trades@lake.dfs.core.windows.net"),
+            ("abfss", "trades@lake.dfs.core.windows.net"),
+            ("wasb", "trades@lake.blob.core.windows.net"),
+            ("wasbs", "trades@lake.blob.core.windows.net"),
+        ],
+    )
+    def test_every_object_store_spelling_selects_this_backend(
+        self, scheme: str, authority: str
+    ) -> None:
+        # Ten spellings, three stores: the Hadoop names differ only in the
+        # connector that once read them, so all of them reach the same handles,
+        # through the roles and the generic constructor alike. Azure attaches
+        # its container to the account's own host, which is the shape that says
+        # where the store is. Nothing here contacts a store.
+        assert isinstance(IOBase(f"{scheme}://{authority}/lake/part.bin"), ObjectPath)
+        assert isinstance(ObjectFile(f"{scheme}://{authority}/lake/part.bin"), ObjectFile)
+        assert isinstance(ObjectFolder(f"{scheme}://{authority}/lake/"), ObjectFolder)
 
         # The spelling the caller wrote is what the handle reports back, so a
         # location survives the round trip through a child or a parent.
-        handle = IOBase(f"{scheme}://trades/lake/part.bin")
+        handle = IOBase(f"{scheme}://{authority}/lake/part.bin")
         assert handle.url is not None
         assert handle.url.scheme == scheme
         assert handle.url.bucket == "trades"
-        assert str(handle.parent.url) == f"{scheme}://trades/lake"
+        assert str(handle.parent.url) == f"{scheme}://{authority}/lake"
 
-    def test_a_location_naming_no_bucket_is_refused(self) -> None:
-        with pytest.raises(ValueError, match="naming a bucket"):
-            S3File("file:///tmp/part.parquet")
+    @pytest.mark.parametrize("scheme", ["az", "abfs", "abfss", "wasb", "wasbs"])
+    def test_a_bare_azure_container_takes_its_account_from_the_options(
+        self, scheme: str
+    ) -> None:
+        # `az://container/blob` is what a catalog writes, and it says nothing
+        # about which account holds the container - so the account comes from
+        # the properties beside it, in whichever vocabulary they are written.
+        handle = ObjectFile(
+            f"{scheme}://trades/lake/part.bin",
+            options={"adls.account-name": "lake", "adls.account-key": "a2V5"},
+        )
+        assert handle.url is not None
+        assert str(handle.url) == f"{scheme}://trades/lake/part.bin"
+        assert handle.url.bucket == "trades"
+        assert handle.url.key == "lake/part.bin"
+
+    def test_a_location_naming_no_container_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="naming a container"):
+            ObjectFile("file:///tmp/part.parquet")
 
     def test_options_are_read_in_whichever_vocabulary_they_are_written(self) -> None:
         # A PyIceberg catalog's properties, handed over whole: what is not
         # about a store is ignored, and nothing contacts one either way.
-        handle = S3File(
+        handle = ObjectFile(
             "s3://trades/lake/part.parquet",
             options={
                 "warehouse": "s3://trades/lake",
@@ -414,20 +447,21 @@ class TestTheS3Roles:
 
         # PyArrow's argument names reach the same knobs, and a bucket and a
         # raw key are named the same way with them.
-        prefix = S3Folder(
+        prefix = ObjectFolder(
             "trades",
             "lake/a b",
+            provider="s3",
             options={"endpoint_override": "localhost:9000", "scheme": "http"},
         )
         assert str(prefix.url) == "s3://trades/lake/a%20b"
 
-        located = S3Path("s3://trades/lake/", options=None)
+        located = ObjectPath("s3://trades/lake/", options=None)
         assert located.is_dir()
 
     def test_an_option_that_will_not_parse_is_an_argument_error(self) -> None:
         # Nothing is contacted, so every failure a constructor can report is
         # about what it was handed.
         with pytest.raises(ValueError, match="seconds"):
-            S3File("s3://trades/lake/part.parquet", options={"s3.request-timeout": "soon"})
+            ObjectFile("s3://trades/lake/part.parquet", options={"s3.request-timeout": "soon"})
         with pytest.raises(ValueError, match="does not do"):
-            S3Folder("s3://trades/lake/", options={"s3.signer.uri": "https://signer"})
+            ObjectFolder("s3://trades/lake/", options={"s3.signer.uri": "https://signer"})
