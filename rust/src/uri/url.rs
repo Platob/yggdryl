@@ -112,14 +112,36 @@ impl Url {
 
     /// Append `path` to this URL, one segment per component.
     ///
-    /// This is [`Path::join`] for URLs: `.` and `..` resolve exactly as
-    /// [`Self::joinpath`] resolves them, and an absolute `path` replaces this
-    /// URL's path rather than extending it.
+    /// This is [`Path::join`] for URLs, so it takes a *platform* path and each
+    /// component is a name rather than URI text: what a segment cannot carry
+    /// literally is percent-encoded, which is what lets a real filename -
+    /// `100%.csv`, `café.csv`, `a b.csv` - be joined at all.
+    /// [`joinpath`](Self::joinpath) is the door for text that is already URI
+    /// syntax. `.` and `..` resolve exactly as [`joinpath`](Self::joinpath)
+    /// resolves them, and an absolute `path` replaces this URL's path rather
+    /// than extending it.
+    ///
+    /// ```
+    /// use yggdryl::Url;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let lake = Url::from_str("file:///lake")?;
+    ///
+    /// assert_eq!(lake.join_path("100%.csv")?.to_string(), "file:///lake/100%25.csv");
+    /// assert_eq!(
+    ///     lake.join_path("year=2024/a b.csv")?.to_string(),
+    ///     "file:///lake/year=2024/a%20b.csv"
+    /// );
+    /// // A name is one segment: its separators are escaped, never promoted.
+    /// assert_eq!(lake.join_path("a/b")?, lake.joinpath("a")?.joinpath("b")?);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns an error when a component is not valid UTF-8, when a component
-    /// cannot be encoded as a path segment, or when `..` escapes the root.
+    /// Returns an error when a component is not valid UTF-8, or when the joined
+    /// path is not valid for this URL.
     pub fn join_path(&self, path: impl AsRef<Path>) -> Result<Self> {
         use std::path::Component;
 
@@ -127,14 +149,17 @@ impl Url {
         let mut joined = self.clone();
         for component in path.components() {
             joined = match component {
-                Component::Prefix(_) | Component::RootDir => Self::from_path(path)?,
+                // An absolute path replaces this URL outright, so the whole
+                // of it is converted and the components after the root are
+                // already in that result.
+                Component::Prefix(_) | Component::RootDir => return Self::from_path(path),
                 Component::CurDir => continue,
                 Component::ParentDir => joined.joinpath("..")?,
                 Component::Normal(segment) => {
                     let segment = segment
                         .to_str()
                         .ok_or_else(|| parse_error("path", 0, "file path must be valid UTF-8"))?;
-                    joined.joinpath(segment)?
+                    joined.joinpath(&percent_encode_segment(segment))?
                 }
             };
         }

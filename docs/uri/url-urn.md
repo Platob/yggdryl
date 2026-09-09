@@ -12,7 +12,7 @@ This page owns `Url` and `Urn`, the two narrowed forms of the canonical [`Uri`](
 | Conversion | `Uri` to `Url` or `Urn` and back: no re-parsing; `Url` and `Urn` refuse each other |
 | URN filenames | [accessors](path.md) read the namespace-specific string, not a slash path; setters leave the namespace alone |
 | `default_port` | the port a client dials when the authority omits one: `http` 80, `https` 443, `postgres` 5432, `mysql` 3306, else `None` |
-| `is_local`, `join_path` | scheme is `file:`; `Path::join` for URLs, one segment per component |
+| `is_local`, `join_path` | scheme is `file:`; `Path::join` for URLs, one segment per component, each component percent-encoded as the name it is |
 | `exists`, `is_dir`, `is_file` | local URL only; `false` for every other scheme, no network call |
 | `local_mime_type` | existing directory: [`MimeType::DIRECTORY`](../types/scalar.md); local file: from its name, else `FILE`; remote: `mime_type` |
 | Bindings | Python answers `default_port`, `is_local`, `local_mime_type`, and reaches `join_path` by handing `joinpath` an `os.PathLike`; JavaScript is Rust-only here. The three predicates exist in both bindings |
@@ -145,7 +145,8 @@ Rust and Python; JavaScript reaches none of this section. The `exists`, `is_dir`
 - `urn:a$:value` -> parse error with target `urn` and the offending byte offset, 5.
 - `urn:example:reports/data.csv` -> file name `data.csv`; `set_file_name("bad/name")` refuses, URN unchanged.
 - `https://example.test:8443` -> `default_port` is still `Some(443)`; a written port is never read.
-- `join_path` with an absolute path -> replaces the path; `..` escaping the root or a non-UTF-8 component -> refused.
+- `join_path` with an absolute path -> replaces the path outright, components and all; a non-UTF-8 component -> refused.
+- `join_path("100%.csv")` -> `.../100%25.csv`; `joinpath("100%.csv")` -> refused, because that door takes URI text.
 
 ## Commands
 

@@ -275,11 +275,15 @@ impl UriPath {
     }
 
     /// Remove the final filename extension and report whether one existed.
+    ///
+    /// A name whose stem alone would be a dot segment - `..a` leaves `.` -
+    /// keeps its extension: the path would otherwise stop naming the file and
+    /// start naming the directory holding it.
     pub fn remove_extension(&mut self) -> bool {
         let Some(stem) = self.stem() else {
             return false;
         };
-        if self.extension().is_none() {
+        if self.extension().is_none() || is_dot_segment(stem) {
             return false;
         }
         let stem = SmolStr::new(stem);
@@ -288,6 +292,9 @@ impl UriPath {
     }
 
     /// Remove every filename extension and report whether any existed.
+    ///
+    /// The base is kept only while it still names something, on the same rule
+    /// as [`remove_extension`](Self::remove_extension).
     pub fn clear_extensions(&mut self) -> bool {
         let Some(file_name) = self.file_name() else {
             return false;
@@ -295,6 +302,9 @@ impl UriPath {
         let Some(base_end) = compound_extension_start(file_name) else {
             return false;
         };
+        if is_dot_segment(&file_name[..base_end]) {
+            return false;
+        }
         let base = SmolStr::new(&file_name[..base_end]);
         self.replace_file_name(base.as_str());
         true
@@ -475,7 +485,10 @@ fn normalize_path_text(value: &str, absolute: bool) -> String {
         }
     }
     let mut rendered = join_parts(&parts, absolute);
-    if trailing_slash && !rendered.ends_with('/') {
+    // A relative path that resolves to no name at all is where it started, not
+    // the root: `./` must not come back absolute just because it ended in a
+    // separator.
+    if trailing_slash && !rendered.is_empty() && !rendered.ends_with('/') {
         rendered.push('/');
     }
     rendered
