@@ -3141,8 +3141,9 @@ pub struct Authority(SmolStr);
   pub fn stable_hash(&self) -> u64
   pub struct UriParents<'a>
   pub struct Url(Uri);
-  pub fn from_str(value: &str) -> Result<Self>
-  pub fn from_path(value: impl AsRef<Path>) -> Result<Self>
+  pub fn from_str(value: &str) -> Result<Self>  (strict: text naming no root is not a location)
+  pub fn from_path(value: impl AsRef<Path>) -> Result<Self>  (a path naming no root is rooted at the working directory)
+  pub fn from_location(value: &str) -> Result<Self>  (a URL where the text names one, else a path through from_path)
   pub fn from_uri(value: Uri) -> Result<Self>
   pub fn from_json(value: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>

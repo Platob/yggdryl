@@ -86,7 +86,7 @@ pub(crate) fn core_url_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreUrl>
         return CoreUrl::from_uri(value.inner.clone().into_uri()).map_err(value_error);
     }
     if let Ok(value) = value.extract::<&str>() {
-        return CoreUrl::from_str(value).map_err(value_error);
+        return CoreUrl::from_location(value).map_err(value_error);
     }
     if value.hasattr("__fspath__")? {
         return CoreUrl::from_path(path_string_from_value(value)?).map_err(value_error);
