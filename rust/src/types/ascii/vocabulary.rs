@@ -112,34 +112,6 @@ impl AsciiEnum {
         "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F", "G", "H",
     ];
 
-    /// FIX's `MsgTypeCodeSet`, the union across every version, sorted.
-    ///
-    /// Case-bearing, and that is load-bearing: `A` is Logon and `a` is
-    /// QuoteStatusRequest, `Q` is DontKnowTrade and `q` is
-    /// OrderMassCancelRequest, `S` is Quote and `s` is NewOrderCross. The
-    /// crate's one fold serves names, keys and code spellings and must never
-    /// touch one of these values.
-    ///
-    /// That is also why this listing is **not** in [`Self::PREBUILT`], where
-    /// every other vocabulary sits. A `field:enum` document maps a member
-    /// *name* to a value, and [`AsciiEnum::member_name`] upper-cases, so `A`
-    /// and `a` would name one member and twenty-three of these values would
-    /// be lost. Inventing a distinguishing spelling would be inventing a name
-    /// the specification does not have, so the constant stays the datatype's
-    /// vocabulary and `msgtype` answers no prebuilt enum.
-    pub const MSGTYPES: &'static [&'static str] = &[
-        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "AA", "AB", "AC", "AD", "AE", "AF",
-        "AG", "AH", "AI", "AJ", "AK", "AL", "AM", "AN", "AO", "AP", "AQ", "AR", "AS", "AT", "AU",
-        "AV", "AW", "AX", "AY", "AZ", "B", "BA", "BB", "BC", "BD", "BE", "BF", "BG", "BH", "BI",
-        "BJ", "BK", "BL", "BM", "BN", "BO", "BP", "BQ", "BR", "BS", "BT", "BU", "BV", "BW", "BX",
-        "BY", "BZ", "C", "CA", "CB", "CC", "CD", "CE", "CF", "CG", "CH", "CI", "CJ", "CK", "CL",
-        "CM", "CN", "CO", "CP", "CQ", "CR", "CS", "CT", "CU", "CV", "CW", "CX", "CY", "CZ", "D",
-        "DA", "DB", "DC", "DD", "DE", "DF", "DG", "DH", "DI", "DJ", "DK", "DL", "DM", "DN", "DO",
-        "E", "F", "G", "H", "J", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "X", "Y",
-        "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q",
-        "r", "s", "t", "u", "v", "w", "x", "y", "z",
-    ];
-
     /// Which way a captured line moved.
     ///
     /// Two members and no third. A row whose line does not say which way it

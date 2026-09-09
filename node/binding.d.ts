@@ -24,6 +24,7 @@ export {
   Url,
   Urn,
   Scalar,
+  Version,
   Xxh3,
   Xxh128,
   Xxh32,
@@ -61,6 +62,7 @@ import type {
   Url,
   Urn,
   Scalar,
+  Version,
   Xxh3,
   Xxh128,
   Xxh32,
@@ -75,6 +77,12 @@ import {
   FixMsg,
   FixCodec,
   FixRegistry,
+  FixDefinitionIterator,
+  FixMessages,
+  MsgType,
+  MsgTypeIterator,
+  Ulconfig,
+  Ulconfigs,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -99,6 +107,12 @@ export type {
   FixMsg,
   FixCodec,
   FixRegistry,
+  FixDefinitionIterator,
+  FixMessages,
+  MsgType,
+  MsgTypeIterator,
+  Ulconfig,
+  Ulconfigs,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -424,6 +438,16 @@ declare module './index' {
     [Symbol.iterator](): Generator<[string, Scalar]>
   }
 
+  interface FixDefinitionIterator extends IterableIterator<Field> {}
+  interface MsgTypeIterator extends IterableIterator<MsgType> {}
+  interface Ulconfigs extends IterableIterator<Ulconfig> {}
+  interface FixMessages extends IterableIterator<FixMsg> {
+    next(): IteratorResult<FixMsg>
+  }
+  interface FixCodec {
+    transformRecord(record: unknown, enrich?: boolean | null): FixMessages
+  }
+
   interface Field {
     defaultJSValue(): unknown
     defaultJSHint(): JSValueHint
@@ -646,7 +670,7 @@ export type VariantField = FieldOf<'variant', unknown>
 /** One 128-bit identifier; values read back as the hyphenated spelling. */
 export type UuidField = FieldOf<'uuid', string>
 /** One canonical, numerically ordered version. */
-export type VersionField = FieldOf<'version', string>
+export type VersionField = FieldOf<'version', Version>
 
 /** One validated, canonical location. */
 export type UrlField = FieldOf<'url', string>
@@ -725,7 +749,9 @@ type DefaultFieldInput<K extends DataTypeId, V> = K extends
         : K extends
               'binary' | 'fixed_size_binary' | 'large_binary' | 'binary_view'
           ? Uint8Array | ArrayBuffer
-          : V
+          : K extends 'version'
+            ? Version | string
+            : V
 type NamedField<
   K extends DataTypeId,
   V,
@@ -1008,6 +1034,10 @@ type MapInputKeyValue<F extends Field> =
 
 /** Literal-name/nullability overloads that infer exact Field tuples. */
 export interface FieldsNamespace {
+  version<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'version', Version, N, O>
   null<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
@@ -2772,6 +2802,15 @@ export interface FixMsgConstructor {
   readonly prototype: FixMsg
 }
 
+/** One native configuration with ordinary JavaScript scalar intake. */
+export interface UlconfigConstructor {
+  new (mbean: string | null, attributes: unknown, envelope: unknown): Ulconfig
+  readonly prototype: Ulconfig
+  fromJsonBytes(body: string | ArrayBufferLike | ArrayBufferView): Ulconfigs
+  fromJsonScalar(document: unknown): Ulconfigs
+  fromFixmsg(message: FixMsg): Ulconfig
+}
+
 /** `yggdryl::fix`: the FIX dictionary, its message, and the process default. */
 export interface Fix {
   /**
@@ -2792,6 +2831,11 @@ export interface Fix {
   readonly FixMsg: FixMsgConstructor
   /** One dictionary, reading captured lines into messages. */
   readonly FixCodec: typeof FixCodec
+  /** Immutable registry-owned message definitions. */
+  readonly MsgType: abstract new () => MsgType
+  readonly FixMessages: abstract new () => FixMessages
+  readonly Ulconfig: UlconfigConstructor
+  readonly Ulconfigs: abstract new () => Ulconfigs
   /**
    * The fixed root every message answers as, built from one dictionary.
    *
@@ -2811,6 +2855,8 @@ export interface Fix {
   schemaTags(): number[]
   /** The fields this crate defines on its own branch, in tag order. */
   crateFields(): Field[]
+  /** The native ULBridge scalar definitions. */
+  ulbridgeFields(): Field[]
   /** The process-wide registry, loading it on the first call. */
   globalRegistry(): FixRegistry
   /** Install the process-wide registry before anything resolves it. */

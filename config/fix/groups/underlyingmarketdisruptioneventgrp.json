@@ -1,0 +1,23 @@
+{
+  "name": "underlyingmarketdisruptioneventgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingmarketdisruptioneventcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingmarketdisruptioneventcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingMarketDisruptionEvents(41864) > 0.",
+    "display": "UnderlyingMarketDisruptionEventGrp",
+    "fix:component": "underlyingmarketdisruptioneventcomponent",
+    "fix:counter": "41864"
+  }
+}

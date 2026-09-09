@@ -11,10 +11,10 @@ A capture already in Arrow is read where it sits: `FixBatchReader::from_column` 
 | Schema | answered before the first row is read, from the options and the [dictionary](registry.md) alone, never from the data |
 | Order | the source's own columns lead the row, the [fixed columns](capture.md#the-columns-are-the-tags) follow |
 | Clash | a carried column whose name a FIX column takes is dropped, never renamed and never duplicated |
-| Rows | a row in is a row out, so a batch joins back to its source by position; `dedup` is the one exception |
-| Refuses | nothing a row's content can do; the `Result` is for I/O and for options that do not make a root field |
+| Rows | one output row per emitted message; bulk and wildcard bodies expand, with carried source columns repeated |
+| Errors | typed I/O, schema and parsing failures; malformed bulk input reports its location and stops the stream |
 | Per row | `branch`, `beginstring`, `sep` and `direction` are parameters read from the row, and are still carried into it |
-| Lazy | one batch is pulled, its rows built, and it is dropped; the source is never concatenated |
+| Lazy | source batches and configuration cursors are consumed incrementally under the output batch bound |
 | Classify | `classify_arrow_array` builds no message and resolves nothing against a dictionary |
 | Bindings | Rust and Python (`parse_arrow_reader`, `classify_arrow_array`); no JavaScript binding |
 
@@ -68,7 +68,7 @@ One column of frames in, batches out, the capture's own columns still in front o
     assert_eq!(&columns[columns.len() - 2..], ["nofixentries", "nounmappedfixentries"]);
 
     let rows: usize = read.map(|batch| batch.expect("a batch").num_rows()).sum();
-    assert_eq!(rows, 1, "a row in is a row out");
+    assert_eq!(rows, 1, "one ordinary frame per input row");
     ```
 
 === "Python"
@@ -107,7 +107,7 @@ One column of frames in, batches out, the capture's own columns still in front o
     assert columns[-2:] == ["nofixentries", "nounmappedfixentries"]
 
     held = read.read_all()
-    assert held.num_rows == 2, "a row in is a row out"
+    assert held.num_rows == 2, "one ordinary frame per input row"
     assert held.column("55").to_pylist() == ["AAPL", "MSFT"]
     assert held.column("url")[0].as_py() == "file:///capture.log"
     # The verb in front of the frame beats the option that named a default.
@@ -116,7 +116,7 @@ One column of frames in, batches out, the capture's own columns still in front o
 
 ## The source's columns lead the row
 
-Where a line was read from is what a monitor orders and joins on, so the source's own columns lead the row and the fixed columns follow, exactly as they do for a [capture read line by line](capture.md#a-captures-own-columns-lead-the-row). Because the row counts match, carrying them is a slice rather than a join; which of them survive a FIX column's claim on a name is decided once, from the schema, rather than per row.
+Where a line was read from is what a monitor orders and joins on, so the source's own columns lead the row and the fixed columns follow, exactly as they do for a [capture read line by line](capture.md#a-captures-own-columns-lead-the-row). Each emitted message receives the source row's carried values. A bulk body can therefore repeat the same URL, row number and timestamp. Which source columns survive a FIX column's claim on a name is decided once from the schema.
 
 ## The options are the reader's arguments, per stream
 
@@ -152,11 +152,66 @@ A column is the caller speaking per row and an option is the caller speaking per
 
 Each one is still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
 
-## A row in is a row out
+## One row per message
 
-The output row count equals the input row count. That is what lets a parsed capture be joined back to its source by position, and it is why nothing a row's *content* can do is an error: a frame the reader refuses is a message with nothing in it, a row with no pairs is a row with no entries, and the `Result` is for I/O.
+Ordinary frames produce one row each. Bulk configuration arrays emit every
+response, and wildcard responses emit every selected MBean. Empty bulk and
+wildcard answers emit zero rows. Join a parsed capture by its carried source
+identifier rather than assuming row positions still align.
 
-`dedup` is the one exception, and it is off by default for exactly that reason: with it on, a row whose digest equals the one before it is dropped, and the batch no longer aligns with its source. The comparison is with the row before only, so a republication one row later is kept.
+`dedup` is off by default. When enabled, it removes adjacent messages with equal
+digests after expansion. `FixMsg::from_record` explicitly requires exactly one
+message and refuses zero or multiple results; `FixCodec::transform_record`
+returns the iterator when expansion is wanted.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::{DataType, FixBatchReader, FixOptions, FixRegistry, Scalar};
+
+    let body = br#"[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]"#;
+    let field = DataType::from_fields([
+        DataType::Int64.required_field("rownum"),
+        DataType::Binary.required_field("body"),
+    ])?.required_field("capture");
+    let rows = Scalar::from_sequence([Scalar::from_sequence([
+        Scalar::from(7_i64), Scalar::from(body.to_vec()),
+    ])]);
+    let batch = yggdryl::arrow::batch_from_value(&field, &rows)?;
+    let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+    let registry = Arc::new(FixRegistry::new().with_ulbridge_fields()?);
+    let reader = FixBatchReader::from_column(registry, source, "body", FixOptions::new())?;
+    let mut count = 0;
+    for batch in reader {
+        let values = yggdryl::arrow::batch_to_value(&batch?)?;
+        for row in values.as_sequence().expect("rows") {
+            assert_eq!(row.get(0), Some(&Scalar::from(7_i64)));
+            count += 1;
+        }
+    }
+    assert_eq!(count, 2);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+    from yggdryl.fix import FixRegistry, parse_arrow_reader
+
+    body = b'[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]'
+    source = pa.table({"rownum": pa.array([7], pa.int64()), "body": pa.array([body], pa.binary())})
+    registry = FixRegistry()
+    registry.with_ulbridge_fields()
+    result = parse_arrow_reader(source, registry, "body").read_all()
+    assert result.num_rows == 2
+    assert result.column("rownum").to_pylist() == [7, 7]
+    assert result.column("body").to_pylist() == [body, body]
+    ```
+
+The FIX Arrow reader is exposed in Rust and Python. JavaScript exposes the
+native `FixCodec.transformRecord` message iterator and `FixMsg.intoRow`
+projection; it has no FIX Arrow reader binding.
 
 ## What a column says about itself
 
@@ -244,7 +299,7 @@ The classifying stage and the parsing one therefore cannot disagree: they are th
 
 ## Edges
 
-- A frame the reader cannot read is a row with nothing in it, so the count still matches the capture's.
+- Ordinary unframed text can produce an empty message; bulk parsing errors propagate, and output counts follow message expansion.
 - A carried column whose name a FIX column takes is dropped rather than renamed: two columns of one name is not a schema.
 - A `direction` column is read as a parameter *and* carried, so a row shows both the value supplied and the direction read, in tag `385`.
 - `classify_arrow_array` takes `Binary`, `LargeBinary`, `Utf8` and `LargeUtf8`; another column type is refused naming what it got.

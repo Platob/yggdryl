@@ -1,0 +1,23 @@
+{
+  "name": "requestedpartyrolegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "requestedpartyrolecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "requestedpartyrolecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Identifies the type of party role requested. Required if NoRequestedPartyRoles > 0.",
+    "display": "RequestedPartyRoleGrp",
+    "fix:component": "requestedpartyrolecomponent",
+    "fix:counter": "1508"
+  }
+}

@@ -1,0 +1,323 @@
+{
+  "name": "deliverystream",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "deliverystreamtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamtype"
+        }
+      },
+      {
+        "name": "nodeliverystreamcommoditysources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nodeliverystreamcommoditysources"
+        }
+      },
+      {
+        "name": "deliverystreamcommoditysourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "deliverystreamcommoditysourcegrp"
+        }
+      },
+      {
+        "name": "deliverystreampipeline",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreampipeline"
+        }
+      },
+      {
+        "name": "deliverystreamentrypoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamentrypoint"
+        }
+      },
+      {
+        "name": "deliverystreamwithdrawalpoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamwithdrawalpoint"
+        }
+      },
+      {
+        "name": "deliverystreamdeliverypoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamdeliverypoint"
+        }
+      },
+      {
+        "name": "deliverystreamdeliverypointsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamdeliverypointsource"
+        }
+      },
+      {
+        "name": "deliverystreamdeliverypointdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamdeliverypointdesc"
+        }
+      },
+      {
+        "name": "deliverystreamdeliveryrestriction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamdeliveryrestriction"
+        }
+      },
+      {
+        "name": "deliverystreamdeliverycontingency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamdeliverycontingency"
+        }
+      },
+      {
+        "name": "deliverystreamdeliverycontingentpartyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamdeliverycontingentpartyside"
+        }
+      },
+      {
+        "name": "deliverystreamdeliveratsourceindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamdeliveratsourceindicator"
+        }
+      },
+      {
+        "name": "deliverystreamriskapportionment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamriskapportionment"
+        }
+      },
+      {
+        "name": "deliverystreamriskapportionmentsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamriskapportionmentsource"
+        }
+      },
+      {
+        "name": "nodeliverystreamcycles",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nodeliverystreamcycles"
+        }
+      },
+      {
+        "name": "deliverystreamcyclegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "deliverystreamcyclegrp"
+        }
+      },
+      {
+        "name": "deliverystreamtitletransferlocation",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamtitletransferlocation"
+        }
+      },
+      {
+        "name": "deliverystreamtitletransfercondition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamtitletransfercondition"
+        }
+      },
+      {
+        "name": "deliverystreamimporterofrecord",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamimporterofrecord"
+        }
+      },
+      {
+        "name": "deliverystreamnegativetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamnegativetolerance"
+        }
+      },
+      {
+        "name": "deliverystreampositivetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreampositivetolerance"
+        }
+      },
+      {
+        "name": "deliverystreamtoleranceunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamtoleranceunitofmeasure"
+        }
+      },
+      {
+        "name": "deliverystreamtolerancetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamtolerancetype"
+        }
+      },
+      {
+        "name": "deliverystreamtoleranceoptionside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamtoleranceoptionside"
+        }
+      },
+      {
+        "name": "deliverystreamtotalpositivetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamtotalpositivetolerance"
+        }
+      },
+      {
+        "name": "deliverystreamtotalnegativetolerance",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamtotalnegativetolerance"
+        }
+      },
+      {
+        "name": "deliverystreamnotionalconversionfactor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamnotionalconversionfactor"
+        }
+      },
+      {
+        "name": "deliverystreamtransportequipment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamtransportequipment"
+        }
+      },
+      {
+        "name": "deliverystreamelectingpartyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamelectingpartyside"
+        }
+      },
+      {
+        "name": "deliverystreamrouteorcharter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "deliverystreamrouteorcharter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The DeliveryStream component is used to optionally specify the attributes of a physical delivery stream in a swap.",
+    "display": "DeliveryStream"
+  }
+}

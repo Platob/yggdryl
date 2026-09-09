@@ -120,9 +120,6 @@ pub(crate) const CFI_EXTENSION_NAME: &str = "yggdryl.cfi";
 /// The Arrow extension name of FIX's side of a trade.
 pub(crate) const SIDE_EXTENSION_NAME: &str = "yggdryl.side";
 
-/// The Arrow extension name of FIX's message type.
-pub(crate) const MSGTYPE_EXTENSION_NAME: &str = "yggdryl.msgtype";
-
 /// The Arrow extension name of a captured line's direction.
 pub(crate) const DIRECTION_EXTENSION_NAME: &str = "yggdryl.msgdirection";
 
@@ -150,13 +147,6 @@ pub(crate) const CFI_WIDTH: usize = 6;
 /// five, so four is room without waste.
 pub(crate) const SIDE_WIDTH: usize = 4;
 
-/// The storage width of FIX's message type.
-///
-/// Eight rather than the tight fit: the standard's own values are one and two
-/// characters (`D`, `AB`), but a venue's are the ones that run long, and
-/// widening later would change a discriminant, which is a wire contract.
-pub(crate) const MSGTYPE_WIDTH: usize = 8;
-
 /// The storage width of a captured line's direction.
 ///
 /// `SENT` and `RECV`, spelled out rather than abbreviated because the stored
@@ -172,8 +162,7 @@ pub(crate) const STATE_WIDTH: usize = 8;
 
 /// The storage width of how long an order stands.
 ///
-/// The standard's values are one character; eight for the same reason a
-/// message type is eight, which is that a venue's are the ones that run long.
+/// The standard's values are one character; eight leaves room for venue codes.
 pub(crate) const TIMEINFORCE_WIDTH: usize = 8;
 
 impl DataType {
@@ -187,7 +176,6 @@ impl DataType {
         ("mic", DataType::Mic, MIC_WIDTH as i32),
         ("cfi", DataType::Cfi, CFI_WIDTH as i32),
         ("side", DataType::Side, SIDE_WIDTH as i32),
-        ("msgtype", DataType::MsgType, MSGTYPE_WIDTH as i32),
         (
             "msgdirection",
             DataType::MsgDirection,
@@ -277,7 +265,6 @@ impl DataType {
             Self::Mic => Some("mic"),
             Self::Cfi => Some("cfi"),
             Self::Side => Some("side"),
-            Self::MsgType => Some("msgtype"),
             Self::MsgDirection => Some("msgdirection"),
             Self::State => Some("state"),
             Self::TimeInForce => Some("timeinforce"),
@@ -307,7 +294,6 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
         DataType::Mic => Some(MIC_EXTENSION_NAME),
         DataType::Cfi => Some(CFI_EXTENSION_NAME),
         DataType::Side => Some(SIDE_EXTENSION_NAME),
-        DataType::MsgType => Some(MSGTYPE_EXTENSION_NAME),
         DataType::MsgDirection => Some(DIRECTION_EXTENSION_NAME),
         DataType::State => Some(STATE_EXTENSION_NAME),
         DataType::TimeInForce => Some(TIMEINFORCE_EXTENSION_NAME),
@@ -327,7 +313,6 @@ pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
         MIC_EXTENSION_NAME => DataType::Mic,
         CFI_EXTENSION_NAME => DataType::Cfi,
         SIDE_EXTENSION_NAME => DataType::Side,
-        MSGTYPE_EXTENSION_NAME => DataType::MsgType,
         DIRECTION_EXTENSION_NAME => DataType::MsgDirection,
         STATE_EXTENSION_NAME => DataType::State,
         TIMEINFORCE_EXTENSION_NAME => DataType::TimeInForce,
@@ -372,7 +357,6 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Mic => code_text::<MIC_WIDTH>(bytes),
         DataType::Cfi => code_text::<CFI_WIDTH>(bytes),
         DataType::Side => code_text::<SIDE_WIDTH>(bytes),
-        DataType::MsgType => code_text::<MSGTYPE_WIDTH>(bytes),
         DataType::MsgDirection => code_text::<DIRECTION_WIDTH>(bytes),
         DataType::State => code_text::<STATE_WIDTH>(bytes),
         DataType::TimeInForce => code_text::<TIMEINFORCE_WIDTH>(bytes),
@@ -446,7 +430,6 @@ impl DataType {
             Self::Mic => Some(MIC_WIDTH as i32),
             Self::Cfi => Some(CFI_WIDTH as i32),
             Self::Side => Some(SIDE_WIDTH as i32),
-            Self::MsgType => Some(MSGTYPE_WIDTH as i32),
             Self::MsgDirection => Some(DIRECTION_WIDTH as i32),
             Self::State => Some(STATE_WIDTH as i32),
             Self::TimeInForce => Some(TIMEINFORCE_WIDTH as i32),

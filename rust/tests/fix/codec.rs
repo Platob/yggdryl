@@ -1,19 +1,14 @@
 //! The codec's readers, over the committed dictionary and a real capture.
 
-use std::path::PathBuf;
+use super::OneMessage;
+
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, FixCodec, FixEntry, FixRegistry, Scalar, Version};
+use yggdryl::{DataType, FixCategory, FixCodec, FixEntry, FixRegistry, Scalar, Version};
 
 fn registry() -> Arc<FixRegistry> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
-    Arc::new(FixRegistry::from_handle(&folder).expect("the committed dictionary loads"))
+    super::committed_registry()
 }
 
 fn codec() -> FixCodec {
@@ -51,7 +46,7 @@ fn every_capture_row_builds_and_none_is_skipped() {
     let reader = reader();
     for row in CAPTURE {
         let message = reader
-            .transform_line(row.as_bytes(), false)
+            .one_line(row.as_bytes(), false)
             .unwrap_or_else(|error| panic!("{row}: {error}"));
         // A row with no type is named `unknown` rather than refused: every
         // pair that parsed became a field and the entries record the row.
@@ -60,9 +55,9 @@ fn every_capture_row_builds_and_none_is_skipped() {
 
     // Empty input is the one typed error: a line that merely held nothing is
     // `Ok` and says so.
-    assert!(reader.transform_line(b"", false).is_err());
+    assert!(reader.one_line(b"", false).is_err());
     let empty = reader
-        .transform_line(b"no level printed by this plugin", false)
+        .one_line(b"no level printed by this plugin", false)
         .unwrap();
     assert_eq!(empty.as_field().name(), "unknown");
     assert!(empty.entries().is_empty());
@@ -83,14 +78,14 @@ fn a_framed_row_takes_its_type_from_the_frame_and_its_prefix_is_dropped() {
             "D",
         ),
     ] {
-        let message = reader.transform_line(row.as_bytes(), false).expect(row);
+        let message = reader.one_line(row.as_bytes(), false).expect(row);
         assert_eq!(message.as_field().name(), msgtype, "{row}");
     }
 
     // The prose in front of the frame is not a field, and nothing after the
     // checksum is part of the message.
     let framed = reader
-        .transform_line(
+        .one_line(
             b"sending >> 8=FIX.4.2|9=176|35=D|10=203| << queued seq=1092",
             false,
         )
@@ -104,13 +99,263 @@ fn a_framed_row_takes_its_type_from_the_frame_and_its_prefix_is_dropped() {
 }
 
 #[test]
+fn message_codes_keep_the_complete_text_the_wire_declares() {
+    let reader = reader();
+    for code in ["U1", "UABC", "ConfigurationPlugin", "P Report Ack"] {
+        for separator in [b'|', 1] {
+            let line = format!(
+                "MSGTYPE={code}{sep}SYMBOL=AAPL{sep}",
+                sep = char::from(separator)
+            );
+            assert_eq!(FixCodec::infer_msgtype_text(&line), Some(code));
+            let message = reader.one_line(line.as_bytes(), false).unwrap();
+            assert_eq!(message.by_tag(35).unwrap().as_str(), Some(code));
+            assert_eq!(message.by_tag(55).unwrap().as_str(), Some("AAPL"));
+            assert_eq!(
+                message
+                    .as_field()
+                    .fields()
+                    .iter()
+                    .find(|field| field.as_fix().tag().unwrap() == Some(35))
+                    .unwrap()
+                    .dtype(),
+                &DataType::Utf8,
+            );
+            assert_eq!(message.into_bytes(separator), line.as_bytes());
+        }
+    }
+}
+
+#[test]
+fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
+    let reader = reader();
+    let wire = b"8=FIX.4.4|35=D|453=2|448=A|447=D|452=1|802=2|523=DESK|803=1|523=CLIENT|803=2|448=B|447=D|452=3|802=1|523=OTHER|803=3|55=AAPL|10=0|";
+    let message = reader.transform_fix_line(wire, false).unwrap();
+    assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
+    assert_eq!(
+        message.by_path("Parties.0.PartyID").unwrap().as_str(),
+        Some("A")
+    );
+    assert_eq!(
+        message.by_path("Parties.1.PartyID").unwrap().as_str(),
+        Some("B")
+    );
+    assert_eq!(
+        message.by_path("Parties.0.NoPartySubIDs").unwrap(),
+        &Scalar::from(2_i32)
+    );
+    assert_eq!(
+        message
+            .by_path("Parties.0.PtysSubGrp.1.PartySubID")
+            .unwrap()
+            .as_str(),
+        Some("CLIENT")
+    );
+    assert_eq!(
+        message
+            .by_path("Parties.1.PtysSubGrp.0.PartySubID")
+            .unwrap()
+            .as_str(),
+        Some("OTHER")
+    );
+    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("AAPL"));
+    assert_eq!(message.by_tag(10).unwrap().as_str(), Some("0"));
+    assert!(
+        message.get_by_tag(448).is_none(),
+        "members stay inside the component"
+    );
+    assert_eq!(message.into_bytes(b'|'), wire);
+    assert!(message.anomalies().next().is_none());
+
+    let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
+    let row = message.into_row(&schema).unwrap();
+    let parties = row
+        .get(schema.index_of("parties").unwrap())
+        .unwrap()
+        .as_sequence()
+        .unwrap();
+    assert_eq!(parties.len(), 2, "projection retains parsed occurrences");
+}
+
+#[test]
+fn numeric_group_member_anomalies_keep_omitted_and_repeated_occurrences_aligned() {
+    let wire = b"35=D|453=5|448=OMITTED|448=INVALID|452=bogus|448=VALID|452=1|448=OMITTED2|448=OVERFLOW|452=2147483648|10=0|";
+    let message = reader().transform_fix_line(wire, false).unwrap();
+    assert!(message.by_path("Parties.0.PartyRole").unwrap().is_null());
+    assert!(message.by_path("Parties.1.PartyRole").unwrap().is_null());
+    assert_eq!(
+        message.by_path("Parties.2.PartyRole").unwrap(),
+        &Scalar::from(1_i32)
+    );
+    assert!(message.by_path("Parties.3.PartyRole").unwrap().is_null());
+    assert!(message.by_path("Parties.4.PartyRole").unwrap().is_null());
+    let anomalies: Vec<_> = message.anomalies().collect();
+    assert_eq!(
+        anomalies,
+        [
+            yggdryl::FixAnomaly::Untyped {
+                tag: 452,
+                key: "452",
+                value: "bogus",
+            },
+            yggdryl::FixAnomaly::Untyped {
+                tag: 452,
+                key: "452",
+                value: "2147483648",
+            },
+        ]
+    );
+    assert_eq!(message.into_bytes(b'|'), wire);
+}
+
+#[test]
+fn numeric_group_counts_describe_arrivals_without_allocating_stated_lengths() {
+    let reader = reader();
+    for (count, members, held) in [
+        ("0", "", 0),
+        ("0", "448=A|", 1),
+        ("2", "448=A|447=D|", 1),
+        ("invalid", "448=A|", 1),
+        ("2147483648", "448=A|", 1),
+        ("-1", "448=A|", 1),
+    ] {
+        let wire = format!("35=D|453={count}|{members}55=AAPL|10=0|");
+        let message = reader.transform_fix_line(wire.as_bytes(), false).unwrap();
+        assert_eq!(
+            message
+                .by_name("Parties")
+                .unwrap()
+                .as_sequence()
+                .unwrap()
+                .len(),
+            held,
+            "{wire}"
+        );
+        assert_eq!(message.by_tag(55).unwrap().as_str(), Some("AAPL"));
+        assert_eq!(message.into_bytes(b'|'), wire.as_bytes());
+        match count.parse::<i32>() {
+            Ok(stated) => {
+                assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(stated));
+                assert_eq!(
+                    message.anomalies().any(|anomaly| matches!(
+                        anomaly,
+                        yggdryl::FixAnomaly::Miscounted { tag: 453, .. }
+                    )),
+                    i64::from(stated) != held as i64,
+                    "{wire}",
+                );
+            }
+            Err(_) => {
+                assert!(message.by_tag(453).unwrap().is_null());
+                assert!(
+                    message.anomalies().any(|anomaly| matches!(
+                        anomaly,
+                        yggdryl::FixAnomaly::Untyped { tag: 453, .. }
+                    )),
+                    "{wire}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn an_unknown_numeric_group_member_closes_the_scope_without_losing_pairs() {
+    let reader = reader();
+    let wire = b"35=D|453=1|448=A|9999=outside|447=D|55=AAPL|10=0|";
+    let message = reader.transform_fix_line(wire, false).unwrap();
+    assert_eq!(
+        message.by_path("Parties.0.PartyID").unwrap().as_str(),
+        Some("A")
+    );
+    assert_eq!(message.by_tag(9999).unwrap().as_str(), Some("outside"));
+    assert_eq!(message.by_tag(447).unwrap().as_str(), Some("D"));
+    assert_eq!(message.into_bytes(b'|'), wire);
+}
+
+#[test]
+fn nested_counter_anomalies_follow_each_counter_across_reordered_siblings() {
+    let mut scoped = registry().as_ref().clone();
+    let mut left = DataType::list(
+        DataType::from_fields([scoped.field_by_tag(523).unwrap().clone()])
+            .unwrap()
+            .required_field("leftparty"),
+    )
+    .nullable_field("leftparties");
+    left.as_fix_mut().set_counter(802).unwrap();
+    let mut right = DataType::list(
+        DataType::from_fields([scoped.field_by_tag(524).unwrap().clone()])
+            .unwrap()
+            .required_field("rightparty"),
+    )
+    .nullable_field("rightparties");
+    right.as_fix_mut().set_counter(539).unwrap();
+    scoped
+        .insert_definition(FixCategory::Groups, left.clone())
+        .unwrap();
+    scoped
+        .insert_definition(FixCategory::Groups, right.clone())
+        .unwrap();
+    let mut parties = DataType::list(
+        DataType::from_fields([
+            scoped.field_by_tag(448).unwrap().clone(),
+            scoped.field_by_tag(802).unwrap().clone(),
+            left,
+            scoped.field_by_tag(539).unwrap().clone(),
+            right,
+        ])
+        .unwrap()
+        .required_field("scopedparty"),
+    )
+    .nullable_field("scopedparties");
+    parties.as_fix_mut().set_counter(453).unwrap();
+    scoped
+        .insert_definition(FixCategory::Groups, parties.clone())
+        .unwrap();
+    let mut message_type =
+        DataType::from_fields([scoped.field_by_tag(453).unwrap().clone(), parties])
+            .unwrap()
+            .required_field("scopedcountermessage");
+    message_type.as_fix_mut().set_msgtype("ZCNT").unwrap();
+    scoped
+        .insert_definition(FixCategory::Messages, message_type)
+        .unwrap();
+    let reader = FixCodec::new(Arc::new(scoped));
+    let wire = b"35=ZCNT|453=2|448=A|539=2|524=RIGHT|802=invalid|523=LEFT|448=B|802=1|523=BLEFT|539=0|524=BRIGHT|55=AAPL|10=0|";
+    let message = reader.transform_fix_line(wire, false).unwrap();
+    let anomalies: Vec<_> = message.anomalies().collect();
+    assert!(
+        matches!(
+            anomalies.as_slice(),
+            [
+                yggdryl::FixAnomaly::Miscounted {
+                    tag: 539,
+                    stated: 2,
+                    held: 1,
+                    ..
+                },
+                yggdryl::FixAnomaly::Untyped { tag: 802, .. },
+                yggdryl::FixAnomaly::Miscounted {
+                    tag: 539,
+                    stated: 0,
+                    held: 1,
+                    ..
+                },
+            ]
+        ),
+        "{anomalies:?}"
+    );
+    assert_eq!(message.into_bytes(b'|'), wire);
+}
+
+#[test]
 fn a_tag_key_and_a_name_key_build_the_same_message() {
     let reader = reader();
     let by_tag = reader
-        .transform_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|10=0|", false)
         .unwrap();
     let by_name = reader
-        .transform_line(b"8=FIX.4.4|MsgType=D|Symbol=AAPL|Side=1|10=0|", false)
+        .one_line(b"8=FIX.4.4|MsgType=D|Symbol=AAPL|Side=1|10=0|", false)
         .unwrap();
     assert_eq!(by_tag.as_value(), by_name.as_value());
     assert_eq!(by_tag.as_field().dtype(), by_name.as_field().dtype());
@@ -118,7 +363,7 @@ fn a_tag_key_and_a_name_key_build_the_same_message() {
     // Case and separators fold away, so a renderer's spelling still resolves.
     for spelling in ["MsgType", "msgtype", "MSG_TYPE", "msg-type", "Msg Type"] {
         let row = format!("8=FIX.4.4|{spelling}=D|10=0|");
-        let message = reader.transform_line(row.as_bytes(), false).expect(&row);
+        let message = reader.one_line(row.as_bytes(), false).expect(&row);
         assert_eq!(message.as_field().name(), "D", "{spelling}");
     }
 }
@@ -127,7 +372,7 @@ fn a_tag_key_and_a_name_key_build_the_same_message() {
 fn a_value_is_translated_typed_and_kept_as_it_arrived() {
     let reader = reader();
     let message = reader
-        .transform_line(b"8=FIX.4.4|35=D|54=Buy|38=100|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|54=Buy|38=100|10=0|", false)
         .unwrap();
 
     // The row holds the translated code and the typed number.
@@ -151,7 +396,7 @@ fn a_value_is_translated_typed_and_kept_as_it_arrived() {
 fn an_unknown_key_is_kept_and_a_bad_value_is_null_rather_than_a_failure() {
     let reader = reader();
     let message = reader
-        .transform_line(b"8=FIX.4.4|35=D|VenueOwnThing=x|9999=y|9=abc|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|VenueOwnThing=x|9999=y|9=abc|10=0|", false)
         .unwrap();
 
     // An unknown name is kept under its own folded spelling, and an unknown
@@ -185,7 +430,7 @@ fn a_stated_absence_produces_no_field_and_no_entry() {
     let reader = reader();
     for spelling in ["", "null", "NULL", "<null>"] {
         let row = format!("8=FIX.4.4|35=D|58={spelling}|10=0|");
-        let message = reader.transform_line(row.as_bytes(), false).expect(&row);
+        let message = reader.one_line(row.as_bytes(), false).expect(&row);
         assert!(message.get_by_tag(58).is_none(), "{spelling}");
         assert!(
             !message.entries().iter().any(|entry| entry.tag() == 58),
@@ -195,14 +440,14 @@ fn a_stated_absence_produces_no_field_and_no_entry() {
     // A value that merely contains `null`, and one a venue means literally,
     // both survive - the listing is a convention and has to be overridable.
     let kept = reader
-        .transform_line(b"8=FIX.4.4|35=D|58=nullable|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|58=nullable|10=0|", false)
         .unwrap();
     assert_eq!(kept.by_tag(58).unwrap().as_str(), Some("nullable"));
 
     let literal = reader
         .clone()
         .with_null_values::<[&str; 0], &str>([])
-        .transform_line(b"8=FIX.4.4|35=D|58=null|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|58=null|10=0|", false)
         .unwrap();
     assert_eq!(literal.by_tag(58).unwrap().as_str(), Some("null"));
 }
@@ -211,9 +456,9 @@ fn a_stated_absence_produces_no_field_and_no_entry() {
 fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
     let reader = reader();
     let row = "MSGTYPE=D|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=SYNTH-01\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1";
-    let message = reader.transform_line(row.as_bytes(), false).unwrap();
+    let message = reader.one_line(row.as_bytes(), false).unwrap();
 
-    let parties = message.by_name("nopartyids").expect("the group");
+    let parties = message.by_name("parties").expect("the group");
     let occurrences = parties.as_sequence().expect("a list of occurrences");
     assert_eq!(occurrences.len(), 1);
     let members = occurrences[0].as_sequence().expect("one item struct");
@@ -228,12 +473,12 @@ fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
     // The group field is a List of a non-null `item` Struct.
     let field = message
         .as_field()
-        .get_field_by_path("nopartyids")
+        .get_field_by_path("parties")
         .expect("the group field");
     let DataType::List(item) = field.dtype() else {
         panic!("a list, got {}", field.dtype());
     };
-    assert_eq!(item.name(), "partyid");
+    assert_eq!(item.name(), "party");
     assert!(!item.is_nullable());
 }
 
@@ -248,16 +493,14 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
 
     // The dialect is read off the frame, so the bytes entry point and the
     // bridge one answer the same message rather than two spellings of it.
-    let message = reader.transform_line(line, false).unwrap();
+    let message = reader.one_line(line, false).unwrap();
     assert_eq!(message, reader.transform_ullink_line(line, false).unwrap());
     let without_member_separators: &[u8] =
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2\
 |#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|";
     assert_eq!(
         message,
-        reader
-            .transform_line(without_member_separators, false)
-            .unwrap()
+        reader.one_line(without_member_separators, false).unwrap()
     );
 
     // Names resolve to tags, and each value takes its field's own type: a
@@ -270,7 +513,7 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
     // The occurrence's packed members became three real fields under one
     // nesting, each resolved to its own tag rather than kept as text.
     let occurrences = message
-        .by_tag(453)
+        .by_name("parties")
         .unwrap()
         .as_sequence()
         .expect("the party group")
@@ -332,7 +575,7 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
         b"MSGTYPE=D|ORDERID=123|#ORDERID=345".as_slice(),
         b"MSGTYPE=D|#ORDERID=345|ORDERID=123".as_slice(),
     ] {
-        let message = reader.transform_line(row, false).unwrap();
+        let message = reader.one_line(row, false).unwrap();
         let spelled = String::from_utf8_lossy(row);
         assert_eq!(
             message.by_tag(37).unwrap().as_str(),
@@ -353,15 +596,13 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
         // the emitted line answers the same message: the twin judgment is
         // idempotent.
         let emitted = message.into_bytes(b'|');
-        let reread = reader.transform_line(&emitted, false).expect(&spelled);
+        let reread = reader.one_line(&emitted, false).expect(&spelled);
         assert_eq!(reread, message, "{spelled}");
     }
 
     // Alone, the `#` is the bridge's own marker and drops: the key is the
     // dictionary field, exactly as a frame of only `#` keys always read.
-    let single = reader
-        .transform_line(b"MSGTYPE=D|#ORDERID=345", false)
-        .unwrap();
+    let single = reader.one_line(b"MSGTYPE=D|#ORDERID=345", false).unwrap();
     assert_eq!(single.by_tag(37).unwrap().as_str(), Some("345"));
     assert!(single.by_name("#orderid").is_err());
 }
@@ -376,7 +617,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
         b"MSGTYPE=D|ORDER_ID=123|#ORDERID=345".as_slice(),
         b"MSGTYPE=D ORDERID=123 #ORDERID=345".as_slice(),
     ] {
-        let message = reader.transform_line(row, false).unwrap();
+        let message = reader.one_line(row, false).unwrap();
         let spelled = String::from_utf8_lossy(row);
         assert_eq!(
             message.by_tag(37).unwrap().as_str(),
@@ -395,7 +636,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     // field exactly as a lone `#` key always did.
     for spelling in ["", "null", "<null>"] {
         let row = format!("MSGTYPE=D|ORDERID={spelling}|#ORDERID=345");
-        let message = reader.transform_line(row.as_bytes(), false).expect(&row);
+        let message = reader.one_line(row.as_bytes(), false).expect(&row);
         assert_eq!(message.by_tag(37).unwrap().as_str(), Some("345"), "{row}");
         assert!(message.by_name("#orderid").is_err(), "{row}");
     }
@@ -404,7 +645,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     // one key, one value, nothing rewritten under a group name no registry
     // resolves.
     let row: &[u8] = b"MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
-    let message = reader.transform_line(row, false).unwrap();
+    let message = reader.one_line(row, false).unwrap();
     let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
     assert!(keys.contains(&"NOPARTYIDS[0]"), "{keys:?}");
     assert!(keys.contains(&"#NOPARTYIDS[0]"), "{keys:?}");
@@ -419,7 +660,7 @@ fn indexed_occurrences_are_built_by_index_and_a_gap_is_null() {
     let reader = reader();
     // Out of order and gapped: `[2]` before `[0]`, with `[1]` absent.
     let message = reader
-        .transform_line(b"MSGTYPE=D|PartyID[2]=third|PartyID[0]=first", false)
+        .one_line(b"MSGTYPE=D|PartyID[2]=third|PartyID[0]=first", false)
         .unwrap();
     let values = message
         .by_name("partyid")
@@ -437,7 +678,7 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
     let reader = reader();
     let message = reader
         // Header tags out of canonical order, with a body field interleaved.
-        .transform_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|", false)
+        .one_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|", false)
         .unwrap();
     let names: Vec<&str> = message
         .as_field()
@@ -458,7 +699,7 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
 fn a_message_re_emits_from_its_entries_and_reads_back_equal() {
     let reader = reader();
     let row = "8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=000|";
-    let message = reader.transform_line(row.as_bytes(), false).unwrap();
+    let message = reader.one_line(row.as_bytes(), false).unwrap();
 
     // The emit is the wire record, so a translated code cannot leak into it.
     let bytes = message.into_bytes(b'|');
@@ -483,17 +724,15 @@ fn a_version_never_renames_or_retypes_the_column_a_tag_lands_in() {
         .with_version("4.2".parse::<Version>().unwrap());
     let newest = reader
         .clone()
-        .with_version("5.0SP2".parse::<Version>().unwrap());
+        .with_version("5.0.2".parse::<Version>().unwrap());
 
     // Tag 32 is `LastShares` typed `int` in 4.0, `LastShares` typed `Qty` in
     // 4.2 and `LastQty` from 4.3 on. A row read at 4.2 still builds the
     // dictionary's own column, because a tag that renamed itself per version
     // is a tag no two captures of one venue could be read together on.
-    let at_42 = old
-        .transform_line(b"8=FIX.4.2|35=8|32=100|10=0|", false)
-        .unwrap();
+    let at_42 = old.one_line(b"8=FIX.4.2|35=8|32=100|10=0|", false).unwrap();
     let at_new = newest
-        .transform_line(b"8=FIX.4.4|35=8|32=100|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=8|32=100|10=0|", false)
         .unwrap();
     let column = |held: &yggdryl::FixMsg| {
         let at = held
@@ -519,45 +758,39 @@ fn a_version_never_renames_or_retypes_the_column_a_tag_lands_in() {
 #[test]
 fn a_numeric_frame_carrying_a_repeating_group_reads_and_only_its_counter_counts() {
     let reader = reader();
-    // A numeric frame states its group members flat, so the occurrences the
-    // bridge's indexed keys build are not there to build: the counter keeps
-    // the group's own shape and holds nothing, and each member is as many
-    // values as arrived. Retyping the counter to the `NumInGroup` its lineage
-    // dates would collapse that shape and refuse the whole frame.
+    // The numeric delimiter opens each Party while NoPartyIDs keeps the count.
     let row = "8=FIX.4.4|35=D|55=AAPL|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|10=000|";
-    let message = reader.transform_line(row.as_bytes(), false).unwrap();
+    let message = reader.one_line(row.as_bytes(), false).unwrap();
 
     let field = message
         .as_field()
-        .get_field_by_path("nopartyids")
-        .expect("the counter's column");
+        .get_field_by_path("parties")
+        .expect("the separate logical group");
     let DataType::List(item) = field.dtype() else {
         panic!("the group's own shape, got {}", field.dtype());
     };
     assert!(item.dtype().is_nested(), "a List of `item` Structs");
-    assert!(
+    assert_eq!(
         message
-            .by_tag(453)
+            .by_name("parties")
             .unwrap()
             .as_sequence()
             .unwrap()
-            .is_empty()
+            .len(),
+        2
+    );
+    assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
+    assert_eq!(
+        message.by_path("Parties.0.PartyRole").unwrap(),
+        &Scalar::from(1_i32)
     );
     assert_eq!(
-        message.by_tag(452).unwrap().as_sequence().unwrap().len(),
-        2,
-        "a member arrived twice, so it is two values"
+        message.by_path("Parties.1.PartyRole").unwrap(),
+        &Scalar::from(17_i32)
     );
-
-    // One anomaly, and it is the counter's: a member that merely arrived
-    // twice states no count, so `PartyRole=1` is a role and not a group of
-    // one.
-    let anomalies: Vec<String> = message.anomalies().map(|held| held.to_string()).collect();
-    assert_eq!(
-        anomalies,
-        ["nopartyids (453) states 2 occurrences and holds 0"],
-        "{anomalies:?}"
-    );
+    assert!(message.get_by_tag(452).is_none());
+    assert!(message.anomalies().next().is_none());
+    assert_eq!(message.into_bytes(b'|'), row.as_bytes());
 }
 
 #[test]
@@ -567,13 +800,13 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
     // only tag-first. Resolving it by name alone built a second, tag-less
     // column beside the counter's own and left the counter holding nothing.
     let by_tag = reader
-        .transform_line(
+        .one_line(
             b"MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE",
             false,
         )
         .unwrap();
     let by_name = reader
-        .transform_line(
+        .one_line(
             b"MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=BUYSIDE|NOPARTYIDS[1]=PARTYID=VENUE",
             false,
         )
@@ -586,33 +819,40 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
             .as_fields()
             .expect("a struct root")
             .len();
-        assert_eq!(columns, 2, "msgtype and the group, and nothing beside them");
-        let occurrences = message.by_tag(453).unwrap().as_sequence().unwrap();
+        assert_eq!(columns, 3, "msgtype, the scalar counter, and the group");
+        assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
+        let occurrences = message.by_name("parties").unwrap().as_sequence().unwrap();
         assert_eq!(occurrences.len(), 2);
         assert!(message.anomalies().next().is_none());
     }
-    assert_eq!(by_tag.by_tag(453).unwrap(), by_name.by_tag(453).unwrap());
+    assert_eq!(
+        by_tag.by_name("parties").unwrap(),
+        by_name.by_name("parties").unwrap()
+    );
 }
 
 #[test]
-fn an_occurrence_that_named_no_member_is_kept_as_the_value_it_stated() {
-    let reader = reader();
-    // A bridge writes `NOPARTYIDS[0]=ONE` where it has nothing to name. The
-    // occurrence has no member, but it is still an occurrence: dropping it
-    // would make the row say the group held nothing, which is the one thing
-    // the frame did not say.
-    let message = reader
-        .transform_line(
+fn an_unnamed_occurrence_preserves_raw_input_under_the_declared_component() {
+    let message = reader()
+        .one_line(
             b"MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=ONE|NOPARTYIDS[1]=TWO",
             false,
         )
         .unwrap();
-
-    let occurrences = message.by_tag(453).unwrap().as_sequence().unwrap();
-    assert_eq!(occurrences.len(), 2);
-    assert_eq!(occurrences[0].as_str(), Some("ONE"));
-    assert_eq!(occurrences[1].as_str(), Some("TWO"));
-    // Two stated and two held, so there is nothing to report.
+    assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
+    let occurrences = message.by_name("parties").unwrap().as_sequence().unwrap();
+    assert_eq!(occurrences, &[Scalar::Null, Scalar::Null]);
+    let group = message.as_field().get_field_by_path("parties").unwrap();
+    let DataType::List(item) = group.dtype() else {
+        panic!("{}", group.dtype());
+    };
+    assert_eq!(item.name(), "party");
+    assert!(matches!(item.dtype(), DataType::Struct(_)));
+    assert!(item.is_nullable());
+    let bytes = message.into_bytes(b'|');
+    let raw = std::str::from_utf8(&bytes).unwrap();
+    assert!(raw.contains("NOPARTYIDS[0]=ONE"), "{raw}");
+    assert!(raw.contains("NOPARTYIDS[1]=TWO"), "{raw}");
     assert!(message.anomalies().next().is_none());
 }
 
@@ -626,7 +866,7 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
     // the dictionary holds it by, whatever version the row is read at. What
     // 4.2 called it stays readable through the field's lineage.
     let message = reader
-        .transform_line(
+        .one_line(
             b"MSGTYPE=B|NOLINESOFTEXT=2|NOLINESOFTEXT[0]=TEXT=a|NOLINESOFTEXT[1]=TEXT=b",
             false,
         )
@@ -640,9 +880,21 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
         .iter()
         .map(yggdryl::Field::name)
         .collect();
-    assert_eq!(names, ["msgtype", "nolinesoftext"], "{names:?}");
+    assert_eq!(
+        names,
+        ["msgtype", "nolinesoftext", "linesoftextgrp"],
+        "{names:?}"
+    );
     // One group, one column: the counter and its members reach one slot.
-    assert_eq!(message.by_tag(33).unwrap().as_sequence().unwrap().len(), 2);
+    assert_eq!(
+        message
+            .by_name("linesoftextgrp")
+            .unwrap()
+            .as_sequence()
+            .unwrap()
+            .len(),
+        2
+    );
     let group = &message.as_field().fields()[1];
     assert_eq!(
         group.as_fix().name_at("4.2".parse().unwrap()),
@@ -662,19 +914,29 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
     let item = DataType::from_fields([party_id])
         .unwrap()
         .required_field("item");
-    let mut group = DataType::large_list(item).nullable_field("nopartyids");
-    group.as_fix_mut().set_tag(453).unwrap();
+    let mut group = DataType::large_list(item.clone()).nullable_field("parties");
+    group.as_fix_mut().set_counter(453).unwrap();
+    group.as_fix_mut().set_component(item.name()).unwrap();
+    let mut counter = DataType::Int32.nullable_field("nopartyids");
+    counter.as_fix_mut().set_tag(453).unwrap();
     let mut symbol = DataType::Utf8.nullable_field("symbol");
     symbol.as_fix_mut().set_tag(55).unwrap();
-    let registry = Arc::new(FixRegistry::from_fields([group, symbol]).unwrap());
+    let mut registry = FixRegistry::from_fields([counter, symbol]).unwrap();
+    registry
+        .insert_definition(FixCategory::Components, item)
+        .unwrap();
+    registry
+        .insert_definition(FixCategory::Groups, group)
+        .unwrap();
+    let registry = Arc::new(registry);
 
     let message = FixCodec::new(registry)
-        .transform_line(b"35=D|55=AAPL|453=2|10=0|", false)
+        .one_line(b"35=D|55=AAPL|453=2|10=0|", false)
         .unwrap();
     let anomalies: Vec<String> = message.anomalies().map(|held| held.to_string()).collect();
     assert_eq!(
         anomalies,
-        ["nopartyids (453) states 2 occurrences and holds 0"],
+        ["parties (453) states 2 occurrences and holds 0"],
         "{anomalies:?}"
     );
 }
@@ -687,7 +949,7 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
 fn a_printed_soh_spelling_reads_as_the_byte_it_stands_for() {
     let reader = reader();
     let wire = reader
-        .transform_line(
+        .one_line(
             b"recv 8=FIX.4.4\x019=61\x0135=0\x0149=XPAR\x0110=017\x01",
             false,
         )
@@ -697,7 +959,7 @@ fn a_printed_soh_spelling_reads_as_the_byte_it_stands_for() {
             "recv 8=FIX.4.4{spelling}9=61{spelling}35=0{spelling}49=XPAR{spelling}10=017{spelling} on session 3"
         );
         let held = reader
-            .transform_line(line.as_bytes(), false)
+            .one_line(line.as_bytes(), false)
             .expect("the same frame, escaped");
         assert_eq!(
             held.get_by_tag(35).and_then(Scalar::as_str),
@@ -732,12 +994,12 @@ fn a_group_occurrence_splits_on_explicit_or_declared_boundaries() {
              PARTYROLE=1{separator}PARTYROLEQUALIFIER=0"
         );
         let held = reader
-            .transform_line(line.as_bytes(), false)
+            .one_line(line.as_bytes(), false)
             .expect("a bridge row");
         let parties = held
-            .get_by_tag(453)
+            .get_by_name("parties")
             .and_then(Scalar::as_sequence)
-            .expect("the group");
+            .unwrap_or_else(|| panic!("the group with packed separator {separator:?}"));
         assert_eq!(parties.len(), 1);
         let first = parties[0].as_sequence().expect("one occurrence");
         assert_eq!(first.len(), 4, "the packed members did not split");
@@ -757,7 +1019,7 @@ fn a_group_occurrence_splits_on_explicit_or_declared_boundaries() {
 fn separatorless_group_inference_uses_only_direct_members() {
     let reader = reader();
     let message = reader
-        .transform_line(
+        .one_line(
             b"MSGTYPE=D|NOPARTYIDS=1|\
              NOPARTYIDS[0]=VENUEFLAG=XSymbol=TTFPARTYROLE=1",
             false,
@@ -786,17 +1048,33 @@ fn separatorless_group_inference_uses_only_direct_members() {
             .all(|entry| entry.key() != "NOPARTYIDS[0].Symbol")
     );
     let members = message
-        .get_by_tag(453)
+        .get_by_name("parties")
         .and_then(Scalar::as_sequence)
         .and_then(|parties| parties[0].as_sequence())
         .expect("one occurrence");
     assert_eq!(members.len(), 2);
 
-    // A rendered group name made only of digits is still a name, not a tag.
-    // It therefore borrows no member declarations from tag 453.
-    let numeric_name = reader
-        .transform_line(
-            b"MSGTYPE=D|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1",
+    // A selected message's direct members outrank the wider global Parties
+    // definition, even when the key addresses its numeric counter.
+    let mut scoped = registry().as_ref().clone();
+    let item = DataType::from_fields([scoped.field_by_tag(448).unwrap().clone()])
+        .unwrap()
+        .required_field("minimalparty");
+    let mut group = DataType::list(item).nullable_field("minimalparties");
+    group.as_fix_mut().set_counter(453).unwrap();
+    scoped
+        .insert_definition(FixCategory::Groups, group.clone())
+        .unwrap();
+    let mut definition = DataType::from_fields([scoped.field_by_tag(453).unwrap().clone(), group])
+        .unwrap()
+        .required_field("minimalpartiesmessage");
+    definition.as_fix_mut().set_msgtype("ZMIN").unwrap();
+    scoped
+        .insert_definition(FixCategory::Messages, definition)
+        .unwrap();
+    let numeric_name = FixCodec::new(Arc::new(scoped))
+        .one_line(
+            b"MSGTYPE=ZMIN|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1",
             false,
         )
         .expect("a bridge row");
@@ -827,13 +1105,13 @@ fn a_group_shorter_than_the_schema_declares_still_projects() {
     let reader = FixCodec::new(Arc::clone(&registry));
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
     let held = reader
-        .transform_line(
+        .one_line(
             b"toBridge #NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE",
             false,
         )
         .expect("a bridge row");
 
-    let row = held.to_row(&schema).unwrap();
+    let row = held.into_row(&schema).unwrap();
     // The completion is what a batch does with the row; it must not refuse.
     schema
         .canonicalize_value(row)
@@ -858,7 +1136,7 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
     // TZTransactTime are 5.0 fields and a 4.4 frame does not know them.
     let read = |frame: &str, value: &str, tag: i32| {
         reader
-            .transform_line(
+            .one_line(
                 format!("{frame}|35=D|{tag}={value}|10=0|").as_bytes(),
                 false,
             )
@@ -917,7 +1195,7 @@ fn a_dateless_clock_never_becomes_the_capture_instant() {
     let reader = FixCodec::new(Arc::new(narrow));
     let clocked = |value: &str| {
         reader
-            .transform_line(format!("8=FIX.4.4|35=D|60={value}|10=0|").as_bytes(), false)
+            .one_line(format!("8=FIX.4.4|35=D|60={value}|10=0|").as_bytes(), false)
             .expect("a readable message")
             .market_timestamp()
     };
@@ -983,7 +1261,7 @@ fn read_line_picks_the_reader_the_row_shape_names() {
     let codec = codec();
     let named = |row: &[u8]| {
         codec
-            .transform_line(row, false)
+            .one_line(row, false)
             .expect("a readable row")
             .as_field()
             .name()
@@ -997,7 +1275,7 @@ fn read_line_picks_the_reader_the_row_shape_names() {
     // An opening `<` is FIXML, and the attribute reaches the field where the
     // bridge splitter would have made one key of the whole element.
     let xml = codec
-        .transform_line(br#"<Order ClOrdID="XML-1"/>"#, false)
+        .one_line(br#"<Order ClOrdID="XML-1"/>"#, false)
         .expect("a FIXML row");
     assert_eq!(xml.by_name("clordid").unwrap().as_str(), Some("XML-1"));
 }
@@ -1013,9 +1291,7 @@ fn read_record_takes_the_payload_column_and_the_columns_beside_it() {
         Scalar::from(b"8=FIX.4.4|35=D|11=ORDER-1|10=0|".to_vec()),
     )])
     .expect("a record");
-    let message = codec
-        .transform_record(&bare, false)
-        .expect("a readable record");
+    let message = codec.one_record(&bare, false).expect("a readable record");
     assert_eq!(message.as_field().name(), "D");
     assert_eq!(message.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
 
@@ -1030,7 +1306,7 @@ fn read_record_takes_the_payload_column_and_the_columns_beside_it() {
         codec
             .clone()
             .with_payload_column("payload")
-            .transform_record(&renamed, false)
+            .one_record(&renamed, false)
             .expect("a readable record")
             .by_tag(11)
             .unwrap()
@@ -1040,7 +1316,7 @@ fn read_record_takes_the_payload_column_and_the_columns_beside_it() {
 
     // A value that is not a record at all is the one refusal.
     let refused = codec
-        .transform_record(&Scalar::from("not a record"), false)
+        .one_record(&Scalar::from("not a record"), false)
         .unwrap_err();
     assert!(refused.to_string().contains("record"), "{refused}");
 }

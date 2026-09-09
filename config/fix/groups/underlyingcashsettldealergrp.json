@@ -1,0 +1,23 @@
+{
+  "name": "underlyingcashsettldealergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcashsettldealercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcashsettldealercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingCashSettlDealers(42039) > 0.",
+    "display": "UnderlyingCashSettlDealerGrp",
+    "fix:component": "underlyingcashsettldealercomponent",
+    "fix:counter": "42039"
+  }
+}

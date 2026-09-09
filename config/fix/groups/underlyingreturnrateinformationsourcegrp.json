@@ -1,0 +1,23 @@
+{
+  "name": "underlyingreturnrateinformationsourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingreturnrateinformationsourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingreturnrateinformationsourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingReturnRateInformationSources(43060) > 0.",
+    "display": "UnderlyingReturnRateInformationSourceGrp",
+    "fix:component": "underlyingreturnrateinformationsourcecomponent",
+    "fix:counter": "43060"
+  }
+}

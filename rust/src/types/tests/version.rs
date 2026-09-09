@@ -42,18 +42,15 @@ fn root(field: Field) -> Field {
 
 #[test]
 fn grammar_canonicalizes_every_supported_separator_and_trailing_zero() {
-    assert_eq!(std::mem::size_of::<Version>(), 16);
-    assert_eq!(version("5.0SP1"), version("5.0.SP1"));
-    assert_eq!(version("5.0SP1").to_string(), "5.0SP1");
-    assert_eq!(version("1.0.0-rc1").to_string(), "1.0-rc1");
+    assert_eq!(std::mem::size_of::<Version>(), 4);
+    assert_eq!(version("5.0.1"), version("005.000.001"));
+    assert_eq!(version("5.0.1").to_string(), "5.0.1");
     assert_eq!(version("4.4.0").to_string(), "4.4");
-    assert_eq!(version("4.4.0.0"), version("4.4"));
     assert_eq!(version("7").to_string(), "7");
 
     assert_eq!(version("5.0"), version("5"));
-    assert_eq!(version("5SP1"), version("5.0.SP1"));
 
-    for text in ["0.0", "4.4", "5.0-rc1", "5.0SP2", "1.0.2.3"] {
+    for text in ["0.0", "4.4", "5.0.2", "1.0.256", "255.255.65535"] {
         let held = version(text);
         assert_eq!(held.to_string().parse::<Version>().unwrap(), held);
     }
@@ -66,16 +63,101 @@ fn every_refusal_names_the_first_bad_byte() {
         ("256.0", 2),
         ("1.256", 4),
         ("1.0.65536", 8),
-        ("1.2.3.4.5", 8),
+        ("1.2.3.4", 6),
+        ("4.4.0.0", 6),
         ("1.", 1),
         ("1-", 1),
         ("1..2", 2),
         ("1.+2", 2),
-        ("1.0SP$", 5),
-        ("1.0ABCDEFGHIJKLMNO", 17),
+        ("1.0SP", 5),
+        ("1.0sp65536", 9),
+        ("1sp250", 1),
+        ("1.0SP-2", 5),
+        ("1.0SP+2", 5),
+        ("1.0SP.2", 5),
+        ("1.0SP2.3", 7),
+        ("1.0.2SP3", 5),
+        ("1.0SP2SP3", 6),
+        ("1.0SP2_EP250", 6),
+        ("1.0s250", 3),
+        ("1.0sp250 ", 8),
+        ("1.0-rc1", 3),
+        ("1.0.SP2", 4),
     ] {
         assert_eq!(parse_position(text), position, "{text:?}");
     }
+}
+
+#[test]
+fn compact_fix_service_packs_are_numeric_patches_at_every_boundary() {
+    let field = DataType::Version.required_field("release");
+    for (text, patch, canonical) in [
+        ("5.0sp250", 250, "5.0.250"),
+        ("5.0SP250", 250, "5.0.250"),
+        ("5.0Sp250", 250, "5.0.250"),
+        ("5.0sP250", 250, "5.0.250"),
+        ("005.000sp00250", 250, "5.0.250"),
+        ("5.0SP0", 0, "5"),
+        ("5.0SP255", 255, "5.0.255"),
+        ("5.0SP256", 256, "5.0.256"),
+        ("5.0sp65535", 65535, "5.0.65535"),
+    ] {
+        let expected = Version::new(5, 0, patch);
+        let parsed = version(text);
+        assert_eq!(parsed, expected, "{text}");
+        assert_eq!(parsed.to_string(), canonical);
+        assert_eq!(digest(&parsed), digest(&expected));
+        assert_eq!(parsed.cmp(&expected), std::cmp::Ordering::Equal);
+        assert_eq!(parsed.rendered_len(), canonical.len());
+        assert_eq!(field.scalar(text).unwrap(), Scalar::Version(expected));
+        let json = format!("\"{text}\"");
+        assert_eq!(serde_json::from_str::<Version>(&json).unwrap(), expected);
+        assert_eq!(
+            serde_json::to_string(&parsed).unwrap(),
+            format!("\"{canonical}\"")
+        );
+        let array = field
+            .cast_arrow_array(
+                Arc::new(StringArray::from(vec![text])),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap();
+        assert_eq!(
+            array
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            canonical
+        );
+        assert_eq!(
+            scalar_value(&field, array.as_ref()).unwrap(),
+            Scalar::Version(expected)
+        );
+    }
+    assert!(version("5.0sp250") < version("5.0SP251"));
+    assert_eq!(version("255.255sp65535"), Version::MAX);
+}
+
+#[test]
+fn native_components_have_exact_widths_and_roundtrip_at_each_boundary() {
+    assert_eq!(Version::MAX_PARTS, 3);
+    for major in [0_u8, 1, u8::MAX] {
+        for minor in [0_u8, 1, u8::MAX] {
+            for patch in [0_u16, 1, 255, 256, u16::MAX] {
+                let value = Version::new(major, minor, patch);
+                assert_eq!(
+                    (value.major(), value.minor(), value.patch()),
+                    (major, minor, patch)
+                );
+                let parsed = version(&value.to_string());
+                assert_eq!(parsed, value);
+                assert_eq!(digest(&parsed), digest(&value));
+                assert_eq!(value.rendered_len(), value.to_string().len());
+            }
+        }
+    }
+    assert_eq!(Version::new(1, 0, 256).to_string(), "1.0.256");
 }
 
 #[test]
@@ -85,11 +167,10 @@ fn ordering_is_numeric_and_eq_hash_ord_agree() {
         version("1.0"),
         version("4.2"),
         version("4.4"),
-        version("5.0-rc1"),
         version("5.0"),
-        version("5.0SP1"),
-        version("5.0SP2"),
-        version("5.0SP10"),
+        version("5.0.1"),
+        version("5.0.2"),
+        version("5.0.10"),
         Version::MAX,
     ];
     assert!(ordered.windows(2).all(|pair| pair[0] < pair[1]));
@@ -101,10 +182,9 @@ fn ordering_is_numeric_and_eq_hash_ord_agree() {
     assert_eq!(canonical.cmp(&redundant), std::cmp::Ordering::Equal);
     assert_eq!(digest(&canonical), digest(&redundant));
 
-    let upper = version("5.0SP1");
-    let lower = version("5.0sp1");
-    assert_ne!(upper, lower);
-    assert_ne!(upper.cmp(&lower), std::cmp::Ordering::Equal);
+    assert_eq!(Version::MAX, version("255.255.65535"));
+    assert_eq!(Version::MIN, version("0.0.0"));
+    assert!(version("1.2.255") < version("1.2.256"));
 }
 
 #[test]
@@ -133,25 +213,25 @@ fn datatype_identity_naming_and_serde_are_total() {
 
     assert_eq!(dtype.clone().into_json().unwrap(), r#"{"type":"version"}"#);
     assert_eq!(DataType::from_json(r#"{"type":"version"}"#).unwrap(), dtype);
-    let value = version("5.0.SP1");
-    assert_eq!(serde_json::to_string(&value).unwrap(), r#""5.0SP1""#);
+    let value = version("005.000.001");
+    assert_eq!(serde_json::to_string(&value).unwrap(), r#""5.0.1""#);
     assert_eq!(
-        serde_json::from_str::<Version>(r#""5.0SP1""#).unwrap(),
+        serde_json::from_str::<Version>(r#""5.0.1""#).unwrap(),
         value
     );
 }
 
 #[test]
 fn scalar_and_field_contracts_rewrite_text_once() {
-    let expected = Scalar::Version(version("5.0SP1"));
-    assert_eq!(DataType::Version.scalar("5.0.SP1").unwrap(), expected);
+    let expected = Scalar::Version(version("5.0.1"));
+    assert_eq!(DataType::Version.scalar("005.000.001").unwrap(), expected);
     assert_eq!(
         DataType::Version.scalar(expected.clone()).unwrap(),
         expected
     );
 
     let required = Field::new("begin_string", DataType::Version, false);
-    assert_eq!(required.scalar("5.0.SP1").unwrap(), expected);
+    assert_eq!(required.scalar("005.000.001").unwrap(), expected);
     let wrong = required.scalar(5_i32).unwrap_err().to_string();
     assert!(wrong.contains("begin_string"), "{wrong}");
     assert!(wrong.contains("version"), "{wrong}");
@@ -179,23 +259,23 @@ fn arrow_field_values_and_casts_keep_version_identity() {
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.version");
     assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
 
-    let stored = scalar_array(&field, &Scalar::from(version("5.0SP2"))).unwrap();
+    let stored = scalar_array(&field, &Scalar::from(version("5.0.2"))).unwrap();
     assert_eq!(
         stored
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
             .value(0),
-        "5.0SP2"
+        "5.0.2"
     );
     assert_eq!(
         scalar_value(&field, stored.as_ref()).unwrap(),
-        Scalar::from(version("5.0SP2"))
+        Scalar::from(version("5.0.2"))
     );
 
     let ingested = field
         .cast_arrow_array(
-            Arc::new(StringArray::from(vec!["5.0.SP1"])),
+            Arc::new(StringArray::from(vec!["005.000.001"])),
             ArrowCastOptions::new().with_safe(false),
         )
         .unwrap();
@@ -205,7 +285,7 @@ fn arrow_field_values_and_casts_keep_version_identity() {
             .downcast_ref::<StringArray>()
             .unwrap()
             .value(0),
-        "5.0SP1"
+        "5.0.1"
     );
     assert!(
         field
@@ -220,7 +300,7 @@ fn arrow_field_values_and_casts_keep_version_identity() {
 
     let source_root = root(field.clone());
     let source_schema = source_root.clone().into_arrow_schema().unwrap();
-    let source: Arc<dyn Array> = Arc::new(StringArray::from(vec!["5.0SP2"]));
+    let source: Arc<dyn Array> = Arc::new(StringArray::from(vec!["5.0.2"]));
     let batch = RecordBatch::try_new(source_schema, vec![Arc::clone(&source)]).unwrap();
     let exact = source_root
         .cast_arrow_batch(batch.clone(), ArrowCastOptions::new().with_safe(false))
@@ -239,8 +319,8 @@ fn arrow_field_values_and_casts_keep_version_identity() {
         .to_string();
     assert!(refused.contains("version"), "{refused}");
 
-    assert!(version("5.0SP2") < version("5.0SP10"));
-    assert!("5.0SP10" < "5.0SP2");
+    assert!(version("5.0.2") < version("5.0.10"));
+    assert!("5.0.10" < "5.0.2");
 }
 
 #[test]

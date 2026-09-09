@@ -1,0 +1,23 @@
+{
+  "name": "legcomplexeventcrediteventsourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventcrediteventsourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcomplexeventcrediteventsourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegComplexEventCreditEventSources(41398) > 0.",
+    "display": "LegComplexEventCreditEventSourceGrp",
+    "fix:component": "legcomplexeventcrediteventsourcecomponent",
+    "fix:counter": "41398"
+  }
+}

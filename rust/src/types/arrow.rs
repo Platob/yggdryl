@@ -19,7 +19,7 @@ use crate::{Error, Field, Result};
 
 use super::ascii::{
     ASCII_EXTENSION_NAME, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, MIC_WIDTH,
-    MSGTYPE_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_extension_name,
+    SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_extension_name,
 };
 use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
@@ -411,7 +411,6 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
             R::Cfi => Self::FixedSizeBinary(CFI_WIDTH as i32),
             R::Side => Self::FixedSizeBinary(SIDE_WIDTH as i32),
-            R::MsgType => Self::FixedSizeBinary(MSGTYPE_WIDTH as i32),
             R::MsgDirection => Self::FixedSizeBinary(DIRECTION_WIDTH as i32),
             R::State => Self::FixedSizeBinary(STATE_WIDTH as i32),
             R::TimeInForce => Self::FixedSizeBinary(TIMEINFORCE_WIDTH as i32),
@@ -553,7 +552,6 @@ impl TryFrom<DataType> for ArrowDataType {
             R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
             R::Cfi => Self::FixedSizeBinary(CFI_WIDTH as i32),
             R::Side => Self::FixedSizeBinary(SIDE_WIDTH as i32),
-            R::MsgType => Self::FixedSizeBinary(MSGTYPE_WIDTH as i32),
             R::MsgDirection => Self::FixedSizeBinary(DIRECTION_WIDTH as i32),
             R::State => Self::FixedSizeBinary(STATE_WIDTH as i32),
             R::TimeInForce => Self::FixedSizeBinary(TIMEINFORCE_WIDTH as i32),

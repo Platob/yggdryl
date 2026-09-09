@@ -1,0 +1,32 @@
+{
+  "name": "derivativeinstrumentattributecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "derivativeinstrattribtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinstrattribtype"
+        }
+      },
+      {
+        "name": "derivativeinstrattribvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinstrattribvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DerivativeInstrumentAttribute"
+  }
+}

@@ -1,0 +1,342 @@
+{
+  "name": "underlyingstream",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamtype"
+        }
+      },
+      {
+        "name": "underlyingstreamxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamxid"
+        }
+      },
+      {
+        "name": "underlyingstreamdesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamdesc"
+        }
+      },
+      {
+        "name": "underlyingstreamversion",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamversion"
+        }
+      },
+      {
+        "name": "underlyingstreamversioneffectivedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamversioneffectivedate"
+        }
+      },
+      {
+        "name": "underlyingstreampayside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreampayside"
+        }
+      },
+      {
+        "name": "underlyingstreamreceiveside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamreceiveside"
+        }
+      },
+      {
+        "name": "underlyingstreamnotionalxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamnotionalxidref"
+        }
+      },
+      {
+        "name": "underlyingstreamnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamnotional"
+        }
+      },
+      {
+        "name": "underlyingstreamcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcurrency"
+        }
+      },
+      {
+        "name": "underlyingstreamnotionaldeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamnotionaldeterminationmethod"
+        }
+      },
+      {
+        "name": "underlyingstreamnotionaladjustments",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamnotionaladjustments"
+        }
+      },
+      {
+        "name": "underlyingstreamnotionalfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamnotionalfrequencyperiod"
+        }
+      },
+      {
+        "name": "underlyingstreamnotionalfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamnotionalfrequencyunit"
+        }
+      },
+      {
+        "name": "underlyingstreamnotionalcommodityfrequency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamnotionalcommodityfrequency"
+        }
+      },
+      {
+        "name": "underlyingstreamnotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamnotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "underlyingstreamtotalnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamtotalnotional"
+        }
+      },
+      {
+        "name": "underlyingstreamtotalnotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamtotalnotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "underlyingstreamcommodity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingstreamcommodity"
+        }
+      },
+      {
+        "name": "underlyingstreameffectivedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingstreameffectivedate"
+        }
+      },
+      {
+        "name": "underlyingstreamterminationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingstreamterminationdate"
+        }
+      },
+      {
+        "name": "underlyingstreamcalculationperioddates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingstreamcalculationperioddates"
+        }
+      },
+      {
+        "name": "underlyingpaymentstream",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingpaymentstream"
+        }
+      },
+      {
+        "name": "nounderlyingpaymentschedules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingpaymentschedules"
+        }
+      },
+      {
+        "name": "underlyingpaymentschedulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingpaymentschedulegrp"
+        }
+      },
+      {
+        "name": "nounderlyingpaymentstubs",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingpaymentstubs"
+        }
+      },
+      {
+        "name": "underlyingpaymentstubgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingpaymentstubgrp"
+        }
+      },
+      {
+        "name": "underlyingdeliverystream",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingdeliverystream"
+        }
+      },
+      {
+        "name": "nounderlyingdeliveryschedules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingdeliveryschedules"
+        }
+      },
+      {
+        "name": "underlyingdeliveryschedulegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingdeliveryschedulegrp"
+        }
+      },
+      {
+        "name": "underlyingstreamtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamtext"
+        }
+      },
+      {
+        "name": "encodedunderlyingstreamtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingstreamtextlen"
+        }
+      },
+      {
+        "name": "encodedunderlyingstreamtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingstreamtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStream"
+  }
+}

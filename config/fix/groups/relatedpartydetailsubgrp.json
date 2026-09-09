@@ -1,0 +1,23 @@
+{
+  "name": "relatedpartydetailsubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "relatedpartydetailsub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "relatedpartydetailsub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoRelatedPartyDetailSubIDs > 0.",
+    "display": "RelatedPartyDetailSubGrp",
+    "fix:component": "relatedpartydetailsub",
+    "fix:counter": "1566"
+  }
+}

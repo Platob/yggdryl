@@ -440,7 +440,6 @@ impl PyDataType {
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
             "side" => CoreDataType::Side,
-            "msgtype" => CoreDataType::MsgType,
             "msgdirection" => CoreDataType::MsgDirection,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,

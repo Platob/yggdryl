@@ -1,0 +1,162 @@
+{
+  "name": "legstreamcommoditysettlperiod",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legstreamcommoditysettlcountry",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlcountry"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettltimezone",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettltimezone"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlflowtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlflowtype"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlperiodnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlperiodnotional"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlperiodnotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlperiodnotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlperiodfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlperiodfrequencyperiod"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlperiodfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlperiodfrequencyunit"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlperiodprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlperiodprice"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlperiodpriceunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlperiodpriceunitofmeasure"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlperiodpricecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlperiodpricecurrency"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlholidaysprocessinginstruction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlholidaysprocessinginstruction"
+        }
+      },
+      {
+        "name": "nolegstreamcommoditysettldays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegstreamcommoditysettldays"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettldaygrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legstreamcommoditysettldaygrp"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlperiodxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlperiodxid"
+        }
+      },
+      {
+        "name": "legstreamcommoditysettlperiodxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreamcommoditysettlperiodxidref"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegStreamCommoditySettlPeriod"
+  }
+}

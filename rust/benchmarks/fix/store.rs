@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, FixRegistry, Url};
+use yggdryl::{DataType, FixCategory, FixRegistry, Url};
 
 use super::{BRANCH_FIELDS, scratch, seed, seed_root, two_branches};
 
@@ -97,6 +97,58 @@ pub fn benchmarks(criterion: &mut Criterion) {
             let folder = Folder::from_url(url).unwrap();
             assert!(folder.exists());
             black_box(FixRegistry::from_handle(&folder).unwrap())
+        });
+    });
+    let catalog = seed();
+    let snapshot = catalog.into_json().expect("the complete catalog snapshot");
+    group.throughput(Throughput::Bytes(snapshot.len() as u64));
+    group.bench_function("from_json_seed", |bencher| {
+        bencher.iter(|| black_box(FixRegistry::from_json(black_box(&snapshot)).unwrap()));
+    });
+    group.bench_function("into_json_seed", |bencher| {
+        bencher.iter(|| black_box(catalog.into_json().unwrap()));
+    });
+    group.bench_function("stable_hash_seed_one_state_allocation", |bencher| {
+        bencher.iter(|| black_box(catalog.stable_hash()));
+    });
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("definition_group", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                catalog
+                    .definition(FixCategory::Groups, black_box("Parties"), None)
+                    .unwrap(),
+            )
+        });
+    });
+    group.bench_function("definitions_components_first", |bencher| {
+        bencher.iter(|| black_box(catalog.definitions(FixCategory::Components).next()));
+    });
+    group.bench_function("field_code_resolve", |bencher| {
+        let field = catalog.field(54).unwrap();
+        bencher.iter(|| black_box(field.as_fix().code_name(black_box("1"))));
+    });
+    group.bench_function("msgtype_code", |bencher| {
+        bencher.iter(|| black_box(catalog.get_msgtype(black_box("D"), None)));
+    });
+    group.bench_function("msgtype_stable_hash_one_state_allocation", |bencher| {
+        let message = catalog.msgtype("D", None).unwrap();
+        bencher.iter(|| black_box(message.stable_hash()));
+    });
+    group.bench_function("msgtype_scoped_group", |bencher| {
+        let message = catalog.msgtype("D", None).unwrap();
+        bencher.iter(|| {
+            black_box(message.get_group_by_counter(black_box(yggdryl::FixId::standard(453))))
+        });
+    });
+    let codec = yggdryl::FixCodec::new(std::sync::Arc::new(catalog.clone()));
+    group.bench_function("numeric_group_cached_plan", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                codec
+                    .transform_fix_line(black_box(b"35=D|453=1|448=broker|447=D|452=1|"), false)
+                    .unwrap(),
+            )
         });
     });
     group.finish();

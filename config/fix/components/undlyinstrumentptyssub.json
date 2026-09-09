@@ -1,0 +1,32 @@
+{
+  "name": "undlyinstrumentptyssub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyinginstrumentpartysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinginstrumentpartysubid"
+        }
+      },
+      {
+        "name": "underlyinginstrumentpartysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinginstrumentpartysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UndlyInstrumentPtysSub"
+  }
+}

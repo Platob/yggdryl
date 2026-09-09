@@ -1,0 +1,23 @@
+{
+  "name": "underlyingbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingBusinessCenters(40962) > 0.",
+    "display": "UnderlyingBusinessCenterGrp",
+    "fix:component": "underlyingbusinesscentercomponent",
+    "fix:counter": "40962"
+  }
+}

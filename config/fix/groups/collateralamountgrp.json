@@ -1,0 +1,23 @@
+{
+  "name": "collateralamountgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "collateralamount",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "collateralamount"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoCollateralAmounts(1703) > 0.",
+    "display": "CollateralAmountGrp",
+    "fix:component": "collateralamount",
+    "fix:counter": "1703"
+  }
+}

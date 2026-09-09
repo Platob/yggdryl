@@ -1,0 +1,23 @@
+{
+  "name": "partydetailackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "partydetailack",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "partydetailack"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPartyUpdates(1676) > 0.",
+    "display": "PartyDetailAckGrp",
+    "fix:component": "partydetailack",
+    "fix:counter": "1676"
+  }
+}

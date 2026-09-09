@@ -1,0 +1,23 @@
+{
+  "name": "trdcollgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdcoll",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "trdcoll"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Trades for which collateral is required",
+    "display": "TrdCollGrp",
+    "fix:component": "trdcoll",
+    "fix:counter": "897"
+  }
+}

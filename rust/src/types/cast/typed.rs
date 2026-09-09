@@ -155,10 +155,6 @@ typed_array!(
     arrow_array::FixedSizeBinaryArray
 );
 typed_array!(
-    crate::types::ascii::MsgTypeType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
     crate::types::ascii::MsgDirectionType,
     arrow_array::FixedSizeBinaryArray
 );

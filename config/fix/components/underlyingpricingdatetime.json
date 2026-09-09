@@ -1,0 +1,83 @@
+{
+  "name": "underlyingpricingdatetime",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpricingdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpricingdateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingpricingdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpricingdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nounderlyingpricingdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingpricingdatebusinesscenters"
+        }
+      },
+      {
+        "name": "underlyingpricingdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingpricingdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "underlyingpricingdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpricingdateadjusted"
+        }
+      },
+      {
+        "name": "underlyingpricingtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpricingtime"
+        }
+      },
+      {
+        "name": "underlyingpricingtimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpricingtimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument. The specified value would be specific to the underlying complex event dates.",
+    "display": "UnderlyingPricingDateTime"
+  }
+}

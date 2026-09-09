@@ -1,0 +1,23 @@
+{
+  "name": "tradeallocamtgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradeallocamtcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "tradeallocamtcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTradeAllocAmts(1844) > 0.",
+    "display": "TradeAllocAmtGrp",
+    "fix:component": "tradeallocamtcomponent",
+    "fix:counter": "1844"
+  }
+}

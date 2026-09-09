@@ -1,0 +1,42 @@
+{
+  "name": "pricemovementvaluecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "pricemovementvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricemovementvalue"
+        }
+      },
+      {
+        "name": "pricemovementpoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricemovementpoint"
+        }
+      },
+      {
+        "name": "pricemovementtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricemovementtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PriceMovementValue"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "legpaymentstreampricingbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpaymentstreampricingbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpaymentstreampricingbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPaymentStreamPricingBusinessCentrers(41561) > 0.",
+    "display": "LegPaymentStreamPricingBusinessCenterGrp",
+    "fix:component": "legpaymentstreampricingbusinesscentercomponent",
+    "fix:counter": "41561"
+  }
+}

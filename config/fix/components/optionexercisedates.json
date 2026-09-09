@@ -1,0 +1,243 @@
+{
+  "name": "optionexercisedates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "optionexercisebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nooptionexercisebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nooptionexercisebusinesscenters"
+        }
+      },
+      {
+        "name": "optionexercisebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "optionexercisebusinesscentergrp"
+        }
+      },
+      {
+        "name": "nooptionexercisedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nooptionexercisedates"
+        }
+      },
+      {
+        "name": "optionexercisedategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "optionexercisedategrp"
+        }
+      },
+      {
+        "name": "optionexerciseearliestdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseearliestdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "optionexerciseearliestdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseearliestdateoffsetperiod"
+        }
+      },
+      {
+        "name": "optionexerciseearliestdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseearliestdateoffsetunit"
+        }
+      },
+      {
+        "name": "optionexercisefrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisefrequencyperiod"
+        }
+      },
+      {
+        "name": "optionexercisefrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisefrequencyunit"
+        }
+      },
+      {
+        "name": "optionexercisestartdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisestartdateunadjusted"
+        }
+      },
+      {
+        "name": "optionexercisestartdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisestartdaterelativeto"
+        }
+      },
+      {
+        "name": "optionexercisestartdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisestartdateoffsetperiod"
+        }
+      },
+      {
+        "name": "optionexercisestartdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisestartdateoffsetunit"
+        }
+      },
+      {
+        "name": "optionexercisestartdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisestartdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "optionexercisestartdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisestartdateadjusted"
+        }
+      },
+      {
+        "name": "optionexerciseskip",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseskip"
+        }
+      },
+      {
+        "name": "optionexercisenominationdeadline",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisenominationdeadline"
+        }
+      },
+      {
+        "name": "optionexercisefirstdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisefirstdateunadjusted"
+        }
+      },
+      {
+        "name": "optionexerciselastdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciselastdateunadjusted"
+        }
+      },
+      {
+        "name": "optionexerciseearliesttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseearliesttime"
+        }
+      },
+      {
+        "name": "optionexerciselatesttime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciselatesttime"
+        }
+      },
+      {
+        "name": "optionexercisetimebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexercisetimebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of option exercise dates.",
+    "display": "OptionExerciseDates"
+  }
+}

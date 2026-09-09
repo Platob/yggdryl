@@ -9,6 +9,7 @@ values cross the JavaScript boundary.
 | --- | --- |
 | `DataType` | [datatype](../types/datatype.md) |
 | `Field`, `fields` | [field](../types/field.md) |
+| `Version` | [numeric versions](../types/text.md#versions) and this page |
 | `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression/index.md) |
 | `Uri`, `Url`, `Urn` | [uri](../uri/index.md) |
 | `IOBase` | [holder](../holder/index.md) |
@@ -51,6 +52,41 @@ There is no JavaScript-side parser: `DataType.from` and
 `DataType.fromRegex(pattern, autotype)` call the native constructor. Variadic
 `Uri.joinPath` replaces the `/` operator idiom, normalizing through the same
 core `joinpath`.
+
+## Numeric versions
+
+`new Version(major, minor = 0, patch = 0)` constructs the native four-byte value.
+Major and minor accept exact integers in `0..255`, patch in `0..65535`;
+fractions, non-finite numbers and overflow are refused at the native boundary.
+`fromStr` accepts one to three decimal components. All three properties are
+read-only, and the value has no tag or qualifier.
+
+```javascript
+const assert = require('node:assert/strict')
+const { Scalar, Version, fields, json } = require('yggdryl')
+
+const version = Version.fromStr('005.0.00300')
+assert.ok(version.equals(new Version(5, 0, 300)))
+assert.equal(version.toString(), '5.0.300')
+assert.deepEqual([version.major, version.minor, version.patch], [5, 0, 300])
+assert.equal(new Version(5, 0, 2).compare(new Version(5, 0, 10)), -1)
+assert.equal(new Version(5).stableHash(), Version.fromStr('5.0.0').stableHash())
+assert.ok(version.clone().equals(version))
+assert.ok(Scalar.fromJs(version).asJs().equals(version))
+
+const field = fields.version('release', { nullable: false })
+const scalar = Scalar.fromJs('5.0.300', { field })
+assert.ok(scalar.asJs() instanceof Version)
+assert.equal(scalar.intoArrowScalar(field), '5.0.300')
+assert.ok(json.loads('"5.0.300"', { field }).equals(version))
+assert.equal(JSON.stringify(version), '"5.0.300"')
+```
+
+`VersionField` declares this native value. Arrow retains canonical `Utf8`
+storage and the `yggdryl.version` extension; its string sorting stays
+lexicographic. Use `compare` for numeric ordering and `stableHash()` for the
+native deterministic `bigint` hash. [Version measurements](../types/text.md#performance)
+include the parser, comparison and Scalar boundary.
 
 ## One native field from a class or value
 
@@ -119,6 +155,7 @@ assert.equal(decoded.id, 2n ** 100n)
 | `Map` | mapping | `Map` when some key is not text, plain object when every key is |
 | plain object, class instance | sorted `Record` | plain object |
 | `Date` | `DateTime64(ms, UTC)` | `Date` |
+| `Version` | native four-byte numeric version | `Version` through `Scalar.asJs()` or a declared Version field; canonical text in schemaless JSON |
 | `URL` | its `href` string | `string` |
 | `RegExp` | its literal string, flags included | `string` |
 | `DataType`, `Field` | core structural mapping | plain object |
@@ -693,28 +730,32 @@ assert.ok(TxHash.from(value.toString()).equals(value))
 
 ## FIX is a namespace
 
-`fix.FixRegistry`, `fix.FixMsg`, `fix.globalRegistry()`,
-`fix.installGlobalRegistry()`, `fix.STANDARD_BRANCH` (`''`, what an absent
-`fix:branch` means), and `fix.USER_TAG_MIN` (`5000`) and `fix.USER_TAG_MAX`
-(`40000`), the half-open tag range a non-standard branch may claim, are the
-whole surface. The `fix:` vocabulary
-is six accessor pairs on the `field.fix` view: `branch`, `id`, `tag`, `tags`,
-`aliases`, and `description`.
+`fix` exposes the native registry, message definitions, codec, messages and
+lazy iterators. `fix.STANDARD_BRANCH` is `''`; `fix.USER_TAG_MIN` (`5000`) and
+`fix.USER_TAG_MAX` (`40000`) bound the half-open range a non-standard branch may
+claim. The `field.fix` view owns typed protocol metadata, including `tag`,
+`branch`, `codes`, `counter`, `component` and `msgtype`.
 
 | Crossing | Rule |
 | --- | --- |
 | tag key | a `number`, coerced once and checked exactly |
-| branch digests | `branchByBid` / `getBranchByBid` take the number an arrival entry carries and answer the branch's name; only a declared branch resolves |
+| branch digests | `branchByDigest` / `getBranchByDigest` take the number an arrival entry carries and answer the branch's name; only a declared branch resolves |
 | `FixMsg.arrivals()` | `[tag, bid, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
-| name or path key | a `string`, standard branch; a colon-bearing string is a name |
+| name or path key | a `string`; omitted branches use the core's deterministic best match; a colon-bearing string is a name |
 | branch, identifier | `string`, parsed by the core `FixBranch` and `FixId` |
-| `fieldByName`, `fieldByPath` | take the branch after the name it qualifies, defaulting to the standard one |
-| `fieldByTag` | means the standard branch exactly |
+| `fieldByName`, `fieldByPath` | accept an optional branch restriction; canonical names precede aliases, standard precedes named branches within a tier |
+| `fieldByTag` | canonical tags precede alternates, standard precedes named branches within a tier; `fieldById('55:')` selects the standard branch exactly |
 | `field.fix.id` | `'tag:branch'`, `null` exactly when `fix:tag` is absent; assigning one moves both halves |
 | `field.fix.branch` | `''` when the key is absent; assigning `''` removes it |
 | `message.at`, `message.byId` | the failing halves; `value` holds the whole message value |
 | `fromHandle`, `writeInto` | an `IOBase`, a `Url`, or the string naming one |
 | iteration | registry branch-major then by tag, message in the root's declared order |
+| categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata |
+| CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily |
+| `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; complete UTF-8 wire code |
+| `FixCodec` | `transformLine`, `transformRecord`, `transformUlconfigLine` return lazy `FixMessages`; specialized FIX, Ullink and FIXML transforms return one `FixMsg` |
+| output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
+| ULconfig | `Ulconfig.fromJsonBytes` / `fromJsonScalar` return lazy `Ulconfigs`; each selection converts to one flat message with `intoFixmsg` |
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -746,7 +787,10 @@ assert.equal(fix.STANDARD_BRANCH, '')
 assert.deepEqual([fix.USER_TAG_MIN, fix.USER_TAG_MAX], [5_000, 40_000])
 // Names are folded once, so a caller spells one however they have it.
 assert.equal(registry.fieldByName('SYMBOL').name, 'symbol')
-assert.equal(registry.fieldByPath('NoPartyIDs.PartyID').fix.tag, 448)
+assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
+assert.equal(registry.definition('fields', 'NoPartyIDs').dtype.id, 'int32')
+assert.equal(registry.definition('groups', 'Parties').fix.counter, 453)
+assert.equal(registry.definition('components', 'Party').dtype.kind, 'nested')
 assert.equal(registry.fieldById('55:').fix.id, '55:')
 assert.throws(() => registry.fieldByName('symbol', '2cme'), /fix branch/)
 assert.throws(() => registry.fieldById('55'), /fix identifier/)
@@ -781,7 +825,8 @@ assert.equal(vendor.fix.id, '5001:cme')
 const root = fields.struct('row', [symbol], { nullable: false })
 const message = new fix.FixMsg(root, { symbol: 'AAPL' }, registry)
 assert.throws(() => registry.remove(55), /shared with a message/)
-assert.equal(registry.clone().remove(55).name, 'symbol')
+const independent = fix.FixRegistry.fromFields([symbol])
+assert.equal(independent.remove(55).name, 'symbol')
 
 // A vendor field leaves by its identifier: `remove` reads a string as a
 // standard-branch name.
@@ -797,11 +842,45 @@ assert.equal(message.at('SYMBOL').asJs(), 'AAPL')
 assert.equal(message.branch, fix.STANDARD_BRANCH)
 assert.equal(message.byId('55:').asJs(), 'AAPL')
 assert.equal(message.getById('5001:cme'), null)
+
+// Generic intake is lazy even when the source yields one message.
+const wire = Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')
+const messages = new fix.FixCodec(registry).transformLine(wire)
+const parsed = messages.next().value
+assert.equal(messages.next().done, true)
+assert.deepEqual(parsed.intoBytes('|'.charCodeAt(0)), wire)
+const tableField = fix.schema(registry)
+assert.equal(parsed.intoRow(tableField).asJs().length, tableField.fieldLen)
 ```
 
 `FixMsg`'s constructor is the one widening gate: the core alone types, orders,
 and validates a plain object. Resolution and merging are the core's, on the
 [fix](../fix/index.md) pages.
+
+Bulk configuration responses stream one flat message per selected plugin. Each
+message retains its selected MBean and source envelope, with the plugin's
+fields directly addressable on the message.
+
+```javascript
+const assert = require('node:assert/strict')
+const { fix } = require('yggdryl')
+
+const registry = new fix.FixRegistry()
+registry.withUlbridgeFields()
+const codec = new fix.FixCodec(registry, { branch: 'ulbridge' })
+const document = [
+  { request: { type: 'read', mbean: 'bridge:type=Plugin,name=Orders' },
+    status: 200, value: { Name: 'Orders' } },
+  { request: { type: 'read', mbean: 'bridge:type=Plugin,name=Prices' },
+    status: 200, value: { Name: 'Prices' } },
+]
+const messages = codec.transformUlconfigLine(Buffer.from(JSON.stringify(document)))
+assert.ok(messages instanceof fix.FixMessages)
+assert.deepEqual([...messages].map(message => message.byName('Name').asJs()), ['Orders', 'Prices'])
+assert.equal(messages.next().done, true)
+const selected = fix.Ulconfig.fromJsonScalar(document).next().value
+assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Orders')
+```
 
 ## Edges
 
@@ -909,17 +988,18 @@ and validates a plain object. Resolution and merging are the core's, on the
   `TypeError` naming that view's scheme.
 - `message.branch` -> the dictionary the message is spelled in, derived from
   its root field.
-- Registry mutation while a `FixMsg`, the process default, or a live `keys()`
-  walk holds it -> throws; `registry.clone()` is the mutable deep copy.
+- Registry mutation while a `FixMsg`, `MsgType`, the process default, or a live
+  native iterator holds it -> throws; `registry.clone()` is the mutable deep copy.
 - A `keys()` walk -> stops sharing when drained, or when a `for...of` `break`
   returns it.
 - `registry.remove(string)` -> a standard-branch name; `removeById(id)` is how
   a vendor field leaves.
 - FIX absence -> the native refusal, or `null` from the `get`-prefixed twins,
   for a key that parses.
-- A missing FIX folder -> the empty registry; a retired `records/` folder -> throws.
-- A registry write -> creates the folder and its parents under
-  `primitive/<branch>/` and `nested/<branch>/`.
+- A missing FIX folder -> the empty registry.
+- A registry write -> category folders `fields/`, `messages/`, `components/`
+  and `groups/`, with standard definitions directly below each and branch
+  definitions under `<branch>/`.
 - `message.getById`/`byId` -> name one dictionary exactly and do not tier.
 
 ```javascript

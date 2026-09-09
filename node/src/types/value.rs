@@ -14,6 +14,7 @@ use yggdryl::types::temporal::Temporal;
 use yggdryl::{DataType, Field as CoreField, I256, Scalar, TemporalFamily, TimeUnit};
 
 use crate::napi_error;
+use crate::types::version::JsVersion;
 
 /// The JavaScript constructor category a datatype projects into.
 ///
@@ -39,6 +40,8 @@ pub(crate) enum JsValueHint {
     Object = 7,
     /// A JavaScript Map.
     Map = 9,
+    /// The immutable native numeric version wrapper.
+    Version = 10,
 }
 
 impl JsValueHint {
@@ -102,8 +105,8 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Mic
         | D::Cfi
         | D::Uuid
-        | D::Version
         | D::Url => JsValueHint::String,
+        D::Version => JsValueHint::Version,
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
         D::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano)
@@ -324,7 +327,7 @@ fn text_or_binary_to_js<'env>(
             _ => return Err(napi_error("invalid native uuid record value")),
         },
         D::Version => match value {
-            Scalar::Version(value) => value.to_string().into_unknown(env)?,
+            Scalar::Version(value) => JsVersion { inner: *value }.into_unknown(env)?,
             _ => return Err(napi_error("invalid native version record value")),
         },
         // A location crosses as the canonical text it validated to, exactly as

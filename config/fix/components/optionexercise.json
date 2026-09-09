@@ -1,0 +1,163 @@
+{
+  "name": "optionexercise",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "exercisedesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exercisedesc"
+        }
+      },
+      {
+        "name": "encodedexercisedesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedexercisedesclen"
+        }
+      },
+      {
+        "name": "encodedexercisedesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedexercisedesc"
+        }
+      },
+      {
+        "name": "automaticexerciseindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "automaticexerciseindicator"
+        }
+      },
+      {
+        "name": "automaticexercisethresholdrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "automaticexercisethresholdrate"
+        }
+      },
+      {
+        "name": "exerciseconfirmationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exerciseconfirmationmethod"
+        }
+      },
+      {
+        "name": "manualnoticebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "manualnoticebusinesscenter"
+        }
+      },
+      {
+        "name": "fallbackexerciseindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "fallbackexerciseindicator"
+        }
+      },
+      {
+        "name": "limitedrighttoconfirmindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "limitedrighttoconfirmindicator"
+        }
+      },
+      {
+        "name": "exercisesplitticketindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "exercisesplitticketindicator"
+        }
+      },
+      {
+        "name": "settlmethodelectingpartyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlmethodelectingpartyside"
+        }
+      },
+      {
+        "name": "settlmethodelectiondate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "settlmethodelectiondate"
+        }
+      },
+      {
+        "name": "optionexercisedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "optionexercisedates"
+        }
+      },
+      {
+        "name": "optionexerciseexpiration",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "optionexerciseexpiration"
+        }
+      },
+      {
+        "name": "optionexercisemakewholeprovision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "optionexercisemakewholeprovision"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Must be set if EncodedExerciseDesc(41108) field is specified and must immediately precede it.",
+    "display": "OptionExercise"
+  }
+}

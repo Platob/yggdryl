@@ -1,0 +1,23 @@
+{
+  "name": "leginstrumentparties",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "leginstrumentparty",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "leginstrumentparty"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Repeating group below should contain unique combinations of LegInstrumentPartyID(2255), LegInstrumentPartyIDSource(2256) and LegInstrumentPartyRole(2257).",
+    "display": "LegInstrumentParties",
+    "fix:component": "leginstrumentparty",
+    "fix:counter": "2254"
+  }
+}

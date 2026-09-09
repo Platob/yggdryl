@@ -1,0 +1,23 @@
+{
+  "name": "legcomplexeventratesourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legcomplexeventratesourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legcomplexeventratesourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegComplexEventRateSources(41382) > 0.",
+    "display": "LegComplexEventRateSourceGrp",
+    "fix:component": "legcomplexeventratesourcecomponent",
+    "fix:counter": "41382"
+  }
+}

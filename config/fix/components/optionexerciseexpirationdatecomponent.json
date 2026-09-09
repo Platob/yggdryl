@@ -1,0 +1,32 @@
+{
+  "name": "optionexerciseexpirationdatecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "optionexerciseexpirationdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationdate"
+        }
+      },
+      {
+        "name": "optionexerciseexpirationdatetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "optionexerciseexpirationdatetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "OptionExerciseExpirationDate"
+  }
+}

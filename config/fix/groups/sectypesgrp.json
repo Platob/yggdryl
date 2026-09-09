@@ -1,0 +1,23 @@
+{
+  "name": "sectypesgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "sectype",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "sectype"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoSecurityTypes > 0",
+    "display": "SecTypesGrp",
+    "fix:component": "sectype",
+    "fix:counter": "558"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "name": "derivativeinstrumentparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "derivativeinstrumentpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinstrumentpartyid"
+        }
+      },
+      {
+        "name": "derivativeinstrumentpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinstrumentpartyidsource"
+        }
+      },
+      {
+        "name": "derivativeinstrumentpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinstrumentpartyrole"
+        }
+      },
+      {
+        "name": "derivativeinstrumentpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeinstrumentpartyrolequalifier"
+        }
+      },
+      {
+        "name": "noderivativeinstrumentpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noderivativeinstrumentpartysubids"
+        }
+      },
+      {
+        "name": "derivativeinstrumentpartysubidsgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "derivativeinstrumentpartysubidsgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DerivativeInstrumentParty"
+  }
+}

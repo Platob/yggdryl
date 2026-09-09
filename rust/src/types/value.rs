@@ -778,7 +778,6 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Mic
         | D::Cfi
         | D::Side
-        | D::MsgType
         | D::MsgDirection
         | D::State
         | D::TimeInForce => {
@@ -789,7 +788,6 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                     | (D::Mic, Scalar::Ascii(AsciiFamily::Mic(_)))
                     | (D::Cfi, Scalar::Ascii(AsciiFamily::Cfi(_)))
                     | (D::Side, Scalar::Ascii(AsciiFamily::Side(_)))
-                    | (D::MsgType, Scalar::Ascii(AsciiFamily::MsgType(_)))
                     | (D::MsgDirection, Scalar::Ascii(AsciiFamily::MsgDirection(_)))
                     | (D::State, Scalar::Ascii(AsciiFamily::State(_)))
                     | (D::TimeInForce, Scalar::Ascii(AsciiFamily::TimeInForce(_)))
@@ -799,14 +797,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let Some(bytes) = ascii_bytes(value) else {
                 return canonicalization_failure(dtype);
             };
-            // A message type is the one code whose width does not refuse: a
-            // bridge writes composite keys wider than the column, and the
-            // type's own mapping hashes what will not fit, so the value lands
-            // rather than the row being lost. Every other ASCII rule holds.
-            let text = match dtype {
-                D::MsgType => ascii_free_text(bytes)?,
-                _ => code_cell_text(dtype, bytes)?,
-            };
+            let text = code_cell_text(dtype, bytes)?;
             let canonical = match dtype {
                 D::Country => {
                     Scalar::Ascii(AsciiFamily::Country(crate::types::Country::new(text)?))
@@ -817,9 +808,6 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::Mic => Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(text)?)),
                 D::Cfi => Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(text)?)),
                 D::Side => Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(text)?)),
-                D::MsgType => {
-                    Scalar::Ascii(AsciiFamily::MsgType(crate::types::MsgType::coerce(text)))
-                }
                 D::MsgDirection => Scalar::Ascii(AsciiFamily::MsgDirection(
                     crate::types::MsgDirection::new(text)?,
                 )),
@@ -1463,13 +1451,6 @@ fn validate_dtype_value(
                 Some(width) => ascii_text(width, bytes).map(|_| ()).map_err(ascii_failure),
                 None => ascii_free_text(bytes).map(|_| ()).map_err(ascii_failure),
             },
-            None => Err(expected(dtype.name(), value)),
-        },
-        // A message type states the ASCII rule and not the width: what does
-        // not fit is hashed into what does, which is a value and not a
-        // refusal.
-        D::MsgType => match ascii_bytes(value) {
-            Some(bytes) => ascii_free_text(bytes).map(|_| ()).map_err(ascii_failure),
             None => Err(expected(dtype.name(), value)),
         },
         D::Country

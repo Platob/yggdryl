@@ -1,0 +1,112 @@
+{
+  "name": "evnt",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "eventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "eventtype"
+        }
+      },
+      {
+        "name": "eventdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "eventdate"
+        }
+      },
+      {
+        "name": "eventtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "eventtime"
+        }
+      },
+      {
+        "name": "eventtimeunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "eventtimeunit"
+        }
+      },
+      {
+        "name": "eventtimeperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "eventtimeperiod"
+        }
+      },
+      {
+        "name": "eventmonthyear",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "eventmonthyear"
+        }
+      },
+      {
+        "name": "eventpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "eventpx"
+        }
+      },
+      {
+        "name": "eventtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "eventtext"
+        }
+      },
+      {
+        "name": "encodedeventtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedeventtextlen"
+        }
+      },
+      {
+        "name": "encodedeventtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedeventtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Evnt"
+  }
+}

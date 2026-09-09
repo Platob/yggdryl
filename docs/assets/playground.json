@@ -2169,5 +2169,97 @@
       ],
       "call": "declared.intoEnum('currency')"
     }
-  }
+  },
+  "versions": [
+    {
+      "input": "5",
+      "call": "Version.fromStr('5')",
+      "ok": true,
+      "text": "5",
+      "parts": [
+        5,
+        0,
+        0
+      ],
+      "hash": "17862148464861031524"
+    },
+    {
+      "input": "5.0",
+      "call": "Version.fromStr('5.0')",
+      "ok": true,
+      "text": "5",
+      "parts": [
+        5,
+        0,
+        0
+      ],
+      "hash": "17862148464861031524"
+    },
+    {
+      "input": "5.0.2",
+      "call": "Version.fromStr('5.0.2')",
+      "ok": true,
+      "text": "5.0.2",
+      "parts": [
+        5,
+        0,
+        2
+      ],
+      "hash": "7857877110847148172"
+    },
+    {
+      "input": "5.0.300",
+      "call": "Version.fromStr('5.0.300')",
+      "ok": true,
+      "text": "5.0.300",
+      "parts": [
+        5,
+        0,
+        300
+      ],
+      "hash": "15847465466864564446"
+    },
+    {
+      "input": "255.255.65535",
+      "call": "Version.fromStr('255.255.65535')",
+      "ok": true,
+      "text": "255.255.65535",
+      "parts": [
+        255,
+        255,
+        65535
+      ],
+      "hash": "13654589226971374261"
+    },
+    {
+      "input": "256.0",
+      "call": "Version.fromStr('256.0')",
+      "ok": false,
+      "error": "invalid version expression at byte 2: expected a major or minor version in 0..=255"
+    },
+    {
+      "input": "5.256",
+      "call": "Version.fromStr('5.256')",
+      "ok": false,
+      "error": "invalid version expression at byte 4: expected a major or minor version in 0..=255"
+    },
+    {
+      "input": "5.0.65536",
+      "call": "Version.fromStr('5.0.65536')",
+      "ok": false,
+      "error": "invalid version expression at byte 8: expected a patch version in 0..=65535"
+    },
+    {
+      "input": "5.0SP2",
+      "call": "Version.fromStr('5.0SP2')",
+      "ok": false,
+      "error": "invalid version expression at byte 3: expected a dot or the end of a numeric version"
+    },
+    {
+      "input": "5.0.2.1",
+      "call": "Version.fromStr('5.0.2.1')",
+      "ok": false,
+      "error": "invalid version expression at byte 6: expected at most three numeric version components"
+    }
+  ]
 }

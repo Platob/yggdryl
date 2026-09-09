@@ -19,7 +19,6 @@ from .ascii import (
     TimeInForceField,
     FixedAsciiField,
     MicField,
-    MsgTypeField,
     SideField,
     ascii,
     cfi,
@@ -30,7 +29,6 @@ from .ascii import (
     timeinforce,
     fixed_ascii,
     mic,
-    msgtype,
     side,
 )
 from .binary import (
@@ -145,7 +143,7 @@ from .temporal import (
     datetime64,
 )
 from .url import UrlField, url
-from .version import VersionField, version
+from .version import Version, VersionField, version
 
 __all__ = [
     "ArrowCastPlan",
@@ -155,7 +153,6 @@ __all__ = [
     "StateField",
     "TimeInForceField",
     "Field",
-    "MsgTypeField",
     "ProtocolField",
     "Scalar",
     "SideField",
@@ -216,6 +213,7 @@ __all__ = [
     "UnionField",
     "VariantField",
     "UrlField",
+    "Version",
     "VersionField",
     "Utf8Field",
     "Utf8ViewField",
@@ -263,7 +261,6 @@ __all__ = [
     "map",
     "map_of",
     "mic",
-    "msgtype",
     "null",
     "run_end_encoded",
     "scalar",

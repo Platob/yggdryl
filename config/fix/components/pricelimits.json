@@ -1,0 +1,53 @@
+{
+  "name": "pricelimits",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "pricelimittype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "pricelimittype"
+        }
+      },
+      {
+        "name": "lowlimitprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lowlimitprice"
+        }
+      },
+      {
+        "name": "highlimitprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "highlimitprice"
+        }
+      },
+      {
+        "name": "tradingreferenceprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "tradingreferenceprice"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Describes the how the price limits are expressed",
+    "display": "PriceLimits"
+  }
+}

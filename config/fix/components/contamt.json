@@ -1,0 +1,42 @@
+{
+  "name": "contamt",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "contamttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contamttype"
+        }
+      },
+      {
+        "name": "contamtvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contamtvalue"
+        }
+      },
+      {
+        "name": "contamtcurr",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "contamtcurr"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ContAmt"
+  }
+}

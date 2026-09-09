@@ -1,0 +1,73 @@
+{
+  "name": "paymentstreamfinalpricepaymentdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "paymentstreamfinalpricepaymentdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfinalpricepaymentdateunadjusted"
+        }
+      },
+      {
+        "name": "paymentstreamfinalpricepaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfinalpricepaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "paymentstreamfinalpricepaymentdateoffsetfperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfinalpricepaymentdateoffsetfperiod"
+        }
+      },
+      {
+        "name": "paymentstreamfinalpricepaymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfinalpricepaymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "paymentstreamfinalpricepaymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfinalpricepaymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "paymentstreamfinalpricepaymentdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "paymentstreamfinalpricepaymentdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when PaymentStreamFinalPricePaymentDateOffsetUnit(42657) is specified.",
+    "display": "PaymentStreamFinalPricePaymentDate"
+  }
+}

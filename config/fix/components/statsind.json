@@ -1,0 +1,22 @@
+{
+  "name": "statsind",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "statstype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "statstype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StatsInd"
+  }
+}

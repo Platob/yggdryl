@@ -1,0 +1,82 @@
+{
+  "name": "strikerule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "strikeruleid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "strikeruleid"
+        }
+      },
+      {
+        "name": "startstrikepxrange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "startstrikepxrange"
+        }
+      },
+      {
+        "name": "endstrikepxrange",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "endstrikepxrange"
+        }
+      },
+      {
+        "name": "strikeincrement",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "strikeincrement"
+        }
+      },
+      {
+        "name": "strikeexercisestyle",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "strikeexercisestyle"
+        }
+      },
+      {
+        "name": "nomaturityrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomaturityrules"
+        }
+      },
+      {
+        "name": "maturityrules",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "maturityrules"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StrikeRule"
+  }
+}

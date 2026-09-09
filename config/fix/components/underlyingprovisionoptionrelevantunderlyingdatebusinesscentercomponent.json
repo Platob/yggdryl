@@ -1,0 +1,22 @@
+{
+  "name": "underlyingprovisionoptionrelevantunderlyingdatebusinesscentercomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingprovisionoptionrelevantunderlyingdatebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingprovisionoptionrelevantunderlyingdatebusinesscenter"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingProvisionOptionRelevantUnderlyingDateBusinessCenter"
+  }
+}

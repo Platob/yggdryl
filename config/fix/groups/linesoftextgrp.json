@@ -1,0 +1,23 @@
+{
+  "name": "linesoftextgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "linesoftextcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "linesoftextcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies the number of repeating lines of text specified",
+    "display": "LinesOfTextGrp",
+    "fix:component": "linesoftextcomponent",
+    "fix:counter": "33"
+  }
+}

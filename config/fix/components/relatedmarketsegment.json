@@ -1,0 +1,32 @@
+{
+  "name": "relatedmarketsegment",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "relatedmarketsegmentid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "relatedmarketsegmentid"
+        }
+      },
+      {
+        "name": "marketsegmentrelationship",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketsegmentrelationship"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RelatedMarketSegment"
+  }
+}

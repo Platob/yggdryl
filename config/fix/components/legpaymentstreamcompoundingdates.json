@@ -1,0 +1,183 @@
+{
+  "name": "legpaymentstreamcompoundingdates",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamcompoundingdatesbusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingdatesbusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegpaymentstreamcompoundingdatesbusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpaymentstreamcompoundingdatesbusinesscenters"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingdatesbusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentstreamcompoundingdatesbusinesscentergrp"
+        }
+      },
+      {
+        "name": "nolegpaymentstreamcompoundingdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegpaymentstreamcompoundingdates"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingdategrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpaymentstreamcompoundingdategrp"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingdatesrelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingdatesrelativeto"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingdatesoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingdatesoffsetperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingdatesoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingdatesoffsetunit"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingdatesoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingdatesoffsetdaytype"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingperiodskip",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingperiodskip"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingstartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreamcompoundingstartdate"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreamcompoundingenddate"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingfrequencyperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingfrequencyunit"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingrollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingrollconvention"
+        }
+      },
+      {
+        "name": "legpaymentstreamboundsfirstdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamboundsfirstdateunadjusted"
+        }
+      },
+      {
+        "name": "legpaymentstreamboundslastdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamboundslastdateunadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to payment stream compounding dates.",
+    "display": "LegPaymentStreamCompoundingDates"
+  }
+}

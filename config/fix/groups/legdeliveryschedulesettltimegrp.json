@@ -1,0 +1,23 @@
+{
+  "name": "legdeliveryschedulesettltimegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legdeliveryschedulesettltime",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legdeliveryschedulesettltime"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegDeliveryScheduleSettlTimes(41425) > 0.",
+    "display": "LegDeliveryScheduleSettlTimeGrp",
+    "fix:component": "legdeliveryschedulesettltime",
+    "fix:counter": "41425"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "protectiontermobligationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "protectiontermobligation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "protectiontermobligation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProtectionTermObligations(40201) > 0.",
+    "display": "ProtectionTermObligationGrp",
+    "fix:component": "protectiontermobligation",
+    "fix:counter": "40201"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "hop",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "hopcompid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "hopcompid"
+        }
+      },
+      {
+        "name": "hopsendingtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "hopsendingtime"
+        }
+      },
+      {
+        "name": "hoprefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "hoprefid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "Hop"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "protectiontermeventnewssourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "protectiontermeventnewssourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "protectiontermeventnewssourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoProtectionTermEventNewsSources(40951) > 0.",
+    "display": "ProtectionTermEventNewsSourceGrp",
+    "fix:component": "protectiontermeventnewssourcecomponent",
+    "fix:counter": "40951"
+  }
+}

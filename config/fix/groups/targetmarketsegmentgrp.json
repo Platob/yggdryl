@@ -1,0 +1,23 @@
+{
+  "name": "targetmarketsegmentgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "targetmarketsegment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "targetmarketsegment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoTargetMarketSegments(1789) > 0.",
+    "display": "TargetMarketSegmentGrp",
+    "fix:component": "targetmarketsegment",
+    "fix:counter": "1789"
+  }
+}

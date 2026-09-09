@@ -917,7 +917,7 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
         ]
     );
     assert_eq!(
-        codes(&batches, "msgtype"),
+        texts(&batches, "msgtype"),
         [Some("D"), Some("8"), None, None, None]
     );
     // Reading the verb takes exactly the verb off the body: a body that kept

@@ -1,0 +1,23 @@
+{
+  "name": "stipulations",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "stipulation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "stipulation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoStipulations(232) > 0.",
+    "display": "Stipulations",
+    "fix:component": "stipulation",
+    "fix:counter": "232"
+  }
+}

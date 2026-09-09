@@ -1,0 +1,242 @@
+{
+  "name": "underlyingcashsettlterm",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcashsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlcurrency"
+        }
+      },
+      {
+        "name": "underlyingcashsettlvaluationfirstbusinessdayoffset",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlvaluationfirstbusinessdayoffset"
+        }
+      },
+      {
+        "name": "underlyingcashsettlvaluationsubsequentbusinessdaysoffset",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlvaluationsubsequentbusinessdaysoffset"
+        }
+      },
+      {
+        "name": "underlyingcashsettlnumofvaluationdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlnumofvaluationdates"
+        }
+      },
+      {
+        "name": "underlyingcashsettlvaluationtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlvaluationtime"
+        }
+      },
+      {
+        "name": "underlyingcashsettlbusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlbusinesscenter"
+        }
+      },
+      {
+        "name": "underlyingcashsettlquotemethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlquotemethod"
+        }
+      },
+      {
+        "name": "underlyingcashsettlquoteamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlquoteamount"
+        }
+      },
+      {
+        "name": "underlyingcashsettlquotecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlquotecurrency"
+        }
+      },
+      {
+        "name": "underlyingcashsettlminimumquoteamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlminimumquoteamount"
+        }
+      },
+      {
+        "name": "underlyingcashsettlminimumquotecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlminimumquotecurrency"
+        }
+      },
+      {
+        "name": "nounderlyingcashsettldealers",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcashsettldealers"
+        }
+      },
+      {
+        "name": "underlyingcashsettldealergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcashsettldealergrp"
+        }
+      },
+      {
+        "name": "underlyingcashsettlpricesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlpricesource"
+        }
+      },
+      {
+        "name": "underlyingcashsettlpricedefault",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlpricedefault"
+        }
+      },
+      {
+        "name": "underlyingcashsettlbusinessdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlbusinessdays"
+        }
+      },
+      {
+        "name": "underlyingcashsettlamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlamount"
+        }
+      },
+      {
+        "name": "underlyingcashsettldate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingcashsettldate"
+        }
+      },
+      {
+        "name": "underlyingcashsettlrecoveryfactor",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlrecoveryfactor"
+        }
+      },
+      {
+        "name": "underlyingcashsettlfixedtermindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlfixedtermindicator"
+        }
+      },
+      {
+        "name": "underlyingcashsettlaccruedinterestindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlaccruedinterestindicator"
+        }
+      },
+      {
+        "name": "underlyingcashsettlvaluationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettlvaluationmethod"
+        }
+      },
+      {
+        "name": "underlyingcashsettltermxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcashsettltermxid"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingCashSettlTerm"
+  }
+}

@@ -1,20 +1,89 @@
 //! A capture in, columns out, and back to the wire.
 
-use std::path::PathBuf;
+use super::OneMessage;
+
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use yggdryl::holder::local::Folder;
 use yggdryl::media::IORecordOptions;
 use yggdryl::{DataType, FixBatchReader, FixMsg, FixOptions, FixRegistry, Scalar, write_fix};
 
 fn registry() -> Arc<FixRegistry> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
-    Arc::new(FixRegistry::from_handle(&folder).expect("the committed dictionary loads"))
+    super::committed_registry()
+}
+
+const BULK_CONFIG: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=*,plugin-type=FIX,type=Plugin","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=Plugin":{"Name":"A"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B"}},"status":200}"#;
+
+fn config_registry() -> Arc<FixRegistry> {
+    let mut registry = FixRegistry::new().with_ulbridge_fields().unwrap();
+    let mut direction = DataType::MsgDirection.nullable_field("MsgDirection");
+    direction.as_fix_mut().set_tag(385).unwrap();
+    registry.insert(direction).unwrap();
+    Arc::new(registry)
+}
+
+#[test]
+fn bulk_configuration_rows_expand_without_pulling_the_next_source_row() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let pulled = Arc::new(AtomicUsize::new(0));
+    let observed = Arc::clone(&pulled);
+    let source = [BULK_CONFIG.to_vec(), Vec::new()]
+        .into_iter()
+        .map(move |row| {
+            observed.fetch_add(1, Ordering::SeqCst);
+            Ok(row)
+        });
+    let mut options = FixOptions::new();
+    options.batch_row_size = Some(1);
+    let mut reader = FixBatchReader::from_rows(config_registry(), source, options).unwrap();
+    assert_eq!(pulled.load(Ordering::SeqCst), 0);
+    assert_eq!(reader.next().unwrap().unwrap().num_rows(), 1);
+    assert_eq!(pulled.load(Ordering::SeqCst), 1);
+    assert_eq!(reader.next().unwrap().unwrap().num_rows(), 1);
+    assert_eq!(pulled.load(Ordering::SeqCst), 1);
+    assert_eq!(reader.next().unwrap().unwrap().num_rows(), 1);
+    assert_eq!(pulled.load(Ordering::SeqCst), 2);
+    assert!(reader.next().is_none());
+}
+
+#[test]
+fn expanded_configurations_repeat_the_source_columns_and_stated_direction() {
+    let field = DataType::from_fields([
+        DataType::Int64.required_field("rownum"),
+        DataType::Utf8.required_field("direction"),
+        DataType::Binary.required_field("body"),
+    ])
+    .unwrap()
+    .required_field("capture");
+    let rows = Scalar::from_sequence([Scalar::from_sequence([
+        Scalar::from(42_i64),
+        Scalar::from("RECV"),
+        Scalar::from(BULK_CONFIG.to_vec()),
+    ])]);
+    let source = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
+    let mut options = FixOptions::new();
+    options.batch_row_size = Some(1);
+    let reader = FixBatchReader::from_column(
+        config_registry(),
+        yggdryl::arrow::batch_reader(source.schema(), [source]),
+        "body",
+        options,
+    )
+    .unwrap();
+    let batches = reader.collect::<std::result::Result<Vec<_>, _>>().unwrap();
+    assert_eq!(batches.len(), 2);
+    for batch in batches {
+        assert_eq!(batch.num_rows(), 1);
+        assert_eq!(first_value(&batch, "rownum"), Scalar::from(42_i64));
+        assert_eq!(first_value(&batch, "385").as_str(), Some("RECV"));
+    }
+}
+
+#[test]
+fn a_single_message_record_constructor_refuses_bulk_expansion() {
+    let record = Scalar::from_record([("body", Scalar::from(BULK_CONFIG.to_vec()))]).unwrap();
+    let error = FixMsg::from_record(config_registry(), &record, &FixOptions::new()).unwrap_err();
+    assert!(error.to_string().contains("multiple messages"), "{error}");
 }
 
 /// Every shape a real capture holds, the corpus the readers are tested on.
@@ -153,7 +222,8 @@ fn both_batch_sources_use_separatorless_group_inference() {
     let column_batch = columns.into_iter().next().unwrap().unwrap();
 
     for batch in [&row_batch, &column_batch] {
-        let group = first_value(batch, "453");
+        assert_eq!(first_value(batch, "453"), Scalar::from(1_i32));
+        let group = first_value(batch, "parties");
         let parties = group.as_sequence().expect("the party group");
         assert_eq!(parties.len(), 1);
         let members = parties[0].as_sequence().expect("one occurrence");
@@ -364,7 +434,7 @@ fn byte_in_byte_out_over_the_whole_corpus() {
     let plain =
         yggdryl::FixCodec::new(Arc::clone(&registry)).with_null_values::<[&str; 0], &str>([]);
     for (line, source) in back.iter().zip(CAPTURE) {
-        let read = plain.transform_line(source.as_bytes(), false).unwrap();
+        let read = plain.one_line(source.as_bytes(), false).unwrap();
         let expected = String::from_utf8(read.into_bytes(b'|')).unwrap();
         assert_eq!(*line, expected, "{source}");
     }

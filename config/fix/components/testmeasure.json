@@ -1,0 +1,102 @@
+{
+  "name": "testmeasure",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "testmeasurename",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testmeasurename"
+        }
+      },
+      {
+        "name": "testmeasuredesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testmeasuredesc"
+        }
+      },
+      {
+        "name": "testmeasuretype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testmeasuretype"
+        }
+      },
+      {
+        "name": "testmeasureprecision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testmeasureprecision"
+        }
+      },
+      {
+        "name": "testmeasureresult",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testmeasureresult"
+        }
+      },
+      {
+        "name": "testthresholdtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testthresholdtype"
+        }
+      },
+      {
+        "name": "testwarninglevelvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testwarninglevelvalue"
+        }
+      },
+      {
+        "name": "testfaillevelvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testfaillevelvalue"
+        }
+      },
+      {
+        "name": "testpeaklevelvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testpeaklevelvalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TestMeasure"
+  }
+}

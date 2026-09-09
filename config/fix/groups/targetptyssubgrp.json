@@ -1,0 +1,23 @@
+{
+  "name": "targetptyssubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "targetptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "targetptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required when NoTargetPartySubIDs(2433) > 0.",
+    "display": "TargetPtysSubGrp",
+    "fix:component": "targetptyssub",
+    "fix:counter": "2433"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "leginstrumentptyssubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "leginstrumentptyssub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "leginstrumentptyssub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegInstrumentPartySubIDs(2258) > 0.",
+    "display": "LegInstrumentPtysSubGrp",
+    "fix:component": "leginstrumentptyssub",
+    "fix:counter": "2258"
+  }
+}

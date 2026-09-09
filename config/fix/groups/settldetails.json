@@ -1,0 +1,23 @@
+{
+  "name": "settldetails",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "settldetail",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "settldetail"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of settlement parties",
+    "display": "SettlDetails",
+    "fix:component": "settldetail",
+    "fix:counter": "1158"
+  }
+}

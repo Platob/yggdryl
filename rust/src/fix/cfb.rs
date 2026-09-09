@@ -9,8 +9,8 @@
 //! # Two entry points, one parse
 //!
 //! [`FixRegistry::from_cfb_file`] answers the whole file: a dictionary of its
-//! vocabulary, the branch record its root element declares, and the message
-//! roots its grammar bindings describe. [`FixField::from_cfb_file`] answers
+//! scalar fields with code metadata, components, groups and message definitions,
+//! plus the branch record and the message roots. [`FixField::from_cfb_file`] answers
 //! the vocabulary alone, in declaration order, and takes the branch name from
 //! the file's own stem when the caller supplies none - which is what a reader
 //! folding one counterparty's file into a dictionary through
@@ -20,10 +20,9 @@
 //! # Two passes, and the second never invents a type
 //!
 //! `vocabulary` builds the dictionary; `grammar-binding` builds the message
-//! roots out of it. A grammar never edits a dictionary entry: it clones one
-//! and overrides the clone's nullability, so a tag bound `required="true"` in
-//! one message and `required="false"` in another yields two independent
-//! fields off one entry.
+//! roots out of it. A constraint borrows its resolved field and records its
+//! own nullability. A nested grammar resolves its opening counter to int32,
+//! retains that field, and adds a separately named List of components.
 //!
 //! # Only repeating groups are structure
 //!
@@ -34,7 +33,9 @@
 //! repeated runs into shared sub-structs, or dedupes two grammars carrying
 //! the same tag sequence. Every repeating group is a nested `grammar`, and
 //! one recursive function reads all of them - nested grammars are siblings as
-//! often as children, so a two-level special case would be wrong.
+//! often as children. Its entries become named component definitions and its
+//! collection becomes a group definition; both carry no synthetic FIX tag.
+//! The count field remains a sibling immediately before the collection.
 //!
 //! # What is lost, by name
 //!
@@ -48,17 +49,12 @@
 //! `flow-filter-binding`, `options`, `noe-normalization-binding`, and
 //! the root's own `version`, `date` and `logs`.
 //!
-//! And one loss of a different kind. A CBlock's `float` and `integer` are the
-//! schema grammar's generic answers and the wrong shape for FIX money and
-//! sequence numbers - the logical-name table already spells `price` and `qty`
-//! as `decimal64(18,8)` and `seqnum` as `int64`. But a `.cfb` says nothing
-//! about which tag is money, and this never promotes by tag or consults a
-//! seeded registry mid-parse. What that costs a caller depends on the verb
-//! they fold with, and both outcomes are worth stating plainly: against a
-//! dictionary seeded from the committed one, where tag 6 `AvgPx` is stored
-//! `float64`, [`FixRegistry::add_fields`] **refuses** it, because a datatype
-//! is never widened silently, while [`FixRegistry::insert`] **replaces** it
-//! wholesale on an identity match.
+//! A CBlock's generic numeric types may disagree with the FIX dictionary.
+//! For example, its `float` resolves to float32 while FIX `AvgPx` is float64.
+//! The parser does not consult another registry or promote values by tag.
+//! Merging incompatible datatypes or shared code sets fails atomically.
+//! Replacing a referenced field also fails when its existing layouts would
+//! become inconsistent; an unreferenced identity may be replaced directly.
 //!
 //! Nothing is inferred from a validity child either: a `regexp` pinning a
 //! length does not become a fixed-width ascii, and a `domain="ranges"` does
@@ -77,7 +73,7 @@
 //! # Every message type the file names
 //!
 //! A CBlock states its message types three ways, and all three are read into
-//! one code set on tag 35: the `message-types` listing states the type and
+//! one shared code set referenced by tag 35: the `message-types` listing states the type and
 //! the wording beside it, the two mapping tables spell the same type the way
 //! UlMessage does, and a `grammar-binding` binds one the listing sometimes
 //! omits. Each becomes one code - the file's own spelling as its name, the
@@ -91,9 +87,7 @@
 //! both spellings - and a message root keeps the whole spelling, because the
 //! qualifier is what says which grammar the file bound. Resolving a root's
 //! name through this code set is what joins the two: `AR Outbound` answers
-//! `AR`. A first word wider than the column is hashed by
-//! [`MsgType::coerce`](crate::types::MsgType), which is what a bridge
-//! writing one key rather than a pair needs.
+//! `AR`. The complete wire token is retained without a width limit.
 //!
 //! A message type is a code of tag 35 and never a field, so a file that
 //! declares no tag 35 keeps its types out of the dictionary rather than
@@ -136,7 +130,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
 use crate::{DataType, Error, Field, FixField, IOBase, Result, Url, Version};
 
-use super::{FixBranch, FixCode, FixId, FixRegistry, MSGTYPE_TAG, occurrence_name};
+use super::{FixBranch, FixCode, FixId, FixRegistry, MSGTYPE_TAG};
 
 /// How deep a grammar may nest before the parse refuses.
 ///
@@ -179,11 +173,11 @@ impl FixRegistry {
     /// `fix-version`, `sendercompid` and `targetcompid` become that branch's
     /// own record.
     ///
-    /// The registry half holds the vocabulary, each field with its `fix:tag`,
-    /// insertable and writable like any other. The roots are message trees
-    /// and carry no tag, so they cannot enter a registry - a message root is
-    /// a struct named by a MsgType, and inventing a synthetic tag to key one
-    /// would put something in the dictionary that is not a field.
+    /// The registry holds scalar wire fields under their tags and message
+    /// roots under the Messages category. Nested grammars contribute Groups
+    /// and Components definitions, with `fix:counter` linking each list to its
+    /// ordinary int32 field. Enumerations stay in each field's `fix:codes`
+    /// metadata. Named definitions carry no `fix:tag`.
     ///
     /// No seed is taken: this answers what one file says. Folding it into a
     /// dictionary that already exists is [`FixRegistry::add_fields`]'s job,
@@ -330,8 +324,7 @@ impl<'doc> Parse<'doc> {
     /// The vocabulary as a dictionary, and the roots the bindings describe.
     fn run(mut self) -> Result<(FixRegistry, Vec<Field>)> {
         self.read()?;
-        let roots = std::mem::take(&mut self.roots);
-        Ok((self.dictionary()?, roots))
+        self.dictionary()
     }
 
     /// The vocabulary alone, in declaration order.
@@ -362,7 +355,7 @@ impl<'doc> Parse<'doc> {
     ///
     /// Both terminals build it, because it is where the file's own entries are
     /// checked against each other rather than only against the grammar.
-    fn dictionary(self) -> Result<FixRegistry> {
+    fn dictionary(self) -> Result<(FixRegistry, Vec<Field>)> {
         let mut registry = FixRegistry::new();
         // The branch record first, and explicitly. A field's metadata carries
         // only its branch's *name* - the version is the dictionary's own
@@ -405,7 +398,31 @@ impl<'doc> Parse<'doc> {
                 )
             })?;
         }
-        Ok(registry)
+        let mut roots = Vec::with_capacity(self.roots.len());
+        for root in self.roots {
+            let wire = msgtype_value(root.name()).to_owned();
+            let scope = wire
+                .as_str()
+                .bytes()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            let mut root = catalog_members(&mut registry, root, &scope)?;
+            roots.push(root.clone());
+            let named = registry
+                .get_field_by_tag(MSGTYPE_TAG)
+                .and_then(|field| field.as_fix().code_name(wire.as_str()))
+                .filter(|name| {
+                    name.bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+                })
+                .filter(|name| *name != wire.as_str())
+                .map_or_else(|| format!("message{scope}"), str::to_ascii_lowercase);
+            root.set_name(named);
+            root.as_fix_mut().set_branch(&self.branch)?;
+            root.as_fix_mut().set_msgtype(wire.as_str())?;
+            catalog_entry(&mut registry, crate::FixCategory::Messages, root, &scope)?;
+        }
+        Ok((registry, roots))
     }
 
     /// Reads the whole document, skipping everything but the two passes.
@@ -959,7 +976,7 @@ impl<'doc> Parse<'doc> {
         let spelling = spelling.trim();
         let value = msgtype_value(spelling);
         let described = described.map(single_line).filter(|held| !held.is_empty());
-        if let Some(at) = self.values.get(value.as_str()).copied() {
+        if let Some(at) = self.values.get(value).copied() {
             if self.msgtypes[at].description().is_none() {
                 if let Some(described) = described {
                     self.msgtypes[at] = self.msgtypes[at].clone().with_description(described);
@@ -980,18 +997,18 @@ impl<'doc> Parse<'doc> {
                 format_args!(
                     "{:?} at {:?}, which {:?} holds",
                     elide_to(spelling, ERROR_TEXT_LIMIT),
-                    value.as_str(),
+                    value,
                     elide_to(self.msgtypes[taken].name(), ERROR_TEXT_LIMIT)
                 ),
             ));
         }
-        let mut code = FixCode::new(spelling, value.as_str());
+        let mut code = FixCode::new(spelling, value);
         if let Some(described) = described {
             code = code.with_description(described);
         }
         self.msgtypes.push(code);
         let at = self.msgtypes.len() - 1;
-        self.values.insert(SmolStr::new(value.as_str()), at);
+        self.values.insert(SmolStr::new(value), at);
         self.spellings
             .insert(crate::types::normalized(spelling), at);
         Ok(at)
@@ -1141,10 +1158,11 @@ impl<'doc> Parse<'doc> {
                     push_child(&mut children, field);
                 }
                 Event::Start(element) if is_named(&element, b"grammar") => {
+                    let declared = self.attribute(&element, "rg-name")?;
                     let nested = self.read_grammar(depth + 1, msgtype)?;
-                    if let Some(group) = self.grouped(nested, msgtype)? {
-                        push_child(&mut children, group);
-                    }
+                    let (counter, group) = self.grouped(nested, msgtype, declared.as_deref())?;
+                    push_child(&mut children, counter);
+                    push_child(&mut children, group);
                 }
                 // A nested grammar with no children has no counter to name it.
                 Event::Empty(element) if is_named(&element, b"grammar") => {
@@ -1160,15 +1178,17 @@ impl<'doc> Parse<'doc> {
 
     /// One nested grammar's children as a repeating-group field.
     ///
-    /// The first child is the counter and is consumed rather than emitted: the
-    /// group takes that counter's name, tag and description, while the
-    /// counter's own integer type is discarded because a list's length already
-    /// carries it. The item struct holds everything after it.
-    fn grouped(&mut self, mut children: Vec<Field>, msgtype: &str) -> Result<Option<Field>> {
+    /// The scalar count precedes the named list; its item holds the members.
+    fn grouped(
+        &mut self,
+        mut children: Vec<Field>,
+        msgtype: &str,
+        declared: Option<&str>,
+    ) -> Result<(Field, Field)> {
         if children.is_empty() {
             return Err(self.counterless(msgtype));
         }
-        let counter = children.remove(0);
+        let mut counter = children.remove(0);
         // A group whose first child is another grammar has no counter to name
         // it, so it is skipped with a refusal while the parent keeps the rest.
         if matches!(counter.dtype(), DataType::List(_) | DataType::LargeList(_)) {
@@ -1181,7 +1201,37 @@ impl<'doc> Parse<'doc> {
                 ),
             ));
         }
-        let item = DataType::from_fields(children)
+        counter.set_dtype(DataType::Int32)?;
+        let tag = counter
+            .as_fix()
+            .tag()?
+            .ok_or_else(|| self.counterless(msgtype))?;
+        if let Some(position) = self.positions.get(&tag) {
+            self.vocabulary[*position]
+                .field
+                .set_dtype(DataType::Int32)?;
+        }
+        let mut name = declared.filter(|name| !name.is_empty()).map_or_else(
+            || super::component::group_name(&counter).to_string(),
+            |name| name.to_ascii_lowercase(),
+        );
+        if self
+            .vocabulary
+            .iter()
+            .any(|field| field.field.name().eq_ignore_ascii_case(&name))
+        {
+            name.push_str("grp");
+        }
+        let mut entry = super::component::entry_name(&name).to_string();
+        if self
+            .vocabulary
+            .iter()
+            .any(|field| field.field.name().eq_ignore_ascii_case(&entry))
+        {
+            entry.push_str("component");
+        }
+        let branch = counter.as_fix().branch()?;
+        let mut item = DataType::from_fields(children)
             .map_err(|error| {
                 self.refused_by(
                     format_args!(
@@ -1192,22 +1242,14 @@ impl<'doc> Parse<'doc> {
                     &error,
                 )
             })?
-            .required_field(occurrence_name(&counter));
-        let mut group = DataType::list(item).nullable_field(counter.name());
+            .required_field(entry.clone());
+        item.as_fix_mut().set_branch(&branch)?;
+        let mut group = DataType::list(item).nullable_field(name);
         group.set_nullable(counter.is_nullable());
-        group
-            .set_metadata(counter.as_metadata().iter())
-            .map_err(|error| {
-                self.refused_by(
-                    format_args!(
-                        "group {:?} in message {:?}",
-                        elide_to(counter.name(), ERROR_TEXT_LIMIT),
-                        elide_to(msgtype, ERROR_TEXT_LIMIT)
-                    ),
-                    &error,
-                )
-            })?;
-        Ok(Some(group))
+        group.as_fix_mut().set_branch(&branch)?;
+        group.as_fix_mut().set_counter(tag)?;
+        group.as_fix_mut().set_component(&entry)?;
+        Ok((counter, group))
     }
 
     /// One `tag-constraint` as a leaf field.
@@ -1493,12 +1535,9 @@ fn spelling(element: &BytesStart<'_>) -> String {
 /// grammar the file binds under it, which is why a message root keeps the
 /// whole spelling while the code takes the value and answers to both.
 ///
-/// A first word wider than the column is still hashed by
-/// [`MsgType::coerce`](crate::types::MsgType), because a bridge writing one
-/// key rather than a pair is the case that mapping exists for.
-fn msgtype_value(spelling: &str) -> crate::types::MsgType {
-    let wire = spelling.split_whitespace().next().unwrap_or(spelling);
-    crate::types::MsgType::coerce(wire)
+/// The full first word is retained without a datatype width limit.
+fn msgtype_value(spelling: &str) -> &str {
+    spelling.split_whitespace().next().unwrap_or(spelling)
 }
 
 /// One description as a single line of prose.
@@ -1521,13 +1560,79 @@ fn single_line(text: &str) -> String {
     held
 }
 
-/// Adds one child, disambiguating a name a sibling already took.
-///
-/// A duplicate tag at one level is possible because `part` is dropped, and a
-/// tag bound in both `header` and `body` becomes two siblings. Neither an
-/// error nor a deduplication: both are kept in document order and the later
-/// one's name gains a numeric suffix, while its `fix:tag` stays identical so
-/// the tag is still what recovers it.
+/// Stores a named definition, qualifying distinct message contexts once.
+fn catalog_entry(
+    registry: &mut FixRegistry,
+    category: crate::FixCategory,
+    mut field: Field,
+    scope: &str,
+) -> Result<Field> {
+    let branch = field.as_fix().branch()?;
+    if let Some(held) = registry.get_definition(category, field.name(), Some(&branch)) {
+        if held == &field {
+            return Ok(field);
+        }
+        field.set_name(format!("{}{scope}", field.name()));
+        if let Some(held) = registry.get_definition(category, field.name(), Some(&branch)) {
+            if held != &field {
+                return Err(Error::Conflict {
+                    expected: "one CBlock definition per context",
+                    actual: "conflicting definitions",
+                    path: field.name().into(),
+                });
+            }
+            return Ok(field);
+        }
+    }
+    registry.insert_definition(category, field.clone())?;
+    Ok(field)
+}
+
+fn catalog_members(registry: &mut FixRegistry, mut field: Field, scope: &str) -> Result<Field> {
+    match field.dtype() {
+        DataType::Struct(children) => {
+            let children = children
+                .iter()
+                .cloned()
+                .map(|child| catalog_members(registry, child, scope))
+                .collect::<Result<Vec<_>>>()?;
+            field.set_dtype(DataType::from_fields(children)?)?;
+        }
+        DataType::List(item) => {
+            let item = catalog_members(registry, item.as_ref().clone(), scope)?;
+            let mut item = catalog_entry(registry, crate::FixCategory::Components, item, scope)?;
+            let component = item.name().to_owned();
+            item.as_fix_mut().set_component(&component)?;
+            field.set_dtype(DataType::list(item))?;
+            field.as_fix_mut().set_component(&component)?;
+            field = catalog_entry(registry, crate::FixCategory::Groups, field, scope)?;
+            let name = field.name().to_owned();
+            field.as_fix_mut().set_group(&name)?;
+        }
+        _ => {
+            if let Some(known) = field
+                .as_fix()
+                .id()?
+                .and_then(|id| registry.get_field_by_id(id))
+            {
+                if field.dtype() == known.dtype() {
+                    // Maps and message codes can follow the grammar. Resolve
+                    // its earlier clone against the completed vocabulary.
+                    let name = field.name().to_owned();
+                    let nullable = field.is_nullable();
+                    field = known.clone();
+                    field.set_name(name);
+                    field.set_nullable(nullable);
+                    field.as_fix_mut().set_field_ref(known.name())?;
+                }
+            }
+        }
+    }
+    Ok(field)
+}
+
+/// Preserves duplicate constraints in wire order under distinct child names.
+/// Their original `fix:tag` still identifies the wire field.
 fn push_child(children: &mut Vec<Field>, mut field: Field) {
     if !children.iter().any(|held| held.name() == field.name()) {
         children.push(field);

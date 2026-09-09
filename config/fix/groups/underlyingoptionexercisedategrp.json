@@ -1,0 +1,23 @@
+{
+  "name": "underlyingoptionexercisedategrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingoptionexercisedatecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingoptionexercisedatecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingOptionExerciseDates(41841) > 0.",
+    "display": "UnderlyingOptionExerciseDateGrp",
+    "fix:component": "underlyingoptionexercisedatecomponent",
+    "fix:counter": "41841"
+  }
+}

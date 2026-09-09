@@ -7,12 +7,9 @@
 //! front of the parser, and every path after it sees an ordinary
 //! [`DataType`].
 //!
-//! Seven of the names resolve to a datatype spelled the same way - `currency`
-//! to [`DataType::Currency`], `country`, `mic`, `cfi`, `side`, `msgtype` and
-//! `direction` likewise - because those registered codes are types rather
-//! than widths. That is not
-//! a second rule: the registry still answers a datatype, and the canonical
-//! spelling of that datatype still happens to be what was asked for.
+//! Some names resolve to their own datatype: `currency`, `country`, `mic`,
+//! `cfi`, `side`, `msgdirection`, `state`, and `timeinforce`. These registered
+//! codes carry an identity as well as their storage width.
 //!
 //! The vocabulary is the FIX Latest datatype table, so a FIX field
 //! declaration types a column directly, plus `mic` - ISO 10383's own name for
@@ -32,7 +29,6 @@
 //! | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 //! | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
 //! | `Side` | char | `side` | a code set the standard declares, 4 bytes |
-//! | `MsgType` | String | `msgtype` | a code set the standard declares, 8 bytes |
 //! | `direction` | - | `direction` | which way a captured line moved, 4 bytes |
 //! | `Language` | String | `ascii(2)` | ISO 639-1 alpha-2 |
 //! | `MonthYear` | String | `ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
@@ -115,12 +111,11 @@ impl DataType {
         ("mic", DataType::Mic),
         ("exchange", DataType::Mic),
         ("cfi", DataType::Cfi),
-        // Three more that resolve to themselves. `side` and `msgtype` are FIX
+        // The remaining codes resolve to themselves. `side` is FIX
         // code sets the standard itself declares, addressed constantly enough
         // to earn a packed datatype; `direction` is transport rather than FIX,
         // because every captured line has one whatever protocol it carried.
         ("side", DataType::Side),
-        ("msgtype", DataType::MsgType),
         ("msgdirection", DataType::MsgDirection),
         // What state one thing is in, and how long an order stands. Neither
         // is a word the Arrow or SQL grammar owns.

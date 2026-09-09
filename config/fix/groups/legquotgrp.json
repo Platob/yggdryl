@@ -1,0 +1,23 @@
+{
+  "name": "legquotgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legquot",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legquot"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegs(555) > 0.",
+    "display": "LegQuotGrp",
+    "fix:component": "legquot",
+    "fix:counter": "555"
+  }
+}

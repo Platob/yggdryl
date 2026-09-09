@@ -1,0 +1,123 @@
+{
+  "name": "marketdisruption",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "marketdisruptionprovision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionprovision"
+        }
+      },
+      {
+        "name": "nomarketdisruptionevents",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomarketdisruptionevents"
+        }
+      },
+      {
+        "name": "marketdisruptioneventgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "marketdisruptioneventgrp"
+        }
+      },
+      {
+        "name": "marketdisruptionfallbackprovision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionfallbackprovision"
+        }
+      },
+      {
+        "name": "nomarketdisruptionfallbacks",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomarketdisruptionfallbacks"
+        }
+      },
+      {
+        "name": "marketdisruptionfallbackgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "marketdisruptionfallbackgrp"
+        }
+      },
+      {
+        "name": "nomarketdisruptionfallbackreferenceprices",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomarketdisruptionfallbackreferenceprices"
+        }
+      },
+      {
+        "name": "marketdisruptionfallbackreferencepricegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "marketdisruptionfallbackreferencepricegrp"
+        }
+      },
+      {
+        "name": "marketdisruptionmaximumdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionmaximumdays"
+        }
+      },
+      {
+        "name": "marketdisruptionmaterialitypercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionmaterialitypercentage"
+        }
+      },
+      {
+        "name": "marketdisruptionminimumfuturescontracts",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marketdisruptionminimumfuturescontracts"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "If specified, the disruption event should be specified in MarketDisruptionEventGrp.",
+    "display": "MarketDisruption"
+  }
+}

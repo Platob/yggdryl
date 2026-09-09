@@ -1,0 +1,23 @@
+{
+  "name": "underlyingdeliveryschedulesettldaygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingdeliveryschedulesettldaycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingdeliveryschedulesettldaycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingDeliveryScheduleSettlDays(41770) > 0.",
+    "display": "UnderlyingDeliveryScheduleSettlDayGrp",
+    "fix:component": "underlyingdeliveryschedulesettldaycomponent",
+    "fix:counter": "41770"
+  }
+}

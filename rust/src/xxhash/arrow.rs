@@ -1204,7 +1204,6 @@ fn feed_cell(
         | DataType::Mic
         | DataType::Cfi
         | DataType::Side
-        | DataType::MsgType
         | DataType::MsgDirection
         | DataType::State
         | DataType::TimeInForce

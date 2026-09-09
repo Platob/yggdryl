@@ -1,0 +1,332 @@
+{
+  "name": "allocack",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "allocaccount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocaccount"
+        }
+      },
+      {
+        "name": "allocacctidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocacctidsource"
+        }
+      },
+      {
+        "name": "allocprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocprice"
+        }
+      },
+      {
+        "name": "allocpositioneffect",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocpositioneffect"
+        }
+      },
+      {
+        "name": "individualallocid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "individualallocid"
+        }
+      },
+      {
+        "name": "parentallocid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "parentallocid"
+        }
+      },
+      {
+        "name": "firmmnemonic",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "firmmnemonic"
+        }
+      },
+      {
+        "name": "clearedindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "clearedindicator"
+        }
+      },
+      {
+        "name": "alloclegrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloclegrefid"
+        }
+      },
+      {
+        "name": "noallocregulatorytradeids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "noallocregulatorytradeids"
+        }
+      },
+      {
+        "name": "allocregulatorytradeidgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "allocregulatorytradeidgrp"
+        }
+      },
+      {
+        "name": "individualallocrejcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "individualallocrejcode"
+        }
+      },
+      {
+        "name": "nonestedpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonestedpartyids"
+        }
+      },
+      {
+        "name": "nestedparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties"
+        }
+      },
+      {
+        "name": "allochandlinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allochandlinst"
+        }
+      },
+      {
+        "name": "alloctext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloctext"
+        }
+      },
+      {
+        "name": "encodedalloctextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedalloctextlen"
+        }
+      },
+      {
+        "name": "encodedalloctext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedalloctext"
+        }
+      },
+      {
+        "name": "firmalloctext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "firmalloctext"
+        }
+      },
+      {
+        "name": "encodedfirmalloctextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedfirmalloctextlen"
+        }
+      },
+      {
+        "name": "encodedfirmalloctext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedfirmalloctext"
+        }
+      },
+      {
+        "name": "secondaryindividualallocid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "secondaryindividualallocid"
+        }
+      },
+      {
+        "name": "alloccustomercapacity",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccustomercapacity"
+        }
+      },
+      {
+        "name": "individualalloctype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "individualalloctype"
+        }
+      },
+      {
+        "name": "allocqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocqty"
+        }
+      },
+      {
+        "name": "alloccalculatedccyqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "alloccalculatedccyqty"
+        }
+      },
+      {
+        "name": "custodiallotid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "custodiallotid"
+        }
+      },
+      {
+        "name": "versuspurchasedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "versuspurchasedate"
+        }
+      },
+      {
+        "name": "versuspurchaseprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "versuspurchaseprice"
+        }
+      },
+      {
+        "name": "currentcostbasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "currentcostbasis"
+        }
+      },
+      {
+        "name": "allocavgpxgroupid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocavgpxgroupid"
+        }
+      },
+      {
+        "name": "allocavgpxindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "allocavgpxindicator"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "AllocAck"
+  }
+}

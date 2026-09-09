@@ -1,0 +1,452 @@
+{
+  "name": "trdinstrmtleg",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "instrumentleg",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "instrumentleg"
+        }
+      },
+      {
+        "name": "legfinancingdetails",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legfinancingdetails"
+        }
+      },
+      {
+        "name": "nolegposamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegposamt"
+        }
+      },
+      {
+        "name": "legpositionamountdata",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legpositionamountdata"
+        }
+      },
+      {
+        "name": "legorderqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legorderqty"
+        }
+      },
+      {
+        "name": "legqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legqty"
+        }
+      },
+      {
+        "name": "legmidpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legmidpx"
+        }
+      },
+      {
+        "name": "legswaptype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legswaptype"
+        }
+      },
+      {
+        "name": "legreportid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreportid"
+        }
+      },
+      {
+        "name": "legnumber",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legnumber"
+        }
+      },
+      {
+        "name": "nolegstipulations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegstipulations"
+        }
+      },
+      {
+        "name": "legstipulations",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legstipulations"
+        }
+      },
+      {
+        "name": "legaccount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legaccount"
+        }
+      },
+      {
+        "name": "legclearingaccounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legclearingaccounttype"
+        }
+      },
+      {
+        "name": "legpositioneffect",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpositioneffect"
+        }
+      },
+      {
+        "name": "legcoveredoruncovered",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcoveredoruncovered"
+        }
+      },
+      {
+        "name": "nonestedpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonestedpartyids"
+        }
+      },
+      {
+        "name": "nestedparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties"
+        }
+      },
+      {
+        "name": "legrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legrefid"
+        }
+      },
+      {
+        "name": "legsettltype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettltype"
+        }
+      },
+      {
+        "name": "legsettldate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettldate"
+        }
+      },
+      {
+        "name": "leglastpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leglastpx"
+        }
+      },
+      {
+        "name": "legpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpricetype"
+        }
+      },
+      {
+        "name": "legsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlcurrency"
+        }
+      },
+      {
+        "name": "legsettlcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legsettlcurrencycodesource"
+        }
+      },
+      {
+        "name": "leglastforwardpoints",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leglastforwardpoints"
+        }
+      },
+      {
+        "name": "legcalculatedccylastqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcalculatedccylastqty"
+        }
+      },
+      {
+        "name": "leggrosstradeamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leggrosstradeamt"
+        }
+      },
+      {
+        "name": "legshortsaleexemptionreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legshortsaleexemptionreason"
+        }
+      },
+      {
+        "name": "legvolatility",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legvolatility"
+        }
+      },
+      {
+        "name": "legdividendyield",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendyield"
+        }
+      },
+      {
+        "name": "legcurrencyratio",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legcurrencyratio"
+        }
+      },
+      {
+        "name": "legexecinst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legexecinst"
+        }
+      },
+      {
+        "name": "leglastqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leglastqty"
+        }
+      },
+      {
+        "name": "legqtytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legqtytype"
+        }
+      },
+      {
+        "name": "leglastmultipliedqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "leglastmultipliedqty"
+        }
+      },
+      {
+        "name": "legtotaltradeqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legtotaltradeqty"
+        }
+      },
+      {
+        "name": "legtotaltrademultipliedqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legtotaltrademultipliedqty"
+        }
+      },
+      {
+        "name": "legtotalgrosstradeamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legtotalgrosstradeamt"
+        }
+      },
+      {
+        "name": "nooflegunderlyings",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nooflegunderlyings"
+        }
+      },
+      {
+        "name": "tradecaplegunderlyingsgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "tradecaplegunderlyingsgrp"
+        }
+      },
+      {
+        "name": "legdifferentialprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdifferentialprice"
+        }
+      },
+      {
+        "name": "nolegratesources",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegratesources"
+        }
+      },
+      {
+        "name": "legratesourcegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legratesourcegrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TrdInstrmtLeg"
+  }
+}

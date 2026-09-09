@@ -1,0 +1,42 @@
+{
+  "name": "underlyingpaymentstreamformulamath",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreamformulalength",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamformulalength"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamformula",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamformula"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamformuladesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamformuladesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingPaymentStreamFormulaMath"
+  }
+}

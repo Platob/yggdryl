@@ -1,0 +1,23 @@
+{
+  "name": "underlyingsettlratedisruptionfallbackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingsettlratedisruptionfallback",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingsettlratedisruptionfallback"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingSettlRateFallbacks(40659) > 0.",
+    "display": "UnderlyingSettlRateDisruptionFallbackGrp",
+    "fix:component": "underlyingsettlratedisruptionfallback",
+    "fix:counter": "40659"
+  }
+}

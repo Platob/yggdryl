@@ -25,27 +25,14 @@
 //! names FIX publishes still resolve, because a name is looked for in the
 //! message's own branch first and in the standard one after.
 //!
-//! # One entry, or fifty
+//! # One configuration per message
 //!
-//! Jolokia answers a single read with one attribute map and a wildcard read
-//! with a map keyed by ObjectName. Both are the same statement made once or
-//! many times, so both read as one repeating group: [`SESSIONINTERFACES_TAG`]
-//! is a List whose occurrences are the MBeans the document answered for, in
-//! canonical ObjectName order because a JSON object has no order of its own.
-//! An attribute that is itself an object or an array is retained as the JSON
-//! it is: a group inside a group is one level deeper than a key addresses, and
-//! text that says what arrived beats a value silently dropped. The four arrays
-//! a session interface always carries are declared, so each has a name and a
-//! tag; anything else keeps its own folded spelling.
-//!
-//! # One plugin at a time
-//!
-//! A row is one exchange and a wildcard read answers fifty plugins in one, so
-//! [`UlPlugin`] is one of those answers on its own: the ObjectName the bridge
-//! holds it under, beside the attributes it stated. It reads out of the bytes
-//! a line carries, out of a parsed document, or out of a typed message, and
-//! crosses back to one - which is what a reader walking a hundred plugins
-//! wants before it types any of them.
+//! A single read yields one [`Ulconfig`]. A wildcard or bulk answer yields
+//! lazy [`Ulconfigs`], retaining the shared source document and one key cursor.
+//! Each value converts to one flat [`FixMsg`](super::FixMsg): `MBean` retains
+//! the request selector, `SessionInterface` the returned ObjectName, and the
+//! attributes become ordinary scalar fields. No synthetic collection or count
+//! field is introduced.
 //!
 //! ```
 //! # fn main() -> yggdryl::Result<()> {
@@ -87,16 +74,7 @@ pub const STATUS_TAG: i32 = 20_003;
 /// The tag carrying what a Jolokia answer failed with.
 pub const ERROR_TAG: i32 = 20_004;
 
-/// The tag carrying the session interfaces a document answered for.
-///
-/// A repeating group, so its own tag is the occurrence counter exactly as a
-/// FIX group's is.
-pub const SESSIONINTERFACES_TAG: i32 = 20_005;
-
-/// The name the session-interface group carries.
-const SESSIONINTERFACES_NAME: &str = "SessionInterfaces";
-
-/// The name one occurrence's own ObjectName member carries.
+/// The name the actual returned ObjectName member carries.
 const SESSIONINTERFACE_NAME: &str = "SessionInterface";
 
 /// This dictionary, built once.
@@ -125,10 +103,8 @@ fn attribute(name: &str, tag: i32, dtype: DataType, description: &str) -> Result
 /// The order is the tag's, not the document's, because a dictionary is
 /// ordered by identity and a document by whatever its writer chose.
 fn build() -> Result<Vec<Field>> {
-    // The occurrences are the MBeans answered for. Declared as a List of the
-    // attributes below, which is what a repeating group is - and every member
-    // is a field in its own right, so an occurrence's `SenderCompID` is still
-    // tag 49 and its `CurrentPort` is still 20027.
+    // A returned MBean is one flat message. FIX's own SenderCompID remains
+    // tag 49; the bridge's CurrentPort remains tag 20027.
     let members: Vec<Field> = [
         (
             SESSIONINTERFACE_NAME,
@@ -369,7 +345,6 @@ fn build() -> Result<Vec<Field>> {
     .map(|(name, tag, dtype, description)| attribute(name, tag, dtype, description))
     .collect::<Result<_>>()?;
 
-    let occurrence = DataType::from_fields(members.clone())?.required_field(SESSIONINTERFACE_NAME);
     let mut fields = vec![
         attribute(
             "MBean",
@@ -395,18 +370,12 @@ fn build() -> Result<Vec<Field>> {
             DataType::Utf8,
             "What the answer failed with, where it failed.",
         )?,
-        attribute(
-            SESSIONINTERFACES_NAME,
-            SESSIONINTERFACES_TAG,
-            DataType::list(occurrence),
-            "The MBeans this document answered for, one occurrence each.",
-        )?,
     ];
     fields.extend(members);
     Ok(fields)
 }
 
-/// The fields ULBridge's dictionary defines, in tag order.
+/// The scalar fields ULBridge's dictionary defines, in tag order.
 ///
 /// Registering them is a caller's choice rather than a load-time side effect,
 /// exactly as it is for [this crate's own](super::fix_crate_fields): a
@@ -427,7 +396,7 @@ pub fn fix_ulbridge_fields() -> Result<&'static [Field]> {
 }
 
 impl super::FixRegistry {
-    /// Adds ULBridge's own fields, so a bridge configuration document types.
+    /// Adds ULBridge's scalar fields for one configuration per message.
     ///
     /// A dictionary that has them reads a document's attributes as the ports,
     /// sequence numbers and flags they are; one that does not reads them as
@@ -440,116 +409,22 @@ impl super::FixRegistry {
     /// already held, which cannot happen on a dictionary that does not already
     /// declare ULBridge's branch.
     pub fn with_ulbridge_fields(mut self) -> Result<Self> {
-        for field in fix_ulbridge_fields()? {
-            self.insert(field.clone())?;
-        }
+        self.add_fields(fix_ulbridge_fields()?.iter().cloned())?;
         Ok(self)
     }
 }
 
-/// One bridge configuration document, flattened into the pairs every reader
-/// hands the builder.
-///
-/// The document is JSON, so it is read by the crate's own JSON reader into one
-/// [`Scalar`] and walked - there is no second parser here and no second schema.
-/// What the walk states is the whole of the mapping:
-///
-/// | the document | the pairs |
-/// | --- | --- |
-/// | the `request` it echoes, or the request itself | `MBean`, `Operation` |
-/// | `status`, `error` | `Status`, `Error` |
-/// | each MBean the `value` answers for | one `SessionInterfaces[i]` occurrence |
-/// | that entry's ObjectName | `SessionInterface`, `MBeanType`, `PluginType` |
-/// | each of its attributes | that attribute's own name |
-///
-/// An attribute that is itself an object or an array is retained as the JSON
-/// it is, under the name it arrived under: a group inside a group is one level
-/// deeper than a key addresses, and text that says what arrived beats a value
-/// silently dropped.
-///
-/// A bulk answer is an array of these, and reads as the first response in it,
-/// because one line is one message and a document declares one exchange.
-fn ulconfig_pairs(document: &Scalar) -> Vec<(Vec<u8>, Vec<u8>)> {
-    let document = match document.as_sequence() {
-        Some(bulk) => match bulk.first() {
-            Some(first) => first,
-            None => return Vec::new(),
-        },
-        None => document,
-    };
-    let Some(root) = document.as_record() else {
-        return Vec::new();
-    };
-    let mut pairs = Vec::new();
-    // A request is echoed inside an answer and stands alone in a request, so
-    // the two shapes are one reading with one fallback.
-    let request = root
-        .get("request")
-        .and_then(Scalar::as_record)
-        .unwrap_or(root);
-    push_leaf(&mut pairs, b"MBean", request.get("mbean"));
-    push_leaf(&mut pairs, b"Operation", request.get("type"));
-    push_leaf(&mut pairs, b"Status", root.get("status"));
-    push_leaf(&mut pairs, b"Error", root.get("error"));
-
-    let Some(value) = root.get("value") else {
-        return pairs;
-    };
-    for (occurrence, (name, attributes)) in entries(value, request.get("mbean")).enumerate() {
-        push_occurrence(&mut pairs, occurrence, name.as_deref(), attributes);
-    }
-    pairs
-}
-
-/// The MBeans one `value` answers for, and the attributes of each.
-///
-/// A wildcard read answers a map keyed by ObjectName and a single read answers
-/// one attribute map, so the key that names an MBean is what separates them -
-/// and where none does, the request's own MBean names the one entry.
-fn entries<'value>(
-    value: &'value Scalar,
-    named: Option<&'value Scalar>,
-) -> impl Iterator<Item = (Option<SmolStr>, &'value Scalar)> {
-    let keyed: Vec<(Option<SmolStr>, &Scalar)> = value
-        .as_record()
-        .map(|held| {
-            held.iter()
-                .filter(|(key, _)| {
-                    crate::mime_type::line::object_names(key.as_bytes())
-                        .next()
-                        .is_some()
-                })
-                .map(|(key, held)| (Some(key.clone()), held))
-                .collect()
-        })
-        .unwrap_or_default();
-    if keyed.is_empty() {
-        let named = named.and_then(Scalar::as_str).map(SmolStr::new);
-        return vec![(named, value)].into_iter();
-    }
-    keyed.into_iter()
-}
-
-/// One MBean's ObjectName and attributes, as that occurrence's pairs.
-fn push_occurrence(
+/// The returned ObjectName and attributes, as flat scalar pairs.
+fn push_attributes(
     pairs: &mut Vec<(Vec<u8>, Vec<u8>)>,
-    occurrence: usize,
-    name: Option<&str>,
+    mbean: Option<&str>,
     attributes: &Scalar,
-) {
-    let mut push = |member: &[u8], value: Vec<u8>| {
-        let mut key = Vec::with_capacity(member.len() + 24);
-        key.extend_from_slice(SESSIONINTERFACES_NAME.as_bytes());
-        key.push(b'[');
-        key.extend_from_slice(occurrence.to_string().as_bytes());
-        key.extend_from_slice(b"].");
-        key.extend_from_slice(member);
-        pairs.push((key, value));
-    };
-    if let Some(name) = name {
-        push(SESSIONINTERFACE_NAME.as_bytes(), name.as_bytes().to_vec());
-        // The ObjectName's own properties, read where the classifier reads
-        // them so one spelling answers for both.
+) -> Result<()> {
+    if let Some(mbean) = mbean {
+        pairs.push((
+            SESSIONINTERFACE_NAME.as_bytes().to_vec(),
+            mbean.as_bytes().to_vec(),
+        ));
         for (member, property) in [
             (
                 b"MBeanType".as_slice(),
@@ -557,28 +432,36 @@ fn push_occurrence(
             ),
             (b"PluginType".as_slice(), b"plugin-type".as_slice()),
         ] {
-            if let Some(held) =
-                crate::mime_type::line::object_name_property(name.as_bytes(), property)
+            if let Some(value) =
+                crate::mime_type::line::object_name_property(mbean.as_bytes(), property)
             {
-                push(member, held.to_vec());
+                pairs.push((member.to_vec(), value.to_vec()));
             }
         }
     }
-    let Some(attributes) = attributes.as_record() else {
-        return;
-    };
-    for (attribute, value) in attributes {
-        if let Some(rendered) = rendered(value) {
-            push(attribute.as_bytes(), rendered);
+    if let Some(attributes) = attributes.as_record() {
+        for (attribute, value) in attributes {
+            if let Some(value) = rendered(value)? {
+                pairs.push((attribute.as_bytes().to_vec(), value));
+            }
         }
     }
+    Ok(())
 }
 
 /// One leaf of the envelope, where the document stated it.
-fn push_leaf(pairs: &mut Vec<(Vec<u8>, Vec<u8>)>, key: &[u8], value: Option<&Scalar>) {
-    if let Some(rendered) = value.and_then(rendered) {
+fn push_leaf(
+    pairs: &mut Vec<(Vec<u8>, Vec<u8>)>,
+    key: &[u8],
+    value: Option<&Scalar>,
+) -> Result<()> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    if let Some(rendered) = rendered(value)? {
         pairs.push((key.to_vec(), rendered));
     }
+    Ok(())
 }
 
 /// What one JSON value contributes, or nothing where it states nothing.
@@ -586,13 +469,13 @@ fn push_leaf(pairs: &mut Vec<(Vec<u8>, Vec<u8>)>, key: &[u8], value: Option<&Sca
 /// Text is its own bytes; every other leaf is the JSON it is, which is also
 /// what an object or an array becomes - the builder types a leaf and keeps
 /// what it cannot type, and a rendered subtree is the honest thing to keep.
-fn rendered(value: &Scalar) -> Option<Vec<u8>> {
+fn rendered(value: &Scalar) -> Result<Option<Vec<u8>>> {
     if value.is_null() {
-        return None;
+        return Ok(None);
     }
     match value.as_str() {
-        Some(text) => (!text.is_empty()).then(|| text.as_bytes().to_vec()),
-        None => crate::into_json_scalar(value).ok().map(String::into_bytes),
+        Some(text) => Ok((!text.is_empty()).then(|| text.as_bytes().to_vec())),
+        None => crate::into_json_scalar(value).map(|text| Some(text.into_bytes())),
     }
 }
 
@@ -609,12 +492,12 @@ fn rendered(value: &Scalar) -> Option<Vec<u8>> {
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
-/// use yggdryl::UlPlugin;
+/// use yggdryl::Ulconfig;
 ///
 /// // A log line: prose in front of the document, prose behind it.
 /// let line = br#"12:00:00 [Jolokia] Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=OrderRouting,plugin-type=FIX,type=Plugin":{"Name":"OrderRouting","Version":"4.7.0","State":"logged"}},"status":200} (12 ms)"#;
 ///
-/// let held: Vec<UlPlugin> = UlPlugin::from_json_bytes(line)?.collect();
+/// let held: Vec<Ulconfig> = Ulconfig::from_json_bytes(line)?.collect();
 /// assert_eq!(held.len(), 1);
 /// assert_eq!(held[0].name(), Some("OrderRouting"));
 /// assert_eq!(held[0].version(), Some("4.7.0"));
@@ -623,8 +506,8 @@ fn rendered(value: &Scalar) -> Option<Vec<u8>> {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct UlPlugin {
+#[derive(Clone, Debug)]
+pub struct Ulconfig {
     /// The ObjectName the document answered under, where it named one.
     ///
     /// A single read states its MBean in the request rather than beside the
@@ -633,19 +516,70 @@ pub struct UlPlugin {
     mbean: Option<SmolStr>,
     /// The attributes as the document stated them, sorted by name.
     attributes: Scalar,
+    /// Shared original response; only its request/status/error envelope is read.
+    envelope: Scalar,
 }
 
-impl UlPlugin {
+impl PartialEq for Ulconfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.mbean == other.mbean
+            && self.attributes == other.attributes
+            && self.exchange() == other.exchange()
+    }
+}
+
+impl Eq for Ulconfig {}
+
+impl std::hash::Hash for Ulconfig {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.mbean.hash(state);
+        self.attributes.hash(state);
+        self.exchange().hash(state);
+    }
+}
+
+impl Ulconfig {
+    /// The deterministic hash of this configuration and its selected exchange.
+    /// Uses one allocation for the shared XXH3 state, independent of value size.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
+    /// Only the selected exchange contributes to this value's identity.
+    fn exchange(
+        &self,
+    ) -> (
+        Option<&str>,
+        Option<&Scalar>,
+        Option<&Scalar>,
+        Option<&Scalar>,
+    ) {
+        let Some(root) = self.envelope.as_record() else {
+            return (self.mbean(), None, None, None);
+        };
+        let request = root
+            .get("request")
+            .and_then(Scalar::as_record)
+            .unwrap_or(root);
+        (
+            request.get("mbean").and_then(Scalar::as_str),
+            request.get("type").filter(|value| !value.is_null()),
+            root.get("status").filter(|value| !value.is_null()),
+            root.get("error").filter(|value| !value.is_null()),
+        )
+    }
+
     /// One plugin from the parts a document states.
     ///
-    /// The ObjectName where the document named one, and the attributes it
-    /// stated - which is what a caller already holding both has: a binding
-    /// rebuilding one, a reader that pulled a `value` out itself.
+    /// The selected ObjectName, attributes, and shared source response.
+    /// A null envelope declares no exchange metadata.
     #[must_use]
-    pub fn new(mbean: Option<&str>, attributes: Scalar) -> Self {
+    pub fn new(mbean: Option<&str>, attributes: Scalar, envelope: Scalar) -> Self {
         Self {
             mbean: mbean.map(SmolStr::new),
             attributes,
+            envelope,
         }
     }
 
@@ -661,128 +595,134 @@ impl UlPlugin {
     ///
     /// Returns [`Error::Codec`](crate::Error) naming the byte position when
     /// what is there is not JSON.
-    pub fn from_json_bytes(body: &[u8]) -> Result<UlPlugins> {
+    pub fn from_json_bytes(body: &[u8]) -> Result<Ulconfigs> {
         let document = crate::from_json_scalar(
             crate::mime_type::line::ulconfig_span(body).map_or(body, |span| &body[span]),
         )?;
-        Ok(Self::from_json_scalar(&document))
+        Self::from_json_scalar(&document)
     }
 
     /// Every plugin one parsed document answers for, in the order it answered.
     ///
     /// The envelope is optional: a `value` under a Jolokia answer, an array of
     /// those answers for a bulk read, or a bare attribute map a caller pulled
-    /// out itself. A document that answers nothing answers no plugins rather
-    /// than a refusal - a Jolokia error is a document too.
-    #[must_use]
-    pub fn from_json_scalar(document: &Scalar) -> UlPlugins {
-        let mut held = Vec::new();
-        for answer in document.as_sequence().map_or_else(
-            || vec![document],
-            |bulk| bulk.iter().collect::<Vec<&Scalar>>(),
-        ) {
-            let Some(root) = answer.as_record() else {
+    /// out itself. Requests and error-only responses retain their envelope;
+    /// a bulk array is traversed lazily without collecting its results.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a non-object response, identifying its index in a bulk array.
+    /// Validation finishes before an iterator is returned.
+    pub fn from_json_scalar(document: &Scalar) -> Result<Ulconfigs> {
+        if let Some(responses) = document.as_sequence() {
+            for (index, response) in responses.iter().enumerate() {
+                if response.as_record().is_none() {
+                    return Err(crate::Error::InvalidRecord {
+                        path: format!("ulconfig[{index}]").into(),
+                        reason: crate::text::expected_got("an object response", response.kind()),
+                    });
+                }
+            }
+        } else if document.as_record().is_none() {
+            return Err(crate::Error::InvalidRecord {
+                path: "ulconfig".into(),
+                reason: crate::text::expected_got(
+                    "an object response or array of responses",
+                    document.kind(),
+                ),
+            });
+        }
+        Ok(Ulconfigs {
+            document: document.clone(),
+            response: 0,
+            after: None,
+            done: false,
+        })
+    }
+
+    /// Recovers one configuration from a flat typed message.
+    ///
+    /// The envelope remains separate from the attributes. Derived crate
+    /// fields and the two properties computed from the ObjectName are omitted.
+    pub fn from_fixmsg(message: &super::FixMsg) -> Result<Self> {
+        let values =
+            message
+                .as_value()
+                .as_sequence()
+                .ok_or_else(|| crate::Error::InvalidRecord {
+                    path: message.as_field().name().into(),
+                    reason: "expected a flat FIX row sequence".into(),
+                })?;
+        let mut attributes = Vec::new();
+        for (field, value) in message.as_field().fields().iter().zip(values) {
+            if value.is_null() || field.as_fix().branch()?.name() == super::CRATE_BRANCH {
                 continue;
-            };
+            }
+            let name = field.name();
+            if [
+                "MBean",
+                "Operation",
+                "Status",
+                "Error",
+                "SessionInterface",
+                "MBeanType",
+                "PluginType",
+            ]
+            .iter()
+            .any(|held| crate::types::folds_equal(name, held))
+            {
+                continue;
+            }
+            attributes.push((SmolStr::new(name), value.clone()));
+        }
+        let mut request = Vec::new();
+        if let Some(value) = message.get_by_name("MBean") {
+            request.push(("mbean", value.clone()));
+        }
+        if let Some(value) = message.get_by_name("Operation") {
+            request.push(("type", value.clone()));
+        }
+        let mut envelope = vec![("request", Scalar::from_record(request)?)];
+        if let Some(value) = message.get_by_name("Status") {
+            envelope.push(("status", value.clone()));
+        }
+        if let Some(value) = message.get_by_name("Error") {
+            envelope.push(("error", value.clone()));
+        }
+        Ok(Self {
+            mbean: message
+                .get_by_name(SESSIONINTERFACE_NAME)
+                .and_then(Scalar::as_str)
+                .map(SmolStr::new),
+            attributes: Scalar::from_record(attributes)?,
+            envelope: Scalar::from_record(envelope)?,
+        })
+    }
+
+    /// Converts this configuration to one flat message through the core builder.
+    ///
+    /// Object/array attributes retain their canonical JSON text. The request
+    /// selector and the returned ObjectName occupy their distinct scalar fields.
+    pub fn into_fixmsg(&self, codec: &super::FixCodec, enrich: bool) -> Result<super::FixMsg> {
+        let mut pairs = Vec::new();
+        if let Some(root) = self.envelope.as_record() {
             let request = root
                 .get("request")
                 .and_then(Scalar::as_record)
                 .unwrap_or(root);
-            let value = root.get("value").unwrap_or(answer);
-            for (mbean, attributes) in entries(value, request.get("mbean")) {
-                held.push(Self {
-                    mbean,
-                    attributes: attributes.clone(),
-                });
-            }
+            push_leaf(&mut pairs, b"MBean", request.get("mbean"))?;
+            push_leaf(&mut pairs, b"Operation", request.get("type"))?;
+            push_leaf(&mut pairs, b"Status", root.get("status"))?;
+            push_leaf(&mut pairs, b"Error", root.get("error"))?;
+        } else if let Some(mbean) = &self.mbean {
+            pairs.push((b"MBean".to_vec(), mbean.as_bytes().to_vec()));
         }
-        UlPlugins {
-            held: held.into_iter(),
-        }
-    }
-
-    /// Every plugin one typed message carries.
-    ///
-    /// The reverse of [`Self::into_fixmsg`], over the occurrences of the
-    /// [`SESSIONINTERFACES_TAG`] group: each occurrence is one plugin, its
-    /// `SessionInterface` member is the ObjectName, and every other member is
-    /// an attribute under the name the dictionary gave it. The two properties
-    /// the ObjectName itself states - `MBeanType` and `PluginType` - are read
-    /// back off the name rather than kept twice.
-    #[must_use]
-    pub fn from_fixmsg(message: &super::FixMsg) -> UlPlugins {
-        let mut held = Vec::new();
-        let occurrences = message
-            .get_by_tag(SESSIONINTERFACES_TAG)
-            .and_then(Scalar::as_sequence);
-        // The member names are the item's, in declaration order, which is the
-        // order the values arrive in: a row is an ordered sequence.
-        let item = message
-            .as_field()
-            .dtype()
-            .get_field_by_path(SESSIONINTERFACES_NAME)
-            .and_then(|group| group.dtype().get_field_at(0));
-        if let (Some(occurrences), Some(item)) = (occurrences, item) {
-            let names: Vec<&str> = item
-                .dtype()
-                .as_fields()
-                .map(|fields| fields.iter().map(Field::name).collect())
-                .unwrap_or_default();
-            for occurrence in occurrences {
-                let Some(values) = occurrence.as_sequence() else {
-                    continue;
-                };
-                let mut mbean = None;
-                let mut attributes: Vec<(SmolStr, Scalar)> = Vec::new();
-                for (name, value) in names.iter().zip(values) {
-                    if value.is_null() {
-                        continue;
-                    }
-                    match *name {
-                        SESSIONINTERFACE_NAME => {
-                            mbean = value.as_str().map(SmolStr::new);
-                        }
-                        // Both are the ObjectName's own properties, and the
-                        // name is kept: storing them twice would give one fact
-                        // two owners.
-                        "MBeanType" | "PluginType" => {}
-                        held => attributes.push((SmolStr::new(held), value.clone())),
-                    }
-                }
-                // A duplicate member name cannot happen: the item's names are
-                // a Struct's, which the schema grammar already made unique.
-                let Ok(attributes) = Scalar::from_record(attributes) else {
-                    continue;
-                };
-                held.push(Self { mbean, attributes });
-            }
-        }
-        UlPlugins {
-            held: held.into_iter(),
-        }
-    }
-
-    /// This plugin as a message typed against `codec`'s dictionary.
-    ///
-    /// The same build every other reader funnels into, over the pairs this
-    /// plugin states: one occurrence of the session-interface group, and the
-    /// MBean the document answered under. Nothing is rendered twice - an
-    /// attribute that is an object or an array crosses as the JSON it is,
-    /// exactly as it does when the line itself is read.
-    ///
-    /// # Errors
-    ///
-    /// Returns the builder's refusal.
-    pub fn into_fixmsg(&self, codec: &super::FixCodec, enrich: bool) -> Result<super::FixMsg> {
-        let mut pairs: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-        let named = self.mbean.as_deref().map(Scalar::from);
-        push_leaf(&mut pairs, b"MBean", named.as_ref());
-        push_occurrence(&mut pairs, 0, self.mbean.as_deref(), &self.attributes);
+        push_attributes(&mut pairs, self.mbean.as_deref(), &self.attributes)?;
         let borrowed: Vec<(&[u8], &[u8])> = pairs
             .iter()
             .map(|(key, value)| (key.as_slice(), value.as_slice()))
             .collect();
-        codec.transform_pairs(borrowed, enrich)
+        codec.build_pairs(&borrowed, enrich)
     }
 
     /// The ObjectName the bridge holds this plugin under.
@@ -852,6 +792,14 @@ impl UlPlugin {
         &self.attributes
     }
 
+    /// The shared source response, including sibling values in a wildcard read.
+    ///
+    /// Only its request, status, and error describe this selected exchange.
+    #[must_use]
+    pub const fn as_envelope(&self) -> &Scalar {
+        &self.envelope
+    }
+
     /// Every attribute this plugin states, by name.
     pub fn attributes(&self) -> impl Iterator<Item = (&str, &Scalar)> {
         self.attributes
@@ -873,64 +821,126 @@ impl UlPlugin {
     }
 }
 
-/// Every plugin one document answers for, in the order it answered.
+/// Configurations in response order, then canonical returned ObjectName order.
+///
+/// Keeps the shared parsed Scalar and one key cursor; no list of results is
+/// materialized. A request or error-only response still yields its envelope.
 #[derive(Clone, Debug)]
-pub struct UlPlugins {
-    held: std::vec::IntoIter<UlPlugin>,
+pub struct Ulconfigs {
+    document: Scalar,
+    response: usize,
+    after: Option<SmolStr>,
+    done: bool,
 }
 
-impl Iterator for UlPlugins {
-    type Item = UlPlugin;
+impl Iterator for Ulconfigs {
+    type Item = Ulconfig;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.held.next()
+        use std::ops::Bound;
+        if self.done {
+            return None;
+        }
+        loop {
+            let answer = match self.document.as_sequence() {
+                Some(responses) => responses.get(self.response),
+                None => (self.response == 0).then_some(&self.document),
+            };
+            let Some(answer) = answer else {
+                self.done = true;
+                return None;
+            };
+            let root = answer
+                .as_record()
+                .expect("ULconfig intake validated every response object");
+            let request = root
+                .get("request")
+                .and_then(Scalar::as_record)
+                .unwrap_or(root);
+            let has_envelope = ["request", "value", "mbean", "status", "error"]
+                .iter()
+                .any(|key| root.contains_key(*key));
+            let empty = Scalar::Null;
+            let value = root
+                .get("value")
+                .unwrap_or(if has_envelope { &empty } else { answer });
+            if let Some(attributes) = value.as_record() {
+                let bounds = (
+                    self.after
+                        .as_deref()
+                        .map_or(Bound::Unbounded, Bound::Excluded),
+                    Bound::Unbounded,
+                );
+                if let Some((mbean, attributes)) =
+                    attributes.range::<str, _>(bounds).find(|(name, _)| {
+                        crate::mime_type::line::object_names(name.as_bytes())
+                            .next()
+                            .is_some()
+                    })
+                {
+                    let config = Ulconfig {
+                        mbean: Some(mbean.clone()),
+                        attributes: attributes.clone(),
+                        envelope: answer.clone(),
+                    };
+                    self.after = Some(mbean.clone());
+                    return Some(config);
+                }
+            }
+            if self.after.take().is_some() {
+                self.response += 1;
+                continue;
+            }
+            let selector = request.get("mbean").and_then(Scalar::as_str);
+            let wildcard = selector.is_some_and(|name| {
+                let mut escaped = false;
+                name.bytes().any(|byte| {
+                    if escaped {
+                        escaped = false;
+                        return false;
+                    }
+                    escaped = byte == b'\\';
+                    matches!(byte, b'*' | b'?')
+                })
+            });
+            if wildcard && value.as_record().is_some_and(|value| value.is_empty()) {
+                self.response += 1;
+                continue;
+            }
+            let config = Ulconfig {
+                mbean: (!wildcard && root.contains_key("value"))
+                    .then_some(selector)
+                    .flatten()
+                    .map(SmolStr::new),
+                attributes: value.clone(),
+                envelope: if has_envelope {
+                    answer.clone()
+                } else {
+                    Scalar::Null
+                },
+            };
+            self.response += 1;
+            return Some(config);
+        }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.held.size_hint()
+        if self.done { (0, Some(0)) } else { (0, None) }
     }
 }
 
-impl DoubleEndedIterator for UlPlugins {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.held.next_back()
-    }
-}
-
-impl ExactSizeIterator for UlPlugins {}
-
-impl std::iter::FusedIterator for UlPlugins {}
+impl std::iter::FusedIterator for Ulconfigs {}
 
 impl super::FixCodec {
-    /// Reads one ULBridge configuration document.
+    /// Parses one configuration body into lazily converted flat messages.
     ///
-    /// The document is the payload [`MimeType::ULCONFIG`](crate::MimeType)
-    /// names, and this is the reader for it beside the one for a numeric
-    /// frame, a bridge row and a FIXML row: it produces the same key/value
-    /// pairs they do and hands them to the same builder, so what a dictionary
-    /// types here is typed by the rules that type everything else.
-    ///
-    /// Pin [`ULBRIDGE_BRANCH`] to type a document's own attributes; FIX's own
-    /// names resolve either way.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`](crate::Error) naming the byte position when
-    /// the document is not JSON, and the builder's refusal otherwise.
-    pub fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> Result<super::FixMsg> {
-        // The document as the line carries it: a transport writes a timestamp
-        // in front of one and sometimes a duration behind it, and the reader
-        // that classified the line already knows where both stop. A body that
-        // names no MBean is read whole, because a caller handing one straight
-        // in is handing the document itself.
-        let document = crate::from_json_scalar(
-            crate::mime_type::line::ulconfig_span(body).map_or(body, |span| &body[span]),
-        )?;
-        let owned = ulconfig_pairs(&document);
-        let pairs: Vec<(&[u8], &[u8])> = owned
-            .iter()
-            .map(|(key, value)| (key.as_slice(), value.as_slice()))
-            .collect();
-        self.build_pairs(&pairs, enrich)
+    /// Bulk responses and wildcard values may yield several messages; each
+    /// carries the common envelope and exactly one MBean's scalar attributes.
+    pub fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> Result<super::FixMessages> {
+        Ok(super::FixMessages::from_ulconfigs(
+            self.clone(),
+            Ulconfig::from_json_bytes(body)?,
+            enrich,
+        ))
     }
 }

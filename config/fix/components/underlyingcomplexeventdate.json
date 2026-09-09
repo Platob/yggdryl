@@ -1,0 +1,52 @@
+{
+  "name": "underlyingcomplexeventdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingcomplexeventstartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventstartdate"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingcomplexeventenddate"
+        }
+      },
+      {
+        "name": "nounderlyingcomplexeventtimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingcomplexeventtimes"
+        }
+      },
+      {
+        "name": "underlyingcomplexeventtimes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingcomplexeventtimes"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingComplexEventDate"
+  }
+}

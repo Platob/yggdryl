@@ -1,0 +1,23 @@
+{
+  "name": "legstreamterminationdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstreamterminationdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legstreamterminationdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegStreamTerminationDateBusinessCenters(40943) > 0.",
+    "display": "LegStreamTerminationDateBusinessCenterGrp",
+    "fix:component": "legstreamterminationdatebusinesscentercomponent",
+    "fix:counter": "40943"
+  }
+}

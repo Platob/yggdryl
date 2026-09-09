@@ -1,0 +1,22 @@
+{
+  "name": "legprotectiontermeventnewssourcecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legprotectiontermeventnewssource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legprotectiontermeventnewssource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegProtectionTermEventNewsSource"
+  }
+}

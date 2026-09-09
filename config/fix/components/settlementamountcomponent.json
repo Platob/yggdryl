@@ -1,0 +1,42 @@
+{
+  "name": "settlementamountcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "settlementamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlementamount"
+        }
+      },
+      {
+        "name": "settlementamountcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlementamountcurrency"
+        }
+      },
+      {
+        "name": "settlementamountcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "settlementamountcurrencycodesource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "SettlementAmount"
+  }
+}

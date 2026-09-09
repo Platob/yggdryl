@@ -1,0 +1,23 @@
+{
+  "name": "legpricingdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legpricingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legpricingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegPricingDateBusinessCenters(41607) > 0.",
+    "display": "LegPricingDateBusinessCenterGrp",
+    "fix:component": "legpricingdatebusinesscentercomponent",
+    "fix:counter": "41607"
+  }
+}

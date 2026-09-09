@@ -1,0 +1,83 @@
+{
+  "name": "discretioninstructions",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "discretioninst",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "discretioninst"
+        }
+      },
+      {
+        "name": "discretionoffsetvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "discretionoffsetvalue"
+        }
+      },
+      {
+        "name": "discretionmovetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "discretionmovetype"
+        }
+      },
+      {
+        "name": "discretionoffsettype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "discretionoffsettype"
+        }
+      },
+      {
+        "name": "discretionlimittype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "discretionlimittype"
+        }
+      },
+      {
+        "name": "discretionrounddirection",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "discretionrounddirection"
+        }
+      },
+      {
+        "name": "discretionscope",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "discretionscope"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "What the discretionary price is related to (e.g. primary price, display price etc)",
+    "display": "DiscretionInstructions"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "underlyingcashsettldatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcashsettldatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcashsettldatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingCashSettlDateBusinessCenters(42788) > 0.",
+    "display": "UnderlyingCashSettlDateBusinessCenterGrp",
+    "fix:component": "underlyingcashsettldatebusinesscentercomponent",
+    "fix:counter": "42788"
+  }
+}

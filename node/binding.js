@@ -179,6 +179,7 @@ const {
   Url: NativeUrl,
   Urn: NativeUrn,
   Scalar: NativeScalar,
+  Version,
 } = binding
 
 // The pivot keeps its private conversion handles inside this loader: `fromJs`
@@ -605,7 +606,7 @@ Object.defineProperty(DataType, 'variant', {
 
 const fields = createFields(DataType, Field, internalDtype)
 const { installDefaults } = require('./defaults.js')
-installDefaults({ DataType, Field, NativeDataType, NativeField })
+installDefaults({ DataType, Field, Version, NativeDataType, NativeField })
 const nativeCodec = Object.freeze({
   inferFormat: binding.codecInferFormat,
   loadsInferred: binding.codecLoadsInferredNative,
@@ -682,6 +683,7 @@ const nativeWrapperPrototypes = Object.freeze([
   Uri.prototype,
   Url.prototype,
   Urn.prototype,
+  Version.prototype,
 ])
 const regexpSourceGetter = Object.getOwnPropertyDescriptor(
   RegExp.prototype,
@@ -1033,6 +1035,9 @@ function fromTransport(value) {
     return value.map((item) => fromTransport(item))
   }
   if (value === null || typeof value !== 'object') return value
+  if (markerShape(value, 'version', [TRANSPORT_KEY, 'major', 'minor', 'patch'].sort())) {
+    return new Version(value.major, value.minor, value.patch)
+  }
   if (markerShape(value, 'bytes', [TRANSPORT_KEY, 'value'].sort())) {
     return Buffer.from(value.value, 'base64')
   }
@@ -1102,6 +1107,7 @@ Object.defineProperty(Scalar, 'fromJs', {
       options.maxDepth,
       nativeWrapperPrototypes,
       nativeIntrinsics,
+      options.field,
     )
   },
 })
@@ -3343,6 +3349,54 @@ Object.defineProperty(FixMsg.prototype, 'constructor', {
   writable: true,
 })
 
+const NativeUlconfig = binding.Ulconfig
+function Ulconfig(mbean, attributes, envelope) {
+  if (new.target === undefined) {
+    throw new TypeError("Class constructor Ulconfig cannot be invoked without 'new'")
+  }
+  return new NativeUlconfig(
+    mbean,
+    attributes instanceof Scalar ? attributes : Scalar.fromJs(attributes),
+    envelope instanceof Scalar ? envelope : Scalar.fromJs(envelope),
+  )
+}
+Ulconfig.prototype = NativeUlconfig.prototype
+Object.defineProperty(Ulconfig.prototype, 'constructor', {
+  configurable: true,
+  value: Ulconfig,
+  writable: true,
+})
+Ulconfig.fromJsonBytes = function fromJsonBytes(body) {
+  return NativeUlconfig.fromJsonBytes(toBytes(body))
+}
+Ulconfig.fromJsonScalar = function fromJsonScalar(document) {
+  return NativeUlconfig.fromJsonScalar(
+    document instanceof Scalar ? document : Scalar.fromJs(document),
+  )
+}
+Ulconfig.fromFixmsg = function fromFixmsg(message) {
+  return NativeUlconfig.fromFixmsg(message)
+}
+
+const nativeTransformRecord = binding.FixCodec.prototype.transformRecord
+binding.FixCodec.prototype.transformRecord = function transformRecord(record, enrich) {
+  return nativeTransformRecord.call(
+    this,
+    record instanceof Scalar ? record : Scalar.fromJs(record),
+    enrich,
+  )
+}
+
+const nativeFixMessagesNext = binding.FixMessages.prototype.next
+binding.FixMessages.prototype.next = function next() {
+  const value = nativeFixMessagesNext.call(this)
+  return value === null ? { value: undefined, done: true } : { value, done: false }
+}
+Object.defineProperty(binding.FixMessages.prototype, Symbol.iterator, {
+  configurable: true,
+  value: function messages() { return this },
+})
+
 // Both FIX collections are lazy native iterators, so the loader supplies only
 // the protocol Node-API cannot spell: iterating a registry walks its fields in
 // canonical-identifier order and iterating a message walks its `[name, value]`
@@ -3370,10 +3424,15 @@ const fix = Object.freeze({
   FixRegistry: binding.FixRegistry,
   FixMsg,
   FixCodec: binding.FixCodec,
+  MsgType: binding.MsgType,
+  Ulconfig,
+  Ulconfigs: binding.Ulconfigs,
+  FixMessages: binding.FixMessages,
   schema: binding.fixSchema,
   schemaCarrying: binding.fixSchemaCarrying,
   schemaTags: binding.fixSchemaTags,
   crateFields: binding.fixCrateFields,
+  ulbridgeFields: binding.fixUlbridgeFields,
   globalRegistry: binding.fixGlobalRegistryNative,
   installGlobalRegistry: binding.fixInstallGlobalRegistryNative,
 })
@@ -3386,15 +3445,28 @@ for (const name of [
   'FixMsgEntries',
   'FixCodec',
   'FixRegistry',
+  'FixDefinitionIterator',
+  'MsgType',
+  'MsgTypeIterator',
+  'Ulconfig',
+  'Ulconfigs',
+  'FixMessages',
   'JsFixFieldIterator',
   'JsFixMsg',
   'JsFixMsgEntries',
   'JsFixCodec',
   'JsFixRegistry',
+  'JsFixDefinitionIterator',
+  'JsMsgType',
+  'JsMsgTypeIterator',
+  'JsUlconfig',
+  'JsUlconfigs',
+  'JsFixMessages',
   '_fixStandardBranchNative',
   '_fixUserTagMinNative',
   '_fixUserTagMaxNative',
   'fixCrateFields',
+  'fixUlbridgeFields',
   'fixGlobalRegistryNative',
   'fixInstallGlobalRegistryNative',
   'fixSchema',

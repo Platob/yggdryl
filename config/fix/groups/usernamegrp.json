@@ -1,0 +1,23 @@
+{
+  "name": "usernamegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "usernamecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "usernamecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of usernames",
+    "display": "UsernameGrp",
+    "fix:component": "usernamecomponent",
+    "fix:counter": "809"
+  }
+}

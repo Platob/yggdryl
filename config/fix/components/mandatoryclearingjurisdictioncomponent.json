@@ -1,0 +1,22 @@
+{
+  "name": "mandatoryclearingjurisdictioncomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "mandatoryclearingjurisdiction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "mandatoryclearingjurisdiction"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MandatoryClearingJurisdiction"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "name": "returnratepricecomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "returnratepricebasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratepricebasis"
+        }
+      },
+      {
+        "name": "returnrateprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnrateprice"
+        }
+      },
+      {
+        "name": "returnratepricecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratepricecurrency"
+        }
+      },
+      {
+        "name": "returnratepricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "returnratepricetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ReturnRatePrice"
+  }
+}

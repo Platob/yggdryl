@@ -1,0 +1,23 @@
+{
+  "name": "allocackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "allocack",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "allocack"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Indicates number of allocation groups to follow.",
+    "display": "AllocAckGrp",
+    "fix:component": "allocack",
+    "fix:counter": "78"
+  }
+}

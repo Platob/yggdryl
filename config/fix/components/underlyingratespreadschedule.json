@@ -1,0 +1,43 @@
+{
+  "name": "underlyingratespreadschedule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingratespreadinitialvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingratespreadinitialvalue"
+        }
+      },
+      {
+        "name": "nounderlyingratespreadsteps",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingratespreadsteps"
+        }
+      },
+      {
+        "name": "underlyingratespreadstepgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingratespreadstepgrp"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "UnderlyingRateSpreadSchedule is a subcomponent of UnderlyingInstrument used to specify the rate spread schedule for a basket underlier.",
+    "display": "UnderlyingRateSpreadSchedule"
+  }
+}

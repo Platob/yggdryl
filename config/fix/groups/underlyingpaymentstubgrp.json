@@ -1,0 +1,23 @@
+{
+  "name": "underlyingpaymentstubgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpaymentstub",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingpaymentstub"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingPaymentStubs(40708) > 0.",
+    "display": "UnderlyingPaymentStubGrp",
+    "fix:component": "underlyingpaymentstub",
+    "fix:counter": "40708"
+  }
+}

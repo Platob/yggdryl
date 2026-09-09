@@ -1,0 +1,23 @@
+{
+  "name": "positionamountdata",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "positionamountdatacomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "positionamountdatacomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of Position Amount entries",
+    "display": "PositionAmountData",
+    "fix:component": "positionamountdatacomponent",
+    "fix:counter": "753"
+  }
+}

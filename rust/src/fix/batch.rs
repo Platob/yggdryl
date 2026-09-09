@@ -50,7 +50,7 @@ use crate::{DataType, Error, Field, Level, Metadata, Result, Scalar, Version};
 use super::codec::FixCodec;
 use super::msg::FixMsg;
 use super::record::{column, column_bytes, column_text, empty, transform_record};
-use super::{ENTRIES_COLUMN, FixBranch, FixRegistry};
+use super::{ENTRIES_COLUMN, FixBranch, FixMessages, FixRegistry};
 
 /// The column a payload is read from when the options name none.
 ///
@@ -125,10 +125,8 @@ pub struct FixOptions {
     pub direction: Option<&'static str>,
     /// Whether an adjacent republication is dropped.
     ///
-    /// Off by default, and it must be: with it on, the output row count no
-    /// longer equals the input line count, so a batch stops aligning with its
-    /// source by position and cannot be joined back to it. What went is
-    /// counted rather than silent.
+    /// Off by default. Bulk configuration documents already expand into one
+    /// row per configuration; enabling this also removes adjacent duplicates.
     pub dedup: bool,
     /// Whether each message is filled with what it implies.
     ///
@@ -237,9 +235,7 @@ impl FixOptions {
 
     /// Drops each row whose digest equals the one before it.
     ///
-    /// Switching this on surrenders the row-in/row-out correspondence every
-    /// other path here keeps: the output no longer aligns with the input by
-    /// position. What was dropped is counted, never silent.
+    /// This also applies to successive messages expanded from a bulk document.
     #[must_use]
     pub const fn with_dedup(mut self, dedup: bool) -> Self {
         self.dedup = dedup;
@@ -292,12 +288,10 @@ pub struct FixBatchReader;
 impl FixBatchReader {
     /// Rows of bytes in, batches out.
     ///
-    /// A row in is a row out. Nothing in a row's content can fail a batch: a
-    /// row that could not be typed is `unknown`, a row with no pairs is a row
-    /// with no entries, and the `Result` is for I/O only. The output row count
-    /// equals the input line count, which is what lets a capture be joined
-    /// back to its source by position - the one exception is `dedup`, which
-    /// says so where it is switched on.
+    /// Ordinary lines yield one message; bulk configuration documents yield
+    /// one per configuration. Empty or unrecognized ordinary lines retain an
+    /// empty message. Input I/O and errors yielded by a parsed document stop
+    /// the output stream after its completed prefix.
     ///
     /// # Errors
     ///
@@ -316,28 +310,26 @@ impl FixBatchReader {
         let reader = options.reader(Arc::clone(&registry));
         let default = options.direction;
         let enrich = options.enrich;
-        let messages = rows.into_iter().map(move |row| {
-            let row = row?;
-            // A row in is a row out: a line the reader refuses is not a line
-            // lost, it is a message with nothing in it, and the count still
-            // matches the capture's.
-            let message = reader
-                .transform_line(&row, enrich)
-                .unwrap_or_else(|_| empty(&reader));
-            let direction = direction_of(&row, default);
-            Ok((message, direction, Vec::new()))
+        let messages = rows.into_iter().flat_map(move |row| {
+            let (messages, direction) = match row {
+                Ok(row) => (
+                    reader
+                        .transform_line(&row, enrich)
+                        .unwrap_or_else(|_| FixMessages::one(empty(&reader))),
+                    direction_of(&row, default),
+                ),
+                Err(error) => (FixMessages::from_result(Err(error)), None),
+            };
+            messages.map(move |message| message.map(|message| (message, direction, Vec::new())))
         });
         Self::stream(field, messages, &options)
     }
 
     /// A column of frames in, batches out - a capture already in Arrow.
     ///
-    /// The source's other columns are carried through unchanged, ahead of the
-    /// FIX columns: a capture's arrival timestamp and file offset are what a
-    /// monitor orders and joins on, and because the row counts match exactly
-    /// carrying them is a slice rather than a join. A column that was read as
-    /// a parameter is still carried, because a monitor needs to see the value
-    /// it supplied rather than infer that it was used.
+    /// Each emitted message carries its source row's other columns ahead of
+    /// the FIX columns. An expanded configuration document repeats the source
+    /// timestamp, offset, and stated direction on every emitted row.
     ///
     /// This is [`Self::from_rows`] with one column named, over the record
     /// constructor - not a second body of code that would drift from it.
@@ -386,37 +378,75 @@ impl FixBatchReader {
         let payload = options.payload_column.clone();
         let default = options.direction;
         let enrich = options.enrich;
+        let source_schema = source.schema();
 
         let records = source
-            .flat_map(move |batch| match batch {
-                Ok(batch) => match crate::arrow::batch_to_value(&batch) {
-                    Ok(rows) => rows
-                        .as_sequence()
-                        .map(<[Scalar]>::to_vec)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(Ok)
-                        .collect::<Vec<_>>(),
-                    Err(error) => vec![Err(error)],
-                },
-                Err(error) => vec![Err(crate::arrow::from_reader_error(error))],
+            .flat_map(move |batch| {
+                let (batch, mut error) = match batch {
+                    Ok(batch) if batch.schema() == source_schema => (Some(batch), None),
+                    Ok(_) => (
+                        None,
+                        Some(Error::conflict(
+                            "the capture reader's declared Arrow schema",
+                            "a different batch schema",
+                            "FIX capture",
+                        )),
+                    ),
+                    Err(error) => (
+                        None,
+                        Some(crate::Error::from(crate::arrow::from_reader_error(error))),
+                    ),
+                };
+                let carrier = carrier.clone();
+                let mut index = 0;
+                std::iter::from_fn(move || {
+                    if let Some(error) = error.take() {
+                        return Some(Err(error));
+                    }
+                    let batch = batch.as_ref()?;
+                    if index == batch.num_rows() {
+                        return None;
+                    }
+                    let row = batch
+                        .columns()
+                        .iter()
+                        .zip(carrier.fields())
+                        .map(|(column, field)| {
+                            crate::arrow::value::value_from_array(
+                                field.dtype(),
+                                column.as_ref(),
+                                index,
+                            )
+                            .map_err(crate::Error::from)
+                        })
+                        .collect::<Result<Vec<_>>>();
+                    index += 1;
+                    Some(row.map(Scalar::from_sequence))
+                })
             })
-            .map(move |row| {
-                let record = named(&names, &row?);
-                let bytes = column_bytes(&record, &payload).unwrap_or_default();
-                let message = transform_record(&reader, &record, &bytes, enrich)?;
-                let direction = stated(&record).or_else(|| direction_of(&bytes, default));
-                // By position: the columns kept were decided from the schema,
-                // and a row of that schema arrives in that order.
-                let front = kept
-                    .iter()
-                    .map(|at| {
-                        record
-                            .get(*at)
-                            .map_or(Scalar::Null, |(_, held)| held.clone())
-                    })
-                    .collect();
-                Ok((message, direction, front))
+            .flat_map(move |row| {
+                let (messages, direction, front) = match row {
+                    Ok(row) => {
+                        let record = named(&names, &row);
+                        let bytes = column_bytes(&record, &payload).unwrap_or_default();
+                        let messages = FixMessages::from_result(transform_record(
+                            &reader, &record, &bytes, enrich,
+                        ));
+                        let direction = stated(&record).or_else(|| direction_of(&bytes, default));
+                        let front = kept
+                            .iter()
+                            .map(|at| {
+                                record
+                                    .get(*at)
+                                    .map_or(Scalar::Null, |(_, held)| held.clone())
+                            })
+                            .collect::<Vec<_>>();
+                        (messages, direction, front)
+                    }
+                    Err(error) => (FixMessages::from_result(Err(error)), None, Vec::new()),
+                };
+                messages
+                    .map(move |message| message.map(|message| (message, direction, front.clone())))
             });
         Self::stream(field, records, options)
     }
@@ -462,9 +492,7 @@ impl FixBatchReader {
 /// One message as the fixed row its columns are read from.
 ///
 /// `front` is the capture's own columns, already in schema order, and it leads
-/// the row: a monitor orders and joins on the arrival time and the file offset
-/// the capture supplied, and because the row counts match exactly, carrying
-/// them is a slice rather than a join.
+/// the row. Expanded messages repeat this same source-row prefix.
 fn row_of(
     message: &FixMsg,
     schema: &Field,
@@ -476,7 +504,7 @@ fn row_of(
     // by no tag, so it comes back null and is filled here rather than spliced
     // in, which keeps a column position an index into the row itself.
     let mut held = message
-        .to_row(schema)?
+        .into_row(schema)?
         .as_sequence()
         .map(<[Scalar]>::to_vec)
         .unwrap_or_default();
@@ -663,16 +691,33 @@ impl FixMsg {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when the value is not a record at all.
+    /// Returns [`Error::Parse`] for a non-record, the first emitted failure,
+    /// or [`Error::InvalidRecord`] when the record expands to zero or multiple
+    /// messages. Use [`FixCodec::transform_record`] for bulk documents.
     pub fn from_record(
         registry: Arc<FixRegistry>,
         record: &Scalar,
         options: &FixOptions,
     ) -> Result<Self> {
-        options
+        let mut messages = options
             .reader(registry)
             .with_payload_column(options.payload_column.clone())
-            .transform_record(record, options.enrich)
+            .transform_record(record, options.enrich)?;
+        let message = messages
+            .next()
+            .transpose()?
+            .ok_or_else(|| Error::InvalidRecord {
+                path: options.payload_column.clone(),
+                reason: "expected exactly one FIX message, got zero messages".into(),
+            })?;
+        if let Some(next) = messages.next() {
+            next?;
+            return Err(Error::InvalidRecord {
+                path: options.payload_column.clone(),
+                reason: "expected exactly one FIX message, got multiple messages".into(),
+            });
+        }
+        Ok(message)
     }
 }
 

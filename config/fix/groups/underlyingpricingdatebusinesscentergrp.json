@@ -1,0 +1,23 @@
+{
+  "name": "underlyingpricingdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingpricingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingpricingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingPricingDateBusinessCenters(41947) > 0.",
+    "display": "UnderlyingPricingDateBusinessCenterGrp",
+    "fix:component": "underlyingpricingdatebusinesscentercomponent",
+    "fix:counter": "41947"
+  }
+}

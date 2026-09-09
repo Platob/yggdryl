@@ -1,0 +1,23 @@
+{
+  "name": "paymentschedulefixingdaygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentschedulefixingday",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentschedulefixingday"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentScheduleFixingDays(41161) > 0.",
+    "display": "PaymentScheduleFixingDayGrp",
+    "fix:component": "paymentschedulefixingday",
+    "fix:counter": "41161"
+  }
+}

@@ -1,7 +1,7 @@
 """The ASCII field factories: variable, fixed-width, and by registered code.
 
 The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, and FIX's
-own ``side``, ``msgtype`` and ``msgdirection`` - are
+own ``side`` and ``msgdirection`` - are
 datatypes of their own, each storing the width its standard fixes, so a code
 factory is not a width factory wearing a name: the field it builds carries the
 code's identity across Arrow. The declared vocabularies live in
@@ -25,14 +25,13 @@ if TYPE_CHECKING:
     MicField: TypeAlias = TypedField[Literal["mic"], str]
     CfiField: TypeAlias = TypedField[Literal["cfi"], str]
     SideField: TypeAlias = TypedField[Literal["side"], str]
-    MsgTypeField: TypeAlias = TypedField[Literal["msgtype"], str]
     MsgDirectionField: TypeAlias = TypedField[Literal["msgdirection"], str]
     StateField: TypeAlias = TypedField[Literal["state"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
 else:
     AsciiField = FixedAsciiField = CountryField = CurrencyField = MicField = (
         CfiField
-    ) = SideField = MsgTypeField = MsgDirectionField = StateField = TimeInForceField = Field
+    ) = SideField = MsgDirectionField = StateField = TimeInForceField = Field
 
 _ASCII = simple_dtype("ascii")
 _COUNTRY = simple_dtype("country")
@@ -40,7 +39,6 @@ _CURRENCY = simple_dtype("currency")
 _MIC = simple_dtype("mic")
 _CFI = simple_dtype("cfi")
 _SIDE = simple_dtype("side")
-_MSGTYPE = simple_dtype("msgtype")
 _DIRECTION = simple_dtype("msgdirection")
 _STATE = simple_dtype("state")
 _TIMEINFORCE = simple_dtype("timeinforce")
@@ -101,12 +99,6 @@ def side(name: str, *, nullable: bool = True, metadata: MetadataInput = None) ->
     return new_field(SideField, name, _SIDE, nullable, metadata)
 
 
-def msgtype(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> MsgTypeField:
-    """FIX ``MsgType(35)``, case-bearing: ``A`` and ``a`` are two messages."""
-
-    return new_field(MsgTypeField, name, _MSGTYPE, nullable, metadata)
-
-
 def msgdirection(
     name: str,
     *,
@@ -145,7 +137,6 @@ __all__ = [
     "TimeInForceField",
     "FixedAsciiField",
     "MicField",
-    "MsgTypeField",
     "SideField",
     "ascii",
     "cfi",
@@ -154,6 +145,5 @@ __all__ = [
     "msgdirection",
     "fixed_ascii",
     "mic",
-    "msgtype",
     "side",
 ]

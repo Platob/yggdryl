@@ -1,0 +1,284 @@
+{
+  "name": "logon",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "encryptmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "encryptmethod"
+        }
+      },
+      {
+        "name": "heartbtint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "heartbtint"
+        }
+      },
+      {
+        "name": "rawdatalength",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rawdatalength"
+        }
+      },
+      {
+        "name": "rawdata",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rawdata"
+        }
+      },
+      {
+        "name": "resetseqnumflag",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "resetseqnumflag"
+        }
+      },
+      {
+        "name": "nextexpectedmsgseqnum",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nextexpectedmsgseqnum"
+        }
+      },
+      {
+        "name": "maxmessagesize",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "maxmessagesize"
+        }
+      },
+      {
+        "name": "nomsgtypes",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nomsgtypes"
+        }
+      },
+      {
+        "name": "msgtypegrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "msgtypegrp"
+        }
+      },
+      {
+        "name": "testmessageindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testmessageindicator"
+        }
+      },
+      {
+        "name": "username",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "username"
+        }
+      },
+      {
+        "name": "password",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "password"
+        }
+      },
+      {
+        "name": "newpassword",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "newpassword"
+        }
+      },
+      {
+        "name": "encryptedpasswordmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encryptedpasswordmethod"
+        }
+      },
+      {
+        "name": "encryptedpasswordlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encryptedpasswordlen"
+        }
+      },
+      {
+        "name": "encryptedpassword",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encryptedpassword"
+        }
+      },
+      {
+        "name": "encryptednewpasswordlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encryptednewpasswordlen"
+        }
+      },
+      {
+        "name": "encryptednewpassword",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encryptednewpassword"
+        }
+      },
+      {
+        "name": "sessionstatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "sessionstatus"
+        }
+      },
+      {
+        "name": "defaultapplverid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "defaultapplverid"
+        }
+      },
+      {
+        "name": "defaultapplextid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "defaultapplextid"
+        }
+      },
+      {
+        "name": "defaultcstmapplverid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "defaultcstmapplverid"
+        }
+      },
+      {
+        "name": "text",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "text"
+        }
+      },
+      {
+        "name": "encodedtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtextlen"
+        }
+      },
+      {
+        "name": "encodedtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedtext"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = A",
+    "display": "Logon",
+    "fix:msgtype": "A"
+  }
+}

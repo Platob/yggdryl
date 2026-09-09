@@ -1,0 +1,112 @@
+{
+  "name": "underlyingevnt",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingeventtype"
+        }
+      },
+      {
+        "name": "underlyingeventdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingeventdate"
+        }
+      },
+      {
+        "name": "underlyingeventtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingeventtime"
+        }
+      },
+      {
+        "name": "underlyingeventtimeunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingeventtimeunit"
+        }
+      },
+      {
+        "name": "underlyingeventtimeperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingeventtimeperiod"
+        }
+      },
+      {
+        "name": "underlyingeventmonthyear",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingeventmonthyear"
+        }
+      },
+      {
+        "name": "underlyingeventpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingeventpx"
+        }
+      },
+      {
+        "name": "underlyingeventtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingeventtext"
+        }
+      },
+      {
+        "name": "encodedunderlyingeventtextlen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingeventtextlen"
+        }
+      },
+      {
+        "name": "encodedunderlyingeventtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingeventtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingEvnt"
+  }
+}

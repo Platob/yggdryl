@@ -1,0 +1,23 @@
+{
+  "name": "legfinancingtermsupplementgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legfinancingtermsupplement",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legfinancingtermsupplement"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegFinancingTermSupplements(42200) > 0.",
+    "display": "LegFinancingTermSupplementGrp",
+    "fix:component": "legfinancingtermsupplement",
+    "fix:counter": "42200"
+  }
+}

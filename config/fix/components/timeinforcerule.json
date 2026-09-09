@@ -1,0 +1,22 @@
+{
+  "name": "timeinforcerule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "timeinforce",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "timeinforce"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TimeInForceRule"
+  }
+}

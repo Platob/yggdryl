@@ -1,0 +1,23 @@
+{
+  "name": "pricingdatebusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "pricingdatebusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "pricingdatebusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPricingDateBusinessCenters(41230) > 0.",
+    "display": "PricingDateBusinessCenterGrp",
+    "fix:component": "pricingdatebusinesscentercomponent",
+    "fix:counter": "41230"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "legdeliverystreamcycle",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdeliverystreamcycledesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdeliverystreamcycledesc"
+        }
+      },
+      {
+        "name": "encodedlegdeliverystreamcycledesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegdeliverystreamcycledesclen"
+        }
+      },
+      {
+        "name": "encodedlegdeliverystreamcycledesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedlegdeliverystreamcycledesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegDeliveryStreamCycle"
+  }
+}

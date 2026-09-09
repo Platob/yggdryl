@@ -1,0 +1,83 @@
+{
+  "name": "optionexercisemakewholeprovision",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "makewholedate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "makewholedate"
+        }
+      },
+      {
+        "name": "makewholeamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "makewholeamount"
+        }
+      },
+      {
+        "name": "makewholebenchmarkcurvename",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "makewholebenchmarkcurvename"
+        }
+      },
+      {
+        "name": "makewholebenchmarkcurvepoint",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "makewholebenchmarkcurvepoint"
+        }
+      },
+      {
+        "name": "makewholerecallspread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "makewholerecallspread"
+        }
+      },
+      {
+        "name": "makewholebenchmarkquote",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "makewholebenchmarkquote"
+        }
+      },
+      {
+        "name": "makewholeinterpolationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "makewholeinterpolationmethod"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "OptionExerciseMakeWholeProvision is a subcomponent of the OptionExercise component used to specify the set of rules of maintaining balance when an option is exercised.",
+    "display": "OptionExerciseMakeWholeProvision"
+  }
+}

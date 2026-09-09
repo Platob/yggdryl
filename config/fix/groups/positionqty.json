@@ -1,0 +1,23 @@
+{
+  "name": "positionqty",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "positionqtycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "positionqtycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPositions > 1",
+    "display": "PositionQty",
+    "fix:component": "positionqtycomponent",
+    "fix:counter": "702"
+  }
+}

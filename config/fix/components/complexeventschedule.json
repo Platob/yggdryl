@@ -1,0 +1,62 @@
+{
+  "name": "complexeventschedule",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "complexeventschedulestartdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventschedulestartdate"
+        }
+      },
+      {
+        "name": "complexeventscheduleenddate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventscheduleenddate"
+        }
+      },
+      {
+        "name": "complexeventschedulefrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventschedulefrequencyperiod"
+        }
+      },
+      {
+        "name": "complexeventschedulefrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventschedulefrequencyunit"
+        }
+      },
+      {
+        "name": "complexeventschedulerollconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "complexeventschedulerollconvention"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ComplexEventSchedule"
+  }
+}

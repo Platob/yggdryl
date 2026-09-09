@@ -1,4 +1,4 @@
-//! One generic record read as one message.
+//! One generic record read as a bounded stream of messages.
 //!
 //! A record is a name-to-value map - one `Scalar` variant - and every
 //! row-oriented reader in the crate answers with one, so this is the shape a
@@ -16,9 +16,9 @@ use smol_str::SmolStr;
 
 use crate::{Error, Result, Scalar, Version};
 
-use super::FixBranch;
 use super::codec::FixCodec;
 use super::msg::FixMsg;
+use super::{FixBranch, FixMessages};
 
 /// The column a payload is read from when nothing names another.
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
@@ -71,7 +71,7 @@ pub(super) fn transform_record_with(
     record: &Scalar,
     payload: &str,
     enrich: bool,
-) -> Result<FixMsg> {
+) -> Result<FixMessages> {
     let Some(held) = record.as_record() else {
         return Err(Error::Parse {
             target: "fix record",
@@ -93,7 +93,7 @@ pub(super) fn transform_record(
     record: &[(SmolStr, Scalar)],
     bytes: &[u8],
     enrich: bool,
-) -> Result<FixMsg> {
+) -> Result<FixMessages> {
     // A column is the caller speaking per row and an option is the caller
     // speaking per stream, so both outrank the inference the readers fall back
     // on - and the column outranks the option, because it is the more specific
@@ -112,7 +112,7 @@ pub(super) fn transform_record(
         }
     }
     if bytes.is_empty() {
-        return Ok(empty(&reader));
+        return Ok(FixMessages::one(empty(&reader)));
     }
     // A stated separator is read as a numeric frame with that separator; with
     // none stated the reader picks its own dialect from the frame, which is
@@ -122,8 +122,9 @@ pub(super) fn transform_record(
         Some(separator) => reader
             .clone()
             .with_separator(separator)
-            .transform_fix_line(bytes, enrich),
+            .transform_fix_line(bytes, enrich)
+            .map(FixMessages::one),
         None => reader.transform_line(bytes, enrich),
     };
-    Ok(built.unwrap_or_else(|_| empty(&reader)))
+    Ok(built.unwrap_or_else(|_| FixMessages::one(empty(&reader))))
 }

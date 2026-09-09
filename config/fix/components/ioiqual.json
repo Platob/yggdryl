@@ -1,0 +1,22 @@
+{
+  "name": "ioiqual",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "ioiqualifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "ioiqualifier"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "IOIQual"
+  }
+}

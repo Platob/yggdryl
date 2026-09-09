@@ -1,0 +1,103 @@
+{
+  "name": "legdividendfxtriggerdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legdividendfxtriggerdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfxtriggerdaterelativeto"
+        }
+      },
+      {
+        "name": "legdividendfxtriggerdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfxtriggerdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legdividendfxtriggerdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfxtriggerdateoffsetunit"
+        }
+      },
+      {
+        "name": "legdividendfxtriggerdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfxtriggerdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legdividendfxtriggerdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfxtriggerdateunadjusted"
+        }
+      },
+      {
+        "name": "legdividendfxtriggerdatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfxtriggerdatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nolegdividendfxtriggerdatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nolegdividendfxtriggerdatebusinesscenters"
+        }
+      },
+      {
+        "name": "legdividendfxtriggerdatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "legdividendfxtriggerdatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "legdividendfxtriggerdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legdividendfxtriggerdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when LegDividendFXTriggerDateOffsetUnit(42359) is specified.",
+    "display": "LegDividendFXTriggerDate"
+  }
+}

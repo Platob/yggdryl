@@ -1,0 +1,23 @@
+{
+  "name": "paymentstreampricingbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreampricingbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentstreampricingbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentStreamPricingBusinessCenters(41192) > 0.",
+    "display": "PaymentStreamPricingBusinessCenterGrp",
+    "fix:component": "paymentstreampricingbusinesscentercomponent",
+    "fix:counter": "41192"
+  }
+}

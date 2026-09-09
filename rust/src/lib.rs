@@ -20,6 +20,9 @@ mod datatype_kind;
 mod digest;
 mod edge_algorithm;
 mod error;
+mod fix_category;
+
+pub use fix_category::FixCategory;
 pub mod expression;
 pub mod fix;
 pub mod holder;
@@ -64,16 +67,16 @@ pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};
 pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
+pub use fix::MsgType;
 pub use fix::{
     CRATE_BRANCH, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS, ERROR_TAG, FixAnomalies,
     FixAnomaly, FixBranch, FixCode, FixCodeValue, FixCodec, FixCodes, FixDedup, FixEntry,
-    FixFieldIter, FixId, FixKey, FixLift, FixLineage, FixLineageEntry, FixMsg, FixParty,
-    FixPedigree, FixRegistry, FixSpellings, MBEAN_TAG, MSGDIRECTION_TAG, MSGHASH_TAG,
-    OPERATION_TAG, PARENTCLORDID_TAG, PARENTORDERID_TAG, SESSIONINTERFACES_TAG,
-    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATUS_TAG, SYMBOLTICKER_TAG, TIMESTAMP_TAG,
-    ULBRIDGE_BRANCH, ULBRIDGE_TAG_MIN, UNIXPARTITION_TAG, UlPlugin, UlPlugins, VERSION_TAG, Words,
-    fix_crate_fields, fix_lift, fix_lifts, fix_schema, fix_schema_carrying, fix_schema_tags,
-    fix_ulbridge_fields,
+    FixFieldIter, FixId, FixKey, FixLift, FixLineage, FixLineageEntry, FixMessages, FixMsg,
+    FixParty, FixPedigree, FixRegistry, FixSpellings, MBEAN_TAG, MSGDIRECTION_TAG, MSGHASH_TAG,
+    OPERATION_TAG, PARENTCLORDID_TAG, PARENTORDERID_TAG, STANDARD_HEADER_TAGS,
+    STANDARD_TRAILER_TAGS, STATUS_TAG, SYMBOLTICKER_TAG, TIMESTAMP_TAG, ULBRIDGE_BRANCH,
+    ULBRIDGE_TAG_MIN, UNIXPARTITION_TAG, Ulconfig, Ulconfigs, VERSION_TAG, Words, fix_crate_fields,
+    fix_lift, fix_lifts, fix_schema, fix_schema_carrying, fix_schema_tags, fix_ulbridge_fields,
 };
 #[cfg(feature = "arrow")]
 pub use fix::{

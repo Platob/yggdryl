@@ -1,0 +1,23 @@
+{
+  "name": "complexeventcrediteventqualifiergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "complexeventcrediteventqualifiercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "complexeventcrediteventqualifiercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoComplexEventCreditEventQualifiers(41005) > 0.",
+    "display": "ComplexEventCreditEventQualifierGrp",
+    "fix:component": "complexeventcrediteventqualifiercomponent",
+    "fix:counter": "41005"
+  }
+}

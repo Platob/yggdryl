@@ -25,13 +25,16 @@ from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url
 from yggdryl.fix import (
     FixBranch,
     FixMsg,
+    FixMessages,
+    MsgType,
+    Ulconfigs,
     FixCodec,
     FixRegistry,
     STANDARD_BRANCH,
     ULBRIDGE_BRANCH,
     USER_TAG_MAX,
     USER_TAG_MIN,
-    UlPlugin,
+    Ulconfig,
     fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
@@ -89,10 +92,15 @@ def _field(
     return field
 
 
-@pytest.fixture
-def seed() -> FixRegistry:
+@pytest.fixture(scope="module")
+def _seed_catalog() -> FixRegistry:
     """The dictionary the repository tracks at ``config/fix``."""
     return FixRegistry.from_handle(SEED)
+
+
+@pytest.fixture
+def seed(_seed_catalog: FixRegistry) -> FixRegistry:
+    return copy.copy(_seed_catalog)
 
 
 def test_protocol_view_carries_the_typed_fix_vocabulary() -> None:
@@ -339,13 +347,14 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
     # A path reaches a repeating group and one of its members.
     assert seed.field_by_path("NoPartyIDs", "").fix.tag == 453
     # An occurrence is not a path segment: the walk steps through the list
-    # and the member is spelled directly under the counter.
-    assert seed.field_by_path("nopartyids.partyid", "").fix.tag == 448
-    assert seed.field_by_path("nopartyids.partyrole", "").name == "partyrole"
-    assert seed.get_field_by_path("nopartyids.partyid.partyid", "") is None
+    # and the member is spelled directly under the named group.
+    assert seed.field_by_tag(453).dtype == DataType("int32")
+    assert seed.field_by_path("parties.partyid", "").fix.tag == 448
+    assert seed.field_by_path("parties.partyrole", "").name == "partyrole"
+    assert seed.get_field_by_path("parties.partyid.partyid", "") is None
 
     # The generic pair answers exactly what the specialized one does.
-    for key in (55, "Symbol", "nopartyids", "nopartyids.partyid"):
+    for key in (55, "Symbol", "nopartyids", "parties.partyid"):
         assert seed.get_field(key) == seed[key]
         assert seed.field(key) == seed[key]
         assert key in seed
@@ -357,13 +366,11 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
     assert seed.get(55) == seed[55]
 
 
-def test_protocol_and_msgtype_inference_stays_native_and_shallow(
-    seed: FixRegistry,
-) -> None:
+def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
     cases = (
         (b"prefix 8=FIX.4.4|35=D|55=AAPL|10=001| Symbol=suffix", MimeType.FIX, b"D"),
         (b"ACCOUNT=A1|MSGTYPE=8|SYMBOL=AAPL", MimeType.ULLINK, b"8"),
-        (b"8=FIX.4.4|35=UL|#SYMBOL=TTF|10=001|", MimeType.FIXUL, b"UDF"),
+        (b"8=FIX.4.4|35=UL|#SYMBOL=TTF|10=001|", MimeType.FIXUL, b"UL"),
         (
             b"8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|",
             MimeType.FIXUL,
@@ -381,18 +388,17 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow(
         assert MimeType.infer_bytes(line) == protocol
         assert MimeType.infer_bytes(bytearray(line)) == protocol
         assert MimeType.infer_bytes(memoryview(line)) == protocol
-        assert MimeType.infer_bytes_msgtype(line) == msgtype
-        assert MimeType.infer_bytes_msgtype(bytearray(line)) == msgtype
-        assert MimeType.infer_bytes_msgtype(memoryview(line)) == msgtype
+        assert FixCodec.infer_msgtype_bytes(line) == msgtype
+        assert FixCodec.infer_msgtype_bytes(bytearray(line)) == msgtype
+        assert FixCodec.infer_msgtype_bytes(memoryview(line)) == msgtype
         text = line.decode()
         assert MimeType.infer_text(text) == protocol
-        assert MimeType.infer_text_msgtype(text) == (
+        assert FixCodec.infer_msgtype_text(text) == (
             msgtype.decode() if msgtype is not None else None
         )
 
-    empty = FixRegistry()
-    assert MimeType.infer_bytes_msgtype(b"35=AE|") == b"AE"
-    assert MimeType.infer_text_msgtype("MSGTYPE=AE|") == "AE"
+    assert FixCodec.infer_msgtype_bytes(b"35=AE|") == b"AE"
+    assert FixCodec.infer_msgtype_text("MSGTYPE=AE|") == "AE"
 
     # A bridge configuration states its own half of the exchange, and the
     # `send` its own payload spells is never read as the marker.
@@ -402,7 +408,7 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow(
     )
     assert MimeType.infer_text(answered) == MimeType.ULCONFIG
     assert MimeType.infer_text_direction(answered) == "RECV"
-    assert MimeType.infer_text_msgtype(answered) == "read"
+    assert FixCodec.infer_msgtype_text(answered) == "read"
     asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
     assert MimeType.infer_text_direction(asked) == "SENT"
 
@@ -603,40 +609,35 @@ def test_registry_takes_every_storage_location(
     assert not missing.exists()
 
 
-def test_a_root_in_the_retired_layout_is_refused(tmp_path: pathlib.Path) -> None:
-    root = tmp_path / "old"
-    (root / "records" / "std").mkdir(parents=True)
-    (root / "records" / "std" / "0.json").write_text("[]", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="records"):
+def test_a_malformed_native_field_shard_is_located(tmp_path: pathlib.Path) -> None:
+    root = tmp_path / "invalid"
+    (root / "fields").mkdir(parents=True)
+    (root / "fields" / "0.json").write_text("not JSON", encoding="utf-8")
+    with pytest.raises(ValueError, match="0.json"):
         FixRegistry.from_handle(root)
 
 
-def test_registry_round_trips_through_the_two_written_trees(
+def test_registry_round_trips_through_the_four_categories(
     seed: FixRegistry, tmp_path: pathlib.Path
 ) -> None:
     root = tmp_path / "dictionary"
     seed.write_into(root)
 
-    # A shard per hundred tags, over both trees: counted rather than listed,
-    # because the committed dictionary is six thousand fields and the listing
-    # would be the generator's output restated.
-    primitive = sorted(path.name for path in (root / "primitive").iterdir())
-    nested = sorted(path.name for path in (root / "nested").iterdir())
-    assert "0.json" in primitive and "0.json" in nested
-    assert len(primitive) + len(nested) == 128
+    assert (root / "fields" / "0.json").is_file()
+    for category in ("fields", "messages", "components", "groups"):
+        assert len(list((root / category).glob("*.json"))) == len(
+            list((SEED / category).glob("*.json"))
+        )
     assert FixRegistry.from_handle(root) == seed
 
     reloaded = FixRegistry.from_handle(IOBase(root))
-    reloaded.remove(453)
-    reloaded.remove("PartyID")
-    reloaded.remove(447)
-    reloaded.remove(452)
+    assert reloaded.remove(453) is None
+    assert reloaded.remove("PartyID") is None
+    assert reloaded == seed
+    reloaded.insert(_field("LocalValue", "utf8", 9999))
+    assert reloaded.remove(9999) is not None
     reloaded.write_into(root)
-    # A shard of a six-thousand-field dictionary survives losing four of
-    # them; what the removal has to show is the count, not a missing file.
-    assert (root / "primitive").exists()
-    assert len(FixRegistry.from_handle(root)) == len(seed) - 4
+    assert FixRegistry.from_handle(root) == seed
 
 
 def test_a_vendor_branch_gets_its_own_folder(tmp_path: pathlib.Path) -> None:
@@ -650,8 +651,8 @@ def test_a_vendor_branch_gets_its_own_folder(tmp_path: pathlib.Path) -> None:
     registry.write_into(root)
 
     # Each branch owns its own shard arithmetic: 5001 / 100 is 50.
-    assert (root / "primitive" / "0.json").exists()
-    assert (root / "primitive" / "cme" / "50.json").exists()
+    assert (root / "fields" / "0.json").exists()
+    assert (root / "fields" / "cme" / "50.json").exists()
 
     reloaded = FixRegistry.from_handle(root)
     assert reloaded == registry
@@ -685,7 +686,7 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     # A merge concatenates the two list properties, incoming first.
     registry.update(_field("SYMBOL", "utf8", 55, tags=[65], aliases=["Sym"]))
     merged = registry.field_by_tag(65)
-    assert merged.name == "SYMBOL"
+    assert merged.name == "symbol"
     assert merged.fix.aliases == ["Sym", "Ticker"]
     # A datatype disagreement is refused, never widened.
     with pytest.raises(ValueError):
@@ -693,7 +694,7 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     assert registry.field_by_tag(55).dtype == DataType("utf8")
 
     removed = registry.remove("sym")
-    assert removed is not None and removed.name == "SYMBOL"
+    assert removed is not None and removed.name == "symbol"
     assert registry.get_field_by_tag(65) is None
     assert registry.remove(9999) is None
 
@@ -725,7 +726,7 @@ def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() ->
 
     # The fold kept what only the stored field declared and added the rest.
     folded = registry.field_by_tag(65)
-    assert folded.name == "SYMBOL"
+    assert folded.name == "symbol"
     assert folded.fix.aliases == ["Sym", "Ticker"]
 
     # One mutation: a refusal partway leaves the dictionary as it was, so
@@ -763,7 +764,7 @@ def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
 
     assert dictionary.merge_with(other) == (1, 1)
     assert len(dictionary) == 3
-    assert dictionary.field_by_tag(55).name == "SYMBOL"
+    assert dictionary.field_by_tag(55).name == "symbol"
 
     # The dialect arrives beside the fields, and every spelling either side
     # answered to is kept.
@@ -879,15 +880,20 @@ def test_registering_a_message_type_names_it_and_describes_it(
     value = registry.register_msgtype(
         "P Report Ack", "AllocationReportAck", "Allocation Report ACK"
     )
-    assert value.startswith("~")
+    assert isinstance(value, MsgType)
+    assert value.value == "P Report Ack"
     codes = registry.field_by_tag(35).metadata["fix:codes"]
-    assert f'"value":"{value}"' in codes
+    assert '"value":"P Report Ack"' in codes
     assert '"name":"AllocationReportAck"' in codes
     assert '"P Report Ack"' in codes
     assert '"Allocation Report ACK"' in codes
 
-    # Idempotent: registering it again answers the same value.
-    assert registry.register_msgtype("P Report Ack") == value
+    # The borrowed singleton pins the registry until the view is released.
+    snapshot = pickle.dumps(value)
+    with pytest.raises(ValueError, match="shared"):
+        registry.register_msgtype("P Report Ack")
+    del value
+    assert registry.register_msgtype("P Report Ack") == pickle.loads(snapshot)
 
 
 def test_a_cblock_refusal_quotes_the_declaration_it_read(
@@ -950,8 +956,9 @@ def test_registry_mutation_refuses_while_something_shares_it(
 
     # The registry a message shares is still readable, and a copy is writable.
     assert seed.field_by_tag(55).name == "symbol"
-    fresh = FixRegistry.from_handle(SEED)
-    assert fresh.remove(55) is not None
+    fresh = copy.copy(seed)
+    fresh.insert(_field("LocalValue", "utf8", 9999))
+    assert fresh.remove(9999) is not None
 
 
 def _order(seed: FixRegistry) -> Field:
@@ -963,6 +970,7 @@ def _order(seed: FixRegistry) -> Field:
                 seed.field_by_tag(55),
                 seed.field_by_tag(38),
                 seed.field_by_name("NoPartyIDs", ""),
+                seed.definition("groups", "Parties"),
                 Field("9999", "utf8"),
             ]
         ),
@@ -973,7 +981,8 @@ def _order(seed: FixRegistry) -> Field:
 ORDER_VALUE: dict[str, Any] = {
     "symbol": "AAPL",
     "orderqty": 100.0,
-    "nopartyids": [
+    "nopartyids": 1,
+    "parties": [
         {"partyid": "BROKER", "partyidsource": "D", "partyrole": 1},
     ],
     "9999": "custom",
@@ -987,12 +996,12 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert message.field == root
     assert message.registry == seed
     assert message.branch == STANDARD_BRANCH
-    assert len(message) == 4
+    assert len(message) == 5
     assert message.by_tag(55).as_py() == "AAPL"
     assert message.by_id("55:").as_py() == "AAPL"
     assert message.by_name("symbol").as_py() == "AAPL"
     assert message.by_tag(38).as_py() == 100.0
-    assert message.by_path("nopartyids.0.partyid").as_py() == "BROKER"
+    assert message.by_path("parties.0.partyid").as_py() == "BROKER"
     # An unknown tag is retained under its rendered name, never dropped.
     assert message.by_tag(9999).as_py() == "custom"
     # An identifier is exact: a dictionary this message does not speak misses.
@@ -1004,7 +1013,7 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert message.get(1234) is None
     assert message.get(1234, "fallback") == "fallback"
     assert message.get_by_name("nope") is None
-    assert message.get_by_path("NoPartyIDs.PartyID") is None
+    assert message.get_by_path("Parties.PartyID") is None
     with pytest.raises(KeyError) as by_tag:
         message.by_tag(1234)
     assert by_tag.value.args[0] == 'expected a fix value at "tag 1234", got nothing'
@@ -1018,8 +1027,8 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
         message.by_name("nope")
     assert 'name \\"nope\\"' in by_name.value.args[0]
     with pytest.raises(KeyError) as by_path:
-        message.by_path("NoPartyIDs.PartyID")
-    assert 'path \\"NoPartyIDs.PartyID\\"' in by_path.value.args[0]
+        message.by_path("Parties.PartyID")
+    assert 'path \\"Parties.PartyID\\"' in by_path.value.args[0]
     with pytest.raises(TypeError, match="not bool"):
         message[True]
     # A malformed identifier is the native parse failure, never a miss.
@@ -1150,9 +1159,9 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     restored = pickle.loads(pickle.dumps(message))
     assert restored == message
     assert restored.registry == seed
-    assert restored.by_path("nopartyids.0.partyid").as_py() == "BROKER"
+    assert restored.by_path("parties.0.partyid").as_py() == "BROKER"
 
-    assert repr(message) == 'FixMsg("NewOrderSingle", 4 values)'
+    assert repr(message) == 'FixMsg("NewOrderSingle", 5 values)'
     assert repr(seed) == "FixRegistry(6203 fields)"
     assert repr(FixRegistry()) == "FixRegistry(0 fields)"
 
@@ -1216,9 +1225,9 @@ def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> No
     """One reader, five entry points, and each is the core's own."""
     reader = FixCodec(seed)
 
-    framed = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|")
+    framed = next(reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|"))
     assert framed.by_tag(55).as_py() == "AAPL"
-    assert reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|").by_tag(55).as_py() == "AAPL"
+    assert next(reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|")).by_tag(55).as_py() == "AAPL"
     assert reader.transform_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
         55
     ).as_py() == "AAPL"
@@ -1230,10 +1239,10 @@ def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> No
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
     )
-    inferred = reader.transform_line(
+    inferred = next(reader.transform_line(
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|"
-    )
+    ))
     assert inferred == bridge
     assert bridge.by_tag(55).as_py() == "TTF"
     assert bridge.by_tag(38).as_py() == 1200.0
@@ -1254,16 +1263,12 @@ def test_arrow_reader_uses_separatorless_group_inference(seed: FixRegistry) -> N
     parsed = parse_arrow_reader(
         pa.table({"body": pa.array([bridge], pa.binary())}), seed, "body"
     ).read_all()
-    assert parsed.column("453").to_pylist() == [
-        [
-            {
-                "partyid": "BUYSIDE",
-                "partyidsource": "D",
-                "partyrole": 1,
-                "partyrolequalifier": None,
-            }
-        ]
-    ]
+    assert parsed.column("453").to_pylist() == [1]
+    parties = parsed.column("parties").to_pylist()
+    assert len(parties) == 1 and len(parties[0]) == 1
+    assert parties[0][0]["partyid"] == "BUYSIDE"
+    assert parties[0][0]["partyidsource"] == "D"
+    assert parties[0][0]["partyrole"] == 1
 
 
 def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
@@ -1275,14 +1280,14 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
     # dictionary's own whatever version read the row, and the 4.2 spelling
     # still reaches it as an alias.
     dated = FixCodec(seed, version="4.2")
-    named = dated.transform_line(b"8=FIX.4.4|35=8|32=100|10=0|")
+    named = next(dated.transform_line(b"8=FIX.4.4|35=8|32=100|10=0|"))
     assert named.field.index_of("lastqty") is not None
     assert named.get_by_name("lastshares") is not None
     assert named.get_by_name("lastqty") is not None
 
     # A stated absence produces no field at all.
     silent = FixCodec(seed, null_values=["<none>"])
-    assert silent.transform_line(b"8=FIX.4.4|35=D|55=<none>|10=0|").get_by_tag(55) is None
+    assert next(silent.transform_line(b"8=FIX.4.4|35=D|55=<none>|10=0|")).get_by_tag(55) is None
 
     with pytest.raises(ValueError):
         FixCodec(seed, branch="not a branch")
@@ -1314,9 +1319,9 @@ WILDCARD = (
 
 
 @pytest.fixture
-def bridge() -> FixRegistry:
+def bridge(seed: FixRegistry) -> FixRegistry:
     """The committed dictionary, plus the bridge's own vocabulary."""
-    registry = FixRegistry.from_handle(SEED)
+    registry = seed
     registry.with_ulbridge_fields()
     return registry
 
@@ -1340,26 +1345,29 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
 ) -> None:
     """The reader reads to the document's own close, not to the line's end."""
     assert MimeType.infer_bytes(LOGGED) == MimeType.ULCONFIG
-    assert MimeType.infer_bytes_msgtype(LOGGED) == b"Plugin"
+    assert FixCodec.infer_msgtype_bytes(LOGGED) == b"Plugin"
 
     reader = FixCodec(bridge, branch=ULBRIDGE_BRANCH)
-    message = reader.transform_ulconfig_line(LOGGED)
+    message = next(reader.transform_ulconfig_line(LOGGED))
     # FIX's own names stay FIX's and the bridge's own are the bridge's, both
     # inside the occurrence the document answered for.
-    assert message.by_path("SessionInterfaces.0.SenderCompID").as_py() == "PIC.PROD.TRD"
-    assert message.by_path("SessionInterfaces.0.Version").as_py() == "4.7.0"
+    assert message.by_path("SenderCompID").as_py() == "PIC.PROD.TRD"
+    assert message.by_path("Version").as_py() == "4.7.0"
     # The registered vocabulary types a port as a number and a flag as a flag.
-    assert message.by_path("SessionInterfaces.0.CurrentPort").as_py() == 9726
-    assert message.by_path("SessionInterfaces.0.NeedCFBReload").as_py() is False
+    assert message.by_path("CurrentPort").as_py() == 9726
+    assert message.by_path("NeedCFBReload").as_py() is False
     # `transform_line` finds the same document behind the same prose.
-    assert reader.transform_line(LOGGED) == message
+    assert next(reader.transform_line(LOGGED)) == message
 
 
 def test_every_plugin_a_document_answers_for_crosses_both_ways(
     bridge: FixRegistry,
 ) -> None:
     """A wildcard read, a single read, and the message each crosses to."""
-    held = UlPlugin.from_json_bytes(WILDCARD)
+    walk = Ulconfig.from_json_bytes(WILDCARD)
+    assert isinstance(walk, Ulconfigs)
+    assert iter(walk) is walk
+    held = list(walk)
     assert len(held) == 2
     assert held[0].name == "ULMSG_BROKER_BDG_DMZ_PCO"
     assert held[0].mbean_type == "ConfigurationPlugin"
@@ -1380,7 +1388,7 @@ def test_every_plugin_a_document_answers_for_crosses_both_ways(
     assert len(held[0]) == len(held[0].attributes)
     assert held[0].attributes["Version"].as_py() == "2.0.3"
 
-    single = UlPlugin.from_json_bytes(LOGGED)
+    single = list(Ulconfig.from_json_bytes(LOGGED))
     assert len(single) == 1
     assert single[0].name == "SmartTrade_OrderRouting"
     assert single[0].state == "logged"
@@ -1388,29 +1396,28 @@ def test_every_plugin_a_document_answers_for_crosses_both_ways(
 
     # A parsed document is the same walk as the bytes it was parsed from, and
     # anything the Scalar boundary reads is a parsed document.
-    assert UlPlugin.from_json_scalar(json.loads(WILDCARD)) == held
+    assert list(Ulconfig.from_json_scalar(json.loads(WILDCARD))) == held
 
     # And back to a typed message, and out of one again: the crossing keeps
     # the ObjectName, the attributes and their types.
     reader = FixCodec(bridge, branch=ULBRIDGE_BRANCH)
     message = held[0].into_fixmsg(reader)
-    assert message.by_path("SessionInterfaces.0.PriorityLevel").as_py() == 5
-    back = UlPlugin.from_fixmsg(message)
-    assert len(back) == 1
-    assert back[0].mbean == held[0].mbean
-    assert back[0].name == held[0].name
-    assert back[0].version == held[0].version
+    assert message.by_path("PriorityLevel").as_py() == 5
+    back = Ulconfig.from_fixmsg(message)
+    assert back.mbean == held[0].mbean
+    assert back.name == held[0].name
+    assert back.version == held[0].version
 
 
 def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
     """Equality, hash, copy and pickle, the way every other value here is."""
-    plugin = UlPlugin.from_json_bytes(LOGGED)[0]
-    same = UlPlugin.from_json_bytes(LOGGED)[0]
+    plugin = next(Ulconfig.from_json_bytes(LOGGED))
+    same = next(Ulconfig.from_json_bytes(LOGGED))
     assert plugin == same
     assert hash(plugin) == hash(same)
     assert plugin.stable_hash() == same.stable_hash()
     assert len({plugin, same}) == 1
-    assert plugin != UlPlugin.from_json_bytes(WILDCARD)[0]
+    assert plugin != next(Ulconfig.from_json_bytes(WILDCARD))
     assert plugin != object()
 
     assert copy.copy(plugin) == plugin
@@ -1419,7 +1426,7 @@ def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
     assert "SmartTrade_OrderRouting" in repr(plugin)
 
     # Built from the parts a caller has, rather than from a document.
-    built = UlPlugin({"Name": "Local", "Version": "1.0"}, mbean=plugin.mbean)
+    built = Ulconfig({"Name": "Local", "Version": "1.0"}, mbean=plugin.mbean)
     assert built.name == "Local"
     assert built.mbean == plugin.mbean
     assert built != plugin
@@ -1428,12 +1435,12 @@ def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
     assert built.get("name").as_py() == "Local"
     assert built.attributes.keys() == {"Name", "Version"}
     with pytest.raises(TypeError):
-        UlPlugin({1: "not a name"})
+        Ulconfig({1: "not a name"})
 
     # A document answering nothing answers no plugins rather than raising.
-    assert UlPlugin.from_json_bytes(b"[]") == []
+    assert list(Ulconfig.from_json_bytes(b"[]")) == []
     with pytest.raises(ValueError):
-        UlPlugin.from_json_bytes(b"no document here at all")
+        Ulconfig.from_json_bytes(b"no document here at all")
 
 
 def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> None:
@@ -1453,7 +1460,7 @@ def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> No
     assert schema.name == "FixMessage"
 
     reader = FixCodec(seed)
-    row = reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(schema).as_py()
+    row = next(reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|")).into_row(schema).as_py()
     assert len(row) == len(columns)
     assert row[schema.index_of("35")] == "D"
     assert row[schema.index_of("55")] == "AAPL"
@@ -1482,7 +1489,7 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
 
     # A column no tag names is the capture's, so a row answers null there: the
     # capture fills it, and nothing in the message says what it held.
-    row = FixCodec(seed).transform_line(b"8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
+    row = next(FixCodec(seed).transform_line(b"8=FIX.4.4|35=D|10=0|")).into_row(carried).as_py()
     assert row[0] is None
     assert row[carried.index_of("35")] == "D"
 

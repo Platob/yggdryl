@@ -1,0 +1,23 @@
+{
+  "name": "legmarketdisruptionfallbackreferencepricegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legmarketdisruptionfallbackreferenceprice",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legmarketdisruptionfallbackreferenceprice"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegMarketDisruptionFallbackReferencePrices(41471) > 0.",
+    "display": "LegMarketDisruptionFallbackReferencePriceGrp",
+    "fix:component": "legmarketdisruptionfallbackreferenceprice",
+    "fix:counter": "41471"
+  }
+}

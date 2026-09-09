@@ -1,0 +1,23 @@
+{
+  "name": "legsettlratedisruptionfallbackgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legsettlratedisruptionfallback",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legsettlratedisruptionfallback"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegSettlRateFallbacks(40902) > 0.",
+    "display": "LegSettlRateDisruptionFallbackGrp",
+    "fix:component": "legsettlratedisruptionfallback",
+    "fix:counter": "40902"
+  }
+}

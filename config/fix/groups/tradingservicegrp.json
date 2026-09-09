@@ -1,0 +1,23 @@
+{
+  "name": "tradingservicegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "tradingservice",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "tradingservice"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when NoTradingServices(3134) > 0.",
+    "display": "TradingServiceGrp",
+    "fix:component": "tradingservice",
+    "fix:counter": "3134"
+  }
+}

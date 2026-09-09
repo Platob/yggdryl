@@ -8,7 +8,7 @@ from decimal import Decimal
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, Scalar, types
+from yggdryl import DataType, Field, Scalar, Version, types
 
 # Every Arrow datatype variant the core distinguishes. It is asserted as a
 # constant so that adding a variant to the core without adding it here fails,
@@ -340,7 +340,7 @@ def test_a_default_scalar_reads_as_generic_python_values() -> None:
     assert Field("id", "uuid", nullable=False).default_scalar().as_py() == (
         "00000000-0000-0000-0000-000000000000"
     )
-    assert Field("release", "version", nullable=False).default_scalar().as_py() == "0"
+    assert Field("release", "version", nullable=False).default_scalar().as_py() == Version(0)
     assert DataType.ascii(3).default_scalar().as_py() == ""
 
 

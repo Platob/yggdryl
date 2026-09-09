@@ -1,0 +1,23 @@
+{
+  "name": "trdgsesgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdgse",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "trdgse"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies the number of repeating TradingSessionIDs",
+    "display": "TrdgSesGrp",
+    "fix:component": "trdgse",
+    "fix:counter": "386"
+  }
+}

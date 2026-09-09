@@ -12,6 +12,7 @@ from yggdryl import (
     DataType,
     Field,
     Scalar,
+    Version,
     field,
     types,
     scalar,
@@ -74,5 +75,5 @@ assert optional.nullable
 assert from_yaml == from_toml == from_json == order
 assert dynamic_class.field() is imported  # type: ignore[attr-defined]
 assert currency_default_scalar.as_py() == ""
-assert version_default_scalar.as_py() == "0"
+assert version_default_scalar.as_py() == Version(0)
 assert location_dtype == DataType("url")

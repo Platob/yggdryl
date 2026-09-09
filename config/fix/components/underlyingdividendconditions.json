@@ -1,0 +1,263 @@
+{
+  "name": "underlyingdividendconditions",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingdividendreinvestmentindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendreinvestmentindicator"
+        }
+      },
+      {
+        "name": "underlyingdividendentitlementevent",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendentitlementevent"
+        }
+      },
+      {
+        "name": "underlyingdividendamounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendamounttype"
+        }
+      },
+      {
+        "name": "underlyingdividendunderlierrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendunderlierrefid"
+        }
+      },
+      {
+        "name": "nounderlyingdividendperiods",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingdividendperiods"
+        }
+      },
+      {
+        "name": "underlyingdividendperiodgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingdividendperiodgrp"
+        }
+      },
+      {
+        "name": "underlyingextraordinarydividendpartyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingextraordinarydividendpartyside"
+        }
+      },
+      {
+        "name": "underlyingextraordinarydividendamounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingextraordinarydividendamounttype"
+        }
+      },
+      {
+        "name": "underlyingextraordinarydividendcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingextraordinarydividendcurrency"
+        }
+      },
+      {
+        "name": "underlyingextraordinarydividenddeterminationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingextraordinarydividenddeterminationmethod"
+        }
+      },
+      {
+        "name": "underlyingdividendfxtriggerdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingdividendfxtriggerdate"
+        }
+      },
+      {
+        "name": "underlyingdividendaccrualfloatingrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingdividendaccrualfloatingrate"
+        }
+      },
+      {
+        "name": "underlyingdividendaccrualfixedrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendaccrualfixedrate"
+        }
+      },
+      {
+        "name": "underlyingdividendaccrualpaymentdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingdividendaccrualpaymentdate"
+        }
+      },
+      {
+        "name": "underlyingdividendcompoundingmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendcompoundingmethod"
+        }
+      },
+      {
+        "name": "underlyingdividendnumofindexunits",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendnumofindexunits"
+        }
+      },
+      {
+        "name": "underlyingdividendcashpercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendcashpercentage"
+        }
+      },
+      {
+        "name": "underlyingdividendcashequivalentpercentage",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendcashequivalentpercentage"
+        }
+      },
+      {
+        "name": "underlyingnoncashdividendtreatment",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingnoncashdividendtreatment"
+        }
+      },
+      {
+        "name": "underlyingdividendcomposition",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdividendcomposition"
+        }
+      },
+      {
+        "name": "underlyingspecialdividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingspecialdividendsindicator"
+        }
+      },
+      {
+        "name": "underlyingmaterialdividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmaterialdividendsindicator"
+        }
+      },
+      {
+        "name": "underlyingoptionsexchangedividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingoptionsexchangedividendsindicator"
+        }
+      },
+      {
+        "name": "underlyingadditionaldividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingadditionaldividendsindicator"
+        }
+      },
+      {
+        "name": "underlyingalldividendsindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingalldividendsindicator"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The UnderlyingDividendConditions component is a subcomponent of UnderlyingPaymentStream used to specify the conditions' valuations and dates governing the payment of dividends.",
+    "display": "UnderlyingDividendConditions"
+  }
+}

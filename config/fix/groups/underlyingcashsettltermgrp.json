@@ -1,0 +1,23 @@
+{
+  "name": "underlyingcashsettltermgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcashsettlterm",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcashsettlterm"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingCashSettlTerms(42041) > 0.",
+    "display": "UnderlyingCashSettlTermGrp",
+    "fix:component": "underlyingcashsettlterm",
+    "fix:counter": "42041"
+  }
+}

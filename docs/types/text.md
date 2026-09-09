@@ -71,57 +71,83 @@ Three UTF-8 spellings, four binary spellings, the version and URL values, and th
 
 ## Versions
 
-`Version` is a generic, numerically ordered value, 16 bytes wide. Parsing trims trailing numeric
-zeroes and canonicalizes appended, dot-introduced, and hyphen-introduced qualifiers.
+`Version` holds three numeric components in four bytes: `major: u8`, `minor: u8`,
+and `patch: u16`. Parsing accepts one to three decimal components and rendering
+omits trailing zero components. Equality, hashing and ordering use the numeric
+tuple. Python and JavaScript expose the same immutable native value.
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, Field, Scalar, Version};
 
-    let version = "5.0.SP1".parse::<Version>()?;
-    assert_eq!(version.to_string(), "5.0SP1");
-    assert_eq!(std::mem::size_of::<Version>(), 16);
+    let version = "005.0.00300".parse::<Version>()?;
+    assert_eq!(version, Version::new(5, 0, 300));
+    assert_eq!(version.to_string(), "5.0.300");
+    assert_eq!((version.major(), version.minor(), version.patch()), (5, 0, 300));
+    assert_eq!(std::mem::size_of::<Version>(), 4);
+    assert!(Version::new(5, 0, 2) < Version::new(5, 0, 10));
 
     let field = Field::new("version", DataType::Version, false);
-    assert_eq!(field.scalar("5.0.SP1")?, Scalar::from(version));
+    assert_eq!(field.scalar("5.0.300")?, Scalar::from(version));
     ```
 
 === "Python"
 
     ```python
-    from yggdryl import DataType, Scalar, types
+    from yggdryl import DataType, Scalar, Version, types
     from yggdryl.text import json
 
     dtype = DataType("version")
     field = types.version("version", nullable=False)
-    value = json.loads('"5.0.SP1"', field=field, cls=Scalar)
+    version = Version.from_str("005.0.00300")
+    value = json.loads('"5.0.300"', field=field, cls=Scalar)
     assert dtype.kind == "text"
-    assert value.as_py() == "5.0SP1"
+    assert value.as_py() == version == Version(5, 0, 300)
+    assert (version.major, version.minor, version.patch) == (5, 0, 300)
+    assert Version(5, 0, 2) < Version(5, 0, 10)
+    assert value.into_arrow_scalar(field).as_py() == "5.0.300"
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, fields, json } = require('yggdryl')
+    const { DataType, Version, fields, json } = require('yggdryl')
 
     const dtype = new DataType('version')
-    const value = json.loads('"5.0.SP1"', {
-      field: fields.version('version', { nullable: false }),
+    const field = fields.version('version', { nullable: false })
+    const version = Version.fromStr('005.0.00300')
+    const value = json.loads('"5.0.300"', {
+      field,
       scalar: true,
     })
     assert.equal(dtype.kind, 'text')
-    assert.equal(value.asJs(), '5.0SP1')
+    assert.ok(value.asJs().equals(version))
+    assert.ok(version.equals(new Version(5, 0, 300)))
+    assert.deepEqual([version.major, version.minor, version.patch], [5, 0, 300])
+    assert.equal(new Version(5, 0, 2).compare(new Version(5, 0, 10)), -1)
+    assert.equal(value.intoArrowScalar(field), '5.0.300')
     ```
 
 | rule | behaviour |
 | --- | --- |
-| Layout | required `u8` major, nullable `u8` minor, nullable fixed 14-byte patch tail |
-| Kind | `text`; the aliases are `VersionField`, `types.version`, `fields.version` |
-| Ordering | hyphens are pre-release, other qualifiers post-release: `5.0-rc1 < 5 < 5.0SP1`, `SP2 < SP10` |
+| Layout | exactly four bytes: `u8` major, `u8` minor, `u16` patch; omitted parts are zero |
+| Kind | `text`; `VersionField`, `types.version`, and `fields.version` declare this datatype |
+| Bounds | major and minor `0..=255`; patch `0..=65535` |
+| Ordering | numeric tuple: `5 < 5.0.2 < 5.0.10 < 5.1` |
+| Text | one to three decimal components; no tag or qualifier; `5.0.0` renders as `5` |
 | Storage | `Utf8` holding the canonical spelling, extension name `yggdryl.version` |
-| Sorting | Arrow string order stays lexicographic; `Version::cmp` is the ordering contract |
+| Sorting | Arrow string order stays lexicographic; Rust `Ord`, Python comparisons, and JavaScript `compare` use numeric order |
+
+FIX dictionary intake translates protocol service-pack spellings such as
+`5.0SP2` to `5.0.2` before constructing a `Version`. The generic parser accepts
+numeric components only.
+
+<div class="ygg-pg" data-playground="versions" markdown="1">
+Explore numeric parts, canonical text, hashes and rejected inputs from the
+native Version example corpus.
+</div>
 
 ## Locations
 
@@ -189,9 +215,10 @@ zeroes and canonicalizes appended, dot-introduced, and hyphen-introduced qualifi
 - `varchar(255)`, `binary(16)` -> the length parses and is dropped, the datatype stays variable.
 - Case, `_`, `-` and spaces are ignored in a spelling, so `LargeUtf8` and `large_utf8` are one [datatype](datatype.md).
 - Bytes merged with text -> bytes win, text wins next, per the merge order in [Field](field.md).
-- `5.0.SP1` -> the canonical `5.0SP1`; trailing numeric zeroes are trimmed away.
-- A version whose first two components exceed `u8`, or a later one `u16` -> refused at the first bad byte.
-- A canonical patch tail over 14 ASCII bytes -> refused.
+- `005.0.000` -> the canonical `5`; trailing zero components are omitted.
+- A version whose major or minor exceeds `255`, or patch exceeds `65535` -> refused at the first bad byte.
+- A fourth component, empty component, sign, whitespace, or qualifier -> refused.
+- Fractional or out-of-range constructor arguments in Python or JavaScript -> refused without narrowing.
 
 ## Commands
 
@@ -200,30 +227,52 @@ zeroes and canonicalizes appended, dot-introduced, and hyphen-introduced qualifi
     ```bash
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib types::regex
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- field::binary
+    cargo test -p yggdryl --lib types::tests::version
     ```
 
 === "Python"
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/media/test_text_lines.py -k regex
+    python/.venv/bin/python -m pytest python/tests/types/test_version.py
     ```
 
 === "JavaScript"
 
     ```bash
     node --test --test-name-pattern="regex captures" node/tests/types/datatype.test.js
+    node --test node/tests/types/version.test.js
     ```
 
 ## Performance
 
-Version parse and compare on an AMD Ryzen 5 150, Rust 1.96.1, release build. Two deliberately light
-cases covering the two hot operations this value owns.
+AMD Ryzen 5 150, 12 logical CPUs, Windows; Rust 1.96, Python 3.12.13 and Node
+24.18, release builds. Rust reports Criterion point estimates; Python reports
+the median of five runs of 10,000 iterations; Node reports throughput over
+2,000 iterations after warmup. These harnesses measure different boundaries.
 
-| operation | estimate |
-| --- | ---: |
-| parse | 35.1 ns |
-| compare | 49.3 ns |
+| operation | Rust | Python native boundary | JavaScript native boundary |
+| --- | ---: | ---: | ---: |
+| parse | 28.8 ns | 187.6 ns/op | 320,631 ops/s |
+| numeric compare | 3.78 ns | 142.5 ns/op | 1,160,631 ops/s |
+| native parts construction | 3.85 ns | 186.0 ns/op | 558,722 ops/s |
+| native value into `Scalar` | — | 317.9 ns/op | 38,527 ops/s |
+| `Scalar` into host `Version` | — | 82.7 ns/op | 142,733 ops/s |
+
+The Rust maximum-width parse (`255.255.65535`) measured 35.7 ns. The four-byte
+value needs no heap allocation for parsing or comparison; host wrappers and
+text or Arrow projections have their own allocation costs.
+
+Rust's native-parts case also reads all three accessors. The binding cases
+measure constructor calls. The counting-allocator test
+`version_parse_compare_and_render_allocate_nothing` checks the core allocation
+claim independently of these timings.
 
 ```bash
 cargo bench -p yggdryl --bench types -- version --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10
+python/.venv/bin/python python/benchmarks/types/version.py --iterations 10000
+YGGDRYL_BENCH_ITERATIONS=2000 npm run --prefix node bench:types
 ```
+
+On Windows, use `python/.venv/Scripts/python.exe` and set
+`$env:YGGDRYL_BENCH_ITERATIONS = '2000'` before the Node command.

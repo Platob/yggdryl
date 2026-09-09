@@ -1,0 +1,23 @@
+{
+  "name": "testmeasuregrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "testmeasure",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "testmeasure"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTestMeasures(3052) > 0.",
+    "display": "TestMeasureGrp",
+    "fix:component": "testmeasure",
+    "fix:counter": "3052"
+  }
+}

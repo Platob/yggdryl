@@ -1,18 +1,13 @@
 //! The fixed row: tag-named columns, derived facts, and the two closing lists.
 
-use std::path::PathBuf;
+use super::OneMessage;
+
 use std::sync::Arc;
 
-use yggdryl::holder::local::Folder;
 use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_schema};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
-    let registry = Arc::new(FixRegistry::from_handle(&folder).expect("the dictionary loads"));
+    let registry = super::committed_registry();
     let reader = FixCodec::new(Arc::clone(&registry));
     (registry, reader)
 }
@@ -58,7 +53,7 @@ fn the_columns_are_the_tags_and_they_do_not_move() {
     assert_eq!(typed(15), DataType::Currency, "Currency(15)");
     assert_eq!(typed(120), DataType::Currency, "SettlCurrency(120)");
     assert_eq!(typed(54), DataType::Side, "Side(54)");
-    assert_eq!(typed(35), DataType::MsgType, "MsgType(35)");
+    assert_eq!(typed(35), DataType::Utf8, "MsgType(35)");
     assert!(
         matches!(typed(60), DataType::DateTime64 { .. }),
         "TransactTime"
@@ -92,9 +87,9 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
     let schema = fix_schema(&registry, "fix").unwrap();
 
     let order = reader
-        .transform_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|44=12.5|38=100|15=USD|60=20240102-10:15:30.000|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|44=12.5|38=100|15=USD|60=20240102-10:15:30.000|10=0|", false)
         .unwrap();
-    let row = order.to_row(&schema).unwrap();
+    let row = order.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 35).as_str(), Some("D"));
     assert_eq!(at(&row, &schema, 11).as_str(), Some("ORDER-1"));
     assert_eq!(at(&row, &schema, 55).as_str(), Some("AAPL"));
@@ -103,10 +98,8 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
 
     // A message that carried almost nothing has the same columns in the same
     // places, which is what makes two rows of one capture comparable.
-    let bare = reader
-        .transform_line(b"8=FIX.4.4|35=0|10=0|", false)
-        .unwrap();
-    let thin = bare.to_row(&schema).unwrap();
+    let bare = reader.one_line(b"8=FIX.4.4|35=0|10=0|", false).unwrap();
+    let thin = bare.into_row(&schema).unwrap();
     assert_eq!(
         thin.as_sequence().map(<[Scalar]>::len),
         row.as_sequence().map(<[Scalar]>::len),
@@ -120,12 +113,12 @@ fn the_derived_columns_are_computed_and_never_stored() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let order = reader
-        .transform_line(
+        .one_line(
             b"8=FIX.4.4|35=D|11=A|55=AAPL|207=XNAS|60=20240102-10:15:30.000|10=0|",
             false,
         )
         .unwrap();
-    let row = order.to_row(&schema).unwrap();
+    let row = order.into_row(&schema).unwrap();
 
     // The digest is sixteen bytes of value, not a rendered string.
     let digest = at(&row, &schema, yggdryl::MSGHASH_TAG);
@@ -160,12 +153,12 @@ fn an_identifier_carries_its_scheme_and_a_ticker_does_not() {
     // A plain ticker is itself; an identifier is qualified by the scheme that
     // numbers it, because `US0378331005` does not say it is an ISIN.
     let ticker = reader
-        .transform_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|", false)
         .unwrap();
     assert_eq!(ticker.symbol_ticker().as_str(), Some("AAPL"));
 
     let identified = reader
-        .transform_line(b"8=FIX.4.4|35=D|48=US0378331005|22=4|207=XNAS|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|48=US0378331005|22=4|207=XNAS|10=0|", false)
         .unwrap();
     assert_eq!(
         identified.symbol_ticker().as_str(),
@@ -173,9 +166,7 @@ fn an_identifier_carries_its_scheme_and_a_ticker_does_not() {
     );
 
     // A message naming no instrument answers nothing rather than a guess.
-    let none = reader
-        .transform_line(b"8=FIX.4.4|35=0|10=0|", false)
-        .unwrap();
+    let none = reader.one_line(b"8=FIX.4.4|35=0|10=0|", false).unwrap();
     assert!(none.symbol_ticker().is_null());
 }
 
@@ -187,25 +178,25 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
     // A buy order at a price is a party willing to pay it, so the bid lane it
     // never wrote is filled and the ask lane is not.
     let buy = reader
-        .transform_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|", false)
         .unwrap();
-    let row = buy.to_row(&schema).unwrap();
+    let row = buy.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 132), &Scalar::from(12.5_f64));
     assert_eq!(at(&row, &schema, 134), &Scalar::from(100.0_f64));
     assert!(at(&row, &schema, 133).is_null(), "no ask lane on a buy");
 
     // A one-sided quote implies the side it never wrote.
     let quote = reader
-        .transform_line(b"8=FIX.4.4|35=S|117=Q|132=12.4|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=S|117=Q|132=12.4|10=0|", false)
         .unwrap();
-    let row = quote.to_row(&schema).unwrap();
+    let row = quote.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 54).as_str(), Some("1"));
 
     // And a stated column is never overwritten by a derivation.
     let stated = reader
-        .transform_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|", false)
         .unwrap();
-    let row = stated.to_row(&schema).unwrap();
+    let row = stated.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 132), &Scalar::from(99.0_f64));
 }
 
@@ -214,9 +205,9 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = reader
-        .transform_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|", false)
+        .one_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|", false)
         .unwrap()
-        .to_row(&schema)
+        .into_row(&schema)
         .unwrap();
     let held = row.as_sequence().expect("a row");
     let entries = held[held.len() - 2].as_sequence().expect("the record");

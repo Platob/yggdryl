@@ -1,0 +1,62 @@
+{
+  "name": "derivativeevent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "derivativeeventtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeeventtype"
+        }
+      },
+      {
+        "name": "derivativeeventdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeeventdate"
+        }
+      },
+      {
+        "name": "derivativeeventtime",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeeventtime"
+        }
+      },
+      {
+        "name": "derivativeeventpx",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeeventpx"
+        }
+      },
+      {
+        "name": "derivativeeventtext",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "derivativeeventtext"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "DerivativeEvent"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "marginreqmtinqqual",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "marginreqmtinqqualifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "marginreqmtinqqualifier"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "MarginReqmtInqQual"
+  }
+}

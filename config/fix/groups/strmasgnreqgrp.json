@@ -1,0 +1,23 @@
+{
+  "name": "strmasgnreqgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "strmasgnreq",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "strmasgnreq"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Stream Assignment Requests.",
+    "display": "StrmAsgnReqGrp",
+    "fix:component": "strmasgnreq",
+    "fix:counter": "1499"
+  }
+}

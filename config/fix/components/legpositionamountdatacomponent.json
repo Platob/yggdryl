@@ -1,0 +1,62 @@
+{
+  "name": "legpositionamountdatacomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legposamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legposamt"
+        }
+      },
+      {
+        "name": "legposamttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legposamttype"
+        }
+      },
+      {
+        "name": "legposcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legposcurrency"
+        }
+      },
+      {
+        "name": "legposcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legposcurrencycodesource"
+        }
+      },
+      {
+        "name": "legposamtreason",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legposamtreason"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegPositionAmountData"
+  }
+}

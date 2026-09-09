@@ -1,0 +1,42 @@
+{
+  "name": "streamassetattribute",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streamassetattributetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamassetattributetype"
+        }
+      },
+      {
+        "name": "streamassetattributevalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamassetattributevalue"
+        }
+      },
+      {
+        "name": "streamassetattributelimit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streamassetattributelimit"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "StreamAssetAttribute"
+  }
+}

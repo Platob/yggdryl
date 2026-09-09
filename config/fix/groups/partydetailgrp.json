@@ -1,0 +1,23 @@
+{
+  "name": "partydetailgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "partydetail",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "partydetail"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The identification of the party. Required when NoPartyDetails(1671) > 0.",
+    "display": "PartyDetailGrp",
+    "fix:component": "partydetail",
+    "fix:counter": "1671"
+  }
+}

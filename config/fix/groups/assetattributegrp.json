@@ -1,0 +1,23 @@
+{
+  "name": "assetattributegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "assetattribute",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "assetattribute"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAssetAttributes(2304) > 0.",
+    "display": "AssetAttributeGrp",
+    "fix:component": "assetattribute",
+    "fix:counter": "2304"
+  }
+}

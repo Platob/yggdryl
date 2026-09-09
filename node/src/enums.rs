@@ -4,7 +4,7 @@ mod vocabulary;
 
 use napi::bindgen_prelude::{Buffer, ClassInstance, Either, Either3, Result};
 use napi_derive::napi;
-use yggdryl::types::{MsgDirection as CoreMsgDirection, MsgType as CoreMsgType};
+use yggdryl::types::MsgDirection as CoreMsgDirection;
 use yggdryl::{MediaType as CoreMediaType, MimeType as CoreMimeType};
 
 use crate::{napi_error, ordering_value};
@@ -64,18 +64,6 @@ impl JsMimeType {
     #[napi(factory)]
     pub fn infer_text(line: String) -> Self {
         Self::from_core(CoreMimeType::infer_text(&line))
-    }
-
-    /// Read the message type one captured byte line declares.
-    #[napi]
-    pub fn infer_bytes_msgtype(line: Buffer) -> Option<Buffer> {
-        CoreMsgType::infer_bytes(line.as_ref()).map(|value| Buffer::from(value.to_vec()))
-    }
-
-    /// Read the message type one captured text line declares.
-    #[napi]
-    pub fn infer_text_msgtype(line: String) -> Option<String> {
-        CoreMsgType::infer_text(&line).map(ToOwned::to_owned)
     }
 
     /// Read which way one captured byte line moved.

@@ -9,7 +9,9 @@ const {
   Field,
   MediaType,
   MimeType,
+  Scalar,
   Statement,
+  Version,
   fields,
   iceberg: icebergApi,
   intoField,
@@ -83,6 +85,20 @@ const customMime = 'application/vnd.benchmark+json'
 const compoundMedia = 'text/csv;encodings=application/gzip,application/zstd'
 const contentType = 'text/csv; charset=utf-8'
 const contentEncoding = 'gzip, zstd'
+const release = new Version(5, 0, 300)
+const earlierRelease = new Version(5, 0, 10)
+const releaseScalar = Scalar.fromJs(release)
+const releaseField = fields.version('release', { nullable: false })
+
+benchmark('version/native_parts', () => new Version(5, 0, 300))
+benchmark('version/native_parse', () => Version.fromStr('5.0.300'))
+benchmark('version/patch', () => release.patch)
+benchmark('version/compare', () => earlierRelease.compare(release))
+benchmark('version/stable_hash', () => release.stableHash())
+benchmark('version/clone', () => release.clone())
+benchmark('version/into_scalar', () => Scalar.fromJs(release))
+benchmark('version/field_into_scalar', () => Scalar.fromJs('5.0.300', { field: releaseField }))
+benchmark('version/scalar_as_js', () => releaseScalar.asJs())
 
 benchmark('schema/from_fields', () => DataType.fromFields([id, name]))
 benchmark('schema/cast_arrow_array_bits', () =>

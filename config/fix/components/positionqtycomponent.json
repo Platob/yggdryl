@@ -1,0 +1,122 @@
+{
+  "name": "positionqtycomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "postype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "postype"
+        }
+      },
+      {
+        "name": "longqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "longqty"
+        }
+      },
+      {
+        "name": "shortqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "shortqty"
+        }
+      },
+      {
+        "name": "coveredqty",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "coveredqty"
+        }
+      },
+      {
+        "name": "posqtystatus",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posqtystatus"
+        }
+      },
+      {
+        "name": "quantitydate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "quantitydate"
+        }
+      },
+      {
+        "name": "posqtyunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posqtyunitofmeasure"
+        }
+      },
+      {
+        "name": "posqtyunitofmeasurecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posqtyunitofmeasurecurrency"
+        }
+      },
+      {
+        "name": "posqtyunitofmeasurecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "posqtyunitofmeasurecurrencycodesource"
+        }
+      },
+      {
+        "name": "nonestedpartyids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nonestedpartyids"
+        }
+      },
+      {
+        "name": "nestedparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "nestedparties"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "PositionQty"
+  }
+}

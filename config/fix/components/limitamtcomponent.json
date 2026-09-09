@@ -1,0 +1,92 @@
+{
+  "name": "limitamtcomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "limitamttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "limitamttype"
+        }
+      },
+      {
+        "name": "lastlimitamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastlimitamt"
+        }
+      },
+      {
+        "name": "limitamtremaining",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "limitamtremaining"
+        }
+      },
+      {
+        "name": "limitutilizationamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "limitutilizationamt"
+        }
+      },
+      {
+        "name": "limitamt",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "limitamt"
+        }
+      },
+      {
+        "name": "limitamtcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "limitamtcurrency"
+        }
+      },
+      {
+        "name": "limitamtcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "limitamtcurrencycodesource"
+        }
+      },
+      {
+        "name": "limitrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "limitrole"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LimitAmt"
+  }
+}

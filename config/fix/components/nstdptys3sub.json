@@ -1,0 +1,32 @@
+{
+  "name": "nstdptys3sub",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "nested3partysubid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nested3partysubid"
+        }
+      },
+      {
+        "name": "nested3partysubidtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nested3partysubidtype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "NstdPtys3Sub"
+  }
+}

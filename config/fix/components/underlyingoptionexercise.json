@@ -1,0 +1,163 @@
+{
+  "name": "underlyingoptionexercise",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingexercisedesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingexercisedesc"
+        }
+      },
+      {
+        "name": "encodedunderlyingexercisedesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingexercisedesclen"
+        }
+      },
+      {
+        "name": "encodedunderlyingexercisedesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingexercisedesc"
+        }
+      },
+      {
+        "name": "underlyingautomaticexerciseindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingautomaticexerciseindicator"
+        }
+      },
+      {
+        "name": "underlyingautomaticexercisethresholdrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingautomaticexercisethresholdrate"
+        }
+      },
+      {
+        "name": "underlyingexerciseconfirmationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingexerciseconfirmationmethod"
+        }
+      },
+      {
+        "name": "underlyingmanualnoticebusinesscenter",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingmanualnoticebusinesscenter"
+        }
+      },
+      {
+        "name": "underlyingfallbackexerciseindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingfallbackexerciseindicator"
+        }
+      },
+      {
+        "name": "underlyinglimitedrighttoconfirmindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyinglimitedrighttoconfirmindicator"
+        }
+      },
+      {
+        "name": "underlyingexercisesplitticketindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingexercisesplitticketindicator"
+        }
+      },
+      {
+        "name": "underlyingsettlmethodelectingpartyside",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingsettlmethodelectingpartyside"
+        }
+      },
+      {
+        "name": "underlyingsettlmethodelectiondate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingsettlmethodelectiondate"
+        }
+      },
+      {
+        "name": "underlyingoptionexercisedates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingoptionexercisedates"
+        }
+      },
+      {
+        "name": "underlyingoptionexerciseexpiration",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingoptionexerciseexpiration"
+        }
+      },
+      {
+        "name": "underlyingoptionexercisemakewholeprovision",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "underlyingoptionexercisemakewholeprovision"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Must be set if EncodedUnderlyingExerciseDesc(41812) field is specified and must immediately precede it.",
+    "display": "UnderlyingOptionExercise"
+  }
+}

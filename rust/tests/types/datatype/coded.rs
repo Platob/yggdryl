@@ -1,4 +1,4 @@
-//! The three coded datatypes FIX's constant vocabulary earns.
+//! The coded datatypes FIX's constant vocabulary earns.
 //!
 //! `DataType` is `#[non_exhaustive]` and the datatype layer carries some sixty
 //! wildcard arms, so a new variant compiles clean while behaving wrongly. A
@@ -24,10 +24,9 @@ fn text(values: &[&str]) -> ArrayRef {
     Arc::new(StringArray::from(values.to_vec()))
 }
 
-/// The three, with the width each fixes and the vocabulary it publishes.
-const CODED: [(&str, DataType, i32); 3] = [
+/// Coded datatypes with their fixed widths and published vocabulary.
+const CODED: [(&str, DataType, i32); 2] = [
     ("side", DataType::Side, 4),
-    ("msgtype", DataType::MsgType, 8),
     ("msgdirection", DataType::MsgDirection, 4),
 ];
 
@@ -115,9 +114,6 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
         DataType::FixedAscii(4).ascii_packed(b"1").unwrap()
     );
     for (dtype, value) in [
-        (DataType::MsgType, "D"),
-        (DataType::MsgType, "AB"),
-        (DataType::MsgType, "VENUEMSG"),
         (DataType::Side, "1"),
         (DataType::MsgDirection, "SENT"),
         (DataType::MsgDirection, "RECV"),
@@ -131,38 +127,6 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
     // gives, and it names the type.
     let refused = DataType::Side.scalar(Scalar::from("TOOLONG")).unwrap_err();
     assert!(refused.to_string().contains("4 bytes"), "{refused}");
-    assert!(DataType::MsgType.ascii_packed(b"NINECHARS").is_err());
-}
-
-#[test]
-fn a_msgtype_is_case_sensitive_and_the_crate_fold_never_touches_a_wire_value() {
-    // Six pairs the specification distinguishes only by case. A single stray
-    // fold turns a quote into a cross.
-    let pairs = [
-        ("A", "a"),
-        ("Q", "q"),
-        ("S", "s"),
-        ("B", "b"),
-        ("C", "c"),
-        ("D", "d"),
-    ];
-    let mut packed = Vec::new();
-    for (upper, lower) in pairs {
-        let up = DataType::MsgType.ascii_packed(upper.as_bytes()).unwrap();
-        let down = DataType::MsgType.ascii_packed(lower.as_bytes()).unwrap();
-        assert_ne!(up, down, "{upper} and {lower} must not pack alike");
-        packed.push(up);
-        packed.push(down);
-    }
-    packed.sort_unstable();
-    packed.dedup();
-    assert_eq!(packed.len(), 12, "twelve distinct values");
-
-    // The value keeps its case through the value contract, both ways.
-    for value in ["A", "a", "S", "s"] {
-        let stored = DataType::MsgType.scalar(Scalar::from(value)).unwrap();
-        assert_eq!(stored.as_str(), Some(value));
-    }
 }
 
 #[test]
@@ -217,11 +181,7 @@ fn a_cast_into_a_code_pads_and_reading_it_back_trims() {
 fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
     // These declare a vocabulary exactly as `Mic` does: a venue's own message
     // type, and a side no version defines, are held rather than refused.
-    for (dtype, outside) in [
-        (DataType::Side, "Z"),
-        (DataType::MsgType, "VENUE1"),
-        (DataType::MsgDirection, "BOTH"),
-    ] {
+    for (dtype, outside) in [(DataType::Side, "Z"), (DataType::MsgDirection, "BOTH")] {
         let stored = dtype.scalar(Scalar::from(outside)).unwrap();
         assert_eq!(stored.as_str(), Some(outside), "{dtype}");
         let packed = dtype.ascii_packed(outside.as_bytes()).unwrap();
@@ -238,12 +198,6 @@ fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
         assert_eq!(built.len(), count, "{name}");
         assert_eq!(built, AsciiEnum::from_logical_name(name).unwrap(), "{name}");
     }
-    // `msgtype` is deliberately not prebuilt: a `field:enum` member name is
-    // upper-cased, so `A` and `a` would name one member and twenty-three
-    // values would be lost. The datatype keeps its constant vocabulary and
-    // the enum answers none.
-    assert!(AsciiEnum::from_logical_name("msgtype").unwrap().is_empty());
-    assert_eq!(AsciiEnum::MSGTYPES.len(), 152);
     assert_eq!(AsciiEnum::DIRECTIONS, &["RECV", "SENT"][..]);
     // Every prebuilt member fits the width its own datatype fixes.
     for (name, dtype) in [
@@ -291,11 +245,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
 
 #[test]
 fn a_coded_column_casts_to_text_and_back_and_refuses_a_number() {
-    for (dtype, value) in [
-        (DataType::Side, "1"),
-        (DataType::MsgType, "D"),
-        (DataType::MsgDirection, "SENT"),
-    ] {
+    for (dtype, value) in [(DataType::Side, "1"), (DataType::MsgDirection, "SENT")] {
         let stored = dtype.scalar(Scalar::from(value)).unwrap();
         // To text, which is what the value already is.
         let text = DataType::Utf8

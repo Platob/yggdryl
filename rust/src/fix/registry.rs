@@ -11,7 +11,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
-use std::hash::{BuildHasherDefault, Hasher};
+use std::hash::{BuildHasherDefault, Hash, Hasher};
 use std::iter::FusedIterator;
 
 use smol_str::format_smolstr;
@@ -22,6 +22,14 @@ use crate::{Error, Field, IOBase, Result, Url, Version};
 
 const NAME_SEED: u64 = 0x4e41_4d45_5f46_4958;
 const ALIAS_SEED: u64 = 0x414c_4941_535f_4649;
+
+// Callers first establish the same canonical branch and field/definition identity.
+pub(super) fn metadata_only_change(stored: &Field, incoming: &Field) -> bool {
+    stored.name() == incoming.name()
+        && stored.dtype() == incoming.dtype()
+        && stored.is_nullable() == incoming.is_nullable()
+        && stored.as_metadata() != incoming.as_metadata()
+}
 
 /// Finalize integer keys before hashbrown selects a control byte.
 #[derive(Clone, Copy, Debug, Default)]
@@ -52,7 +60,7 @@ impl Mix {
 ///
 /// The generic walk matches a child's name exactly, which is right for a schema
 /// a caller wrote and wrong for a dictionary: the head already folded, so
-/// `NoPartyIDs.PartyID` resolving its first segment and refusing its second is
+/// `Parties.PartyID` resolving its first segment and refusing its second is
 /// one function disagreeing with itself.
 ///
 /// A list is stepped through before anything else, including the exact walk.
@@ -62,7 +70,7 @@ impl Mix {
 /// not allow now that the occurrence carries the component's name. The exact
 /// walk still runs under the list, because it is the cheap answer and the
 /// common one.
-fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
+pub(super) fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
     if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
         return descend(item, path);
     }
@@ -85,7 +93,7 @@ fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
 /// A repeating group is a List of one Struct, so a member is that struct's
 /// child and not the list's. The occurrence is transparent: it is recursed
 /// through without consuming a segment and it is never matched by its own
-/// name, because that name is the component's - `NoPartyIDs.PartyID` names
+/// name, because that name is the component's - `Parties.PartyID` names
 /// tag 448 and must never answer the struct that happens to share its
 /// spelling. 269 of the 521 shipped groups derive a name a member of their own
 /// struct already carries, so matching the occurrence would shadow every one
@@ -152,7 +160,7 @@ type BranchTable = HashMap<u32, FixBranch, BuildHasherDefault<Mix>>;
 ///
 /// It folds into the hash state in stack-sized chunks, so no length of name
 /// allocates.
-fn name_digest(branch: &FixBranch, name: &str, domain: u64) -> u64 {
+pub(super) fn name_digest(branch: &FixBranch, name: &str, domain: u64) -> u64 {
     let mut state = Xxh64::with_seed(domain ^ u64::from(branch.digest()));
     let mut folded = [0_u8; 64];
     let mut held = 0;
@@ -239,15 +247,11 @@ fn alternate_ids(field: &Field, branch: &FixBranch) -> Result<Vec<FixId>> {
         .collect()
 }
 
-/// Whether a field carries a nested subtree rather than one scalar value.
-pub(super) fn is_nested(field: &Field) -> bool {
-    field.dtype().is_nested()
-}
-
 /// FIX field definitions resolved by identity or folded name.
 #[derive(Clone, Default)]
 pub struct FixRegistry {
     fields: Vec<Field>,
+    pub(super) catalog: super::catalog::Catalog,
     ids: Index<FixId>,
     alternate_ids: Index<FixId>,
     names: Index<u64>,
@@ -260,6 +264,13 @@ pub struct FixRegistry {
 }
 
 impl FixRegistry {
+    /// The deterministic hash of fields, named definitions and branch declarations.
+    /// Uses one allocation for the shared XXH3 state, independent of catalog size.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::stable_hash_of(self)
+    }
+
     /// The empty registry.
     pub fn new() -> Self {
         Self::default()
@@ -334,7 +345,18 @@ impl FixRegistry {
             return Some(field);
         }
         let (head, rest) = path.split_once('.')?;
-        descend(self.get_field_by_name(head, branch)?, rest)
+        let mut roots = [
+            crate::FixCategory::Messages,
+            crate::FixCategory::Components,
+            crate::FixCategory::Groups,
+        ]
+        .into_iter()
+        .filter_map(|category| self.get_definition(category, head, branch));
+        let root = roots.next()?;
+        if roots.next().is_some() {
+            return None;
+        }
+        descend(root, rest)
     }
 
     /// Returns the field a dotted path reaches, raising absence.
@@ -364,44 +386,6 @@ impl FixRegistry {
     /// Returns whether a generic key reaches a field.
     pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool {
         self.get_field(key).is_some()
-    }
-
-    /// Returns the field a key reaches, when that field holds one scalar.
-    ///
-    /// A transcriber resolving a wire tag wants a value, not a subtree, and
-    /// this is what says so: the same tiers, filtered to the half a scalar
-    /// can be in. A counter tag reaches its group through
-    /// [`Self::get_nested_field`] instead, so neither half can answer for the
-    /// other and [`Self::get_field`] answers exactly what it always did.
-    pub fn get_primitive_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field> {
-        self.get_field(key).filter(|field| !is_nested(field))
-    }
-
-    /// Returns the scalar field a key reaches, raising absence.
-    ///
-    /// # Errors
-    ///
-    /// Returns the absence [`Self::field`] raises when no field reaches the
-    /// key, and when the one that does carries a subtree.
-    pub fn primitive_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field> {
-        let key = key.into();
-        self.get_primitive_field(key).ok_or_else(|| absent(key))
-    }
-
-    /// Returns the field a key reaches, when that field carries a subtree.
-    pub fn get_nested_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field> {
-        self.get_field(key).filter(|field| is_nested(field))
-    }
-
-    /// Returns the nested field a key reaches, raising absence.
-    ///
-    /// # Errors
-    ///
-    /// Returns the absence [`Self::field`] raises when no field reaches the
-    /// key, and when the one that does holds a single scalar.
-    pub fn nested_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field> {
-        let key = key.into();
-        self.get_nested_field(key).ok_or_else(|| absent(key))
     }
 
     /// Returns the field a key reaches, filtered to one FIX version.
@@ -569,6 +553,18 @@ impl FixRegistry {
 
     /// Adds a field, replacing only an equal canonical identity and name.
     pub fn insert(&mut self, field: Field) -> Result<Option<Field>> {
+        if self.get_field_by_id(canonical_id(&field)?).is_some() {
+            let mut staged = self.clone();
+            let prior = staged.insert_resolved(field)?;
+            staged.validate_catalog()?;
+            *self = staged;
+            return Ok(prior);
+        }
+        self.insert_resolved(field)
+    }
+
+    fn insert_resolved(&mut self, mut field: Field) -> Result<Option<Field>> {
+        self.validate_definition(crate::FixCategory::Fields, &field)?;
         let branch = field.as_fix().branch()?;
         self.check_branch(&branch)?;
         let id = canonical_id(&field)?;
@@ -581,6 +577,14 @@ impl FixRegistry {
             _ => None,
         };
         self.check_free(&field, &branch, id, &alternate, replacing)?;
+        if let Some(position) = replacing {
+            field.set_name(self.fields[position].name());
+        }
+        let refresh =
+            replacing.is_some_and(|position| metadata_only_change(&self.fields[position], &field));
+        if refresh {
+            self.validate_catalog()?;
+        }
 
         self.ensure_branch(branch);
         match replacing {
@@ -590,19 +594,38 @@ impl FixRegistry {
                 let prior = std::mem::replace(&mut self.fields[position], field);
                 self.index(position);
                 self.settle();
+                if refresh {
+                    self.refresh_references()?;
+                }
+                if id.tag() == 35 {
+                    self.refresh_msgtype_aliases();
+                }
                 Ok(Some(prior))
             }
             None => {
                 let position = self.fields.len();
                 self.fields.push(field);
                 self.index(position);
+                if id.tag() == 35 {
+                    self.refresh_msgtype_aliases();
+                }
                 Ok(None)
             }
         }
     }
 
     /// Merges a definition into the field with the same canonical identity.
+    /// Case-insensitive input names retain the stored canonical spelling.
     pub fn update(&mut self, field: Field) -> Result<()> {
+        let mut staged = self.clone();
+        staged.update_resolved(field)?;
+        staged.validate_catalog()?;
+        *self = staged;
+        Ok(())
+    }
+
+    fn update_resolved(&mut self, field: Field) -> Result<()> {
+        self.validate_definition(crate::FixCategory::Fields, &field)?;
         let branch = field.as_fix().branch()?;
         self.check_branch(&branch)?;
         let id = canonical_id(&field)?;
@@ -637,15 +660,26 @@ impl FixRegistry {
         // by design. The generic keys fold through the metadata merge every
         // protocol shares, and the `fix:` keys through the rule each one has.
         let mut merged = field.clone();
+        merged.set_name(stored.name());
         merged.set_metadata(field.as_metadata().merge_with(stored.as_metadata())?.iter())?;
         merged.as_fix_mut().merge_with(&stored.as_fix())?;
         let alternate = alternate_ids(&merged, &branch)?;
         self.check_free(&merged, &branch, id, &alternate, Some(position))?;
+        let refresh = metadata_only_change(stored, &merged);
+        if refresh {
+            self.validate_catalog()?;
+        }
         self.departing(position);
         self.unindex(position, position);
         self.fields[position] = merged;
         self.index(position);
         self.settle();
+        if refresh {
+            self.refresh_references()?;
+        }
+        if id.tag() == 35 {
+            self.refresh_msgtype_aliases();
+        }
         Ok(())
     }
 
@@ -672,10 +706,9 @@ impl FixRegistry {
     /// Returns what [`Self::insert`] and [`Self::update`] return - absence for
     /// a field carrying no `fix:tag`, a conflict for a key another field holds
     /// in the same branch, and a typed refusal for a name or a datatype that
-    /// disagrees with the stored definition. A CBlock's generic `float` or
-    /// `string` meeting the committed dictionary's `float64` or `msgtype` is
-    /// that last one, and is the expected shape of a refusal here rather than
-    /// a defect: a CBlock says nothing about which tag is money.
+    /// disagrees with the stored definition. An incoming `float32` field
+    /// meeting a stored `float64` field is refused: merging metadata does not
+    /// change the field's declared datatype.
     ///
     /// The whole fold is one mutation: it is staged and only then adopted, so
     /// a refusal on the last field of a thousand leaves the dictionary exactly
@@ -687,6 +720,7 @@ impl FixRegistry {
     {
         let mut staged = self.clone();
         let counts = staged.fold(fields)?;
+        staged.validate_catalog()?;
         *self = staged;
         Ok(counts)
     }
@@ -713,9 +747,11 @@ impl FixRegistry {
     /// staged together and adopted together, so a refusal anywhere leaves
     /// this dictionary exactly as it was.
     pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)> {
+        other.validate_catalog()?;
         let mut staged = self.clone();
         staged.absorb_branches(other.branch_values(), None)?;
         let counts = staged.fold(other.fields.iter().cloned())?;
+        staged.merge_catalog(other)?;
         *self = staged;
         Ok(counts)
     }
@@ -767,7 +803,7 @@ impl FixRegistry {
             .chain(stem)
             .collect();
         staged.absorb_branches(parsed.branch_values(), Some(&named))?;
-        let counts = staged.fold(parsed.fields)?;
+        let counts = staged.merge_with(&parsed)?;
         *self = staged;
         Ok(counts)
     }
@@ -832,10 +868,10 @@ impl FixRegistry {
                 .canonical_position_by_id(canonical_id(&field)?)
                 .is_some()
             {
-                self.update(field)?;
+                self.update_resolved(field)?;
                 merged += 1;
             } else {
-                self.insert(field)?;
+                self.insert_resolved(field)?;
                 added += 1;
             }
         }
@@ -843,8 +879,20 @@ impl FixRegistry {
         Ok((added, merged))
     }
 
-    /// Removes the field a tag, identifier, canonical name, or alias reaches.
+    /// Removes an unreferenced field a tag, identifier, name, or alias reaches.
+    ///
+    /// Returns no removed value for an absent or referenced field. Use
+    /// [`Self::remove_definition`] for a typed reference refusal.
     pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field> {
+        let mut staged = self.clone();
+        let removed = staged.remove_resolved(key)?;
+        staged.validate_catalog().ok()?;
+        staged.refresh_msgtype_aliases();
+        *self = staged;
+        Some(removed)
+    }
+
+    pub(super) fn remove_resolved<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field> {
         let position = match key.into() {
             FixKey::Tag(tag) => self.position_by_id(FixId::standard(tag)),
             FixKey::Id(id) => self.position_by_id(id),
@@ -861,19 +909,20 @@ impl FixRegistry {
             self.index(position);
         }
         self.settle();
-        if let Ok(Some(id)) = removed.as_fix().id() {
-            if !self.positions_by_id.iter().any(|held| {
-                self.fields
-                    .get(*held)
-                    .and_then(|field| field.as_fix().id().ok().flatten())
-                    .is_some_and(|other| other.branch_digest() == id.branch_digest())
-            }) {
-                self.branches.remove(&id.branch_digest());
-                self.branch_order
-                    .retain(|digest| *digest != id.branch_digest());
-            }
-        }
+        self.retain_populated_branches();
         Some(removed)
+    }
+
+    pub(super) fn retain_populated_branches(&mut self) {
+        let empty: Vec<u32> = self
+            .branch_values()
+            .filter(|branch| !self.has_branch_definitions(branch))
+            .map(FixBranch::digest)
+            .collect();
+        for digest in empty {
+            self.branches.remove(&digest);
+            self.branch_order.retain(|held| *held != digest);
+        }
     }
 
     /// Returns the first field after `after`, in tag-major identifier order.
@@ -907,7 +956,7 @@ impl FixRegistry {
 
     /// Returns whether no field is registered.
     pub fn is_empty(&self) -> bool {
-        self.fields.is_empty()
+        self.fields.is_empty() && self.catalog.all().next().is_none()
     }
 
     pub(super) fn branch_values(&self) -> impl Iterator<Item = &FixBranch> {
@@ -916,7 +965,7 @@ impl FixRegistry {
             .filter_map(|digest| self.branches.get(digest))
     }
 
-    fn check_branch(&self, branch: &FixBranch) -> Result<()> {
+    pub(super) fn check_branch(&self, branch: &FixBranch) -> Result<()> {
         if let Some(stored) = self.branches.get(&branch.digest()) {
             if !stored.has_identity(branch) {
                 return Err(branch_collision(stored, branch));
@@ -925,7 +974,7 @@ impl FixRegistry {
         Ok(())
     }
 
-    fn ensure_branch(&mut self, branch: FixBranch) {
+    pub(super) fn ensure_branch(&mut self, branch: FixBranch) {
         let digest = branch.digest();
         if self.branches.contains_key(&digest) {
             return;
@@ -946,11 +995,15 @@ impl FixRegistry {
         self.branch_order.insert(position, digest);
     }
 
-    fn canonical_position_by_id(&self, id: FixId) -> Option<usize> {
+    pub(super) fn canonical_position_by_id(&self, id: FixId) -> Option<usize> {
         self.ids.get(&id).copied()
     }
 
-    fn canonical_position_by_name(&self, branch: &FixBranch, name: &str) -> Option<usize> {
+    pub(super) fn canonical_position_by_name(
+        &self,
+        branch: &FixBranch,
+        name: &str,
+    ) -> Option<usize> {
         if !self.branch_matches(branch) {
             return None;
         }
@@ -1233,11 +1286,38 @@ impl fmt::Debug for FixRegistry {
 
 impl PartialEq for FixRegistry {
     fn eq(&self, other: &Self) -> bool {
-        self.len() == other.len() && self.iter().eq(other.iter()) && self.branches == other.branches
+        self.len() == other.len()
+            && self.iter().eq(other.iter())
+            && self.branches == other.branches
+            && self.catalog == other.catalog
     }
 }
 
 impl Eq for FixRegistry {}
+
+impl Hash for FixRegistry {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.len().hash(state);
+        for field in self {
+            field.hash(state);
+        }
+        self.branch_order.len().hash(state);
+        for branch in self.branch_values() {
+            branch.hash(state);
+        }
+        for category in [
+            crate::FixCategory::Messages,
+            crate::FixCategory::Components,
+            crate::FixCategory::Groups,
+        ] {
+            category.hash(state);
+            self.catalog.iter(category).count().hash(state);
+            for field in self.catalog.iter(category) {
+                field.hash(state);
+            }
+        }
+    }
+}
 
 impl<'registry> IntoIterator for &'registry FixRegistry {
     type Item = &'registry Field;
@@ -1266,6 +1346,12 @@ impl<'registry> Iterator for FixFieldIter<'registry> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.positions.size_hint()
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.positions
+            .nth(n)
+            .and_then(|position| self.fields.get(*position))
     }
 }
 

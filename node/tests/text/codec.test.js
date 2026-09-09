@@ -21,6 +21,7 @@ const rawNativeWrapperPrototypes = [
   nativeBinding.Uri.prototype,
   nativeBinding.Url.prototype,
   nativeBinding.Urn.prototype,
+  nativeBinding.Version.prototype,
 ]
 const rawRegExpSourceGetter = Object.getOwnPropertyDescriptor(
   RegExp.prototype,
@@ -44,6 +45,7 @@ const {
   Uri,
   Url,
   Urn,
+  Version,
   Timezone,
   Scalar,
   codec,
@@ -140,6 +142,7 @@ test('schema wrappers cross structurally and locations cross as text', () => {
     Uri.fromString('https://example.com/value'),
     Url.fromString('https://example.com/value'),
     Urn.fromString('urn:example:value'),
+    new Version(5, 0, 300),
   ]) {
     assert.equal(json.loads(json.dumps(value)), value.toString())
   }
@@ -152,6 +155,7 @@ test('native wrapper encoding reads native state instead of replaceable methods'
     Uri.fromString('https://example.com/value'),
     Url.fromString('https://example.com/value'),
     Urn.fromString('urn:example:value'),
+    new Version(5, 0, 300),
   ]
 
   for (const value of values) {
@@ -331,7 +335,7 @@ test('Scalar identity accessors name the exact leaf and family', () => {
       'uuid',
     ],
     [
-      json.loads('"5.0.SP1"', {
+      json.loads('"5.0.1"', {
         field: new Field('value', 'version', false),
         scalar: true,
       }),
@@ -681,12 +685,28 @@ test('fromJs and asJs are the conversion every codec entry point crosses', () =>
   assert.throws(() => Scalar.fromJs({}, { maxDepth: 0 }), /between 1 and 48/)
 })
 
+test('Scalar.fromJs applies a declared core Field exactly at intake', () => {
+  const count = new Field('count', 'int8', false)
+  const value = Scalar.fromJs(127, { field: count })
+  assert.equal(value.kind, 'i8')
+  assert.equal(value.asJs(), 127)
+  assert.throws(() => Scalar.fromJs(128, { field: count }), /int8|count/)
+  assert.throws(() => Scalar.fromJs(null, { field: count }), /null|count/)
+  assert.equal(Scalar.fromJs(null, { field: new Field('count', 'int8', true) }).kind, 'null')
+  const row = new Field('row', 'struct<id: int8 not null, release: version not null>', false)
+  const resolved = Scalar.fromJs({ release: '5.0.300', id: 7 }, { field: row })
+  assert.equal(resolved.kind, 'sequence')
+  assert.equal(resolved.get(0).kind, 'i8')
+  assert.ok(resolved.get(1).asJs().equals(new Version(5, 0, 300)))
+})
+
 test('same-named native wrapper subclasses cannot lose application state', () => {
   const NativeDataType = DataType
   const NativeField = Field
   const NativeUri = Uri
   const NativeUrl = Url
   const NativeUrn = Urn
+  const NativeVersion = Version
   const SubDataType = class DataType extends NativeDataType {
     constructor() {
       super('int64')
@@ -717,6 +737,12 @@ test('same-named native wrapper subclasses cannot lose application state', () =>
       this.applicationState = true
     }
   }
+  const SubVersion = class Version extends NativeVersion {
+    constructor() {
+      super(5, 0, 300)
+      this.applicationState = true
+    }
+  }
 
   for (const [value, name] of [
     [new SubDataType(), 'DataType'],
@@ -724,6 +750,7 @@ test('same-named native wrapper subclasses cannot lose application state', () =>
     [new SubUri(), 'Uri'],
     [new SubUrl(), 'Url'],
     [new SubUrn(), 'Urn'],
+    [new SubVersion(), 'Version'],
   ]) {
     assert.throws(() => json.dumps(value), new RegExp(`${name} subclasses`))
   }

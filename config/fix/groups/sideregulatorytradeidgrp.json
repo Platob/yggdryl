@@ -1,0 +1,23 @@
+{
+  "name": "sideregulatorytradeidgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "sideregulatorytradeidcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "sideregulatorytradeidcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoSideRegulatoryTradeIDs(1971) > 0.",
+    "display": "SideRegulatoryTradeIDGrp",
+    "fix:component": "sideregulatorytradeidcomponent",
+    "fix:counter": "1971"
+  }
+}

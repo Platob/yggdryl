@@ -1,0 +1,42 @@
+{
+  "name": "applidreport",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "refapplid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "refapplid"
+        }
+      },
+      {
+        "name": "applnewseqnum",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "applnewseqnum"
+        }
+      },
+      {
+        "name": "refappllastseqnum",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "refappllastseqnum"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "ApplIDReport"
+  }
+}

@@ -49,7 +49,7 @@ use crate::mime_type::line;
 use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 use super::build::{Builder, root_name};
-use super::{FixBranch, FixMsg, FixRegistry};
+use super::{FixBranch, FixMessages, FixMsg, FixRegistry};
 
 /// What separates the members packed inside one bridge group occurrence.
 ///
@@ -84,6 +84,18 @@ pub struct FixCodec {
 }
 
 impl FixCodec {
+    /// Borrows the message type declared by a captured line without parsing a message.
+    #[must_use]
+    pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]> {
+        line::inspect(line).msgtype()
+    }
+
+    /// Borrows the message type declared by a captured text line.
+    #[must_use]
+    pub fn infer_msgtype_text(line: &str) -> Option<&str> {
+        std::str::from_utf8(Self::infer_msgtype_bytes(line.as_bytes())?).ok()
+    }
+
     /// Opens a codec over one dictionary.
     #[must_use]
     pub fn new(registry: Arc<FixRegistry>) -> Self {
@@ -178,11 +190,12 @@ impl FixCodec {
             .any(|spelling| spelling.as_bytes().eq_ignore_ascii_case(trimmed))
     }
 
-    /// Transforms one log line into a message, picking its dialect from the
-    /// frame.
+    /// Transforms one log line into an iterator of messages, selecting the
+    /// dialect from its frame. A bulk UL configuration yields one message
+    /// per selected MBean; the other dialects yield one message.
     ///
     /// The prefix a process printed around the message is located and dropped
-    /// first, then one shallow look decides which of the three readers owns
+    /// first, then one shallow look decides which reader owns
     /// the body: a run of digits before the frame's first `=` is numeric FIX,
     /// and anything else is a bridge row. The decision is made once and holds
     /// for the whole body, so a `#` or a `<` inside a *value* is part of that
@@ -195,7 +208,7 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] for input that is not a row at all.
-    pub fn transform_line(&self, row: &[u8], enrich: bool) -> Result<FixMsg> {
+    pub fn transform_line(&self, row: &[u8], enrich: bool) -> Result<FixMessages> {
         if row.is_empty() {
             return Err(Error::Parse {
                 target: "fix",
@@ -206,13 +219,13 @@ impl FixCodec {
         let start = line::payload_at(row).unwrap_or(row.len());
         let body = &row[start..];
         if numeric_frame(body) {
-            return self.transform_fix_line(body, enrich);
+            return self.transform_fix_line(body, enrich).map(FixMessages::one);
         }
         // A payload opening with `{` is a bridge configuration document, and
         // nothing else is: the locator points at a key, which starts with a
         // digit or a letter, and points at an object only where it found one.
         // So the test costs one byte rather than a second classification.
-        if body.first() == Some(&b'{') {
+        if matches!(body.first(), Some(b'{' | b'[')) {
             return self.transform_ulconfig_line(body, enrich);
         }
         // A FIXML row states no `key=value` frame, so the locator finds none
@@ -220,9 +233,10 @@ impl FixCodec {
         // opens at the first tag - which is also how a prefix is dropped from
         // one, since everything before that tag is text the reader skips.
         if body.is_empty() && memchr::memchr(b'<', row).is_some() {
-            return self.transform_fixml_line(row, enrich);
+            return self.transform_fixml_line(row, enrich).map(FixMessages::one);
         }
         self.transform_ullink_line(body, enrich)
+            .map(FixMessages::one)
     }
 
     /// Transforms one numeric FIX frame.
@@ -268,6 +282,9 @@ impl FixCodec {
 
     /// Transforms one bridge row of `NAME=VALUE` pairs.
     ///
+    /// A `SOH` or pipe delimiter preserves spaces inside a value. A row with
+    /// neither delimiter uses spaces between pairs.
+    ///
     /// A key opening with `#` names a group: `#NOPARTYIDS=1` is the counter
     /// and `#NOPARTYIDS[0]=…` is one occurrence whose *value* is a run of
     /// member pairs. The `#` is dropped only where it is the row's sole
@@ -284,11 +301,7 @@ impl FixCodec {
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
     pub fn transform_ullink_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg> {
-        let separator = if memchr::memchr(b'|', body).is_some() {
-            b'|'
-        } else {
-            b' '
-        };
+        let separator = line::ullink_separator(body);
         // The whole row is split before any `#` is judged, because the bare
         // twin that keeps one may arrive on either side of it. The segments
         // are slices of the body, so this pass allocates only the list.
@@ -313,6 +326,10 @@ impl FixCodec {
             Vec::new()
         };
         let mut resolved: Vec<(Cow<'_, [u8]>, &[u8])> = Vec::with_capacity(arrived.len());
+        let msgtype = msgtype_of(&arrived);
+        let message = msgtype
+            .as_deref()
+            .and_then(|code| self.registry.get_msgtype(code, self.branch.as_ref()));
         for &(key, value) in &arrived {
             let key = match key.strip_prefix(b"#") {
                 Some(bare) => {
@@ -338,7 +355,7 @@ impl FixCodec {
             };
             match group_index(key) {
                 Some((group, occurrence)) if memchr::memchr(b'=', value).is_some() => {
-                    let declared = self.group_members(group);
+                    let declared = self.group_members(group, message);
                     let occurrence = occurrence.to_string();
                     for (member, held) in members(value, declared) {
                         let mut rendered = Vec::with_capacity(group.len() + member.len() + 8);
@@ -439,7 +456,7 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] when the value is not a record at all.
-    pub fn transform_record(&self, record: &Scalar, enrich: bool) -> Result<FixMsg> {
+    pub fn transform_record(&self, record: &Scalar, enrich: bool) -> Result<FixMessages> {
         super::record::transform_record_with(self, record, &self.payload_column, enrich)
     }
 
@@ -458,9 +475,9 @@ impl FixCodec {
         I: IntoIterator<Item = Scalar>,
         I::IntoIter: 'codec,
     {
-        records
-            .into_iter()
-            .map(move |record| self.transform_record(&record, enrich))
+        records.into_iter().flat_map(move |record| {
+            FixMessages::from_result(self.transform_record(&record, enrich))
+        })
     }
 
     /// Transforms one Arrow batch of capture rows into one Arrow batch of
@@ -489,17 +506,8 @@ impl FixCodec {
     ) -> Result<arrow_array::RecordBatch> {
         let schema = batch.schema();
         let source = crate::arrow::batch_reader(schema, [batch.clone()]);
-        let mut read = self.transform_arrow_reader(source, options, enrich)?;
-        let first = read
-            .next()
-            .transpose()
-            .map_err(crate::arrow::from_reader_error)?;
-        match first {
-            Some(held) => Ok(held),
-            // A batch of no rows reads as a batch of no rows, never as an
-            // error: an empty capture is a capture.
-            None => Ok(arrow_array::RecordBatch::new_empty(read.schema())),
-        }
+        let read = self.transform_arrow_reader(source, options, enrich)?;
+        Ok(crate::arrow::ArrowValue::from_reader(read)?.into_batch()?)
     }
 
     /// Transforms a stream of Arrow batches into a stream of message batches.
@@ -623,17 +631,19 @@ impl FixCodec {
         let version = self.version.or_else(|| self.infer_version(pairs, &branch));
         let msgtype = msgtype_of(pairs);
 
-        let mut builder = Builder::new(&self.registry, branch.clone(), version, pairs.len());
-        for (key, value) in pairs {
-            // A stated absence produces no field and no entry: the key is read
-            // as never having been sent. Filtering happens before typing, so
-            // nothing tries to read `<null>` as a price and file the failure.
-            if self.is_absent(value) {
-                continue;
-            }
-            builder.push(key, value);
-        }
-        let (field, value, entries) = builder.finish(root_name(msgtype.as_deref()).as_str())?;
+        let message = msgtype
+            .as_deref()
+            .and_then(|code| self.registry.get_msgtype(code, self.branch.as_ref()));
+        let mut builder = Builder::new(
+            &self.registry,
+            message,
+            branch.clone(),
+            version,
+            pairs.len(),
+        );
+        builder.push_pairs(pairs, |value| self.is_absent(value));
+        let (mut field, value, entries) = builder.finish(root_name(msgtype.as_deref()).as_str())?;
+        field.as_fix_mut().set_branch(&branch)?;
         let built = FixMsg::from_parts(Arc::clone(&self.registry), field, value, entries)?;
         if enrich {
             return self.enrich_fixmsg(built);
@@ -646,11 +656,32 @@ impl FixCodec {
     /// Bridge keys are rendered names even when their bytes are digits. Only
     /// a nested field reached by that name can declare boundaries; an
     /// unresolved group leaves its value whole.
-    fn group_members(&self, group: &[u8]) -> &[Field] {
+    fn group_members<'registry>(
+        &'registry self,
+        group: &[u8],
+        message: Option<&'registry super::MsgType>,
+    ) -> &'registry [Field] {
         let Ok(group) = std::str::from_utf8(group) else {
             return &[];
         };
-        let Some(field) = self.registry.get_field_by_name(group, self.branch.as_ref()) else {
+        let field = self
+            .registry
+            .get_definition(crate::FixCategory::Groups, group, self.branch.as_ref())
+            .or_else(|| {
+                let counter = if let Some(tag) = super::field::parse_tag(group) {
+                    let branch = self.branch.clone().unwrap_or_default();
+                    self.registry
+                        .get_field_by_id(super::FixId::from_parts(&branch, tag).ok()?)
+                } else {
+                    self.registry.get_field_by_name(group, self.branch.as_ref())
+                }?;
+                let id = counter.as_fix().id().ok()??;
+                match message.filter(|message| message.has_group_counter(id)) {
+                    Some(message) => message.get_group_by_counter(id),
+                    None => self.registry.get_group_by_counter(id),
+                }
+            });
+        let Some(field) = field else {
             return &[];
         };
         let item = match field.dtype() {
@@ -699,8 +730,8 @@ fn appl_ver_id(value: &str, registry: &FixRegistry) -> Option<Version> {
         "5" | "FIX43" => "4.3",
         "6" | "FIX44" => "4.4",
         "7" | "FIX50" => "5.0",
-        "8" | "FIX50SP1" => "5.0SP1",
-        "9" | "FIX50SP2" => "5.0SP2",
+        "8" | "FIX50SP1" => "5.0.1",
+        "9" | "FIX50SP2" => "5.0.2",
         // "FIX Latest" is a moving label and resolves to the pedigree the
         // dictionary actually carries, never to a sentinel.
         "10" | "FIXLatest" => {

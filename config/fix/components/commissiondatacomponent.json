@@ -1,0 +1,172 @@
+{
+  "name": "commissiondatacomponent",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "commissionamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionamount"
+        }
+      },
+      {
+        "name": "commissionamounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionamounttype"
+        }
+      },
+      {
+        "name": "commissionamountsubtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionamountsubtype"
+        }
+      },
+      {
+        "name": "commissionbasis",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionbasis"
+        }
+      },
+      {
+        "name": "commissioncurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissioncurrency"
+        }
+      },
+      {
+        "name": "commissioncurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissioncurrencycodesource"
+        }
+      },
+      {
+        "name": "commissionunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionunitofmeasure"
+        }
+      },
+      {
+        "name": "commissionunitofmeasurecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionunitofmeasurecurrency"
+        }
+      },
+      {
+        "name": "commissionunitofmeasurecurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionunitofmeasurecurrencycodesource"
+        }
+      },
+      {
+        "name": "commissionrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionrate"
+        }
+      },
+      {
+        "name": "commissionsharedindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionsharedindicator"
+        }
+      },
+      {
+        "name": "commissionamountshared",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionamountshared"
+        }
+      },
+      {
+        "name": "commissionlegrefid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissionlegrefid"
+        }
+      },
+      {
+        "name": "commissiondesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "commissiondesc"
+        }
+      },
+      {
+        "name": "encodedcommissiondesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedcommissiondesclen"
+        }
+      },
+      {
+        "name": "encodedcommissiondesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedcommissiondesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "CommissionData"
+  }
+}

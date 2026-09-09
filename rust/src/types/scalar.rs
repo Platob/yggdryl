@@ -264,7 +264,6 @@ impl Serialize for Scalar {
                 AsciiFamily::Mic(value) => tagged(serializer, "mic", &value.as_str()),
                 AsciiFamily::Cfi(value) => tagged(serializer, "cfi", &value.as_str()),
                 AsciiFamily::Side(value) => tagged(serializer, "side", &value.as_str()),
-                AsciiFamily::MsgType(value) => tagged(serializer, "msgtype", &value.as_str()),
                 AsciiFamily::State(value) => tagged(serializer, "state", &value.as_str()),
                 AsciiFamily::TimeInForce(value) => {
                     tagged(serializer, "timeinforce", &value.as_str())
@@ -883,7 +882,6 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Mic(_)) => DataTypeId::Mic,
             Self::Ascii(AsciiFamily::Cfi(_)) => DataTypeId::Cfi,
             Self::Ascii(AsciiFamily::Side(_)) => DataTypeId::Side,
-            Self::Ascii(AsciiFamily::MsgType(_)) => DataTypeId::MsgType,
             Self::Ascii(AsciiFamily::MsgDirection(_)) => DataTypeId::MsgDirection,
             Self::Ascii(AsciiFamily::State(_)) => DataTypeId::State,
             Self::Ascii(AsciiFamily::TimeInForce(_)) => DataTypeId::TimeInForce,
@@ -944,7 +942,6 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Mic(_)) => "mic",
             Self::Ascii(AsciiFamily::Cfi(_)) => "cfi",
             Self::Ascii(AsciiFamily::Side(_)) => "side",
-            Self::Ascii(AsciiFamily::MsgType(_)) => "msgtype",
             Self::Ascii(AsciiFamily::MsgDirection(_)) => "direction",
             Self::Ascii(AsciiFamily::State(_)) => "state",
             Self::Ascii(AsciiFamily::TimeInForce(_)) => "timeinforce",

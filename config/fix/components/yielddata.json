@@ -1,0 +1,73 @@
+{
+  "name": "yielddata",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "yieldtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "yieldtype"
+        }
+      },
+      {
+        "name": "yield",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "yield"
+        }
+      },
+      {
+        "name": "yieldcalcdate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "yieldcalcdate"
+        }
+      },
+      {
+        "name": "yieldredemptiondate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "yieldredemptiondate"
+        }
+      },
+      {
+        "name": "yieldredemptionprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "yieldredemptionprice"
+        }
+      },
+      {
+        "name": "yieldredemptionpricetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "yieldredemptionpricetype"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "The YieldData component block conveys yield information for a given Fixed Income security.",
+    "display": "YieldData"
+  }
+}

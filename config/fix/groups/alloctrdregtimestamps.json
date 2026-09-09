@@ -1,0 +1,23 @@
+{
+  "name": "alloctrdregtimestamps",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "alloctrdregtimestampcomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "alloctrdregtimestampcomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAllocTrdRegTimestamps(3008) > 0.",
+    "display": "AllocTrdRegTimestamps",
+    "fix:component": "alloctrdregtimestampcomponent",
+    "fix:counter": "3008"
+  }
+}

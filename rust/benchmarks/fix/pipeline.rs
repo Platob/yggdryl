@@ -21,9 +21,7 @@ use criterion::{Criterion, Throughput};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
-use yggdryl::{
-    FixBatchReader, FixBranch, FixCodec, FixOptions, FixRegistry, IOMedia, Timezone, Url,
-};
+use yggdryl::{FixBatchReader, FixBranch, FixCodec, FixOptions, IOMedia, Timezone, Url};
 
 use super::seed;
 
@@ -90,10 +88,10 @@ fn text(classify: bool) -> RecordOptions {
         .try_with_rowheader(ROWHEADER)
         .expect("the row header compiles")
         .with_timezone(Timezone::UTC);
-    options.with_rownum = Some(1);
-    options.with_direction = classify;
-    options.with_mimetype = classify;
-    options.with_msgtype = classify;
+    options.start_rownum = Some(1);
+    options.parse_direction = classify;
+    options.parse_mimetype = classify;
+    options.parse_msgtype = classify;
     options.into()
 }
 
@@ -166,8 +164,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
                     black_box(&codec)
                         .transform_line(black_box(body), false)
                         .expect("a readable row")
-                        .entries()
-                        .len()
+                        .map(|message| message.expect("a typed message").entries().len())
+                        .sum::<usize>()
                 })
                 .sum::<usize>()
         });

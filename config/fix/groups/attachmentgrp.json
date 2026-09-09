@@ -1,0 +1,23 @@
+{
+  "name": "attachmentgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "attachment",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "attachment"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoAttachments(2104) > 0.",
+    "display": "AttachmentGrp",
+    "fix:component": "attachment",
+    "fix:counter": "2104"
+  }
+}

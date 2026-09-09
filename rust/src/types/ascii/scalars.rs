@@ -134,7 +134,6 @@ ascii_code_leaf!(Currency, 3);
 ascii_code_leaf!(Mic, 4);
 ascii_code_leaf!(Cfi, 6);
 ascii_code_leaf!(Side, 4);
-ascii_code_leaf!(MsgType, 8);
 ascii_code_leaf!(MsgDirection, 4);
 ascii_code_leaf!(State, 8);
 ascii_code_leaf!(TimeInForce, 8);
@@ -319,147 +318,6 @@ static STATE_NAMES: &[(&str, &str)] = &[
     ("triggeredoractivatedbysystem", "3TRIGGER"),
     ("unknown", "0UNKNOWN"),
 ];
-
-impl MsgType {
-    /// The alphabet a synthesized message type is rendered in.
-    ///
-    /// Digits and upper-case letters, minus the four that read as each other
-    /// in a log line - `I`/`1`, `O`/`0` - because a synthetic value is read
-    /// by people before it is read by anything else. Thirty-two symbols, so
-    /// each carries exactly five bits and the rendering is a shift rather
-    /// than a division.
-    const ALPHABET: &'static [u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-
-    /// How many symbols a synthesized value spends.
-    ///
-    /// Seven of the eight bytes, leaving the first to mark it as synthetic.
-    /// Seven symbols is thirty-five bits, so two distinct spellings collide
-    /// at around a quarter of a million of them - far past what a venue
-    /// declares, and the registration refuses a collision anyway rather than
-    /// letting one happen quietly.
-    const SYNTHETIC_SYMBOLS: usize = 7;
-
-    /// The byte a synthesized value opens with.
-    ///
-    /// `~` is outside the alphabet and outside every message type FIX
-    /// publishes, so a synthetic value is recognisable at a glance and can
-    /// never be confused with one a venue actually sent.
-    pub const SYNTHETIC_MARK: u8 = b'~';
-
-    /// This spelling as a message type, synthesizing one where it will not fit.
-    ///
-    /// FIX's own types are one or two characters and this datatype holds
-    /// eight, which is enough for every type the specification publishes and
-    /// for most a venue invents. It is not enough for the composite keys a
-    /// bridge writes - `P Report Ack` is twelve - and a value that does not
-    /// fit cannot simply be truncated, because two keys sharing a prefix
-    /// would become one message type.
-    ///
-    /// So a spelling that does not fit is *hashed* into one that does. The
-    /// mapping is stable across processes and versions, because it is this
-    /// crate's own digest over the exact bytes, and it is one-way: the
-    /// spelling it came from is kept by whoever registers it, not recovered
-    /// from the value.
-    ///
-    /// ```
-    /// use yggdryl::types::MsgType;
-    ///
-    /// // What fits is itself, unchanged.
-    /// assert_eq!(MsgType::coerce("D").as_str(), "D");
-    /// assert_eq!(MsgType::coerce("AB").as_str(), "AB");
-    ///
-    /// // What does not is stable, marked, and never two things at once.
-    /// let held = MsgType::coerce("P Report Ack");
-    /// assert_eq!(held, MsgType::coerce("P Report Ack"));
-    /// assert_ne!(held, MsgType::coerce("P Report Nack"));
-    /// assert!(held.is_synthetic());
-    /// assert_eq!(held.as_str().len(), 8);
-    /// ```
-    #[must_use]
-    pub fn coerce(spelling: &str) -> Self {
-        if let Ok(held) = Self::new(spelling) {
-            return held;
-        }
-        Self::synthesized(spelling)
-    }
-
-    /// The synthetic value one spelling hashes to.
-    fn synthesized(spelling: &str) -> Self {
-        let digest = crate::digest::DigestAlgorithm::Xxh3
-            .digest(spelling.as_bytes())
-            .as_u64()
-            .unwrap_or_default();
-        let mut rendered = [0_u8; 8];
-        rendered[0] = Self::SYNTHETIC_MARK;
-        for (at, slot) in rendered[1..].iter_mut().enumerate() {
-            let shift = 5 * (Self::SYNTHETIC_SYMBOLS - 1 - at);
-            let symbol = (digest >> shift) & 0b1_1111;
-            *slot = Self::ALPHABET[symbol as usize];
-        }
-        // Every byte is from the alphabet or the mark, so the width and the
-        // ASCII rule both hold by construction.
-        Self(SmolStr::new(
-            std::str::from_utf8(&rendered).unwrap_or("~UNKNOWN"),
-        ))
-    }
-
-    /// Whether this value was synthesized rather than sent.
-    #[must_use]
-    pub fn is_synthetic(&self) -> bool {
-        self.as_str().as_bytes().first() == Some(&Self::SYNTHETIC_MARK)
-    }
-
-    /// Reads the message type one captured byte line declares.
-    ///
-    /// The same shallow scan [`MimeType::infer_bytes`](crate::MimeType) runs,
-    /// asked for a different answer: a raw `MSGTYPE=` anywhere in the line is
-    /// checked before numeric tag 35 and wins when both are present, because
-    /// a bridge writes its own type in front of a frame it relays. FIX's
-    /// user-defined `U*` range routes through one dictionary root.
-    ///
-    /// A [bridge configuration](crate::MimeType::ULCONFIG) document declares
-    /// its own, and only where the line wrote neither of those. The ObjectName
-    /// of the first MBean it names carries a `type=` segment - `Plugin` or
-    /// `ConfigurationPlugin` - which is what that entry *is*; failing one, the
-    /// Jolokia request's own `type` is the operation the document came from.
-    ///
-    /// The answer is a slice of the caller's bytes: no message is parsed and
-    /// nothing is allocated. It is deliberately not validated to this type's
-    /// width, because a line may carry anything and a classifier must not
-    /// refuse what it was asked to read - [`Self::coerce`] is what makes a
-    /// reading fit a column.
-    ///
-    /// ```
-    /// use yggdryl::types::MsgType;
-    ///
-    /// let line = b"sending >> 8=FIX.4.2|9=176|35=D|10=203| << queued seq=1092";
-    /// assert_eq!(MsgType::infer_bytes(line), Some(&b"D"[..]));
-    /// // The user-defined range routes through one root.
-    /// assert_eq!(MsgType::infer_bytes(b"35=U7|"), Some(&b"UDF"[..]));
-    /// assert_eq!(MsgType::infer_bytes(b"no pairs here"), None);
-    ///
-    /// // A bridge configuration answers what the entry is, and `plugin-type=`
-    /// // is not that segment however alike its last five bytes look.
-    /// let entry = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"status":200}"#;
-    /// assert_eq!(MsgType::infer_bytes(entry), Some(&b"Plugin"[..]));
-    /// // A wildcard read names no type of its own, so the operation answers.
-    /// let wildcard = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"status":200}"#;
-    /// assert_eq!(MsgType::infer_bytes(wildcard), Some(&b"read"[..]));
-    /// ```
-    #[must_use]
-    pub fn infer_bytes(line: &[u8]) -> Option<&[u8]> {
-        crate::mime_type::line::inspect(line).msgtype()
-    }
-
-    /// Reads the message type one captured text line declares.
-    ///
-    /// Answers nothing where the bytes it found are not text, because a
-    /// message type that cannot be spelled is not one a caller can use.
-    #[must_use]
-    pub fn infer_text(line: &str) -> Option<&str> {
-        std::str::from_utf8(Self::infer_bytes(line.as_bytes())?).ok()
-    }
-}
 
 impl MsgDirection {
     /// The direction a line moved when nothing in it says otherwise.
@@ -758,8 +616,6 @@ pub enum AsciiFamily {
     Cfi(Cfi),
     /// FIX's side of a trade.
     Side(Side),
-    /// FIX's message type, case-bearing.
-    MsgType(MsgType),
     /// Which way a captured line moved.
     MsgDirection(MsgDirection),
     /// What state one thing is in, ranked so the bytes sort by lifecycle.
@@ -779,7 +635,6 @@ impl AsciiFamily {
             Self::Mic(value) => value.as_str(),
             Self::Cfi(value) => value.as_str(),
             Self::Side(value) => value.as_str(),
-            Self::MsgType(value) => value.as_str(),
             Self::MsgDirection(value) => value.as_str(),
             Self::State(value) => value.as_str(),
             Self::TimeInForce(value) => value.as_str(),
@@ -799,7 +654,6 @@ impl AsciiFamily {
             Self::Mic(value) => value.storage(),
             Self::Cfi(value) => value.storage(),
             Self::Side(value) => value.storage(),
-            Self::MsgType(value) => value.storage(),
             Self::MsgDirection(value) => value.storage(),
             Self::State(value) => value.storage(),
             Self::TimeInForce(value) => value.storage(),
@@ -910,14 +764,6 @@ ascii_value!(Mic, super::MicType, Mic, Mic, Mic, Some(4));
 ascii_value!(Cfi, super::CfiType, Cfi, Cfi, Cfi, Some(6));
 ascii_value!(Side, super::SideType, Side, Side, Side, Some(4));
 ascii_value!(
-    MsgType,
-    super::MsgTypeType,
-    MsgType,
-    MsgType,
-    MsgType,
-    Some(8)
-);
-ascii_value!(
     MsgDirection,
     super::MsgDirectionType,
     MsgDirection,
@@ -984,7 +830,6 @@ impl ScalarFamily for AsciiFamily {
             Self::Mic(_) => DataTypeId::Mic,
             Self::Cfi(_) => DataTypeId::Cfi,
             Self::Side(_) => DataTypeId::Side,
-            Self::MsgType(_) => DataTypeId::MsgType,
             Self::MsgDirection(_) => DataTypeId::MsgDirection,
             Self::State(_) => DataTypeId::State,
             Self::TimeInForce(_) => DataTypeId::TimeInForce,
@@ -1000,7 +845,6 @@ impl ScalarFamily for AsciiFamily {
             Self::Mic(_) => Ok(DataType::Mic),
             Self::Cfi(_) => Ok(DataType::Cfi),
             Self::Side(_) => Ok(DataType::Side),
-            Self::MsgType(_) => Ok(DataType::MsgType),
             Self::MsgDirection(_) => Ok(DataType::MsgDirection),
             Self::State(_) => Ok(DataType::State),
             Self::TimeInForce(_) => Ok(DataType::TimeInForce),
@@ -1041,12 +885,6 @@ define_scalar_type!(
 define_scalar_type!(MicScalar, super::MicType, "mic", crate::DataType::Mic);
 define_scalar_type!(CfiScalar, super::CfiType, "cfi", crate::DataType::Cfi);
 define_scalar_type!(SideScalar, super::SideType, "side", crate::DataType::Side);
-define_scalar_type!(
-    MsgTypeScalar,
-    super::MsgTypeType,
-    "msgtype",
-    crate::DataType::MsgType
-);
 define_scalar_type!(
     MsgDirectionScalar,
     super::MsgDirectionType,

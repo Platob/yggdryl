@@ -1,0 +1,23 @@
+{
+  "name": "trdregpublicationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdregpublication",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "trdregpublication"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoTrdRegPublications(2668) > 0.",
+    "display": "TrdRegPublicationGrp",
+    "fix:component": "trdregpublication",
+    "fix:counter": "2668"
+  }
+}

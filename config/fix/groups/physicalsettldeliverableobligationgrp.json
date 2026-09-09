@@ -1,0 +1,23 @@
+{
+  "name": "physicalsettldeliverableobligationgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "physicalsettldeliverableobligation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "physicalsettldeliverableobligation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPhysicalSettlDeliverableObligations (40209) > 0.",
+    "display": "PhysicalSettlDeliverableObligationGrp",
+    "fix:component": "physicalsettldeliverableobligation",
+    "fix:counter": "40209"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "seclistgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "seclist",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "seclist"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Specifies the number of repeating symbols (instruments) specified",
+    "display": "SecListGrp",
+    "fix:component": "seclist",
+    "fix:counter": "146"
+  }
+}

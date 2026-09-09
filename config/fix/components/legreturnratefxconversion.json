@@ -1,0 +1,42 @@
+{
+  "name": "legreturnratefxconversion",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legreturnratefxcurrencysymbol",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratefxcurrencysymbol"
+        }
+      },
+      {
+        "name": "legreturnratefxrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratefxrate"
+        }
+      },
+      {
+        "name": "legreturnratefxratecalc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legreturnratefxratecalc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "LegReturnRateFXConversion"
+  }
+}

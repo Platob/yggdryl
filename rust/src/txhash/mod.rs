@@ -57,9 +57,11 @@ pub use hasher::TxHasher;
 pub use time::{DEFAULT_UNIT, restate_unix, unix_from_scalar, unix_now};
 pub use value::{TxHash, TxHashBytes, UNIX_WIDTH, dtype, width};
 
+#[cfg(feature = "arrow")]
+pub(crate) use field::coupled_holder_algorithm;
 pub(crate) use field::{
     DIGEST_TIME_KEY, DIGEST_UNIT_KEY, TIME, UNIT, canonicalize_digest_unit, coupled_holder_accepts,
-    coupled_holder_algorithm, expected_coupled_dtype, validate_digest_time,
+    expected_coupled_dtype, validate_digest_time,
 };
 
 use crate::DigestAlgorithm;

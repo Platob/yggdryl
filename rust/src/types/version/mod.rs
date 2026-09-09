@@ -1,12 +1,11 @@
 //! Ordered software/protocol versions as one generic scalar value.
 //!
-//! A version is a sixteen-byte value: a required eight-bit major, an optional
-//! eight-bit minor, and an optional fixed fourteen-byte patch/qualifier tail.
-//! Parsing canonicalizes equivalent component and qualifier separators, while
-//! ordering remains numeric (`SP2 < SP10`). Appended and dot-introduced FIX
-//! service packs are post-releases; only a hyphen introduces a pre-release.
-//! The fixed tail keeps every accepted value inline and bounds parse, compare,
-//! clone, and render without a heap allocation. This is neither an ASCII-width
+//! A version is a four-byte numeric value: an eight-bit major, an eight-bit
+//! minor, and a sixteen-bit patch. Missing minor and patch components are zero;
+//! canonical text omits trailing zero components. A compact FIX `SP` suffix
+//! supplies the numeric patch, case-insensitively: `5.0sp250` becomes `5.0.250`.
+//! Qualifiers are not stored. Parsing and numeric comparison allocate nothing, and cloning
+//! copies the four-byte value. This is neither an ASCII-width
 //! datatype nor a static coded vocabulary. Arrow stores the canonical text as
 //! Utf8; its extension name preserves the datatype on a field round trip.
 //! Arrow's own string ordering is consequently lexicographic—[`Version::cmp`]

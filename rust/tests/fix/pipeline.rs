@@ -11,13 +11,13 @@
 //! typed on the bridge's own tags, and the batched read agrees with the line
 //! read on every tag both can answer.
 
-use std::path::PathBuf;
+use super::OneMessage;
+
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use arrow_array::cast::AsArray;
 use yggdryl::holder::Buffer;
-use yggdryl::holder::local::Folder;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::{
@@ -27,16 +27,7 @@ use yggdryl::{
 
 /// The committed dictionary beside the bridge's own vocabulary.
 fn registry() -> Arc<FixRegistry> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
-    let held = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
-    Arc::new(
-        held.with_ulbridge_fields()
-            .expect("the bridge's own fields"),
-    )
+    super::ulbridge_registry()
 }
 
 /// The row header every line of the log opens with.
@@ -100,10 +91,10 @@ fn text() -> RecordOptions {
         .try_with_rowheader(ROWHEADER)
         .expect("the row header compiles")
         .with_timezone(Timezone::UTC);
-    options.with_rownum = Some(1);
-    options.with_direction = true;
-    options.with_mimetype = true;
-    options.with_msgtype = true;
+    options.start_rownum = Some(1);
+    options.parse_direction = true;
+    options.parse_mimetype = true;
+    options.parse_msgtype = true;
     options.into()
 }
 
@@ -152,9 +143,9 @@ fn text_column(batch: &RecordBatch, name: &str) -> Vec<Option<String>> {
 #[test]
 fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_data() {
     let registry = registry();
-    let read = read(&CAPTURE);
-    let names: Vec<&str> = read
-        .schema()
+    let batch = read(&CAPTURE);
+    let schema = batch.schema();
+    let names: Vec<&str> = schema
         .fields()
         .iter()
         .map(|held| held.name().as_str())
@@ -164,10 +155,11 @@ fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_dat
     // which line it was, what it was, the line itself and the four captures
     // the row header typed - and the tags follow.
     assert_eq!(
-        &names[..10],
+        &names[..11],
         [
             "url",
             "rownum",
+            "mtime",
             "direction",
             "mimetype",
             "msgtype",
@@ -179,7 +171,7 @@ fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_dat
         ],
         "{names:?}"
     );
-    assert_eq!(&names[10..13], ["8", "9", "35"], "{names:?}");
+    assert_eq!(&names[11..14], ["8", "9", "35"], "{names:?}");
     assert_eq!(
         &names[names.len() - 2..],
         ["nofixentries", "nounmappedfixentries"]
@@ -187,9 +179,12 @@ fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_dat
 
     // The timestamp capture was typed from its pattern before a byte was
     // read, and took the zone the options declared.
-    let ts = read.schema().field_with_name("ts").expect("the timestamp");
+    let ts = schema.field_with_name("ts").expect("the timestamp");
     assert!(
-        matches!(ts.data_type(), arrow_schema::DataType::Timestamp(_, Some(_))),
+        matches!(
+            ts.data_type(),
+            arrow_schema::DataType::Timestamp(_, Some(_))
+        ),
         "{ts:?}"
     );
 
@@ -197,7 +192,7 @@ fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_dat
     // capture of two lines and one of eleven answer the same schema, and it
     // is exactly the composition the two halves publish.
     let two = read(&CAPTURE[..2]);
-    assert_eq!(two.schema(), read.schema());
+    assert_eq!(two.schema(), batch.schema());
     let composed = fix_schema_carrying(
         &TextOptions::new()
             .try_with_rowheader(ROWHEADER)
@@ -216,8 +211,8 @@ fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_dat
         .map(|held| held.name().to_owned())
         .collect();
     assert_eq!(composed[0], "url");
-    assert_eq!(&composed[1..2], ["body"]);
-    assert_eq!(&composed[6..], &names[10..], "the tags follow in one order");
+    assert_eq!(&composed[1..3], ["mtime", "body"]);
+    assert_eq!(&composed[7..], &names[11..], "the tags follow in one order");
 }
 
 #[test]
@@ -229,14 +224,20 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     let rownum = read
         .column(read.schema().index_of("rownum").expect("rownum"))
         .as_primitive::<arrow_array::types::Int64Type>();
-    assert_eq!(rownum.values().iter().copied().collect::<Vec<_>>(), (1..=11).collect::<Vec<i64>>());
+    assert_eq!(
+        rownum.values().iter().copied().collect::<Vec<_>>(),
+        (1..=11).collect::<Vec<i64>>()
+    );
 
     // The row header's captures survive the codec untouched.
     assert_eq!(
         text_column(&read, "plugin")[HEARTBEAT_ROW].as_deref(),
         Some("Fidessa_X1_TradeCapture")
     );
-    assert_eq!(text_column(&read, "level")[FILL_ROW].as_deref(), Some("INFO"));
+    assert_eq!(
+        text_column(&read, "level")[FILL_ROW].as_deref(),
+        Some("INFO")
+    );
     assert_eq!(
         text_column(&read, "thread")[ROUTED_ROW].as_deref(),
         Some("15333-e7254b22:9f015ee861:4507")
@@ -275,7 +276,11 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     let msgtype = text_column(&read, "35");
     assert_eq!(msgtype[HEARTBEAT_ROW].as_deref(), Some("0"));
     assert_eq!(msgtype[FILL_ROW].as_deref(), Some("8"));
-    assert_eq!(msgtype[ROUTED_ROW].as_deref(), Some("8"), "a bridge row names its type");
+    assert_eq!(
+        msgtype[ROUTED_ROW].as_deref(),
+        Some("8"),
+        "a bridge row names its type"
+    );
     assert_eq!(msgtype[0], None, "prose states no type");
 
     // Header facts, by tag.
@@ -296,30 +301,52 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     assert!(sent[2].is_null(), "prose states no time");
 
     // The fill's body: symbol, side, quantities and prices, typed.
-    assert_eq!(text_column(&read, "55")[FILL_ROW].as_deref(), Some("JKLAKSHMI"));
+    assert_eq!(
+        text_column(&read, "55")[FILL_ROW].as_deref(),
+        Some("JKLAKSHMI")
+    );
     assert_eq!(text_column(&read, "54")[FILL_ROW].as_deref(), Some("1"));
     assert_eq!(column(&read, "38")[FILL_ROW].as_f64(), Some(982.0));
-    assert_eq!(column(&read, "44")[FILL_ROW].as_f64(), Some(547.771791547861));
+    assert_eq!(
+        column(&read, "44")[FILL_ROW].as_f64(),
+        Some(547.771791547861)
+    );
     assert_eq!(column(&read, "151")[FILL_ROW].as_f64(), Some(0.0));
     assert_eq!(text_column(&read, "150")[FILL_ROW].as_deref(), Some("2"));
 
     // The routed row states the same trade under names, and lands on the
     // same tags.
-    assert_eq!(text_column(&read, "55")[ROUTED_ROW].as_deref(), Some("JKLAKSHMI"));
-    assert_eq!(text_column(&read, "11")[ROUTED_ROW].as_deref(), Some("20260814_TP1_PICTET_1003"));
+    assert_eq!(
+        text_column(&read, "55")[ROUTED_ROW].as_deref(),
+        Some("JKLAKSHMI")
+    );
+    assert_eq!(
+        text_column(&read, "11")[ROUTED_ROW].as_deref(),
+        Some("20260814_TP1_PICTET_1003")
+    );
     assert_eq!(column(&read, "38")[ROUTED_ROW].as_f64(), Some(982.0));
     assert_eq!(column(&read, "31")[ROUTED_ROW].as_f64(), Some(547.77));
 
     // The crate's own columns: a digest for every row that carried anything,
     // and the market clock read from the fill's transaction time.
     let digest = column(&read, "30001");
-    assert!(digest[FILL_ROW].as_bytes().is_some_and(|held| held.len() == 16));
-    assert_eq!(
-        digest[FILL_ROW], digest[ROUTED_ROW],
-        "the framed fill and the routed row are one message: same body, two spellings",
+    assert!(
+        digest[FILL_ROW]
+            .as_bytes()
+            .is_some_and(|held| held.len() == 16)
     );
-    assert!(matches!(column(&read, "30004")[FILL_ROW], Scalar::Temporal(_)));
-    assert!(matches!(column(&read, "30004")[ROUTED_ROW], Scalar::Temporal(_)));
+    assert_ne!(
+        digest[FILL_ROW], digest[ROUTED_ROW],
+        "the routed row omits body fields and changes arrival order, both covered by the digest",
+    );
+    assert!(matches!(
+        column(&read, "30004")[FILL_ROW],
+        Scalar::Temporal(_)
+    ));
+    assert!(matches!(
+        column(&read, "30004")[ROUTED_ROW],
+        Scalar::Temporal(_)
+    ));
 }
 
 #[test]
@@ -333,7 +360,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     let body = &RESPONSE[ROWHEADER_WIDTH..];
     assert!(body.starts_with("Response: {"), "{body}");
     let message = codec
-        .transform_line(body.as_bytes(), false)
+        .one_line(body.as_bytes(), false)
         .expect("the document the line carries");
 
     // The envelope is what the exchange was, and it types.
@@ -345,34 +372,33 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
         message.by_tag(yggdryl::STATUS_TAG).unwrap(),
         &Scalar::from(200_i64)
     );
-    // The one session interface it answered for is one occurrence: FIX's own
-    // names keep FIX's own tags inside it, and the bridge's attributes land
-    // on the bridge's tags as the values they are.
+    // A session interface is one flat message. Standard and bridge attributes
+    // retain their own tags and datatypes.
     for (path, expected) in [
-        ("SessionInterfaces.0.SenderCompID", Scalar::from("PICTETFIS")),
-        ("SessionInterfaces.0.TargetCompID", Scalar::from("ITGADC")),
-        ("SessionInterfaces.0.BeginString", Scalar::from("FIX.4.2")),
-        ("SessionInterfaces.0.MBeanType", Scalar::from("Plugin")),
-        ("SessionInterfaces.0.PluginType", Scalar::from("FIX")),
-        ("SessionInterfaces.0.Name", Scalar::from("SmartTrade_TradeCapture")),
-        ("SessionInterfaces.0.CurrentPort", Scalar::from(9726_i64)),
-        ("SessionInterfaces.0.BackupPort", Scalar::from(-1_i64)),
-        ("SessionInterfaces.0.IncomingMsgSeqNum", Scalar::from(4507_i64)),
-        ("SessionInterfaces.0.NeedReload", Scalar::from(false)),
-        ("SessionInterfaces.0.State", Scalar::from("logged")),
+        ("SenderCompID", Scalar::from("PICTETFIS")),
+        ("TargetCompID", Scalar::from("ITGADC")),
+        ("BeginString", Scalar::from("FIX.4.2")),
+        ("MBeanType", Scalar::from("Plugin")),
+        ("PluginType", Scalar::from("FIX")),
+        ("Name", Scalar::from("SmartTrade_TradeCapture")),
+        ("CurrentPort", Scalar::from(9726_i64)),
+        ("BackupPort", Scalar::from(-1_i64)),
+        ("IncomingMsgSeqNum", Scalar::from(4507_i64)),
+        ("NeedReload", Scalar::from(false)),
+        ("State", Scalar::from("logged")),
     ] {
         assert_eq!(message.by_path(path).unwrap(), &expected, "{path}");
     }
     // A stated null is an absence, and an array is kept as the JSON it is.
-    assert!(message.get_by_path("SessionInterfaces.0.BackupHost").is_none());
+    assert!(message.get_by_path("BackupHost").is_none());
     assert!(
         message
-            .by_path("SessionInterfaces.0.ExtendedActions")
+            .by_path("ExtendedActions")
             .unwrap()
             .as_str()
             .is_some_and(|held| held.contains("send-test-request"))
     );
-    // The occurrence's member fields carry the tags they resolved to, so a
+    // The configuration's scalar fields carry the tags they resolved to, so a
     // reader filtering the arrival record by tag finds them.
     let tags: Vec<i32> = message.entries().iter().map(FixEntry::tag).collect();
     assert!(tags.contains(&49), "{tags:?}");
@@ -380,7 +406,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     assert!(tags.contains(&20_027), "CurrentPort: {tags:?}");
 
     // In the batch the same document is the same row: the envelope on its
-    // tags, and the occurrence in the arrival record, one entry per member
+    // tags, and the attributes in the arrival record, one entry per field
     // under the key the document spelled it by.
     let read = read(&CAPTURE);
     let entries = column(&read, "nofixentries");
@@ -396,11 +422,11 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
         })
         .collect();
     assert!(
-        keyed.contains(&(49, "SessionInterfaces[0].SenderCompID".to_owned())),
+        keyed.contains(&(49, "SenderCompID".to_owned())),
         "{keyed:?}"
     );
     assert!(
-        keyed.contains(&(20_027, "SessionInterfaces[0].CurrentPort".to_owned())),
+        keyed.contains(&(20_027, "CurrentPort".to_owned())),
         "{keyed:?}"
     );
     // Nothing in the document went unexplained on a dictionary that has the
@@ -435,7 +461,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         for (row, body) in bodies.iter().enumerate() {
             let body = body.as_bytes().expect("a body");
             let message = codec
-                .transform_line(body, false)
+                .one_line(body, false)
                 .unwrap_or_else(|error| panic!("row {row}: {error}"));
             let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
             let rendered = |value: &Scalar| match value {
@@ -461,7 +487,9 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     emitting.separator = b'|';
     let source = FixBatchReader::from_column(
         Arc::clone(&registry),
-        corpus(&CAPTURE).read_arrow_reader(&text()).expect("a reader"),
+        corpus(&CAPTURE)
+            .read_arrow_reader(&text())
+            .expect("a reader"),
         "body",
         options(),
     )

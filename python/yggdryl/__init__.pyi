@@ -29,6 +29,7 @@ from .types import (
     ProtocolField as ProtocolField,
     Scalar as Scalar,
     Timezone as Timezone,
+    Version as Version,
     field as field,
 )
 from .types.scalar import scalar as scalar

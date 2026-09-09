@@ -1,0 +1,42 @@
+{
+  "name": "testsuiteparameter",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "testsuiteparametername",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testsuiteparametername"
+        }
+      },
+      {
+        "name": "testsuiteparametertype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testsuiteparametertype"
+        }
+      },
+      {
+        "name": "testsuiteparametervalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "testsuiteparametervalue"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "TestSuiteParameter"
+  }
+}

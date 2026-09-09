@@ -1,0 +1,73 @@
+{
+  "name": "underlyingpaymentstreamfinalpricepaymentdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingpaymentstreamfinalpricepaymentdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfinalpricepaymentdateunadjusted"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfinalpricepaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfinalpricepaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfinalpricepaymentdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfinalpricepaymentdateoffsetperiod"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfinalpricepaymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfinalpricepaymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfinalpricepaymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfinalpricepaymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "underlyingpaymentstreamfinalpricepaymentdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingpaymentstreamfinalpricepaymentdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when UnderlyingPaymentStreamFinalPricePaymentDateOffsetUnit(42952) is specified.",
+    "display": "UnderlyingPaymentStreamFinalPricePaymentDate"
+  }
+}

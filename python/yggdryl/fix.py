@@ -18,18 +18,17 @@ adding what is absent, merging what is stored, and writing nothing at all when
 it refuses. :meth:`FixRegistry.from_cfb_file` is the same file read whole, answering
 a dictionary and the message roots its grammar bindings describe.
 
-:class:`UlPlugin` is one plugin a bridge configuration document answers for -
-the ObjectName the bridge holds it under beside the attributes it stated - read
-out of the bytes a line carries, out of a document already parsed, or out of a
-typed message, and crossing back to one through
-:meth:`UlPlugin.into_fixmsg`. :func:`fix_ulbridge_fields` is the dictionary
+:class:`Ulconfig` carries one bridge configuration's ObjectName, attributes,
+and response envelope. :class:`Ulconfigs` lazily yields configurations from a
+single or bulk document, and :meth:`Ulconfig.into_fixmsg` converts one to a
+flat typed message. :func:`fix_ulbridge_fields` is the dictionary
 those attributes type against, which
 :meth:`FixRegistry.with_ulbridge_fields` registers.
 
-:class:`FixCodec` turns a captured line into one of those messages,
+:class:`FixCodec` turns a captured line into a lazy :class:`FixMessages` iterator,
 :func:`parse_arrow_reader` turns a whole Arrow capture into batches of them --
 the capture's own columns first, the dictionary's fixed columns after, one
-input row per output row -- and
+source row's columns repeated for each returned message -- and
 :func:`fix_schema` is the one fixed row a whole capture lands in - columns named
 by tag, because a tag is the one name a field has in every version and every
 dialect, so a column is found with ``schema.index_of("35")`` and nothing has to
@@ -42,6 +41,12 @@ clock, the partition it falls in, and the two parent order identifiers.
 A branch is a ``str`` wherever it is a *key*; :class:`FixBranch` is what a
 *declaration* is, because a declaration also carries the dialect's default FIX
 version and the other spellings it answers to.
+
+The registry stores scalar ``fields`` and named ``messages``, ``components``,
+and ``groups``. Enum codes remain inline in each field's ``fix:codes`` metadata.
+Repeating counts such as ``NoPartyIDs`` are ``int32`` fields; ``Parties`` is a
+separate list of ``Party`` components. :class:`MsgType` borrows one immutable,
+registry-owned message definition and keeps its complete case-sensitive wire code.
 
 ``STANDARD_BRANCH`` is what an absent ``fix:branch`` means, and
 ``USER_TAG_MIN`` and ``USER_TAG_MAX`` bound the half-open range a
@@ -59,7 +64,10 @@ from ._native import (
     FixMsg,
     FixCodec,
     FixRegistry,
-    UlPlugin,
+    FixMessages,
+    MsgType,
+    Ulconfig,
+    Ulconfigs,
     fix_cfb_fields,
     fix_classify_arrow_array as classify_arrow_array,
     fix_crate_fields,
@@ -81,7 +89,10 @@ __all__ = [
     "FixMsg",
     "FixCodec",
     "FixRegistry",
-    "UlPlugin",
+    "FixMessages",
+    "MsgType",
+    "Ulconfig",
+    "Ulconfigs",
     "classify_arrow_array",
     "fix_cfb_fields",
     "fix_crate_fields",

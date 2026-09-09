@@ -1,0 +1,94 @@
+{
+  "name": "networkcounterpartysystemstatusresponse",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "standardheader",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardheader"
+        }
+      },
+      {
+        "name": "networkstatusresponsetype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "networkstatusresponsetype"
+        }
+      },
+      {
+        "name": "networkrequestid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "networkrequestid"
+        }
+      },
+      {
+        "name": "networkresponseid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "networkresponseid"
+        }
+      },
+      {
+        "name": "lastnetworkresponseid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "lastnetworkresponseid"
+        }
+      },
+      {
+        "name": "nocompids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:field": "nocompids"
+        }
+      },
+      {
+        "name": "compidstatgrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:group": "compidstatgrp"
+        }
+      },
+      {
+        "name": "standardtrailer",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": false,
+        "metadata": {
+          "fix:component": "standardtrailer"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "MsgType = BD",
+    "display": "NetworkCounterpartySystemStatusResponse",
+    "fix:msgtype": "BD"
+  }
+}

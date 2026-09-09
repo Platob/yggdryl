@@ -1,58 +1,51 @@
 # Decode
 
-Paste a captured line and read it: every tag named, every coded value translated, every repeating group nested, and the two self-describing tags checked against the bytes.
+Inspect captured frames and the messages produced by the native FIX codec.
+The browser displays committed package results; use the code examples to parse
+your own bytes.
 
 ## Contract
 
-| | |
+| Aspect | Rule |
 | --- | --- |
-| Input | A FIX frame in any separator a log writes it with — SOH, `\|`, `^A`, `;`, or one pair per line — with or without a direction verb in front |
-| Reads | Splits the pairs, names each key from `assets/fix.json`, translates each value through its code set, gathers occurrences under their counter, recomputes `BodyLength(9)` and `CheckSum(10)` |
-| States | Nothing the package did not answer: the names, types, wording, codes and layouts are the generated manifests, and the typed row, digest, facets and anomalies are shown only where the corpus holds the frame |
-| Package | [`FixCodec`](capture.md#a-reader-is-the-whole-parse-surface) is the whole parse surface; six entry points, one per shape a capture holds |
-| Pages | [Explorer](explorer.md) explores the dictionary, [Encode](encode.md) writes a frame |
+| Native intake | `FixCodec::transform_line` accepts captured bytes and returns a lazy `FixMessages` iterator |
+| Scalar fields | Values resolve through the field catalog; inline `fix:codes` supplies enum names |
+| Repeating groups | The count remains an `int32` field; a named List holds its component occurrences |
+| Wire record | Original entries retain order and raw values, including values that fail typed conversion |
+| Browser | Shows native sample fields, values, arrivals, emissions and anomalies from `assets/fix.json` |
 
 ## Use
-
-The reader takes a captured line whatever it is wrapped in, and answers a message typed against the dictionary.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
-
     use yggdryl::holder::local::Folder;
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
-    let message = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|", false)?;
-
-    assert_eq!(message.as_field().name(), "D");
-    assert_eq!(message.by_tag(55)?.as_str(), Some("AAPL"));
-    // The row is typed, so a quantity is a number and not the text it arrived as.
-    assert_eq!(message.by_tag(38)?.as_f64(), Some(100.0));
-    // And it re-emits exactly what arrived, verb taken off.
-    assert_eq!(
-        message.into_text('|')?,
-        "8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|"
-    );
+    let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    let frame = b"recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|";
+    let mut messages = codec.transform_line(frame, false)?;
+    let message = messages.next().expect("one frame")?;
+    assert!(messages.next().is_none());
+    assert_eq!(message.by_tag(453)?, &yggdryl::Scalar::from(1_i32));
+    assert_eq!(message.by_path("Parties.0.PartyID")?.as_str(), Some("BROKER"));
+    assert_eq!(message.into_bytes(b'|'), b"8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|");
     ```
 
 === "Python"
 
     ```python
     from pathlib import Path
-
     from yggdryl.fix import FixCodec, FixRegistry
 
-    reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
-    message = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|")
-
-    assert message.field.name == "D"
-    assert message.by_tag(55).as_py() == "AAPL"
-    # The row is typed, so a quantity is a number and not the text it arrived as.
-    assert message.by_tag(38).as_py() == 100.0
+    codec = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
+    frame = b"recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|"
+    message, = codec.transform_line(frame)
+    assert message.by_tag(453).as_py() == 1
+    assert message.by_path("Parties.0.PartyID").as_py() == "BROKER"
+    assert message.into_bytes(ord("|")) == frame.removeprefix(b"recv ")
     ```
 
 === "JavaScript"
@@ -62,46 +55,35 @@ The reader takes a captured line whatever it is wrapped in, and answers a messag
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
-    const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
-    const message = reader.transformLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|'))
-
-    assert.equal(message.field.name, 'D')
-    assert.equal(message.byTag(55).toJSON(), 'AAPL')
-    assert.equal(message.byTag(38).toJSON(), 100)
-    assert.equal(
-      Buffer.from(message.toBytes(0x7c)).toString(),
-      '8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|',
-    )
+    const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config/fix')))
+    const frame = 'recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|'
+    const [message] = codec.transformLine(Buffer.from(frame))
+    assert.equal(message.byTag(453).asJs(), 1)
+    assert.equal(message.byPath('Parties.0.PartyID').asJs(), 'BROKER')
+    assert.equal(Buffer.from(message.intoBytes(124)).toString(), frame.slice(5))
     ```
 
 ## Read a frame
 
-Type or paste. The reading updates as you go, and the presets are the frames the package itself read at build time — pick one and the package's own answer appears under the reading, on the same line.
+Select a sample to inspect the native result. Searches select existing manifest
+entries; this page does not parse arbitrary FIX text or reconstruct its schema.
 
 <div class="ygg-fx" data-fix="decode" markdown="1">
 This section renders `assets/fix.json` and needs JavaScript.
 </div>
 
-The separator is taken from the frame rather than asked for: an SOH where there is one, then `^A`, and otherwise whichever of `|`, a newline, `;` or a space reads the most pairs — because a pipe frame that wrapped across two lines holds a newline, and a frame written one pair to a line holds a pipe inside its `Text(58)`. A direction verb in front of the payload is taken off the same way [the classifier](registry.md#a-direction-is-the-verb-in-front-of-the-payload) takes it off, and whatever else a log emitter printed in front of `8=` is dropped with it.
-
 ### What is checked
 
-| Check | Rule |
-| --- | --- |
-| `BodyLength(9)` | The bytes from the one after its own separator to the one before `10=`, counted with the frame's separator written as one SOH |
-| `CheckSum(10)` | Every byte up to and including the separator in front of it, summed, modulo 256, three digits |
-| Bytes | Both count UTF-8 bytes, which is what a frame carries: `CAFÉ` is five of them and four characters |
-| Required | Every tag the message type's layout marks required and the frame did not send |
-| Unexplained | Every key no branch of the dictionary names, kept rather than dropped |
-| Occurrences | The count a group's counter states against the occurrences that followed it |
-
-### What is not computed here
-
-The typed row, the message digest, the derived facets and the anomalies are the package's, and this page computes none of them. They are shown for a frame that is in the generated corpus, because the manifest carries what the package answered for it; for anything else the page says so and prints the call that answers it.
+The displayed anomalies are exactly those returned by the package for each
+sample. The viewer does not calculate additional checksum, body-length,
+required-field or group-count findings. An empty anomaly list is not a venue's
+acceptance of an order.
 
 ## Every shape a capture holds
 
-One line per shape, read by the real package at build time: a numeric frame, a bridge frame with name keys, a frame carrying both, an enriched line with no frame at all, and the lines that do not add up. A [bridge configuration document](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) is the sixth, and is not in this corpus.
+The corpus contains numeric and named frames, packed and numeric groups,
+derived values and malformed inputs. [Configuration bodies](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own)
+use the same native parsing pipeline and can expand to multiple messages.
 
 <div class="ygg-fx" data-fix="frames" markdown="1">
 This section renders `assets/fix.json` and needs JavaScript.
@@ -109,16 +91,19 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 ## Edges
 
-- A numeric frame states its group members flat, so the counter holds no occurrences and the miscount is reported rather than repaired. A bridge frame's indexed keys build the occurrences, and the same counter then holds them.
-- A tag that merely arrived twice is two values, not a group of one: only a counter states a count.
-- A value that will not type is null in the row and still exactly as it arrived in the entries; the refusal is an anomaly, never an error.
-- A key no dictionary names is kept under its own spelling. Nothing is dropped for being unexplained.
-- The page reads text; the package reads bytes. A frame whose bytes are not text — a `data` field carrying binary — decodes lossily here and is the package's to read properly.
+- Numeric groups and indexed bridge groups populate the named List while
+  retaining their scalar counts. Ambiguous group contexts require a message
+  definition that selects the layout.
+- A malformed typed value can become null plus an anomaly while the raw arrival
+  remains available for emission.
+- Unexplained keys retain their own spelling and arrival value.
+- Bulk and wildcard configuration input yields all selected configurations;
+  empty answers yield none. A conversion error propagates and fuses the cursor.
 
 ## Commands
 
 ```bash
-cargo test -p yggdryl --test fix reader::
-node --test node/tests/fix/fix.test.js
+cargo test -p yggdryl --test fix
+node --test "node/tests/fix/*.test.js"
 node scripts/build_docs_fix.js --check
 ```

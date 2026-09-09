@@ -5,7 +5,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 const binding = require('yggdryl')
-const { DataType, Field, fields } = binding
+const { DataType, Field, Version, fields } = binding
 
 test('internal typed-factory bridges stay outside the public package surface', () => {
   for (const name of [
@@ -307,7 +307,7 @@ test('the ascii factories build the variable form and one fixed width', () => {
   assert.equal(fields.uuid('id').dtype.id, 'uuid')
   assert.equal(fields.uuid('id', { nullable: false }).nullable, false)
   assert.equal(fields.version('release').dtype.id, 'version')
-  assert.equal(fields.version('release', { nullable: false }).defaultJSValue(), '0')
+  assert.ok(fields.version('release', { nullable: false }).defaultJSValue().equals(new Version(0)))
   // A fixed width past the packed integer is still storage, so it builds.
   assert.equal(fields.fixedAscii('isin', 64).dtype.asciiWidth, 64)
   assert.equal(fields.fixedAscii('code', 12).nullable, true)

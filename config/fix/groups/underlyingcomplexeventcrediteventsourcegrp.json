@@ -1,0 +1,23 @@
+{
+  "name": "underlyingcomplexeventcrediteventsourcegrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingcomplexeventcrediteventsourcecomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingcomplexeventcrediteventsourcecomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingCreditEventCreditEventSources(41748) > 0.",
+    "display": "UnderlyingComplexEventCreditEventSourceGrp",
+    "fix:component": "underlyingcomplexeventcrediteventsourcecomponent",
+    "fix:counter": "41748"
+  }
+}

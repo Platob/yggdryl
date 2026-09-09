@@ -1,0 +1,23 @@
+{
+  "name": "paymentstreamnondeliverablefixingdatesbusinesscentergrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "paymentstreamnondeliverablefixingdatesbusinesscentercomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "paymentstreamnondeliverablefixingdatesbusinesscentercomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoPaymentStreamNonDeliverableFixingDatesBusinessCenters(40946) > 0.",
+    "display": "PaymentStreamNonDeliverableFixingDatesBusinessCenterGrp",
+    "fix:component": "paymentstreamnondeliverablefixingdatesbusinesscentercomponent",
+    "fix:counter": "40946"
+  }
+}

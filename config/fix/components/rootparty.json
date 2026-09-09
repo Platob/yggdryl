@@ -1,0 +1,72 @@
+{
+  "name": "rootparty",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "rootpartyid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rootpartyid"
+        }
+      },
+      {
+        "name": "rootpartyidsource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rootpartyidsource"
+        }
+      },
+      {
+        "name": "rootpartyrole",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rootpartyrole"
+        }
+      },
+      {
+        "name": "rootpartyrolequalifier",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "rootpartyrolequalifier"
+        }
+      },
+      {
+        "name": "norootpartysubids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "norootpartysubids"
+        }
+      },
+      {
+        "name": "rootsubparties",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "rootsubparties"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "RootParty"
+  }
+}

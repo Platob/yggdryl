@@ -1,0 +1,23 @@
+{
+  "name": "underlyingstreamcommoditysettldaygrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingstreamcommoditysettldaycomponent",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingstreamcommoditysettldaycomponent"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingStreamCommoditySettlDays(41996) > 0.",
+    "display": "UnderlyingStreamCommoditySettlDayGrp",
+    "fix:component": "underlyingstreamcommoditysettldaycomponent",
+    "fix:counter": "41996"
+  }
+}

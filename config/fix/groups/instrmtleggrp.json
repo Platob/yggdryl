@@ -1,0 +1,23 @@
+{
+  "name": "instrmtleggrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "instrmtleg",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "instrmtleg"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of legs",
+    "display": "InstrmtLegGrp",
+    "fix:component": "instrmtleg",
+    "fix:counter": "555"
+  }
+}

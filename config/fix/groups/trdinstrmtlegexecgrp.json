@@ -1,0 +1,23 @@
+{
+  "name": "trdinstrmtlegexecgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "trdinstrmtlegexec",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "trdinstrmtlegexec"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegExecs(1892) > 0.",
+    "display": "TrdInstrmtLegExecGrp",
+    "fix:component": "trdinstrmtlegexec",
+    "fix:counter": "1892"
+  }
+}

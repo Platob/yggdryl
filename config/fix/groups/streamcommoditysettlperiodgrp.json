@@ -1,0 +1,23 @@
+{
+  "name": "streamcommoditysettlperiodgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "streamcommoditysettlperiod",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "streamcommoditysettlperiod"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoStreamCommoditySettlPeriods(41289) > 0.",
+    "display": "StreamCommoditySettlPeriodGrp",
+    "fix:component": "streamcommoditysettlperiod",
+    "fix:counter": "41289"
+  }
+}

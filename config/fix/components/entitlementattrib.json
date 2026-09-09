@@ -1,0 +1,62 @@
+{
+  "name": "entitlementattrib",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "entitlementattribtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementattribtype"
+        }
+      },
+      {
+        "name": "entitlementattribdatatype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementattribdatatype"
+        }
+      },
+      {
+        "name": "entitlementattribvalue",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementattribvalue"
+        }
+      },
+      {
+        "name": "entitlementattribcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementattribcurrency"
+        }
+      },
+      {
+        "name": "entitlementattribcurrencycodesource",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "entitlementattribcurrencycodesource"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "EntitlementAttrib"
+  }
+}

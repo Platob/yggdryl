@@ -1,0 +1,73 @@
+{
+  "name": "legpaymentstreamfinalpricepaymentdate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamfinalpricepaymentdateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfinalpricepaymentdateunadjusted"
+        }
+      },
+      {
+        "name": "legpaymentstreamfinalpricepaymentdaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfinalpricepaymentdaterelativeto"
+        }
+      },
+      {
+        "name": "legpaymentstreamfinalpricepaymentdateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfinalpricepaymentdateoffsetperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreamfinalpricepaymentdateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfinalpricepaymentdateoffsetunit"
+        }
+      },
+      {
+        "name": "legpaymentstreamfinalpricepaymentdateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfinalpricepaymentdateoffsetdaytype"
+        }
+      },
+      {
+        "name": "legpaymentstreamfinalpricepaymentdateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfinalpricepaymentdateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Conditionally required when LegPaymentStreamFinalPricePaymentDateOffsetUnit(42456) is specified.",
+    "display": "LegPaymentStreamFinalPricePaymentDate"
+  }
+}

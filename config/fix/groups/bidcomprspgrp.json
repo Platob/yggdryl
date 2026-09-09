@@ -1,0 +1,23 @@
+{
+  "name": "bidcomprspgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "bidcomprsp",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "bidcomprsp"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Number of bid repeating groups",
+    "display": "BidCompRspGrp",
+    "fix:component": "bidcomprsp",
+    "fix:counter": "420"
+  }
+}

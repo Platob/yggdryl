@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { AsciiEnum, DataType, Field } = require('yggdryl')
+const { AsciiEnum, DataType, Field, Version } = require('yggdryl')
 
 test('datatype values infer inputs and round-trip canonical strings', () => {
   const type = new DataType('varchar')
@@ -198,7 +198,7 @@ test('the uuid is sixteen bytes spelled as one identifier', () => {
   void text
 })
 
-test('version is canonical numerically ordered text', () => {
+test('version keeps a native numeric value under its string Arrow representation', () => {
   const version = new DataType('version')
 
   assert.equal(version.id, 'version')
@@ -208,7 +208,7 @@ test('version is canonical numerically ordered text', () => {
   assert.ok(DataType.fromString(version.toString()).equals(version))
 
   const field = new Field('version', version, false)
-  assert.equal(field.defaultJSValue(), '0')
+  assert.ok(field.defaultJSValue().equals(new Version(0)))
   assert.ok(Field.fromJSON(field.toJSON()).equals(field))
 })
 

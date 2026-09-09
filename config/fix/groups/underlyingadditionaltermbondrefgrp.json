@@ -1,0 +1,23 @@
+{
+  "name": "underlyingadditionaltermbondrefgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "underlyingadditionaltermbondref",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "underlyingadditionaltermbondref"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoUnderlyingAdditionalTermBondRefs(41340) > 0.",
+    "display": "UnderlyingAdditionalTermBondRefGrp",
+    "fix:component": "underlyingadditionaltermbondref",
+    "fix:counter": "41340"
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "name": "underlyingstreamcommoditysettlperiod",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingstreamcommoditysettlcountry",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlcountry"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettltimezone",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettltimezone"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlflowtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlflowtype"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlperiodnotional",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlperiodnotional"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlperiodnotionalunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlperiodnotionalunitofmeasure"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlperiodfrequencyperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlperiodfrequencyperiod"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlperiodfrequencyunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlperiodfrequencyunit"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlperiodprice",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlperiodprice"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlperiodpriceunitofmeasure",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlperiodpriceunitofmeasure"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlperiodpricecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlperiodpricecurrency"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlholidaysprocessinginstruction",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlholidaysprocessinginstruction"
+        }
+      },
+      {
+        "name": "nounderlyingstreamcommoditysettldays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nounderlyingstreamcommoditysettldays"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettldaygrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "underlyingstreamcommoditysettldaygrp"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlperiodxid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlperiodxid"
+        }
+      },
+      {
+        "name": "underlyingstreamcommoditysettlperiodxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingstreamcommoditysettlperiodxidref"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingStreamCommoditySettlPeriod"
+  }
+}

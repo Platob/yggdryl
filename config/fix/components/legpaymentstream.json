@@ -1,0 +1,353 @@
+{
+  "name": "legpaymentstream",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "legpaymentstreamtype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamtype"
+        }
+      },
+      {
+        "name": "legpaymentstreammarketrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreammarketrate"
+        }
+      },
+      {
+        "name": "legpaymentstreamdelayindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamdelayindicator"
+        }
+      },
+      {
+        "name": "legpaymentstreamcashsettlindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcashsettlindicator"
+        }
+      },
+      {
+        "name": "legpaymentstreamsettlcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamsettlcurrency"
+        }
+      },
+      {
+        "name": "legpaymentstreamdaycount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamdaycount"
+        }
+      },
+      {
+        "name": "legpaymentstreamotherdaycount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamotherdaycount"
+        }
+      },
+      {
+        "name": "legpaymentstreamaccrualdays",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamaccrualdays"
+        }
+      },
+      {
+        "name": "legpaymentstreamdiscounttype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamdiscounttype"
+        }
+      },
+      {
+        "name": "legpaymentstreamdiscountrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamdiscountrate"
+        }
+      },
+      {
+        "name": "legpaymentstreamdiscountratedaycount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamdiscountratedaycount"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingmethod"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingxidref",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingxidref"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingspread",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingspread"
+        }
+      },
+      {
+        "name": "legpaymentstreaminterpolationmethod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreaminterpolationmethod"
+        }
+      },
+      {
+        "name": "legpaymentstreaminterpolationperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreaminterpolationperiod"
+        }
+      },
+      {
+        "name": "legpaymentstreaminitialprincipalexchangeindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreaminitialprincipalexchangeindicator"
+        }
+      },
+      {
+        "name": "legpaymentstreaminterimprincipalexchangeindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreaminterimprincipalexchangeindicator"
+        }
+      },
+      {
+        "name": "legpaymentstreamfinalprincipalexchangeindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamfinalprincipalexchangeindicator"
+        }
+      },
+      {
+        "name": "legpaymentstreamflatrateindicator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamflatrateindicator"
+        }
+      },
+      {
+        "name": "legpaymentstreamflatrateamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamflatrateamount"
+        }
+      },
+      {
+        "name": "legpaymentstreamflatratecurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamflatratecurrency"
+        }
+      },
+      {
+        "name": "legstreammaximumpaymentamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreammaximumpaymentamount"
+        }
+      },
+      {
+        "name": "legstreammaximumpaymentcurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreammaximumpaymentcurrency"
+        }
+      },
+      {
+        "name": "legstreammaximumtransactionamount",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreammaximumtransactionamount"
+        }
+      },
+      {
+        "name": "legstreammaximumtransactioncurrency",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legstreammaximumtransactioncurrency"
+        }
+      },
+      {
+        "name": "legpaymentstreampaymentdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreampaymentdates"
+        }
+      },
+      {
+        "name": "legpaymentstreamresetdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreamresetdates"
+        }
+      },
+      {
+        "name": "legpaymentstreamfixedrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreamfixedrate"
+        }
+      },
+      {
+        "name": "legpaymentstreamfloatingrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreamfloatingrate"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingfixedrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "legpaymentstreamcompoundingfixedrate"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingfloatingrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreamcompoundingfloatingrate"
+        }
+      },
+      {
+        "name": "legpaymentstreamcompoundingdates",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreamcompoundingdates"
+        }
+      },
+      {
+        "name": "legpaymentstreamnondeliverablesettlterms",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:component": "legpaymentstreamnondeliverablesettlterms"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "May be used to specify a count method not listed in LegPaymentStreamDayCount(40283).",
+    "display": "LegPaymentStream"
+  }
+}

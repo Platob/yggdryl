@@ -2,14 +2,17 @@ use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
 use yggdryl::{
-    DataType, Field, FixBranch, FixCode, FixLineageEntry, FixPedigree, FixRegistry, Version,
+    DataType, Field, FixBranch, FixCategory, FixCode, FixLineageEntry, FixPedigree, FixRegistry,
+    Version,
 };
 
 use super::{LARGE_FIELDS, generated, seed, venue};
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let registry = seed();
-    let large = FixRegistry::from_fields(registry.iter().cloned().chain(generated(LARGE_FIELDS)))
+    let mut large = registry.clone();
+    large
+        .add_fields(generated(LARGE_FIELDS))
         .expect("the generated dictionary has no conflict");
     let mut group = criterion.benchmark_group("fix/mutate");
 
@@ -144,7 +147,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // generator folds several sources into every field it writes, so this is
     // what a regeneration costs per tag.
     let stored = merge_source("the stored wording", "2.7", "the stored reading");
-    let incoming = merge_source("the incoming wording", "5.0SP2", "the incoming reading");
+    let incoming = merge_source("the incoming wording", "5.0.2", "the incoming reading");
     group.bench_function("merge_with", |bencher| {
         bencher.iter_batched(
             || incoming.clone(),
@@ -169,7 +172,65 @@ pub fn benchmarks(criterion: &mut Criterion) {
         });
     });
 
+    let target = coded_catalog();
+    let mut source = target.clone();
+    let mut incoming = source.field(448).unwrap().clone();
+    incoming
+        .as_fix_mut()
+        .set_codes(&[FixCode::new("Client", "C")])
+        .unwrap();
+    source.insert(incoming).unwrap();
+    group.bench_function("merge_catalog_inline_codes", |bencher| {
+        bencher.iter_batched(
+            || target.clone(),
+            |mut target| {
+                black_box(target.merge_with(black_box(&source)).unwrap());
+                target
+            },
+            BatchSize::SmallInput,
+        );
+    });
+
     group.finish();
+}
+
+fn coded_catalog() -> FixRegistry {
+    let mut party = DataType::Utf8.nullable_field("PartyID");
+    party.as_fix_mut().set_tag(448).unwrap();
+    party
+        .as_fix_mut()
+        .set_codes(&[FixCode::new("Broker", "B")])
+        .unwrap();
+    let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
+    counter.as_fix_mut().set_tag(453).unwrap();
+    let mut registry = FixRegistry::from_fields([party.clone(), counter.clone()]).unwrap();
+    party.as_fix_mut().set_field_ref("PartyID").unwrap();
+    let component = DataType::from_fields([party])
+        .unwrap()
+        .required_field("Party");
+    registry
+        .create_definition(FixCategory::Components, component.clone())
+        .unwrap();
+    let mut group = DataType::list(component).nullable_field("Parties");
+    group.as_fix_mut().set_counter(453).unwrap();
+    group.as_fix_mut().set_component("Party").unwrap();
+    registry
+        .create_definition(FixCategory::Groups, group)
+        .unwrap();
+    let mut group = registry
+        .definition(FixCategory::Groups, "Parties", None)
+        .unwrap()
+        .clone();
+    group.as_fix_mut().set_group("Parties").unwrap();
+    counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
+    let mut message = DataType::from_fields([counter, group])
+        .unwrap()
+        .required_field("Order");
+    message.as_fix_mut().set_msgtype("D").unwrap();
+    registry
+        .create_definition(FixCategory::Messages, message)
+        .unwrap();
+    registry
 }
 
 /// One realistic definition of tag 32: dated, coded, described, aliased.

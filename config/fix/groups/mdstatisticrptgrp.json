@@ -1,0 +1,23 @@
+{
+  "name": "mdstatisticrptgrp",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "mdstatisticrpt",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "mdstatisticrpt"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoMDStatistics(2474) > 0.",
+    "display": "MDStatisticRptGrp",
+    "fix:component": "mdstatisticrpt",
+    "fix:counter": "2474"
+  }
+}

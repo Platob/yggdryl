@@ -43,10 +43,11 @@ pub use expression::{
     BoundStatementOrder, JsBound, JsBoundStatement, JsExpression, JsStatement, StatementOrder,
 };
 pub use fix::{
-    FixCodecOptions, JsFixCodec, JsFixFieldIterator, JsFixMsg, JsFixMsgEntries, JsFixRegistry,
-    fix_crate_fields, fix_global_registry, fix_install_global_registry, fix_schema,
-    fix_schema_carrying, fix_schema_tags, fix_standard_branch_native, fix_user_tag_max_native,
-    fix_user_tag_min_native,
+    FixCodecOptions, JsFixCodec, JsFixDefinitionIterator, JsFixFieldIterator, JsFixMessages,
+    JsFixMsg, JsFixMsgEntries, JsFixRegistry, JsMsgType, JsMsgTypeIterator, JsUlconfig,
+    JsUlconfigs, fix_crate_fields, fix_global_registry, fix_install_global_registry, fix_schema,
+    fix_schema_carrying, fix_schema_tags, fix_standard_branch_native, fix_ulbridge_fields,
+    fix_user_tag_max_native, fix_user_tag_min_native,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
@@ -76,6 +77,7 @@ pub use text::codec::{
 pub use types::datatype::JsDataType;
 pub use types::field::{JsField, JsProtocolField, MetadataEntry};
 pub use types::timezone::{JsTimezone, TimezoneAlias};
+pub use types::version::JsVersion;
 pub use uri::{JsUri, JsUrl, JsUrn, PartitionEntry};
 
 /// Read a structural JSON document from the object or the text a caller holds.

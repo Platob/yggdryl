@@ -1,0 +1,23 @@
+{
+  "name": "legstipulations",
+  "dtype": {
+    "type": "list",
+    "field": {
+      "name": "legstipulation",
+      "dtype": {
+        "type": "null"
+      },
+      "nullable": false,
+      "metadata": {
+        "fix:component": "legstipulation"
+      }
+    }
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "Required if NoLegStipulations(683) > 0.",
+    "display": "LegStipulations",
+    "fix:component": "legstipulation",
+    "fix:counter": "683"
+  }
+}

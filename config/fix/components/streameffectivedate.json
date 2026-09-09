@@ -1,0 +1,103 @@
+{
+  "name": "streameffectivedate",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "streameffectivedateunadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streameffectivedateunadjusted"
+        }
+      },
+      {
+        "name": "streameffectivedatebusinessdayconvention",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streameffectivedatebusinessdayconvention"
+        }
+      },
+      {
+        "name": "nostreameffectivedatebusinesscenters",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "nostreameffectivedatebusinesscenters"
+        }
+      },
+      {
+        "name": "streameffectivedatebusinesscentergrp",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:group": "streameffectivedatebusinesscentergrp"
+        }
+      },
+      {
+        "name": "streameffectivedaterelativeto",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streameffectivedaterelativeto"
+        }
+      },
+      {
+        "name": "streameffectivedateoffsetperiod",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streameffectivedateoffsetperiod"
+        }
+      },
+      {
+        "name": "streameffectivedateoffsetunit",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streameffectivedateoffsetunit"
+        }
+      },
+      {
+        "name": "streameffectivedateoffsetdaytype",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streameffectivedateoffsetdaytype"
+        }
+      },
+      {
+        "name": "streameffectivedateadjusted",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "streameffectivedateadjusted"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the effective date of the stream.",
+    "display": "StreamEffectiveDate"
+  }
+}

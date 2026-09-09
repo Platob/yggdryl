@@ -1,0 +1,42 @@
+{
+  "name": "underlyingdeliverystreamcycle",
+  "dtype": {
+    "type": "struct",
+    "fields": [
+      {
+        "name": "underlyingdeliverystreamcycledesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "underlyingdeliverystreamcycledesc"
+        }
+      },
+      {
+        "name": "encodedunderlyingdeliverystreamcycledesclen",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingdeliverystreamcycledesclen"
+        }
+      },
+      {
+        "name": "encodedunderlyingdeliverystreamcycledesc",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "fix:field": "encodedunderlyingdeliverystreamcycledesc"
+        }
+      }
+    ]
+  },
+  "nullable": false,
+  "metadata": {
+    "display": "UnderlyingDeliveryStreamCycle"
+  }
+}
