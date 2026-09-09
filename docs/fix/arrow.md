@@ -373,27 +373,28 @@ The classifying stage and the parsing one therefore cannot disagree: they are th
 
 | stage | median | per line |
 | --- | --- | --- |
-| the text reader, the row header framed | 12.4 ms | 5.19 us |
-| the same with `mimetype`, `msgtype` and `direction` | 20.9 ms | 8.72 us |
-| the text reader, then every body through `transform_line` | 135 ms | 56.3 us |
-| the framed bodies through the codec alone | 44.9 ms | 18.7 us |
-| `from_codec` over the text reader's batches, into fixed rows | 109 ms | 45.6 us |
+| the text reader, the row header framed | 17.2 ms | 7.15 us |
+| the same with `mimetype`, `msgtype` and `direction` | 28.4 ms | 11.8 us |
+| the text reader, then every body through `transform_line` | 226 ms | 94.3 us |
+| the framed bodies through the codec alone | 60.2 ms | 25.1 us |
+| `from_codec` over the text reader's batches, into fixed rows | 181 ms | 75.4 us |
 
-The text stage is a fifth of the whole and the codec two fifths; the rest is the row landing in Arrow. Reading every body through `transform_line` and then batching costs twice what classifying and the codec cost together, which is the batch reader's whole reason to exist: it reads the text reader's batches straight into fixed rows and never builds a message it then has to place.
+The text stage is a tenth of the whole and the codec a third; the rest is the row landing in Arrow. Reading every body through `transform_line` and then batching costs two and a half times what classifying and the codec cost together, which is the batch reader's whole reason to exist: it reads the text reader's batches straight into fixed rows and never builds a message it then has to place.
 
 `fix/pipeline_stages` splits the batch path over the same messages, so where a row's cost goes is a number rather than an argument. Every row pays the first four; a row pays for enrichment, the restatement (the `latest` stage, beside `enrich` in the same group) and the lifecycle only when the [options](#the-options-are-the-readers-arguments-per-stream) ask for them.
 
 | stage | median | per message |
 | --- | --- | --- |
-| `to_row`, the message read against the fixed schema | 8.5 ms | 3.54 us |
-| the row canonicalized against the schema | 18.1 ms | 7.55 us |
-| the rows into one `RecordBatch` | 26.6 ms | 11.1 us |
-| `digest`, the message's identity | 722 us | 301 ns |
-| `enrich_fixmsg`, the rules that fill what a message implies | 26.5 ms | 11 us |
-| `lifecycle`, the stamp that joins a message to its order's life | 16.3 ms | 6.78 us |
-| the `nofixentries` columns | 3.06 ms | 1.27 us |
+| `into_row`, the message read against the fixed schema | 33.7 ms | 14.1 us |
+| the row canonicalized against the schema | 23.7 ms | 9.89 us |
+| the rows into one `RecordBatch` | 38.6 ms | 16.1 us |
+| `digest`, the message's identity | 783 us | 326 ns |
+| `enrich_fixmsg`, the rules that fill what a message implies | 34.6 ms | 14.4 us |
+| `into_latest`, the row restated at the dictionary's newest version | 43.8 ms | 18.3 us |
+| `lifecycle`, the stamp that joins a message to its order's life | 31.9 ms | 13.3 us |
+| the `nofixentries` columns | 3.41 ms | 1.42 us |
 
-A message read against the fixed schema costs less than canonicalizing the row it produces, because the tags a schema's columns answer for are remembered from one row to the next: a schema is a metadata read per column, and the same schema serves a whole capture. The digest is a hash over the arrival record and nothing else. Enrichment is the rule table walked once, most of it lookups that answer nothing on a message that stated everything; the lifecycle is two digests and a chain lookup.
+Reading a message against the fixed schema, canonicalizing the row it produces and landing the rows in one batch each take about a third of the batch path; the tags a schema's columns answer for are remembered from one row to the next, so the same schema serves a whole capture. The digest is a hash over the arrival record and nothing else. Enrichment is the rule table walked once, most of it lookups that answer nothing on a message that stated everything; the restatement is every child resolved against the dictionary once and the rules its fields carry read borrowed, and it costs a little more than enrichment because it rewrites the row it reads; the lifecycle is two digests and a chain lookup.
 
 Regenerate with:
 
