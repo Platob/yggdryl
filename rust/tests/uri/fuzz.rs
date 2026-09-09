@@ -12,6 +12,7 @@
 //! coverage-guided fuzzer: it runs in the ordinary suite and costs a second.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use yggdryl::{Authority, Error, Scheme, Uri, UriPath, Url, Urn};
 
@@ -637,7 +638,7 @@ fn every_generated_file_name_survives_a_platform_join() {
             format!("{name:?} lost its file name in {joined}")
         });
         match joined.clone().into_path() {
-            Ok(path) => failures.check(path == *format!("/lake/{name}"), || {
+            Ok(path) => failures.check(path == Path::new(&format!("/lake/{name}")), || {
                 format!("{name:?} came back as {path:?} through {joined}")
             }),
             Err(error) => failures.entries.push(format!(
