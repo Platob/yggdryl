@@ -6,6 +6,7 @@ retains, so ``type(handle)`` names the encoding its rows are read through.
 
 from .._native import (
     Avro,
+    Csv,
     Ipc,
     Media,
     MediaType,
@@ -19,6 +20,7 @@ from . import avro, iceberg
 
 __all__ = [
     "Avro",
+    "Csv",
     "Ipc",
     "Media",
     "MediaType",
