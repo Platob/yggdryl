@@ -14,15 +14,18 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from .._native import DataType, Field as NativeField, Scalar, Uri, Url, Urn, Version
+from .._native import (
+    DataType,
+    Field as NativeField,
+    PythonMetadata,
+    Scalar,
+    Uri,
+    Url,
+    Urn,
+    Version,
+)
 from ._classes import _PhysicalUnionValue, _adopt_materialized_schema
 
-_IDENTITY_KEYS = (
-    "python.module",
-    "python.class",
-    "python.qualname",
-    "python.kind",
-)
 _INTEGER_KINDS = frozenset(
     ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")
 )
@@ -65,48 +68,40 @@ def _valid_module(value: object) -> bool:
     )
 
 
+#: Where a declaration that names no module is placed, matching what Python
+#: itself calls a class defined outside any importable module.
+_ANONYMOUS_MODULE = "__main__"
+
+
 def _select_identity(
-    metadata: cabc.Mapping[str, str],
+    root: NativeField,
     *,
     name: str | None,
     module: str | None,
-    root_name: str | None,
 ) -> tuple[str, str]:
-    if name is not None and not _valid_identifier(name):
+    """Resolve the class a materialized dataclass is given.
+
+    An explicit argument wins, then the field's own ``python:`` declaration,
+    then the field's name. Two rules apply, deliberately different ones: the
+    native construction says what a declaration may be *stored* as - dotted,
+    Unicode, and ``<locals>`` and all - and names the key a bad half failed
+    under; ``str.isidentifier`` says what a generated class may be *named*,
+    which is stricter and is a question only this layer can answer.
+    """
+
+    declared = root.python
+    selected_name = name or declared.class_name or root.name
+    selected_module = module or declared.module or _ANONYMOUS_MODULE
+    PythonMetadata(selected_module, selected_name)
+    if not _valid_identifier(selected_name):
         raise TypeError(
-            f"name {name!r} must be a valid non-keyword Python identifier"
+            f"class name {selected_name!r} must be a valid non-keyword "
+            "Python identifier"
         )
-    if module is not None and not _valid_module(module):
-        raise TypeError(f"module {module!r} must be a dotted Python identifier")
-    selected_name = name
-    if selected_name is None:
-        candidate = metadata.get("python.class")
-        if candidate is not None:
-            if not _valid_identifier(candidate):
-                raise TypeError(
-                    f"python.class metadata {candidate!r} must be a valid "
-                    "non-keyword Python identifier"
-                )
-            selected_name = candidate
-    if selected_name is None:
-        if not _valid_identifier(root_name):
-            raise TypeError(
-                f"field name {root_name!r} must be a valid non-keyword "
-                "Python identifier"
-            )
-        selected_name = typing.cast(str, root_name)
-    selected_module = module
-    if selected_module is None:
-        candidate = metadata.get("python.module")
-        if candidate is not None:
-            if not _valid_module(candidate):
-                raise TypeError(
-                    f"python.module metadata {candidate!r} must be a dotted "
-                    "Python identifier"
-                )
-            selected_module = candidate
-        else:
-            selected_module = "__main__"
+    if not _valid_module(selected_module):
+        raise TypeError(
+            f"module {selected_module!r} must be a dotted Python identifier"
+        )
     return selected_name, selected_module
 
 
@@ -369,12 +364,7 @@ def _materialize_lazy_dataclass_hint(
         class_name,
         DataType.from_fields(fields),
         nullable=False,
-        metadata={
-            "python.module": module,
-            "python.class": class_name,
-            "python.qualname": class_name,
-            "python.kind": "field",
-        },
+        metadata=PythonMetadata(module, class_name, "field").properties,
     )
     _adopt_materialized_schema(generated, root, fields, hints)
     return generated
@@ -435,12 +425,10 @@ def dataclass_from_field(
 
     if value.nullable or value.dtype.id != "struct":
         raise TypeError("into_dataclass requires a non-nullable Struct Field")
-    metadata = dict(value.metadata.items())
     selected_name, selected_module = _select_identity(
-        metadata,
+        value,
         name=name,
         module=module,
-        root_name=value.name,
     )
     return _materialize_dataclass(
         value,

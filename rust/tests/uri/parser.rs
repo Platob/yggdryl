@@ -1251,3 +1251,61 @@ fn default_port_is_reported_per_scheme() {
     );
     assert_eq!(Uri::from_str("file:///tmp/x").unwrap().default_port(), None);
 }
+
+#[test]
+fn a_rootless_path_reaches_a_url_through_the_working_directory() {
+    let base = Uri::from_path(std::env::current_dir().unwrap())
+        .unwrap()
+        .to_string();
+
+    // A `file:` URL is absolute, so a path naming no root has exactly one URL:
+    // the one the host resolves it to. Both intake doors answer it, and the
+    // text decides nothing else - `Uri::from_str` already read it as a path
+    // because it named no scheme.
+    for rootless in ["data/ticks.arrow", "./data/ticks.arrow", "ticks.arrow"] {
+        let parsed = Url::from_location(rootless).unwrap();
+        assert_eq!(parsed, Url::from_path(rootless).unwrap(), "{rootless}");
+        assert!(
+            parsed.to_string().starts_with(&base),
+            "{rootless} -> {parsed}"
+        );
+        assert!(parsed.to_string().ends_with("ticks.arrow"), "{parsed}");
+        assert_eq!(parsed.scheme(), &Scheme::FILE);
+
+        // The strict parse is the other door and still refuses. A stored `url`
+        // value may not name a different file on every machine that reads it.
+        assert!(Url::from_str(rootless).is_err(), "{rootless}");
+    }
+
+    // A rooted path is untouched, and so is every other scheme: the working
+    // directory is read only when the path itself names no root.
+    assert_eq!(
+        Url::from_path("/var/lib/data.arrow").unwrap().to_string(),
+        "file:///var/lib/data.arrow"
+    );
+    assert_eq!(
+        Url::from_location(r"C:\data\ticks.arrow")
+            .unwrap()
+            .to_string(),
+        "file:///C:/data/ticks.arrow"
+    );
+    assert_eq!(
+        Url::from_location("s3://market-data/ticks.arrow")
+            .unwrap()
+            .to_string(),
+        "s3://market-data/ticks.arrow"
+    );
+
+    // A URI keeps a rootless path relative - that is the door for a reference
+    // that is not yet a location - and converting one directly still refuses.
+    let relative = Uri::from_path("data/ticks.arrow").unwrap();
+    assert!(!relative.has_authority());
+    assert!(Url::from_uri(relative).is_err());
+
+    // Text that names a scheme stays a URL, so a malformed one is refused as
+    // a URL rather than read as a file named after it.
+    let error = Url::from_location("https:/example.test/x")
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("host"), "{error}");
+}

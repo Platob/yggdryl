@@ -114,6 +114,7 @@ const namedProtocols: ProtocolField[] = [
   field.spark,
   field.polars,
   field.pandas,
+  field.python,
 ]
 const protocol: ProtocolField = field.protocol('HTTPS')
 const protocolScheme: string = protocol.scheme

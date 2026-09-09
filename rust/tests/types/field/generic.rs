@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::{
-    DataType, DigestAlgorithm, Error, Field, MediaType, Metadata, MimeType, Scheme, TimeUnit, Url,
+    DataType, DigestAlgorithm, Error, Field, MediaType, Metadata, MimeType, PythonKind,
+    PythonMetadata, Scheme, TimeUnit, Url,
 };
 
 #[test]
@@ -2155,4 +2156,102 @@ fn the_star_source_may_not_travel_beside_a_named_one() {
     assert_eq!(holder, unchanged, "a rejected source list is atomic");
     // The generic mutation path runs the same validator.
     assert!(Metadata::from_entries([("digest:sources", r#"["id","*"]"#)]).is_err());
+}
+
+#[test]
+fn a_python_declaration_is_written_and_read_as_one_value() {
+    let declared =
+        PythonMetadata::new("trading.book", "Book.Quote", PythonKind::Dataclass).unwrap();
+    let mut field = DataType::from_str("struct<symbol:string,price:int64>")
+        .unwrap()
+        .required_field("Quote");
+
+    field.as_python_mut().set_class(&declared).unwrap();
+
+    // One protocol namespace holds the whole declaration, and the bare class
+    // name is derived from the qualified one rather than stored beside it.
+    assert_eq!(
+        field.as_python().iter().collect::<Vec<_>>(),
+        [
+            ("kind", "dataclass"),
+            ("module", "trading.book"),
+            ("qualname", "Book.Quote"),
+        ]
+    );
+    assert_eq!(field.as_python().class_name(), Some("Quote"));
+    assert_eq!(field.as_python().class().unwrap(), Some(declared.clone()));
+    assert_eq!(
+        field.as_python().import_path().as_deref(),
+        Some("trading.book.Book.Quote")
+    );
+
+    // The declaration crosses Arrow with the column and comes back identical.
+    let projected = Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap();
+    assert_eq!(projected.as_python().class().unwrap(), Some(declared));
+    assert_eq!(Field::from_str(&field.to_string()).unwrap(), field);
+}
+
+#[test]
+fn a_python_declaration_is_validated_on_every_write_path() {
+    for (key, value) in [
+        ("python:module", "trading."),
+        ("python:module", "1trading"),
+        ("python:module", "trading book"),
+        ("python:module", "class"),
+        ("python:qualname", ""),
+        ("python:qualname", "Book..Quote"),
+        ("python:kind", "record"),
+    ] {
+        // The snapshot constructor, the field constructor and the protocol
+        // write are one validator seen from three places.
+        assert!(
+            Metadata::from_entries([(key, value)]).is_err(),
+            "{key}={value}"
+        );
+        assert!(
+            Field::from_parts("quote", DataType::Int64, false, [(key, value)]).is_err(),
+            "{key}={value}"
+        );
+
+        let mut field = DataType::Int64.required_field("quote");
+        let unchanged = field.clone();
+        let name = key.strip_prefix("python:").unwrap();
+        assert!(field.as_python_mut().insert(name, value).is_err(), "{key}");
+        assert_eq!(field, unchanged, "a rejected property is atomic");
+    }
+
+    // A class declared inside a function keeps the one non-identifier segment
+    // Python itself writes, and reports that no import reaches it.
+    let local = Field::from_parts(
+        "row",
+        DataType::Int64,
+        false,
+        [
+            ("python:kind", "dataclass"),
+            ("python:module", "app"),
+            ("python:qualname", "build.<locals>.Row"),
+        ],
+    )
+    .unwrap();
+    let declared = local.as_python().class().unwrap().unwrap();
+    assert_eq!(declared.class_name(), "Row");
+    assert!(!declared.is_importable());
+}
+
+#[test]
+fn a_half_stated_python_declaration_names_no_class() {
+    let mut field = DataType::Int64.required_field("price");
+    field.as_python_mut().set_module("trading.book").unwrap();
+    field.as_python_mut().set_kind(PythonKind::Field).unwrap();
+
+    // Every part is readable on its own; only the whole is a class.
+    assert_eq!(field.as_python().module(), Some("trading.book"));
+    assert_eq!(field.as_python().kind().unwrap(), Some(PythonKind::Field));
+    assert_eq!(field.as_python().class().unwrap(), None);
+    assert_eq!(field.as_python().class_name(), None);
+
+    field.as_python_mut().set_qualname("Quote").unwrap();
+    assert!(field.as_python().class().unwrap().is_some());
+    assert!(field.as_python_mut().remove_class().is_some());
+    assert!(field.as_python().is_empty());
 }

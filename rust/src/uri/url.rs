@@ -14,8 +14,20 @@ impl Url {
     }
 
     /// Convert a file path to a canonical `file:` URL.
+    ///
+    /// A path that names no root is joined onto the process's working
+    /// directory, read once here. A `file:` URL is absolute by definition, so
+    /// that is the only URL a relative path has, and it is the one every host
+    /// filesystem call resolves it to; [`Uri::from_path`] is the door that
+    /// keeps such a path relative.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Uri::from_path`]'s refusal, or the working directory's own
+    /// failure when the process cannot read one.
     pub fn from_path(value: impl AsRef<Path>) -> Result<Self> {
-        Self::from_uri(Uri::from_path(value)?)
+        let value = value.as_ref();
+        Self::rooted(Uri::from_path(value)?, value)
     }
 
     /// Validate and wrap an existing URI as a URL.
@@ -32,6 +44,42 @@ impl Url {
             ));
         }
         Ok(Self(value))
+    }
+
+    /// Read one location a caller named: a URL, or a path to root.
+    ///
+    /// This is the door for text a caller typed to say *where* - the argument
+    /// behind a binding's `location` parameter - and it is deliberately not
+    /// [`Self::from_str`]. Text carrying a scheme is a URL and a malformed one
+    /// is refused as a URL rather than read as a file named after it; text
+    /// carrying none is a path and reaches [`Self::from_path`], working
+    /// directory and all.
+    ///
+    /// Stored data takes the other door. A `url` column holding `data/x` would
+    /// otherwise name a different file on every machine that read it, so
+    /// [`DataType::Url`](crate::DataType::Url) keeps the strict parse.
+    ///
+    /// # Errors
+    ///
+    /// Returns the URL parse failure, or [`Self::from_path`]'s.
+    pub fn from_location(value: &str) -> Result<Self> {
+        // `Uri::from_str` already decides URL against path: text naming no
+        // usable scheme is read as a filesystem path and left relative.
+        Self::rooted(Uri::from_str(value)?, Path::new(value))
+    }
+
+    /// Answer a URI as a URL, rooting a `file:` path that names no root.
+    ///
+    /// The URI parser reads text carrying no scheme as a filesystem path and
+    /// leaves it relative, so this is where a rootless one becomes a location:
+    /// `path` is the text the URI was read from, joined onto the working
+    /// directory rather than re-derived from the URI, which would have to undo
+    /// the percent-encoding the parser just applied.
+    fn rooted(uri: Uri, path: &Path) -> Result<Self> {
+        if uri.has_authority() || uri.scheme() != &Scheme::FILE {
+            return Self::from_uri(uri);
+        }
+        Self::from_uri(Uri::from_path(std::env::current_dir()?.join(path))?)
     }
 
     /// Deserialize a URL from structural JSON.

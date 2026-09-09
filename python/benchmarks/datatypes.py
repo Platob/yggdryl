@@ -32,6 +32,7 @@ from yggdryl import (
     Field,
     MediaType,
     MimeType,
+    PythonMetadata,
     scalar,
     types,
     field,
@@ -303,6 +304,40 @@ def _apply_arrow_batch() -> object:
     return PARTITION_ROOT.partition.apply_arrow_batch(PARTITION_BATCH)
 
 
+# The python cases measure what a schema built from a class pays for the
+# declaration it carries: one crossing that reads all three properties as a
+# value, against the three separate crossings the parts would otherwise cost,
+# and the mapping the pure-Python layer merges into a field it constructs.
+PYTHON_DECLARATION = PythonMetadata("trading.book", "Book.Quote", "dataclass")
+PYTHON_FIELD = Field("Quote", "int64", nullable=False)
+PYTHON_FIELD.python.class_metadata = PYTHON_DECLARATION
+PYTHON_HELD = PYTHON_FIELD.python
+
+
+def _read_python_class_metadata() -> object:
+    return PYTHON_HELD.class_metadata
+
+
+def _read_python_parts() -> object:
+    return (PYTHON_HELD.module, PYTHON_HELD.qualname, PYTHON_HELD.kind)
+
+
+def _read_python_class_name() -> object:
+    return PYTHON_HELD.class_name
+
+
+def _python_declaration_properties() -> object:
+    return PYTHON_DECLARATION.properties
+
+
+def _python_declaration_from_type() -> object:
+    return PythonMetadata.from_type(Order, "field")
+
+
+def _write_python_class_metadata() -> None:
+    PYTHON_FIELD.python.class_metadata = PYTHON_DECLARATION
+
+
 CURRENCY = DataType("currency")
 CURRENCIES = AsciiEnum.from_logical_name("currency")
 
@@ -426,6 +461,28 @@ def main() -> None:
         _measure("protocol metadata key", _read_through_metadata_key, args.iterations)
         _measure("protocol view items", _protocol_view_items, args.iterations)
         _measure("protocol view write", _write_through_protocol_view, args.iterations)
+        _measure(
+            "python class_metadata read",
+            _read_python_class_metadata,
+            args.iterations,
+        )
+        _measure("python parts read", _read_python_parts, args.iterations)
+        _measure("python class_name read", _read_python_class_name, args.iterations)
+        _measure(
+            "python declaration properties",
+            _python_declaration_properties,
+            args.iterations,
+        )
+        _measure(
+            "python declaration from type",
+            _python_declaration_from_type,
+            args.iterations,
+        )
+        _measure(
+            "python class_metadata write",
+            _write_python_class_metadata,
+            args.iterations,
+        )
         _measure("partition transform read", _read_partition_transform, args.iterations)
         _measure(
             "partition apply_arrow_batch 1024",

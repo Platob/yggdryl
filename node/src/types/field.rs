@@ -1382,6 +1382,16 @@ impl JsField {
         JsProtocolField::new(reference, CoreScheme::PANDAS)
     }
 
+    /// The live Python runtime property view.
+    ///
+    /// The declaring class a Python schema was built from is stored here. Its
+    /// typed vocabulary is Rust and Python only; JavaScript reads and writes
+    /// the three properties by name.
+    #[napi(getter)]
+    pub fn python(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::PYTHON)
+    }
+
     /// The effective row-digest components, in declaration order.
     #[napi]
     pub fn digest_fields(&self) -> Vec<JsField> {

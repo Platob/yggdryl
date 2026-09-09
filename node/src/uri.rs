@@ -419,7 +419,7 @@ pub(crate) fn url_from_input(
         Either4::A(value) => Ok(value.inner.clone()),
         Either4::B(value) => CoreUrl::from_uri(value.inner.clone()).map_err(napi_error),
         Either4::C(value) => CoreUrl::from_uri(value.inner.clone().into_uri()).map_err(napi_error),
-        Either4::D(value) => CoreUrl::from_str(&value).map_err(napi_error),
+        Either4::D(value) => CoreUrl::from_location(&value).map_err(napi_error),
     }
 }
 

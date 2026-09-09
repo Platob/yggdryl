@@ -891,14 +891,15 @@ impl FixRegistry {
                 .as_fix()
                 .tag()?
                 .ok_or_else(|| Error::absent(super::field::TAG_KEY, name))?;
-            if let Some(held) = derived.insert(tag, name)
-                && held != name
-            {
-                return Err(Error::conflict(
-                    "one FIX definition per derived tag",
-                    "two definitions on one tag",
-                    format_args!("{held:?} and {name:?} both hold {tag}"),
-                ));
+            // Nested rather than a let-chain: the core builds at 1.85.
+            if let Some(held) = derived.insert(tag, name) {
+                if held != name {
+                    return Err(Error::conflict(
+                        "one FIX definition per derived tag",
+                        "two definitions on one tag",
+                        format_args!("{held:?} and {name:?} both hold {tag}"),
+                    ));
+                }
             }
         }
         Ok(())

@@ -27,6 +27,7 @@ FORMATS: tuple[str, ...]
 CODECS: tuple[str, ...]
 DIGEST_ALGORITHMS: tuple[str, ...]
 IO_KINDS: tuple[str, ...]
+PYTHON_KINDS: tuple[str, ...]
 COMPATIBILITY_SCHEMES: tuple[str, ...]
 NULLABILITIES: tuple[str, ...]
 REPRESENTATIONS: tuple[str, ...]
@@ -45,6 +46,7 @@ __all__ = [
     "fixed_ascii",
     "CODECS",
     "COMPATIBILITY_SCHEMES",
+    "PYTHON_KINDS",
     "DATA_TYPE_IDS",
     "DATA_TYPE_KINDS",
     "DIGEST_ALGORITHMS",
