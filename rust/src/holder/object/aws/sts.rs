@@ -31,14 +31,14 @@ const DEFAULT_SESSION_NAME: &str = "yggdryl";
 /// ```
 /// use std::time::Duration;
 ///
-/// use yggdryl::holder::object::{AssumedRole, ObjectOptions};
+/// use yggdryl::holder::object::{AssumedRole, AwsOptions, ObjectOptions};
 ///
 /// let role = AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
 ///     .with_session_name("power-desk")
 ///     .with_duration(Duration::from_secs(3600));
-/// let options = ObjectOptions::default().with_assumed_role(role);
+/// let options = ObjectOptions::default().with_aws(AwsOptions::default().with_assumed_role(role));
 /// assert_eq!(
-///     options.assumed_role().map(AssumedRole::role_arn),
+///     options.aws().assumed_role().map(AssumedRole::role_arn),
 ///     Some("arn:aws:iam::123456789012:role/lake-reader")
 /// );
 /// ```

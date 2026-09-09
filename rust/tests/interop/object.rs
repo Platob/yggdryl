@@ -16,7 +16,7 @@
 //! meant to write are not there, and the driver fails on that word, so a
 //! skipped half can never read as a pass.
 
-use yggdryl::holder::object::{Credentials, ObjectOptions};
+use yggdryl::holder::object::{Credentials, ObjectOptions, Provider};
 use yggdryl::{IOBase, IOKind};
 
 /// The bucket both sides exchange through.
@@ -58,12 +58,14 @@ fn options() -> ObjectOptions {
 /// keys are: `a b/spaced.txt` is an ordinary key and not a URL, and the point
 /// of the exercise is that both sides address the same object by it.
 fn object(key: &str) -> yggdryl::holder::object::File {
-    yggdryl::holder::object::file_at_with(BUCKET, key, options()).expect("an object handle")
+    yggdryl::holder::object::file_at_with(Provider::Aws, BUCKET, key, options())
+        .expect("an object handle")
 }
 
 /// The prefix `key` names in the exchange bucket.
 fn prefix(key: &str) -> yggdryl::holder::object::Folder {
-    yggdryl::holder::object::folder_at_with(BUCKET, key, options()).expect("a prefix handle")
+    yggdryl::holder::object::folder_at_with(Provider::Aws, BUCKET, key, options())
+        .expect("a prefix handle")
 }
 
 /// The keys this half writes, with the bytes each holds.
@@ -143,6 +145,7 @@ fn objects_written_here_are_readable_here_and_by_boto3() {
     // A multipart upload, which is a different code path on every store.
     let large = vec![b'y'; 12 * 1024 * 1024];
     let mut big = yggdryl::holder::object::file_at_with(
+        Provider::Aws,
         BUCKET,
         &format!("{FROM_RUST}/multipart.bin"),
         options().with_multipart_threshold(5 * 1024 * 1024),
@@ -249,7 +252,7 @@ fn exchange_key() -> Vec<u8> {
 fn the_encryption_headers_are_what_botocore_computes() {
     let customer =
         yggdryl::holder::object::Encryption::customer(&exchange_key()).expect("a 32-byte key");
-    for (name, value) in customer.write_headers() {
+    for (name, value) in customer.write_headers(Provider::Aws) {
         println!("SSE-C {name} {value}");
     }
 
@@ -258,7 +261,7 @@ fn the_encryption_headers_are_what_botocore_computes() {
             .with_context(KMS_CONTEXT)
             .with_bucket_key(true),
     );
-    for (name, value) in kms.write_headers() {
+    for (name, value) in kms.write_headers(Provider::Aws) {
         println!("SSE-KMS {name} {value}");
     }
 }

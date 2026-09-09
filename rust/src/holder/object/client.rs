@@ -1,10 +1,17 @@
-//! One signed, pooled HTTP client speaking the S3 REST API.
+//! One signed, pooled HTTP client, speaking whichever store's REST API answers.
 //!
 //! Every remote call the backend makes goes through [`Client`], and each of its
 //! operations is exactly one request unless a retry or a region discovery adds
 //! another. That is the whole point of putting them here: the request count of
 //! a handle operation is readable from the operation it calls, and
 //! [`Client::stats`] reports what actually went out.
+//!
+//! What is here is what every store shares: the connection pool, the signing
+//! hook, the retry budget and its jittered backoff, the streaming reader that
+//! resumes a transfer the network cut, the range arithmetic, and the request
+//! accounting. What a store spells for itself - its hostnames, its request
+//! paths, its upload protocol, its documents - is its dialect's, reached
+//! through the one [`Provider`] value that says which store this is.
 
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -18,14 +25,13 @@ use super::aws::credentials::{CredentialCache, CredentialSource, Credentials, va
 use super::aws::xml;
 use super::encryption::Encryption;
 use super::options::ObjectOptions;
+use super::provider::Provider;
 use super::sigv4::{self, Signer};
 use crate::{Error, Result, Url};
 
 /// The region assumed when nothing names one; also the signing region for the
 /// `GetBucketLocation`-free discovery a redirect performs.
 const DEFAULT_REGION: &str = "us-east-1";
-/// Keys per `DeleteObjects` request, the maximum S3 accepts.
-pub(super) const DELETE_BATCH: usize = 1000;
 /// Base of the exponential backoff between attempts.
 const RETRY_BACKOFF: Duration = Duration::from_millis(50);
 /// The longest a retry ever waits, however many attempts precede it.
@@ -42,7 +48,7 @@ const RETRY_TOKENS: i64 = 500;
 const RETRY_COST: i64 = 5;
 /// What a first-attempt success refunds.
 const RETRY_REFUND: i64 = 1;
-/// The service name in every credential scope.
+/// The service name in every AWS credential scope.
 const SERVICE: &str = "s3";
 
 /// How many requests of each shape have gone out.
@@ -128,26 +134,31 @@ impl Stats {
     }
 }
 
-/// Where the store is and how buckets are addressed on it.
+/// Where the store is and how containers are addressed on it.
 #[derive(Clone, Debug)]
 struct Endpoint {
     /// `https` unless the endpoint said otherwise.
     scheme: String,
-    /// The endpoint host, without a bucket and without a port.
+    /// The endpoint host, without a container and without a port.
     host: String,
     /// The explicit port, when the endpoint named one.
     port: Option<u16>,
-    /// Whether the bucket goes in the path rather than in the hostname.
+    /// Whether the container goes in the path rather than in the hostname.
     path_style: bool,
+    /// The Azure storage account, when one is addressed rather than a host.
+    account: Option<String>,
+    /// Whether the account is a path segment ahead of the container, which is
+    /// how the Azure emulators address one.
+    account_in_path: bool,
 }
 
 impl Endpoint {
-    /// The `Host` header for a request against `bucket`.
-    fn host_header(&self, bucket: &str) -> String {
+    /// The `Host` header for a request against `container`.
+    fn host_header(&self, container: &str) -> String {
         let host = if self.path_style {
             self.host.clone()
         } else {
-            format!("{bucket}.{}", self.host)
+            format!("{container}.{}", self.host)
         };
         match self.port {
             Some(port) => format!("{host}:{port}"),
@@ -155,19 +166,32 @@ impl Endpoint {
         }
     }
 
-    /// The request path for `bucket` and a raw `key`.
-    fn path(&self, bucket: &str, key: &str) -> String {
-        let key = sigv4::encode_key(key);
-        if self.path_style {
-            let bucket = sigv4::encode_key(bucket);
-            if key.is_empty() {
-                format!("/{bucket}")
-            } else {
-                format!("/{bucket}/{key}")
+    /// The request path for `container` and a raw `key`.
+    ///
+    /// A dialect whose operation does not live under the container's own path -
+    /// Google's JSON API, whose objects sit below `/storage/v1` - builds the
+    /// whole path itself and hands it over in [`Request::target`].
+    fn path(&self, container: &str, key: &str) -> String {
+        let mut path = String::new();
+        if self.account_in_path {
+            if let Some(account) = &self.account {
+                path.push('/');
+                path.push_str(&sigv4::encode_key(account));
             }
-        } else {
-            format!("/{key}")
         }
+        if self.path_style && !container.is_empty() {
+            path.push('/');
+            path.push_str(&sigv4::encode_key(container));
+        }
+        let key = sigv4::encode_key(key);
+        if !key.is_empty() {
+            path.push('/');
+            path.push_str(&key);
+        }
+        if path.is_empty() {
+            path.push('/');
+        }
+        path
     }
 }
 
@@ -185,6 +209,9 @@ struct Request<'body> {
     headers: Vec<(String, String)>,
     /// The body, which is re-sent verbatim on a retry.
     body: &'body [u8],
+    /// The wire path, when the dialect's operation does not live under the
+    /// container's own. Already encoded; the endpoint is not consulted for it.
+    target: Option<String>,
 }
 
 impl<'body> Request<'body> {
@@ -197,7 +224,14 @@ impl<'body> Request<'body> {
             query: Vec::new(),
             headers: Vec::new(),
             body: &[],
+            target: None,
         }
+    }
+
+    /// Send this request to `path` rather than to the container's own path.
+    fn target(mut self, path: impl Into<String>) -> Self {
+        self.target = Some(path.into());
+        self
     }
 
     fn query(mut self, name: &str, value: impl Into<String>) -> Self {
@@ -218,15 +252,19 @@ impl<'body> Request<'body> {
     /// Carry the metadata every write of this client's carries.
     ///
     /// A name the request already set wins, so a content type a handle
-    /// inferred is never overridden by a default.
-    fn with_metadata(mut self, metadata: &[(String, String)]) -> Self {
+    /// inferred is never overridden by a default. The name a caller gave is
+    /// mapped to the header the store carries it in here rather than when the
+    /// options were built, because the three stores prefix user metadata
+    /// differently and the options do not yet know which store answers.
+    fn with_metadata(mut self, provider: Provider, metadata: &[(String, String)]) -> Self {
         for (name, value) in metadata {
+            let name = header_name(provider, name);
             if !self
                 .headers
                 .iter()
-                .any(|(held, _)| held.eq_ignore_ascii_case(name))
+                .any(|(held, _)| held.eq_ignore_ascii_case(&name))
             {
-                self.headers.push((name.clone(), value.clone()));
+                self.headers.push((name, value.clone()));
             }
         }
         self
@@ -234,25 +272,27 @@ impl<'body> Request<'body> {
 
     /// Say how the object this request stores is to be encrypted.
     ///
-    /// `PutObject` and `CreateMultipartUpload` are the two that decide it.
-    fn storing(mut self, encryption: &Encryption) -> Self {
+    /// The request that creates an object is the one that decides it, and on
+    /// Google that decision is a query parameter rather than a header.
+    fn storing(mut self, provider: Provider, encryption: &Encryption) -> Self {
         self.headers.extend(
             encryption
-                .write_headers()
+                .write_headers(provider)
                 .into_iter()
                 .map(|(name, value)| (name.to_owned(), value)),
         );
+        self.query.extend(encryption.write_query(provider));
         self
     }
 
     /// Carry the key needed to touch an already-encrypted object's bytes.
     ///
     /// Nothing at all unless the key is the caller's, which is the whole
-    /// difference `SSE-C` makes to a read.
-    fn keyed(mut self, encryption: &Encryption) -> Self {
+    /// difference a customer-supplied key makes to a read.
+    fn keyed(mut self, provider: Provider, encryption: &Encryption) -> Self {
         self.headers.extend(
             encryption
-                .read_headers()
+                .read_headers(provider)
                 .into_iter()
                 .map(|(name, value)| (name.to_owned(), value)),
         );
@@ -285,6 +325,8 @@ impl Answer {
 /// A signed, pooled client for one endpoint.
 pub(super) struct Client {
     agent: ureq::Agent,
+    /// Which of the three stores answers, and so which dialect is spoken.
+    provider: Provider,
     endpoint: Endpoint,
     /// The spelling the caller's location used - `s3`, `s3a`, or `s3n` - so a
     /// refusal names the location the handle reports rather than a canonical
@@ -312,9 +354,18 @@ impl Client {
     ///
     /// # Errors
     ///
-    /// Returns a refusal when the URL names no bucket, or when an endpoint
-    /// cannot be read as a location.
+    /// Returns a refusal when the URL's scheme names no store, when it names no
+    /// container, or when an endpoint cannot be read as a location.
     pub(super) fn new(url: &Url, options: ObjectOptions) -> Result<Self> {
+        let provider = Provider::from_scheme(url.scheme()).ok_or_else(|| {
+            Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "expected a location on an object store, got the scheme {:?}",
+                    url.scheme().as_str()
+                ),
+            ))
+        })?;
         // Everything the environment names, under whatever the caller sets
         // for it, so one vocabulary covers a property map and a process
         // environment rather than each knob being wired up separately.
@@ -325,7 +376,7 @@ impl Client {
             })?,
             false => options,
         };
-        let endpoint = Self::endpoint_of(url, &options)?;
+        let endpoint = Self::endpoint_of(provider, url, &options)?;
         let region = Self::region_of(url, &options);
         let credentials = if options.anonymous() {
             CredentialSource::Anonymous
@@ -335,7 +386,7 @@ impl Client {
             CredentialSource::Fixed(from_url)
         } else if options.reads_environment() {
             CredentialSource::Chain {
-                profile: options.profile().map(str::to_owned),
+                profile: options.aws().profile().map(str::to_owned),
             }
         } else {
             CredentialSource::Anonymous
@@ -343,7 +394,7 @@ impl Client {
         // A role wraps whatever answered rather than replacing it: those keys
         // are what signs the exchange, and the session it hands back is what
         // signs the bucket.
-        let credentials = match options.assumed_role() {
+        let credentials = match options.aws().assumed_role() {
             Some(role) => CredentialSource::Role {
                 role: Box::new(role.clone()),
                 base: Box::new(credentials),
@@ -353,6 +404,7 @@ impl Client {
         };
         Ok(Self {
             agent: Self::agent(&options),
+            provider,
             endpoint,
             scheme: url.scheme().clone(),
             region: RwLock::new(region),
@@ -377,58 +429,177 @@ impl Client {
         build_agent(options)
     }
 
+    /// The store this client speaks to.
+    pub(super) const fn provider(&self) -> Provider {
+        self.provider
+    }
+
+    /// Bytes per part, clamped to what this store accepts.
+    ///
+    /// The options record what the caller asked for; the store decides what is
+    /// possible, and the three stores disagree - a 5 MiB floor on S3, a
+    /// 256 KiB granularity on Google, a block on Azure. Clamping here rather
+    /// than in the options is what lets one options value serve all three.
+    pub(super) fn part_size(&self) -> u64 {
+        self.options
+            .part_size()
+            .clamp(self.provider.min_part_size(), self.provider.max_part_size())
+    }
+
+    /// The value size from which a chunked upload is used, clamped to the
+    /// largest single write this store takes.
+    pub(super) fn multipart_threshold(&self) -> u64 {
+        self.options
+            .multipart_threshold()
+            .min(self.provider.max_single_put())
+    }
+
+    /// Entries per listing page, clamped to what this store returns.
+    pub(super) fn list_page_size(&self) -> u16 {
+        self.options
+            .list_page_size()
+            .clamp(1, self.provider.max_list_page())
+    }
+
+    /// Keys per bulk delete on this store.
+    pub(super) const fn delete_batch(&self) -> usize {
+        self.provider.max_delete_batch()
+    }
+
     /// The endpoint the URL and options name.
-    fn endpoint_of(url: &Url, options: &ObjectOptions) -> Result<Endpoint> {
-        let configured = options.endpoint().map(str::to_owned).or_else(|| {
-            options
-                .reads_environment()
-                .then(|| {
-                    variable("AWS_ENDPOINT_URL_S3")
-                        .or_else(|| variable("AWS_ENDPOINT_URL"))
-                        .or_else(|| super::aws::profile::load(options.profile()).endpoint_url)
-                })
-                .flatten()
-        });
+    ///
+    /// The order is the same for every store - an explicit endpoint, then the
+    /// URL's own, then the environment, then the store's published host - and
+    /// only the last two steps know which store this is.
+    fn endpoint_of(provider: Provider, url: &Url, options: &ObjectOptions) -> Result<Endpoint> {
         // An explicitly configured endpoint wins: it is a deliberate choice
         // about where the store is, where a URL only says which object. The
         // URL's own endpoint comes next, ahead of the environment, because it
         // is the location a caller handed over rather than a default.
         let explicit = options.endpoint().map(str::to_owned);
         let from_url = url.store_endpoint().map(str::to_owned);
-        let (scheme, host, port) = match explicit.or(from_url).or(configured) {
-            Some(endpoint) => Self::split_endpoint(&endpoint)?,
-            None => {
-                let region = Self::region_of(url, options);
-                (
-                    "https".to_owned(),
-                    format!("s3.{region}.amazonaws.com"),
-                    None,
-                )
-            }
-        };
-        // AWS is addressed virtual-hosted, everything else path style, because
-        // an S3-compatible store on a bare host rarely resolves bucket
-        // subdomains. A bucket holding a dot would break TLS wildcards
-        // either way, so it stays in the path.
-        let bucket_has_dot = url.bucket().is_some_and(|bucket| bucket.contains('.'));
-        let aws = host.to_ascii_lowercase().ends_with(".amazonaws.com")
-            || host.to_ascii_lowercase().ends_with(".amazonaws.com.cn");
-        let path_style = options
-            .path_style()
+        let ambient = options
+            .reads_environment()
+            .then(|| Self::ambient_endpoint(provider, options))
+            .flatten()
+            .or_else(|| options.azure().endpoint().map(str::to_owned));
+        let account = options
+            .azure()
+            .account()
+            .map(str::to_owned)
+            .or_else(|| url.account().map(str::to_owned))
             .or_else(|| {
                 options
-                    .reads_environment()
-                    .then(|| variable("AWS_S3_FORCE_PATH_STYLE"))
-                    .flatten()
-                    .map(|value| matches!(value.to_ascii_lowercase().as_str(), "true" | "1"))
-            })
-            .unwrap_or(!aws || bucket_has_dot);
+                    .credentials()
+                    .filter(|_| matches!(provider, Provider::Azure))
+                    .map(|credentials| credentials.access_key_id().to_owned())
+            });
+        let named = explicit.or(from_url).or(ambient);
+        let (scheme, host, port) = match named {
+            Some(endpoint) => Self::split_endpoint(&endpoint)?,
+            None => Self::published_host(provider, url, options, account.as_deref())?,
+        };
+        let lowered = host.to_ascii_lowercase();
+        let path_style = match provider {
+            // AWS is addressed virtual-hosted, everything else path style,
+            // because an S3-compatible store on a bare host rarely resolves
+            // bucket subdomains. A bucket holding a dot would break TLS
+            // wildcards either way, so it stays in the path.
+            Provider::Aws => {
+                let bucket_has_dot = url.bucket().is_some_and(|bucket| bucket.contains('.'));
+                let aws =
+                    lowered.ends_with(".amazonaws.com") || lowered.ends_with(".amazonaws.com.cn");
+                options
+                    .path_style()
+                    .or_else(|| {
+                        options
+                            .reads_environment()
+                            .then(|| variable("AWS_S3_FORCE_PATH_STYLE"))
+                            .flatten()
+                            .map(|value| {
+                                matches!(value.to_ascii_lowercase().as_str(), "true" | "1")
+                            })
+                    })
+                    .unwrap_or(!aws || bucket_has_dot)
+            }
+            // Google's JSON API addresses every bucket below one host, and
+            // Azure's container is always a path segment. A caller who asks for
+            // the other spelling gets it; nothing else does.
+            Provider::Google | Provider::Azure => options.path_style().unwrap_or(true),
+        };
+        // An Azure endpoint that is not one of the published account hosts -
+        // an emulator, or a gateway - names the account in the path instead,
+        // which is what `az://127.0.0.1:10000/devstoreaccount1/lake` spells.
+        let account_in_path = matches!(provider, Provider::Azure)
+            && account.is_some()
+            && !lowered.starts_with(&format!(
+                "{}.",
+                account.as_deref().unwrap_or_default().to_ascii_lowercase()
+            ));
         Ok(Endpoint {
             scheme,
             host,
             port,
             path_style,
+            account,
+            account_in_path,
         })
+    }
+
+    /// The endpoint the environment and a store's own files name.
+    fn ambient_endpoint(provider: Provider, options: &ObjectOptions) -> Option<String> {
+        match provider {
+            Provider::Aws => variable("AWS_ENDPOINT_URL_S3")
+                .or_else(|| variable("AWS_ENDPOINT_URL"))
+                .or_else(|| super::aws::profile::load(options.aws().profile()).endpoint_url),
+            // `STORAGE_EMULATOR_HOST` is what every Google client reads, and
+            // the value is a bare host as often as a URL.
+            Provider::Google => variable("STORAGE_EMULATOR_HOST")
+                .or_else(|| variable("GOOGLE_CLOUD_STORAGE_EMULATOR_HOST"))
+                .or_else(|| variable("STORAGE_API_ENDPOINT")),
+            Provider::Azure => variable("AZURE_STORAGE_BLOB_ENDPOINT")
+                .or_else(|| variable("AZURE_STORAGE_ENDPOINT"))
+                .or_else(|| {
+                    variable("AZURE_STORAGE_CONNECTION_STRING").and_then(|text| {
+                        super::azure::options::AzureOptions::default()
+                            .with_connection_string(&text)
+                            .endpoint()
+                            .map(str::to_owned)
+                    })
+                }),
+        }
+    }
+
+    /// The host the store publishes, when nothing named another.
+    fn published_host(
+        provider: Provider,
+        url: &Url,
+        options: &ObjectOptions,
+        account: Option<&str>,
+    ) -> Result<(String, String, Option<u16>)> {
+        let host = match provider {
+            Provider::Aws => {
+                let region = Self::region_of(url, options);
+                format!("s3.{region}.amazonaws.com")
+            }
+            Provider::Google => "storage.googleapis.com".to_owned(),
+            Provider::Azure => {
+                let account = account.ok_or_else(|| {
+                    Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "expected an Azure storage account: name one in the location, \
+                         in the options, or in AZURE_STORAGE_ACCOUNT_NAME",
+                    ))
+                })?;
+                let service = if options.azure().data_lake() {
+                    "dfs"
+                } else {
+                    "blob"
+                };
+                format!("{account}.{service}.core.windows.net")
+            }
+        };
+        Ok(("https".to_owned(), host, None))
     }
 
     /// Split `https://host:port` into its parts, defaulting the scheme.
@@ -484,7 +655,7 @@ impl Client {
                     .then(|| {
                         variable("AWS_REGION")
                             .or_else(|| variable("AWS_DEFAULT_REGION"))
-                            .or_else(|| super::aws::profile::load(options.profile()).region)
+                            .or_else(|| super::aws::profile::load(options.aws().profile()).region)
                     })
                     .flatten()
             })
@@ -664,7 +835,10 @@ impl Client {
     fn attempt(&self, request: &Request<'_>) -> std::result::Result<Answer, ureq::Error> {
         let now = SystemTime::now();
         let host = self.endpoint.host_header(&request.bucket);
-        let path = self.endpoint.path(&request.bucket, &request.key);
+        let path = request
+            .target
+            .clone()
+            .unwrap_or_else(|| self.endpoint.path(&request.bucket, &request.key));
         let query = sigv4::canonical_query(&request.query);
         let target = if query.is_empty() {
             format!("{}://{host}{path}", self.endpoint.scheme)
@@ -806,7 +980,10 @@ impl Client {
     fn open_stream(&self, request: &Request<'_>) -> std::result::Result<Streamed, ureq::Error> {
         let now = SystemTime::now();
         let host = self.endpoint.host_header(&request.bucket);
-        let path = self.endpoint.path(&request.bucket, &request.key);
+        let path = request
+            .target
+            .clone()
+            .unwrap_or_else(|| self.endpoint.path(&request.bucket, &request.key));
         let query = sigv4::canonical_query(&request.query);
         let target = if query.is_empty() {
             format!("{}://{host}{path}", self.endpoint.scheme)
@@ -912,7 +1089,8 @@ impl Client {
     ///
     /// Returns the store's refusal for anything that is not a 404.
     pub(super) fn head_object(&self, bucket: &str, key: &str) -> Result<Option<ObjectMeta>> {
-        let request = Request::new("HEAD", "HeadObject", bucket, key).keyed(self.encryption());
+        let request =
+            Request::new("HEAD", "HeadObject", bucket, key).keyed(self.provider, self.encryption());
         let answer = self.send(&request)?;
         if answer.status == 404 {
             return Ok(None);
@@ -1028,7 +1206,7 @@ impl Client {
     ) -> Result<Option<(Box<dyn Read + Send>, Window)>> {
         let last = offset.saturating_add(length - 1);
         let request = Request::new("GET", "GetObject", bucket, key)
-            .keyed(self.encryption())
+            .keyed(self.provider, self.encryption())
             .header("range", format!("bytes={offset}-{last}"));
         let (status, headers, mut reader) = self.stream(&request)?;
         let answer = Answer {
@@ -1088,7 +1266,8 @@ impl Client {
     ///
     /// Returns the store's refusal, or a read failure part way through.
     pub(super) fn get_all(&self, bucket: &str, key: &str) -> Result<Vec<u8>> {
-        let request = Request::new("GET", "GetObject", bucket, key).keyed(self.encryption());
+        let request =
+            Request::new("GET", "GetObject", bucket, key).keyed(self.provider, self.encryption());
         let (status, headers, mut reader) = self.stream(&request)?;
         let answer = Answer {
             status,
@@ -1172,7 +1351,8 @@ impl Client {
         offset: u64,
         last: Option<u64>,
     ) -> Result<Box<dyn Read + Send>> {
-        let mut request = Request::new("GET", "GetObject", bucket, key).keyed(self.encryption());
+        let mut request =
+            Request::new("GET", "GetObject", bucket, key).keyed(self.provider, self.encryption());
         match last {
             Some(last) => request = request.header("range", format!("bytes={offset}-{last}")),
             None if offset > 0 => request = request.header("range", format!("bytes={offset}-")),
@@ -1226,12 +1406,12 @@ impl Client {
         content_type: Option<&str>,
     ) -> Result<Option<String>> {
         let mut request = Request::new("PUT", "PutObject", bucket, key)
-            .storing(self.encryption())
+            .storing(self.provider, self.encryption())
             .body(bytes);
         if let Some(content_type) = content_type {
             request = request.header("content-type", content_type);
         }
-        request = request.with_metadata(self.options.default_metadata());
+        request = request.with_metadata(self.provider, self.options.default_metadata());
         let answer = self.send(&request)?;
         if answer.status >= 300 {
             return Err(self.failure(&request, &answer));
@@ -1256,7 +1436,7 @@ impl Client {
         Err(self.failure(&request, &answer))
     }
 
-    /// Delete up to [`DELETE_BATCH`] objects in one request.
+    /// Delete up to the store's batch maximum of objects in one request.
     ///
     /// One `POST`, which is what keeps a recursive removal from costing one
     /// request per key.
@@ -1349,12 +1529,12 @@ impl Client {
         content_type: Option<&str>,
     ) -> Result<String> {
         let mut request = Request::new("POST", "CreateMultipartUpload", bucket, key)
-            .storing(self.encryption())
+            .storing(self.provider, self.encryption())
             .query("uploads", String::new());
         if let Some(content_type) = content_type {
             request = request.header("content-type", content_type);
         }
-        request = request.with_metadata(self.options.default_metadata());
+        request = request.with_metadata(self.provider, self.options.default_metadata());
         let answer = self.send(&request)?;
         if answer.status >= 300 {
             return Err(self.failure(&request, &answer));
@@ -1379,7 +1559,7 @@ impl Client {
         // A part inherits how the upload was created, so it says nothing
         // about that - but a customer key is not kept, so it says that.
         let request = Request::new("PUT", "UploadPart", bucket, key)
-            .keyed(self.encryption())
+            .keyed(self.provider, self.encryption())
             .query("partNumber", part.to_string())
             .query("uploadId", upload)
             .body(bytes);
@@ -1500,6 +1680,28 @@ impl Client {
             return Ok(());
         }
         Err(self.failure(&request, &answer))
+    }
+}
+
+/// The header a metadata name goes over as, on `provider`.
+///
+/// Every store defines a handful of names itself - the content headers HTTP
+/// already has - and treats every other name as user metadata under its own
+/// prefix. A caller who spells a store's prefix is taken at their word.
+fn header_name(provider: Provider, name: &str) -> String {
+    const OWN: [&str; 6] = [
+        "cache-control",
+        "content-disposition",
+        "content-encoding",
+        "content-language",
+        "content-type",
+        "expires",
+    ];
+    let lowered = name.trim().to_ascii_lowercase();
+    if OWN.contains(&lowered.as_str()) || lowered.starts_with(provider.header_prefix()) {
+        lowered
+    } else {
+        format!("{}{lowered}", provider.metadata_prefix())
     }
 }
 
@@ -1973,6 +2175,8 @@ mod tests {
             host: "s3.example.io".to_owned(),
             port: None,
             path_style: true,
+            account: None,
+            account_in_path: false,
         };
         assert_eq!(
             endpoint.path("trades", "year=2026/a b/c+d.parquet"),

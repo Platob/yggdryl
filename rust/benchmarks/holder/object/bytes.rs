@@ -11,6 +11,7 @@ use criterion::{Criterion, Throughput};
 use futures::StreamExt as _;
 use object_store::ObjectStoreExt as _;
 use yggdryl::IOBase;
+use yggdryl::holder::object::AwsOptions;
 
 use super::{BUCKET, PAYLOAD, baseline, baseline_path, location, options, payload, runtime, store};
 
@@ -130,7 +131,7 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
     group.bench_function("write_all/yggdryl_unsigned_payload", |bencher| {
         let mut target = yggdryl::holder::object::file_with(
             &location("bench/write-unsigned.bin"),
-            options(&store).with_payload_signing(false),
+            options(&store).with_aws(AwsOptions::default().with_payload_signing(false)),
         )
         .expect("an object handle");
         bencher.iter(|| target.write_all_bytes(black_box(&bytes)).expect("a write"));

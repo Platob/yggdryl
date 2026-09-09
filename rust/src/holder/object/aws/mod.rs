@@ -8,9 +8,11 @@
 //! backend that holds this module.
 
 pub(crate) mod credentials;
+pub(crate) mod options;
 pub(crate) mod profile;
 pub(crate) mod sts;
 pub(crate) mod xml;
 
 pub use credentials::Credentials;
+pub use options::{AwsOptions, Checksum};
 pub use sts::AssumedRole;

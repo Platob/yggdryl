@@ -239,16 +239,15 @@ impl File {
     /// `parts + 2` requests, which is what bounds the cost of a failure: a
     /// retried part re-sends one part rather than the whole object.
     fn upload(&self, bytes: &[u8], content_type: &str) -> Result<Option<String>> {
-        let options = self.client.options();
-        // A multipart upload of no parts is not a thing S3 will complete, so
-        // an empty value is one `PUT` whatever the threshold says.
-        if bytes.is_empty() || (bytes.len() as u64) < options.multipart_threshold() {
+        // A chunked upload of no chunks is not a thing any of the three will
+        // complete, so an empty value is one write whatever the threshold says.
+        if bytes.is_empty() || (bytes.len() as u64) < self.client.multipart_threshold() {
             return self
                 .client
                 .put_object(&self.bucket, &self.key, bytes, Some(content_type));
         }
-        let part_size = usize::try_from(options.part_size())
-            .map_err(|_| crate::iobase::oversized(options.part_size()))?;
+        let part_size = usize::try_from(self.client.part_size())
+            .map_err(|_| crate::iobase::oversized(self.client.part_size()))?;
         let upload = self
             .client
             .create_multipart(&self.bucket, &self.key, Some(content_type))?;

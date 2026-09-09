@@ -1,10 +1,25 @@
-//! How the store encrypts what it holds, and what a request has to say.
+//! How a store encrypts what it holds, and what a request has to say.
 //!
-//! S3 encrypts at rest three ways, and they differ in *who holds the key* -
-//! which is the same thing as differing in what goes on the wire.
+//! All three stores encrypt at rest, and the interesting question in each is
+//! the same one: *who holds the key* - which is the same thing as asking what
+//! goes on the wire. So the choice is one value across the three, and each
+//! store spells it its own way or says it does not have it.
+//!
+//! | | Amazon S3 | Google Cloud Storage | Azure Blob Storage |
+//! | --- | --- | --- | --- |
+//! | [`Encryption::Default`] | the bucket's rule | the bucket's rule | the account's rule |
+//! | [`Encryption::Managed`] | `SSE-S3` | already the default | already the default |
+//! | [`Encryption::Kms`] | `SSE-KMS`, `aws:kms:dsse` | a CMEK `kmsKeyName` | not this shape; use a scope |
+//! | [`Encryption::Customer`] | `SSE-C` | a customer-supplied key | a customer-provided key |
+//! | [`Encryption::Scope`] | not this shape | not this shape | an encryption scope |
+//!
+//! A combination a store does not have is refused once, when the client is
+//! built, rather than silently dropped or discovered from the store.
 
 use base64::Engine as _;
+use sha2::{Digest as _, Sha256};
 
+use super::provider::Provider;
 use crate::{Error, Result};
 
 /// The length of an `AES256` key, in bytes.
@@ -14,10 +29,11 @@ const AES256_KEY_LENGTH: usize = 32;
 ///
 /// | | how a write says it | what a read carries |
 /// | --- | --- | --- |
-/// | [`Encryption::Default`] | nothing; the bucket's own rule applies | nothing |
-/// | [`Encryption::Managed`] | `AES256` | nothing |
-/// | [`Encryption::Kms`] | `aws:kms`, and which key | nothing |
+/// | [`Encryption::Default`] | nothing; the container's own rule applies | nothing |
+/// | [`Encryption::Managed`] | the store's own keys | nothing |
+/// | [`Encryption::Kms`] | which managed key | nothing |
 /// | [`Encryption::Customer`] | the key itself | the key itself |
+/// | [`Encryption::Scope`] | which account scope | nothing |
 ///
 /// The last row is what shapes this type. A key the store never keeps has to
 /// be presented again on every read, so the choice belongs to the client
@@ -50,6 +66,9 @@ pub enum Encryption {
     Kms(KmsKey),
     /// `SSE-C`: a key the caller holds and the store forgets.
     Customer(CustomerKey),
+    /// An Azure encryption scope: a key configured on the account, named per
+    /// request. Azure's shape for a customer-managed key, and only Azure's.
+    Scope(String),
 }
 
 /// Which KMS key encrypts a write, and how.
@@ -67,13 +86,17 @@ pub struct KmsKey {
 /// A key the caller holds, which the store uses and does not keep.
 ///
 /// Built once and carried on every request that touches the object's bytes,
-/// so the base64 spellings are computed here rather than per request.
+/// so the base64 spellings are computed here rather than per request. Both
+/// digests are kept because the three stores ask for different ones: S3 wants
+/// the key's MD5, Google and Azure want its SHA-256.
 #[derive(Clone)]
 pub struct CustomerKey {
     /// Base64 of the raw key, which is how the header spells it.
     encoded: String,
     /// Base64 of the key's MD5, which S3 uses to catch a mangled header.
     checksum: String,
+    /// Base64 of the key's SHA-256, which Google and Azure use for the same.
+    digest: String,
 }
 
 impl Encryption {
@@ -104,9 +127,138 @@ impl Encryption {
         CustomerKey::new(key).map(Self::Customer)
     }
 
+    /// Encrypt under the account encryption scope `scope`, which is Azure's.
+    #[must_use]
+    pub fn scope(scope: impl Into<String>) -> Self {
+        Self::Scope(scope.into())
+    }
+
     /// Whether anything is said at all, which is what a default does not.
     pub const fn is_default(&self) -> bool {
         matches!(self, Self::Default)
+    }
+
+    /// Refuse a choice `provider` does not have, once, when a client is built.
+    ///
+    /// A store that simply *is* encrypted - Google and Azure both are, with
+    /// their own keys, whatever a request says - takes [`Self::Managed`] as
+    /// saying nothing rather than as an error: it is already true.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refusal naming the store and the shape it does not have.
+    pub(super) fn validate(&self, provider: Provider) -> Result<()> {
+        let refused = match (self, provider) {
+            (Self::Kms(_), Provider::Azure) => Some(
+                "a managed encryption key on Azure is configured as an account \
+                 encryption scope; name one with Encryption::scope",
+            ),
+            (Self::Scope(_), Provider::Aws | Provider::Google) => Some(
+                "an encryption scope is Azure's shape for a managed key; on this \
+                 store name the key itself with Encryption::kms",
+            ),
+            (Self::Kms(key), Provider::Google) if key.dual_layer() => Some(
+                "dual-layer encryption is Amazon S3's; Google Cloud Storage \
+                 encrypts a CMEK object once",
+            ),
+            _ => None,
+        };
+        match refused {
+            Some(reason) => Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("{}: {reason}", provider.described()),
+            ))),
+            None => Ok(()),
+        }
+    }
+
+    /// The encryption the `sse.*` properties describe.
+    ///
+    /// `AES256` is the ambiguous one: it is what `SSE-S3` is called, and it is
+    /// also the algorithm of a customer key. A key alongside it is what tells
+    /// them apart, which is the reading every store's tools take.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refusal when a key is unusable, or when the named type is not
+    /// one any of the three stores has.
+    pub(super) fn from_parts(
+        named: Option<&str>,
+        key: Option<&str>,
+        checksum: Option<&str>,
+        kms_key_id: Option<&str>,
+        context: Option<&str>,
+        bucket_key: Option<bool>,
+    ) -> Result<Option<Self>> {
+        let customer = |key: &str| -> Result<Self> {
+            let held = match checksum {
+                Some(checksum) => CustomerKey::from_base64_checked(key, checksum)?,
+                None => CustomerKey::from_base64(key)?,
+            };
+            Ok(Self::Customer(held))
+        };
+        let kms = || {
+            let key_id = kms_key_id.or(key);
+            let mut held = key_id.map_or_else(KmsKey::default, KmsKey::new);
+            if let Some(context) = context {
+                held = held.with_context(context);
+            }
+            if let Some(enabled) = bucket_key {
+                held = held.with_bucket_key(enabled);
+            }
+            held
+        };
+        match named.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            None | Some("none" | "disabled" | "false") => {
+                // A key with no type is still a key: `sse.key` alone means the
+                // customer key, because nothing else takes one.
+                match (key, kms_key_id) {
+                    (Some(key), None) => match customer(key) {
+                        Ok(encryption) => Ok(Some(encryption)),
+                        // A key with no type could have been either; say so
+                        // rather than only that it is not a customer key.
+                        Err(error) if checksum.is_none() => Err(Error::Io(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            format!(
+                                "{error}; name an sse type of aws:kms if the key is a managed key"
+                            ),
+                        ))),
+                        Err(error) => Err(error),
+                    },
+                    (_, Some(_)) => Ok(Some(Self::Kms(kms()))),
+                    (None, None) => Ok(None),
+                }
+            }
+            Some("aes256" | "sse-s3" | "sse_s3" | "s3" | "managed") => match key {
+                Some(key) => customer(key).map(Some),
+                None => Ok(Some(Self::Managed)),
+            },
+            Some("aws:kms" | "sse-kms" | "sse_kms" | "kms" | "cmek") => Ok(Some(Self::Kms(kms()))),
+            Some("aws:kms:dsse" | "dsse-kms" | "dsse") => {
+                Ok(Some(Self::Kms(kms().with_dual_layer(true))))
+            }
+            Some("sse-c" | "sse_c" | "custom" | "customer" | "cpk") => match key {
+                Some(key) => customer(key).map(Some),
+                None => Err(Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "expected a customer key alongside an sse type of sse-c",
+                ))),
+            },
+            Some("scope") => match key {
+                Some(scope) => Ok(Some(Self::Scope(scope.to_owned()))),
+                None => Err(Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "expected an encryption scope name alongside an sse type of scope",
+                ))),
+            },
+            Some(other) => Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "expected an sse type of none, AES256, aws:kms, aws:kms:dsse, sse-c, \
+                     or scope, got {other}"
+                ),
+            ))),
+        }
     }
 
     /// The headers a request deciding how an object is *stored* carries.
@@ -119,12 +271,34 @@ impl Encryption {
     /// against: the interop driver puts these beside `botocore`'s for the same
     /// key, which is how a spelling that only this crate agrees with is
     /// caught.
-    pub fn write_headers(&self) -> Vec<(&'static str, String)> {
-        match self {
-            Self::Default => Vec::new(),
-            Self::Managed => vec![("x-amz-server-side-encryption", "AES256".to_owned())],
-            Self::Kms(key) => key.headers(),
-            Self::Customer(key) => key.headers(),
+    pub fn write_headers(&self, provider: Provider) -> Vec<(&'static str, String)> {
+        match (self, provider) {
+            (Self::Managed, Provider::Aws) => {
+                vec![("x-amz-server-side-encryption", "AES256".to_owned())]
+            }
+            // Google and Azure encrypt every object with their own keys
+            // already, so asking for it says nothing new.
+            (Self::Managed, _) => Vec::new(),
+            (Self::Kms(key), _) => key.headers(provider),
+            (Self::Customer(key), _) => key.headers(provider),
+            (Self::Scope(scope), Provider::Azure) => {
+                vec![("x-ms-encryption-scope", scope.clone())]
+            }
+            (Self::Default | Self::Scope(_), _) => Vec::new(),
+        }
+    }
+
+    /// The query a request deciding how an object is stored carries.
+    ///
+    /// Google's JSON API takes the managed key as a parameter rather than as a
+    /// header, which is the one place this is not a header at all.
+    pub(super) fn write_query(&self, provider: Provider) -> Vec<(String, String)> {
+        match (self, provider) {
+            (Self::Kms(key), Provider::Google) => key
+                .key_id()
+                .map(|key_id| vec![("kmsKeyName".to_owned(), key_id.to_owned())])
+                .unwrap_or_default(),
+            _ => Vec::new(),
         }
     }
 
@@ -133,9 +307,9 @@ impl Encryption {
     /// Only a customer key needs any: the store remembers which of its own
     /// keys it used, and a key it never kept has to be presented again - on
     /// reads as much as on writes, which is the whole cost of `SSE-C`.
-    pub fn read_headers(&self) -> Vec<(&'static str, String)> {
+    pub fn read_headers(&self, provider: Provider) -> Vec<(&'static str, String)> {
         match self {
-            Self::Customer(key) => key.headers(),
+            Self::Customer(key) => key.headers(provider),
             _ => Vec::new(),
         }
     }
@@ -198,7 +372,16 @@ impl KmsKey {
     }
 
     /// What a write says about this key.
-    fn headers(&self) -> Vec<(&'static str, String)> {
+    fn headers(&self, provider: Provider) -> Vec<(&'static str, String)> {
+        if matches!(provider, Provider::Google) {
+            // The JSON API takes the key as a query parameter; the XML API
+            // takes this header, and both name the same key.
+            return self
+                .key_id
+                .clone()
+                .map(|key_id| vec![("x-goog-encryption-kms-key-name", key_id)])
+                .unwrap_or_default();
+        }
         let algorithm = if self.dual_layer {
             "aws:kms:dsse"
         } else {
@@ -248,6 +431,7 @@ impl CustomerKey {
         Ok(Self {
             encoded: engine.encode(key),
             checksum: engine.encode(super::client::md5_of(key)),
+            digest: engine.encode(Sha256::digest(key)),
         })
     }
 
@@ -295,27 +479,47 @@ impl CustomerKey {
         &self.encoded
     }
 
-    /// Base64 of the key's MD5, as the header spells it.
+    /// Base64 of the key's MD5, as the S3 header spells it.
     pub fn checksum(&self) -> &str {
         &self.checksum
     }
 
+    /// Base64 of the key's SHA-256, as the Google and Azure headers spell it.
+    pub fn digest(&self) -> &str {
+        &self.digest
+    }
+
     /// What every request touching this object's bytes carries.
-    fn headers(&self) -> Vec<(&'static str, String)> {
-        vec![
-            (
-                "x-amz-server-side-encryption-customer-algorithm",
-                "AES256".to_owned(),
-            ),
-            (
-                "x-amz-server-side-encryption-customer-key",
-                self.encoded.clone(),
-            ),
-            (
-                "x-amz-server-side-encryption-customer-key-MD5",
-                self.checksum.clone(),
-            ),
-        ]
+    ///
+    /// The same key, three spellings, and two different digests of it: S3 asks
+    /// for the MD5 and the other two for the SHA-256.
+    fn headers(&self, provider: Provider) -> Vec<(&'static str, String)> {
+        match provider {
+            Provider::Aws => vec![
+                (
+                    "x-amz-server-side-encryption-customer-algorithm",
+                    "AES256".to_owned(),
+                ),
+                (
+                    "x-amz-server-side-encryption-customer-key",
+                    self.encoded.clone(),
+                ),
+                (
+                    "x-amz-server-side-encryption-customer-key-MD5",
+                    self.checksum.clone(),
+                ),
+            ],
+            Provider::Google => vec![
+                ("x-goog-encryption-algorithm", "AES256".to_owned()),
+                ("x-goog-encryption-key", self.encoded.clone()),
+                ("x-goog-encryption-key-sha256", self.digest.clone()),
+            ],
+            Provider::Azure => vec![
+                ("x-ms-encryption-algorithm", "AES256".to_owned()),
+                ("x-ms-encryption-key", self.encoded.clone()),
+                ("x-ms-encryption-key-sha256", self.digest.clone()),
+            ],
+        }
     }
 }
 
@@ -337,6 +541,7 @@ impl std::fmt::Debug for Encryption {
             Self::Managed => formatter.write_str("Managed"),
             Self::Kms(key) => formatter.debug_tuple("Kms").field(key).finish(),
             Self::Customer(key) => formatter.debug_tuple("Customer").field(key).finish(),
+            Self::Scope(scope) => formatter.debug_tuple("Scope").field(scope).finish(),
         }
     }
 }

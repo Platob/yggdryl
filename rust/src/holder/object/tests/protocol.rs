@@ -6,7 +6,7 @@
 //! unhappy ones, come back as the typed results the crate's contracts name.
 
 use super::{BUCKET, file, folder, location, options, path, payload, store};
-use crate::holder::object::{Credentials, File, ObjectOptions};
+use crate::holder::object::{AwsOptions, Credentials, File, ObjectOptions};
 use crate::{Error, IOBase, IOKind};
 
 #[test]
@@ -457,11 +457,18 @@ fn a_glob_descends_its_fixed_prefix_rather_than_the_whole_bucket() {
 }
 
 #[test]
-fn a_location_naming_no_bucket_is_refused_before_anything_is_built() {
+fn a_location_naming_no_container_is_refused_before_anything_is_built() {
     let error = crate::holder::object::file("file:///tmp/part.parquet").expect_err("a refusal");
-    assert!(error.to_string().contains("naming a bucket"), "{error}");
+    assert!(error.to_string().contains("naming a container"), "{error}");
     // The credential and endpoint knobs are equally unusable without one.
     crate::holder::object::folder("https://example.com/x").expect_err("a refusal");
+    // A store's own word for it is what its own refusal uses: a location that
+    // names only an endpoint has named no container yet.
+    let error = crate::holder::object::file("gs://storage.googleapis.com/").expect_err("a refusal");
+    assert!(error.to_string().contains("naming a bucket"), "{error}");
+    let error =
+        crate::holder::object::file("az://trades.blob.core.windows.net/").expect_err("a refusal");
+    assert!(error.to_string().contains("naming a container"), "{error}");
 }
 
 #[test]
@@ -523,14 +530,23 @@ fn every_s3_url_spelling_reaches_the_same_object() {
 }
 
 #[test]
-fn options_clamp_what_s3_will_not_accept_rather_than_refusing_it() {
+fn options_record_what_was_asked_for_and_the_store_clamps_it() {
+    // The options keep the caller's number, because which store will answer is
+    // not known until a location is handed over.
     let bounded = ObjectOptions::default()
         .with_part_size(1)
         .with_list_page_size(50_000)
         .with_max_attempts(0);
-    assert_eq!(bounded.part_size(), 5 * 1024 * 1024, "S3's own part floor");
-    assert_eq!(bounded.list_page_size(), 1000, "S3's own page ceiling");
+    assert_eq!(bounded.part_size(), 1);
+    assert_eq!(bounded.list_page_size(), 50_000);
     assert_eq!(bounded.max_attempts(), 1, "one attempt is still an attempt");
+
+    // The store clamps it, and the three stores clamp it differently.
+    use crate::holder::object::Provider;
+    assert_eq!(Provider::Aws.min_part_size(), 5 * 1024 * 1024);
+    assert_eq!(Provider::Google.min_part_size(), 256 * 1024);
+    assert_eq!(Provider::Aws.max_list_page(), 5000);
+    assert_eq!(Provider::Google.max_list_page(), 1000);
 
     // A bare host becomes an https endpoint, and a trailing slash is dropped.
     assert_eq!(
@@ -612,7 +628,7 @@ fn a_write_signs_its_payload_over_http_and_leaves_it_unsigned_over_tls() {
     store.clear_requests();
     let mut unsigned = super::file_with(
         "lake/unsigned.bin",
-        options(&store).with_payload_signing(false),
+        options(&store).with_aws(AwsOptions::default().with_payload_signing(false)),
     );
     unsigned.write_all_bytes(b"AAPL,187.23").expect("a write");
     let recorded = store.requests();
@@ -634,7 +650,11 @@ fn a_write_signs_its_payload_over_http_and_leaves_it_unsigned_over_tls() {
     let over_tls = ObjectOptions::default().with_endpoint("https://s3.example.io");
     assert!(!over_tls.signs_payload("https"));
     assert!(ObjectOptions::default().signs_payload("http"));
-    assert!(over_tls.with_payload_signing(true).signs_payload("https"));
+    assert!(
+        over_tls
+            .with_aws(AwsOptions::default().with_payload_signing(true))
+            .signs_payload("https")
+    );
 }
 
 #[test]
@@ -709,7 +729,10 @@ fn a_named_role_is_traded_for_a_session_once_and_signs_everything_after() {
         .with_external_id("desk-42")
         // STS is a host of its own on AWS; the fixture shares this one.
         .with_endpoint(store.endpoint());
-    let handle = super::file_with("lake/part.bin", options(&store).with_assumed_role(role));
+    let handle = super::file_with(
+        "lake/part.bin",
+        options(&store).with_aws(AwsOptions::default().with_assumed_role(role)),
+    );
 
     store.clear_requests();
     assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
@@ -782,7 +805,10 @@ fn a_lapsed_session_is_traded_again_rather_than_signed_with() {
     let role =
         crate::holder::object::AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
             .with_endpoint(store.endpoint());
-    let handle = super::file_with("lake/part.bin", options(&store).with_assumed_role(role));
+    let handle = super::file_with(
+        "lake/part.bin",
+        options(&store).with_aws(AwsOptions::default().with_assumed_role(role)),
+    );
 
     store.clear_requests();
     assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
@@ -803,8 +829,8 @@ fn a_bucket_lifecycle_this_client_may_not_perform_costs_no_request() {
     let store = store();
     let refusing = || {
         options(&store)
-            .with_bucket_creation(false)
-            .with_bucket_deletion(false)
+            .with_container_creation(false)
+            .with_container_deletion(false)
     };
     let url = crate::Url::from_str("s3://ledger/").expect("a location");
     let client = std::sync::Arc::new(

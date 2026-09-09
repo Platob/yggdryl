@@ -65,8 +65,8 @@ fn pyarrows_arguments_reach_the_same_knobs_by_their_own_names() {
     assert_eq!(options.endpoint(), Some("http://localhost:9000"));
     assert_eq!(options.path_style(), Some(false), "virtual is not path");
     assert_eq!(options.timeout(), Duration::from_secs(15));
-    assert!(!options.bucket_creation());
-    assert!(!options.bucket_deletion());
+    assert!(!options.container_creation());
+    assert!(!options.container_deletion());
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn the_aws_environment_names_are_the_same_knobs_again() {
     assert_eq!(options.region(), Some("us-east-1"));
     assert_eq!(options.endpoint(), Some("https://s3.example.io"));
     assert_eq!(options.path_style(), Some(true), "two prefixes are peeled");
-    assert_eq!(options.profile(), Some("trading"));
+    assert_eq!(options.aws().profile(), Some("trading"));
     assert_eq!(
         options.credentials().map(|keys| keys.access_key_id()),
         Some("AKIAIOSFODNN7EXAMPLE")
@@ -119,7 +119,7 @@ fn a_role_is_assembled_from_the_properties_that_describe_it() {
     ])
     .expect("readable properties");
 
-    let role = options.assumed_role().expect("a role");
+    let role = options.aws().assumed_role().expect("a role");
     assert_eq!(
         role.role_arn(),
         "arn:aws:iam::123456789012:role/lake-reader"
@@ -133,7 +133,7 @@ fn a_role_is_assembled_from_the_properties_that_describe_it() {
     let options = ObjectOptions::from_properties([("role_arn", "arn:x"), ("role_duration", "60")])
         .expect("readable properties");
     assert_eq!(
-        options.assumed_role().map(AssumedRole::duration),
+        options.aws().assumed_role().map(AssumedRole::duration),
         Some(Duration::from_secs(900))
     );
 }
@@ -270,14 +270,19 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
     );
     assert_eq!(
         ObjectOptions::default().environment_prefixes(),
-        ["AWS_".to_owned(), "YGGDRYL_S3_".to_owned()]
+        [
+            "AWS_".to_owned(),
+            "GOOGLE_".to_owned(),
+            "AZURE_".to_owned(),
+            "YGGDRYL_".to_owned()
+        ]
     );
     assert_eq!(
         ObjectOptions::default()
             .with_environment_prefix("TRADING_S3_")
             .environment_prefixes()
             .len(),
-        3
+        5
     );
 }
 
@@ -311,7 +316,7 @@ fn what_a_caller_set_wins_over_what_the_environment_says() {
     );
     assert_eq!(explicit.part_size(), 32 * 1024 * 1024);
     assert!(matches!(explicit.encryption(), Encryption::Managed));
-    assert!(!explicit.bucket_creation());
+    assert!(!explicit.container_creation());
 
     // An anonymous client stays anonymous, whatever keys are lying about.
     let anonymous = ObjectOptions::default()

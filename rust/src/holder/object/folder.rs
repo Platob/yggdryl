@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use super::client::{Client, DELETE_BATCH};
+use super::client::Client;
 use super::file::File;
 use crate::holder::Holder;
 use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Url};
@@ -116,7 +116,7 @@ impl Folder {
     /// Returns the store's refusal to create the bucket.
     pub fn create(&self) -> Result<()> {
         if self.prefix.is_empty() {
-            if !self.client.options().bucket_creation() {
+            if !self.client.options().container_creation() {
                 return Err(refused("create", &self.bucket));
             }
             return self.client.create_bucket(&self.bucket);
@@ -135,7 +135,7 @@ impl Folder {
         let client = self.client.clone();
         let bucket = self.bucket.clone();
         let prefix = self.prefix.clone();
-        let page_size = client.options().list_page_size();
+        let page_size = client.list_page_size();
         let mut continuation: Option<String> = None;
         let mut finished = false;
         // Each page is fetched when the previous one runs out, so a caller
@@ -351,7 +351,7 @@ impl IOFolder for Folder {
     /// is the success the contract asks for.
     fn delete_folder(&mut self) -> Result<()> {
         if self.prefix.is_empty() {
-            if !self.client.options().bucket_deletion() {
+            if !self.client.options().container_deletion() {
                 return Err(refused("delete", &self.bucket));
             }
             return self.client.delete_bucket(&self.bucket);
@@ -361,13 +361,16 @@ impl IOFolder for Folder {
 
     /// Remove every key under this prefix, keeping the prefix itself.
     ///
-    /// One listing per 1000 keys and one bulk delete per 1000, rather than one
-    /// delete per key. An empty prefix costs one listing and no delete.
+    /// One listing per page and one bulk delete per batch, rather than one
+    /// delete per key. The batch is the store's own maximum, which is a
+    /// thousand on Amazon S3 and smaller on the other two. An empty prefix
+    /// costs one listing and no delete.
     fn folder_clear(&mut self) -> Result<()> {
-        let mut batch: Vec<String> = Vec::with_capacity(DELETE_BATCH);
+        let batch_size = self.client.delete_batch();
+        let mut batch: Vec<String> = Vec::with_capacity(batch_size);
         for key in self.keys() {
             batch.push(key?);
-            if batch.len() == DELETE_BATCH {
+            if batch.len() == batch_size {
                 self.client.delete_objects(&self.bucket, &batch)?;
                 batch.clear();
             }
