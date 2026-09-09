@@ -50,13 +50,13 @@
   refresh_logging: drops the cached Python log levels, so a level set after import applies
   coding: Coded, Gzip, Identity, Zlib, Zstd, gzip, zlib, zstd
   coding roles: Coded is the IOBase subclass presenting the decoded bytes of a coding; Identity, Gzip, Zlib and Zstd sit under it, and Codec.Deflate folds into Zlib. Coded: into_handle, level
-  holder: Buffer, Buffered, File, Folder, FsFile, FsFolder, FsPath, IOBase, IOCursor, Path, S3File, S3Folder, S3Path
+  holder: Buffer, Buffered, File, Folder, FsFile, FsFolder, FsPath, IOBase, IOCursor, ObjectFile, ObjectFolder, ObjectPath, Path
   holder roles: every name above but IOBase and IOCursor is an IOBase subclass naming one core holder; construction answers the composition a name declares, so type(handle) says which implementation answers the contract
     Buffer: in-memory bytes; built with IOBase.from_bytes
     Path / File / Folder: the local roles, each constructible from a location; Path is what a name declaring nothing takes, and what addresses the stored bytes of a coded name
     Folder: classmethods temporary, home, config
     FsPath / FsFile / FsFolder: the same three roles on a foreign filesystem, each constructible as (filesystem, path, *, uri=None)
-    S3Path / S3File / S3Folder: the same three roles on Amazon S3, each constructible as (location) or as (bucket, key) for the raw name a store uses, with an optional options= mapping in PyIceberg's, PyArrow's, or the AWS environment's names
+    ObjectPath / ObjectFile / ObjectFolder: the same three roles on Amazon S3, Google Cloud Storage, and Azure Blob Storage, each constructible as (location) or as (container, key, provider=) for the raw name a store uses - a raw name, unlike a location, does not say which store holds it - with an optional options= mapping in PyIceberg's s3./gcs./adls. names, PyArrow's, or each store's own environment names
     Buffered: cached_bytes, cached_pages, has_cached_page, clear_cache, into_handle, and the normalized
       configuration the core clamped to: page_size, max_bytes, ttl, page_index, page_start
   media: AVRO_MAX_SCHEMA_DEPTH, Avro, DEFAULT_RECORD_BATCH_ROW_SIZE, Ipc, Media, MediaType, MimeType, NULL_PARTITION, Parquet, RecordOptions, Text, TextOptions, avro, iceberg, partition_text, with_partitions, without_partitions

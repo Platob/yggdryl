@@ -49,8 +49,6 @@ const RETRY_TOKENS: i64 = 500;
 const RETRY_COST: i64 = 5;
 /// What a first-attempt success refunds.
 const RETRY_REFUND: i64 = 1;
-/// The service name in every AWS credential scope.
-const SERVICE: &str = "s3";
 
 /// How many requests of each shape have gone out.
 ///
@@ -326,6 +324,9 @@ impl Client {
             azure: super::azure::auth::Authorization::new(
                 options.azure(),
                 endpoint_account.as_deref(),
+                options
+                    .credentials()
+                    .map(super::aws::credentials::Credentials::access_key_id),
                 options
                     .credentials()
                     .map(super::aws::credentials::Credentials::secret_access_key),
@@ -724,7 +725,12 @@ impl Client {
                         self.pause(attempt, None);
                         continue;
                     }
-                    return Err(transport_failure(request, self.location(request), error));
+                    return Err(transport_failure(
+                        self.provider.service(),
+                        request,
+                        self.location(request),
+                        error,
+                    ));
                 }
             };
             // A bucket in another region answers with the region it is in, so
@@ -913,7 +919,12 @@ impl Client {
                         self.pause(attempt, None);
                         continue;
                     }
-                    return Err(transport_failure(request, self.location(request), error));
+                    return Err(transport_failure(
+                        self.provider.service(),
+                        request,
+                        self.location(request),
+                        error,
+                    ));
                 }
             };
             // Only a failing answer is read here, and only to decide: a
@@ -1102,7 +1113,14 @@ impl Client {
         if matches!(self.provider, Provider::Google) {
             return super::google::json::parse_object(&answer.body)
                 .map(Some)
-                .map_err(|error| malformed(request.operation, &self.location(&request), &error.0));
+                .map_err(|error| {
+                    malformed(
+                        self.provider.service(),
+                        request.operation,
+                        &self.location(&request),
+                        &error.0,
+                    )
+                });
         }
         Ok(Some(ObjectMeta {
             size: answer
@@ -1540,8 +1558,14 @@ impl Client {
         if answer.status >= 300 {
             return Err(self.failure(&request, &answer));
         }
-        let failures = xml::parse_delete_result(&answer.body)
-            .map_err(|error| malformed(request.operation, &self.location(&request), &error.0))?;
+        let failures = xml::parse_delete_result(&answer.body).map_err(|error| {
+            malformed(
+                self.provider.service(),
+                request.operation,
+                &self.location(&request),
+                &error.0,
+            )
+        })?;
         match failures.first() {
             None => Ok(()),
             Some(failure) => Err(Error::remote(
@@ -1678,7 +1702,14 @@ impl Client {
             Provider::Google => super::google::json::parse_list(&answer.body),
             Provider::Azure => super::azure::xml::parse_list(&answer.body),
         }
-        .map_err(|error| malformed(request.operation, &self.location(&request), &error.0))
+        .map_err(|error| {
+            malformed(
+                self.provider.service(),
+                request.operation,
+                &self.location(&request),
+                &error.0,
+            )
+        })
     }
 
     /// Write one large object in chunks, in whatever shape this store has.
@@ -1775,6 +1806,7 @@ impl Client {
             .map(str::to_owned)
             .ok_or_else(|| {
                 malformed(
+                    self.provider.service(),
                     request.operation,
                     &self.location(&request),
                     &super::google::json::missing_session().0,
@@ -1866,8 +1898,14 @@ impl Client {
         if answer.status >= 300 {
             return Err(self.failure(&request, &answer));
         }
-        xml::parse_upload_id(&answer.body)
-            .map_err(|error| malformed(request.operation, &self.location(&request), &error.0))
+        xml::parse_upload_id(&answer.body).map_err(|error| {
+            malformed(
+                self.provider.service(),
+                request.operation,
+                &self.location(&request),
+                &error.0,
+            )
+        })
     }
 
     /// Upload one part, answering its entity tag.
@@ -1896,6 +1934,7 @@ impl Client {
         }
         answer.header("etag").map(str::to_owned).ok_or_else(|| {
             malformed(
+                self.provider.service(),
                 request.operation,
                 &self.location(&request),
                 "the store accepted a part without an ETag",
@@ -1927,7 +1966,7 @@ impl Client {
         }
         xml::parse_complete_multipart(&answer.body).map_err(|error| {
             Error::remote(
-                SERVICE,
+                self.provider.service(),
                 "CompleteMultipartUpload",
                 answer.status,
                 "InternalError",
@@ -2450,14 +2489,19 @@ fn status_code_name(status: u16) -> String {
 }
 
 /// A store answered something this client cannot read.
-fn malformed(operation: &'static str, path: &str, reason: &str) -> Error {
-    Error::remote(SERVICE, operation, 200, "MalformedResponse", reason, path)
+fn malformed(service: &'static str, operation: &'static str, path: &str, reason: &str) -> Error {
+    Error::remote(service, operation, 200, "MalformedResponse", reason, path)
 }
 
 /// A request that never reached the store, or whose connection failed.
-fn transport_failure(request: &Request<'_>, path: String, error: ureq::Error) -> Error {
+fn transport_failure(
+    service: &'static str,
+    request: &Request<'_>,
+    path: String,
+    error: ureq::Error,
+) -> Error {
     Error::Io(std::io::Error::other(format!(
-        "{SERVICE} {} at {path:?} failed: {error}",
+        "{service} {} at {path:?} failed: {error}",
         request.operation
     )))
 }

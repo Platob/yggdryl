@@ -96,7 +96,6 @@ pub struct AzureOptions {
     api_version: Option<String>,
     blob_type: BlobType,
     access_tier: Option<String>,
-    encryption_scope: Option<String>,
     data_lake: bool,
     authority_host: Option<String>,
     endpoint: Option<String>,
@@ -273,16 +272,6 @@ impl AzureOptions {
         self
     }
 
-    /// Encrypt what is written under the account's encryption scope `scope`.
-    ///
-    /// A scope is configured on the account and named per request, which is how
-    /// Azure spells a customer-managed key for one container's worth of blobs.
-    #[must_use]
-    pub fn with_encryption_scope(mut self, scope: impl Into<String>) -> Self {
-        self.encryption_scope = Some(scope.into());
-        self
-    }
-
     /// Address the Data Lake Storage Gen2 endpoint rather than the blob one.
     ///
     /// An account with a hierarchical namespace answers both; `dfs` is the one
@@ -370,11 +359,6 @@ impl AzureOptions {
         self.access_tier.as_deref()
     }
 
-    /// The encryption scope writes name, when one was named.
-    pub fn encryption_scope(&self) -> Option<&str> {
-        self.encryption_scope.as_deref()
-    }
-
     /// Whether the Data Lake endpoint is addressed.
     pub const fn data_lake(&self) -> bool {
         self.data_lake
@@ -421,9 +405,6 @@ impl AzureOptions {
         if self.access_tier.is_none() {
             self.access_tier = ambient.access_tier.clone();
         }
-        if self.encryption_scope.is_none() {
-            self.encryption_scope = ambient.encryption_scope.clone();
-        }
         if !self.data_lake {
             self.data_lake = ambient.data_lake;
         }
@@ -463,7 +444,6 @@ impl std::fmt::Debug for AzureOptions {
             .field("api_version", &self.api_version)
             .field("blob_type", &self.blob_type)
             .field("access_tier", &self.access_tier)
-            .field("encryption_scope", &self.encryption_scope)
             .field("data_lake", &self.data_lake)
             .field("authority_host", &self.authority_host)
             .field("endpoint", &self.endpoint)

@@ -17,10 +17,10 @@ from .._native import (
     FsPath,
     IOBase,
     IOCursor,
+    ObjectFile,
+    ObjectFolder,
+    ObjectPath,
     Path,
-    S3File,
-    S3Folder,
-    S3Path,
 )
 
 __all__ = [
@@ -33,8 +33,8 @@ __all__ = [
     "FsPath",
     "IOBase",
     "IOCursor",
+    "ObjectFile",
+    "ObjectFolder",
+    "ObjectPath",
     "Path",
-    "S3File",
-    "S3Folder",
-    "S3Path",
 ]

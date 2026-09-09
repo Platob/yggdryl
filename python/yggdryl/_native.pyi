@@ -2797,36 +2797,39 @@ class FsPath(IOBase):
     def as_file(self) -> FsFile: ...
     def as_directory(self) -> FsFolder: ...
 
-class S3File(IOBase):
-    """One Amazon S3 object, read by range and written whole."""
+class ObjectFile(IOBase):
+    """One object on S3, Google Cloud Storage, or Azure Blob Storage."""
 
     def __init__(
         self,
         location: str | PathLike[str],
         key: str | PathLike[str] | None = None,
         *,
+        provider: str | None = None,
         options: Mapping[str, object] | None = None,
     ) -> None: ...
 
-class S3Folder(IOBase):
-    """One S3 key prefix, or a whole bucket."""
+class ObjectFolder(IOBase):
+    """One key prefix, or a whole bucket or container."""
 
     def __init__(
         self,
         location: str | PathLike[str],
         key: str | PathLike[str] | None = None,
         *,
+        provider: str | None = None,
         options: Mapping[str, object] | None = None,
     ) -> None: ...
 
-class S3Path(IOBase):
-    """One S3 location that resolves to `S3File` or `S3Folder` when asked."""
+class ObjectPath(IOBase):
+    """One location that resolves to `ObjectFile` or `ObjectFolder`."""
 
     def __init__(
         self,
         location: str | PathLike[str],
         key: str | PathLike[str] | None = None,
         *,
+        provider: str | None = None,
         options: Mapping[str, object] | None = None,
     ) -> None: ...
 

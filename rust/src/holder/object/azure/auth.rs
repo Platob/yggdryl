@@ -58,6 +58,7 @@ impl Authorization {
     pub(crate) fn new(
         options: &AzureOptions,
         account: Option<&str>,
+        account_id: Option<&str>,
         key: Option<&str>,
         anonymous: bool,
     ) -> Result<Self> {
@@ -70,8 +71,15 @@ impl Authorization {
         if let Some(token) = options.sas_token() {
             return Ok(Self::Sas(token.to_owned()));
         }
-        let key = options.account_key().or(key);
-        if let (Some(account), Some(key)) = (account, key) {
+        // A generic credential pair is Azure's shared key only when it names
+        // this account: an ambient `AWS_SECRET_ACCESS_KEY` swept out of the
+        // environment is a key for another store, and taking it here would
+        // refuse the client over a value that was never meant for it.
+        let paired = key.filter(|_| {
+            account
+                .is_some_and(|account| account.eq_ignore_ascii_case(account_id.unwrap_or_default()))
+        });
+        if let (Some(account), Some(key)) = (account, options.account_key().or(paired)) {
             return Ok(Self::SharedKey(SharedKey::new(account, key)?));
         }
         if let (Some(tenant), Some(client), Some(secret)) = (

@@ -13,7 +13,7 @@ Every storage implementation is reached through the positional `IOBase` contract
 | [Buffer](backends/buffer.md) | in-memory bytes |
 | [Buffered](backends/buffered.md) | the page cache |
 | [Filesystems](backends/filesystems.md) | Arrow-style `FileSystem` |
-| [Amazon S3](backends/s3.md) | `Path`, `Folder`, `File` over the S3 REST API |
+| [Object stores](backends/object.md) | `Path`, `Folder`, `File` over the Amazon S3, Google Cloud Storage, and Azure Blob Storage REST APIs |
 | [ZIP](backends/zip.md) | `Path`, `Node`, `Leaf` inside one archive, nested archives included |
 
 ## Contract

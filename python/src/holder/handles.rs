@@ -12,7 +12,7 @@ use pyo3::types::PyType;
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::Buffered;
-use yggdryl::holder::object::ObjectOptions;
+use yggdryl::holder::object::{ObjectOptions, Provider};
 
 use crate::iobase::PyIOBase;
 use crate::value_error;
@@ -66,25 +66,26 @@ role!(
      needs to know what is there."
 );
 role!(
-    PyS3File,
-    "S3File",
-    "One Amazon S3 object, read by range and written whole. A ranged read \
-     transfers the range rather than the object, and learns the object's \
-     length from the answer."
+    PyObjectFile,
+    "ObjectFile",
+    "One object on Amazon S3, Google Cloud Storage, or Azure Blob Storage, \
+     read by range and written whole. A ranged read transfers the range \
+     rather than the object, and learns the object's length from the answer."
 );
 role!(
-    PyS3Folder,
-    "S3Folder",
-    "One S3 key prefix, or a whole bucket. A prefix is not stored: it exists \
-     exactly while a key starts with it, so creating and deleting one cost \
-     nothing and listing is the only question the store answers."
+    PyObjectFolder,
+    "ObjectFolder",
+    "One key prefix, or a whole bucket or container. A prefix is not stored: \
+     it exists exactly while a key starts with it, so creating and deleting \
+     one cost nothing and listing is the only question the store answers."
 );
 role!(
-    PyS3Path,
-    "S3Path",
-    "One S3 location that resolves to `S3File` or `S3Folder` when an \
-     operation needs to know which it is - one listing of a single key, or \
-     none at all when a trailing slash already said it is a container."
+    PyObjectPath,
+    "ObjectPath",
+    "One object-store location that resolves to `ObjectFile` or \
+     `ObjectFolder` when an operation needs to know which it is - one listing \
+     of a single key, or none at all when a trailing slash already said it is \
+     a container."
 );
 role!(
     PyBuffered,
@@ -298,22 +299,39 @@ impl PyFsFolder {
     }
 }
 
-/// Build one S3 role from a bucket and a raw key, or from a location.
+/// Build one object-store role from a container and a raw key, or from a
+/// location.
 ///
 /// A caller who has a location passes one string; a caller who has the name a
-/// store uses passes the bucket and the key, and encoding belongs here rather
-/// than to them - `a b/c.txt` is an ordinary key and not a URL.
-fn s3_holder(
+/// store uses passes the container and the key, and encoding belongs here
+/// rather than to them - `a b/c.txt` is an ordinary key and not a URL. A raw
+/// name does not say which store holds it, so `provider` does.
+fn object_holder(
     location: &Bound<'_, PyAny>,
     key: Option<&Bound<'_, PyAny>>,
+    provider: Option<&str>,
     options: Option<&Bound<'_, pyo3::types::PyDict>>,
     from_url: impl FnOnce(&str, ObjectOptions) -> yggdryl::Result<Holder>,
-    from_key: impl FnOnce(&str, &str, ObjectOptions) -> yggdryl::Result<Holder>,
+    from_key: impl FnOnce(Provider, &str, &str, ObjectOptions) -> yggdryl::Result<Holder>,
 ) -> PyResult<PyClassInitializer<PyIOBase>> {
     let first = crate::uri::path_string_from_value(location)?;
-    let options = s3_options(options)?;
+    let options = object_options(options)?;
     let holder = match key {
-        Some(key) => from_key(&first, &crate::uri::path_string_from_value(key)?, options),
+        Some(key) => {
+            let provider = provider.ok_or_else(|| {
+                PyValueError::new_err(
+                    "expected provider= alongside a container and a key: a raw name, \
+                     unlike a location, does not say which store holds it",
+                )
+            })?;
+            let provider: Provider = provider.parse().map_err(value_error)?;
+            from_key(
+                provider,
+                &first,
+                &crate::uri::path_string_from_value(key)?,
+                options,
+            )
+        }
         None => from_url(&first, options),
     };
     // Construction touches no store, so every failure here is about the name
@@ -326,11 +344,12 @@ fn s3_holder(
 
 /// Read an options mapping in whichever vocabulary it is written in.
 ///
-/// `PyIceberg`'s `s3.*` property names, `PyArrow`'s `S3FileSystem` arguments,
-/// and the AWS environment's names are all read; anything else is ignored, so
-/// a catalog's properties can be handed over whole. Values are taken as their
-/// text, so `True` and `30` are as good as `"true"` and `"30"`.
-fn s3_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<ObjectOptions> {
+/// `PyIceberg`'s `s3.*`, `gcs.*` and `adls.*` property names, `PyArrow`'s
+/// filesystem arguments, and each store's own environment names are all read;
+/// anything else is ignored, so a catalog's properties can be handed over
+/// whole. Values are taken as their text, so `True` and `30` are as good as
+/// `"true"` and `"30"`.
+fn object_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<ObjectOptions> {
     let Some(options) = options else {
         return Ok(ObjectOptions::default());
     };
@@ -347,29 +366,35 @@ fn s3_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<Obje
 }
 
 #[pymethods]
-impl PyS3Path {
-    /// Describe an S3 location without deciding what it is.
+impl PyObjectPath {
+    /// Describe an object-store location without deciding what it is.
     ///
-    /// `S3Path("s3://trades/lake/part.parquet")` names a location;
-    /// `S3Path("trades", "lake/a b/part.parquet")` names a bucket and the raw
-    /// key a store uses. Neither contacts the store.
+    /// `ObjectPath("gs://trades/lake/part.parquet")` names a location;
+    /// `ObjectPath("trades", "lake/a b/part.parquet", provider="gs")` names a
+    /// container and the raw key a store uses. Neither contacts the store, and
+    /// the provider is needed only for the second form, because a raw name -
+    /// unlike a location - does not say which store holds it.
     ///
     /// `options` is a mapping of endpoint, credentials, encryption, and the
-    /// rest, in `PyIceberg`'s names, `PyArrow`'s, or the AWS environment's.
+    /// rest, in `PyIceberg`'s names, `PyArrow`'s, or each store's own
+    /// environment names.
     #[new]
-    #[pyo3(signature = (location, key = None, *, options = None))]
+    #[pyo3(signature = (location, key = None, *, provider = None, options = None))]
     fn new(
         location: &Bound<'_, PyAny>,
         key: Option<&Bound<'_, PyAny>>,
+        provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(s3_holder(
+        Ok(object_holder(
             location,
             key,
+            provider,
             options,
             yggdryl::holder::object::located_with,
-            |bucket, key, options| {
-                yggdryl::holder::object::path_at_with(bucket, key, options).map(Holder::ObjectPath)
+            |provider, container, key, options| {
+                yggdryl::holder::object::path_at_with(provider, container, key, options)
+                    .map(Holder::ObjectPath)
             },
         )?
         .add_subclass(Self))
@@ -377,24 +402,27 @@ impl PyS3Path {
 }
 
 #[pymethods]
-impl PyS3File {
-    /// Describe an S3 object, whether or not it exists yet.
+impl PyObjectFile {
+    /// Describe one object, whether or not it exists yet.
     ///
-    /// `options` is read as it is by [`S3Path`](PyS3Path).
+    /// `options` and `provider` are read as they are by [`ObjectPath`](PyObjectPath).
     #[new]
-    #[pyo3(signature = (location, key = None, *, options = None))]
+    #[pyo3(signature = (location, key = None, *, provider = None, options = None))]
     fn new(
         location: &Bound<'_, PyAny>,
         key: Option<&Bound<'_, PyAny>>,
+        provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(s3_holder(
+        Ok(object_holder(
             location,
             key,
+            provider,
             options,
             |url, options| yggdryl::holder::object::file_with(url, options).map(Holder::ObjectFile),
-            |bucket, key, options| {
-                yggdryl::holder::object::file_at_with(bucket, key, options).map(Holder::ObjectFile)
+            |provider, container, key, options| {
+                yggdryl::holder::object::file_at_with(provider, container, key, options)
+                    .map(Holder::ObjectFile)
             },
         )?
         .add_subclass(Self))
@@ -402,26 +430,28 @@ impl PyS3File {
 }
 
 #[pymethods]
-impl PyS3Folder {
-    /// Describe an S3 prefix or bucket, creating nothing.
+impl PyObjectFolder {
+    /// Describe a prefix, bucket, or container, creating nothing.
     ///
-    /// `options` is read as it is by [`S3Path`](PyS3Path).
+    /// `options` and `provider` are read as they are by [`ObjectPath`](PyObjectPath).
     #[new]
-    #[pyo3(signature = (location, key = None, *, options = None))]
+    #[pyo3(signature = (location, key = None, *, provider = None, options = None))]
     fn new(
         location: &Bound<'_, PyAny>,
         key: Option<&Bound<'_, PyAny>>,
+        provider: Option<&str>,
         options: Option<&Bound<'_, pyo3::types::PyDict>>,
     ) -> PyResult<PyClassInitializer<Self>> {
-        Ok(s3_holder(
+        Ok(object_holder(
             location,
             key,
+            provider,
             options,
             |url, options| {
                 yggdryl::holder::object::folder_with(url, options).map(Holder::ObjectFolder)
             },
-            |bucket, key, options| {
-                yggdryl::holder::object::folder_at_with(bucket, key, options)
+            |provider, container, key, options| {
+                yggdryl::holder::object::folder_at_with(provider, container, key, options)
                     .map(Holder::ObjectFolder)
             },
         )?
@@ -530,9 +560,9 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyFsFile>()?;
     module.add_class::<PyFsFolder>()?;
     module.add_class::<PyFsPath>()?;
-    module.add_class::<PyS3File>()?;
-    module.add_class::<PyS3Folder>()?;
-    module.add_class::<PyS3Path>()?;
+    module.add_class::<PyObjectFile>()?;
+    module.add_class::<PyObjectFolder>()?;
+    module.add_class::<PyObjectPath>()?;
     module.add_class::<PyBuffered>()?;
     Ok(())
 }

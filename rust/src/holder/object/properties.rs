@@ -49,8 +49,8 @@ impl ObjectOptions {
     /// | Azure identity | `tenant_id`, `client_id`, `client_secret` | `adls.tenant-id`, `adls.client-id` | the same | `AZURE_TENANT_ID` |
     ///
     /// Names are matched loosely: case, `-`, `_`, and `.` are the same, and a
-    /// leading `s3.`, `gcs.`, `gs.`, `google.`, `azure.`, `adls.`, `abfs.`,
-    /// `client.`, `storage.`, `aws_`, or `blob.` is dropped. So
+    /// leading `s3.`, `gcs.`, `gs.`, `google.`, `gcp.`, `azure.`, `adls.`,
+    /// `abfs.`, `client.`, or `aws_` is dropped. So
     /// `s3.access-key-id`, `AWS_ACCESS_KEY_ID`, and `access_key` are one knob.
     ///
     /// # Errors
@@ -241,8 +241,14 @@ impl ObjectOptions {
         let mut options = self;
         match key {
             // --- where the store is -----------------------------------------
-            "endpoint" | "endpoint_url" | "endpoint_override" | "blob_endpoint"
-            | "service_host" | "host" => {
+            "endpoint"
+            | "endpoint_url"
+            | "endpoint_override"
+            | "blob_endpoint"
+            | "storage_blob_endpoint"
+            | "storage_endpoint"
+            | "service_host"
+            | "host" => {
                 parts.endpoint = Some(value.to_owned());
             }
             // The service-specific spelling wins over the generic one, which
@@ -327,7 +333,12 @@ impl ObjectOptions {
             "sse_bucket_key" | "sse_bucket_key_enabled" | "bucket_key_enabled" => {
                 parts.bucket_key = Some(flag(name, value)?);
             }
-            "encryption_scope" => parts.encryption_scope = Some(value.to_owned()),
+            // An encryption scope is Azure's shape for a managed key, so it is
+            // the one encryption value rather than a knob of its own.
+            "encryption_scope" => {
+                parts.sse_type = Some("scope".to_owned());
+                parts.sse_key = Some(value.to_owned());
+            }
 
             // --- Amazon S3's own --------------------------------------------
             "profile" | "profile_name" => {
@@ -391,16 +402,16 @@ impl ObjectOptions {
             }
 
             // --- Azure Blob Storage's own -----------------------------------
-            "connection_string" => {
+            "connection_string" | "storage_connection_string" => {
                 parts.azure = parts.azure.clone().with_connection_string(value);
             }
-            "account" | "account_name" => {
+            "account" | "account_name" | "storage_account_name" => {
                 parts.azure = parts.azure.clone().with_account(value);
             }
-            "account_key" | "shared_key" | "azure_storage_key" => {
+            "account_key" | "shared_key" | "storage_key" | "storage_account_key" => {
                 parts.azure = parts.azure.clone().with_account_key(value);
             }
-            "sas_token" | "sas" | "shared_access_signature" => {
+            "sas_token" | "sas" | "storage_sas_token" | "shared_access_signature" => {
                 parts.azure = parts.azure.clone().with_sas_token(value);
             }
             "tenant_id" | "tenant" => {
@@ -445,7 +456,10 @@ impl ObjectOptions {
             "client_id" => {
                 parts.client_id = Some(value.to_owned());
             }
-            "token" | "access_token" | "bearer_token" => {
+            // Not a bare `token`: a catalog's properties spell their own
+            // bearer token that way, and it authorizes the catalog rather than
+            // the store.
+            "access_token" | "bearer_token" => {
                 parts.google = parts.google.clone().with_access_token(value);
                 parts.azure = parts.azure.clone().with_bearer_token(value);
             }
@@ -483,7 +497,6 @@ struct Parts {
     kms_key_id: Option<String>,
     sse_context: Option<String>,
     bucket_key: Option<bool>,
-    encryption_scope: Option<String>,
     tenant_id: Option<String>,
     client_id: Option<String>,
     client_secret: Option<String>,
@@ -549,9 +562,6 @@ impl Parts {
                 _ => azure.with_client_id(client_id),
             };
         }
-        if let Some(scope) = &self.encryption_scope {
-            azure = azure.with_encryption_scope(scope);
-        }
         let encryption = Encryption::from_parts(
             self.sse_type.as_deref(),
             self.sse_key.as_deref(),
@@ -586,10 +596,12 @@ fn strip_prefix_ignoring_case<'name>(name: &'name str, prefix: &str) -> Option<&
 /// Every prefix a store's own vocabulary puts in front of a knob's name.
 ///
 /// Peeled rather than stripped once, because a name may carry two:
-/// `AWS_S3_FORCE_PATH_STYLE` and `azure.storage.account-name` both do.
-const PREFIXES: [&str; 12] = [
-    "s3_", "gcs_", "gs_", "google_", "gcp_", "azure_", "adls_", "abfs_", "blob_", "client_",
-    "storage_", "aws_",
+/// `AWS_S3_FORCE_PATH_STYLE` and `gcp.gcs.project-id` both do. `storage_` and
+/// `blob_` are deliberately not here: they would eat `storage_class` and
+/// `blob_type`, which are knobs of their own, so the compound names carrying
+/// them are spelled out among the aliases instead.
+const PREFIXES: [&str; 10] = [
+    "s3_", "gcs_", "gs_", "google_", "gcp_", "azure_", "adls_", "abfs_", "client_", "aws_",
 ];
 
 /// The name a property is matched by: case, separators, and prefix removed.

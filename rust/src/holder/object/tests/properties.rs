@@ -339,3 +339,155 @@ fn the_service_specific_endpoint_and_region_names_win() {
     assert_eq!(options.endpoint(), Some("https://s3.example.io"));
     assert_eq!(options.region(), Some("eu-west-1"));
 }
+
+#[test]
+fn a_catalogs_google_and_azure_properties_reach_the_store_they_name() {
+    // One catalog can hold all three stores' properties at once, because a
+    // warehouse on one cloud and a backup on another is an ordinary thing to
+    // configure. Each name reaches its own store's options and no other's.
+    let options = ObjectOptions::from_properties([
+        ("type", "rest"),
+        ("warehouse", "gs://trades/lake"),
+        // PyIceberg's Google names.
+        ("gcs.project-id", "trading-analytics"),
+        ("gcs.oauth2.token", "ya29.a0AfH6"),
+        ("gcs.default-bucket-location", "EUROPE-WEST4"),
+        // PyIceberg's Azure names.
+        ("adls.account-name", "trades"),
+        ("adls.account-key", "a2V5"),
+        ("adls.tenant-id", "00000000-0000-0000-0000-000000000000"),
+        ("adls.client-id", "a-client"),
+        ("adls.client-secret", "a-secret"),
+    ])
+    .expect("readable properties");
+
+    assert_eq!(options.google().project(), Some("trading-analytics"));
+    assert_eq!(options.google().access_token(), Some("ya29.a0AfH6"));
+    assert_eq!(options.azure().account(), Some("trades"));
+    assert!(options.azure().has_account_key());
+    assert_eq!(
+        options.azure().tenant_id(),
+        Some("00000000-0000-0000-0000-000000000000")
+    );
+    assert_eq!(options.azure().client_id(), Some("a-client"));
+    // An Azure account name and key are a credential pair like any other, and
+    // the pair is what a shared-key signature is built from.
+    let credentials = options.credentials().expect("a credential pair");
+    assert_eq!(credentials.access_key_id(), "trades");
+}
+
+#[test]
+fn an_azure_connection_string_is_read_whole_rather_than_taken_apart() {
+    let options = ObjectOptions::from_properties([(
+        "azure_storage_connection_string",
+        "DefaultEndpointsProtocol=https;AccountName=trades;AccountKey=a2V5;\
+         EndpointSuffix=core.windows.net",
+    )])
+    .expect("readable properties");
+    assert_eq!(options.azure().account(), Some("trades"));
+    assert!(options.azure().has_account_key());
+    assert_eq!(
+        options.azure().endpoint(),
+        Some("https://trades.blob.core.windows.net")
+    );
+
+    // The emulator's switch names the published development account, so a test
+    // needs no secret of its own.
+    let development =
+        ObjectOptions::from_properties([("connection_string", "UseDevelopmentStorage=true")])
+            .expect("readable properties");
+    assert_eq!(development.azure().account(), Some("devstoreaccount1"));
+    assert_eq!(
+        development.azure().endpoint(),
+        Some("http://127.0.0.1:10000/devstoreaccount1")
+    );
+}
+
+#[test]
+fn a_name_two_stores_both_have_is_applied_to_both() {
+    // Only the store that answers ever reads its own options, so nothing is
+    // ambiguous by the time it matters.
+    let options = ObjectOptions::from_properties([("storage_class", "NEARLINE")])
+        .expect("readable properties");
+    assert_eq!(options.aws().storage_class(), Some("NEARLINE"));
+    assert_eq!(options.google().storage_class(), Some("NEARLINE"));
+}
+
+#[test]
+fn a_google_credentials_file_and_an_impersonation_are_read_by_their_own_names() {
+    let options = ObjectOptions::from_properties([
+        (
+            "google_application_credentials",
+            "/etc/keys/service-account.json",
+        ),
+        (
+            "gcs.impersonate-service-account",
+            "lake-reader@trading.iam.gserviceaccount.com",
+        ),
+        ("gcs.user-project", "billing-project"),
+    ])
+    .expect("readable properties");
+    assert_eq!(
+        options.google().credentials_file(),
+        Some(std::path::Path::new("/etc/keys/service-account.json"))
+    );
+    assert_eq!(
+        options.google().impersonation(),
+        Some("lake-reader@trading.iam.gserviceaccount.com")
+    );
+    assert_eq!(options.google().user_project(), Some("billing-project"));
+}
+
+#[test]
+fn an_azure_blob_type_and_tier_are_read_and_a_name_neither_has_is_refused() {
+    let options = ObjectOptions::from_properties([
+        ("adls.blob-type", "append"),
+        ("adls.access-tier", "Cool"),
+        ("adls.encryption-scope", "desk-power"),
+    ])
+    .expect("readable properties");
+    assert_eq!(
+        options.azure().blob_type(),
+        crate::holder::object::BlobType::Append
+    );
+    assert_eq!(options.azure().access_tier(), Some("Cool"));
+    assert!(matches!(
+        options.encryption(),
+        Encryption::Scope(scope) if scope == "desk-power"
+    ));
+
+    let refused =
+        ObjectOptions::from_properties([("adls.blob-type", "ledger")]).expect_err("a refusal");
+    assert!(
+        refused.to_string().contains("block, append, or page"),
+        "{refused}"
+    );
+}
+
+#[test]
+fn an_encryption_shape_a_store_does_not_have_is_refused_when_the_client_is_built() {
+    // Azure spells a managed key as an account encryption scope, so naming a
+    // KMS key for it is a mistake worth hearing before the first write.
+    let refused = crate::holder::object::file_with(
+        "az://lake/part.bin",
+        ObjectOptions::default()
+            .with_environment(false)
+            .with_azure(crate::holder::object::AzureOptions::default().with_account("trades"))
+            .with_encryption(Encryption::kms("a-key")),
+    )
+    .expect_err("a refusal");
+    assert!(
+        refused.to_string().contains("encryption scope"),
+        "{refused}"
+    );
+
+    // And the other way round: a scope is Azure's shape, not Google's.
+    let refused = crate::holder::object::file_with(
+        "gs://lake/part.bin",
+        ObjectOptions::default()
+            .with_environment(false)
+            .with_encryption(Encryption::scope("desk-power")),
+    )
+    .expect_err("a refusal");
+    assert!(refused.to_string().contains("Encryption::kms"), "{refused}");
+}

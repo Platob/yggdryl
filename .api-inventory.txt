@@ -787,6 +787,99 @@ pub struct Path
   pub fn as_node(&self) -> Node
   pub fn as_leaf(&self) -> &Leaf
 
+### yggdryl::holder::object  [rust\src\holder\object\mod.rs]
+  Behind the non-default `object` feature. Amazon S3, Google Cloud Storage,
+  and Azure Blob Storage through one location/container/leaf trio.
+  pub fn located(url: &str) -> Result<Holder>
+  pub fn located_with(url: &str, options: ObjectOptions) -> Result<Holder>
+  pub fn file(url: &str) -> Result<File>
+  pub fn file_with(url: &str, options: ObjectOptions) -> Result<File>
+  pub fn folder(url: &str) -> Result<Folder>
+  pub fn folder_with(url: &str, options: ObjectOptions) -> Result<Folder>
+  pub fn file_at(provider: Provider, container: &str, key: &str) -> Result<File>
+  pub fn file_at_with(provider: Provider, container: &str, key: &str, options: ObjectOptions) -> Result<File>
+  pub fn folder_at(provider: Provider, container: &str, key: &str) -> Result<Folder>
+  pub fn folder_at_with(provider: Provider, container: &str, key: &str, options: ObjectOptions) -> Result<Folder>
+  pub fn path_at(provider: Provider, container: &str, key: &str) -> Result<Path>
+  pub fn path_at_with(provider: Provider, container: &str, key: &str, options: ObjectOptions) -> Result<Path>
+
+  pub enum Provider { Aws, Google, Azure }
+  pub const ALL: [Self; 3]
+  pub const fn from_scheme(scheme: &Scheme) -> Option<Self>
+  pub const fn scheme(&self) -> Scheme
+  pub const fn service(&self) -> &'static str
+  pub const fn described(&self) -> &'static str
+  pub const fn container_word(&self) -> &'static str
+  pub const fn metadata_prefix(&self) -> &'static str
+  pub const fn header_prefix(&self) -> &'static str
+  pub const fn min_part_size(&self) -> u64
+  pub const fn max_part_size(&self) -> u64
+  pub const fn max_single_put(&self) -> u64
+  pub const fn max_delete_batch(&self) -> usize
+  pub const fn max_list_page(&self) -> u16
+  pub const fn default_list_page(&self) -> u16
+  pub const fn defaults_to_virtual_hosting(&self) -> bool
+  impl Display, FromStr
+
+  pub struct Path / Folder / File
+  Path: pub fn bucket, key, stats, exists, as_directory, as_file
+  Folder: pub fn bucket, prefix, stats, exists, create
+  File: pub fn bucket, key, stats, exists
+  pub struct StatsSnapshot { requests, heads, gets, puts, posts, deletes, lists, retries, retry_tokens }
+
+  pub struct ObjectOptions
+  pub fn with_endpoint, with_region, with_credentials, with_anonymous, with_path_style,
+      with_part_size, with_multipart_threshold, with_list_page_size, with_max_attempts,
+      with_timeout, with_connect_timeout, with_encryption, with_proxy,
+      with_container_creation, with_container_deletion, with_default_metadata,
+      with_environment_prefix, with_environment_prefixes, with_environment,
+      with_aws, with_google, with_azure, with_properties, under
+  pub fn endpoint, region, credentials, anonymous, path_style, part_size,
+      multipart_threshold, list_page_size, max_attempts, timeout, connect_timeout,
+      reads_environment, encryption, environment_prefixes, proxy,
+      container_creation, container_deletion, default_metadata, aws, google, azure,
+      environment_properties, from_environment, from_properties
+
+  pub struct AwsOptions
+  pub fn with_profile, with_payload_signing, with_assumed_role, with_storage_class,
+      with_requester_pays, with_checksum
+  pub fn profile, payload_signing, assumed_role, storage_class, requester_pays, checksum
+  pub enum Checksum { Crc32, Sha256 }
+
+  pub struct GoogleOptions
+  pub const DEFAULT_SCOPE: &str
+  pub fn with_project, with_user_project, with_quota_project, with_credentials_file,
+      with_credentials_json, with_access_token, with_impersonation, with_scope,
+      with_storage_class, with_predefined_acl, with_metadata_host
+  pub fn project, user_project, quota_project, credentials_file, credentials_json,
+      access_token, impersonation, scope, storage_class, predefined_acl, metadata_host
+
+  pub struct AzureOptions
+  pub const DEFAULT_API_VERSION: &str, DEVELOPMENT_ACCOUNT: &str, DEVELOPMENT_KEY: &str
+  pub enum BlobType { Block, Append, Page }
+  pub fn with_connection_string, with_account, with_account_key, with_sas_token,
+      with_bearer_token, with_client_secret, with_federated_token_file,
+      with_managed_identity, with_client_id, with_authority_host, with_api_version,
+      with_blob_type, with_access_tier, with_data_lake
+  pub fn account, has_account_key, has_sas_token, tenant_id, client_id,
+      federated_token_file, managed_identity, authority_host, api_version,
+      blob_type, access_tier, data_lake, endpoint
+
+  pub struct Credentials
+  pub fn new, with_session_token, with_expiry, access_key_id, session_token, expires_at
+  pub struct AssumedRole
+  pub fn new, with_session_name, with_external_id, with_duration, with_region,
+      with_endpoint, role_arn, session_name, external_id, duration, region, endpoint
+
+  pub enum Encryption { Default, Managed, Kms(KmsKey), Customer(CustomerKey), Scope(String) }
+  pub fn managed, kms, kms_default, customer, scope, is_default,
+      write_headers(provider), read_headers(provider)
+  pub struct KmsKey
+  pub fn new, with_context, with_bucket_key, with_dual_layer, key_id, context,
+      bucket_key, dual_layer
+  pub struct CustomerKey
+  pub fn new, from_base64, from_base64_checked, encoded, checksum, digest
+
 ### yggdryl::holder::zip  [rust\src\holder\zip\mod.rs]
   pub fn mount(handle: Holder) -> Holder
   pub fn from_url(url: &crate::Url) -> crate::Result<Holder>
