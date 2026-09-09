@@ -12,7 +12,10 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
 use yggdryl::ArrowCast;
 use yggdryl::expression::Function as CoreFunction;
-use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme};
+use yggdryl::{
+    DataType as CoreDataType, Field as CoreField, PythonKind as CorePythonKind,
+    Scheme as CoreScheme,
+};
 
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
@@ -24,6 +27,7 @@ use crate::types::datatype::{
     arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
+use crate::types::python::{PyPythonMetadata, core_python_metadata_from_value};
 use crate::types::scalar::{PyScalar, from_py as scalar_from_py};
 use crate::uri::{PyUrl, core_url_from_value};
 use crate::{PyDifferenceIterator, cast_options, compare, value_error};
@@ -1854,6 +1858,15 @@ impl PyField {
         PyProtocolField::new(slf, CoreScheme::PANDAS)
     }
 
+    /// Returns the live Python runtime property view.
+    ///
+    /// This is where the declaring class a schema was built from is read and
+    /// written: `field.python.class_metadata`, and the three parts behind it.
+    #[getter]
+    fn python(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::PYTHON)
+    }
+
     /// Returns the children a row digest reads by default, in declaration order.
     #[getter]
     fn digest_fields(&self) -> Vec<Self> {
@@ -2435,6 +2448,17 @@ impl PyProtocolField {
         }
         Err(PyTypeError::new_err(format!(
             "{property} is a digest property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
+
+    /// The same rule for the `python:` vocabulary.
+    fn require_python(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::PYTHON {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a python property, and this is a {} view",
             self.scheme.as_str()
         )))
     }
@@ -3198,6 +3222,125 @@ impl PyProtocolField {
             )));
         };
         applied.map_err(value_error)?.to_pyarrow(py)
+    }
+
+    /// The declaring Python class, on the `python` view.
+    ///
+    /// One crossing carries the whole declaration - module, qualified name and
+    /// form - and answers `None` unless all three are stored, because a field
+    /// holding only some of them names no class. Assigning writes the three in
+    /// one validated overlay; assigning `None` removes them.
+    #[getter]
+    fn class_metadata(&self, py: Python<'_>) -> PyResult<Option<PyPythonMetadata>> {
+        self.require_python("class_metadata")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_python()
+            .class()
+            .map_err(value_error)?
+            .map(PyPythonMetadata::from_core))
+    }
+
+    #[setter]
+    fn set_class_metadata(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_python("class_metadata")?;
+        let py = value.py();
+        if value.is_none() {
+            let mut field = self.borrow_field_mut(py)?;
+            field.inner.as_python_mut().remove_class();
+            return Ok(());
+        }
+        let declared = core_python_metadata_from_value(value)?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_python_mut()
+            .set_class(&declared)
+            .map_err(value_error)
+    }
+
+    /// The dotted module path the declaring class lives in.
+    #[getter]
+    fn module(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_python("module")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_python().module().map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_module(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_python("module")?;
+        let module = value.extract::<String>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_python_mut()
+            .set_module(&module)
+            .map_err(value_error)
+    }
+
+    /// The qualified name the declaring class has inside its module.
+    #[getter]
+    fn qualname(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_python("qualname")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_python().qualname().map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_qualname(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_python("qualname")?;
+        let qualname = value.extract::<String>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_python_mut()
+            .set_qualname(&qualname)
+            .map_err(value_error)
+    }
+
+    /// The bare class name, derived from the qualified name on every read.
+    #[getter]
+    fn class_name(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_python("class_name")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_python().class_name().map(str::to_owned))
+    }
+
+    /// Which Python form the declaration takes.
+    #[getter]
+    fn kind(&self, py: Python<'_>) -> PyResult<Option<&'static str>> {
+        self.require_python("kind")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_python()
+            .kind()
+            .map_err(value_error)?
+            .map(CorePythonKind::as_str))
+    }
+
+    #[setter]
+    fn set_kind(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_python("kind")?;
+        let kind = CorePythonKind::from_str(&value.extract::<String>()?).map_err(value_error)?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_python_mut()
+            .set_kind(kind)
+            .map_err(value_error)
+    }
+
+    /// The dotted path an importing reader would spell.
+    ///
+    /// Absent exactly when either half of it is.
+    #[getter]
+    fn import_path(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_python("import_path")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_python().import_path())
     }
 
     /// Merges another protocol view's properties into this one, in place.

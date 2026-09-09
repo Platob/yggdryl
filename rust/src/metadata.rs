@@ -227,6 +227,14 @@ macro_rules! for_each_well_known_protocol {
             PandasFieldMut,
             "pandas"
         );
+        $emit!(
+            as_python,
+            as_python_mut,
+            PYTHON,
+            PythonField,
+            PythonFieldMut,
+            "Python runtime"
+        );
     };
 }
 

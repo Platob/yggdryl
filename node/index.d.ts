@@ -1019,6 +1019,14 @@ export declare class Field {
   get polars(): JsProtocolField
   /** The live pandas property view. */
   get pandas(): JsProtocolField
+  /**
+   * The live Python runtime property view.
+   *
+   * The declaring class a Python schema was built from is stored here. Its
+   * typed vocabulary is Rust and Python only; JavaScript reads and writes
+   * the three properties by name.
+   */
+  get python(): JsProtocolField
   /** The effective row-digest components, in declaration order. */
   digestFields(): Array<Field>
   /** The names of the effective row-digest components. */

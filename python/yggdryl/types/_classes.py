@@ -25,7 +25,13 @@ import weakref
 from decimal import Decimal
 from typing import Any, Callable, Literal, Mapping, TypeVar, get_args, get_origin
 
-from .._native import DataType, Field, Field as NativeField, Version
+from .._native import (
+    DataType,
+    Field,
+    Field as NativeField,
+    PythonMetadata,
+    Version,
+)
 from .nested import StructField
 
 _T = TypeVar("_T")
@@ -675,12 +681,9 @@ def _build_schema(
         if cls.__dict__.get("__yggdryl_field_class__", False)
         else "dataclass"
     )
-    root_metadata = {
-        "python.module": cls.__module__,
-        "python.class": cls.__name__,
-        "python.qualname": cls.__qualname__,
-        "python.kind": kind,
-    }
+    # The class states its own module and qualified name; the native value is
+    # what validates them and spells the `python:` keys they are stored under.
+    root_metadata = dict(PythonMetadata.from_type(cls, kind).properties)
     description = _docstring_summary(cls)
     if description:
         root_metadata["description"] = description

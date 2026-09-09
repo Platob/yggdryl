@@ -67,7 +67,7 @@ def test_scalar_decorator_builds_an_ordinary_dataclass_with_native_field() -> No
         "legs",
         "note",
     )
-    assert root.metadata["python.kind"] == "field"
+    assert root.python.kind == "field"
     assert root.metadata["description"] == "An executable order."
     assert root.dtype["order_id"].metadata["description"] == (
         "Stable order identifier."
@@ -134,7 +134,7 @@ def test_plain_dataclasses_compile_to_the_same_native_field_model() -> None:
 
     root = field(Point)
     assert root is field(Point(1))
-    assert root.metadata["python.kind"] == "dataclass"
+    assert root.python.kind == "dataclass"
     assert tuple(child.name for child in root.dtype) == ("x", "y")
     assert json.loads('{"x":"3"}', cls=Point) == Point(3)
 

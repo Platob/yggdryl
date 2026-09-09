@@ -27,6 +27,7 @@ from .types import (
     DataType as DataType,
     Field as Field,
     ProtocolField as ProtocolField,
+    PythonMetadata as PythonMetadata,
     Scalar as Scalar,
     Timezone as Timezone,
     Version as Version,

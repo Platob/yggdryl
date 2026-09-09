@@ -2057,6 +2057,8 @@ export declare const enums: {
   readonly codecs: readonly string[]
   /** Every answer a handle gives about what it addresses, e.g. `'file'`. */
   readonly ioKinds: readonly string[]
+  /** Every Python form a `python:kind` declaration names, e.g. `'dataclass'`. */
+  readonly pythonKinds: readonly string[]
   /** The compatibility targets `intoSchemeCompat` accepts, e.g. `'arrow'`. */
   readonly compatibilitySchemes: readonly CompatibilityScheme[]
   /** Every digest algorithm, e.g. `'xxh3-64'`, `'xxh3-128'`. */

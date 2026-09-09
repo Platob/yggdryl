@@ -139,9 +139,10 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 - `Field` alone owns metadata and cache-aware mutation; `DataType` has none.
   Protocol metadata is inert `<scheme>:<property>` text in one map; a protocol
   view borrows a whole `Field` and derefs to it, and typed protocol vocabulary
-  (`digest:role`, the `partition:` pair) lives there, never on `Field`. `Field`
-  owns `field:init`, `field:partition`, `alias`, `comment`, `display`,
-  `location` under any key; `PARQUET:field_id` is the reserved typed exception.
+  (`digest:role`, the `partition:` pair, the `python:` class declaration) lives
+  there, never on `Field`. `Field` owns `field:init`, `field:partition`,
+  `alias`, `comment`, `display`, `location` under any key; `PARQUET:field_id`
+  is the reserved typed exception.
 - `holder` is the only digest role: a declaration says what a field holds or
   derives, never what another contributes - mark one field, leave its sources
   ordinary columns.

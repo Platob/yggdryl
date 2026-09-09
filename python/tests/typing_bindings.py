@@ -29,6 +29,7 @@ from yggdryl import (
     MimeType,
     Parameters,
     ProtocolField,
+    PythonMetadata,
     RecordOptions,
     Statement,
     TextOptions,
@@ -538,6 +539,7 @@ iceberg_properties: ProtocolField = field.iceberg
 digest_properties: ProtocolField = field.digest
 identity_properties: ProtocolField = field.identity
 partition_properties: ProtocolField = field.partition
+python_properties: ProtocolField = field.python
 postgres_properties: ProtocolField = field.protocol("POSTGRES")
 protocol_scheme: str = iceberg_properties.scheme
 protocol_prefix: str = iceberg_properties.prefix
@@ -1159,6 +1161,31 @@ fix_declared_branch: fix.FixBranch = fix.FixBranch("bloomberg", aliases=["blp"])
 fix_branch_aliases: list[str] = fix_declared_branch.aliases
 fix_branch_pickle: tuple[object, tuple[str, str, list[str]]] = fix_declared_branch.__reduce__()
 fix_branch_has_alias: bool = fix_declared_branch.has_alias("blp")
+
+python_field: Field = Field("Quote", "int64", nullable=False)
+python_field.python.class_metadata = PythonMetadata(
+    "trading.book", "Book.Quote", "dataclass"
+)
+python_field.python.module = "trading.execution"
+python_field.python.qualname = "Book.Fill"
+python_field.python.kind = "field"
+python_declared: PythonMetadata | None = python_field.python.class_metadata
+python_module: str | None = python_field.python.module
+python_qualname: str | None = python_field.python.qualname
+python_class_name: str | None = python_field.python.class_name
+python_kind: str | None = python_field.python.kind
+python_import_path: str | None = python_field.python.import_path
+python_declaration: PythonMetadata = PythonMetadata("trading.book", "Quote")
+python_declared_module: str = python_declaration.module
+python_declared_qualname: str = python_declaration.qualname
+python_declared_class_name: str = python_declaration.class_name
+python_declared_kind: str = python_declaration.kind
+python_declared_path: str = python_declaration.import_path
+python_declared_importable: bool = python_declaration.is_importable
+python_declared_keyword: bool = python_declaration.is_keyword_constructed
+python_declared_properties: dict[str, str] = python_declaration.properties
+python_declared_hash: int = python_declaration.stable_hash()
+python_from_type: PythonMetadata = PythonMetadata.from_type(Field, "class")
 fix_user_tag_min: int = fix.USER_TAG_MIN
 fix_user_tag_max: int = fix.USER_TAG_MAX
 
@@ -1370,6 +1397,17 @@ assert fix_tag == 38 and fix_tags and fix_aliases and fix_description
 assert fix_branch == fix_standard_branch and fix_user_tag_min == 5000
 assert fix_user_tag_max == 40_000
 assert fix_id == "38:" and fix_vendor_id == "5001:cme"
+assert python_declared is not None and python_declared.kind == "field"
+assert python_module == "trading.execution" and python_qualname == "Book.Fill"
+assert python_class_name == "Fill" and python_kind == "field"
+assert python_import_path == "trading.execution.Book.Fill"
+assert python_declared_module == "trading.book" and python_declared_kind == "class"
+assert python_declared_qualname == python_declared_class_name == "Quote"
+assert python_declared_path == "trading.book.Quote" and python_declared_importable
+assert not python_declared_keyword and python_declared_hash
+assert python_declared_properties["python:module"] == "trading.book"
+assert python_from_type.class_name == "Field"
+assert python_properties.scheme == "python"
 assert fix_by_id and fix_maybe_by_id
 assert fix_registry_loaded is not None and fix_registry_from_url is not None
 assert fix_registry_from_handle is not None and fix_registry_from_text is not None

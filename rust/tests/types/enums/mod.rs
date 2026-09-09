@@ -2,8 +2,8 @@ use std::collections::{BTreeSet, HashSet};
 
 use arrow_schema::{IntervalUnit as ArrowIntervalUnit, TimeUnit as ArrowTimeUnit};
 use yggdryl::{
-    DataTypeId, DataTypeKind, Error, IOKind, IOMode, MediaType, MimeType, Scheme, TimeUnit,
-    UnionMode,
+    DataTypeId, DataTypeKind, Error, IOKind, IOMode, MediaType, MimeType, PythonKind, Scheme,
+    TimeUnit, UnionMode,
 };
 
 mod mime;
@@ -68,6 +68,47 @@ fn every_io_mode_has_one_required_canonical_spelling() {
 }
 
 #[test]
+fn every_python_kind_has_one_canonical_spelling() {
+    for (kind, canonical) in [
+        (PythonKind::Field, "field"),
+        (PythonKind::Dataclass, "dataclass"),
+        (PythonKind::TypedDict, "typed_dict"),
+        (PythonKind::NamedTuple, "named_tuple"),
+        (PythonKind::Enum, "enum"),
+        (PythonKind::NewType, "newtype"),
+        (PythonKind::TypeAlias, "type_alias"),
+        (PythonKind::Class, "class"),
+    ] {
+        assert_eq!(kind.as_str(), canonical);
+        assert_eq!(kind.as_ref(), canonical);
+        assert_eq!(kind.to_string(), canonical);
+        assert_eq!(PythonKind::from_str(canonical).unwrap(), kind);
+        // Unlike an IO mode, a stored form is exact: it is written by this
+        // crate under one key, never typed by a person into a URL or a config.
+        assert!(PythonKind::from_str(&canonical.to_uppercase()).is_err());
+    }
+    assert_eq!(PythonKind::ALL.len(), 8);
+    assert_eq!(
+        PythonKind::ALL
+            .iter()
+            .filter(|kind| kind.is_keyword_constructed())
+            .count(),
+        3
+    );
+
+    let error = PythonKind::from_str("record").unwrap_err();
+    assert!(
+        matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "python:kind"),
+        "{error}"
+    );
+    let rendered = error.to_string();
+    for kind in PythonKind::ALL {
+        assert!(rendered.contains(kind.as_str()), "{rendered}");
+    }
+    assert!(rendered.contains("\"record\""), "{rendered}");
+}
+
+#[test]
 fn every_known_scheme_parses_to_its_static_value() {
     for (source, expected) in [
         ("HTTP", Scheme::HTTP),
@@ -90,6 +131,11 @@ fn every_known_scheme_parses_to_its_static_value() {
         ("S3A", Scheme::S3A),
         ("S3N", Scheme::S3N),
         ("GS", Scheme::GS),
+        ("AZ", Scheme::AZ),
+        ("SPARK", Scheme::SPARK),
+        ("POLARS", Scheme::POLARS),
+        ("PANDAS", Scheme::PANDAS),
+        ("PYTHON", Scheme::PYTHON),
     ] {
         let parsed = Scheme::from_str(source).unwrap();
         assert_eq!(parsed, expected);

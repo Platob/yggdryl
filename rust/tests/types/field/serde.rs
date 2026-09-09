@@ -2,7 +2,7 @@
 //! serialized form is expressed over it.
 
 use yggdryl::Scalar;
-use yggdryl::{DataType, Field, Metadata, TimeUnit};
+use yggdryl::{DataType, Field, Metadata, PythonKind, PythonMetadata, TimeUnit};
 
 /// One representative field per shape the model can carry.
 fn shapes() -> Vec<Field> {
@@ -22,6 +22,14 @@ fn shapes() -> Vec<Field> {
     let mut with_metadata =
         Field::from_parts("price", DataType::Float64, false, [("venue", "XPAR")]).unwrap();
     with_metadata.set_parquet_field_id(17);
+    // A typed protocol vocabulary alongside the arbitrary key, so every format
+    // is read back through the validator its `Deserialize` re-runs.
+    with_metadata
+        .as_python_mut()
+        .set_class(
+            &PythonMetadata::new("trading.book", "Book.Quote", PythonKind::Dataclass).unwrap(),
+        )
+        .unwrap();
 
     let mut dictionary = Field::new(
         "status",

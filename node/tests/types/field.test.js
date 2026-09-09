@@ -516,6 +516,29 @@ test('a protocol view stays live on the field it was taken from', () => {
   assert.equal(field.getProperty('iceberg', 'doc'), 'last trade')
 })
 
+test('the python protocol view carries a validated class declaration', () => {
+  const field = new Field('Quote', 'int64', false)
+
+  // The typed vocabulary is Rust and Python only; JavaScript writes the three
+  // properties by name, and the core validates every one of them.
+  field.python.update({
+    kind: 'dataclass',
+    module: 'trading.book',
+    qualname: 'Book.Quote',
+  })
+
+  assert.equal(field.python.scheme, 'python')
+  assert.equal(field.python.key('qualname'), 'python:qualname')
+  assert.equal(field.get('python:qualname'), 'Book.Quote')
+  assert.deepEqual(field.python.keys(), ['kind', 'module', 'qualname'])
+
+  assert.throws(() => field.python.set('kind', 'record'), /python:kind/)
+  assert.throws(() => field.python.set('module', 'trading.'), /python:module/)
+  assert.throws(() => field.python.set('qualname', ''), /python:qualname/)
+  // A refused write leaves the declaration exactly as it stood.
+  assert.equal(field.python.get('kind'), 'dataclass')
+})
+
 test('the HTTP protocol view covers HTTPS and is ASCII case-insensitive', () => {
   const field = new Field('payload', 'binary', false, {
     'HTTPS:Content-Type': 'application/json',
@@ -564,6 +587,7 @@ test('every well-known protocol has its own live field accessor', () => {
     'spark',
     'polars',
     'pandas',
+    'python',
   ]
   const field = new Field('price', 'decimal(18, 6)', false)
 

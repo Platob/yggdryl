@@ -324,9 +324,34 @@ assert.equal(field.iceberg.delete('doc'), true)
 assert.equal(field.iceberg.size, 0)
 ```
 
-`digest`, `identity`, and `partition` join the well-known protocol getters, and
-`field.protocol(name)` takes a runtime scheme. There is no `https` getter,
-because HTTPS shares the canonical `http:` namespace.
+`digest`, `identity`, `partition`, and `python` join the well-known protocol
+getters, and `field.protocol(name)` takes a runtime scheme. There is no `https`
+getter, because HTTPS shares the canonical `http:` namespace.
+
+`field.python` carries the class a [Python](python.md#the-declaring-class)
+schema was built from. JavaScript reads and writes its three properties by
+name; the typed vocabulary over them is Rust and Python only, so the eight
+spellings `python:kind` accepts are `enums.pythonKinds`.
+
+```javascript
+const assert = require('node:assert/strict')
+const { Field, enums } = require('yggdryl')
+
+const quote = new Field('Quote', 'int64', false)
+quote.python.update({
+  kind: 'dataclass',
+  module: 'trading.book',
+  qualname: 'Book.Quote',
+})
+
+assert.equal(quote.get('python:qualname'), 'Book.Quote')
+assert.deepEqual(quote.python.keys(), ['kind', 'module', 'qualname'])
+assert.ok(enums.pythonKinds.includes('dataclass'))
+
+// The core validates every one of them, and a refusal changes nothing.
+assert.throws(() => quote.python.set('kind', 'record'), /python:kind/)
+assert.equal(quote.python.get('kind'), 'dataclass')
+```
 
 A schema also says which columns a path spells out.
 
@@ -899,6 +924,9 @@ assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Orders')
   or byte offset included.
 - Streaming `reader`/`writer`, the handle wrappers, `Hashed<H>`, and the
   per-protocol view types -> Rust-only.
+- The typed `python:` vocabulary (`classMetadata` and its parts) -> Rust and
+  Python only; `field.python` is the generic `Map` view here, and
+  `enums.pythonKinds` is where the eight forms are listed.
 - Rust spellings -> `as_iceberg()`/`as_iceberg_mut()`, `contentType` as
   `as_http().content_type()`, `arrow` as `as_arrow_properties`, and
   `fieldProperties` as `as_field_properties`.

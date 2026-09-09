@@ -26,6 +26,13 @@ use crate::metadata::{
 use crate::{Metadata, Result, Scheme};
 
 mod http;
+mod python;
+
+pub(crate) use python::{
+    PYTHON_KIND_KEY, PYTHON_MODULE_KEY, PYTHON_QUALNAME_KEY, canonicalize_python_kind,
+    validate_python_module, validate_python_qualname,
+};
+pub use python::{PythonKind, PythonMetadata};
 
 /// A field borrowed as one protocol: its properties by bare name, and the
 /// field itself.

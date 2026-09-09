@@ -280,10 +280,15 @@ def test_struct_hints_are_deterministic_and_keep_class_identity() -> None:
     assert inherited_box[0].dtype.id == "int64"
 
     root = Field.from_pyhint("quote", Quote)
-    assert root.metadata["python.module"] == __name__
-    assert root.metadata["python.class"] == "Quote"
-    assert root.metadata["python.qualname"] == "Quote"
-    assert root.metadata["python.kind"] == "dataclass"
+    declared = root.python.class_metadata
+    assert declared is not None
+    assert declared.module == __name__
+    # The bare name is derived from the qualified one, never stored beside it.
+    assert declared.class_name == "Quote"
+    assert declared.qualname == "Quote"
+    assert declared.kind == "dataclass"
+    assert declared.import_path == f"{__name__}.Quote"
+    assert declared.is_importable
 
 
 def test_literal_enum_newtype_typevar_and_union_inference() -> None:
@@ -382,7 +387,7 @@ def test_pep695_alias_members_preserve_none_and_annotated_metadata() -> None:
     assert generic_optional.nullable and generic_optional.dtype.id == "int64"
     assert generic_tagged.metadata["unit"] == "alias"
     assert fixed_tagged.metadata["source"] == "fixed"
-    assert generic_tagged.metadata["python.kind"] == "type_alias"
+    assert generic_tagged.python.kind == "type_alias"
 
 
 def test_recursive_deep_and_unresolved_annotations_fail_cleanly() -> None:

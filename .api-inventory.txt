@@ -1593,6 +1593,7 @@ pub struct Metadata(Arc<MetadataMap>);
   pub fn as_spark(&self) -> ProtocolMetadata<'_>
   pub fn as_polars(&self) -> ProtocolMetadata<'_>
   pub fn as_pandas(&self) -> ProtocolMetadata<'_>
+  pub fn as_python(&self) -> ProtocolMetadata<'_>
   pub fn comment(&self) -> Option<&str>
   pub fn display(&self) -> Option<&str>
   pub fn into_json(self) -> Result<String>
@@ -1745,6 +1746,7 @@ pub struct Scheme(SchemeValue);
   pub const SPARK: Self = Self(SchemeValue::Spark);
   pub const POLARS: Self = Self(SchemeValue::Polars);
   pub const PANDAS: Self = Self(SchemeValue::Pandas);
+  pub const PYTHON: Self = Self(SchemeValue::Python);
   pub const COMPATIBILITY_TARGETS: [Self; 5] = [Self::ARROW, Self::SPARK, Self::POLARS, Self::PANDAS, Self::ICEBERG];
   pub fn from_str(value: &str) -> Result<Self>
   pub fn as_str(&self) -> &str
@@ -2479,6 +2481,8 @@ pub type NullField = TypedField<scalar::Null>;
   pub fn as_polars_mut(&mut self) -> protocol::PolarsFieldMut<'_>
   pub fn as_pandas(&self) -> protocol::PandasField<'_>
   pub fn as_pandas_mut(&mut self) -> protocol::PandasFieldMut<'_>
+  pub fn as_python(&self) -> protocol::PythonField<'_>
+  pub fn as_python_mut(&mut self) -> protocol::PythonFieldMut<'_>
   pub fn set_name(&mut self, name: impl Into<SmolStr>)
   pub fn with_name(mut self, name: impl Into<SmolStr>) -> Self
   pub fn set_dtype(&mut self, dtype: DataType) -> Result<()>
@@ -2711,6 +2715,42 @@ impl<'field> HttpField<'field>
   pub fn set_vary(&mut self, value: impl Into<String>) -> Result<()>
   pub fn remove_vary(&mut self) -> Option<String>
 
+### yggdryl::types::protocol::python  [rust\src\types\protocol\python.rs]
+pub enum PythonKind
+  pub const ALL: [Self; 8]
+  pub const fn as_str(self) -> &'static str
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn is_keyword_constructed(self) -> bool
+  impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for PythonKind  (Ord is declaration order, not the stored spelling)
+  impl FromStr for PythonKind  (Err = Error)
+  impl AsRef<str> for PythonKind
+  impl fmt::Display for PythonKind
+  pub struct PythonMetadata
+  pub fn new(module: impl Into<SmolStr>, qualname: impl Into<SmolStr>, kind: PythonKind) -> Result<Self>
+  pub fn module(&self) -> &str
+  pub fn qualname(&self) -> &str
+  pub fn class_name(&self) -> &str
+  pub const fn kind(&self) -> PythonKind
+  pub fn import_path(&self) -> String
+  pub fn is_importable(&self) -> bool
+  pub fn stable_hash(&self) -> u64
+  pub fn properties(&self) -> [(&'static str, &str); 3]
+  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for PythonMetadata  (Ord is module-major, then qualified name, then form)
+  impl fmt::Display for PythonMetadata  (the import path, "<module>.<qualname>")
+  impl<'field> PythonField<'field>
+  pub fn module(&self) -> Option<&'field str>
+  pub fn qualname(&self) -> Option<&'field str>
+  pub fn class_name(&self) -> Option<&'field str>
+  pub fn kind(&self) -> Result<Option<PythonKind>>
+  pub fn class(&self) -> Result<Option<PythonMetadata>>
+  pub fn import_path(&self) -> Option<String>
+  impl PythonFieldMut<'_>
+  pub fn set_class(&mut self, value: &PythonMetadata) -> Result<()>
+  pub fn set_module(&mut self, value: &str) -> Result<()>
+  pub fn set_qualname(&mut self, value: &str) -> Result<()>
+  pub fn set_kind(&mut self, value: PythonKind) -> Result<()>
+  pub fn remove_class(&mut self) -> Option<PythonMetadata>
+
 ### yggdryl::types::protocol  [rust\src\types\protocol\mod.rs]
 pub struct ProtocolField<'field>
   pub const fn as_field(&self) -> &'field Field
@@ -2811,6 +2851,9 @@ pub struct ProtocolField<'field>
   pub struct PandasField<'field>(ProtocolField<'field>);
   pub struct PandasFieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> PandasField<'_>
+  pub struct PythonField<'field>(ProtocolField<'field>);
+  pub struct PythonFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::types::scalar  [rust\src\types\scalar.rs]
 pub struct Float16(u16);
@@ -3098,8 +3141,9 @@ pub struct Authority(SmolStr);
   pub fn stable_hash(&self) -> u64
   pub struct UriParents<'a>
   pub struct Url(Uri);
-  pub fn from_str(value: &str) -> Result<Self>
-  pub fn from_path(value: impl AsRef<Path>) -> Result<Self>
+  pub fn from_str(value: &str) -> Result<Self>  (strict: text naming no root is not a location)
+  pub fn from_path(value: impl AsRef<Path>) -> Result<Self>  (a path naming no root is rooted at the working directory)
+  pub fn from_location(value: &str) -> Result<Self>  (a URL where the text names one, else a path through from_path)
   pub fn from_uri(value: Uri) -> Result<Self>
   pub fn from_json(value: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>

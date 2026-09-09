@@ -416,9 +416,9 @@ del field.iceberg["doc"]
 assert not field.iceberg
 ```
 
-Every well-known [protocol](../types/protocol.md) is an attribute, including `digest`, `identity` and `partition`, and `field.protocol(name)` takes one known only at runtime. `identity` holds arbitrary inert strings, while `digest["role"]` accepts only `"holder"`.
+Every well-known [protocol](../types/protocol.md) is an attribute, including `digest`, `identity`, `partition` and `python`, and `field.protocol(name)` takes one known only at runtime. `identity` holds arbitrary inert strings, while `digest["role"]` accepts only `"holder"`.
 
-`partition` is the one view with a typed vocabulary of its own: `sources` names the field paths a column derives from and `transform` names the [expression](../expression/grammar.md) function that produces it, both answered only by `field.partition`. `apply_arrow_batch` is answered by `field.partition` and `field.digest` alike - it is the one verb both declaring protocols share - and [`field.apply_arrow_batch`](../types/field.md#applying-a-schemas-declarations) runs every step over one batch.
+`partition` and `python` are the views with a typed vocabulary of their own here: `sources` names the field paths a column derives from and `transform` names the [expression](../expression/grammar.md) function that produces it, both answered only by `field.partition`, while [`field.python`](#the-declaring-class) answers the declaring class. `apply_arrow_batch` is answered by `field.partition` and `field.digest` alike - it is the one verb both declaring protocols share - and [`field.apply_arrow_batch`](../types/field.md#applying-a-schemas-declarations) runs every step over one batch.
 
 ```python
 import pyarrow as pa
@@ -540,6 +540,94 @@ assert Trade.into_field().into_arrow_schema().field("trade_id").type == pa.uint3
 ```
 
 The import preserves exact physical layout and metadata, and `into_dataclass` derives its annotations from that native graph.
+
+### The declaring class
+
+Every schema built from a Python annotation remembers the class it came from, under the `python:` [protocol](../types/protocol.md). `field.python` is that view, and `PythonMetadata` is the whole declaration as one immutable value: the module it lives in, the qualified name it has there, and which Python form it takes. The three are validated together, so a field never carries half a declaration.
+
+```python
+from dataclasses import dataclass
+
+from yggdryl import PythonMetadata, field
+
+@dataclass
+class Quote:
+    symbol: str
+    price: int
+
+declared = field(Quote).python.class_metadata
+
+assert declared == PythonMetadata(__name__, "Quote", "dataclass")
+assert declared.module == __name__
+assert declared.qualname == "Quote"
+assert declared.kind == "dataclass"
+assert declared.import_path == f"{__name__}.Quote"
+assert declared.is_importable
+
+# The bare name is derived from the qualified one, never stored beside it, so
+# a nested class answers the name Python gives it.
+nested = PythonMetadata("trading.book", "Book.Quote", "dataclass")
+assert nested.class_name == "Quote"
+
+# A class declared inside a function keeps the segment Python writes for it,
+# and reports that no import reaches it.
+local = PythonMetadata("app", "build.<locals>.Row", "dataclass")
+assert local.class_name == "Row"
+assert not local.is_importable
+```
+
+Assigning the value writes all three properties in one validated overlay; assigning `None` removes them. `properties` is the same three entries as a mapping, which is what lets one `Field` construction carry the declaration.
+
+```python
+from yggdryl import DataType, Field, PythonMetadata
+
+declared = PythonMetadata("trading.book", "Quote", "field")
+
+quote = Field("Quote", DataType.from_str("struct<symbol:string>"), nullable=False)
+quote.python.class_metadata = declared
+
+assert quote.python.class_metadata == declared
+assert quote.python.class_name == "Quote"
+assert quote.metadata["python:qualname"] == "Quote"
+assert declared.properties == {
+    "python:kind": "field",
+    "python:module": "trading.book",
+    "python:qualname": "Quote",
+}
+
+# Every part is readable on its own; only the whole is a class.
+del quote.python["kind"]
+assert quote.python.kind is None
+assert quote.python.class_metadata is None
+assert quote.python.module == "trading.book"
+
+quote.python.class_metadata = None
+assert not quote.python
+```
+
+A value Python itself could not have written is refused where it is written, not where it is read.
+
+```python
+from yggdryl import Field, PythonMetadata
+
+for module, qualname in [("trading.", "Quote"), ("trading", ""), ("class", "Quote")]:
+    try:
+        PythonMetadata(module, qualname)
+    except ValueError as error:
+        assert "python:" in str(error)
+    else:
+        raise AssertionError("a name Python could not have written must be refused")
+
+# The generic mapping path runs the same validator.
+try:
+    Field("quote", "int64", metadata={"python:kind": "record"})
+except ValueError as error:
+    assert "python:kind" in str(error)
+else:
+    raise AssertionError("an unknown class kind must be refused")
+```
+
+`into_dataclass` reads the same declaration: the class name and module it materializes come from `python:qualname` and `python:module` unless the caller names them, and the field's own name is the last fallback.
 
 ## ASCII vocabularies as enums
 
@@ -1376,8 +1464,9 @@ assert selected.into_fixmsg(codec).by_name("Name").as_py() == "Orders"
 - `stable_hash()` -> never locks a mutable wrapper, and a copy or an unpickle arrives unlocked.
 - metadata views -> unhashable, but compare by their current content like ordinary mapping views.
 - Iceberg views -> keep snapshot v1 `manifests`, v3 key and lineage fields, manifest encryption metadata, and every data-file count, bound, split, encryption, delete, and row-lineage field.
-- Rust's per-protocol view types (`HttpField`, `IcebergField`, `DigestField`, `IdentityField`, and sixteen others) -> no Python counterpart yet; the `partition:` vocabulary is the exception.
+- Rust's per-protocol view types (`HttpField`, `IcebergField`, `DigestField`, `IdentityField`, and sixteen others) -> no Python counterpart yet; the `partition:` and `python:` vocabularies are the exceptions.
 - `sources` or `transform` on another protocol's view -> `TypeError` naming that view's scheme; `apply_arrow_batch` is answered by `partition` and `digest` and refuses every other.
+- `class_metadata`, `module`, `qualname`, `class_name`, `kind` or `import_path` on another protocol's view -> `TypeError` naming that view's scheme.
 - `field.apply_arrow_batch` -> `cast`, then `partition`, then `digest`, all three on by default.
 - a `partition` transform of two arguments, `truncate` among them -> `ValueError`, and the field is left unchanged.
 - a derived column the batch already carries with values -> left alone; one absent or all-null is filled.
