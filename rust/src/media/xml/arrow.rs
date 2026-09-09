@@ -368,26 +368,36 @@ fn document_end<H: IOBase + ?Sized>(handle: &H, root: &str) -> Result<Option<u64
     }
 }
 
-/// Return the document and row element names a write should keep using.
+/// Return the document and row element names a write should use.
 ///
-/// A stored document decides both, because appending under a different name
-/// would leave two shapes in one document; a document with nothing stored
-/// takes the declared names.
+/// One rule for both: a declared name wins, then the name the stored document
+/// already uses, then the default. Reading those costs the head of the
+/// document - the markup up to its first row - and a document whose head
+/// cannot be read is not an error here, because a write that replaces it has
+/// no reason to care what it used to say.
 pub(crate) fn stored_names<H: IOBase + ?Sized>(
     handle: &H,
     options: &XmlOptions,
 ) -> Result<(String, String)> {
-    if handle.is_empty() {
-        return Ok((
-            options.write_root().to_owned(),
-            options.write_row().to_owned(),
-        ));
-    }
-    let (root, row) = super::reader::read_names(decoded(handle)?, options)?;
+    let (root, row) = if handle.is_empty() {
+        (None, None)
+    } else {
+        decoded(handle)
+            .and_then(|source| super::index::read_names(source, options))
+            .unwrap_or((None, None))
+    };
     Ok((
-        root.map_or_else(|| options.write_root().to_owned(), Into::into),
-        row.map_or_else(|| options.write_row().to_owned(), Into::into),
+        named(options.root(), root, options.write_root()),
+        named(options.row(), row, options.write_row()),
     ))
+}
+
+/// Answer the declared name, then the stored one, then the default.
+fn named(declared: Option<&str>, stored: Option<SmolStr>, default: &str) -> String {
+    declared.map_or_else(
+        || stored.map_or_else(|| default.to_owned(), Into::into),
+        str::to_owned,
+    )
 }
 
 /// Restate one natural row so the field it is read under can accept it.
@@ -400,14 +410,24 @@ pub(crate) fn stored_names<H: IOBase + ?Sized>(
 fn shaped(value: Scalar, field: &Field) -> Result<Scalar> {
     match field.dtype() {
         DataType::Struct(fields) => {
-            let Scalar::Nested(Nested::Record(_)) = &value else {
+            let Scalar::Nested(Nested::Record(record)) = &value else {
                 return Ok(value);
             };
+            let record = record.as_map();
             let entries = fields
                 .iter()
                 .map(|child| {
-                    let held = value
-                        .get_key_str(child.name())
+                    // Exact first, then the ASCII case-insensitive match every
+                    // cast in the project reconciles names by, so a column
+                    // declared `symbol` reads the element written `Symbol`.
+                    let held = record
+                        .get(child.name())
+                        .or_else(|| {
+                            record
+                                .iter()
+                                .find(|(name, _)| name.eq_ignore_ascii_case(child.name()))
+                                .map(|(_, value)| value)
+                        })
                         .cloned()
                         .unwrap_or(Scalar::Null);
                     Ok((SmolStr::new(child.name()), shaped(held, child)?))

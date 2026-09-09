@@ -73,16 +73,6 @@ impl<R: Read> Rows<R> {
         }
     }
 
-    /// Borrow the document element this stream read, once it has read one.
-    pub(crate) fn root(&self) -> Option<&str> {
-        self.root.as_deref()
-    }
-
-    /// Borrow the row element this stream reads, declared or discovered.
-    pub(crate) fn row(&self) -> Option<&str> {
-        self.row.as_deref()
-    }
-
     /// Decode the next row, or answer that the document has no more.
     fn next_row(&mut self) -> Result<Option<Scalar>> {
         loop {
@@ -255,17 +245,4 @@ pub(super) fn row_record(value: Scalar) -> Result<Scalar> {
         Scalar::Null => Scalar::from_record(Vec::<(SmolStr, Scalar)>::new()),
         leaf => Scalar::from_record([(SmolStr::new_static(TEXT_KEY), leaf)]),
     }
-}
-
-/// Read the document and row element names one stream already uses.
-///
-/// The scan stops at the first row, so this costs the head of the document
-/// rather than the whole of it.
-pub(crate) fn read_names<R: Read>(
-    source: R,
-    options: &XmlOptions,
-) -> Result<(Option<SmolStr>, Option<SmolStr>)> {
-    let mut rows = Rows::new(source, options);
-    rows.next().transpose()?;
-    Ok((rows.root().map(SmolStr::new), rows.row().map(SmolStr::new)))
 }

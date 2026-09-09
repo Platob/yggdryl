@@ -2408,6 +2408,9 @@ class Parquet(Media):
 class Avro(Media):
     """An Apache Avro object container."""
 
+class Xml(Media):
+    """An XML document read and written as rows."""
+
 class Text(IOBase):
     """Plain-text rows under one retained flat configuration."""
 

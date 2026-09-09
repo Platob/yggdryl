@@ -1,4 +1,4 @@
-"""Shared byte-oriented helpers for the public JSON, TOML, and YAML modules."""
+"""Shared byte-oriented helpers for the public JSON, TOML, YAML, and XML modules."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any, Literal, Protocol, TypeAlias, TypeVar, cast
 
 from .. import _native
 
-Format = Literal["json", "json_lines", "toml", "yaml"]
+Format = Literal["json", "json_lines", "toml", "yaml", "xml"]
 CodecFormat: TypeAlias = Literal[
     "json",
     "json_lines",
@@ -22,6 +22,10 @@ CodecFormat: TypeAlias = Literal[
     "application/toml",
     "yaml",
     "yml",
+    "xml",
+    ".xml",
+    "application/xml",
+    "text/xml",
 ]
 ErrorPolicy = Literal["raise", "default"]
 Buffer: TypeAlias = bytes | bytearray | memoryview

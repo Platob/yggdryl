@@ -313,3 +313,52 @@ fn claims(row: &mut Option<SmolStr>, name: &str) -> bool {
         }
     }
 }
+
+/// Read the document and row element names one stream already uses.
+///
+/// The scan reads markup and decodes no value, and it stops as soon as both
+/// names are known - at the document element when a row is declared, and at
+/// the first element under it otherwise - so this costs the head of the
+/// document rather than the whole of it.
+pub(crate) fn read_names<R: Read>(
+    source: R,
+    options: &XmlOptions,
+) -> Result<(Option<SmolStr>, Option<SmolStr>)> {
+    let mut reader =
+        quick_xml::Reader::from_reader(std::io::BufReader::with_capacity(FETCH_BYTE_SIZE, source));
+    let config = reader.config_mut();
+    config.check_end_names = true;
+    config.expand_empty_elements = false;
+
+    let mut root: Option<SmolStr> = None;
+    let mut row = options.row().map(SmolStr::new);
+    let mut buffer = Vec::new();
+    loop {
+        let position = position(&reader);
+        buffer.clear();
+        let named = match reader
+            .read_event_into(&mut buffer)
+            .map_err(|error| protocol(error, position))?
+        {
+            Event::Start(start) | Event::Empty(start) => {
+                let name = start.name();
+                Some(SmolStr::new(name_text(name.as_ref(), position)?))
+            }
+            Event::Eof | Event::End(_) => break,
+            _ => None,
+        };
+        let Some(name) = named else {
+            continue;
+        };
+        if root.is_none() {
+            root = Some(name);
+            if row.is_some() {
+                break;
+            }
+            continue;
+        }
+        row = Some(name);
+        break;
+    }
+    Ok((root, row))
+}

@@ -14,6 +14,7 @@ from .._native import (
     RecordOptions,
     Text,
     TextOptions,
+    Xml,
 )
 from . import avro, iceberg
 
@@ -27,6 +28,7 @@ __all__ = [
     "RecordOptions",
     "Text",
     "TextOptions",
+    "Xml",
     "avro",
     "iceberg",
 ]

@@ -305,3 +305,81 @@ fn a_handle_named_xml_reads_and_writes_one_scalar() {
         Scalar::from_sequence([Scalar::from(2_i64)])
     );
 }
+
+#[test]
+fn a_declared_number_reads_the_digits_a_document_spells() {
+    let field = Field::new(
+        "row",
+        DataType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Float64.required_field("price"),
+            DataType::Boolean.required_field("live"),
+        ])
+        .unwrap(),
+        false,
+    );
+    let value = from_xml_scalar_with_field(
+        "<row><id>-7</id><price>1.5e3</price><live>TRUE</live></row>",
+        &field,
+    )
+    .unwrap();
+    assert_eq!(
+        value,
+        Scalar::from_sequence([
+            Scalar::from(-7_i64),
+            Scalar::from(1500.0_f64),
+            Scalar::from(true),
+        ])
+    );
+}
+
+#[test]
+fn a_spelling_no_codec_writes_is_refused_rather_than_guessed() {
+    let integer = Field::new(
+        "row",
+        DataType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
+        false,
+    );
+    for text in ["+++5", "-+5", "1_0", "0x10", "5.", ""] {
+        let document = format!("<row><id>{text}</id></row>");
+        assert!(
+            from_xml_scalar_with_field(&document, &integer).is_err(),
+            "{text} was read as an integer"
+        );
+    }
+    // The sign a codec does write is read.
+    assert_eq!(
+        from_xml_scalar_with_field("<row><id>+5</id></row>", &integer).unwrap(),
+        Scalar::from_sequence([Scalar::from(5_i64)])
+    );
+}
+
+#[test]
+fn a_literal_the_declared_width_cannot_hold_is_refused() {
+    let field = Field::new(
+        "row",
+        DataType::from_fields([DataType::Float64.required_field("price")]).unwrap(),
+        false,
+    );
+    // Parsing answers infinity and zero for these; neither is what was written.
+    for text in ["1e400", "-1e400", "1e-400"] {
+        let document = format!("<row><price>{text}</price></row>");
+        let error = from_xml_scalar_with_field(&document, &field)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("float64"), "{text}: {error}");
+    }
+    // A value that spells itself not-a-number is still read.
+    for text in ["inf", "-inf", "Infinity", "NaN"] {
+        let document = format!("<row><price>{text}</price></row>");
+        assert!(
+            from_xml_scalar_with_field(&document, &field).is_ok(),
+            "{text} was refused"
+        );
+    }
+    // And a zero written as one is a zero.
+    assert_eq!(
+        from_xml_scalar_with_field("<row><price>0.0e-9</price></row>", &field).unwrap(),
+        Scalar::from_sequence([Scalar::from(0.0_f64)])
+    );
+}

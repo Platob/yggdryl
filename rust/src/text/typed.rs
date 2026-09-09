@@ -171,40 +171,75 @@ fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar>
 /// A format with integer literals hands one over already typed and it passes
 /// through here untouched. A format that carries only text - XML, and every
 /// column a delimited file holds - spells it, and the declared field is what
-/// says to read those digits as a number. The exact width is applied by the
-/// canonical value contract afterwards, so this only has to answer whether the
-/// text is an integer at all.
+/// says to read those digits as a number. The accepted spelling is the one
+/// every codec writes: an optional sign and decimal digits, nothing else. The
+/// exact width is applied by the canonical value contract afterwards.
 fn integer(value: Scalar, field: &Field) -> Result<Scalar> {
     let Some(text) = value.as_str() else {
         return Ok(value);
     };
     let text = text.trim();
-    if let Some(negative) = text.strip_prefix('-') {
-        return negative
-            .parse::<i128>()
-            .ok()
-            .and_then(|magnitude| magnitude.checked_neg())
-            .map(Scalar::from)
-            .ok_or_else(|| expected_text(field));
+    let (negative, digits) = match text.strip_prefix('-') {
+        Some(digits) => (true, digits),
+        None => (false, text.strip_prefix('+').unwrap_or(text)),
+    };
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(expected_text(field));
     }
-    text.trim_start_matches('+')
-        .parse::<u128>()
+    let magnitude = digits.parse::<u128>().map_err(|_| expected_text(field))?;
+    if !negative {
+        return Ok(Scalar::from(magnitude));
+    }
+    // The most negative integer has no positive counterpart, so it is named
+    // rather than reached by negating one.
+    i128::try_from(magnitude)
+        .ok()
+        .and_then(i128::checked_neg)
+        .or_else(|| (magnitude == 1 << 127).then_some(i128::MIN))
         .map(Scalar::from)
-        .map_err(|_| expected_text(field))
+        .ok_or_else(|| expected_text(field))
 }
 
 /// Read one floating-point value a document spells rather than types.
 ///
 /// The accepted spellings are the ones the codecs write: a decimal or
-/// exponential literal, `inf`, `-inf`, and `NaN`.
+/// exponential literal, and `inf`, `infinity` or `nan` in any case, with an
+/// optional sign. A literal whose value does not fit - `1e400`, which parses
+/// as infinity, or `1e-400`, which parses as zero - is refused rather than
+/// answered with a number nobody wrote.
 fn floating(value: Scalar, field: &Field) -> Result<Scalar> {
     let Some(text) = value.as_str() else {
         return Ok(value);
     };
-    text.trim()
-        .parse::<f64>()
-        .map(Scalar::from)
-        .map_err(|_| expected_text(field))
+    let text = text.trim();
+    let parsed = text.parse::<f64>().map_err(|_| expected_text(field))?;
+    let magnitude = text.trim_start_matches(['-', '+']);
+    if !parsed.is_finite() && !is_non_finite_text(magnitude) {
+        return Err(overflowed(field, text));
+    }
+    if parsed == 0.0
+        && magnitude
+            .split(['e', 'E'])
+            .next()
+            .is_some_and(has_significant_digit)
+    {
+        return Err(overflowed(field, text));
+    }
+    Ok(Scalar::from(parsed))
+}
+
+/// Return whether text spells a value that is not a finite number.
+fn is_non_finite_text(text: &str) -> bool {
+    text.eq_ignore_ascii_case("inf")
+        || text.eq_ignore_ascii_case("infinity")
+        || text.eq_ignore_ascii_case("nan")
+}
+
+/// Return whether a mantissa holds a digit other than zero.
+fn has_significant_digit(mantissa: &str) -> bool {
+    mantissa
+        .bytes()
+        .any(|byte| byte.is_ascii_digit() && byte != b'0')
 }
 
 /// Read one boolean a document spells rather than types.
@@ -223,6 +258,18 @@ fn boolean(value: Scalar, field: &Field) -> Result<Scalar> {
         return Ok(Scalar::from(false));
     }
     Err(expected_text(field))
+}
+
+/// Name a literal the declared width cannot hold.
+fn overflowed(field: &Field, text: &str) -> Error {
+    invalid(
+        field,
+        format_smolstr!(
+            "expected a value {} can hold, got {}",
+            field.dtype(),
+            crate::text::elide_display(&text)
+        ),
+    )
 }
 
 /// Name the datatype whose text spelling was expected.

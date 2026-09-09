@@ -1015,3 +1015,110 @@ fn an_append_writes_the_rows_it_adds_and_the_end_tag() {
     assert!(read < size / 8, "read {read} of {size} bytes");
     assert_eq!(media.row_size().unwrap(), 201);
 }
+
+#[test]
+fn a_declared_column_matches_its_element_the_way_a_cast_matches_names() {
+    let media = stored(
+        "trades.xml",
+        "<rows><row><Symbol>AAPL</Symbol><ID>7</ID></row></rows>",
+    )
+    .with_field(
+        DataType::from_fields([
+            DataType::Utf8.nullable_field("symbol"),
+            DataType::Int64.nullable_field("id"),
+        ])
+        .unwrap()
+        .required_field("row"),
+    );
+    let batches = collected(&media);
+    assert_eq!(column(&batches, "symbol"), vec![Scalar::from("AAPL")]);
+    assert_eq!(column(&batches, "id"), vec![Scalar::from(7_i64)]);
+
+    // The positional read answers the same rows.
+    let ranged: Vec<RecordBatch> = media
+        .read_range_arrow_reader(0, 1)
+        .unwrap()
+        .map(|batch| batch.unwrap())
+        .collect();
+    assert_eq!(column(&ranged, "symbol"), vec![Scalar::from("AAPL")]);
+}
+
+#[test]
+fn a_declared_element_name_is_what_a_write_uses() {
+    // A declared row the document does not use is still what is written, and
+    // the columns are the ones the caller handed over.
+    let mut media = stored(
+        "catalog.xml",
+        "<catalog>\n  <item><a>1</a></item>\n</catalog>",
+    )
+    .with_options(
+        XmlOptions::new()
+            .with_row("line")
+            .unwrap()
+            .with_field(text_field()),
+    );
+    let options = media.record_options().unwrap();
+    media
+        .append_arrow_reader(text_reader(vec!["z"]), &options)
+        .unwrap();
+    assert_eq!(
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
+        "<catalog>\n  <item><a>1</a></item>\n  <line><a>z</a></line>\n</catalog>"
+    );
+
+    // A declared root renames the document an overwrite replaces.
+    let mut renamed = stored(
+        "catalog.xml",
+        "<catalog>\n  <item><a>1</a></item>\n</catalog>",
+    )
+    .with_options(
+        XmlOptions::new()
+            .with_root("shipment")
+            .unwrap()
+            .with_field(text_field()),
+    );
+    let options = renamed.record_options().unwrap();
+    renamed
+        .overwrite_arrow_reader(text_reader(vec!["z"]), &options)
+        .unwrap();
+    assert_eq!(
+        renamed
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
+        "<shipment>\n  <item><a>z</a></item>\n</shipment>"
+    );
+}
+
+#[test]
+fn an_overwrite_replaces_bytes_it_could_not_have_read() {
+    // The encoding's own overwrite keeps a stored document's names, so it asks
+    // what they are - and bytes that answer nothing are still replaced, because
+    // a write that replaces them has no reason to care what they used to say.
+    let mut handle = handle("trades.xml");
+    handle.write_all_bytes(b"not xml at all <<<").unwrap();
+    super::overwrite_arrow_reader(&mut handle, text_reader(vec!["z"]), &XmlOptions::new()).unwrap();
+    assert_eq!(
+        handle
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
+        "<rows>\n  <row><a>z</a></row>\n</rows>"
+    );
+
+    // The record surface completes onto the stored shape first, so it reports
+    // a document it cannot read rather than replacing it unasked.
+    let media = stored("trades.xml", "not xml at all <<<").with_field(text_field());
+    let options = media.record_options().unwrap();
+    assert!(media.read_arrow_field(&options).is_ok());
+    assert!(
+        crate::iobase::stored_field(media.handle(), &options).is_err(),
+        "a document that cannot be read has no stored shape to complete onto"
+    );
+}

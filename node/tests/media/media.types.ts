@@ -10,7 +10,7 @@ const mime = new MimeType()
 const parsedMime: MimeType = MimeType.from(mimeInput)
 const knownMime: MimeType = MimeType.OCTET_STREAM
 const puffinMime: MimeType = MimeType.PUFFIN
-const mimeFormat: 'json' | 'json_lines' | 'yaml' | 'toml' | null =
+const mimeFormat: 'json' | 'json_lines' | 'yaml' | 'toml' | 'xml' | null =
   MimeType.JSON.format
 const contentCoding: 'gzip' | 'compress' | 'deflate' | 'br' | 'zstd' | null =
   MimeType.GZIP.contentCoding

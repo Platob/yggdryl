@@ -2117,7 +2117,7 @@ export declare class MimeType {
   /** Registered HTTP Content-Encoding token. */
   get contentCoding(): 'gzip' | 'compress' | 'deflate' | 'br' | 'zstd' | null
   /** Yggdryl structured-text format represented by this MIME value. */
-  get format(): 'json' | 'json_lines' | 'yaml' | 'toml' | null
+  get format(): 'json' | 'json_lines' | 'yaml' | 'toml' | 'xml' | null
   /** Whether this uses a built-in allocation-free value. */
   isKnown(): boolean
   /** Whether the top-level type is application. */

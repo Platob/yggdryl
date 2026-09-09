@@ -731,8 +731,10 @@ pub(crate) fn codec_encode_path(
     let format = format_from_str(format)?;
     let value = from_py(value)?;
 
-    if format == Format::Toml {
-        yggdryl::text::toml::validate_for_write(&value).map_err(value_error)?;
+    match format {
+        Format::Toml => yggdryl::text::toml::validate_for_write(&value).map_err(value_error)?,
+        Format::Xml => yggdryl::text::xml::validate_for_write(&value).map_err(value_error)?,
+        _ => {}
     }
 
     // Delegate path interpretation and OSError construction to Python while
@@ -929,10 +931,11 @@ pub(crate) fn codec_decode_iter(
     native_scalar: bool,
 ) -> PyResult<PyCodecScalarIterator> {
     let format = format_from_str(format)?;
-    if format == Format::Toml {
-        return Err(PyValueError::new_err(
-            "TOML supports exactly one document; use loads()",
-        ));
+    if matches!(format, Format::Toml | Format::Xml) {
+        return Err(PyValueError::new_err(format!(
+            "{} supports exactly one document; use loads()",
+            format.as_str().to_uppercase()
+        )));
     }
     let methods = if format == Format::JsonLines {
         ["readline", "read"]
@@ -958,7 +961,9 @@ pub(crate) fn codec_decode_iter(
             reader, limits,
         )),
         Format::Yaml => Box::new(yggdryl::text::yaml::Reader::with_limits(reader, limits)),
-        Format::Toml => unreachable!("TOML was rejected before reader construction"),
+        Format::Toml | Format::Xml => {
+            unreachable!("a one-document format was rejected before reader construction")
+        }
     };
     Ok(PyCodecScalarIterator {
         inner,
@@ -1060,9 +1065,10 @@ pub(crate) fn codec_encode_all_writer(
                     formatting,
                 )
                 .map_err(value_error),
-                Format::Toml => Err(PyValueError::new_err(
-                    "TOML supports exactly one document; use dump()",
-                )),
+                Format::Toml | Format::Xml => Err(PyValueError::new_err(format!(
+                    "{} supports exactly one document; use dump()",
+                    format.as_str().to_uppercase()
+                ))),
             };
             let write_result =
                 write_result.and_then(|()| buffered.flush().map_err(PyOSError::new_err));

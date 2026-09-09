@@ -1062,7 +1062,15 @@ pub(crate) fn stored_field(
     // being told to look somewhere else.
     let mut probe = options.clone();
     probe.take_field();
-    Ok(Some(leaf_field(handle, &probe)?))
+    let stored = leaf_field(handle, &probe)?;
+    // A resource that holds no columns describes nothing, so it is nothing to
+    // complete a write onto: the incoming rows are the shape. A row-oriented
+    // text encoding answers this for a document whose rows it cannot find, and
+    // completing onto it would project every incoming column away.
+    if stored.dtype().as_fields().is_some_and(<[_]>::is_empty) {
+        return Ok(None);
+    }
+    Ok(Some(stored))
 }
 
 /// Merge `incoming` into a leaf's rows on the options' match key.
