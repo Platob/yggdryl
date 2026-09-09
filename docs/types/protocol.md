@@ -499,21 +499,21 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 
     ```bash
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib types::protocol
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- http protocol partition
-    cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(protocol_|http_|partition_|without_partition|typed_location|typed_field_id)'
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- http protocol partition python
+    cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(protocol_|http_|partition_|python_|without_partition|typed_location|typed_field_id)'
     cargo bench --manifest-path rust/Cargo.toml --features iceberg --bench types -- '^value/iceberg_'
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_field.py -k "http or protocol or partition or typed_names"
+    python/.venv/bin/python -m pytest python/tests/types/test_field.py -k "http or protocol or partition or python or typed_names"
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="HTTP|protocol|partition|typed names" node/tests/types/field.test.js
+    node --test --test-name-pattern="HTTP|protocol|partition|python|typed names" node/tests/types/field.test.js
     npm run --prefix node bench:types
     ```

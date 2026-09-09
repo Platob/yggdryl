@@ -745,6 +745,48 @@ fn a_python_read_costs_only_the_declaration_it_hands_back() {
     });
 }
 
+/// What one `set_class` costs, whatever it is written over.
+///
+/// Three keys assembled, three values owned, the overlay that carries them,
+/// and the one canonicalized form. Nothing here scales with the map.
+const PYTHON_CLASS_WRITE: usize = 10;
+
+#[test]
+fn writing_a_python_declaration_costs_a_constant_whatever_surrounds_it() {
+    // `set_class` is one three-property overlay rather than three writes, and
+    // a field owns its own metadata map, so the write never copies what it is
+    // written over. That is the claim with no other witness: the count is the
+    // same over four unrelated keys and over two hundred and fifty-six, and
+    // the same whether the declaration replaces itself or moves the class.
+    let declared = PythonMetadata::new("trading.book", "Book.Quote", PythonKind::Dataclass)
+        .expect("the static declaration is valid");
+    let moved = PythonMetadata::new("trading.execution", "Book.Fill", PythonKind::Field)
+        .expect("the moved static declaration is valid");
+    for extra in [4_usize, 64, 256] {
+        let mut field = python_field("trading.book", extra);
+        let (unchanged, ()) = counted(|| {
+            field
+                .as_python_mut()
+                .set_class(&declared)
+                .expect("the identical declaration remains valid");
+        });
+        assert_eq!(
+            unchanged, PYTHON_CLASS_WRITE,
+            "rewriting the same declaration over {extra} unrelated keys grew"
+        );
+        let (effective, ()) = counted(|| {
+            field
+                .as_python_mut()
+                .set_class(&moved)
+                .expect("the moved declaration remains valid");
+        });
+        assert_eq!(
+            effective, PYTHON_CLASS_WRITE,
+            "moving the declaration over {extra} unrelated keys grew"
+        );
+    }
+}
+
 #[test]
 fn a_no_op_media_type_rewrite_costs_the_same_whatever_surrounds_it() {
     let media = MediaType::from_parts(MimeType::CSV, [MimeType::GZIP])

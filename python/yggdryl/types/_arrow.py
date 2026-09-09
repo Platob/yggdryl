@@ -61,6 +61,12 @@ def _valid_identifier(value: object) -> bool:
     return isinstance(value, str) and value.isidentifier() and not keyword.iskeyword(value)
 
 
+def _valid_module(value: object) -> bool:
+    return isinstance(value, str) and bool(value) and all(
+        _valid_identifier(part) for part in value.split(".")
+    )
+
+
 #: Where a declaration that names no module is placed, matching what Python
 #: itself calls a class defined outside any importable module.
 _ANONYMOUS_MODULE = "__main__"
@@ -75,22 +81,25 @@ def _select_identity(
     """Resolve the class a materialized dataclass is given.
 
     An explicit argument wins, then the field's own ``python:`` declaration,
-    then the field's name. Every candidate crosses ``PythonMetadata``, so the
-    identifier and module rules are the native ones a stored declaration was
-    already held to, and are never restated here.
+    then the field's name. Two rules apply, deliberately different ones: the
+    native construction says what a declaration may be *stored* as - dotted,
+    Unicode, and ``<locals>`` and all - and names the key a bad half failed
+    under; ``str.isidentifier`` says what a generated class may be *named*,
+    which is stricter and is a question only this layer can answer.
     """
 
     declared = root.python
     selected_name = name or declared.class_name or root.name
     selected_module = module or declared.module or _ANONYMOUS_MODULE
-    # One construction validates both halves and names the failing one. A
-    # qualified name is what the native value accepts, and a generated class
-    # takes only the bare last segment of one, so the two must agree.
-    checked = PythonMetadata(selected_module, selected_name)
-    if checked.class_name != selected_name:
+    PythonMetadata(selected_module, selected_name)
+    if not _valid_identifier(selected_name):
         raise TypeError(
-            f"class name {selected_name!r} must be a bare Python identifier, "
-            "not a qualified name"
+            f"class name {selected_name!r} must be a valid non-keyword "
+            "Python identifier"
+        )
+    if not _valid_module(selected_module):
+        raise TypeError(
+            f"module {selected_module!r} must be a dotted Python identifier"
         )
     return selected_name, selected_module
 

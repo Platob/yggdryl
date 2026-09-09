@@ -587,6 +587,7 @@ test('every well-known protocol has its own live field accessor', () => {
     'spark',
     'polars',
     'pandas',
+    'python',
   ]
   const field = new Field('price', 'decimal(18, 6)', false)
 

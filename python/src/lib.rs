@@ -250,8 +250,8 @@ impl PyDifferenceIterator {
 fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     use pyo3::types::PyDict;
     use yggdryl::{
-        Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, Scheme, TimeUnit,
-        UnionMode,
+        Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, PythonKind, Scheme,
+        TimeUnit, UnionMode,
     };
 
     let listing = PyDict::new(py);
@@ -305,6 +305,10 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         yggdryl::Representation::ALL
             .map(yggdryl::Representation::as_str)
             .to_vec(),
+    )?;
+    listing.set_item(
+        "python_kinds",
+        PythonKind::ALL.map(PythonKind::as_str).to_vec(),
     )?;
     listing.set_item(
         "compatibility_schemes",

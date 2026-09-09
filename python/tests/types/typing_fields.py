@@ -18,6 +18,7 @@ from yggdryl import (
     types,
     scalar,
 )
+from yggdryl import enums
 from yggdryl.text import json, toml, yaml
 from yggdryl.types import CurrencyField, StructField, UrlField, VersionField
 
@@ -73,7 +74,7 @@ declared_module: str = PythonMetadata(__name__, "TypedOrder", "field").module
 declared_properties: dict[str, str] = PythonMetadata(
     __name__, "TypedOrder", "field"
 ).properties
-declared_kinds: list[str] = PythonMetadata.KINDS
+declared_kinds: tuple[str, ...] = enums.PYTHON_KINDS
 declared_class_name: str | None = python_view.class_name
 declared_import_path: str | None = python_view.import_path
 

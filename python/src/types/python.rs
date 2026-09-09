@@ -99,13 +99,6 @@ impl PyPythonMetadata {
         Self::new(&module, &qualname, kind)
     }
 
-    /// Every form a declaration can take, in declaration order.
-    #[classattr]
-    #[allow(non_snake_case)]
-    fn KINDS() -> Vec<&'static str> {
-        PythonKind::ALL.iter().map(|kind| kind.as_str()).collect()
-    }
-
     /// The dotted module path the class is declared in.
     #[getter]
     fn module(&self) -> &str {

@@ -1149,7 +1149,6 @@ class ProtocolField:
 class PythonMetadata:
     """The Python class a field's `python:` properties name."""
 
-    KINDS: ClassVar[list[str]]
     def __init__(self, module: str, qualname: str, kind: str = "class") -> None: ...
     @classmethod
     def from_type(cls, value: object, kind: str = "class") -> PythonMetadata: ...

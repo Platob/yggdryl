@@ -8,7 +8,7 @@ from typing import Any
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, MediaType, MimeType, PythonMetadata, Uri, Url
+from yggdryl import DataType, Field, MediaType, MimeType, PythonMetadata, Uri, Url, enums
 
 
 @pytest.mark.skipif(
@@ -588,7 +588,17 @@ def test_python_metadata_is_an_immutable_value() -> None:
     ).stable_hash()
     assert declared.is_keyword_constructed
     assert not PythonMetadata("trading.book", "Quote", "named_tuple").is_keyword_constructed
-    assert "type_alias" in PythonMetadata.KINDS
+    # The eight forms are published where every other static vocabulary is.
+    assert enums.PYTHON_KINDS == (
+        "field",
+        "dataclass",
+        "typed_dict",
+        "named_tuple",
+        "enum",
+        "newtype",
+        "type_alias",
+        "class",
+    )
 
     # A class declared inside a function keeps the segment Python writes for it.
     local = PythonMetadata("app", "build.<locals>.Row", "dataclass")

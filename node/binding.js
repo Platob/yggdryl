@@ -3736,6 +3736,7 @@ binding.yaml = yaml
     codecs: Object.freeze(listing.codecs),
     digestAlgorithms: Object.freeze(listing.digestAlgorithms),
     ioKinds: Object.freeze(listing.ioKinds),
+    pythonKinds: Object.freeze(listing.pythonKinds),
     compatibilitySchemes: Object.freeze(listing.compatibilitySchemes),
     levels: Object.freeze(levels),
   })

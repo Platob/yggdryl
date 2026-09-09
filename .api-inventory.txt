@@ -2665,6 +2665,10 @@ pub enum PythonKind
   pub const fn as_str(self) -> &'static str
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn is_keyword_constructed(self) -> bool
+  impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for PythonKind  (Ord is declaration order, not the stored spelling)
+  impl FromStr for PythonKind  (Err = Error)
+  impl AsRef<str> for PythonKind
+  impl fmt::Display for PythonKind
   pub struct PythonMetadata
   pub fn new(module: impl Into<SmolStr>, qualname: impl Into<SmolStr>, kind: PythonKind) -> Result<Self>
   pub fn module(&self) -> &str
@@ -2675,6 +2679,8 @@ pub enum PythonKind
   pub fn is_importable(&self) -> bool
   pub fn stable_hash(&self) -> u64
   pub fn properties(&self) -> [(&'static str, &str); 3]
+  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for PythonMetadata  (Ord is module-major, then qualified name, then form)
+  impl fmt::Display for PythonMetadata  (the import path, "<module>.<qualname>")
   impl<'field> PythonField<'field>
   pub fn module(&self) -> Option<&'field str>
   pub fn qualname(&self) -> Option<&'field str>
