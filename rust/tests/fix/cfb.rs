@@ -8,7 +8,8 @@ use yggdryl::holder::local::Folder;
 use yggdryl::holder::Buffer;
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
 use yggdryl::{
-    DataType, Error, Field, FixBranch, FixCategory, FixField, FixId, FixRegistry, IOBase, Version,
+    DataType, Error, Field, FixBranch, FixCategory, FixCodec, FixField, FixId, FixRegistry, IOBase,
+    Version,
 };
 
 /// A CBlock in the exact shape a production file has: the same element order,
@@ -675,7 +676,7 @@ fn venue_groups_and_their_components_keep_the_counter_branch() {
 }
 
 #[test]
-fn the_structural_exceptions_are_a_statement_or_a_named_refusal() {
+fn the_structural_exceptions_are_a_statement_or_a_named_drop() {
     // An empty root grammar is an empty non-null struct rather than a failure.
     let empty = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
@@ -687,30 +688,36 @@ fn the_structural_exceptions_are_a_statement_or_a_named_refusal() {
     assert!(children(&roots[0]).is_empty());
     assert!(!roots[0].is_nullable());
 
-    // A nested grammar with no counter is refused, and the refusal names the
-    // position rather than a line of prose.
+    // A nested grammar with no counter is dropped, named by the position
+    // rather than by a line of prose, and the message keeps the rest.
     let counterless = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>
-	<grammar-binding type="0"><grammar><grammar /></grammar></grammar-binding>
+	<grammar-binding type="0"><grammar><tag-constraint name="35" part="body" /><grammar /></grammar></grammar-binding>
 </cplugin-configuration>"#;
-    let refused = FixRegistry::from_cfb_file(&handle(counterless), None).unwrap_err();
-    assert!(refused.to_string().contains("counter"), "{refused}");
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(counterless), None));
+    let (_, roots) = read.expect("a readable CBlock");
+    assert!(warnings[0].contains("counter"), "{warnings:?}");
+    assert_eq!(children(&roots[0]), ["msgtype"]);
 
-    // A constraint naming a tag the vocabulary does not have is a genuine
-    // error: no dangling reference exists in any real file.
+    // A constraint naming a tag the vocabulary does not have dangles, so the
+    // constraint goes and the message keeps its other children.
     let dangling = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>
-	<grammar-binding type="0"><grammar><tag-constraint name="99" part="body" /></grammar></grammar-binding>
+	<grammar-binding type="0"><grammar><tag-constraint name="35" part="body" /><tag-constraint name="99" part="body" /></grammar></grammar-binding>
 </cplugin-configuration>"#;
-    let refused = FixRegistry::from_cfb_file(&handle(dangling), None).unwrap_err();
-    assert!(refused.to_string().contains("99"), "{refused}");
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(dangling), None));
+    let (_, roots) = read.expect("a readable CBlock");
+    assert!(warnings[0].contains("99"), "{warnings:?}");
+    assert_eq!(children(&roots[0]), ["msgtype"]);
 }
 
 #[test]
-fn a_refusal_quotes_the_element_and_the_content_it_read() {
-    // Each case: the document, and every span the refusal has to carry for a
+fn a_warning_quotes_the_element_and_the_content_it_read() {
+    // Each case: the document, and every span the warning has to carry for a
     // reader to find the declaration in a file that is megabytes of them.
     for (body, wanted) in [
         (
@@ -757,31 +764,37 @@ fn a_refusal_quotes_the_element_and_the_content_it_read() {
 </cplugin-configuration>"#,
             vec!["all-values", "\"some-values\"", "<string-validity"],
         ),
-        (
-            // A malformed document has no element to name, so the refusal
-            // quotes the bytes the reader stopped on.
-            r#"<?xml version="1.0"?>
-<cplugin-configuration fix-version="4.4">
-	<vocabulary><vocabulary-tag name="35"</vocabulary>
-</cplugin-configuration>"#,
-            vec!["well-formed CBlock", "reading", "vocabulary-tag"],
-        ),
     ] {
-        let refused = FixRegistry::from_cfb_file(&handle(body), None).unwrap_err();
-        let rendered = refused.to_string();
-        assert!(
-            rendered.contains("invalid cfb expression at byte"),
-            "{rendered}"
-        );
+        let (read, warnings) =
+            super::warned::during(|| FixRegistry::from_cfb_file(&handle(body), None));
+        read.expect("a readable CBlock");
+        let rendered = warnings.first().expect("one warning").clone();
         for held in wanted {
             assert!(rendered.contains(held), "{held} missing from {rendered}");
         }
-        // Bounded: a refusal never grows with the document it read.
+        // Bounded: a warning never grows with the document it read.
         assert!(rendered.len() < 400, "{rendered}");
-        // Both doors refuse the same documents, with the same sentence.
-        let also = FixField::from_cfb_file(&handle(body), Some("bloomberg")).unwrap_err();
-        assert_eq!(also.to_string(), rendered);
+        // Both doors read the same documents, and warn with the same sentence.
+        let (also, spelled) =
+            super::warned::during(|| FixField::from_cfb_file(&handle(body), Some("bloomberg")));
+        also.expect("a readable CBlock");
+        assert_eq!(spelled.first().map(String::as_str), Some(rendered.as_str()));
     }
+
+    // A document that is not XML at all has no element to name and nothing
+    // left to keep, so it is the one thing still refused.
+    let malformed = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary><vocabulary-tag name="35"</vocabulary>
+</cplugin-configuration>"#;
+    let refused = FixRegistry::from_cfb_file(&handle(malformed), None).unwrap_err();
+    let rendered = refused.to_string();
+    for held in ["well-formed CBlock", "reading", "vocabulary-tag"] {
+        assert!(rendered.contains(held), "{held} missing from {rendered}");
+    }
+    assert!(rendered.len() < 400, "{rendered}");
+    let also = FixField::from_cfb_file(&handle(malformed), Some("bloomberg")).unwrap_err();
+    assert_eq!(also.to_string(), rendered);
 
     // An element longer than the budget is quoted up to it and elided, so a
     // vocabulary tag carrying a paragraph of attributes still names itself.
@@ -792,8 +805,10 @@ fn a_refusal_quotes_the_element_and_the_content_it_read() {
 </cplugin-configuration>"#,
         "n".repeat(200)
     );
-    let refused = FixRegistry::from_cfb_file(&handle(&wide), None).unwrap_err();
-    let rendered = refused.to_string();
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(&wide), None));
+    read.expect("a readable CBlock");
+    let rendered = warnings.first().expect("one warning");
     assert!(rendered.contains("<vocabulary-tag name="), "{rendered}");
     assert!(rendered.contains('\u{2026}'), "{rendered}");
     assert!(rendered.len() < 400, "{rendered}");
@@ -815,24 +830,30 @@ fn a_refusal_never_grows_with_the_document_that_raised_it() {
 }
 
 #[test]
-fn a_refusal_the_core_raised_names_the_declaration_that_asked_for_it() {
+fn a_warning_the_core_raised_names_the_declaration_that_asked_for_it() {
     // A spelling holding a control character is a broken identifier, not
-    // layout: the refusal names the tag, quotes the spelling, and keeps the
+    // layout: the warning names the tag, quotes the spelling, and keeps the
     // core's own sentence behind them.
     let spelling = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary><vocabulary-tag name="35" alt="Msg&#1;Type" type="string" /></vocabulary>
 </cplugin-configuration>"#;
-    let refused = FixRegistry::from_cfb_file(&handle(spelling), None).unwrap_err();
-    let rendered = refused.to_string();
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(spelling), None));
+    let (registry, _) = read.expect("a readable CBlock");
+    assert!(
+        registry.get_field_by_tag(35).is_none(),
+        "the tag is dropped"
+    );
+    let rendered = warnings.first().expect("one warning");
     assert!(rendered.contains("tag 35 spelling"), "{rendered}");
     assert!(rendered.contains("Msg\\u{1}Type"), "{rendered}");
     assert!(rendered.contains("control characters"), "{rendered}");
 
-    // Two declarations of one tag are refused where the second was declared,
-    // never at the end of the file: the dictionary is built after the whole
-    // document is read, and the byte each declaration was read at is kept for
-    // exactly this refusal.
+    // Two declarations of one tag are warned about where the second was
+    // declared, never at the end of the file: the dictionary is built after
+    // the whole document is read, and the byte each declaration was read at
+    // is kept for exactly this.
     let doubled = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary>
@@ -841,12 +862,19 @@ fn a_refusal_the_core_raised_names_the_declaration_that_asked_for_it() {
 	</vocabulary>
 	<grammar-binding type="0"><grammar><tag-constraint name="35" part="body" /></grammar></grammar-binding>
 </cplugin-configuration>"#;
-    let refused = FixRegistry::from_cfb_file(&handle(doubled), None).unwrap_err();
-    let rendered = refused.to_string();
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(doubled), None));
+    let (registry, _) = read.expect("a readable CBlock");
+    // The first declaration is the one the dictionary keeps.
+    assert_eq!(registry.field_by_tag(35).unwrap().name(), "msgtype");
+    let rendered = warnings.first().expect("one warning");
     assert!(rendered.contains("tag 35 \"somethingelse\""), "{rendered}");
-    let Error::Parse { position, .. } = refused else {
-        panic!("{rendered}");
-    };
+    let position: usize = rendered
+        .split("at byte ")
+        .nth(1)
+        .and_then(|rest| rest.split(':').next())
+        .and_then(|held| held.parse().ok())
+        .unwrap_or_else(|| panic!("{rendered}"));
     let declared = doubled
         .find("SomethingElse")
         .expect("the second declaration");
@@ -858,15 +886,26 @@ fn a_refusal_the_core_raised_names_the_declaration_that_asked_for_it() {
 }
 
 #[test]
-fn a_fix_version_the_grammar_cannot_read_is_refused_rather_than_defaulted() {
+fn a_fix_version_the_grammar_cannot_read_is_dropped_rather_than_taken() {
     let body = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="FIX.4.4">
 	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>
 </cplugin-configuration>"#;
-    let refused = FixRegistry::from_cfb_file(&handle(body), Some(&branch())).unwrap_err();
-    let rendered = refused.to_string();
-    assert!(rendered.contains("a FIX version"), "{rendered}");
-    assert!(rendered.contains("\"FIX.4.4\""), "{rendered}");
+    // The file said something this grammar cannot read, so it is warned about
+    // and the caller's dialect stands: what the branch is recorded as is
+    // always something somebody stated.
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(body), Some(&branch())));
+    let (registry, _) = read.expect("a readable CBlock");
+    assert_eq!(
+        registry
+            .branch_named("bloomberg")
+            .map(|held| held.version().to_string()),
+        Some(FixBranch::STANDARD.version().to_string()),
+    );
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("a FIX version"), "{warnings:?}");
+    assert!(warnings[0].contains("\"FIX.4.4\""), "{warnings:?}");
 
     // Whitespace is what an editor left behind, not what the file declared:
     // attribute-value normalization turns a wrapped line into a space and
@@ -1016,7 +1055,7 @@ fn a_document_cut_short_is_refused_rather_than_read_as_a_shorter_one() {
 }
 
 #[test]
-fn nesting_past_the_guard_is_refused_rather_than_overflowing() {
+fn nesting_past_the_guard_is_dropped_rather_than_overflowing() {
     let mut body = String::from(
         r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
@@ -1032,11 +1071,26 @@ fn nesting_past_the_guard_is_refused_rather_than_overflowing() {
     }
     body.push_str("</grammar></grammar-binding></cplugin-configuration>");
 
-    let refused = FixRegistry::from_cfb_file(&handle(&body), None).unwrap_err();
-    let rendered = refused.to_string();
+    let (read, warnings) =
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(&body), None));
+    let (registry, roots) = read.expect("a readable CBlock");
+    let rendered = warnings.first().expect("one warning");
     assert!(rendered.contains("deep"), "{rendered}");
     // The message it nested in, because a file binds hundreds of them.
     assert!(rendered.contains("message \"0\""), "{rendered}");
+    // The guard stops the reader descending; it does not throw the file away.
+    // This message goes with it, because thirty grammars over one tag are
+    // thirty definitions of one name and the catalog holds one - which is its
+    // own warning, named as one.
+    assert!(roots.is_empty());
+    assert!(
+        warnings
+            .iter()
+            .any(|held| held.contains("one CBlock definition per context")),
+        "{warnings:?}"
+    );
+    // The vocabulary the file declared is still a dictionary.
+    assert_eq!(registry.field_by_tag(555).unwrap().name(), "nolegs");
 }
 
 #[test]
@@ -1371,10 +1425,9 @@ fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
 }
 
 #[test]
-fn both_doors_refuse_a_file_that_names_one_field_twice() {
+fn a_spelling_two_tags_share_names_neither_of_them() {
     // Two tags whose `alt` folds to one name, both outside the user range and
-    // so both in the standard branch. The dictionary build is what catches it,
-    // which is why the vocabulary door builds one and throws it away.
+    // so both in the standard branch, which is where a name contends.
     let clashing = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary>
@@ -1382,21 +1435,147 @@ fn both_doors_refuse_a_file_that_names_one_field_twice() {
 		<vocabulary-tag name="3044" alt="Price" type="float" />
 	</vocabulary>
 </cplugin-configuration>"#;
-    let refused = FixRegistry::from_cfb_file(&handle(clashing), Some(&branch())).unwrap_err();
-    // The core's conflict, behind the declaration that raised it: a file this
-    // dictionary cannot be built from is a refusal of the file, located in it.
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(clashing), Some(&branch())).expect("a readable CBlock");
+    // Each named by its own decimal - the identity a tag declaring no `alt`
+    // already takes - and each keeping what the file called it.
+    for tag in [44, 3044] {
+        let field = registry.field_by_tag(tag).expect("a declared tag");
+        assert_eq!(field.name(), tag.to_string());
+        assert_eq!(field.display(), Some("Price"));
+    }
+    // And the spelling names neither, in either branch.
+    assert!(registry.get_field_by_name("Price", None).is_none());
     assert!(
-        refused.to_string().contains("tag 3044 \"price\""),
-        "{refused}"
+        registry
+            .get_field_by_name("Price", Some(&branch()))
+            .is_none()
     );
-    assert!(
-        refused.to_string().contains("existing fix field"),
-        "{refused}"
-    );
-    let also = FixField::from_cfb_file(&handle(clashing), Some("bloomberg")).unwrap_err();
-    assert_eq!(also.to_string(), refused.to_string());
 
-    // Same tag twice under two spellings is the other half of that check.
+    // Each names the other's tag, so a reader holding either reaches the one
+    // the file said the same thing about.
+    assert_eq!(
+        registry.field_by_tag(44).unwrap().as_fix().tags().unwrap(),
+        vec![3044]
+    );
+    assert_eq!(
+        registry
+            .field_by_tag(3044)
+            .unwrap()
+            .as_fix()
+            .tags()
+            .unwrap(),
+        vec![44]
+    );
+
+    // Three tags sharing a spelling link none of each other: an alternate
+    // identifier names one field, and three would each claim the other two.
+    let crowded = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Price" type="float" />
+		<vocabulary-tag name="3044" alt="Price" type="float" />
+		<vocabulary-tag name="3045" alt="Price" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(crowded), Some(&branch())).expect("a readable CBlock");
+    for tag in [44, 3044, 3045] {
+        let field = registry.field_by_tag(tag).expect("a declared tag");
+        assert_eq!(field.name(), tag.to_string());
+        assert!(field.as_fix().tags().unwrap().is_empty(), "tag {tag}");
+    }
+
+    // The vocabulary door reads the same file the same way.
+    let fields =
+        FixField::from_cfb_file(&handle(clashing), Some("bloomberg")).expect("a readable CBlock");
+    let named: Vec<&str> = fields.iter().map(Field::name).collect();
+    assert_eq!(named, ["44", "3044"]);
+
+    // A spelling that is another tag's own decimal contends with that tag's
+    // identity, so it names neither either - and the tag it named keeps the
+    // spelling nothing contends.
+    let numbered = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="3044" type="float" />
+		<vocabulary-tag name="3044" alt="LastPx" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(numbered), Some(&branch())).expect("a readable CBlock");
+    assert_eq!(registry.field_by_tag(44).unwrap().name(), "44");
+    assert_eq!(registry.field_by_tag(44).unwrap().display(), Some("3044"));
+    assert_eq!(registry.field_by_tag(3044).unwrap().name(), "lastpx");
+
+    // Contended by the fold the dictionary hashes a name with, not by the
+    // spelling: a name that differs only by a separator is the same name
+    // there, so it contends here.
+    let separated = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Last_Px" type="float" />
+		<vocabulary-tag name="3044" alt="LastPx" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(separated), Some(&branch())).expect("a readable CBlock");
+    assert_eq!(registry.field_by_tag(44).unwrap().name(), "44");
+    assert_eq!(
+        registry.field_by_tag(44).unwrap().display(),
+        Some("Last_Px")
+    );
+    assert_eq!(registry.field_by_tag(3044).unwrap().name(), "3044");
+    assert!(registry.get_field_by_name("LastPx", None).is_none());
+
+    // A map naming that spelling decodes neither: one code set and nothing
+    // in the file saying which of the two tags it belongs on.
+    let mapped = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Price" type="string" />
+		<vocabulary-tag name="3044" alt="Price" type="string" />
+		<vocabulary-tag name="4" alt="AdvSide" type="char" />
+	</vocabulary>
+	<maps>
+		<map name="Price"><entries><entry key="1" value="one" /></entries></map>
+		<map name="AdvSide"><entries><entry key="B" value="buy" /></entries></map>
+	</maps>
+</cplugin-configuration>"#;
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(mapped), Some(&branch())).expect("a readable CBlock");
+    for tag in [44, 3044] {
+        assert_eq!(
+            registry.field_by_tag(tag).unwrap().as_fix().codes().count(),
+            0,
+            "tag {tag} keeps no code set from an ambiguous map",
+        );
+    }
+    assert_eq!(
+        registry.field_by_tag(4).unwrap().as_fix().codes().count(),
+        1,
+        "a map naming one tag still decodes it",
+    );
+
+    // Two branches are two namespaces, so a venue's own spelling of a name
+    // FIX already has is not contended by it.
+    let branched = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Price" type="float" />
+		<vocabulary-tag name="20044" alt="Price" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(branched), Some(&branch())).expect("a readable CBlock");
+    assert_eq!(registry.field_by_tag(44).unwrap().name(), "price");
+    assert_eq!(registry.field_by_tag(20044).unwrap().name(), "price");
+}
+
+#[test]
+fn both_doors_drop_the_second_declaration_of_one_tag() {
+    // Same tag twice under two spellings: one identity, two definitions, and
+    // the second is dropped where it was declared.
     let doubled = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary>
@@ -1404,7 +1583,16 @@ fn both_doors_refuse_a_file_that_names_one_field_twice() {
 		<vocabulary-tag name="44" alt="LastPx" type="float" />
 	</vocabulary>
 </cplugin-configuration>"#;
-    assert!(FixField::from_cfb_file(&handle(doubled), None).is_err());
+    let (read, warnings) =
+        super::warned::during(|| FixField::from_cfb_file(&handle(doubled), None));
+    // The vocabulary door answers declaration order, so both arrive here and
+    // the dictionary built beside them is what warned.
+    let fields = read.expect("a readable CBlock");
+    assert_eq!(fields.len(), 2);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("tag 44 \"lastpx\""), "{warnings:?}");
+    let (registry, _) = FixRegistry::from_cfb_file(&handle(doubled), None).unwrap();
+    assert_eq!(registry.field_by_tag(44).unwrap().name(), "price");
 
     // And the one difference that is not a loss: a dictionary keeps one entry
     // per identity, so a tag declared twice identically arrives twice here.
@@ -1415,8 +1603,11 @@ fn both_doors_refuse_a_file_that_names_one_field_twice() {
 		<vocabulary-tag name="44" alt="Price" type="float" />
 	</vocabulary>
 </cplugin-configuration>"#;
-    let fields = FixField::from_cfb_file(&handle(repeated), None).expect("a readable CBlock");
+    let (read, warnings) =
+        super::warned::during(|| FixField::from_cfb_file(&handle(repeated), None));
+    let fields = read.expect("a readable CBlock");
     assert_eq!(fields.len(), 2);
+    assert!(warnings.is_empty(), "{warnings:?}");
     let (registry, _) = FixRegistry::from_cfb_file(&handle(repeated), None).unwrap();
     assert_eq!(registry.len(), 1 + super::crated());
 }
@@ -1692,5 +1883,273 @@ fn both_doors_carry_the_names_a_normalization_spelled() {
         held.as_fix().aliases().collect::<Vec<_>>(),
         ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
         "the vocabulary door carries them too",
+    );
+}
+
+/// The shape a real FX trade-capture dialect has where one spelling is two
+/// tags: `HedgeCurrency` at the top of the message is the currency the hedge
+/// settles in, and `HedgeCurrency` inside `NoHedgeGroups` is the one each
+/// hedge leg is quoted in. Both are declared, both are bound, and the
+/// grammar is the only place the file says which is which.
+const HEDGED: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.BuySideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="TRTNFX" sendercompid="OURDESK">
+	<message-types>
+		<message-type value="AE Inbound" description="Trade Capture Report" supported="true" />
+	</message-types>
+	<inbound-message-type-mappings>
+		<entry key="tradecapturereport" value="AE Inbound" />
+	</inbound-message-type-mappings>
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" read-only="true" />
+		<vocabulary-tag name="11020" alt="NoHedgeGroups" type="integer" read-only="false" />
+		<vocabulary-tag name="11021" alt="HedgeSettlDate" type="utc-date" read-only="false" />
+		<vocabulary-tag name="11022" alt="HedgeSide" type="string" read-only="false" />
+		<vocabulary-tag name="11023" alt="HedgeQty" type="float" read-only="false" />
+		<vocabulary-tag name="11024" alt="HedgeCurrency" type="string" read-only="false" />
+		<vocabulary-tag name="11025" alt="HedgeCurrency" type="string" read-only="false" />
+		<vocabulary-tag name="11026" alt="HedgePrice" type="float" read-only="false" />
+		<vocabulary-tag name="11027" alt="HedgeVenueTransID" type="string" read-only="false" />
+		<vocabulary-tag name="11033" alt="TR_FixingCenter" type="string" read-only="false" />
+	</vocabulary>
+	<grammar-binding type="AE Inbound">
+		<grammar checkordering="false">
+			<tag-constraint name="35" activated="true" read-only="true" part="header" required="true" />
+			<tag-constraint name="11025" activated="true" read-only="false" part="body" required="false" />
+			<tag-constraint name="11033" activated="true" read-only="false" part="body" required="false" />
+			<grammar checkordering="false">
+				<tag-constraint name="11020" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11024" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11026" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11023" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11021" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11022" activated="true" read-only="false" part="body" required="false" />
+				<tag-constraint name="11027" activated="true" read-only="false" part="body" required="false" />
+			</grammar>
+		</grammar>
+	</grammar-binding>
+	<normalization-binding>
+		<normalization type="inbound">
+			<tag-normalization tag-name="HEDGE_CURRENCY" part="body">
+				<mapping-expression>
+					<expression value="$11025" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="FIXINGCENTER" part="body">
+				<mapping-expression>
+					<expression value="$11033" />
+				</mapping-expression>
+			</tag-normalization>
+		</normalization>
+	</normalization-binding>
+</cplugin-configuration>
+"#;
+
+#[test]
+fn a_message_resolves_the_spelling_two_of_its_tags_share() {
+    let (registry, roots) = parse(HEDGED);
+
+    // Neither tag is named by the spelling both declared, and the tag that
+    // declared one nothing contends keeps it.
+    assert_eq!(registry.field_by_tag(11024).unwrap().name(), "11024");
+    assert_eq!(registry.field_by_tag(11025).unwrap().name(), "11025");
+    assert_eq!(
+        registry.field_by_tag(11024).unwrap().display(),
+        Some("HedgeCurrency")
+    );
+    assert_eq!(
+        registry.field_by_tag(11033).unwrap().name(),
+        "tr_fixingcenter"
+    );
+    assert!(
+        registry
+            .get_field_by_name("HedgeCurrency", Some(&branch()))
+            .is_none(),
+        "a spelling two tags share names neither",
+    );
+    // Each carries the other's tag, so the pair the file made is recoverable
+    // from either half of it.
+    assert_eq!(
+        registry
+            .field_by_tag(11024)
+            .unwrap()
+            .as_fix()
+            .tags()
+            .unwrap(),
+        vec![11025]
+    );
+    assert_eq!(
+        registry
+            .field_by_tag(11025)
+            .unwrap()
+            .as_fix()
+            .tags()
+            .unwrap(),
+        vec![11024]
+    );
+
+    // A binding cannot spell a contended name back onto one of the two: the
+    // fold `HEDGE_CURRENCY` reaches is the one both tags claim, so it is a
+    // name for neither there too. A spelling one tag alone answers to is
+    // still added, which is what the pass is read for.
+    assert!(
+        registry
+            .get_field_by_name("HEDGE_CURRENCY", Some(&branch()))
+            .is_none(),
+        "a normalization does not undo what the vocabulary left unnamed",
+    );
+    assert_eq!(
+        registry
+            .get_field_by_name("FixingCenter", Some(&branch()))
+            .and_then(|held| held.as_fix().tag().ok().flatten()),
+        Some(11033),
+    );
+
+    // The message says which is which: the file bound one tag per constraint,
+    // so the spelling survives at each level it was bound at.
+    let root = &roots[0];
+    assert!(
+        children(root).contains(&"hedgecurrency"),
+        "{:?}",
+        children(root)
+    );
+    let group = root
+        .get_field_by_path("hedgegroups")
+        .expect("the hedge group");
+    let DataType::List(item) = group.dtype() else {
+        panic!("a list, got {}", group.dtype());
+    };
+    let members: Vec<&str> = item.fields().iter().map(Field::name).collect();
+    assert!(members.contains(&"hedgecurrency"), "{members:?}");
+
+    // And a bridge row of that message type reaches both tags: the flat key
+    // through the message's own children, the packed one through the members
+    // of the group it arrived in.
+    let reader = FixCodec::new(Arc::new(registry)).with_branch(&branch());
+    let row: &[u8] = b"MSGTYPE=tradecapturereport|HEDGECURRENCY=USD|TR_FIXINGCENTER=LN\
+|NOHEDGEGROUPS=1|NOHEDGEGROUPS[0]=HEDGESETTLDATE=20260818\x04\x03HEDGECURRENCY=XAU\x04\x03";
+    let message = <FixCodec as super::OneMessage>::one_line(&reader, row, false)
+        .expect("the bridge row builds");
+    assert_eq!(message.by_tag(11025).unwrap().as_str(), Some("USD"));
+    assert_eq!(message.by_tag(11033).unwrap().as_str(), Some("LN"));
+    let occurrences = message
+        .by_name("hedgegroups")
+        .expect("the hedge group")
+        .as_sequence()
+        .expect("its occurrences")
+        .to_vec();
+    assert_eq!(occurrences.len(), 1);
+    let held = message
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 11020)
+        .expect("the counter pair");
+    let member_tags: Vec<i32> = held.children().iter().map(yggdryl::FixEntry::tag).collect();
+    assert_eq!(member_tags, [11021, 11024], "the group's own HedgeCurrency");
+}
+
+#[test]
+fn the_captures_trade_capture_frame_reads_against_the_dialect_that_declares_it() {
+    // The line the bridge log fixture carries, read against the dialect whose
+    // vocabulary spells `HedgeCurrency` twice. The frame says `35=UL`; the row
+    // inside its `XmlData` says what it is, and that is the type its keys
+    // resolve against - which is the whole of how a shared spelling reaches
+    // the tag the file bound it at.
+    let logged = include_str!("ulbridge.log")
+        .lines()
+        .find(|line| line.contains("MSGTYPE=tradecapturereport"))
+        .expect("the trade capture frame");
+    let (registry, _) = parse(HEDGED);
+    let reader = FixCodec::new(Arc::new(registry)).with_branch(&branch());
+    let message = <FixCodec as super::OneMessage>::one_line(&reader, logged.as_bytes(), false)
+        .expect("the captured frame builds");
+
+    // The frame's own type stays the frame's.
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("UL"));
+
+    // The hedge the payload packs is this dialect's group, typed by it: the
+    // currency is the group's own tag and not the one the top of the message
+    // binds under the same spelling.
+    let hedge = message
+        .as_field()
+        .get_field_by_path("hedgegroups")
+        .expect("the hedge group");
+    let DataType::List(item) = hedge.dtype() else {
+        panic!("a list, got {}", hedge.dtype());
+    };
+    let currency = item.fields().first().expect("its first member");
+    assert_eq!(currency.name(), "hedgecurrency");
+    assert_eq!(currency.as_fix().tag().unwrap(), Some(11024));
+    let held = message
+        .by_name("hedgegroups")
+        .expect("the hedge group")
+        .as_sequence()
+        .expect("its occurrences")
+        .to_vec();
+    assert_eq!(
+        held[0].as_sequence().expect("its members")[0].as_str(),
+        Some("XAU")
+    );
+    // Typed by the vocabulary rather than kept as text, which is what says
+    // the dialect and not the fallback answered.
+    assert_eq!(
+        item.field("hedgeqty").expect("HedgeQty").dtype(),
+        &DataType::Float32
+    );
+}
+
+#[test]
+fn a_mapping_names_a_type_the_listing_declared_or_it_names_nothing() {
+    // The two tables spell a type the way UlMessage does. They do not declare
+    // one: a value the listing above them never stated is a mapping to
+    // nothing, and taking it would answer `somethingelse` forever after with
+    // whatever `ZZ` a typo produced.
+    let body = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration fix-version="4.4">
+	<message-types>
+		<message-type value="J" description="Allocation" supported="true" />
+		<message-type value="J Report" description="Allocation Report" supported="true" />
+	</message-types>
+	<outbound-message-type-mappings>
+		<entry key="allocation" value="J" />
+		<entry key="somethingelse" value="ZZ" />
+	</outbound-message-type-mappings>
+	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>
+</cplugin-configuration>"#;
+    let (read, warnings) = super::warned::during(|| parse(body));
+    let (registry, _) = read;
+    let field = registry.field_by_tag(35).expect("MsgType");
+    let codes = field.as_fix();
+
+    // The key reaches the type the listing declared, and so does the whole
+    // spelling the listing gave it.
+    assert_eq!(codes.code_value("allocation"), Some("J"));
+    assert_eq!(codes.code_value("J Report"), Some("J"));
+    assert_eq!(codes.code_value("J"), Some("J"));
+
+    // The entry naming nothing the listing declared names nothing at all.
+    assert_eq!(codes.code_value("somethingelse"), None);
+    assert_eq!(codes.code_value("ZZ"), None);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains("a message type this file's listing declares"),
+        "{warnings:?}"
+    );
+    assert!(warnings[0].contains("\"ZZ\""), "{warnings:?}");
+
+    // A `grammar-binding` still declares the type it binds, because binding
+    // one is the file stating it and a table is the file spelling it.
+    let bound = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>
+	<grammar-binding type="AE Inbound"><grammar><tag-constraint name="35" part="header" /></grammar></grammar-binding>
+</cplugin-configuration>"#;
+    let (registry, _) = parse(bound);
+    assert_eq!(
+        registry
+            .field_by_tag(35)
+            .unwrap()
+            .as_fix()
+            .code_value("AE Inbound"),
+        Some("AE")
     );
 }

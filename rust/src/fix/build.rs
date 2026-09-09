@@ -286,6 +286,9 @@ pub(super) struct Builder<'registry> {
     /// frame with no counter, which is most of them, so the fast path
     /// reads one empty vector.
     open: Vec<OpenGroup>,
+    /// The type and the version the line's own frame stated, kept while a row
+    /// nested inside one of its data fields is read against its own.
+    framed: (Option<&'registry super::MsgType>, Option<Version>),
 }
 
 /// One repeating group a numeric frame has opened and not yet closed.
@@ -326,6 +329,7 @@ impl<'registry> Builder<'registry> {
             recorded: Vec::with_capacity(capacity),
             outer: None,
             open: Vec::new(),
+            framed: (None, None),
         }
     }
 
@@ -442,13 +446,35 @@ impl<'registry> Builder<'registry> {
 
     /// Opens the reading of a row nested inside one of the line's data
     /// fields: what follows fills the row and records nothing.
-    pub(super) fn begin_nested(&mut self) {
+    ///
+    /// The row is a message of its own type at its own version, so it is read
+    /// against both rather than against the frame's. A bridge writes a whole
+    /// trade capture into a `35=UL` frame's `XmlData`, and `UL` says nothing
+    /// about the groups that row nests or the spellings its dialect gave two
+    /// tags; the frame's `BeginString` is the envelope's version and says
+    /// nothing about which FIX the row inside it was written to, which is
+    /// routinely a later one than the session speaks. The line's own type and
+    /// version are restored by [`Builder::end_nested`], so what the message
+    /// says it is stays what the frame said.
+    pub(super) fn begin_nested(
+        &mut self,
+        message: Option<&'registry super::MsgType>,
+        version: Option<Version>,
+    ) {
         self.outer = Some(self.slots.len());
+        self.framed = (self.message, self.version);
+        if message.is_some() {
+            self.message = message;
+        }
+        if version.is_some() {
+            self.version = version;
+        }
     }
 
     /// Closes the nested reading.
     pub(super) fn end_nested(&mut self) {
         self.outer = None;
+        (self.message, self.version) = self.framed;
     }
 
     /// Whether the line itself already built a child of this name, which a
@@ -605,15 +631,33 @@ impl<'registry> Builder<'registry> {
     /// readable through the field's [lineage](super::lineage). One the
     /// dictionary does not know is kept under the key's own folded spelling
     /// as nullable text, because a venue sends fields no dictionary has.
-    fn field_for(&self, key: &str) -> (Field, i32, bool) {
-        match self.resolve(key) {
-            Some((known, tag)) => (stated(known), tag, true),
-            None => {
-                let name = folded_name(key);
-                let tag = super::field::parse_tag(key).unwrap_or(0);
-                (DataType::Utf8.nullable_field(name), tag, false)
-            }
+    /// A dialect that spelled one name over two tags is why `scope` is
+    /// passed: a dictionary indexes a name once per branch, so such a
+    /// spelling names neither tag there, and the message the row declares is
+    /// what says which one it meant. `scope` is the children of the level
+    /// the key arrived at - the message root for a flat key, the occurrence's
+    /// own members for a grouped one - and it is read only where the
+    /// dictionary answered nothing, so an unambiguous name costs no scan.
+    fn field_for(&self, key: &str, scope: &[Field]) -> (Field, i32, bool) {
+        if let Some((known, tag)) = self.resolve(key) {
+            return (stated(known), tag, true);
         }
+        if let Some((declared, tag)) = in_scope(scope, key) {
+            return (stated(declared), tag, true);
+        }
+        let name = folded_name(key);
+        let tag = super::field::parse_tag(key).unwrap_or(0);
+        (DataType::Utf8.nullable_field(name), tag, false)
+    }
+
+    /// The children of the message this row declared, which a key resolves
+    /// against when the dictionary holds no name for it.
+    ///
+    /// Empty for a row whose type resolves to no message definition, which is
+    /// every row a dialect declares no grammar for.
+    fn scope(&self) -> &'registry [Field] {
+        self.message
+            .map_or(&[], |message| message.as_field().fields())
     }
 
     /// Types one value under one field, translating its code first.
@@ -738,7 +782,7 @@ impl<'registry> Builder<'registry> {
                 ),
             }
         } else {
-            self.field_for(key)
+            self.field_for(key, self.scope())
         };
         if self.shadowed(field.name()) {
             return;
@@ -852,7 +896,7 @@ impl<'registry> Builder<'registry> {
             slot.values[occurrence] = Scalar::from(text);
             return;
         }
-        let (field, tag, known) = self.field_for(name);
+        let (field, tag, known) = self.field_for(name, self.scope());
         if self.shadowed(field.name()) {
             return;
         }
@@ -958,7 +1002,11 @@ impl<'registry> Builder<'registry> {
         } else if let Some((field, tag)) = self.counter(leaf) {
             (field, tag, true)
         } else {
-            let (field, tag, _) = self.field_for(leaf);
+            // The occurrence's own members are the level this leaf arrived
+            // at, so a spelling the dictionary shares between two tags
+            // resolves to the one this group declares.
+            let scope = member_fields(&levels.last().expect("a level").0);
+            let (field, tag, _) = self.field_for(leaf, scope);
             (field, tag, false)
         };
         let value = if leaf.is_empty() || nested_counter {
@@ -1090,14 +1138,18 @@ impl<'registry> Builder<'registry> {
     /// builder resolved every tag once already and the message would only
     /// read them back out of the fields it just wrote.
     ///
-    /// Two children every message has, whatever its line carried, and
-    /// neither is an entry because neither arrived. `BeginString` is filled
-    /// from the version the message was read at where the line stated none,
-    /// so a bridge row and a configuration document say which FIX they were
-    /// read as exactly as a frame does. The crate's `timestamp` closes the
-    /// message: `clock` where the row stated one, else the first clock the
-    /// message carries, else the epoch - so a row is always dated, and a row
-    /// nobody dated sorts first and visibly.
+    /// Three children every message has, whatever its line carried, and none
+    /// of them is an entry because none of them arrived. `BeginString` is
+    /// filled from the version the message was read at where the line stated
+    /// none, so a bridge row and a configuration document say which FIX they
+    /// were read as exactly as a frame does. The crate's `version` states
+    /// that version outright - the codec's target where the caller pinned
+    /// one - because `BeginString` is what the message says about *itself*
+    /// and the two differ every time a session carries a row written to a
+    /// later FIX than it speaks. The crate's `timestamp` closes the message:
+    /// `clock` where the row stated one, else the first clock the message
+    /// carries, else the epoch - so a row is always dated, and a row nobody
+    /// dated sorts first and visibly.
     pub(super) fn finish(self, name: &str, clock: Option<&Scalar>) -> Result<Built> {
         let Self {
             beginstring,
@@ -1123,6 +1175,28 @@ impl<'registry> Builder<'registry> {
                 group: false,
                 occurrences: Vec::new(),
             });
+        }
+        // The version the read used, on every message it produced: the
+        // codec's target where the caller pinned one, else what the line's
+        // own frame implied, else the dictionary's newest. `BeginString` is
+        // what the message says about itself and is left exactly as it
+        // arrived; this is what answered it, and the two differ every time a
+        // session carries a row written to a later FIX than it speaks.
+        if !slots.iter().any(|slot| slot.tag == super::VERSION_TAG) {
+            if let Some(field) = super::crated::version_field() {
+                let spelled = format_smolstr!("{}", version.unwrap_or_else(default_version));
+                let value = field
+                    .scalar(Scalar::from(spelled.as_str()))
+                    .unwrap_or_else(|_| Scalar::from(spelled.as_str()));
+                slots.push(Slot {
+                    field: field.clone(),
+                    tag: super::VERSION_TAG,
+                    known: true,
+                    values: vec![value],
+                    group: false,
+                    occurrences: Vec::new(),
+                });
+            }
         }
         let stamp = stamped(&slots, clock);
         // Each slot's place is read once, as a rank, rather than once per
@@ -1567,6 +1641,31 @@ fn stated(known: &Field) -> Field {
     let mut field = known.clone();
     field.set_nullable(false);
     field
+}
+
+/// The child of one declared level that a key names, when it names one, and
+/// the tag that child carries.
+///
+/// Folded exactly as the dictionary folds a name, so a key resolves the same
+/// way whichever of the two answered it. Only a scalar child carrying a tag
+/// answers: a nested level is addressed by its own located key and never by a
+/// leaf, and a child no tag identifies explains a key no better than the key
+/// explains itself.
+fn in_scope<'held>(scope: &'held [Field], key: &str) -> Option<(&'held Field, i32)> {
+    scope.iter().find_map(|held| {
+        if held.dtype().is_nested() || !crate::types::folds_equal(held.name(), key) {
+            return None;
+        }
+        Some((held, held.as_fix().tag().ok()??))
+    })
+}
+
+/// The members one repeating group declares, as a level a key resolves in.
+fn member_fields(group: &Field) -> &[Field] {
+    match group.dtype() {
+        DataType::List(item) | DataType::LargeList(item) => item.fields(),
+        _ => &[],
+    }
 }
 
 /// The tags one repeating group declares as its direct members, the first

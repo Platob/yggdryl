@@ -128,6 +128,9 @@ criterion = { version = "0.7", default-features = false, features = ["cargo_benc
 # which need 1.88, so it would raise the floor for everyone through a
 # dev-dependency that only a benchmark reads.
 futures = "0.3"
+# The parser warnings a best-effort CBlock read emits are only readable
+# through a logger, and the tests that pin one install their own.
+log.workspace = true
 object_store = { version = "=0.13.1", features = ["aws"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["rt"] }

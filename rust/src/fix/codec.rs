@@ -34,7 +34,8 @@
 //! # Nothing is skipped
 //!
 //! A row with no message type is built anyway and named `unknown`; a value
-//! that will not type is null; a group that will not split stays whole. What
+//! that will not type is null; a group that will not split stays whole; a
+//! document in `XmlData` that will not parse stays the bytes it is. What
 //! is left - input that is not a row at all - is an `Err` item carrying it,
 //! and the stream continues, because one corrupt line must not end a run over
 //! ten million.
@@ -50,6 +51,15 @@ use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 use super::build::{Builder, RowExtras, root_name};
 use super::{FixBranch, FixMessages, FixMsg, FixRegistry};
+
+/// One bridge row split into its pairs, beside the message type it declared.
+///
+/// Every key is borrowed from the row except a packed occurrence's, which is
+/// rendered under the path the builder nests by and so has to be built.
+type BridgeRow<'registry, 'body> = (
+    Option<&'registry super::MsgType>,
+    Vec<(Cow<'body, [u8]>, &'body [u8])>,
+);
 
 /// What separates the members packed inside one bridge group occurrence.
 ///
@@ -105,6 +115,12 @@ fn bridge_row(value: &[u8]) -> bool {
             .iter()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'[' | b']'))
         && key[0].is_ascii_alphabetic()
+}
+
+/// Whether an `XmlData` value is a document rather than a bridge row: it
+/// opens a tag, which a row never does.
+fn document(value: &[u8]) -> bool {
+    line::trim_ascii(value).first() == Some(&b'<')
 }
 
 /// Where a data field's value ends, when it is read by length rather than
@@ -427,7 +443,13 @@ impl FixCodec {
                     value = &body[value_start..span];
                     next = after;
                 }
-                if xml && bridge_row(value) {
+                // `XmlData` is the field a bridge writes a whole message
+                // into, and it writes one two ways: a row of its own pairs,
+                // and the FIXML the tag is named for. Both are read into the
+                // line rather than left as bytes nobody can address, so a
+                // frame carrying either answers by tag and by name like any
+                // other. Anything else in it is a value and stays one.
+                if xml && (bridge_row(value) || document(value)) {
                     nested.push(value);
                 }
             }
@@ -467,7 +489,7 @@ impl FixCodec {
 
     /// [`Self::transform_ullink_line`], with what the row stated beside its row.
     fn ullink_with(&self, body: &[u8], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
-        let resolved = self.ullink_pairs(body);
+        let (_, resolved) = self.ullink_pairs(body);
         let pairs: Vec<(&[u8], &[u8])> = resolved
             .iter()
             .map(|(key, value)| (key.as_ref(), *value))
@@ -480,7 +502,15 @@ impl FixCodec {
     ///
     /// Shared by the bridge-row reader and the frame reader, which meets a
     /// bridge row inside a data field and reads it by exactly these rules.
-    fn ullink_pairs<'body>(&self, body: &'body [u8]) -> Vec<(Cow<'body, [u8]>, &'body [u8])> {
+    ///
+    /// Answers the message the row declares beside the pairs, because the
+    /// splitting already resolved it: a group is split by the members the
+    /// row's own type declares, and a caller reading the row into a frame
+    /// needs the same answer to resolve the row's own spellings.
+    fn ullink_pairs<'registry, 'body>(
+        &'registry self,
+        body: &'body [u8],
+    ) -> BridgeRow<'registry, 'body> {
         let separator = line::ullink_separator(body);
         // The whole row is split before any `#` is judged, because the bare
         // twin that keeps one may arrive on either side of it. The segments
@@ -547,7 +577,7 @@ impl FixCodec {
                 _ => resolved.push((Cow::Borrowed(key), value)),
             }
         }
-        resolved
+        (message, resolved)
     }
 
     /// One occurrence's member pairs rendered under its path, sub-groups
@@ -626,34 +656,7 @@ impl FixCodec {
 
     /// [`Self::transform_fixml_line`], with what the row stated beside its document.
     fn fixml_with(&self, body: &[u8], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
-        let mut reader = quick_xml::Reader::from_reader(body);
-        let mut buffer = Vec::new();
-        let mut owned: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-        let malformed = |reader: &quick_xml::Reader<&[u8]>, reason: String| Error::Parse {
-            target: "fixml",
-            position: reader.buffer_position() as usize,
-            reason: SmolStr::new(reason),
-        };
-        loop {
-            let event = reader
-                .read_event_into(&mut buffer)
-                .map_err(|error| malformed(&reader, error.to_string()))?;
-            match event {
-                Event::Eof => break,
-                Event::Start(element) | Event::Empty(element) => {
-                    for attribute in element.attributes() {
-                        let attribute =
-                            attribute.map_err(|error| malformed(&reader, error.to_string()))?;
-                        owned.push((
-                            attribute.key.local_name().as_ref().to_vec(),
-                            attribute.value.into_owned(),
-                        ));
-                    }
-                }
-                _ => {}
-            }
-            buffer.clear();
-        }
+        let owned = fixml_pairs(body)?;
         let pairs: Vec<(&[u8], &[u8])> = owned
             .iter()
             .map(|(key, value)| (key.as_slice(), value.as_slice()))
@@ -915,17 +918,7 @@ impl FixCodec {
         // nothing tries to read `<null>` as a price and file the failure.
         builder.push_pairs(pairs, |value| self.is_absent(value));
         for row in nested {
-            // A row inside a data field is a reading of that field's value,
-            // not a second arrival: it fills the row and records no entry,
-            // so the arrival record and the wire it re-emits stay exact.
-            builder.begin_nested();
-            for (key, value) in self.ullink_pairs(row) {
-                if self.is_absent(value) {
-                    continue;
-                }
-                builder.push(key.as_ref(), value);
-            }
-            builder.end_nested();
+            self.push_nested(&mut builder, row, &branch);
         }
         for fill in extras.fills {
             builder.fill(fill);
@@ -937,6 +930,71 @@ impl FixCodec {
             return self.enrich_fixmsg(built);
         }
         Ok(built)
+    }
+
+    /// Reads one row a data field carried into the line it arrived on.
+    ///
+    /// A row inside a data field is a reading of that field's value, not a
+    /// second arrival: it fills the row and records no entry, so the arrival
+    /// record and the wire it re-emits stay exact.
+    ///
+    /// Two shapes, one reading. A bridge row splits into its own pairs; a
+    /// document is read by its attributes, exactly as a line carrying one is.
+    /// Either is a message of its own type at its own version, so both are
+    /// resolved from the row's own pairs before anything is pushed - a
+    /// `BeginString` states what the session speaks, and the row inside a data
+    /// field is routinely written to a later FIX than that. It states none of
+    /// its own, so the inference lands on the dictionary's newest, which is
+    /// the best reading of a row nothing dates.
+    ///
+    /// A document that will not parse fills nothing and the value stays whole,
+    /// for the reason a group that will not split stays whole: one
+    /// unreadable field is not a reason to lose the line it arrived on.
+    fn push_nested<'registry>(
+        &'registry self,
+        builder: &mut Builder<'registry>,
+        row: &[u8],
+        branch: &FixBranch,
+    ) {
+        if document(row) {
+            let Ok(owned) = fixml_pairs(row) else {
+                return;
+            };
+            let held: Vec<(&[u8], &[u8])> = owned
+                .iter()
+                .map(|(key, value)| (key.as_slice(), value.as_slice()))
+                .collect();
+            let declared = msgtype_of(&held)
+                .as_deref()
+                .and_then(|code| self.registry.get_msgtype(code, self.branch.as_ref()));
+            self.nest(builder, declared, &held, branch);
+            return;
+        }
+        let (declared, resolved) = self.ullink_pairs(row);
+        let held: Vec<(&[u8], &[u8])> = resolved
+            .iter()
+            .map(|(key, value)| (key.as_ref(), *value))
+            .collect();
+        self.nest(builder, declared, &held, branch);
+    }
+
+    /// One nested row's pairs, bracketed as the nested reading they are.
+    fn nest<'registry>(
+        &'registry self,
+        builder: &mut Builder<'registry>,
+        declared: Option<&'registry super::MsgType>,
+        pairs: &[(&[u8], &[u8])],
+        branch: &FixBranch,
+    ) {
+        let dated = self.version.or_else(|| self.infer_version(pairs, branch));
+        builder.begin_nested(declared, dated);
+        for (key, value) in pairs {
+            if self.is_absent(value) {
+                continue;
+            }
+            builder.push(key, value);
+        }
+        builder.end_nested();
     }
 
     /// The direct members the addressed repeating group declares.
@@ -1063,6 +1121,44 @@ fn msgtype_of(pairs: &[(&[u8], &[u8])]) -> Option<String> {
         }
     }
     None
+}
+
+/// One FIXML document as the pairs its attributes are, in document order.
+///
+/// A namespace prefix is dropped from an attribute name, exactly as the
+/// CBlock reader drops one from an element name, because a prefix names a
+/// document's own vocabulary and never the field. The values are owned
+/// because an escaped attribute is not a slice of the document.
+fn fixml_pairs(body: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+    let mut reader = quick_xml::Reader::from_reader(body);
+    let mut buffer = Vec::new();
+    let mut owned: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+    let malformed = |reader: &quick_xml::Reader<&[u8]>, reason: String| Error::Parse {
+        target: "fixml",
+        position: reader.buffer_position() as usize,
+        reason: SmolStr::new(reason),
+    };
+    loop {
+        let event = reader
+            .read_event_into(&mut buffer)
+            .map_err(|error| malformed(&reader, error.to_string()))?;
+        match event {
+            Event::Eof => break,
+            Event::Start(element) | Event::Empty(element) => {
+                for attribute in element.attributes() {
+                    let attribute =
+                        attribute.map_err(|error| malformed(&reader, error.to_string()))?;
+                    owned.push((
+                        attribute.key.local_name().as_ref().to_vec(),
+                        attribute.value.into_owned(),
+                    ));
+                }
+            }
+            _ => {}
+        }
+        buffer.clear();
+    }
+    Ok(owned)
 }
 
 /// Whether the frame's own first key is all ASCII digits.

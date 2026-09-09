@@ -1544,30 +1544,49 @@ test('a message type keeps its complete wire code and immutable schema', () => {
   assert.ok(copy.registerMsgtype('P Report Ack').equals(value))
 })
 
-test('a CBlock refusal crosses with the byte, the content and the element', () => {
+test('a CBlock is read for what it says, and a truncated one is refused', () => {
   const root = scratch()
-  const file = path.join(root, 'broken.cfb')
+
+  // A declaration this reader cannot make a field of is dropped and the rest
+  // of the file is still a dictionary: what went is a warning the host reads
+  // through a logger, never a failed read.
+  const dropped = path.join(root, 'dropped.cfb')
   fs.writeFileSync(
-    file,
+    dropped,
     [
       '<?xml version="1.0"?>',
       '<cplugin-configuration fix-version="4.4">',
-      '<vocabulary><vocabulary-tag name="35" alt="MsgType" type="decimal" /></vocabulary>',
+      '<vocabulary>',
+      '<vocabulary-tag name="35" alt="MsgType" type="decimal" />',
+      '<vocabulary-tag name="55" alt="Symbol" type="string" />',
+      '</vocabulary>',
       '</cplugin-configuration>',
     ].join('\n'),
     'utf8',
   )
+  const [registry] = fix.FixRegistry.fromCfbFile(dropped, 'bloomberg')
+  assert.equal(registry.fieldByTag(55).name, 'symbol')
+  assert.throws(() => registry.fieldByTag(35))
 
-  // The native sentence crosses whole rather than as a bare "invalid file":
-  // the byte the reader stopped at, the eight types it wanted, the ninth it
-  // got, and the element the file declared it in.
+  // A document that stops with an element open leaves nothing to keep, and
+  // the native sentence crosses whole rather than as a bare "invalid file":
+  // the byte the reader stopped at, and the element it left open.
+  const truncated = path.join(root, 'broken.cfb')
+  fs.writeFileSync(
+    truncated,
+    [
+      '<?xml version="1.0"?>',
+      '<cplugin-configuration fix-version="4.4">',
+      '<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" />',
+      '</cplugin-configuration>',
+    ].join('\n'),
+    'utf8',
+  )
   assert.throws(
-    () => fix.FixRegistry.fromCfbFile(file, 'bloomberg'),
+    () => fix.FixRegistry.fromCfbFile(truncated, 'bloomberg'),
     (error) => {
       assert.match(error.message, /invalid cfb expression at byte \d+/)
-      assert.match(error.message, /utc-time-only/)
-      assert.match(error.message, /"decimal"/)
-      assert.match(error.message, /<vocabulary-tag name=\\"35\\"/)
+      assert.match(error.message, /vocabulary/)
       return true
     },
   )

@@ -410,13 +410,26 @@ impl FixMsg {
         Ok(text)
     }
 
-    /// The version this message is expressed in, read back from the fields
-    /// that declare it.
+    /// The version this message was read at.
     ///
-    /// Derived rather than stored: `BeginString(8)` and `ApplVerID(1128)` are
-    /// what a message says about itself, so a converted one cannot lie.
+    /// The crate's own `version` child where a read stamped one - the codec's
+    /// target, which is what every field and every code in the row resolved
+    /// against - and `BeginString(8)` otherwise, which is what a message
+    /// converted from a schema and a value says about itself.
+    ///
+    /// Derived rather than stored either way, so a converted one cannot lie.
+    /// The two answers differ exactly where a session mislabels itself or
+    /// carries a row written to a later FIX than it speaks, which is what the
+    /// crate keeps a column for.
     #[must_use]
     pub fn version(&self) -> Option<Version> {
+        if let Some(held) = self
+            .get_by_tag(super::VERSION_TAG)
+            .and_then(Scalar::as_str)
+            .and_then(|held| held.parse().ok())
+        {
+            return Some(held);
+        }
         let begin = self.get_by_tag(8).and_then(Scalar::as_str)?;
         begin
             .strip_prefix("FIX.")

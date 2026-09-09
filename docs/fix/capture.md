@@ -9,7 +9,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | Owns | `FixCodec`, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
 | Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's own twenty, `msgdirection`, then `nofixentries` and `nounmappedfixentries` |
-| Non-null | `beginstring`, `msghash`, `timestamp`, `unixpartition` - every built message [fills them](#every-message-is-dated-and-versioned); every other column is nullable |
+| Non-null | `beginstring`, `version`, `msghash`, `timestamp`, `unixpartition` - every built message [fills them](#every-message-is-dated-and-versioned); every other column is nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
 | Lossless | `nofixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
 | Expansion | ordinary lines yield one message; a bulk configuration yields one per selected MBean, including every response; empty bulk or wildcard answers yield none |
@@ -384,7 +384,9 @@ Two of them declare more than a type, in the protocols the crate already has rat
 
 Two of the columns are filled when a message is built, whatever its line carried, and neither becomes an entry unless the wire sent it - so `into_bytes` still re-emits the wire byte for byte.
 
-`beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.<version>` for the version the message was read at: the pinned `version`, else the one `ApplVerID` or `BeginString` implied, else the branch's default, else the dictionary's newest, else 4.4. A bridge row and a configuration document therefore say which FIX they were read as exactly as a frame does, and `FixMsg::version()` always answers for a built message.
+`beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.<version>` for the version the message was read at: the pinned `version`, else the one `ApplVerID` or `BeginString` implied, else the branch's default, else the dictionary's newest, else 4.4. A bridge row and a configuration document therefore say which FIX they were read as exactly as a frame does.
+
+`version` states that same answer outright, on every message the codec generates, because `BeginString` is what the message says about *itself* and a session that mislabels itself - or that carries a row written to a later FIX than it speaks - makes the two differ. `FixMsg::version()` answers the crate's column where a read stamped one and `BeginString` otherwise, so it always answers for a built message.
 
 `timestamp` closes the message, and is never null. The row's own clock - a `timestamp` column of the record or the batch row, which is what a [row header capture](arrow.md#a-column-is-the-caller-speaking-per-row) becomes - outranks the message's clocks; those are read in decreasing exactness, `TransactTime(60)`, `TrdRegTimestamp(769)`, `SendingTime(52)`, `OrigSendingTime(122)`, a group's from its first occurrence; and a message with neither is stamped with the epoch, `1970-01-01T00:00:00Z`, where a row nobody dated sorts first and visibly rather than among the rows of whatever day it was read on. `market_timestamp()` answers that child, and `unix_partition` floors it to the partition width from its nanoseconds, so a clock stated to the millisecond has a partition.
 

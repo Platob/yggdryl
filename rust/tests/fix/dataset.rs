@@ -5,11 +5,14 @@
 //! Jolokia exchange whose answer is a configuration document, a wildcard
 //! document and an error, FIXML behind a verb, frames spelled with `^A` and
 //! `<SOH>`, a FIXT logon, a `35=UL` frame with exact lengths and real
-//! control-byte separators, a bridge row with null spellings, a marked frame,
-//! a statistics line, an empty body and a warning. The text reader frames
-//! every line under the bridge's own row header; each row is then read on
-//! its own as a record and as a batch of one shape, with enrichment on, and
-//! the two readings are required to agree line for line.
+//! control-byte separators, one more carrying a trade capture whose payload
+//! packs a group inside a group inside a group and separates their members
+//! with the glyphs a viewer prints for those bytes, one carrying a FIXML
+//! document in the same field instead, a bridge row with null spellings, a
+//! marked frame, a statistics line, an empty body and a warning. The text reader frames every line under the bridge's own row
+//! header; each row is then read on its own as a record and as a batch of
+//! one shape, with enrichment on, and the two readings are required to agree
+//! line for line.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,15 +24,15 @@ use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::types::State;
 use yggdryl::{
-    FixBatchReader, FixBranch, FixCodec, FixEntry, FixOptions, FixRegistry, IOMedia, MimeType,
-    Scalar, Timezone, Url,
+    DataType, FixBatchReader, FixBranch, FixCodec, FixEntry, FixOptions, FixRegistry, IOMedia,
+    MimeType, Scalar, Timezone, Url,
 };
 
 /// The capture, exactly as the bridge wrote it.
 const LOG: &[u8] = include_bytes!("ulbridge.log");
 
 /// How many lines the capture holds.
-const LINES: usize = 111;
+const LINES: usize = 113;
 
 /// The one line that reads as two rows: a wildcard Jolokia read, which
 /// answers for two MBeans and so yields one message per MBean.
@@ -537,14 +540,17 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
         .collect();
     assert_eq!(
         frames.len(),
-        3,
-        "two of the bridge's frames and the exact one"
+        4,
+        "two of the bridge's frames, the exact one and the trade capture"
     );
     for &line in &frames {
         let (row, held) = (line, &rows[row_of(line)]);
         // The frame's own statements stay the frame's.
         assert_eq!(held[column(35)].as_str(), Some("UL"), "row {row}");
-        assert_eq!(held[column(49)].as_str(), Some("ULB_DMZ_BROKER_BDG"));
+        assert!(
+            held[column(49)].as_str().is_some(),
+            "row {row} names a sender"
+        );
         // The row inside XmlData fills what the frame never stated.
         assert!(
             held[column(55)].as_str().is_some(),
@@ -559,10 +565,12 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
             "row {row} LastPx typed from the nested row"
         );
         assert!(held[column(60)].is_null() || matches!(held[column(60)], Scalar::Temporal(_)));
-        // XmlData itself is the bytes it is, whole.
+        // XmlData itself is the bytes it is, whole. It opens with a bridge
+        // key - marked with a `#` by the hop that marks them, bare by the one
+        // that does not - and never with a tag or a document.
         let xml = held[column(213)].as_bytes().expect("XmlData bytes");
         assert!(
-            xml.starts_with(b"#"),
+            xml.starts_with(b"#") || xml[0].is_ascii_uppercase(),
             "row {row}: {}",
             String::from_utf8_lossy(&xml[..40])
         );
@@ -917,4 +925,158 @@ fn the_wire_re_emits_from_the_arrival_record_frames_included() {
         checked += 1;
     }
     assert!(checked >= 9, "{checked} frames checked");
+}
+
+/// The members one group occurrence declares, whatever the reader named the
+/// occurrence itself.
+fn packed_members(group: &yggdryl::Field) -> Vec<&str> {
+    let DataType::List(item) = group.dtype() else {
+        panic!("a list, got {}", group.dtype());
+    };
+    item.fields().iter().map(yggdryl::Field::name).collect()
+}
+
+fn packed_group<'held>(group: &'held yggdryl::Field, name: &str) -> &'held yggdryl::Field {
+    let DataType::List(item) = group.dtype() else {
+        panic!("a list, got {}", group.dtype());
+    };
+    item.fields()
+        .iter()
+        .find(|held| held.name() == name)
+        .unwrap_or_else(|| panic!("{name} inside {}", group.name()))
+}
+
+#[test]
+fn a_document_in_a_data_field_fills_the_frame_that_carried_it() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let line = text
+        .iter()
+        .position(|held| body(&text_names, held).contains("213=<FIXML"))
+        .expect("the frame carrying a document");
+    let message = codec
+        .transform_record(&record(&text_names, &text[line]), true)
+        .and_then(|mut messages| messages.next().expect("a message"))
+        .expect("the frame reads");
+
+    // The frame's own statements stay the frame's, and the document inside
+    // `XmlData` fills what the frame never said - real tags, typed by the
+    // dictionary, a nested element's attributes flattened like any other.
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("n"));
+    assert_eq!(
+        message.by_tag(17).unwrap().as_str(),
+        Some("00011377096XEEA0")
+    );
+    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("HOLN"));
+    assert_eq!(message.by_tag(32).unwrap().as_f64(), Some(120.0));
+    assert_eq!(message.by_tag(452).unwrap().as_i64(), Some(11));
+
+    // The field still holds the bytes it arrived as: a reading of a value is
+    // not a second arrival, so the wire re-emits the line exactly.
+    let xml = message.by_tag(213).unwrap().as_bytes().expect("XmlData");
+    assert!(
+        xml.starts_with(b"<FIXML"),
+        "{}",
+        String::from_utf8_lossy(xml)
+    );
+    let entries = message.entries().len();
+    assert_eq!(
+        entries, 10,
+        "the frame's own pairs and nothing the document said"
+    );
+}
+
+#[test]
+fn a_trade_capture_frame_nests_every_group_its_payload_packs() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let line = text
+        .iter()
+        .position(|held| body(&text_names, held).contains("MSGTYPE=tradecapturereport"))
+        .expect("the trade capture frame");
+    let message = codec
+        .transform_record(&record(&text_names, &text[line]), true)
+        .and_then(|mut messages| messages.next().expect("a message"))
+        .expect("the frame reads");
+
+    // The frame's own type is the message's: `35=UL` is what the bridge sent
+    // and `MSGTYPE=` inside `XmlData` is what the row it carried calls itself.
+    // The frame states it, so the frame keeps it.
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("UL"));
+
+    // The occurrence packs its members behind the two glyphs a log viewer
+    // prints for the bridge's control bytes, and each becomes its own field.
+    let hedges = message
+        .by_name("nohedgegroups")
+        .expect("the hedge group")
+        .as_sequence()
+        .expect("its occurrences")
+        .to_vec();
+    assert_eq!(hedges.len(), 1);
+    let held = hedges[0].as_sequence().expect("its members").to_vec();
+    assert_eq!(held.len(), 6, "{held:?}");
+    assert_eq!(held[0].as_str(), Some("XAU"), "HedgeCurrency");
+    let root = message.as_field();
+    let hedge = root
+        .get_field_by_path("nohedgegroups")
+        .expect("the hedge group field");
+    assert_eq!(packed_members(hedge)[0], "hedgecurrency");
+
+    // A group packed inside an occurrence nests inside it rather than beside
+    // it, at every depth the payload packs one: the leg carries its own
+    // allocations, and the side its parties, and a party its sub-identifiers.
+    let legs = root.get_field_by_path("nolegs").expect("the leg group");
+    let allocations = packed_group(legs, "legpreallocgrp");
+    assert!(
+        packed_members(allocations).contains(&"legallocaccount"),
+        "{:?}",
+        packed_members(allocations)
+    );
+    let sides = root.get_field_by_path("nosides").expect("the side group");
+    let parties = packed_group(sides, "parties");
+    let subs = packed_group(parties, "ptyssubgrp");
+    assert!(
+        packed_members(subs).contains(&"partysubid"),
+        "{:?}",
+        packed_members(subs)
+    );
+
+    // The bridge counted the control bytes it wrote, so the length it stated
+    // is short of the bytes the log carries and the value runs to the trailer.
+    let stated = message.by_tag(212).unwrap().as_i64().expect("XmlDataLen");
+    let carried = message
+        .by_tag(213)
+        .unwrap()
+        .as_bytes()
+        .expect("XmlData")
+        .len() as i64;
+    assert!(stated < carried, "{stated} stated, {carried} carried");
+
+    // The envelope's `BeginString` is what the session speaks and the row
+    // inside it is written to a later FIX: `RegulatoryTradeIDGrp` is tag 1907,
+    // which no 4.2 session ever named. The codec here pins no version, so the
+    // row is dated by the dictionary's own newest rather than by the frame,
+    // and the frame keeps saying what it said.
+    assert_eq!(message.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
+    assert!(
+        registry().newest().expect("the seed's newest").version()
+            > "4.2".parse().expect("a version")
+    );
+    assert!(
+        packed_members(
+            root.get_field_by_path("regulatorytradeidgrp")
+                .expect("the regulatory trade id group")
+        )
+        .contains(&"tradeid")
+    );
+
+    // A key the dictionary has no field for is kept under its own spelling
+    // rather than dropped, dot and all.
+    assert_eq!(
+        message
+            .by_name("metal.loco")
+            .expect("the venue's own key")
+            .as_str(),
+        Some("LN")
+    );
 }

@@ -13,6 +13,7 @@ import copy
 import datetime as dt
 import decimal
 import json
+import logging
 import pathlib
 import pickle
 import subprocess
@@ -22,7 +23,7 @@ from typing import Any, Iterable
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url
+from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url, refresh_logging
 from yggdryl.fix import (
     FixBranch,
     FixMsg,
@@ -933,26 +934,51 @@ def test_registering_a_message_type_names_it_and_describes_it(
     assert registry.register_msgtype("P Report Ack") == pickle.loads(snapshot)
 
 
-def test_a_cblock_refusal_quotes_the_declaration_it_read(
+def test_a_cblock_warns_about_the_declaration_it_dropped(
     tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # The native sentence crosses whole: a `ValueError` naming the byte, what
-    # was expected, what arrived, and the element the file spells it in.
+    # A CBlock is read for what it says, so a declaration this reader cannot
+    # make a field of is dropped and the rest of the file is still a
+    # dictionary. The native sentence crosses whole through `logging`: the
+    # byte, what was expected, what arrived, and the element the file spells
+    # it in.
     broken = tmp_path / "bloomberg.cfb"
     broken.write_text(
         CBLOCK.replace('name="55" alt="Symbol" type="string"', 'name="55" alt="Symbol" type="decimal"'),
         encoding="utf-8",
     )
-    with pytest.raises(ValueError) as refused:
-        FixRegistry.from_cfb_file(broken, "bloomberg")
-    rendered = str(refused.value)
+    caplog.set_level(logging.WARNING)
+    # The bridge caches each Python logger's effective level, so a level set
+    # after import reaches it only through this call.
+    refresh_logging()
+    registry, _ = FixRegistry.from_cfb_file(broken, "bloomberg")
+    warnings = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name.startswith("yggdryl") and record.levelno == logging.WARNING
+    ]
+    assert warnings, "the native reader reported nothing"
+    rendered = warnings[0]
     assert "invalid cfb expression at byte" in rendered
     assert '"decimal"' in rendered
     assert 'vocabulary-tag name=\\"55\\"' in rendered
 
-    # Both doors refuse it with the same sentence.
+    # The tag went; every other declaration the file made stands.
+    assert [field.name for field in fix_cfb_fields(broken)] == ["excludeddealers"]
+    assert registry.field_by_name("excludeddealers", "bloomberg").fix.tag == 10001
+
+    # A document that stops with an element open leaves nothing to keep, and
+    # is one of the two things still refused - through both doors, with one
+    # sentence.
+    truncated = tmp_path / "truncated.cfb"
+    truncated.write_text(CBLOCK.replace("</vocabulary>", ""), encoding="utf-8")
+    with pytest.raises(ValueError) as refused:
+        FixRegistry.from_cfb_file(truncated, "bloomberg")
+    rendered = str(refused.value)
+    assert "invalid cfb expression at byte" in rendered
     with pytest.raises(ValueError) as also:
-        fix_cfb_fields(broken)
+        fix_cfb_fields(truncated)
     assert str(also.value) == rendered
 
 
