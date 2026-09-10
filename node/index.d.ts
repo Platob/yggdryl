@@ -1200,7 +1200,7 @@ export declare class FixCodec {
   static inferMsgtypeText(body: string): string | null
   /** One captured line, whatever it is wrapped in: its messages. */
   parseLine(row: Buffer): FixMessages
-  /** One numeric frame, split on the separator stated or inferred. */
+  /** One numeric frame, read by the pairs it states. */
   parseFixLine(body: Buffer): FixMsg
   /** One bridge frame, whose keys are names rather than tags. */
   parseUllinkLine(body: Buffer): FixMsg
