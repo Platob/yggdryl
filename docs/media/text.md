@@ -264,6 +264,26 @@ line carries tens of pairs, not thousands, an index would cost an allocation per
 line to save scanning a handful of entries, and the scan runs over ranges of one
 page. Resolve a path once and reuse it; the column plan already does.
 
+### Where a pair ends
+
+A frame decides. Where the line carries one - a numeric FIX frame, a bridge's
+own row, whatever the classifier located - the pairs from there on are that
+frame's segments cut at their first `=`, and a value ends only at the frame's
+separator. So `18=G L` and `48=ABBN SW` are one value each, `Symbol[0]=AAPL` is
+a pair keyed `Symbol[0]`, and `58=` is a pair carrying nothing rather than no
+pair at all. In front of a frame, and on a line that carries none, a value ends
+at the first byte that could end a field, because nothing has said which byte
+separates two of them: the same `58=quoting #A=1 and #B=2` that is one Text
+field inside a frame is three pairs when a transport wrote it as prose.
+
+`marked` says the line wrote a `#` in front of the key. The key itself is
+stripped of it, so a path lifts the name the writer gave the field, and the mark
+rides beside the pair instead - two entries differing only in it are two values,
+and a bridge restating `#ORDERID=123` under an `ORDERID=123` it already sent is
+telling the reader something. What that means is a dialect's reading of the
+mark, not the text reader's. An entry a caller created, or one rebuilt from a
+lifted column, is unmarked.
+
 ### Lifting an entry into a column
 
 `lift_names` names the entry paths that become columns of their own. The column

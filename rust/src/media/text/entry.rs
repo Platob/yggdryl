@@ -21,10 +21,17 @@ pub(crate) const MAX_ENTRY_DEPTH: usize = 8;
 /// Keys and values are ranges into the page the line was read into, not owned
 /// buffers: materializing the tree costs one vector, never a copy of any byte
 /// the entries name.
+///
+/// Two entries are one value when their keys, their values, their marks and
+/// their nested trees agree. The mark counts because it is a fact about what
+/// the line wrote and not a rendering of it: a bridge restating a pair writes
+/// `#ORDERID=123` under an `ORDERID=123` it already sent, and an identity that
+/// ignored the mark would answer that the line said one thing twice.
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TextEntry {
     key: TextBytes,
     value: TextBytes,
+    marked: bool,
     entries: Option<TextEntries>,
 }
 
@@ -35,6 +42,7 @@ impl TextEntry {
         Self {
             key,
             value,
+            marked: false,
             entries: None,
         }
     }
@@ -43,6 +51,13 @@ impl TextEntry {
     #[must_use]
     pub fn with_entries(mut self, entries: TextEntries) -> Self {
         self.entries = Some(entries);
+        self
+    }
+
+    /// Return this entry marked, or not, as the line wrote it.
+    #[must_use]
+    pub const fn with_marked(mut self, marked: bool) -> Self {
+        self.marked = marked;
         self
     }
 
@@ -61,6 +76,25 @@ impl TextEntry {
     /// Replace the value.
     pub fn set_value(&mut self, value: TextBytes) {
         self.value = value;
+    }
+
+    /// Whether the line wrote a `#` in front of this key.
+    ///
+    /// A bridge marks a key to say that what follows restates a pair it
+    /// already wrote, rather than stating a second one. The key range excludes
+    /// the marker so that every path lifting a bridge key asks for the name
+    /// the bridge gave the field, which is what makes the mark a fact of its
+    /// own: after stripping there is nothing in the bytes to read it back
+    /// from. What the mark *means* - a duplicate, a restatement, a group's
+    /// stem, a stated absence - is a dialect's reading of it and belongs to
+    /// whoever holds that dictionary.
+    ///
+    /// A mark arrives with the line and only with it. An entry a caller
+    /// created, or one rebuilt from a lifted column, is unmarked: the column
+    /// carries the value the path reached, and no column carries this.
+    #[must_use]
+    pub const fn marked(&self) -> bool {
+        self.marked
     }
 
     /// Borrow the nested tree.
@@ -82,6 +116,11 @@ impl TextEntry {
 
 impl fmt::Display for TextEntry {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The mark is written back, because two entries differing only in it
+        // are two values and a rendering that hid one would show them alike.
+        if self.marked {
+            formatter.write_str("#")?;
+        }
         write!(
             formatter,
             "{}={}",
@@ -297,7 +336,9 @@ impl TextEntries {
 /// Read every pair one line declares into a tree.
 ///
 /// The bytes are ranges of the page `body` already points into, so a tree costs
-/// one vector per level and copies nothing the line holds.
+/// one vector per level and copies nothing the line holds. Where a value ends
+/// is [`entry_spans`](crate::mime_type::line::entry_spans)' to say, and so is
+/// whether the line marked a key; both travel into the entry unchanged.
 ///
 /// Nesting descends only into a value that is itself pair-shaped - the mixed
 /// form, where a numeric envelope carries a payload stating its own fields -
@@ -320,7 +361,7 @@ fn read_entries_at(body: &TextBytes, depth: usize) -> Option<TextEntries> {
         ) else {
             continue;
         };
-        let mut entry = TextEntry::new(key, value);
+        let mut entry = TextEntry::new(key, value).with_marked(span.marked);
         if span.nested {
             if let Some(nested) = read_entries_at(entry.value(), depth + 1) {
                 entry.set_entries(Some(nested));

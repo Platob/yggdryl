@@ -1753,9 +1753,11 @@ pub struct TextBytes
 pub struct TextEntry
   pub const fn new(key: TextBytes, value: TextBytes) -> Self
   pub fn with_entries(self, entries: TextEntries) -> Self
+  pub const fn with_marked(self, marked: bool) -> Self
   pub const fn key(&self) -> &TextBytes
   pub const fn value(&self) -> &TextBytes
   pub fn set_value(&mut self, value: TextBytes)
+  pub const fn marked(&self) -> bool
   pub const fn entries(&self) -> Option<&TextEntries>
   pub const fn entries_mut(&mut self) -> Option<&mut TextEntries>
   pub fn set_entries(&mut self, entries: Option<TextEntries>)
