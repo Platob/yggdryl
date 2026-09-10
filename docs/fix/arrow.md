@@ -716,20 +716,20 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
 
 | stage | estimate | throughput | per line, row or message |
 | --- | --- | --- | --- |
-| `text_read`, the row header framed, each line numbered, classified and read for its direction | 152 ms | 73 MB/s | 21.0 us |
-| `parse_text_arrow_reader`, the whole path into fixed rows | 1.80 s | 6.1 MB/s | 246 us |
-| `parse_lines`, the codec alone over the framed bodies | 714 ms | 15.5 MB/s | 98.8 us |
+| `text_read`, the row header framed, each line numbered, classified and read for its direction | 146 ms | 76 MB/s | 20.2 us |
+| `parse_text_arrow_reader`, the whole path into fixed rows | 1.65 s | 6.7 MB/s | 226 us |
+| `parse_lines`, the codec alone over the framed bodies | 710 ms | 15.6 MB/s | 98.2 us |
 
 The text stage is under a tenth of the whole and the codec two fifths; the rest is the row landing in Arrow. What a message costs after it is built, each pass over fresh clones of the 7,232 messages, so every number is the pass over a message the stream just built:
 
 | pass | estimate | per message |
 | --- | --- | --- |
-| `into_row`, the message read against the fixed schema | 242 ms | 33.4 us |
-| `arrow_reader`, the rows landed in batches | 573 ms | 79.2 us |
-| `enrich_messages`, the rules that fill what a message implies | 546 ms | 75.6 us |
-| `into_latest`, the row restated at the dictionary's newest version | 587 ms | 81.2 us |
-| `lifecycle`, the stamp that joins a message to its order's life | 184 ms | 25.4 us |
-| `digest`, the message's identity | 37.8 ms | 5.22 us |
+| `into_row`, the message read against the fixed schema | 220 ms | 30.5 us |
+| `arrow_reader`, the rows landed in batches | 458 ms | 63.3 us |
+| `enrich_messages`, the rules that fill what a message implies | 516 ms | 71.4 us |
+| `into_latest`, the row restated at the dictionary's newest version | 551 ms | 76.2 us |
+| `lifecycle`, the stamp that joins a message to its order's life | 166 ms | 22.9 us |
+| `digest`, the message's identity | 28.8 ms | 3.98 us |
 
 A row pays `into_row` and its share of the batch; it pays for enrichment, the restatement and the lifecycle only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call). Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection; the batch is the rows canonicalized and built into one `RecordBatch`, of which the arrival record is the one nested column. Enrichment is the rule table walked once, most of it lookups that answer nothing on a message that stated everything, and each answer a write into the row; the restatement is every child resolved against the dictionary once and the rules its fields carry read borrowed; the lifecycle is two digests, a chain lookup and one write of three stamps. The digest is a hash over the arrival record and nothing else.
 
