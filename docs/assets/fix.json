@@ -243672,22 +243672,14 @@
           "2"
         ],
         [
-          "448",
-          "NOPARTYIDS[0].PARTYID",
-          "BUYSIDE"
-        ],
-        [
-          "447",
-          "NOPARTYIDS[0].PARTYIDSOURCE",
-          "D"
-        ],
-        [
-          "452",
-          "NOPARTYIDS[0].PARTYROLE",
-          "1"
+          "0",
+          "NOPARTYIDS[0]",
+          "PARTYID=BUYSIDE\u0004\u0003PARTYIDSOURCE=D\u0004\u0003PARTYROLE=1"
         ]
       ],
-      "unmapped": [],
+      "unmapped": [
+        "NOPARTYIDS[0]"
+      ],
       "lift": [
         [
           "symbol",
@@ -243713,11 +243705,11 @@
       "anomalies": [
         "parties (453) states 2 occurrences and holds 1"
       ],
-      "digest": "3d5dfa375c7137ba61146956a330598c",
+      "digest": "3453421e1590f50e8050f00d019b5c82",
       "ticker": "TTF",
       "clock": "1970-01-01T00:00:00.000000000Z",
       "partition": "0",
-      "emitted": "SYMBOL=TTF|SIDE=1|ORDERQTY=1200|PRICE=41.2500|NOPARTYIDS=2|NOPARTYIDS[0].PARTYID=BUYSIDE|NOPARTYIDS[0].PARTYIDSOURCE=D|NOPARTYIDS[0].PARTYROLE=1|",
+      "emitted": "SYMBOL=TTF|SIDE=1|ORDERQTY=1200|PRICE=41.2500|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=BUYSIDE\\x04\\x03PARTYIDSOURCE=D\\x04\\x03PARTYROLE=1|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))]"
     },
     {
