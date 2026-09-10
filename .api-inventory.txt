@@ -656,6 +656,34 @@ pub struct FixMessages
   impl FusedIterator for FixMessages
 
 ### yggdryl::fix::crated  [rust\src\fix\crated.rs]
+pub const CRATE_TAG_MIN: i32 = 65_000;
+pub const CRATE_TAG_MAX: i32 = 65_100;
+pub const MSGHASH_TAG: i32 = 65_000;
+pub const VERSION_TAG: i32 = 65_001;
+pub const SYMBOLTICKER_TAG: i32 = 65_002;
+pub const TIMESTAMP_TAG: i32 = 65_003;
+pub const UNIXPARTITION_TAG: i32 = 65_004;
+pub const PARENTCLORDID_TAG: i32 = 65_005;
+pub const PARENTORDERID_TAG: i32 = 65_006;
+pub const SENDERSESSIONID_TAG: i32 = 65_007;
+pub const MSGCTXID_TAG: i32 = 65_008;
+pub const PLUGINID_TAG: i32 = 65_009;  (`pluginid`, display `PluginId`: the plugin that logged the line, stated by a row's own `pluginid` column and never derived; the column also names the dialect the row is read under where it spells a registered branch's name or alias)
+pub const PREVPLUGINID_TAG: i32 = 65_010;  (`prevpluginid`, display `PrevPluginId`: the plugin the message came through before the one that logged it, stated only by a row's own `prevpluginid` column)
+pub const SENDERSESSIONNAME_TAG: i32 = 65_011;  (filled only by what the message states - `ULFromSessionName` - or a column bearing its name)
+pub const TARGETSESSIONNAME_TAG: i32 = 65_012;  (likewise, `ULToSessionName`)
+pub const ISINCODE_TAG: i32 = 65_013;
+pub const MICCODE_TAG: i32 = 65_014;
+pub const STATE_TAG: i32 = 65_015;
+pub const INSTID_TAG: i32 = 65_016;
+pub const ID_TAG: i32 = 65_017;
+pub const PERSISTENTID_TAG: i32 = 65_018;
+pub const TARGETSESSIONID_TAG: i32 = 65_019;
+pub const TIMESTAMP_NAME: &str = "timestamp";
+pub const MSGDIRECTION_TAG: i32 = 385;
+pub const MSGTYPE_TAG: i32 = 35;
+pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
+pub const fn is_crate_tag(tag: i32) -> bool
+pub fn fix_crate_fields() -> Result<&'static [Field]>
 impl FixRegistry
   pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<&MsgType>
 

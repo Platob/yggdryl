@@ -12,7 +12,9 @@
 //!
 //! Every stage runs over the same corpus, each on its own: the text reader
 //! framing each line under the bridge's row header, the whole path into fixed
-//! rows, the codec alone over the framed bodies, and then what a message
+//! rows, the codec alone over the framed bodies, the record reader over the
+//! same bodies with each row naming the plugin that logged it - so the
+//! per-row dialect path is measured on its own - and then what a message
 //! costs after it is built - its row, the batch the rows land in, the rules
 //! that fill what it implies, the restatement at the dictionary's newest
 //! version, the stamp that joins it to its order's life, and its digest.
@@ -29,7 +31,7 @@ use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
-use yggdryl::{FixBranch, FixCodec, FixMsg, IOMedia, Timezone, Url, fix_schema};
+use yggdryl::{FixBranch, FixCodec, FixMsg, IOMedia, Scalar, Timezone, Url, fix_schema};
 
 use super::seed;
 
@@ -141,6 +143,51 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 .filter(Result::is_ok)
                 .count()
         });
+    });
+
+    // The record reader over the same bodies, each row naming the plugin
+    // that logged it: every other row an alias of the pinned dialect, the
+    // rest a plugin no branch is named after. The alias is declared on a
+    // copy of the dictionary so the other cases keep their setup, and the
+    // codec stays pinned as they are. A row's dialect resolves off the
+    // codec's memo after the first row spelling it, so this is what a row
+    // costs to read under a dialect it names for itself.
+    let mut aliased = registry.as_ref().clone();
+    let alias = aliased
+        .branch_named(yggdryl::ULBRIDGE_BRANCH)
+        .cloned()
+        .expect("the bridge's branch")
+        .with_aliases(["ulb"])
+        .expect("an alias");
+    aliased.set_branch(alias).expect("the alias declares");
+    let plugin_codec = FixCodec::new(Arc::new(aliased)).with_branch(&branch);
+    let records: Vec<Scalar> = held
+        .iter()
+        .enumerate()
+        .map(|(index, body)| {
+            let plugin = if index % 2 == 0 {
+                "ULB"
+            } else {
+                "OMS_X1_TradeCapture"
+            };
+            Scalar::from_record([
+                ("body", Scalar::from(body.clone())),
+                ("pluginid", Scalar::from(plugin)),
+            ])
+            .expect("a record")
+        })
+        .collect();
+    group.bench_function("parse_text_records_pluginid", |bencher| {
+        bencher.iter_batched(
+            || records.clone(),
+            |held| {
+                black_box(&plugin_codec)
+                    .parse_text_records(held)
+                    .filter(Result::is_ok)
+                    .count()
+            },
+            BatchSize::LargeInput,
+        );
     });
 
     // What a message costs after it is built. Every pass runs over fresh

@@ -64,7 +64,7 @@ use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar};
 use super::build::Fill;
 use super::codec::{FixCodec, SOH};
 use super::msg::FixMsg;
-use super::record::{DIRECTION_COLUMN, RowParameters, parse_bytes};
+use super::record::{DIRECTION_COLUMN, RowParameters, parse_bytes, version_of};
 use super::{ENTRIES_COLUMN, FixEntry, FixMessages, FixRegistry};
 
 /// The name the fixed row's root takes: what the schema is asked for, and
@@ -92,10 +92,15 @@ impl FixCodec {
     ///
     /// Each row is read cell by cell out of the arrays and parsed through the
     /// same funnel as a line: the payload as [`Self::parse_line`] reads it,
-    /// the `branch`, `beginstring`, `sep`, `timestamp`, `direction` and
-    /// `plugin` columns as [`Self::parse_text_record`] reads them, and every
-    /// other column named after a field the dictionary knows filling that
-    /// field where the line left it unsaid. A line the reader refuses is a
+    /// the `pluginid`, `beginstring`, `sep`, `timestamp` and `direction`
+    /// columns as [`Self::parse_text_record`] reads them - `pluginid` both
+    /// filling its own column and naming the dialect the row is read under -
+    /// and every other column named after a field the dictionary knows
+    /// filling that field where the line left it unsaid. Where each column
+    /// sits and which field it fills is decided once from the schema, and a
+    /// row's dialect once per distinct plugin name, so no row copies the
+    /// codec or asks the dictionary a question the row before it asked. A
+    /// line the reader refuses is a
     /// row holding an empty message, never a row lost, so a row in is a row
     /// out; a bulk configuration document is one row per MBean, each
     /// repeating its source row's carried columns. The direction column
@@ -514,10 +519,6 @@ fn payload_bytes<'batch>(
         .map_or(Cow::Borrowed(&[]), Cow::Owned))
 }
 
-/// A field a row's own column fills, beside the tag it carries: resolved
-/// once per stream, non-null as a built child is.
-type Filled = Option<(Field, i32)>;
-
 /// Where each column a row is read from sits, decided once per stream.
 ///
 /// The parameter columns are found by the fold every record column is found
@@ -526,23 +527,24 @@ type Filled = Option<(Field, i32)>;
 struct Columns {
     /// The column the frame is read from, proven there and readable.
     payload: usize,
-    branch: Option<usize>,
     beginstring: Option<usize>,
     separator: Option<usize>,
     direction: Option<usize>,
     /// The column stating the row's own clock, which stamps the message.
     clock: Option<usize>,
-    /// The column naming the plugin that logged the row, which fills the
-    /// plugin session the row's direction says it moved between.
-    plugin: Option<usize>,
+    /// The column naming the plugin that logged the row.
+    ///
+    /// One of the fills - every registry holds the crate's own field of that
+    /// name - and read on the way through them as the dialect the row is
+    /// read under, so the cell is read once for both. A payload column
+    /// spelled so is the payload alone, as the record reader has it.
+    pluginid: Option<usize>,
     /// The columns whose names reach a field, each beside the field it fills.
     ///
     /// Resolved once from the schema and the dictionary: a column named after
     /// nothing the dictionary knows is never read per row for it, and the
     /// dictionary is never probed per row for one it does know.
     fills: Vec<(usize, Field, i32)>,
-    /// The plugin session fields a sent and a received row fill.
-    sessions: (Filled, Filled),
     kept: Vec<usize>,
     /// Each source column's datatype, so a cell is read under its own.
     dtypes: Vec<DataType>,
@@ -570,19 +572,14 @@ impl Columns {
                 Some((at, field, tag))
             })
             .collect();
-        let registry = codec.registry();
-        let session =
-            |direction: &'static str| super::record::plugin_session(registry, Some(direction));
         Ok(Self {
             payload: payload_at,
-            branch: named(super::record::BRANCH_COLUMN),
             beginstring: named(super::record::BEGINSTRING_COLUMN),
             separator: named(super::record::SEPARATOR_COLUMN),
             direction: named(DIRECTION_COLUMN),
             clock: named(super::record::CLOCK_COLUMN),
-            plugin: named(super::record::PLUGIN_COLUMN),
+            pluginid: named(super::record::PLUGINID_COLUMN).filter(|at| *at != payload_at),
             fills,
-            sessions: (session(MsgDirection::SENT), session(MsgDirection::RECV)),
             kept,
             dtypes: fields.iter().map(|held| held.dtype().clone()).collect(),
         })
@@ -629,13 +626,10 @@ impl Rows {
         };
         let at = self.columns.payload;
         let payload = payload_bytes(&self.columns.dtypes[at], batch.column(at), row)?;
-        let branch = stated(self.columns.branch)?;
         let beginstring = stated(self.columns.beginstring)?;
         let separator = stated(self.columns.separator)?;
         let clock = stated(self.columns.clock)?;
-        // The direction a row states outranks any reading of its line, and it
-        // is decided before the build: it picks which plugin session the
-        // row's plugin fills.
+        // The direction a row states outranks any reading of its line.
         let direction = stated(self.columns.direction)?
             .and_then(|held| {
                 let text = held.as_str()?;
@@ -646,22 +640,20 @@ impl Rows {
             .or_else(|| MsgDirection::infer_bytes(&payload))
             .or(self.codec.direction());
         // The cells that fill fields, read only where the row states them.
-        let mut cells: Vec<(&Field, i32, Scalar)> =
-            Vec::with_capacity(self.columns.fills.len() + 1);
+        // The plugin that logged the row is one of them, and the cell read
+        // for its fill is the one read for the row's dialect.
+        let mut branch = None;
+        let mut cells: Vec<(&Field, i32, Scalar)> = Vec::with_capacity(self.columns.fills.len());
         for (at, field, tag) in &self.columns.fills {
-            if let Some(value) = stated(Some(*at))? {
-                cells.push((field, *tag, value));
-            }
-        }
-        if let Some(plugin) = stated(self.columns.plugin)? {
-            let session = match direction {
-                Some(MsgDirection::SENT) => self.columns.sessions.0.as_ref(),
-                Some(MsgDirection::RECV) => self.columns.sessions.1.as_ref(),
-                _ => None,
+            let Some(value) = stated(Some(*at))? else {
+                continue;
             };
-            if let Some((field, tag)) = session {
-                cells.push((field, *tag, plugin));
+            if Some(*at) == self.columns.pluginid {
+                branch = value
+                    .as_str()
+                    .and_then(|plugin| self.codec.dialect_of(plugin));
             }
+            cells.push((field, *tag, value));
         }
         let fills: Vec<Fill<'_>> = cells
             .iter()
@@ -672,8 +664,11 @@ impl Rows {
             })
             .collect();
         let parameters = RowParameters {
-            branch: branch.as_ref().and_then(Scalar::as_str),
-            beginstring: beginstring.as_ref().and_then(Scalar::as_str),
+            branch,
+            version: beginstring
+                .as_ref()
+                .and_then(Scalar::as_str)
+                .and_then(version_of),
             separator: separator.as_ref().and_then(Scalar::as_str),
             clock: clock.as_ref(),
             fills: &fills,

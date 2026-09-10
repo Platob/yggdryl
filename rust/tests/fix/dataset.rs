@@ -463,38 +463,38 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         } else {
             assert_eq!(session, uid, "row {row} session from the bracket");
         }
-        // The plugin that logged the line is the plugin session it moved
-        // from or to, by the direction it moved - unless the row spelled the
-        // session itself, which a bridge row does as `ULFROMSESSIONNAME`.
-        let plugin = &text[line_of(row)][at(&text_names, "plugin")];
-        let direction = held[column(yggdryl::MSGDIRECTION_TAG)]
-            .as_str()
-            .map(str::to_owned);
-        let (sender, target) = (
-            &held[column(yggdryl::SENDERSESSIONNAME_TAG)],
-            &held[column(yggdryl::TARGETSESSIONNAME_TAG)],
+        // The plugin that logged the line is the bracket's own capture, on
+        // every row the line read into - and it is never anything else: the
+        // session names a line moved between are what the line spells, as a
+        // bridge row does with `ULFROMSESSIONNAME` and `ULTOSESSIONNAME`, and
+        // nothing derives them from the plugin, nor the plugin the message
+        // came through before.
+        let plugin = &text[line_of(row)][at(&text_names, "pluginid")];
+        assert_eq!(
+            &held[column(yggdryl::PLUGINID_TAG)],
+            plugin,
+            "row {row} names the plugin that logged it"
         );
-        match direction.as_deref() {
-            Some("SENT") if !line.contains("|ULFROMSESSIONNAME=") => {
-                assert_eq!(sender, plugin, "row {row} sent by its plugin");
-                assert!(
-                    target.is_null() || line.contains("|ULTOSESSIONNAME="),
-                    "row {row} target"
-                );
-            }
-            Some("RECV") if !line.contains("|ULTOSESSIONNAME=") => {
-                assert_eq!(target, plugin, "row {row} received by its plugin");
-                assert!(
-                    sender.is_null() || line.contains("|ULFROMSESSIONNAME="),
-                    "row {row} sender"
-                );
-            }
-            _ => {}
+        assert!(
+            held[column(yggdryl::PREVPLUGINID_TAG)].is_null(),
+            "row {row} states no previous plugin"
+        );
+        if !line.contains("ULFROMSESSIONNAME=") {
+            assert!(
+                held[column(yggdryl::SENDERSESSIONNAME_TAG)].is_null(),
+                "row {row} states no sender session name"
+            );
+        }
+        if !line.contains("ULTOSESSIONNAME=") {
+            assert!(
+                held[column(yggdryl::TARGETSESSIONNAME_TAG)].is_null(),
+                "row {row} states no target session name"
+            );
         }
     }
     // A thread bracket with no session leaves the bracket's columns null -
     // the Jolokia lines - and the bridge's own session name, where a row
-    // spells one, is the plugin session rather than the logging plugin.
+    // spells one, is the row's own statement.
     let jolokia = text
         .iter()
         .position(|held| body(&text_names, held).starts_with("URI: /jolokia"))

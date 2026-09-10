@@ -199,17 +199,25 @@ impl Slot {
 
 /// What a row states beside its payload, applied when its message is built.
 ///
-/// A clock and fills, both the caller speaking per row. The clock stamps the
+/// A dialect, a version, a clock and fills, all the caller speaking per row.
+/// The dialect and the version are what the row's `pluginid` and
+/// `beginstring` resolved to, and they outrank the codec's own pins because
+/// a row is the more specific statement; both arrive resolved, so the build
+/// reads under them and parses no name per line. The clock stamps the
 /// message where a clock the message carries otherwise would, because a row
 /// that says when its line was written outranks what the reader would
 /// derive, exactly as a stated direction outranks the reading of the line.
 /// Each fill lands on the field its name reaches - a capture named `sessionId`
 /// fills `sessionid`, one named `seqNum` fills `MsgSeqNum` - unless the
 /// message stated that field itself, because a stated value is never
-/// overridden. Neither touches the entries: the entries are what arrived on
-/// the line, and these arrived on the row.
+/// overridden. None of them touches the entries: the entries are what arrived
+/// on the line, and these arrived on the row.
 #[derive(Clone, Copy, Default)]
 pub(super) struct RowExtras<'row> {
+    /// The dialect the row is read under, where it named one.
+    pub(super) branch: Option<&'row FixBranch>,
+    /// The version the row is read at, where it stated one.
+    pub(super) version: Option<Version>,
     /// The row's own clock.
     pub(super) clock: Option<&'row Scalar>,
     /// The row's own columns, resolved to the fields they fill.
@@ -234,6 +242,8 @@ pub(super) struct Fill<'row> {
 impl RowExtras<'static> {
     /// A row stating nothing beside its payload.
     pub(super) const NONE: Self = Self {
+        branch: None,
+        version: None,
         clock: None,
         fills: &[],
     };
@@ -297,7 +307,10 @@ pub(super) struct Builder<'registry> {
     /// packs, and the group resolves once per line rather than once per
     /// member.
     groups: Vec<(SmolStr, Field, i32, bool)>,
-    branch: FixBranch,
+    /// The dialect this message is read under: the row's own, the codec's
+    /// pin or the standard one, each of which outlives the build - so it is
+    /// borrowed rather than copied, alias list and all, once per line.
+    branch: &'registry FixBranch,
     version: Option<Version>,
     slots: Vec<Slot>,
     /// Each slot's name digested, beside the slot.
@@ -361,7 +374,7 @@ impl<'registry> Builder<'registry> {
         message: Option<&'registry super::MsgType>,
         beginstring: &'registry Field,
         memo: &'registry Memo,
-        branch: FixBranch,
+        branch: &'registry FixBranch,
         version: Option<Version>,
         capacity: usize,
     ) -> Self {
@@ -624,7 +637,7 @@ impl<'registry> Builder<'registry> {
         let field = if let Some(tag) = super::field::parse_tag(key) {
             self.by_tag(tag)
         } else {
-            self.by_path(key, &self.branch).or_else(|| {
+            self.by_path(key, self.branch).or_else(|| {
                 (!self.branch.is_standard())
                     .then(|| self.by_path(key, &super::FixBranch::STANDARD))
                     .flatten()
@@ -646,7 +659,7 @@ impl<'registry> Builder<'registry> {
         if self.branch.is_standard() {
             return self.registry.get_field_by_tag(tag);
         }
-        if FixId::is_admissible(&self.branch, tag) {
+        if FixId::is_admissible(self.branch, tag) {
             let id = FixId::new(tag, self.branch.digest_signed());
             if let Some(field) = self.registry.get_field_by_id(id) {
                 return Some(field);
@@ -660,7 +673,7 @@ impl<'registry> Builder<'registry> {
     /// Counters are scalar fields and the groups they head are catalog
     /// definitions, so this is the one lookup that crosses the two.
     fn by_counter(&self, tag: i32) -> Option<&'registry Field> {
-        if !self.branch.is_standard() && FixId::is_admissible(&self.branch, tag) {
+        if !self.branch.is_standard() && FixId::is_admissible(self.branch, tag) {
             let id = FixId::new(tag, self.branch.digest_signed());
             if let Some(group) = self.registry.get_group_by_counter(id) {
                 return Some(group);
@@ -671,7 +684,7 @@ impl<'registry> Builder<'registry> {
 
     /// A group's own field, under the same tier a member resolves by.
     fn by_group(&self, group: &str) -> Option<&'registry Field> {
-        self.registry.known_group(group, &self.branch)
+        self.registry.known_group(group, self.branch)
     }
 
     /// The field a key builds under, as the dictionary declares it.
@@ -732,7 +745,7 @@ impl<'registry> Builder<'registry> {
                 group: self.by_group(key),
             };
         }
-        let lookup = self.memo.lookup(&self.branch, key, || Lookup {
+        let lookup = self.memo.lookup(self.branch, key, || Lookup {
             field: self
                 .resolve(key)
                 .and_then(|(field, _)| self.registry.identity_of(field)),
@@ -1199,7 +1212,7 @@ impl<'registry> Builder<'registry> {
         let mut entry = if tag == 0 {
             entry
         } else {
-            entry.with_branch(&self.branch)
+            entry.with_branch(self.branch)
         };
         self.recorded.push(tag);
         // The walk finds a counter only where one was recorded, so a record
@@ -1227,7 +1240,7 @@ impl<'registry> Builder<'registry> {
         let entry = if tag == 0 {
             entry
         } else {
-            entry.with_branch(&self.branch)
+            entry.with_branch(self.branch)
         };
         self.recorded.push(tag);
         self.entries.push(entry);

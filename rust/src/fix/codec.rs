@@ -77,6 +77,18 @@ type BridgeRow<'registry, 'body> = (
     Vec<(Cow<'body, [u8]>, &'body [u8])>,
 );
 
+/// The tier one bridge row's groups are split under: the dialect the row is
+/// read under and the message its type names there.
+///
+/// Resolved once per row and carried together, because every group lookup
+/// on the way down a packed occurrence asks both - which dictionary declares
+/// the group, and which message says what a shared counter heads.
+#[derive(Clone, Copy)]
+struct RowTier<'registry> {
+    branch: Option<&'registry FixBranch>,
+    message: Option<&'registry super::MsgType>,
+}
+
 /// One segment of a packed occurrence's value.
 ///
 /// A member pair, or the close a bridge writes where an occurrence it packed
@@ -442,11 +454,42 @@ impl FixCodec {
     /// Decided the way the builder decides it, so a batch reader that asks
     /// once per column and the builder that fills once per row agree.
     pub(super) fn fill_target(&self, name: &str) -> Option<(Field, i32)> {
-        let branch = self.branch.clone().unwrap_or_default();
-        let (field, tag) = super::build::fill_field(&self.registry, &branch, name)?;
+        let branch = self.branch.as_ref().unwrap_or(FixBranch::standard());
+        let (field, tag) = super::build::fill_field(&self.registry, branch, name)?;
         let mut field = field.clone();
         field.set_nullable(false);
         Some((field, tag))
+    }
+
+    /// The dialect a row's `pluginid` names: the registered branch whose
+    /// name or alias the plugin is spelled as, else nothing.
+    ///
+    /// A bridge's plugins are named by its operator, so a dictionary that
+    /// wants one read under a dialect declares that dialect under the
+    /// plugin's name, or with the name as an alias
+    /// ([`FixBranch::with_aliases`]); every other plugin reads under the
+    /// codec's pin. The registry is asked once per spelling and the answer
+    /// kept in the codec's memo, so a capture naming a plugin on every line
+    /// resolves it on the first. Empty text names nothing rather than the
+    /// standard branch, and text longer than [`FixBranch::MAX_LENGTH`] never
+    /// names a branch, since none can be spelled so: both are answered
+    /// before the memo is touched.
+    pub(super) fn dialect_of(&self, plugin: &str) -> Option<&FixBranch> {
+        if plugin.is_empty() || plugin.len() > FixBranch::MAX_LENGTH {
+            return None;
+        }
+        let digest = self.memo.dialect(plugin, || {
+            self.registry.branch_named(plugin).map(FixBranch::digest)
+        })?;
+        self.registry
+            .get_branch_by_digest(super::entry::signed(digest))
+    }
+
+    /// The tier one row's keys resolve in: the dialect its `pluginid` named,
+    /// else the one the caller pinned, else `None` - the standard namespace
+    /// first, as an unpinned codec reads.
+    fn tier<'a>(&'a self, row: Option<&'a FixBranch>) -> Option<&'a FixBranch> {
+        row.or(self.branch.as_ref())
     }
 
     /// Whether one raw value is a stated absence rather than a value.
@@ -687,7 +730,7 @@ impl FixCodec {
 
     /// [`Self::parse_ullink_line`], with what the row stated beside its row.
     fn ullink_with(&self, body: &[u8], extras: RowExtras<'_>) -> Result<FixMsg> {
-        let (_, resolved) = self.ullink_pairs(body);
+        let (_, resolved) = self.ullink_pairs(body, self.tier(extras.branch));
         let pairs: Vec<(&[u8], &[u8])> = resolved
             .iter()
             .map(|(key, value)| (key.as_ref(), *value))
@@ -704,10 +747,12 @@ impl FixCodec {
     /// Answers the message the row declares beside the pairs, because the
     /// splitting already resolved it: a group is split by the members the
     /// row's own type declares, and a caller reading the row into a frame
-    /// needs the same answer to resolve the row's own spellings.
+    /// needs the same answer to resolve the row's own spellings. `branch` is
+    /// the dialect the row is read under, which is what declares them.
     fn ullink_pairs<'registry, 'body>(
         &'registry self,
         body: &'body [u8],
+        branch: Option<&'registry FixBranch>,
     ) -> BridgeRow<'registry, 'body> {
         let separator = line::ullink_separator(body);
         // The whole row is split before any `#` is judged, because the bare
@@ -737,9 +782,12 @@ impl FixCodec {
         };
         let mut resolved: Vec<(Cow<'_, [u8]>, &[u8])> = Vec::with_capacity(kept.len());
         let msgtype = msgtype_of(kept.iter().map(|&(key, value, _)| (key, value)));
-        let message = msgtype
-            .as_deref()
-            .and_then(|code| self.declared_message(code));
+        let tier = RowTier {
+            branch,
+            message: msgtype
+                .as_deref()
+                .and_then(|code| self.declared_message(code, branch)),
+        };
         for &(key, value, whole) in &kept {
             if whole {
                 // Verbatim means whole: the twinned `#` key is its own key
@@ -751,7 +799,7 @@ impl FixCodec {
             }
             match group_index(key) {
                 Some((group, occurrence)) if memchr::memchr(b'=', value).is_some() => {
-                    let declared = self.group_members(group, message);
+                    let declared = self.group_members(group, tier);
                     let mut path = Vec::with_capacity(group.len() + 8);
                     path.extend_from_slice(group);
                     path.extend_from_slice(b"[");
@@ -766,12 +814,12 @@ impl FixCodec {
                         .rev()
                         .skip(1)
                         .any(|segment| matches!(segment, Segment::Close));
-                    self.render_members(&path, &segments, message, explicit, 0, &mut resolved);
+                    self.render_members(&path, &segments, tier, explicit, 0, &mut resolved);
                 }
                 _ => resolved.push((Cow::Borrowed(key), value)),
             }
         }
-        (message, resolved)
+        (tier.message, resolved)
     }
 
     /// Every arriving key with its `#` judged: the key to build under and
@@ -896,7 +944,7 @@ impl FixCodec {
         &'registry self,
         path: &[u8],
         segments: &[Segment<'value>],
-        message: Option<&'registry super::MsgType>,
+        tier: RowTier<'registry>,
         explicit: bool,
         depth: usize,
         out: &mut Vec<(Cow<'value, [u8]>, &'value [u8])>,
@@ -921,17 +969,17 @@ impl FixCodec {
                 Some((sub, index))
                     if depth < PACKED_DEPTH && memchr::memchr(b'=', held).is_some() =>
                 {
-                    let sub_declared = self.group_members(sub, message);
+                    let sub_declared = self.group_members(sub, tier);
                     let mut sub_path = rendered(sub);
                     sub_path.extend_from_slice(b"[");
                     sub_path.extend_from_slice(index.to_string().as_bytes());
                     sub_path.extend_from_slice(b"]");
                     // What the sub-occurrence packed into its own value,
                     // then every following segment up to where it ends.
-                    let end = self.extent(segments, at, sub_declared, message, explicit);
+                    let end = self.extent(segments, at, sub_declared, tier, explicit);
                     let mut nested = members(held, sub_declared);
                     nested.extend_from_slice(&segments[at..end]);
-                    self.render_members(&sub_path, &nested, message, explicit, depth + 1, out);
+                    self.render_members(&sub_path, &nested, tier, explicit, depth + 1, out);
                     at = end;
                     // The close that ended it is spent with it.
                     if explicit && matches!(segments.get(at), Some(Segment::Close)) {
@@ -961,7 +1009,7 @@ impl FixCodec {
         segments: &[Segment<'_>],
         start: usize,
         declared: &[Field],
-        message: Option<&super::MsgType>,
+        tier: RowTier<'_>,
         explicit: bool,
     ) -> usize {
         let mut at = start;
@@ -979,11 +1027,11 @@ impl FixCodec {
                     match group_index(key) {
                         Some(_) if opens && explicit => depth += 1,
                         Some((sub, _)) if opens => {
-                            if !self.declares_group(declared, sub, message) {
+                            if !self.declares_group(declared, sub, tier) {
                                 break;
                             }
-                            let sub_declared = self.group_members(sub, message);
-                            at = self.extent(segments, at + 1, sub_declared, message, false);
+                            let sub_declared = self.group_members(sub, tier);
+                            at = self.extent(segments, at + 1, sub_declared, tier, false);
                             continue;
                         }
                         _ if !explicit && !declares(declared, key) => break,
@@ -998,13 +1046,8 @@ impl FixCodec {
 
     /// Whether the level whose members are `declared` declares the group
     /// `sub` addresses: the group itself, or the counter that heads it.
-    fn declares_group(
-        &self,
-        declared: &[Field],
-        sub: &[u8],
-        message: Option<&super::MsgType>,
-    ) -> bool {
-        let Some(group) = self.group_definition(sub, message) else {
+    fn declares_group(&self, declared: &[Field], sub: &[u8], tier: RowTier<'_>) -> bool {
+        let Some(group) = self.group_definition(sub, tier) else {
             return false;
         };
         let counter = group.as_fix().counter().ok().flatten();
@@ -1054,24 +1097,50 @@ impl FixCodec {
     /// taking that shape means this accepts a row from any of them with no
     /// conversion at the boundary. The payload column is read by
     /// [`Self::parse_line`]; every other named column is a fact this codec
-    /// already holds, stated per row.
+    /// already holds, stated per row, or a field the row fills by name -
+    /// a column named `prevpluginid` lands on the crate's own
+    /// [`prevpluginid`](super::PREVPLUGINID_TAG), and nothing else fills it.
     ///
     /// | column | supplies |
     /// | --- | --- |
     /// | the payload column, [`Self::with_payload_column`] | the bytes read |
-    /// | `branch` | the dialect |
+    /// | `pluginid` | the plugin that logged the line: a fill of the crate's own [`pluginid`](super::PLUGINID_TAG) like any column named after a field, and the dialect the row is read under where its text is the name or an alias of a branch the dictionary declares |
     /// | `beginstring` | the version |
     /// | `sep` | the separator, which also means the payload is a FIX frame |
+    /// | `timestamp` | the row's own clock, which stamps the message |
     /// | `direction` | the direction, stated |
     ///
     /// A row outranks this codec, because a column is the caller speaking per
-    /// row where the codec is the caller speaking per run. A parameter column
-    /// that is absent, null or empty is silence, never an instruction and
-    /// never an error - so a record carrying only a payload reads exactly as
-    /// the bytes would, which is what makes this an entry point and not a
-    /// second contract. The payload column is the one column a record must
-    /// have: a null under it is a row holding an empty message, and a record
-    /// without it would parse nothing.
+    /// row where the codec is the caller speaking per run: a `pluginid` the
+    /// dictionary declares a dialect for reads under that dialect, and any
+    /// other - a plugin no branch is named after, a null, an empty string, a
+    /// name longer than [`FixBranch::MAX_LENGTH`] - keeps
+    /// [`Self::with_branch`], then the standard one. A parameter column that
+    /// is absent, null or empty is silence, never an instruction and never an
+    /// error - so a record carrying only a payload reads exactly as the bytes
+    /// would, which is what makes this an entry point and not a second
+    /// contract. The payload column is the one column a record must have: a
+    /// null under it is a row holding an empty message, and a record without
+    /// it would parse nothing.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::Arc;
+    /// # use yggdryl::{FixBranch, FixCodec, FixRegistry, Scalar};
+    /// let mut registry = FixRegistry::new();
+    /// registry.set_branch(FixBranch::from_str("venue")?.with_aliases(["vnu"])?)?;
+    /// let codec = FixCodec::new(Arc::new(registry));
+    /// let record = Scalar::from_record([
+    ///     ("body", Scalar::from("8=FIX.4.4|35=D|11=A|10=0|")),
+    ///     ("pluginid", Scalar::from("VNU")),
+    /// ])?;
+    /// let message = codec.parse_text_record(&record)?.next().expect("one message")?;
+    /// // The alias named the dialect, and the column filled its own field.
+    /// assert_eq!(message.branch().name(), "venue");
+    /// assert_eq!(message.by_tag(yggdryl::PLUGINID_TAG)?.as_str(), Some("VNU"));
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
@@ -1087,8 +1156,12 @@ impl FixCodec {
     /// Nothing is collected: the iterator is the stream, so a capture of ten
     /// million rows costs one message at a time. Each record is read exactly
     /// as [`Self::parse_text_record`] reads it, so what a row states about
-    /// itself still outranks what this codec holds for the run; a record that
-    /// is not one is an `Err` item and the stream continues.
+    /// itself still outranks what this codec holds for the run - its
+    /// `pluginid` fills its column and picks its dialect, its `beginstring`
+    /// its version - and nothing is copied per row for it: the codec is
+    /// cloned once into the stream, and a row's dialect is resolved once per
+    /// distinct plugin name. A record that is not one is an `Err` item and
+    /// the stream continues.
     pub fn parse_text_records<I>(&self, records: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator<Item = Scalar>,
@@ -1191,21 +1264,28 @@ impl FixCodec {
         nested: &[&[u8]],
         extras: RowExtras<'_>,
     ) -> Result<FixMsg> {
-        // A row states no dialect, so the caller's pin is the only source: a
-        // capture is one session and the branch is a fact about the run.
-        let branch = self.branch.clone().unwrap_or_default();
-        let version = self.version.or_else(|| self.infer_version(pairs, &branch));
+        // The row's own dialect where its `pluginid` named one, else the
+        // caller's pin: a capture is one session and the branch is a fact
+        // about the run, except where a row says which plugin logged it and
+        // the dictionary declares that plugin's own dialect. Nothing is
+        // copied for it - the branch lives in the registry, in the codec or
+        // in the crate, and each outlives the build. The version goes the
+        // same way: the row's, else the pin, else what the line implies.
+        let tier = self.tier(extras.branch);
+        let branch = tier.unwrap_or(FixBranch::standard());
+        let pinned = extras.version.or(self.version);
+        let version = pinned.or_else(|| self.infer_version(pairs, branch));
         let msgtype = msgtype_of(pairs.iter().copied());
 
         let message = msgtype
             .as_deref()
-            .and_then(|code| self.declared_message(code));
+            .and_then(|code| self.declared_message(code, tier));
         let mut builder = Builder::new(
             &self.registry,
             message,
             &self.beginstring,
             &self.memo,
-            branch.clone(),
+            branch,
             version,
             pairs.len(),
         );
@@ -1214,13 +1294,13 @@ impl FixCodec {
         // nothing tries to read `<null>` as a price and file the failure.
         builder.push_pairs(pairs, |value| self.is_absent(value));
         for row in nested {
-            self.push_nested(&mut builder, row, &branch);
+            self.push_nested(&mut builder, row, tier, pinned);
         }
         for fill in extras.fills {
             builder.fill(fill);
         }
         let mut built = builder.finish(root_name(msgtype.as_deref()).as_str(), extras.clock)?;
-        built.field.as_fix_mut().set_branch(&branch)?;
+        built.field.as_fix_mut().set_branch(branch)?;
         FixMsg::from_built(Arc::clone(&self.registry), built)
     }
 
@@ -1237,7 +1317,8 @@ impl FixCodec {
     /// `BeginString` states what the session speaks, and the row inside a data
     /// field is routinely written to a later FIX than that. It states none of
     /// its own, so the inference lands on the dictionary's newest, which is
-    /// the best reading of a row nothing dates.
+    /// the best reading of a row nothing dates - unless the line's row or
+    /// the caller `pinned` one, which dates the nested row too.
     ///
     /// A document that will not parse fills nothing and the value stays whole,
     /// for the reason a group that will not split stays whole: one
@@ -1246,7 +1327,8 @@ impl FixCodec {
         &'registry self,
         builder: &mut Builder<'registry>,
         row: &[u8],
-        branch: &FixBranch,
+        tier: Option<&'registry FixBranch>,
+        pinned: Option<Version>,
     ) {
         if document(row) {
             let Ok(owned) = fixml_pairs(row) else {
@@ -1258,16 +1340,16 @@ impl FixCodec {
                 .collect();
             let declared = msgtype_of(held.iter().copied())
                 .as_deref()
-                .and_then(|code| self.declared_message(code));
-            self.nest(builder, declared, &held, branch);
+                .and_then(|code| self.declared_message(code, tier));
+            self.nest(builder, declared, &held, tier, pinned);
             return;
         }
-        let (declared, resolved) = self.ullink_pairs(row);
+        let (declared, resolved) = self.ullink_pairs(row, tier);
         let held: Vec<(&[u8], &[u8])> = resolved
             .iter()
             .map(|(key, value)| (key.as_ref(), *value))
             .collect();
-        self.nest(builder, declared, &held, branch);
+        self.nest(builder, declared, &held, tier, pinned);
     }
 
     /// One nested row's pairs, bracketed as the nested reading they are.
@@ -1276,9 +1358,11 @@ impl FixCodec {
         builder: &mut Builder<'registry>,
         declared: Option<&'registry super::MsgType>,
         pairs: &[(&[u8], &[u8])],
-        branch: &FixBranch,
+        tier: Option<&FixBranch>,
+        pinned: Option<Version>,
     ) {
-        let dated = self.version.or_else(|| self.infer_version(pairs, branch));
+        let dated =
+            pinned.or_else(|| self.infer_version(pairs, tier.unwrap_or(FixBranch::standard())));
         builder.begin_nested(declared, dated);
         for (key, value) in pairs {
             if self.is_absent(value) {
@@ -1290,15 +1374,15 @@ impl FixCodec {
     }
 
     /// The message definition a row's type names, under the tier every key
-    /// resolves by: this codec's dialect, then the standard one.
+    /// resolves by: the row's dialect, then the standard one.
     ///
     /// A dialect declares its own vocabulary and rarely a message of its own,
     /// and the row a bridge writes calls itself by FIX's name - so a pinned
     /// dialect that answered nothing would leave every group the message
     /// declares, `NoLegs` and `NoSides` among them, without the context that
     /// says which group a shared counter heads.
-    fn declared_message(&self, code: &str) -> Option<&super::MsgType> {
-        self.registry.known_msgtype(code, self.branch.as_ref())
+    fn declared_message(&self, code: &str, tier: Option<&FixBranch>) -> Option<&super::MsgType> {
+        self.registry.known_msgtype(code, tier)
     }
 
     /// The direct members the addressed repeating group declares.
@@ -1309,9 +1393,9 @@ impl FixCodec {
     fn group_members<'registry>(
         &'registry self,
         group: &[u8],
-        message: Option<&'registry super::MsgType>,
+        tier: RowTier<'registry>,
     ) -> &'registry [Field] {
-        let Some(field) = self.group_definition(group, message) else {
+        let Some(field) = self.group_definition(group, tier) else {
             return &[];
         };
         let item = match field.dtype() {
@@ -1323,38 +1407,37 @@ impl FixCodec {
 
     /// The repeating group a bridge key addresses, as the dictionary declares
     /// it: by the group's own name, else by the counter's, under the message
-    /// where that counter is shared.
+    /// where that counter is shared - all in `tier`, the dialect the row is
+    /// read under and the message it declares.
     fn group_definition<'registry>(
         &'registry self,
         group: &[u8],
-        message: Option<&'registry super::MsgType>,
+        tier: RowTier<'registry>,
     ) -> Option<&'registry Field> {
         let Ok(group) = std::str::from_utf8(group) else {
             return None;
         };
+        let RowTier { branch, message } = tier;
         let found = self
             .registry
-            .get_definition(crate::FixCategory::Groups, group, self.branch.as_ref())
+            .get_definition(crate::FixCategory::Groups, group, branch)
             .or_else(|| {
                 let counter = if let Some(tag) = super::field::parse_tag(group) {
-                    let branch = self.branch.clone().unwrap_or_default();
+                    let branch = branch.unwrap_or(FixBranch::standard());
                     self.registry
-                        .get_field_by_id(super::FixId::from_parts(&branch, tag).ok()?)
+                        .get_field_by_id(super::FixId::from_parts(branch, tag).ok()?)
                 } else {
                     // A dialect that spells no such counter falls back to the
                     // standard branch, where FIX's own fields live.
-                    self.registry
-                        .get_field_by_name(group, self.branch.as_ref())
-                        .or_else(|| {
-                            self.branch
-                                .as_ref()
-                                .is_some_and(|held| !held.is_standard())
-                                .then(|| {
-                                    self.registry
-                                        .get_field_by_name(group, Some(&FixBranch::STANDARD))
-                                })
-                                .flatten()
-                        })
+                    self.registry.get_field_by_name(group, branch).or_else(|| {
+                        branch
+                            .is_some_and(|held| !held.is_standard())
+                            .then(|| {
+                                self.registry
+                                    .get_field_by_name(group, Some(&FixBranch::STANDARD))
+                            })
+                            .flatten()
+                    })
                 }?;
                 let id = self.registry.identity_of(counter)?;
                 match message.filter(|message| message.has_group_counter(id)) {

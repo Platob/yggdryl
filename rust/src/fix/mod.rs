@@ -182,10 +182,9 @@ pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
     CRATE_TAG_MAX, CRATE_TAG_MIN, DEFAULT_PARTITION_SECONDS, ID_TAG, INSTID_TAG, ISINCODE_TAG,
     MICCODE_TAG, MSGCTXID_TAG, MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG, PARENTCLORDID_TAG,
-    PARENTORDERID_TAG, PERSISTENTID_TAG, SENDERPLUGINID_TAG, SENDERSESSIONID_TAG,
-    SENDERSESSIONNAME_TAG, STATE_TAG, SYMBOLTICKER_TAG, TARGETPLUGINID_TAG, TARGETSESSIONID_TAG,
-    TARGETSESSIONNAME_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG, UNIXPARTITION_TAG, VERSION_TAG,
-    fix_crate_fields, is_crate_tag,
+    PARENTORDERID_TAG, PERSISTENTID_TAG, PLUGINID_TAG, PREVPLUGINID_TAG, SENDERSESSIONID_TAG,
+    SENDERSESSIONNAME_TAG, STATE_TAG, SYMBOLTICKER_TAG, TARGETSESSIONID_TAG, TARGETSESSIONNAME_TAG,
+    TIMESTAMP_NAME, TIMESTAMP_TAG, UNIXPARTITION_TAG, VERSION_TAG, fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use document::{Numbers, Words};
@@ -268,6 +267,16 @@ impl FixBranch {
     /// registry probes off the heap. Raising it would allocate branch names on
     /// the hot lookup path.
     pub const MAX_LENGTH: usize = 23;
+
+    /// [`Self::STANDARD`] with an address.
+    ///
+    /// A `const` is a value made afresh at every use, and a read under the
+    /// standard branch borrows it exactly as it borrows a registered one -
+    /// for as long as the message builds - so the one copy every unpinned
+    /// read shares lives here.
+    pub(super) const fn standard() -> &'static Self {
+        &STANDARD_BRANCH
+    }
 
     /// Parses and validates a branch, folding ASCII case.
     ///
@@ -398,6 +407,9 @@ impl FixBranch {
         self.digest == other.digest && self.name == other.name
     }
 }
+
+/// The standard branch every unpinned read borrows; see [`FixBranch::standard`].
+static STANDARD_BRANCH: FixBranch = FixBranch::STANDARD;
 
 impl FromStr for FixBranch {
     type Err = Error;

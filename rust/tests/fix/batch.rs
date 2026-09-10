@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
-use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, fix_schema};
+use yggdryl::{DataType, FixBranch, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, fix_schema};
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -836,10 +836,15 @@ fn a_record_is_read_by_its_columns_and_a_bare_payload_reads_as_the_byte_reader_d
     let silent = Scalar::from_record([
         ("body", Scalar::from(b"8=FIX.4.4|35=D|11=A|10=0|".to_vec())),
         ("beginstring", Scalar::Null),
-        ("branch", Scalar::from("")),
+        ("pluginid", Scalar::from("")),
     ])
     .unwrap();
-    assert_eq!(one(&silent).as_field().name(), "D");
+    let quiet = one(&silent);
+    assert_eq!(quiet.as_field().name(), "D");
+    assert!(
+        quiet.branch().is_standard(),
+        "an empty plugin names no dialect"
+    );
 
     // A bulk document is many messages, and the stream door yields each.
     let bulk = Scalar::from_record([("body", Scalar::from(BULK_CONFIG.to_vec()))]).unwrap();
@@ -848,6 +853,285 @@ fn a_record_is_read_by_its_columns_and_a_bare_payload_reads_as_the_byte_reader_d
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert_eq!(read.len(), 2);
+}
+
+/// The committed dictionary beside a dialect declared under a plugin's name
+/// and an alias, with one field of its own on user tag 5001, so a bridge
+/// row's `VENUETAG` resolves under that dialect and under nothing else.
+fn plugin_registry() -> (Arc<FixRegistry>, FixBranch) {
+    let venue = FixBranch::from_str("venue")
+        .unwrap()
+        .with_aliases(["vnu"])
+        .unwrap();
+    let mut registry = registry().as_ref().clone();
+    registry.set_branch(venue.clone()).unwrap();
+    let mut field = DataType::Utf8.nullable_field("VenueTag");
+    field.as_fix_mut().set_id(&venue, 5001).unwrap();
+    registry.insert(field).unwrap();
+    (Arc::new(registry), venue)
+}
+
+/// A bridge row naming its plugin, and the plugin the message came through
+/// before it where the row states one.
+fn plugin_record(body: &[u8], plugin: Scalar, previous: Scalar) -> Scalar {
+    Scalar::from_record([
+        ("body", Scalar::from(body.to_vec())),
+        ("pluginid", plugin),
+        ("prevpluginid", previous),
+    ])
+    .unwrap()
+}
+
+/// The one message one record reads as.
+fn one_of(codec: &FixCodec, record: &Scalar) -> FixMsg {
+    let mut messages = codec.parse_text_record(record).unwrap();
+    let message = messages.next().unwrap().unwrap();
+    assert!(messages.next().is_none(), "one message");
+    message
+}
+
+#[test]
+fn a_rows_pluginid_names_the_dialect_it_is_read_under_and_fills_its_own_column() {
+    let (registry, venue) = plugin_registry();
+    let codec = FixCodec::new(Arc::clone(&registry));
+    let body: &[u8] = b"MSGTYPE=D|CLORDID=A|VENUETAG=dark";
+
+    // The dialect's name, and its alias in another case: the row reads under
+    // the dialect - its own field resolves, the root's `fix:branch` says so
+    // and the message reports the registry's declaration, aliases and all -
+    // and the column fills the crate's own field exactly as it was spelled.
+    for spelled in ["venue", "VNU"] {
+        let message = one_of(
+            &codec,
+            &plugin_record(body, Scalar::from(spelled), Scalar::Null),
+        );
+        assert_eq!(message.branch().name(), "venue", "{spelled}");
+        assert!(message.branch().has_alias("vnu"), "{spelled}");
+        assert_eq!(
+            message.as_field().as_fix().branch().unwrap().name(),
+            "venue",
+            "{spelled}"
+        );
+        assert_eq!(
+            message.by_tag(5001).unwrap().as_str(),
+            Some("dark"),
+            "{spelled}: the dialect's own field"
+        );
+        assert_eq!(
+            message.by_tag(yggdryl::PLUGINID_TAG).unwrap().as_str(),
+            Some(spelled)
+        );
+        assert!(
+            message
+                .entries()
+                .iter()
+                .all(|entry| entry.tag() != yggdryl::PLUGINID_TAG),
+            "a fill is never an entry"
+        );
+    }
+
+    // Any other plugin keeps the codec's pin, then the standard branch: a
+    // plugin no branch is declared under, a null, an empty string, and a
+    // name too long to spell a branch at all.
+    let long = "x".repeat(FixBranch::MAX_LENGTH + 1);
+    let silent = [
+        Scalar::from("OMS_X1_TradeCapture"),
+        Scalar::Null,
+        Scalar::from(""),
+        Scalar::from(long.as_str()),
+    ];
+    for plugin in &silent {
+        let message = one_of(&codec, &plugin_record(body, plugin.clone(), Scalar::Null));
+        assert!(message.branch().is_standard(), "{plugin:?}");
+        assert!(
+            message.get_by_tag(5001).is_none(),
+            "{plugin:?}: the dialect's field is unknown to the standard"
+        );
+        assert_eq!(
+            message.by_name("venuetag").unwrap().as_str(),
+            Some("dark"),
+            "{plugin:?}: kept under its own spelling"
+        );
+    }
+    let pinned = codec.clone().with_branch(&venue);
+    for plugin in &silent {
+        let message = one_of(&pinned, &plugin_record(body, plugin.clone(), Scalar::Null));
+        assert_eq!(message.branch().name(), "venue", "{plugin:?}");
+        assert_eq!(message.by_tag(5001).unwrap().as_str(), Some("dark"));
+    }
+    // And the row outranks the pin, because it is the more specific
+    // statement: a codec pinned elsewhere still reads this row as the venue.
+    let elsewhere = codec
+        .clone()
+        .with_branch(&FixBranch::from_str("elsewhere").unwrap());
+    let message = one_of(
+        &elsewhere,
+        &plugin_record(body, Scalar::from("vnu"), Scalar::Null),
+    );
+    assert_eq!(message.branch().name(), "venue");
+    assert_eq!(message.by_tag(5001).unwrap().as_str(), Some("dark"));
+    let message = one_of(
+        &elsewhere,
+        &plugin_record(body, Scalar::from("ULBridge"), Scalar::Null),
+    );
+    assert_eq!(message.branch().name(), "elsewhere");
+}
+
+#[test]
+fn a_prevpluginid_column_fills_its_field_and_nothing_derives_it() {
+    let codec = codec();
+    let body: &[u8] = b"8=FIX.4.4|35=D|11=A|10=0|";
+    let stated = plugin_record(
+        body,
+        Scalar::from("OMS_X1_TradeCapture"),
+        Scalar::from("ULFilter"),
+    );
+    let message = one_of(&codec, &stated);
+    assert_eq!(
+        message.by_tag(yggdryl::PREVPLUGINID_TAG).unwrap().as_str(),
+        Some("ULFilter")
+    );
+    assert_eq!(
+        message.by_tag(yggdryl::PLUGINID_TAG).unwrap().as_str(),
+        Some("OMS_X1_TradeCapture")
+    );
+    assert!(
+        message.entries().iter().all(|entry| {
+            entry.tag() != yggdryl::PREVPLUGINID_TAG && entry.tag() != yggdryl::PLUGINID_TAG
+        }),
+        "a fill is never an entry"
+    );
+
+    // Without the column nothing fills it - not the plugin, not the
+    // direction the line moved - and the same holds of the session names,
+    // which are only ever what the line spells.
+    let unstated = Scalar::from_record([
+        ("body", Scalar::from(body.to_vec())),
+        ("pluginid", Scalar::from("OMS_X1_TradeCapture")),
+        ("direction", Scalar::from("RECV")),
+    ])
+    .unwrap();
+    let message = one_of(&codec, &unstated);
+    for tag in [
+        yggdryl::PREVPLUGINID_TAG,
+        yggdryl::SENDERSESSIONNAME_TAG,
+        yggdryl::TARGETSESSIONNAME_TAG,
+    ] {
+        assert!(
+            message.get_by_tag(tag).is_none_or(Scalar::is_null),
+            "tag {tag} is stated or nothing"
+        );
+    }
+    // What the line spells still lands, through the field's own alias.
+    let spelled = one_of(
+        &codec,
+        &Scalar::from_record([
+            (
+                "body",
+                Scalar::from("MSGTYPE=D|CLORDID=A|ULFROMSESSIONNAME=OMS_X1_OrderOut"),
+            ),
+            ("pluginid", Scalar::from("ULFilter")),
+        ])
+        .unwrap(),
+    );
+    assert_eq!(
+        spelled
+            .by_tag(yggdryl::SENDERSESSIONNAME_TAG)
+            .unwrap()
+            .as_str(),
+        Some("OMS_X1_OrderOut")
+    );
+    assert!(
+        spelled
+            .get_by_tag(yggdryl::TARGETSESSIONNAME_TAG)
+            .is_none_or(Scalar::is_null)
+    );
+}
+
+#[test]
+fn the_batch_reader_and_the_record_reader_agree_on_a_rows_plugin() {
+    let (registry, _) = plugin_registry();
+    let codec = FixCodec::new(registry);
+    // Every way a row can name its plugin: the dialect's name, its alias, a
+    // plugin no branch is named after, nothing, and an empty string - beside
+    // a previous plugin stated or not.
+    let rows: [(&[u8], Option<&str>, Option<&str>); 5] = [
+        (
+            b"MSGTYPE=D|CLORDID=A|VENUETAG=dark",
+            Some("venue"),
+            Some("ULFilter"),
+        ),
+        (b"MSGTYPE=D|CLORDID=B|VENUETAG=lit", Some("VNU"), None),
+        (
+            b"MSGTYPE=D|CLORDID=C|VENUETAG=none",
+            Some("OMS_X1_TradeCapture"),
+            None,
+        ),
+        (b"MSGTYPE=D|CLORDID=D|VENUETAG=none", None, Some("ULBridge")),
+        (b"MSGTYPE=D|CLORDID=E|VENUETAG=none", Some(""), None),
+    ];
+    let text = |held: Option<&str>| held.map_or(Scalar::Null, Scalar::from);
+    let records: Vec<Scalar> = rows
+        .iter()
+        .map(|(body, plugin, previous)| plugin_record(body, text(*plugin), text(*previous)))
+        .collect();
+    let capture = DataType::from_fields([
+        DataType::Binary.required_field("body"),
+        DataType::Utf8.nullable_field("pluginid"),
+        DataType::Utf8.nullable_field("prevpluginid"),
+    ])
+    .unwrap()
+    .required_field("capture");
+    let values = Scalar::from_sequence(
+        rows.iter()
+            .map(|(body, plugin, previous)| {
+                Scalar::from_sequence([Scalar::from(body.to_vec()), text(*plugin), text(*previous)])
+            })
+            .collect::<Vec<_>>(),
+    );
+    let batch = yggdryl::arrow::batch_from_value(&capture, &values).unwrap();
+    let read = batches(
+        codec
+            .parse_text_arrow_reader(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap(),
+    );
+    assert_eq!(row_count(&read), rows.len());
+    let again: Vec<FixMsg> = codec
+        .messages(yggdryl::arrow::batch_reader(read[0].schema(), read.clone()))
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+
+    // Row for row, the batch read is the record read: the plugin and the
+    // previous plugin land in their columns, and the arrival record carries
+    // the tag and the branch each key resolved to - 5001 under the venue,
+    // nothing anywhere else - which is the dialect the row was read under.
+    for (row, record) in records.iter().enumerate() {
+        let alone = one_of(&codec, record);
+        let streamed = &again[row];
+        for tag in [yggdryl::PLUGINID_TAG, yggdryl::PREVPLUGINID_TAG] {
+            assert_eq!(
+                alone.get_by_tag(tag).filter(|held| !held.is_null()),
+                streamed.get_by_tag(tag).filter(|held| !held.is_null()),
+                "row {row} tag {tag}"
+            );
+        }
+        assert_eq!(alone.entries(), streamed.entries(), "row {row}");
+        let under_venue = matches!(rows[row].1, Some("venue" | "VNU"));
+        assert_eq!(
+            alone.entries().iter().any(|entry| entry.tag() == 5001),
+            under_venue,
+            "row {row} resolves the venue's field under the venue alone"
+        );
+        assert_eq!(alone.branch().name() == "venue", under_venue, "row {row}");
+    }
+    assert_eq!(
+        again[0].by_tag(yggdryl::PREVPLUGINID_TAG).unwrap().as_str(),
+        Some("ULFilter")
+    );
+    assert_eq!(
+        again[1].by_tag(yggdryl::PLUGINID_TAG).unwrap().as_str(),
+        Some("VNU")
+    );
 }
 
 #[test]
