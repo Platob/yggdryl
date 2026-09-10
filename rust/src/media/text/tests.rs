@@ -1675,6 +1675,34 @@ mod values {
     }
 
     #[test]
+    fn a_text_field_quoting_pairs_is_one_field_carrying_a_tree_of_them() {
+        // The frame decides where the Text field ends; what that field's own
+        // text says is read under it, which is what a pair-shaped value has
+        // always meant here. The two readings do not compete: `58` is one
+        // field of the frame, and `A` is a member of what `58` says.
+        let entries = tree(b"8=FIX.4.4|35=D|58=quoting #A=1 and #B=2|10=0|");
+        let quoting = &entries.as_slice()[2];
+        assert_eq!(quoting.value().as_str(), Some("quoting #A=1 and #B=2"));
+        let quoted = quoting
+            .entries()
+            .expect("the value states pairs")
+            .as_slice();
+        assert_eq!(quoted.len(), 2);
+        assert_eq!(quoted[0].key().as_str(), Some("A"));
+        assert!(
+            quoted[0].marked() && quoted[1].marked(),
+            "the quoted keys carry the mark the text wrote in front of them"
+        );
+        assert_eq!(
+            entries
+                .get_entry_by_path(&path("58"))
+                .and_then(|found| found.value().as_str()),
+            Some("quoting #A=1 and #B=2"),
+            "and the frame's own field is what the frame's own key reaches"
+        );
+    }
+
+    #[test]
     fn a_value_a_frame_bounded_is_still_a_range_of_the_page_it_came_from() {
         let page = page(b"8=FIX.4.4|58=a value with spaces|10=0|");
         let body = TextBytes::from_whole_page(Arc::clone(&page)).expect("the whole page");

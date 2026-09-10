@@ -231,10 +231,11 @@ fn locate_frame(line: &[u8]) -> Option<LineFrame> {
 }
 
 fn frame(line: &[u8], (start, numeric): (usize, bool)) -> LineFrame {
+    let separator = LineSeparator::for_line(line, start);
     LineFrame {
-        start,
+        start: separator.head(line, start),
         numeric,
-        separator: LineSeparator::for_line(line, start, numeric),
+        separator,
     }
 }
 
@@ -246,6 +247,11 @@ fn frame(line: &[u8], (start, numeric): (usize, bool)) -> LineFrame {
 pub(crate) const SOH_MARKERS: [&[u8]; 4] = [b"^A", b"\\x01", b"<SOH>", b"{SOH}"];
 
 /// The delimiter of a named bridge frame, preserving spaces inside delimited values.
+///
+/// The FIX codec's own reading, and the only caller left: it knows the two
+/// bytes a bridge writes raw and nothing else, where what a line named as its
+/// separator is [`LineSeparator::for_line`]'s answer and covers the escaped
+/// spellings too.
 pub(crate) fn ullink_separator(line: &[u8]) -> u8 {
     // The outer delimiter precedes any separators packed inside an indexed
     // group's value. A later inner SOH must not override an earlier pipe.
@@ -253,24 +259,81 @@ pub(crate) fn ullink_separator(line: &[u8]) -> u8 {
 }
 
 impl LineSeparator {
-    fn for_line(line: &[u8], start: usize, numeric: bool) -> Self {
+    /// What separates two fields of the frame opening at `start`.
+    ///
+    /// The earliest candidate wins, because a frame separates on what it
+    /// opened with rather than on what it could have: `8=FIX.4.4 35=D 58=a|b
+    /// 10=0` opened on a space, and ranking the pipe over it would cut that
+    /// frame inside one of its values and read `b 10` as a key. Whitespace
+    /// ranks with the other candidates for that reason, and is also what is
+    /// left when the line named nothing - which is the difference
+    /// [`stated`](Self::stated) exists to draw.
+    fn for_line(line: &[u8], start: usize) -> Self {
         let tail = &line[start..];
-        if !numeric {
-            return match ullink_separator(tail) {
-                b' ' => Self::Whitespace,
-                byte => Self::Byte(byte),
-            };
-        }
+        [
+            Self::Byte(0x01),
+            Self::Byte(b'|'),
+            Self::Marker,
+            Self::Whitespace,
+        ]
+        .into_iter()
+        .filter_map(|separator| Some((separator.find(tail, 0)?.0, separator)))
+        .min_by_key(|(position, _)| *position)
+        .map_or(Self::Whitespace, |(_, separator)| separator)
+    }
 
-        let mut found: Option<(usize, Self)> = None;
-        for separator in [Self::Byte(0x01), Self::Byte(b'|'), Self::Marker] {
-            if let Some((position, _)) = separator.find(tail, 0) {
-                if found.is_none_or(|(held, _)| position < held) {
-                    found = Some((position, separator));
-                }
-            }
+    /// Whether the line named this separator, rather than being read under
+    /// the fallback.
+    ///
+    /// Whitespace is what a reader falls back on, never what a line states:
+    /// every line that runs words together holds some, so reading a space as
+    /// a frame's separator would make a sentence a frame. A line that named
+    /// its separator said where each of its fields ends; one that named none
+    /// said nothing of the sort, and is read by the rule for text that merely
+    /// carries pairs.
+    const fn stated(self) -> bool {
+        !matches!(self, Self::Whitespace)
+    }
+
+    /// Where the frame holding the pair at `start` opens.
+    ///
+    /// A frame is located at the first pair [`pair_at`] can read, and that
+    /// walk cannot read every field a frame states: `SYMBOL=` gives no value,
+    /// `SYMBOL="A B"` opens on a quote, and `#INSTRUMENT[DESCRIPTION]=HOLCIM
+    /// N` is keyed by a name no backwards run over key bytes spells. A frame
+    /// whose first field is one of those would otherwise lose it - and lose
+    /// it only there, because the same field two segments later is a segment
+    /// like any other, which would make one field's reading depend on where
+    /// it sits.
+    ///
+    /// So where the located pair already stands at a segment head, the
+    /// segments in front of it belong to the frame too, as long as each
+    /// states an `=` and no pair of its own: a field the locator refused is
+    /// still a field, while prose states pairs, and those the loose walk
+    /// owns. Where nothing stated a separator there are no segments to walk
+    /// back over, and the located pair is the head.
+    fn head(self, line: &[u8], start: usize) -> usize {
+        if !self.stated() {
+            return start;
         }
-        found.map_or(Self::Whitespace, |(_, separator)| separator)
+        let mut head = start;
+        while head > 0 {
+            let Some((at, width)) = self.find_back(line, head) else {
+                break;
+            };
+            if at + width != head {
+                break;
+            }
+            let previous = self
+                .find_back(line, at)
+                .map_or(0, |(before, width)| before + width);
+            let segment = &line[previous..at];
+            if memchr::memchr(b'=', segment).is_none() || pairs(segment).next().is_some() {
+                break;
+            }
+            head = previous;
+        }
+        head
     }
 
     /// Where this separator next stands at or after `start`, and how wide it
@@ -297,6 +360,28 @@ impl LineSeparator {
         }
     }
 
+    /// Where this separator last stands before `end`, and how wide it is
+    /// there.
+    ///
+    /// The mirror of [`find`](Self::find), for the one question that reads a
+    /// line backwards: which segment the pair a frame was located at opens.
+    fn find_back(self, line: &[u8], end: usize) -> Option<(usize, usize)> {
+        let head = &line[..end];
+        match self {
+            Self::Byte(byte) => memchr::memrchr(byte, head).map(|at| (at, 1)),
+            Self::Marker => SOH_MARKERS
+                .iter()
+                .filter_map(|marker| {
+                    memchr::memmem::rfind(head, marker).map(|at| (at, marker.len()))
+                })
+                .max_by_key(|(at, _)| *at),
+            Self::Whitespace => head
+                .iter()
+                .rposition(u8::is_ascii_whitespace)
+                .map(|at| (at, 1)),
+        }
+    }
+
     /// Where the segment opening at `start` ends, and where the next one opens.
     fn segment(self, line: &[u8], start: usize) -> (usize, usize) {
         let Some((end, width)) = self.find(line, start) else {
@@ -314,47 +399,61 @@ impl LineSeparator {
     }
 }
 
+/// The next field of the frame, for the walk that decides what a line is.
+///
+/// One reading of a segment, [`segment_span`], is shared with the walk that
+/// records what a line wrote, because both ask the same bytes the same
+/// question. They part on one answer only: a field given no value says
+/// nothing about what the line is, so this walk steps over it, while the
+/// entry walk keeps it because the line wrote it.
 fn next_entry<'line>(
     line: &'line [u8],
     offset: &mut usize,
     separator: LineSeparator,
 ) -> Option<LineEntry<'line>> {
     while *offset < line.len() {
-        while *offset < line.len() && line[*offset].is_ascii_whitespace() {
-            *offset += 1;
-        }
         let start = *offset;
         let (end, next) = separator.segment(line, start);
         *offset = next;
-        let Some((key, equals)) = pair_at(line, start) else {
-            if next == line.len() {
-                return None;
-            }
+        let Some(span) = segment_span(line, start, end) else {
             continue;
         };
-        if equals >= end {
+        if span.value.is_empty() {
             continue;
         }
-        let mut value_end = end;
-        while value_end > equals + 1
-            && matches!(
-                line[value_end - 1],
-                b' ' | b'\t' | b'\r' | b'\n' | b']' | b')' | b'}' | b',' | b';'
-            )
-        {
-            value_end -= 1;
-        }
-        if value_end > equals + 1 {
-            return Some(LineEntry {
-                key,
-                value: &line[equals + 1..value_end],
-                marked: line.get(start) == Some(&b'#'),
-            });
-        }
+        return Some(LineEntry {
+            key: line_key(&line[span.key.clone()]),
+            value: &line[span.value],
+            marked: span.marked,
+        });
     }
     None
 }
 
+/// What a frame's segment cut out as a key: a tag where it is digits, a name
+/// wherever it is anything else a key may be.
+///
+/// The tag is the same integer [`pair_at`] reads, and a run of digits too
+/// wide to be one is a name, because a key a dictionary cannot number is
+/// still the name the line gave the field.
+fn line_key(key: &[u8]) -> LineKey<'_> {
+    key.iter()
+        .try_fold(0_i32, |tag, byte| {
+            let digit = byte.is_ascii_digit().then(|| i32::from(*byte - b'0'))?;
+            tag.checked_mul(10)?.checked_add(digit)
+        })
+        .filter(|_| !key.is_empty())
+        .map_or(LineKey::Name(key), LineKey::Tag)
+}
+
+/// The pair standing at `start`, where a line that bounded nothing states one.
+///
+/// This is the walk that finds pairs, and it is deliberately strict: with no
+/// separator named, a pair has to be recognizable from its own bytes, so the
+/// key is a bare name or a tag and the value is neither empty nor quoted -
+/// `x = 5` and `a == b` are punctuation, and `Symbol[0]=AAPL` is a spelling
+/// only a frame can vouch for. Inside a frame the segment is bounded already
+/// and [`segment_span`] reads it instead.
 fn pair_at(line: &[u8], start: usize) -> Option<(LineKey<'_>, usize)> {
     if !is_field_start(line, start) {
         return None;
@@ -429,7 +528,7 @@ fn is_field_end(line: &[u8], position: usize) -> bool {
 /// checksum, and stops. It parses no message and allocates nothing.
 pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
     let raw_msgtype = find_named_value(line, b"MSGTYPE");
-    // A -marked key and a raw  are each a bridge's own marker,
+    // A `#`-marked key and a raw `MSGTYPE=` are each a bridge's own marker,
     // and neither needs a frame around it to say so.
     let mut inferred = LineInference {
         has_pairs: raw_msgtype.is_some(),
@@ -456,7 +555,7 @@ pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
                     if entry.value.starts_with(b"<") {
                         inferred.has_xml = true;
                     } else if memchr::memchr(b'=', entry.value).is_some() {
-                        // A pair-shaped  payload is the mixed form:
+                        // A pair-shaped `XmlData` payload is the mixed form:
                         // the envelope is numeric and everything that matters
                         // is symbolic inside it.
                         inferred.has_symbolic = true;
@@ -548,8 +647,11 @@ pub(crate) struct PairSpan {
     pub(crate) key: std::ops::Range<usize>,
     pub(crate) value: std::ops::Range<usize>,
     /// Whether the value is itself a run of pairs, so descending into it
-    /// answers something. This is the mixed form the classifier recognizes:
-    /// a numeric envelope whose payload states its own fields.
+    /// answers something. This is the mixed form the classifier recognizes -
+    /// a numeric envelope whose payload states its own fields - and it is
+    /// also how a Text field that quotes pairs is read: where the field ends
+    /// is the frame's to say, and what the field's own text says is read
+    /// beneath it rather than beside the frame's fields.
     pub(crate) nested: bool,
     /// Whether the line wrote a `#` in front of the key.
     ///
@@ -598,19 +700,54 @@ fn loose_span(line: &[u8], start: usize, equals: usize) -> PairSpan {
 
 /// One pair out of one segment of a frame, when the segment states one.
 ///
-/// The key is what precedes the segment's first `=` and the value is
-/// everything after it, so both ends are the frame's own separator rather than
-/// a byte guessed at. A segment stating no `=`, or opening with one, states no
-/// pair.
+/// The one reading of a frame's segment: both the walk that decides what a
+/// line is and the walk that records what it wrote come here, so a frame
+/// cannot be cut two ways.
+///
+/// The key is what precedes the segment's first `=` and the value is what
+/// follows it, so both ends are the frame's own separator rather than a byte
+/// guessed at. Two bounds keep a segment that states no field from becoming
+/// one. The key is a name or a tag, indexed and dotted where the writer
+/// indexed and dotted it - `NoAllocs[0].79`, `#INSTRUMENT[DESCRIPTION]` - but
+/// never prose: the tail of `10=0<SOH> trailing note=x` is a sentence a log
+/// wrote after the frame, not a field keyed `trailing note`. And the value
+/// gives back the punctuation a transport closed the line with, the `)` on a
+/// bridge row a log wrapped in parentheses, so one column holds one spelling
+/// of one value however the line that carried it was decorated.
 fn segment_span(line: &[u8], start: usize, end: usize) -> Option<PairSpan> {
     let mut key_at = start;
-    while key_at < end && matches!(line[key_at], b' ' | b'\t') {
+    while key_at < end && line[key_at].is_ascii_whitespace() {
         key_at += 1;
     }
     let marked = key_at < end && line[key_at] == b'#';
     let name_at = key_at + usize::from(marked);
     let equals = name_at + memchr::memchr(b'=', &line[name_at..end])?;
-    (equals > name_at).then(|| span(line, name_at..equals, equals + 1..end, marked))
+    if !is_segment_key(&line[name_at..equals]) {
+        return None;
+    }
+    let mut value_end = end;
+    while value_end > equals + 1
+        && matches!(
+            line[value_end - 1],
+            b' ' | b'\t' | b'\r' | b'\n' | b']' | b')' | b'}' | b',' | b';'
+        )
+    {
+        value_end -= 1;
+    }
+    Some(span(line, name_at..equals, equals + 1..value_end, marked))
+}
+
+/// Whether what a segment put in front of its `=` is a key.
+///
+/// A frame widens which bytes a key may hold - a bridge indexes and qualifies
+/// its keys, and `[`, `]` and `.` are part of the name it wrote - never
+/// whether a key is a name at all.
+fn is_segment_key(key: &[u8]) -> bool {
+    key.first()
+        .is_some_and(|first| is_name_start(*first) || first.is_ascii_digit())
+        && key
+            .iter()
+            .all(|byte| is_name_continue(*byte) || matches!(byte, b'[' | b']'))
 }
 
 /// Every pair the line declares, wherever it sits.
@@ -619,34 +756,51 @@ fn segment_span(line: &[u8], start: usize, end: usize) -> Option<PairSpan> {
 /// frame and stops at the checksum, because classification is decided by what
 /// the frame holds; a pair a transport wrote in front of the frame, or a
 /// trailer after it, is not part of that decision and is still part of what the
-/// line said. This walk reads them all, at the cost of one more pass over bytes
-/// the reader already holds.
+/// line said. This walk reads them all: it locates the frame, reads the pairs
+/// in front of it under the loose rule, and walks the frame's own segments.
 ///
 /// # A frame narrows the scan
 ///
-/// Where [`locate_frame`] finds a frame, the pairs from there on are that
-/// frame's segments cut at their first `=`, and a value ends only at the
-/// frame's own separator. Outside one - a sentence, a transport's prefix, a
-/// bare run of attributes - a value still ends at the first [`is_field_end`]
-/// byte, because nothing has said which byte separates two fields.
+/// A frame here is a run of pairs the line separated with a byte it named -
+/// a `SOH` raw or escaped, or a pipe. Inside one the pairs are that frame's
+/// segments cut at their first `=`, and a value ends only at that separator.
+/// Everywhere else - a sentence, a transport's prefix, a bare run of
+/// attributes, a frame that ran its fields together with spaces - a value
+/// still ends at the first [`is_field_end`] byte, because nothing has said
+/// which byte separates two fields. Whitespace is never the naming: every
+/// line that runs words together holds some, so reading a space as a frame's
+/// separator would make `host=srv1, port=8080` one field.
 ///
 /// The loose rule is wrong inside a frame, and these are the inputs that say
 /// so. Closing a value at any of eleven bytes cuts `18=G L` at the space and
 /// `48=ABBN SW` with it, and reads `58=quoting #A=1 and #B=2` - one Text field
-/// quoting two marked keys - as three pairs. Walking a key backwards over key
-/// bytes finds no pair at all in `NoAllocs[0].79=ACCT` or `Symbol[0]=AAPL`,
-/// because `]` neither continues a key nor opens a field, so a bridge's
-/// indexed keys vanish entirely. A frame answers every one of them with a fact
-/// it already had, and answers it the way [`inspect`] already reads the same
-/// bytes.
+/// quoting two marked keys - as three pairs beside the frame's own. Walking a
+/// key backwards over key bytes finds no pair at all in `NoAllocs[0].79=ACCT`
+/// or `Symbol[0]=AAPL`, because `]` neither continues a key nor opens a field,
+/// so a bridge's indexed keys vanish wherever a frame did not open the walk.
+/// A frame answers every one of them from a fact it already had, and answers
+/// it through the one segment reading [`segment_span`] gives [`inspect`] too.
+///
+/// A value that states pairs of its own is still descended into, which is
+/// what [`PairSpan::nested`] has always meant: the frame decides where the
+/// Text field ends, and what that field's own text says is read under it
+/// rather than beside the frame's fields.
+///
+/// A frame's segment states one field or it states prose - a log's own remark
+/// after the frame it quoted - and prose here is read the way prose is read
+/// anywhere: `10=0<SOH> trailing note=x` states the frame's `10` and the
+/// note's `note`, and no field keyed `trailing note`. Only the frame's own
+/// walk stops where the frame does; nothing the line said is dropped.
 ///
 /// An empty value is a pair inside a frame and is not one outside it. `58=`
 /// standing between two separators says the line wrote the field and gave it
 /// nothing, which is a different fact from `58` being absent; an unbounded `=`
 /// is punctuation as often as it is a pair - `x = 5`, `a == b` - and the loose
-/// walk has nothing to tell those two apart with.
+/// walk has nothing to tell those two apart with. [`inspect`] reads the same
+/// segment and steps over that field, because a field given nothing says
+/// nothing about what the line is.
 pub(crate) fn entry_spans(line: &[u8]) -> impl Iterator<Item = PairSpan> + '_ {
-    let frame = locate_frame(line);
+    let frame = locate_frame(line).filter(|frame| frame.separator.stated());
     let opens = frame.map_or(line.len(), |frame| frame.start);
     // Pairs arrive in line order, so the loose walk stops where the frame
     // opens rather than filtering the frame's own `=` signs back out of it.
@@ -654,17 +808,27 @@ pub(crate) fn entry_spans(line: &[u8]) -> impl Iterator<Item = PairSpan> + '_ {
         .take_while(move |(start, _, _)| *start < opens)
         .map(move |(start, _, equals)| loose_span(line, start, equals));
     let mut offset = opens;
-    let inside = std::iter::from_fn(move || {
+    let segments = std::iter::from_fn(move || {
         let separator = frame?.separator;
-        while offset < line.len() {
+        (offset < line.len()).then(|| {
             let start = offset;
             let (end, next) = separator.segment(line, start);
             offset = next;
-            if let Some(span) = segment_span(line, start, end) {
-                return Some(span);
-            }
-        }
-        None
+            start..end
+        })
+    });
+    // A segment states one field, or it states prose - a log's own remark
+    // after the frame it quoted - and prose is read here the way prose is
+    // read anywhere else on the line, so a pair written inside it is still a
+    // pair the line said.
+    let inside = segments.flat_map(move |segment| {
+        let stated = segment_span(line, segment.start, segment.end);
+        let loose = stated.is_none().then(|| {
+            let at = segment.start;
+            pairs(&line[segment])
+                .map(move |(start, _, equals)| loose_span(line, at + start, at + equals))
+        });
+        stated.into_iter().chain(loose.into_iter().flatten())
     });
     outside.chain(inside)
 }
@@ -1034,15 +1198,100 @@ mod tests {
     #[test]
     fn a_frame_separates_on_what_it_opened_with_and_not_on_what_it_could_have() {
         assert_eq!(
+            read(b"8=FIX.4.4 35=D 58=a|b 10=0"),
+            ["8=FIX.4.4", "35=D", "58=a", "10=0"],
+            "the pipe stands inside a value of a line that ran its fields \
+             together with spaces, so it separates nothing"
+        );
+        assert_eq!(
+            read(b"8=FIX.4.4|35=D|58=a b|10=0"),
+            ["8=FIX.4.4", "35=D", "58=a b", "10=0"],
+            "and the space stands inside a value of a line that named the pipe"
+        );
+    }
+
+    #[test]
+    fn a_line_that_named_no_separator_is_read_the_way_prose_is() {
+        // Whitespace is not a naming: every line that runs words together
+        // holds some. These read exactly as a sentence does, which is what
+        // they are until something says otherwise.
+        assert_eq!(
+            read(b"host=srv1, port=8080, mode=fast"),
+            ["host=srv1", "port=8080", "mode=fast"],
+            "a comma ends a value nothing bounded"
+        );
+        assert_eq!(read(b"user=bob,role=admin"), ["user=bob"]);
+        assert_eq!(read(b"a=(1) b=[2] c={3}"), ["a=(1", "b=[2", "c={3"]);
+        assert_eq!(
             read(b"8=FIX.4.4 35=D 11=A 10=123"),
             ["8=FIX.4.4", "35=D", "11=A", "10=123"],
-            "nothing else separates these fields, so whitespace does"
+            "a frame that named nothing is read by the same rule, and these \
+             values hold none of the bytes the rule ends one at"
         );
         assert_eq!(
             read(b"8=FIX.4.4;35=D;11=A;10=123"),
-            ["8=FIX.4.4;35=D;11=A;10=123"],
-            "a semicolon separates no frame this crate reads, so it is a byte \
-             of the one value the line stated"
+            ["8=FIX.4.4"],
+            "a semicolon is not a separator this crate reads, so the pairs \
+             behind one open no field: the line named nothing"
+        );
+        assert_eq!(
+            read(b"MSGTYPE=D|SYMBOL=AAPL|SIDE=1"),
+            ["MSGTYPE=D", "SYMBOL=AAPL", "SIDE=1"],
+            "the same bridge row, under a separator the line did name"
+        );
+    }
+
+    #[test]
+    fn a_frames_value_ends_where_the_classifier_reads_it_ending() {
+        // A log wrapping a row in its own punctuation closes the last value
+        // with it. One owner for where a value ends, or one column would hold
+        // two spellings of one value depending on how the line was decorated.
+        let wrapped = b"(8=FIX.4.4|35=D)";
+        assert_eq!(read(wrapped), ["8=FIX.4.4", "35=D"]);
+        assert_eq!(classify(wrapped), (MimeType::FIX, Some(&b"D"[..])));
+        assert_eq!(
+            read(b"8=FIX.4.4|35=D|58=trailing space |10=0|"),
+            ["8=FIX.4.4", "35=D", "58=trailing space", "10=0"]
+        );
+    }
+
+    #[test]
+    fn a_segment_that_states_no_field_is_prose_and_reads_as_prose() {
+        // A key is a name or a tag, indexed where the writer indexed it. The
+        // frame widens which bytes a key may hold, never whether a key is a
+        // name - so a log's remark after the frame states no field keyed
+        // `trailing note`, and the pair it does state is still read.
+        assert_eq!(
+            read(b"8=FIX.4.4\x0135=D\x0158=hello world\x0110=0\x01 trailing note=x"),
+            ["8=FIX.4.4", "35=D", "58=hello world", "10=0", "note=x"]
+        );
+    }
+
+    #[test]
+    fn a_field_the_locator_cannot_read_is_a_field_wherever_it_sits() {
+        // The frame is located at the first pair a locator can read, and a
+        // locator requiring a name and a value reads neither of these. The
+        // frame opens in front of them all the same, or the same field would
+        // be a pair second and no pair first.
+        assert_eq!(
+            read(b"MSGTYPE=D|SYMBOL=|SIDE=1"),
+            ["MSGTYPE=D", "SYMBOL=", "SIDE=1"]
+        );
+        assert_eq!(
+            read(b"SYMBOL=|MSGTYPE=D|SIDE=1"),
+            ["SYMBOL=", "MSGTYPE=D", "SIDE=1"]
+        );
+        assert_eq!(
+            read(b"SYMBOL=\"A B\"|MSGTYPE=D|SIDE=1"),
+            ["SYMBOL=\"A B\"", "MSGTYPE=D", "SIDE=1"],
+            "a value opening on a quote is a value like any other inside a \
+             frame, wherever the frame states it"
+        );
+        assert_eq!(
+            read(b"x=1|58=|8=FIX.4.4|35=D|10=0|"),
+            ["x=1", "58=", "8=FIX.4.4", "35=D", "10=0"],
+            "and the walk back stops at a segment stating a pair of its own, \
+             because a pair in front of a frame is the transport's"
         );
     }
 
@@ -1074,6 +1323,11 @@ mod tests {
         assert_eq!(
             read(b"MSGTYPE=D|#NOPARTYIDS=3|#NOPARTYIDS[0]=PARTYID=ONE"),
             ["MSGTYPE=D", "#NOPARTYIDS=3", "#NOPARTYIDS[0]=PARTYID=ONE"]
+        );
+        assert!(
+            read(b"Symbol[0]=AAPL").is_empty(),
+            "and standing alone it is still no pair: what a frame widens is \
+             the key inside it, not the walk that finds a frame"
         );
     }
 

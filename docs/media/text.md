@@ -266,15 +266,26 @@ page. Resolve a path once and reuse it; the column plan already does.
 
 ### Where a pair ends
 
-A frame decides. Where the line carries one - a numeric FIX frame, a bridge's
-own row, whatever the classifier located - the pairs from there on are that
-frame's segments cut at their first `=`, and a value ends only at the frame's
-separator. So `18=G L` and `48=ABBN SW` are one value each, `Symbol[0]=AAPL` is
-a pair keyed `Symbol[0]`, and `58=` is a pair carrying nothing rather than no
-pair at all. In front of a frame, and on a line that carries none, a value ends
-at the first byte that could end a field, because nothing has said which byte
-separates two of them: the same `58=quoting #A=1 and #B=2` that is one Text
-field inside a frame is three pairs when a transport wrote it as prose.
+A frame decides, and a frame is a run of pairs the line named a separator for -
+a `SOH` raw or escaped, or a pipe. Inside one the pairs are that frame's
+segments cut at their first `=`, and a value ends only at that separator, so
+`8=FIX.4.4|18=G L|48=ABBN SW|10=0|` carries `G L` and `ABBN SW` whole, and
+`58=` is a pair carrying nothing rather than no pair at all. A key inside a
+frame is a key however the writer spelled it - `NoAllocs[0].79` and
+`#INSTRUMENT[DESCRIPTION]` are names - though it is still a name and not prose,
+so a log's remark after the frame states no field.
+
+Everywhere else - a sentence, a transport's prefix in front of a frame, a bare
+run of attributes, a line that ran its fields together with spaces - a value
+ends at the first byte that could end a field, because nothing said which byte
+separates two of them. `host=srv1, port=8080` is two pairs and not one; the
+same `58=quoting #A=1 and #B=2` that is one Text field inside a frame is three
+pairs where a transport wrote it as prose; and `Symbol[0]=AAPL` standing on its
+own states no pair at all, because what a frame widens is the key inside it and
+not the walk that finds a frame. A value that states pairs of its own is read
+as a tree under its entry either way, which is what `entries` has always meant:
+the frame says where the Text field ends, and the field's own text says what
+hangs beneath it.
 
 `marked` says the line wrote a `#` in front of the key. The key itself is
 stripped of it, so a path lifts the name the writer gave the field, and the mark
@@ -283,6 +294,12 @@ and a bridge restating `#ORDERID=123` under an `ORDERID=123` it already sent is
 telling the reader something. What that means is a dialect's reading of the
 mark, not the text reader's. An entry a caller created, or one rebuilt from a
 lifted column, is unmarked.
+
+!!! note "Rust-only"
+    `marked` has no Python or Node getter yet. Both bindings already show the
+    mark - an entry renders as the line wrote it, `#` and all, and two entries
+    differing only in the mark compare unequal - so read it there off the
+    rendered pair until the getter lands with the rest of the FIX work.
 
 ### Lifting an entry into a column
 
