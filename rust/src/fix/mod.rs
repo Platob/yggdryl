@@ -18,6 +18,7 @@
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
 //! | lineage | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version |
 //! | codes | `fix:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
+//! | replacements | `fix:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take |
 //! | counter | `fix:counter` | `i32` | the wire field counting a group's occurrences |
 //! | component | `fix:component` | name | the component defining a group occurrence |
 //!
@@ -152,17 +153,20 @@ mod entry;
 mod field;
 mod global;
 mod group_plan;
+mod latest;
 mod lifecycle;
 mod lift;
 mod lineage;
+mod memo;
 mod messages;
 mod msg;
 mod msgtype;
 // Reading one generic record is not the Arrow surface, so it is not gated
-// with it: a schema-only build keeps `FixCodec::read_record`.
+// with it: a schema-only build keeps `FixCodec::parse_text_record`.
 mod catalog;
 mod record;
 mod registry;
+mod replacements;
 mod schema;
 mod store;
 #[cfg(test)]
@@ -170,12 +174,7 @@ mod tests;
 mod ulbridge;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
-#[cfg(feature = "arrow")]
-pub use batch::{
-    DEFAULT_BATCH_BYTE_SIZE, DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH,
-    classify_arrow_array, write_fix,
-};
-pub use codec::{DEFAULT_NULL_VALUES, FixCodec};
+pub use codec::{DEFAULT_NULL_VALUES, FixCodec, SOH};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
@@ -188,7 +187,7 @@ pub use crated::{
     fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
-pub use document::Words;
+pub use document::{Numbers, Words};
 pub use entry::FixEntry;
 pub use field::FixSpellings;
 pub use lifecycle::FixLifecycle;
@@ -197,7 +196,12 @@ pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
+pub use record::DEFAULT_PAYLOAD_COLUMN;
 pub use registry::{FixFieldIter, FixRegistry};
+pub use replacements::{
+    FixFill, FixFillEntry, FixFillSource, FixFillValue, FixFills, FixReplacement,
+    FixReplacementEntry, FixReplacements,
+};
 pub use ulbridge::{
     ERROR_TAG, MBEAN_TAG, OPERATION_TAG, STATUS_TAG, ULBRIDGE_BRANCH, ULBRIDGE_ROWHEADER,
     ULBRIDGE_TAG_MIN, UlPlugin, UlPlugins, fix_ulbridge_fields,

@@ -291,7 +291,7 @@ function fixedRow(registry) {
 /** One captured line, and everything the package answered about it. */
 function frameCase(registry, reader, schema, key, label, line) {
   const bytes = Buffer.from(line, 'binary')
-  const messages = reader.transformLine(bytes)
+  const messages = reader.parseLine(bytes)
   const first = messages.next()
   if (first.done || !messages.next().done) throw new Error(`corpus ${key} must yield one message`)
   const held = first.value
@@ -347,7 +347,7 @@ function frameCase(registry, reader, schema, key, label, line) {
     // The raw line rather than its escape, and the encoding `frameCase` itself
     // read it under: a snippet that does not reproduce the answer beside it is
     // not the call that answered.
-    call: `[...new fix.FixCodec(registry).transformLine(Buffer.from(${JSON.stringify(line)}, 'binary'))]`,
+    call: `[...new fix.FixCodec(registry).parseLine(Buffer.from(${JSON.stringify(line)}, 'binary'))]`,
   }
 }
 

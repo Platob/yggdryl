@@ -22,10 +22,14 @@ mod global_env;
 mod global_home;
 #[path = "fix/global_install.rs"]
 mod global_install;
+#[path = "fix/latest.rs"]
+mod latest;
 #[path = "fix/lifecycle.rs"]
 mod lifecycle;
 #[path = "fix/lift.rs"]
 mod lift;
+#[path = "fix/message.rs"]
+mod message;
 #[path = "fix/numeric_branch.rs"]
 mod numeric_branch;
 #[path = "fix/pipeline.rs"]
@@ -34,6 +38,60 @@ mod pipeline;
 mod schema;
 #[path = "fix/store.rs"]
 mod store;
+
+/// What a reader warned about while it ran, on this thread alone.
+///
+/// A CBlock is read best-effort, so what it drops is a warning rather than a
+/// return value and the tests that pin a drop have to read the log. `log` is
+/// process-global and this suite is threaded, so the records are buffered per
+/// thread and every other thread's are ignored - which is what lets a warning
+/// be asserted without the isolation a process-global fixture needs.
+mod warned {
+    use std::cell::RefCell;
+    use std::sync::Once;
+
+    thread_local! {
+        static HELD: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+    }
+
+    struct Sink;
+
+    impl log::Log for Sink {
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            metadata.level() <= log::Level::Warn
+        }
+
+        fn log(&self, record: &log::Record<'_>) {
+            if !self.enabled(record.metadata()) {
+                return;
+            }
+            HELD.with_borrow_mut(|held| {
+                if let Some(held) = held.as_mut() {
+                    held.push(record.args().to_string());
+                }
+            });
+        }
+
+        fn flush(&self) {}
+    }
+
+    static SINK: Sink = Sink;
+    static INSTALLED: Once = Once::new();
+
+    /// Runs `body`, answering what it warned about beside what it answered.
+    pub fn during<T>(body: impl FnOnce() -> T) -> (T, Vec<String>) {
+        INSTALLED.call_once(|| {
+            // Another logger may already own the process; the buffer is then
+            // empty and the assertions say so rather than the install failing.
+            drop(log::set_logger(&SINK));
+            log::set_max_level(log::LevelFilter::Warn);
+        });
+        HELD.with_borrow_mut(|held| *held = Some(Vec::new()));
+        let answered = body();
+        let warnings = HELD.with_borrow_mut(Option::take).unwrap_or_default();
+        (answered, warnings)
+    }
+}
 
 /// Immutable seed fixtures share parsing and compiled plans within this binary.
 fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
@@ -81,17 +139,31 @@ fn one_message(
     Ok(message)
 }
 
+/// The one message a singleton fixture yields, filled where asked: a stage
+/// is a call on the codec, so the flag lives in the test helper alone.
+fn one_message_filled(
+    codec: &yggdryl::FixCodec,
+    messages: impl Iterator<Item = yggdryl::Result<yggdryl::FixMsg>>,
+    enrich: bool,
+) -> yggdryl::Result<yggdryl::FixMsg> {
+    let message = one_message(messages)?;
+    if enrich {
+        return codec.enrich_message(message);
+    }
+    Ok(message)
+}
+
 impl OneMessage for yggdryl::FixCodec {
     fn one_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        one_message(self.transform_line(row, enrich)?)
+        one_message_filled(self, self.parse_line(row)?, enrich)
     }
 
     fn one_record(&self, row: &yggdryl::Scalar, enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        one_message(self.transform_record(row, enrich)?)
+        one_message_filled(self, self.parse_text_record(row)?, enrich)
     }
 
     fn one_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        one_message(self.transform_ulconfig_line(row, enrich)?)
+        one_message_filled(self, self.parse_ulconfig_line(row)?, enrich)
     }
 }
 

@@ -75,7 +75,7 @@
     "metadata": {
       "description": "Time of security's maturity expressed in local time with offset to UTC specified",
       "display": "UnderlyingLegMaturityTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"underlyinglegmaturitytime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"underlyinglegmaturitytime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}},{\"since\":\"5.0.2\",\"ep\":187,\"deprecated\":true}]}",
       "fix:tag": "1405"
     }
   },

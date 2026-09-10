@@ -1099,43 +1099,103 @@ export declare class Field {
 export type JsField = Field
 
 /**
- * One dictionary, reading captured lines into messages.
+ * One dictionary, reading captured lines into messages, with the Arrow twins.
  *
- * The reader is the whole parse surface: a captured line with a verb in front
+ * The codec is the whole parse surface: a captured line with a verb in front
  * of it, a bare frame, a numeric frame with a stated separator, a bridge's
- * name/value text, or pairs a caller already has. Each redirects to the core
- * method of the same name, so nothing here decides a dialect, a version or a
- * separator - it only carries what JavaScript said across.
+ * name/value text, a configuration document, pairs a caller already split,
+ * a record a text reader answered. Each redirects to the core method of the
+ * same name, so nothing here decides a dialect, a version or a separator -
+ * it only carries what JavaScript said across. A stage is a call: the
+ * stream methods take any iterable and answer a lazy `FixMessages`, the
+ * Arrow methods take and answer a `BatchReader`, one batch at a time.
  *
  * Every message it builds opens with `beginstring` - the wire's own, else
  * the version the message was read at - and closes with the crate's
  * `timestamp`: the first clock the message carries, else the epoch. Neither
- * is an entry unless the line carried it, so `toBytes` re-emits the line
+ * is an entry unless the line carried it, so `intoBytes` re-emits the line
  * byte for byte.
  */
 export declare class FixCodec {
-  /** Open a reader over one dictionary, or over the process default. */
+  /**
+   * Open a codec over one dictionary, or over the process default.
+   *
+   * Every pin is the core's, spelled once here. `branch` and `version`
+   * cross as text; `separator` is the byte a numeric frame splits on where
+   * the line does not say; `payloadColumn` names the record column a line
+   * is read from; `nullValues` are the spellings that mean nothing was
+   * sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
+   * or `"unknown"`; `batchByteSize` is the raw bytes one Arrow batch
+   * targets, the core's 128 MiB when unstated.
+   */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
-  /** The dictionary this reader resolves against, sharing it. */
+  /** The dictionary this codec resolves against, sharing it. */
   get registry(): FixRegistry
-  /** Messages in one captured line, including every bulk configuration. */
-  transformLine(row: Buffer, enrich?: boolean | undefined | null): FixMessages
-  /** Messages in a bulk or wildcard UL configuration response, lazily. */
-  transformUlconfigLine(body: Buffer, enrich?: boolean | undefined | null): FixMessages
-  /** Messages carried by one native record. */
-  transformRecord(record: JsScalar, enrich?: boolean | undefined | null): FixMessages
+  /**
+   * The dialect every line is read in, or `null` where each line implies
+   * its own.
+   */
+  get branch(): string | null
+  /**
+   * The version values are read at, or `null` where each line states its
+   * own.
+   */
+  get version(): string | null
+  /** The byte a numeric frame splits on, or `null` where the line decides. */
+  get separator(): number | null
+  /** The record column a line is read from. */
+  get payloadColumn(): string
+  /** The spellings that mean nothing was sent. */
+  get nullValues(): Array<string>
+  /**
+   * The direction an unmarked line takes: `"sent"`, `"recv"` or
+   * `"unknown"`.
+   */
+  get direction(): string
+  /**
+   * The raw bytes one Arrow batch targets.
+   *
+   * A byte count is a JavaScript number, exact to 2^53, as every count
+   * at this boundary is.
+   */
+  get batchByteSize(): number
   /** The complete raw message code declared by captured bytes. */
   static inferMsgtypeBytes(body: Buffer): Buffer | null
   /** The complete raw message code declared by captured text. */
   static inferMsgtypeText(body: string): string | null
+  /** One captured line, whatever it is wrapped in: its messages. */
+  parseLine(row: Buffer): FixMessages
   /** One numeric frame, split on the separator stated or inferred. */
-  transformFixLine(body: Buffer, separator?: number | undefined | null, enrich?: boolean | undefined | null): FixMsg
+  parseFixLine(body: Buffer, separator?: number | undefined | null): FixMsg
   /** One bridge frame, whose keys are names rather than tags. */
-  transformUllinkLine(body: Buffer, enrich?: boolean | undefined | null): FixMsg
+  parseUllinkLine(body: Buffer): FixMsg
   /** One FIXML row, whose fields are XML attributes. */
-  transformFixmlLine(body: Buffer, enrich?: boolean | undefined | null): FixMsg
+  parseFixmlLine(body: Buffer): FixMsg
+  /**
+   * One bridge configuration document, as a Jolokia answer states it:
+   * one message per `MBean`, lazily.
+   */
+  parseUlconfigLine(body: Buffer): FixMessages
   /** Pairs a caller already holds, in the order they arrived. */
-  transformPairs(pairs: Array<[string, string]>): FixMsg
+  parsePairs(pairs: Array<[string, string]>): FixMsg
+  /**
+   * One record a text reader answered: its messages.
+   *
+   * The payload column names the line, and the row's own columns -
+   * `branch`, `beginstring`, `sep`, `timestamp`, `direction`, `plugin` -
+   * are the parameters of the same name. The loader widens the record from
+   * whatever `Scalar.fromJs` reads.
+   */
+  parseTextRecord(record: unknown): FixMessages
+  /**
+   * A stream of Arrow batches of capture rows as batches of FIX rows.
+   *
+   * The schema is decided before the first row: the capture's own columns
+   * lead and the fixed FIX columns follow. Every row is parsed as
+   * `parseTextRecord` parses one, and batches close on the raw bytes of
+   * the payload column against `batchByteSize`. The source is consumed.
+   */
+  parseTextArrowReader(source: JsBatchReader): JsBatchReader
   /**
    * Fills what one message implies but did not carry.
    *
@@ -1144,21 +1204,42 @@ export declare class FixCodec {
    * is left alone, so `intoBytes` re-emits the received line either way, and
    * a stated value is never replaced.
    */
-  enrichFixmsg(message: FixMsg): FixMsg
+  enrichMessage(message: FixMsg): FixMsg
   /**
-   * Stamps an array of messages with the identities it implies, in order.
+   * Fills a stream of batches of FIX rows with what each message implies.
    *
-   * One `FixLifecycle` over the whole array: each message gets its
-   * `instid`, its `id` and - where it carries an order identifier - the
-   * `persistentid` of the chain that identifier reaches, and a terminal
-   * state closes the chain. The array is the stream, so the chain a
-   * message joins depends on the messages before it; a stream longer than
-   * one array is fed to one `FixLifecycle` instead.
+   * `enrichMessages` over batches: each row is a message through
+   * `FixMsg.fromRow`, filled, and written back under the **same** schema,
+   * so a carried column returns to its place and the arrival record is
+   * untouched. Nothing is parsed again. The source is consumed.
    */
-  lifecycle(messages: Array<FixMsg>): Array<FixMsg>
+  enrichMessagesArrowReader(source: JsBatchReader): JsBatchReader
+  /**
+   * A stream of batches of FIX rows as the stream of messages it holds.
+   *
+   * Each row is one message through `FixMsg.fromRow` under the source's
+   * schema, lazily, one batch held at a time: a batch
+   * `parseTextArrowReader` wrote comes back as the messages that made it
+   * without a parse. One half of what the Arrow twins compose;
+   * `arrowReader` is the other. The source is consumed.
+   */
+  messages(source: JsBatchReader): FixMessages
+  /**
+   * Writes a stream of batches of FIX rows back to the wire, answering the
+   * count of lines.
+   *
+   * The encode direction of the same exchange: each row is the message
+   * `messages` reads out of it, written as `intoBytes` with the codec's
+   * `separator` - `SOH` when none is pinned - then a newline, into `sink`,
+   * anything with `write(chunk: Uint8Array)`. The wire is rebuilt from the
+   * arrival record, never from the columns, so a batch without the
+   * `nofixentries` column is refused before a row is read. One batch is
+   * held at a time, and the source is consumed.
+   */
+  writeArrowReader(source: BatchReader, sink: { write(chunk: Uint8Array): unknown }): number
   /** A cheap clone: the dictionary is shared and the pins are copied. */
   clone(): FixCodec
-  /** How this reader renders: the dictionary it reads against. */
+  /** How this codec renders: the dictionary it reads against. */
   toString(): string
 }
 export type JsFixCodec = FixCodec
@@ -1207,7 +1288,7 @@ export type JsFixFieldIterator = FixFieldIterator
  * the market's own clock; `persistentid`, the order chain that every message
  * sharing one of its identifiers carries. A terminal state closes the chain
  * and forgets its identifiers, so what is held is the orders still alive.
- * `FixCodec.lifecycle` runs one of these over an array.
+ * `FixCodec.lifecycle` runs one of these over an iterable.
  */
 export declare class FixLifecycle {
   /**
@@ -1240,9 +1321,26 @@ export declare class FixLifecycle {
 }
 export type JsFixLifecycle = FixLifecycle
 
-/** A native fallible cursor; the JavaScript loader supplies `Symbol.iterator`. */
+/**
+ * A stream of messages, one at a time.
+ *
+ * Every stage of the codec answers one of these - one line's messages, a
+ * stream of lines parsed, records parsed, messages filled or stamped, a
+ * batch read back - so a message stream has one shape at this boundary
+ * whatever made it. Nothing is collected: the core iterator is the stream,
+ * and a JavaScript iterable behind it is pulled one item at a time. A line
+ * the reader refuses throws where it is met and the stream goes on past it;
+ * a failure in the iterable behind the stream throws and ends it. The loader
+ * supplies `Symbol.iterator` over `next`.
+ */
 export declare class FixMessages {
-  /** Advance the native cursor, propagating an error or returning null at its end. */
+  /**
+   * Advance the stream: the next message, or `null` at its end.
+   *
+   * A line the reader refused throws here and the stream continues on
+   * the next call; a failure behind the stream throws once, in place of
+   * the end.
+   */
   next(): IteratorResult<FixMsg>
 }
 export type JsFixMessages = FixMessages
@@ -1252,9 +1350,11 @@ export type JsFixMessages = FixMessages
  *
  * The schema is one non-null Struct `Field` - the only row schema - and the
  * value the row it declares, so a plain object crosses as the record the core
- * canonicalizes into that order exactly as every other row is. The message is
- * immutable: it compares, hashes, renders and clones by the schema and the
- * value it carries, against the registry it was resolved against.
+ * canonicalizes into that order exactly as every other row is. The row is
+ * written through `set` and `remove`; the entries never are, because they are
+ * what the wire carried. The message compares, hashes, renders and clones by
+ * the schema and the value it carries, against the registry it was resolved
+ * against.
  */
 export declare class FixMsg {
   /**
@@ -1265,6 +1365,20 @@ export declare class FixMsg {
    * against `field`.
    */
   constructor(field: JsField, value: JsScalar, registry?: FixRegistry | undefined | null)
+  /**
+   * The message a fixed row holds: the inverse of `intoRow`.
+   *
+   * `schema` is the row's root - the one `fix.schema` or
+   * `fix.schemaCarrying` built, or a batch reader's `field` - and `row` the
+   * row under it, which the loader widens from whatever `Scalar.fromJs`
+   * reads. The columns are the message's children under the schema's
+   * names, reached by tag as a parsed message's are, and the entries are
+   * rebuilt from the `nofixentries` column, so `intoBytes` re-emits the
+   * line the row was read from; a row without that column has no entries.
+   * Nothing is parsed again. The process default is the registry when
+   * none is named.
+   */
+  static fromRow(schema: JsField, row: JsScalar, registry?: FixRegistry | undefined | null): FixMsg
   /** The registry this message resolves against, sharing it. */
   get registry(): FixRegistry
   /** The root Struct field: the message's resolved schema. */
@@ -1331,6 +1445,30 @@ export declare class FixMsg {
    */
   at(key: number | string): JsScalar
   /**
+   * Writes one value into the row, typed by the field the key resolves to.
+   *
+   * `key` is a tag or a name, resolved as a lookup resolves one - through
+   * the dictionary in this message's own branch, then the standard one -
+   * and a name the dictionary does not know still reaches a child spelled
+   * that way. `value` is whatever `Scalar.fromJs` reads, widened by the
+   * loader; a known field types it through the core's value contract, and
+   * `null` is stored as a stated null. An existing child is replaced where
+   * it stands and an absent one appended; a bare tag no dictionary explains
+   * appends a text child named by its decimal. Only the row changes: the
+   * entries, the wire and the digest stay what they were.
+   *
+   * A key reaching no field and no child, or a value the field refuses,
+   * throws the core's refusal and leaves the message as it was.
+   */
+  set(key: number | string, value: unknown): void
+  /**
+   * Removes the child a key reaches, answering its value, or `null`.
+   *
+   * The key resolves as `set` resolves one, and a key reaching nothing
+   * answers `null` and changes nothing. The entries are untouched.
+   */
+  remove(key: number | string): JsScalar | null
+  /**
    * The `[name, value]` pairs of the root, in the order it declares.
    *
    * The loader wires `Symbol.iterator` over this.
@@ -1394,6 +1532,16 @@ export declare class FixMsg {
   intoRow(schema: JsField): JsScalar
   /** Re-emit this message on the wire, separated by `separator`. */
   intoBytes(separator?: number | undefined | null): Buffer
+  /**
+   * This message restated at its registry's newest version.
+   *
+   * Every child lands under the dictionary's own field, a retired field or
+   * value fills what stands in for it, and the crate `version` says which
+   * version the row now speaks. Only the row is restated: the arrival
+   * record is left alone, so `intoBytes` re-emits the received line either
+   * way, and a second pass answers an equal message.
+   */
+  intoLatest(): FixMsg
   /** Whether two messages carry the same schema, value and dictionary. */
   equals(other: FixMsg): boolean
   /** Deterministic hash bits over the schema and the value. */
@@ -3992,8 +4140,15 @@ export declare class UlPlugin {
   static fromJsonScalar(document: JsScalar): JsUlPlugins
   /** Recover one configuration from a flat native message. */
   static fromFixmsg(message: JsFixMsg): UlPlugin
-  /** Convert this selected configuration to one flat native message. */
-  intoFixmsg(codec: JsFixCodec, enrich?: boolean | undefined | null): JsFixMsg
+  /**
+   * This plugin as a message typed against `codec`'s dictionary.
+   *
+   * The same build every other reader funnels into, so a dictionary
+   * carrying `ULBridge`'s fields types a port as a number and a flag as a
+   * boolean, and one that does not keeps every attribute as the text it
+   * arrived as.
+   */
+  intoFixmsg(codec: JsFixCodec): JsFixMsg
   /** The selected actual `ObjectName`, when present. */
   get mbean(): string | null
   /** The type property of the selected `ObjectName`. */
@@ -4628,14 +4783,25 @@ export interface FileSelector {
   allowNotFound: boolean
 }
 
-/** How a reader is pinned, where a caller pins it at all. */
+/** How a codec is pinned, where a caller pins it at all. */
 export interface FixCodecOptions {
   /** The dialect every row is read in, rather than the one each row implies. */
   branch?: string
   /** The version built messages are expressed in. */
   version?: string
+  /** The byte a numeric frame splits on where the line does not say. */
+  separator?: number
+  /** The record column a line is read from; `body` when unstated. */
+  payloadColumn?: string
   /** The spellings that mean "nothing was sent". */
   nullValues?: Array<string>
+  /**
+   * What an unmarked line took: `sent`, `recv`, or `unknown`; `sent` when
+   * unstated.
+   */
+  direction?: string
+  /** The raw bytes one Arrow batch targets; the core's 128 MiB when unstated. */
+  batchByteSize?: number
 }
 
 /**

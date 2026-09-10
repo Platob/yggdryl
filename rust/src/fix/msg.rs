@@ -1,12 +1,14 @@
 //! A FIX message: a value plus the registry that types it.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, format_smolstr};
 
 use super::anomaly::FixAnomalies;
+use super::build::stated;
 use super::entry::FixEntry;
 use super::{FixBranch, FixId, FixKey, FixRegistry};
 use crate::{DataType, Error, Field, Result, Scalar, Version};
@@ -79,7 +81,6 @@ use crate::{DataType, Error, Field, Result, Scalar, Version};
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone)]
 pub struct FixMsg {
     registry: Arc<FixRegistry>,
     /// What arrived, beside what it was interpreted as.
@@ -105,22 +106,39 @@ pub struct FixMsg {
     /// An index, not a second fact: it is derived from `field` alone and both
     /// are replaced together.
     tags: Vec<(i32, usize)>,
-    /// Where a tag no child declares still lands, resolved on the first miss
-    /// and kept.
+    /// The first child of each name, built on the first tag no child
+    /// declares and kept.
     ///
     /// [`Self::get_by_tag`] has two fallbacks past the index above - the
     /// child named as the dictionary names the tag, and the child named by
-    /// the tag's decimal spelling - and each costs a dictionary probe and a
-    /// scan of the children. A fixed row asks for eighty columns a message
-    /// mostly lacks, so the misses are the common case: they are answered
-    /// once, for every tag either fallback can reach, and then by a binary
-    /// search. Derived from the field, the branch and the registry alone,
-    /// and derived lazily, so a message nobody projects pays nothing for it.
-    fallback: OnceLock<Vec<(i32, usize)>>,
+    /// the tag's decimal spelling - and both end in a child found by name. A
+    /// fixed row asks for eighty columns a message mostly lacks, so the misses
+    /// are the common case, and each costs one dictionary probe and one
+    /// lookup here rather than a scan of the children. Derived from the
+    /// field alone, and derived lazily, so a message nobody projects pays
+    /// nothing for it.
+    named: OnceLock<HashMap<SmolStr, usize>>,
     /// Group positions keyed by their `fix:counter`, separate from tag values.
     groups: Vec<(i32, usize)>,
     field: Field,
     value: Scalar,
+}
+
+/// One child a write lands: replaced at `at`, appended when there is none,
+/// its field and value already resolved and typed.
+struct Write {
+    at: Option<usize>,
+    field: Field,
+    value: Scalar,
+}
+
+/// What one landed write does to the tag and group indexes.
+struct Indexed {
+    retired_tag: Option<i32>,
+    retired_counter: Option<i32>,
+    tag: Option<i32>,
+    counter: Option<i32>,
+    index: usize,
 }
 
 /// Each child's declared tag beside its position, sorted for a binary search.
@@ -281,7 +299,7 @@ impl FixMsg {
             entries,
             branch,
             tags,
-            fallback: OnceLock::new(),
+            named: OnceLock::new(),
             groups,
             field,
             value,
@@ -299,78 +317,381 @@ impl FixMsg {
     /// What a rebuild needs: the entries are what arrived and are carried
     /// through unchanged, so moving them costs nothing where cloning a whole
     /// capture's worth would.
-    /// This message with more children, each carrying a value already typed
-    /// by its field.
+    pub(super) fn into_entries(self) -> Vec<FixEntry> {
+        self.entries
+    }
+
+    /// Replaces the arrival record with one a row already held.
     ///
-    /// Appended rather than inserted in tag order: the row's existing
-    /// positions are what every reader that already holds it addresses by,
-    /// and a derived field is found by tag rather than by position. The
-    /// root keeps its own metadata, the entries are carried through
-    /// untouched - what arrived on the line is not changed by what the row
-    /// now says about it - and the tag index grows by the children added
-    /// rather than being rebuilt, so a stamp costs the children it adds and
-    /// not a second reading of every child already there.
+    /// The row's own reading of what arrived, not a rebuild from the
+    /// children: the entries and the row stay two facts, and this only puts
+    /// back the one a projection carried alongside the other.
+    pub(super) fn set_entries(&mut self, entries: Vec<FixEntry>) {
+        self.entries = entries;
+    }
+
+    /// Writes one value into the row, typed by the field the key reaches.
     ///
-    /// The values are the caller's contract: each is what its field's
-    /// `scalar` answered, so nothing is canonicalized twice.
+    /// Row only: the entries are what arrived and are not changed by what
+    /// the row now says about it, so [`Self::into_bytes`] still re-emits the
+    /// received line byte for byte. The key resolves as every lookup does -
+    /// this message's branch first, then the standard one - and a field the
+    /// dictionary knows types the value through [`Field::scalar`] under the
+    /// dictionary's own field, so a written child is indistinguishable from
+    /// a stated one and carries the same `fix:tag` a reader resolves it by.
+    /// A `Null` is stored as a stated null: the child stays, nullable,
+    /// holding nothing.
+    ///
+    /// An existing child is replaced where it stands, its field updated to
+    /// the resolved one, and an absent one is appended rather than inserted
+    /// in tag order: the positions every reader already holding the row
+    /// addresses it by do not move, and a written field is found by tag.
+    /// The tag and group indexes follow the one child that changed rather
+    /// than being reread. A name the dictionary does not know still reaches
+    /// a child spelled that way - exactly, or under the fold every name
+    /// resolves by - and keeps that child's field; a bare tag it does not
+    /// know appends a nullable `utf8` child named by its decimal, which is
+    /// what the builder does with an unknown tag. A name that reaches
+    /// neither a field nor a child is refused, and the message is unchanged.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut qty = DataType::Int64.nullable_field("orderqty");
+    /// qty.as_fix_mut().set_tag(38)?;
+    /// let mut symbol = DataType::Utf8.nullable_field("symbol");
+    /// symbol.as_fix_mut().set_tag(55)?;
+    /// let registry = Arc::new(FixRegistry::from_fields([qty, symbol])?);
+    ///
+    /// let root = DataType::from_fields([DataType::Utf8.required_field("symbol")])?
+    ///     .required_field("D");
+    /// let value = Scalar::from_record([("symbol", Scalar::from("AAPL"))])?;
+    /// let mut msg = FixMsg::with_registry(registry, root, value)?;
+    ///
+    /// // Appended under the dictionary's field, typed by it and found by tag.
+    /// msg.set(38, Scalar::from(100_i64))?;
+    /// assert_eq!(msg.by_tag(38)?, &Scalar::from(100_i64));
+    /// assert_eq!(msg.as_field().fields()[1].name(), "orderqty");
+    ///
+    /// // Replaced in place: the child keeps its position, the value changes.
+    /// msg.set("Symbol", Scalar::from("MSFT"))?;
+    /// assert_eq!(msg.as_field().fields()[0].name(), "symbol");
+    /// assert_eq!(msg.by_tag(55)?, &Scalar::from("MSFT"));
+    ///
+    /// // A tag no dictionary explains is kept under its decimal spelling.
+    /// msg.set(9999, Scalar::from("custom"))?;
+    /// assert_eq!(msg.by_tag(9999)?, &Scalar::from("custom"));
+    ///
+    /// // A name nothing reaches is refused, and the row stands as it was.
+    /// assert!(msg.set("nosuchfield", Scalar::from("x")).is_err());
+    /// assert_eq!(msg.as_field().fields().len(), 3);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns the schema grammar's refusal when the children do not make a
-    /// root, which two children of one name would provoke.
-    pub(super) fn appended_many(self, extra: Vec<(Field, Scalar)>) -> Result<Self> {
-        if extra.is_empty() {
-            return Ok(self);
+    /// Returns a typed absence naming the key when it reaches no field and
+    /// no child, the value contract's refusal when the value does not fit
+    /// the field the key resolves to, or the schema grammar's refusal when
+    /// the written child does not make a root. Any of them leaves the
+    /// message unchanged.
+    pub fn set<'key>(&mut self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<()> {
+        self.set_many(std::iter::once((key, value)))
+    }
+
+    /// Writes several values into the row with one rebuild.
+    ///
+    /// Each key resolves and each value types exactly as [`Self::set`]
+    /// resolves and types one, against the row as it stands before any of
+    /// them lands; the row is then rebuilt once, where a write per value
+    /// rebuilds it per value. A stream stamping three identities on every
+    /// message is what this is for. Two writes reaching one child, or two
+    /// appending one field, land as the later one, so the result is what the
+    /// same writes made one at a time. Failure leaves the message unchanged,
+    /// whichever write refused.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut qty = DataType::Int64.nullable_field("orderqty");
+    /// qty.as_fix_mut().set_tag(38)?;
+    /// let mut symbol = DataType::Utf8.nullable_field("symbol");
+    /// symbol.as_fix_mut().set_tag(55)?;
+    /// let registry = Arc::new(FixRegistry::from_fields([qty, symbol])?);
+    /// let root = DataType::from_fields([DataType::Utf8.required_field("symbol")])?
+    ///     .required_field("D");
+    /// let value = Scalar::from_record([("symbol", Scalar::from("AAPL"))])?;
+    /// let mut msg = FixMsg::with_registry(registry, root, value)?;
+    ///
+    /// msg.set_many([
+    ///     (55, Scalar::from("MSFT")),
+    ///     (38, Scalar::from(100_i64)),
+    ///     (38, Scalar::from(200_i64)),
+    /// ])?;
+    /// assert_eq!(msg.by_tag(55)?, &Scalar::from("MSFT"));
+    /// assert_eq!(msg.by_tag(38)?, &Scalar::from(200_i64), "the later write lands");
+    /// assert_eq!(msg.as_field().fields().len(), 2, "one child per field");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::set`] returns for the first write that refuses.
+    pub fn set_many<'key, I, K>(&mut self, values: I) -> Result<()>
+    where
+        I: IntoIterator<Item = (K, Scalar)>,
+        K: Into<FixKey<'key>>,
+    {
+        let mut writes: Vec<Write> = Vec::new();
+        for (key, value) in values {
+            let key = key.into();
+            let (at, mut field) = self.target(&key)?;
+            let value = if value.is_null() {
+                field.set_nullable(true);
+                Scalar::Null
+            } else {
+                field.scalar(value)?
+            };
+            // The later of two writes to one child stands, whether both
+            // reached it or both would append it.
+            let pending = writes.iter().position(|held| match (held.at, at) {
+                (Some(held), Some(at)) => held == at,
+                (None, None) => held.field.name() == field.name(),
+                _ => false,
+            });
+            let write = Write { at, field, value };
+            match pending {
+                Some(pending) => writes[pending] = write,
+                None => writes.push(write),
+            }
         }
-        let Self {
-            registry,
-            entries,
-            branch,
-            mut tags,
-            fallback: _,
-            mut groups,
-            mut field,
-            value,
-        } = self;
-        let mut members: Vec<Field> = field
-            .dtype()
-            .as_fields()
-            .map(<[Field]>::to_vec)
-            .unwrap_or_default();
-        let mut values: Vec<Scalar> = value
+        if writes.is_empty() {
+            return Ok(());
+        }
+        self.write_all(writes)
+    }
+
+    /// [`Self::set`], consuming the message.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::set`] returns.
+    pub fn with_value<'key>(mut self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<Self> {
+        self.set(key, value)?;
+        Ok(self)
+    }
+
+    /// Removes the child a key reaches, answering the value it held.
+    ///
+    /// Row only, exactly as [`Self::set`] is: the entries are untouched.
+    /// The key resolves as a lookup does - a tag reaches the child carrying
+    /// it, else the one named as the dictionary names it or by the tag's
+    /// decimal; a name reaches the child its canonical spelling, an exact
+    /// match or the fold picks - and one that reaches nothing answers `None`
+    /// and changes nothing. The children after the removed one move up, so
+    /// the tag and group indexes are reread.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut symbol = DataType::Utf8.nullable_field("symbol");
+    /// symbol.as_fix_mut().set_tag(55)?;
+    /// let registry = Arc::new(FixRegistry::from_fields([symbol.clone()])?);
+    /// let root = DataType::from_fields([symbol, DataType::Utf8.nullable_field("9999")])?
+    ///     .required_field("D");
+    /// let value = Scalar::from_record([
+    ///     ("symbol", Scalar::from("AAPL")),
+    ///     ("9999", Scalar::from("custom")),
+    /// ])?;
+    /// let mut msg = FixMsg::with_registry(registry, root, value)?;
+    ///
+    /// assert_eq!(msg.remove(55), Some(Scalar::from("AAPL")));
+    /// assert_eq!(msg.get_by_tag(55), None);
+    /// assert_eq!(msg.by_tag(9999)?, &Scalar::from("custom"), "the neighbour is still reached");
+    /// assert_eq!(msg.remove("nosuchfield"), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Scalar> {
+        let at = self.index_of_key(&key.into())?;
+        let mut members = self.field.fields().to_vec();
+        let mut values = self.value.as_sequence()?.to_vec();
+        if at >= members.len() || at >= values.len() {
+            return None;
+        }
+        members.remove(at);
+        let removed = values.remove(at);
+        // Everything that can refuse is asked before anything is written, so
+        // a refusal leaves the message as it was.
+        let dtype = DataType::from_fields(members).ok()?;
+        self.field = self.rerooted(dtype);
+        self.value = Scalar::from_sequence(values);
+        self.tags = tag_positions(&self.field);
+        self.groups = group_positions(&self.field);
+        self.named = OnceLock::new();
+        Some(removed)
+    }
+
+    /// The child a key reaches and the field it is written under: an
+    /// existing child's position where one is reached, and the field the
+    /// registry resolves the key to, else the reached child's own.
+    ///
+    /// The field is owned because a written child is the registry's field
+    /// as this message states it, and the row's own child otherwise.
+    fn target(&self, key: &FixKey<'_>) -> Result<(Option<usize>, Field)> {
+        match *key {
+            FixKey::Tag(tag) => {
+                let at = self.reached_by_tag(tag);
+                match self.known_by_tag(tag) {
+                    Some(known) => Ok((at, stated(known))),
+                    None => {
+                        let field = at
+                            .and_then(|at| self.field.get_field_at(at))
+                            .cloned()
+                            .unwrap_or_else(|| {
+                                DataType::Utf8.nullable_field(format_smolstr!("{tag}"))
+                            });
+                        Ok((at, field))
+                    }
+                }
+            }
+            FixKey::Id(id) => {
+                let known = self
+                    .registry
+                    .get_field_by_id(id)
+                    .ok_or_else(|| absent(key))?;
+                let at = self
+                    .index_of_name(known.name())
+                    .or_else(|| self.index_of_tag(id.tag()));
+                Ok((at, stated(known)))
+            }
+            FixKey::Name(name) => match self.known_by_name(name) {
+                Some(known) => {
+                    let by_tag = known
+                        .as_fix()
+                        .tag()
+                        .ok()
+                        .flatten()
+                        .and_then(|tag| self.index_of_tag(tag));
+                    Ok((
+                        by_tag.or_else(|| self.child_index(&self.field, name)),
+                        stated(known),
+                    ))
+                }
+                None => {
+                    let at = self
+                        .child_index(&self.field, name)
+                        .ok_or_else(|| absent(key))?;
+                    let field = self
+                        .field
+                        .get_field_at(at)
+                        .cloned()
+                        .ok_or_else(|| absent(key))?;
+                    Ok((Some(at), field))
+                }
+            },
+        }
+    }
+
+    /// The position of the child a key reaches, as a lookup reaches it.
+    fn index_of_key(&self, key: &FixKey<'_>) -> Option<usize> {
+        match *key {
+            FixKey::Tag(tag) => self.reached_by_tag(tag),
+            FixKey::Id(id) => {
+                let known = self.registry.get_field_by_id(id)?;
+                self.field.index_of(known.name())
+            }
+            FixKey::Name(name) => self.child_index(&self.field, name),
+        }
+    }
+
+    /// Lands the planned writes: each replaced at its position, appended
+    /// when it has none.
+    ///
+    /// The whole row is rebuilt once, because a Struct's children and a
+    /// row's values are both one shared allocation; everything that can
+    /// refuse is asked before anything is stored, so a refusal leaves the
+    /// message as it was. The tag and group indexes follow the children that
+    /// changed: the entry a replaced child held is retired and the one the
+    /// written child carries admitted, and nothing else is reread. The name
+    /// table is derived from the children and is dropped, to be derived
+    /// again on the next miss.
+    fn write_all(&mut self, writes: Vec<Write>) -> Result<()> {
+        let mut members = self.field.fields().to_vec();
+        let mut values = self
+            .value
             .as_sequence()
             .map(<[Scalar]>::to_vec)
             .unwrap_or_default();
-        members.reserve(extra.len());
-        values.reserve(extra.len());
-        for (child, held) in extra {
-            let index = members.len();
-            if let Ok(Some(tag)) = child.as_fix().tag() {
-                let at = tags.partition_point(|(known, _)| *known < tag);
-                tags.insert(at, (tag, index));
-            }
-            if let Ok(Some(counter)) = child.as_fix().counter() {
-                let at = groups.partition_point(|(known, _)| *known < counter);
-                groups.insert(at, (counter, index));
-            }
-            members.push(child);
-            values.push(held);
+        members.reserve(writes.len());
+        values.reserve(writes.len());
+        // What each write does to the indexes, applied once the row is
+        // proven rather than on a copy: the tag and counter the replaced
+        // child held, then the ones the written child carries, at the
+        // position it landed.
+        let mut indexed: Vec<Indexed> = Vec::with_capacity(writes.len());
+        for Write { at, field, value } in writes {
+            let (index, replaced) = match at {
+                Some(at) if at < members.len() && at < values.len() => {
+                    let replaced = std::mem::replace(&mut members[at], field);
+                    values[at] = value;
+                    (at, Some(replaced))
+                }
+                _ => {
+                    members.push(field);
+                    values.push(value);
+                    (members.len() - 1, None)
+                }
+            };
+            let held = replaced.as_ref().map(Field::as_fix);
+            let written = members[index].as_fix();
+            indexed.push(Indexed {
+                retired_tag: held.as_ref().and_then(|held| held.tag().ok().flatten()),
+                retired_counter: held.as_ref().and_then(|held| held.counter().ok().flatten()),
+                tag: written.tag().ok().flatten(),
+                counter: written.counter().ok().flatten(),
+                index,
+            });
         }
-        field.set_dtype(crate::DataType::from_fields(members)?)?;
-        Ok(Self {
-            registry,
-            entries,
-            branch,
-            tags,
-            fallback: OnceLock::new(),
-            groups,
-            field,
-            value: Scalar::from_sequence(values),
-        })
+        let dtype = DataType::from_fields(members)?;
+        self.field = self.rerooted(dtype);
+        self.value = Scalar::from_sequence(values);
+        for change in indexed {
+            retire(&mut self.tags, change.retired_tag, change.index);
+            retire(&mut self.groups, change.retired_counter, change.index);
+            admit(&mut self.tags, change.tag, change.index);
+            admit(&mut self.groups, change.counter, change.index);
+        }
+        self.named = OnceLock::new();
+        Ok(())
     }
 
-    pub(super) fn into_entries(self) -> Vec<FixEntry> {
-        self.entries
+    /// The root over other children: its name, nullability and metadata,
+    /// the Struct `dtype` under them.
+    ///
+    /// `DataType::from_fields` already refused a duplicate name and checked
+    /// every child, and that is the whole of what the root's setter would
+    /// check again before comparing the old children with the new one by
+    /// one - so the root is rebuilt around the proven datatype instead, which
+    /// is a per-message cost on every stream that stamps or fills a row.
+    fn rerooted(&self, dtype: DataType) -> Field {
+        Field::new_with_metadata(
+            self.field.name(),
+            dtype,
+            self.field.is_nullable(),
+            self.field.metadata.clone(),
+        )
     }
 
     /// Returns what this message says about itself that does not add up.
@@ -410,17 +731,92 @@ impl FixMsg {
         Ok(text)
     }
 
-    /// The version this message is expressed in, read back from the fields
-    /// that declare it.
+    /// The version this message was read at.
     ///
-    /// Derived rather than stored: `BeginString(8)` and `ApplVerID(1128)` are
-    /// what a message says about itself, so a converted one cannot lie.
+    /// The crate's own `version` child where a read stamped one - the codec's
+    /// target, which is what every field and every code in the row resolved
+    /// against - and `BeginString(8)` otherwise, which is what a message
+    /// converted from a schema and a value says about itself.
+    ///
+    /// Derived rather than stored either way, so a converted one cannot lie.
+    /// The two answers differ exactly where a session mislabels itself or
+    /// carries a row written to a later FIX than it speaks, which is what the
+    /// crate keeps a column for.
     #[must_use]
     pub fn version(&self) -> Option<Version> {
+        if let Some(held) = self
+            .get_by_tag(super::VERSION_TAG)
+            .and_then(Scalar::as_str)
+            .and_then(|held| held.parse().ok())
+        {
+            return Some(held);
+        }
         let begin = self.get_by_tag(8).and_then(Scalar::as_str)?;
         begin
             .strip_prefix("FIX.")
             .and_then(|rest| rest.parse().ok())
+    }
+
+    /// This message restated at its registry's newest version.
+    ///
+    /// Row only: the entries are carried through untouched, so
+    /// [`Self::into_bytes`] still re-emits the received line byte for byte,
+    /// and a second call answers an equal message. Every child the registry
+    /// knows - by its tag, by its name or alias, or by the decimal tag its
+    /// name spells - is re-expressed under the registry's field with its
+    /// value re-typed, children reaching one field are merged into the most
+    /// complete one, every `fix:replacements` rule the dictionary states for
+    /// a held value fills the fields that stand in for it, and the crate's
+    /// `version` child takes [`FixRegistry::newest`]. A child no dictionary
+    /// explains, a stated value that disagrees with the one kept, and a
+    /// registry with no dated field each leave things exactly as they are.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use yggdryl::fix::{FixLineageEntry, FixPedigree};
+    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, Version};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// // LastQty(32) was LastShares, an integer, until FIX 4.3.
+    /// let mut qty = DataType::Float64.nullable_field("lastqty");
+    /// qty.as_fix_mut().set_tag(32)?;
+    /// qty.as_fix_mut().set_lineage(&[
+    ///     FixLineageEntry::new(FixPedigree::new("4.0".parse::<Version>()?, None))
+    ///         .with_name("lastshares")
+    ///         .with_dtype("int32"),
+    ///     FixLineageEntry::new(FixPedigree::new("4.3".parse::<Version>()?, None))
+    ///         .with_name("lastqty")
+    ///         .with_dtype("float64"),
+    /// ])?;
+    /// let registry = Arc::new(FixRegistry::from_fields([qty])?);
+    ///
+    /// let root = DataType::from_fields([
+    ///     DataType::Int64.required_field("LastShares"),
+    ///     DataType::Utf8.nullable_field("9999"),
+    /// ])?
+    /// .required_field("8");
+    /// let value = Scalar::from_record([
+    ///     ("LastShares", Scalar::from(100)),
+    ///     ("9999", Scalar::from("custom")),
+    /// ])?;
+    /// let latest = FixMsg::with_registry(registry, root, value)?.into_latest()?;
+    ///
+    /// assert_eq!(latest.as_field().fields()[0].name(), "lastqty");
+    /// assert_eq!(latest.by_tag(32)?, &Scalar::from(100.0_f64));
+    /// assert_eq!(latest.by_tag(9999)?, &Scalar::from("custom"), "an unknown tag is kept");
+    /// assert_eq!(latest.version(), Some("4.3".parse::<Version>()?));
+    /// assert_eq!(latest.clone().into_latest()?, latest, "a second pass changes nothing");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the restated children do
+    /// not make a root, or the refusal [`Self::with_registry`] raises.
+    pub fn into_latest(self) -> Result<Self> {
+        super::latest::restate(self)
     }
 
     /// Returns the registry this message resolves against.
@@ -472,77 +868,38 @@ impl FixMsg {
     /// answers is looked for under its decimal rendering, so an unknown tag a
     /// transcriber retained is still reachable.
     pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar> {
-        // The message's own children answer first, by the tag they carry -
-        // one hash-free binary search over the index resolved at construction,
-        // where the dictionary tiers below are a probe per branch. A field a
-        // dictionary never explained carries no tag and falls through to
-        // them, through the table of every tag they can reach.
+        self.value.get(self.reached_by_tag(tag)?)
+    }
+
+    /// The child a tag reaches: the one carrying the tag, by one hash-free
+    /// binary search over the index resolved at construction, else the one
+    /// either fallback names. A field a dictionary never explained carries
+    /// no tag and falls through to the fallbacks, where the dictionary tiers
+    /// are a probe per branch.
+    fn reached_by_tag(&self, tag: i32) -> Option<usize> {
         if let Some(index) = self.index_of_tag(tag) {
-            return self.value.get(index);
+            return Some(index);
         }
-        let fallback = self.fallback.get_or_init(|| self.fallback_positions());
-        let at = fallback
-            .binary_search_by_key(&tag, |(held, _)| *held)
-            .ok()?;
-        self.value.get(fallback[at].1)
+        self.fallback_index(tag)
     }
 
     /// The child a tag reaches past the index: the one named as the
     /// dictionary names the tag, else the one named by the tag's decimal
     /// spelling.
     fn fallback_index(&self, tag: i32) -> Option<usize> {
+        let named = self.named.get_or_init(|| {
+            let mut named = HashMap::new();
+            for (index, child) in self.field.fields().iter().enumerate() {
+                named.entry(SmolStr::new(child.name())).or_insert(index);
+            }
+            named
+        });
         match self.known_by_tag(tag) {
-            Some(known) => self.field.index_of(known.name()),
-            None => {
-                let mut rendered = Decimal::default();
-                rendered.render(tag)?;
-                self.field.index_of(rendered.as_str())
-            }
+            Some(known) => named.get(known.name()).copied(),
+            // Eleven bytes hold every `i32`, sign included, so the rendering
+            // stays inline and a miss allocates nothing.
+            None => named.get(format_smolstr!("{tag}").as_str()).copied(),
         }
-    }
-
-    /// Every tag either fallback reaches, beside the child it reaches,
-    /// tag-major.
-    ///
-    /// A tag lands on a child through the dictionary's name for it, so a
-    /// child's candidates are the tags of the fields the dictionary holds
-    /// under that child's name - in this message's branch and in the
-    /// standard one, canonical and alternate alike - plus the tag the name
-    /// itself spells. Each candidate is then read through the fallback
-    /// itself, so the table holds exactly what the fallback answers and
-    /// nothing it does not. A tag the index answers is left out, because
-    /// the index answers first.
-    fn fallback_positions(&self) -> Vec<(i32, usize)> {
-        let Some(children) = self.field.dtype().as_fields() else {
-            return Vec::new();
-        };
-        let mut held = Vec::new();
-        let mut candidates: Vec<i32> = Vec::new();
-        for (index, child) in children.iter().enumerate() {
-            let name = child.name();
-            candidates.extend(super::field::parse_tag(name));
-            let mut known = Vec::with_capacity(2);
-            if !self.branch.is_standard() {
-                known.extend(self.registry.get_field_by_name(name, Some(&self.branch)));
-            }
-            known.extend(
-                self.registry
-                    .get_field_by_name(name, Some(&FixBranch::STANDARD)),
-            );
-            for field in known {
-                let view = field.as_fix();
-                candidates.extend(view.tag().ok().flatten());
-                candidates.extend(view.tags().unwrap_or_default());
-            }
-            for tag in candidates.drain(..) {
-                if self.index_of_tag(tag).is_none() && self.fallback_index(tag) == Some(index) {
-                    held.push((tag, index));
-                }
-            }
-        }
-        held.sort_unstable();
-        held.dedup();
-        held
     }
 
     /// The root child carrying one tag, by that child's own declaration.
@@ -662,7 +1019,7 @@ impl FixMsg {
     /// two probes would be the same one, and when the identifier it would
     /// build is inadmissible - a specification tag belongs to the standard
     /// branch and to no other.
-    fn known_by_tag(&self, tag: i32) -> Option<&Field> {
+    pub(super) fn known_by_tag(&self, tag: i32) -> Option<&Field> {
         let own = if self.branch.is_standard() || !FixId::is_admissible(&self.branch, tag) {
             None
         } else {
@@ -675,7 +1032,7 @@ impl FixMsg {
 
     /// The field a bare name reaches: this message's branch, then the
     /// standard one.
-    fn known_by_name(&self, name: &str) -> Option<&Field> {
+    pub(super) fn known_by_name(&self, name: &str) -> Option<&Field> {
         if !self.branch.is_standard() {
             if let Some(field) = self.registry.get_field_by_name(name, Some(&self.branch)) {
                 return Some(field);
@@ -690,19 +1047,17 @@ impl FixMsg {
     fn child_index(&self, parent: &Field, name: &str) -> Option<usize> {
         self.known_by_name(name)
             .and_then(|known| parent.index_of(known.name()))
-            .or_else(|| parent.index_of(name))
-            .or_else(|| {
-                let mut positions =
-                    parent
-                        .fields()
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, field)| {
-                            crate::types::folds_equal(field.name(), name).then_some(index)
-                        });
-                let index = positions.next()?;
-                positions.next().is_none().then_some(index)
-            })
+            .or_else(|| named_index(parent, name))
+    }
+
+    /// The position of the root child `name` spells, with no dictionary
+    /// consulted: an exact match, else the one child the fold reaches.
+    ///
+    /// Where a column that carries no tag is matched to a child: a capture's
+    /// own column is named by nobody's dictionary, so the spelling alone
+    /// decides.
+    pub(super) fn index_of_name(&self, name: &str) -> Option<usize> {
+        named_index(&self.field, name)
     }
 
     /// One step of a path: into a Struct child by name, or into a List entry
@@ -738,39 +1093,62 @@ fn absent(what: impl fmt::Display) -> Error {
     Error::absent("fix value", what)
 }
 
-/// A tag rendered in decimal on the stack, for the unknown-tag lookup.
+/// The position of the child `name` spells under `parent`: an exact match,
+/// else the one child the fold reaches - two children one fold reaches name
+/// neither.
 ///
-/// Eleven bytes hold every `i32`, sign included, so rendering never
-/// allocates and a miss costs nothing.
-#[derive(Default)]
-struct Decimal {
-    bytes: [u8; 11],
-    len: usize,
-}
-
-impl Decimal {
-    /// Render `tag`, answering `None` only if it could not fit - which no
-    /// `i32` fails.
-    fn render(&mut self, tag: i32) -> Option<()> {
-        use std::fmt::Write as _;
-        write!(self, "{tag}").ok()
-    }
-
-    /// The rendered text.
-    fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.bytes[..self.len]).unwrap_or_default()
-    }
-}
-
-impl fmt::Write for Decimal {
-    fn write_str(&mut self, text: &str) -> fmt::Result {
-        let end = self.len + text.len();
-        if end > self.bytes.len() {
-            return Err(fmt::Error);
+/// One pass answers both readings: a write that appends misses every child
+/// under both, and a message stamped per row pays that pass once per stamp.
+fn named_index(parent: &Field, name: &str) -> Option<usize> {
+    let mut folded = None;
+    let mut ambiguous = false;
+    for (index, field) in parent.fields().iter().enumerate() {
+        let held = field.name();
+        if held == name {
+            return Some(index);
         }
-        self.bytes[self.len..end].copy_from_slice(text.as_bytes());
-        self.len = end;
-        Ok(())
+        if crate::types::folds_equal(held, name) {
+            ambiguous |= folded.is_some();
+            folded = Some(index);
+        }
+    }
+    if ambiguous { None } else { folded }
+}
+
+/// Forgets the entry a child at `at` held in a sorted position index.
+fn retire(index: &mut Vec<(i32, usize)>, key: Option<i32>, at: usize) {
+    if let Some(key) = key {
+        if let Ok(position) = index.binary_search(&(key, at)) {
+            index.remove(position);
+        }
+    }
+}
+
+/// Records the entry the child at `at` carries in a sorted position index.
+fn admit(index: &mut Vec<(i32, usize)>, key: Option<i32>, at: usize) {
+    if let Some(key) = key {
+        if let Err(position) = index.binary_search(&(key, at)) {
+            index.insert(position, (key, at));
+        }
+    }
+}
+
+impl Clone for FixMsg {
+    /// The message, without the name table: a cache derived from the
+    /// children, rebuilt by the clone on its own first miss rather than
+    /// copied - a stream clones a message far more often than it projects
+    /// one.
+    fn clone(&self) -> Self {
+        Self {
+            registry: Arc::clone(&self.registry),
+            entries: self.entries.clone(),
+            branch: self.branch.clone(),
+            tags: self.tags.clone(),
+            named: OnceLock::new(),
+            groups: self.groups.clone(),
+            field: self.field.clone(),
+            value: self.value.clone(),
+        }
     }
 }
 

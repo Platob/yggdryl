@@ -265,7 +265,7 @@ test('the registry resolves every key the way the core does', () => {
   const registry = seed()
   // The store's fields, and the crate's own beside them: a store never
   // writes those, so a loaded dictionary holds the crate's definition.
-  assert.equal(registry.size, 6203 + CRATED)
+  assert.equal(registry.size, 6241 + CRATED)
 
   assert.equal(registry.fieldByTag(55).name, 'symbol')
   assert.equal(registry.getFieldByTag(55).name, 'symbol')
@@ -683,7 +683,7 @@ test('a shared registry refuses mutation and a clone is independent', () => {
   assert.ok(copy.equals(registry))
   copy.insert(fixField('Unreferenced', 'utf8', 39999))
   assert.equal(copy.equals(registry), false)
-  assert.equal(registry.size, 6203 + CRATED)
+  assert.equal(registry.size, 6241 + CRATED)
 })
 
 function order(registry) {
@@ -877,13 +877,13 @@ test('a registry is a value: equality, hash, clone, JSON and text', () => {
   assert.equal(registry.stableHash(), seed().stableHash())
   assert.equal(typeof registry.stableHash(), 'bigint')
   assert.equal(registry.equals(new fix.FixRegistry()), false)
-  assert.equal(registry.toString(), `FixRegistry(${6203 + CRATED} fields)`)
+  assert.equal(registry.toString(), `FixRegistry(${6241 + CRATED} fields)`)
   // A new registry is never empty: it holds the crate's own fields.
   assert.equal(new fix.FixRegistry().toString(), `FixRegistry(${CRATED} fields)`)
 
   const document = registry.toJSON()
   // The crate's own are seeded, never stored, so only the store's own are written.
-  assert.equal(document.fields.length, 6203)
+  assert.equal(document.fields.length, 6241)
   assert.deepEqual(document.fields[0], JSON.parse(JSON.stringify(registry.fieldByTag(1))))
   assert.equal(document.fields[0].metadata['fix:tag'], '1')
   assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
@@ -972,35 +972,37 @@ test('a reader parses every frame shape the core reads', () => {
   const registry = seed()
   const reader = new fix.FixCodec(registry)
 
-  assert.equal(reader.transformLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|')).next().value.byTag(55).toJSON(), 'AAPL')
-  assert.equal(reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')).next().value.byTag(55).toJSON(), 'AAPL')
+  assert.equal(reader.parseLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|')).next().value.byTag(55).toJSON(), 'AAPL')
+  assert.equal(reader.parseLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')).next().value.byTag(55).toJSON(), 'AAPL')
   assert.equal(
-    reader.transformFixLine(Buffer.from('8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01'), 1).byTag(55).toJSON(),
+    reader.parseFixLine(Buffer.from('8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01'), 1).byTag(55).toJSON(),
     'AAPL',
   )
-  assert.equal(reader.transformPairs([['55', 'AAPL']]).byTag(55).toJSON(), 'AAPL')
+  assert.equal(reader.parsePairs([['55', 'AAPL']]).byTag(55).toJSON(), 'AAPL')
   assert.ok(reader.registry.equals(registry))
 
-  // Two children every built message has, whatever its line carried: it
+  // Three children every built message has, whatever its line carried: it
   // opens with `beginstring` - the wire's own, else the version it was read
-  // at - and closes with the crate's `timestamp`. Neither is an entry unless
-  // the line carried it, so the wire re-emits byte for byte.
-  const pairs = new fix.FixCodec(registry, { version: '4.2' }).transformPairs([['55', 'AAPL']])
-  assert.deepEqual([...pairs].map(([name]) => name), ['beginstring', 'symbol', 'timestamp'])
+  // at - states the `version` the read used, and closes with the crate's
+  // `timestamp`. None is an entry unless the line carried it, so the wire
+  // re-emits byte for byte.
+  const pairs = new fix.FixCodec(registry, { version: '4.2' }).parsePairs([['55', 'AAPL']])
+  assert.deepEqual([...pairs].map(([name]) => name), ['beginstring', 'symbol', 'version', 'timestamp'])
+  assert.equal(pairs.byTag(65001).toJSON(), '4.2')
   assert.equal(pairs.byTag(8).toJSON(), 'FIX.4.2')
   assert.deepEqual(pairs.arrivals().map(([tag]) => tag), [55])
   assert.equal(pairs.intoBytes(124).toString(), '55=AAPL|')
 
   // A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
   // whose value packs its members behind the two control bytes ULLINK uses.
-  const bridge = reader.transformUllinkLine(
+  const bridge = reader.parseUllinkLine(
     Buffer.from(
       '|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2' +
         '|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|',
       'binary',
     ),
   )
-  const inferred = reader.transformLine(
+  const inferred = reader.parseLine(
     Buffer.from(
       '|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2' +
         '|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|',
@@ -1026,14 +1028,14 @@ test('a reader takes the pins the core takes', () => {
   // dictionary's own whatever version read the row, and the 4.2 spelling still
   // reaches it as an alias.
   const dated = new fix.FixCodec(registry, { version: '4.2' })
-  const named = dated.transformLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|')).next().value
+  const named = dated.parseLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|')).next().value
   assert.ok(named.field.indexOf('lastqty') !== null)
   assert.ok(named.getByName('lastshares') !== null)
   assert.ok(named.getByName('lastqty') !== null)
 
   // A stated absence produces no field at all.
   const silent = new fix.FixCodec(registry, { nullValues: ['<none>'] })
-  assert.equal(silent.transformLine(Buffer.from('8=FIX.4.4|35=D|55=<none>|10=0|')).next().value.getByTag(55), null)
+  assert.equal(silent.parseLine(Buffer.from('8=FIX.4.4|35=D|55=<none>|10=0|')).next().value.getByTag(55), null)
 
   assert.throws(() => new fix.FixCodec(registry, { branch: 'not a branch' }))
 })
@@ -1041,18 +1043,18 @@ test('a reader takes the pins the core takes', () => {
 test('a reader fills what the line implied and leaves the wire alone', () => {
   const reader = new fix.FixCodec(seed())
 
-  // Enrichment is a flag; the rules are the core's. A `SecurityID` an ISIN's
+  // Enrichment is a call; the rules are the core's. A `SecurityID` an ISIN's
   // check digit closes has stated its source, and under that source the
   // crate's `isincode` column and the country its prefix names.
   const line = '8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|'
-  const filled = reader.transformLine(Buffer.from(line), true).next().value
+  const filled = reader.enrichMessage(reader.parseLine(Buffer.from(line)).next().value)
   assert.equal(filled.byTag(22).toJSON(), '4')
   assert.equal(filled.byTag(65013).toJSON(), 'US0378331005')
   assert.equal(filled.byTag(470).toJSON(), 'US')
   assert.equal(filled.byTag(59).toJSON(), '0', 'an order stating no time in force is a day order')
 
-  // Without the flag the line states none of them.
-  const bare = reader.transformLine(Buffer.from(line)).next().value
+  // Unfilled, the line states none of them.
+  const bare = reader.parseLine(Buffer.from(line)).next().value
   assert.equal(bare.getByTag(22), null)
   assert.equal(bare.getByTag(65013), null)
   assert.equal(bare.getByTag(470), null)
@@ -1060,12 +1062,56 @@ test('a reader fills what the line implied and leaves the wire alone', () => {
   // Only the row was filled: the wire comes back byte for byte, and a second
   // pass changes nothing.
   assert.equal(filled.intoBytes('|'.charCodeAt(0)).toString(), line)
-  assert.ok(reader.enrichFixmsg(filled).equals(filled))
+  assert.ok(reader.enrichMessage(filled).equals(filled))
 
   // A value no standard closes answers nothing rather than a guess.
-  const opaque = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|'), true).next().value
+  const opaque = reader.enrichMessage(
+    reader.parseLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|')).next().value,
+  )
   assert.equal(opaque.getByTag(22), null)
   assert.equal(opaque.getByTag(65013), null)
+})
+
+test('a message restates at the dictionary\'s newest version', () => {
+  // A FIX 4.2 execution report: a transaction type, a partial fill, a Rule80A
+  // capacity and two identities the specification later moved into `Parties`.
+  const line =
+    '8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|32=100|31=10.5|14=100|151=0|47=A|109=CLIENT1|76=BRKR|10=0|'
+  const read = new fix.FixCodec(seed()).parseLine(Buffer.from(line)).next().value
+  assert.equal(read.byTag(65001).toJSON(), '4.2')
+  assert.equal(read.byTag(150).toJSON(), '40PARTFILL')
+  assert.equal(read.getByTag(528), null)
+  assert.equal(read.getByTag(453), null)
+
+  // Restatement is a method; the rules are the dictionary's.
+  const latest = read.intoLatest()
+  // ExecTransType Cancel wrote ExecType TradeCancel over the retired
+  // PartiallyFilled, and the source stays.
+  assert.equal(latest.byTag(150).toJSON(), '40TRDCXL')
+  assert.equal(latest.byTag(20).toJSON(), '1')
+  // Rule80A A is an agency order.
+  assert.equal(latest.byTag(528).toJSON(), 'A')
+  assert.equal(latest.byTag(47).toJSON(), 'A')
+  // ExecBroker and ClientID are two parties, in tag order, counted.
+  assert.equal(latest.byTag(453).asJs(), 2)
+  assert.equal(latest.byPath('parties.0.partyid').asJs(), 'BRKR')
+  assert.equal(latest.byPath('parties.0.partyrole').asJs(), 1)
+  assert.equal(latest.byPath('parties.1.partyid').asJs(), 'CLIENT1')
+  assert.equal(latest.byPath('parties.1.partyrole').asJs(), 3)
+  // The fill under its newest spelling, reachable by the old one too.
+  assert.equal(latest.byTag(32).asJs(), 100)
+  assert.equal(latest.byName('LastShares').asJs(), 100)
+  // The row speaks the dictionary's newest version; the wire still says 4.2.
+  assert.equal(latest.byTag(65001).toJSON(), '5.0.2')
+  assert.equal(latest.byTag(8).toJSON(), 'FIX.4.2')
+
+  // Only the row was restated: the wire comes back byte for byte, the
+  // arrival record and the anomalies are the same, and a second pass
+  // changes nothing.
+  assert.equal(latest.intoBytes('|'.charCodeAt(0)).toString(), line)
+  assert.deepEqual(latest.arrivals(), read.arrivals())
+  assert.deepEqual(latest.anomalies(), read.anomalies())
+  assert.ok(latest.intoLatest().equals(latest))
 })
 
 // The messages of one order's life, as a venue and its client tell it.
@@ -1100,7 +1146,7 @@ test('every message of one order carries the chain identity until it ends', () =
   const life = new fix.FixLifecycle(registry)
   const stamped = []
   for (const line of LIFE) {
-    stamped.push(life.fill(reader.transformLine(Buffer.from(line)).next().value))
+    stamped.push(life.fill(reader.parseLine(Buffer.from(line)).next().value))
     // Alive from the first message to the fill that ends it.
     assert.equal(life.alive, stamped.length < LIFE.length ? 1 : 0)
   }
@@ -1135,7 +1181,7 @@ test('every message of one order carries the chain identity until it ends', () =
   // joining yesterday's, which ended: dated by its own clock, it is another
   // identity.
   const tomorrow = LIFE[0].replaceAll('20260102', '20260103')
-  const again = life.fill(reader.transformLine(Buffer.from(tomorrow)).next().value)
+  const again = life.fill(reader.parseLine(Buffer.from(tomorrow)).next().value)
   assert.equal(identity(again, PERSISTENTID).equals(chains[0]), false)
   assert.equal(life.alive, 1)
   assert.equal(life.toString(), 'FixLifecycle(1 alive)')
@@ -1144,14 +1190,16 @@ test('every message of one order carries the chain identity until it ends', () =
   assert.equal(String(life), 'FixLifecycle(0 alive)')
   // The same line at the same instant is the same chain identity, which is
   // what makes two reads of one capture agree.
-  const replayed = life.fill(reader.transformLine(Buffer.from(LIFE[0])).next().value)
+  const replayed = life.fill(reader.parseLine(Buffer.from(LIFE[0])).next().value)
   assert.ok(identity(replayed, PERSISTENTID).equals(chains[0]))
   assert.ok(identity(replayed, ID).equals(ids[0]))
 
-  // Over an array, the reader runs one lifecycle for the whole stream, and a
-  // stamped stream read again keeps what it carries.
-  const once = reader.lifecycle(LIFE.map((line) => reader.transformLine(Buffer.from(line)).next().value))
-  const twice = reader.lifecycle(once)
+  // Over any iterable, the reader runs one lifecycle for the whole stream,
+  // lazily, and a stamped stream read again keeps what it carries.
+  const stream = reader.lifecycle(reader.parseLines(LIFE.map((line) => Buffer.from(line))))
+  assert.ok(stream instanceof fix.FixMessages)
+  const once = [...stream]
+  const twice = [...reader.lifecycle(once)]
   assert.equal(once.length, LIFE.length)
   for (const [at, first] of once.entries()) {
     for (const tag of [INSTID, ID, PERSISTENTID]) {
@@ -1160,14 +1208,21 @@ test('every message of one order carries the chain identity until it ends', () =
     assert.equal(first.arrivals().length, twice[at].arrivals().length)
   }
   assert.ok(identity(once[5], PERSISTENTID).equals(chains[0]))
-  assert.deepEqual(reader.lifecycle([]), [])
+  assert.deepEqual([...reader.lifecycle([])], [])
 })
 
 test('a message naming no order has an id and no chain', () => {
   const reader = new fix.FixCodec(seed())
   const [heartbeat] = reader.lifecycle([
-    reader.transformLine(Buffer.from('8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|')).next().value,
+    reader.parseLine(Buffer.from('8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|')).next().value,
   ])
+  // A stream over anything that is not iterable, or holding what is not a
+  // message, is refused: before anything is pulled, or where the item is met.
+  assert.throws(() => reader.lifecycle(42), TypeError)
+  const mixed = reader.lifecycle([heartbeat, '8=FIX.4.4|35=0|10=0|'])
+  assert.equal(mixed.next().done, false)
+  assert.throws(() => mixed.next(), TypeError)
+  assert.equal(mixed.next().done, true)
   const sent = identity(heartbeat, ID)
   assert.notEqual(sent, null, 'every message has an id')
   assert.equal(heartbeat.getByTag(PERSISTENTID), null, 'no identifier, no chain')
@@ -1175,7 +1230,7 @@ test('a message naming no order has an id and no chain', () => {
   // The impact clock is the sending time where no transaction time is
   // stated, and the epoch where the message states no clock at all.
   assert.equal(sent.readBigInt64BE(0), 1_767_348_930_000_000n)
-  const [undated] = reader.lifecycle([reader.transformLine(Buffer.from('8=FIX.4.4|35=0|10=0|')).next().value])
+  const [undated] = reader.lifecycle([reader.parseLine(Buffer.from('8=FIX.4.4|35=0|10=0|')).next().value])
   assert.ok(identity(undated, ID).subarray(0, 8).equals(Buffer.alloc(8)))
 
   // A lifecycle over the process default is the same pass: the columns are
@@ -1191,7 +1246,7 @@ test('the instrument identity is the same across spellings and venues', () => {
   const registry = seed()
   const reader = new fix.FixCodec(registry)
   const life = new fix.FixLifecycle(registry)
-  const instrument = (line) => identity(life.fill(reader.transformLine(Buffer.from(line)).next().value), INSTID)
+  const instrument = (line) => identity(life.fill(reader.parseLine(Buffer.from(line)).next().value), INSTID)
   // An ISIN outranks a symbol, so the same security under two symbols is one
   // instrument, and case is not a difference.
   const byIsin = instrument('8=FIX.4.4|35=D|11=B1|48=US0378331005|22=4|55=AAPL|207=XNAS|15=USD|10=0|')
@@ -1246,7 +1301,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.deepEqual(required, ['beginstring', 'msghash', 'timestamp', 'unixpartition'])
 
   const reader = new fix.FixCodec(registry)
-  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|')).next().value
+  const message = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|')).next().value
   const row = message.intoRow(schema).toJSON()
   assert.equal(row.length, schema.fieldLen)
   assert.equal(row[schema.indexOf('beginstring')], 'FIX.4.4')
@@ -1281,7 +1336,7 @@ test("a capture's own columns lead the row", () => {
 
   // A column no tag names is the capture's, so a row answers null there: the
   // capture fills it, and nothing in the message says what it held.
-  const row = new fix.FixCodec(registry).transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|')).next().value.intoRow(carried).toJSON()
+  const row = new fix.FixCodec(registry).parseLine(Buffer.from('8=FIX.4.4|35=D|10=0|')).next().value.intoRow(carried).toJSON()
   assert.equal(row[0], null)
   assert.equal(row[carried.indexOf('msgtype')], 'D')
 
@@ -1466,7 +1521,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
 test('a message says everything the core derives about it', () => {
   const registry = seed()
   const reader = new fix.FixCodec(registry)
-  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|207=XNAS|54=1|44=10.5|38=100|60=20240201-12:34:56|10=0|')).next().value
+  const message = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|207=XNAS|54=1|44=10.5|38=100|60=20240201-12:34:56|10=0|')).next().value
 
   assert.equal(message.symbolTicker().toJSON(), 'AAPL@XNAS')
   assert.ok(message.marketTimestamp() !== null)
@@ -1516,7 +1571,7 @@ test('a dialect crosses as its digest and the registry resolves it back', () => 
   // digest the registry turns back into the branch. Without that table an
   // outside reader would have to reproduce the hash to join the two.
   const reader = new fix.FixCodec(registry, { branch: 'bloomberg' })
-  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|')).next().value
+  const message = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|')).next().value
   const [, bid] = message.arrivals()[0]
   assert.notEqual(bid, 0)
   assert.equal(registry.branchByDigest(bid), 'bloomberg')
@@ -1544,30 +1599,49 @@ test('a message type keeps its complete wire code and immutable schema', () => {
   assert.ok(copy.registerMsgtype('P Report Ack').equals(value))
 })
 
-test('a CBlock refusal crosses with the byte, the content and the element', () => {
+test('a CBlock is read for what it says, and a truncated one is refused', () => {
   const root = scratch()
-  const file = path.join(root, 'broken.cfb')
+
+  // A declaration this reader cannot make a field of is dropped and the rest
+  // of the file is still a dictionary: what went is a warning the host reads
+  // through a logger, never a failed read.
+  const dropped = path.join(root, 'dropped.cfb')
   fs.writeFileSync(
-    file,
+    dropped,
     [
       '<?xml version="1.0"?>',
       '<cplugin-configuration fix-version="4.4">',
-      '<vocabulary><vocabulary-tag name="35" alt="MsgType" type="decimal" /></vocabulary>',
+      '<vocabulary>',
+      '<vocabulary-tag name="35" alt="MsgType" type="decimal" />',
+      '<vocabulary-tag name="55" alt="Symbol" type="string" />',
+      '</vocabulary>',
       '</cplugin-configuration>',
     ].join('\n'),
     'utf8',
   )
+  const [registry] = fix.FixRegistry.fromCfbFile(dropped, 'bloomberg')
+  assert.equal(registry.fieldByTag(55).name, 'symbol')
+  assert.throws(() => registry.fieldByTag(35))
 
-  // The native sentence crosses whole rather than as a bare "invalid file":
-  // the byte the reader stopped at, the eight types it wanted, the ninth it
-  // got, and the element the file declared it in.
+  // A document that stops with an element open leaves nothing to keep, and
+  // the native sentence crosses whole rather than as a bare "invalid file":
+  // the byte the reader stopped at, and the element it left open.
+  const truncated = path.join(root, 'broken.cfb')
+  fs.writeFileSync(
+    truncated,
+    [
+      '<?xml version="1.0"?>',
+      '<cplugin-configuration fix-version="4.4">',
+      '<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" />',
+      '</cplugin-configuration>',
+    ].join('\n'),
+    'utf8',
+  )
   assert.throws(
-    () => fix.FixRegistry.fromCfbFile(file, 'bloomberg'),
+    () => fix.FixRegistry.fromCfbFile(truncated, 'bloomberg'),
     (error) => {
       assert.match(error.message, /invalid cfb expression at byte \d+/)
-      assert.match(error.message, /utc-time-only/)
-      assert.match(error.message, /"decimal"/)
-      assert.match(error.message, /<vocabulary-tag name=\\"35\\"/)
+      assert.match(error.message, /vocabulary/)
       return true
     },
   )

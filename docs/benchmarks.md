@@ -12,11 +12,11 @@ Results live beside the method they measure. Each page's Performance section nam
 | Coding | [zstd](coding/zstd.md) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
 | Expression | [Evaluate](expression/evaluate.md) | `benchmarks/expression.rs` writes each predicate by hand against `arrow-ord` / `arrow-select`, and `express... |
 | FIX | [FIX](fix/index.md) | Field setters and the `FixId` codec: one local Windows x86_64 release run of the Criterion target, point es... |
-| FIX | [Arrow](fix/arrow.md) | `fix/pipeline` over a bridge's own log: the text reader framing and classifying every line, then the codec reading the framed bodies into the fixed row; one Linux x86_64 container release run |
-| FIX | [Capture](fix/capture.md) | `fix/read` over one line of each shape a capture holds, including a bridge configuration document; one Linux x86_64 container release run |
+| FIX | [Arrow](fix/arrow.md) | `fix/pipeline` over `rust/tests/fix/ulbridge.log`, a bridge's own log repeated to eleven megabytes: the text reader alone, `parse_text_arrow_reader` whole, the codec over the framed bodies, and each pass over a built message - its row, its batch, `enrich_messages`, `into_latest`, `lifecycle`, `digest`; one Linux x86_64 container release run |
+| FIX | [Capture](fix/capture.md) | `fix/ulconfig`: a bulk configuration document walked into its configurations and read into messages, at three sizes; one Linux x86_64 container release run |
 | FIX | [Message](fix/message.md) | Binding rows only; the Criterion target carries no `FixMsg` case |
-| FIX | [Registry](fix/registry.md) | One local Windows x86_64 release run of the Criterion target, point estimates, over the tracked seed of 34...; the capture-classification rows are a separate Linux x86_64 container run |
-| FIX | [Store](fix/store.md) | One local Windows x86_64 release run of the Criterion target, point estimates, over the tracked seed of 34... |
+| FIX | [Registry](fix/registry.md) | Lookups and mutations over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
+| FIX | [Store](fix/store.md) | Folder loads, snapshots and writes over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | Holder | [Buffered](holder/backends/buffered.md) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
 | Holder | [Filesystems](holder/backends/filesystems.md) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
 | Holder | [Object stores](holder/backends/object.md) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |

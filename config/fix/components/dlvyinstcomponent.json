@@ -1,5 +1,5 @@
 {
-  "name": "dlvyinst",
+  "name": "dlvyinstcomponent",
   "dtype": {
     "type": "struct",
     "fields": [
@@ -48,6 +48,6 @@
   "nullable": false,
   "metadata": {
     "display": "DlvyInst",
-    "fix:tag": "845293"
+    "fix:tag": "279445"
   }
 }

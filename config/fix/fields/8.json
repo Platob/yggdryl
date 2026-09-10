@@ -248,7 +248,7 @@
     "metadata": {
       "description": "Secondary trade report identifier - can be used to associate an additional identifier with a trade.",
       "display": "SecondaryTradeReportID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"secondarytradereportid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"secondarytradereportid\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0\",\"deprecated\":true}]}",
       "fix:tag": "818"
     }
   },
@@ -641,7 +641,7 @@
     "metadata": {
       "description": "Field to allow further specification of the TargetStrategy - usage to be agreed between counterparties",
       "display": "TargetStrategyParameters",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"targetstrategyparameters\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"targetstrategyparameters\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0\",\"deprecated\":true}]}",
       "fix:tag": "848"
     }
   },
@@ -654,7 +654,7 @@
     "metadata": {
       "description": "For a TargetStrategy=Participate order specifies the target particpation rate. For other order types this is a volume limit (i.e. do not be more than this percent of the market volume)",
       "display": "ParticipationRate",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"participationrate\",\"type\":{\"type\":\"float64\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"participationrate\",\"type\":{\"type\":\"float64\"}},{\"since\":\"5.0\",\"deprecated\":true}]}",
       "fix:tag": "849"
     }
   },
@@ -694,8 +694,9 @@
     "metadata": {
       "description": "Indicates if a trade should be reported via a market reporting service.",
       "display": "PublishTrdIndicator",
-      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"DoNotReportTrade\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Do Not Report Trade\"},{\"value\":\"Y\",\"name\":\"ReportTrade\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Report Trade\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"publishtrdindicator\",\"type\":{\"type\":\"boolean\"}}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"DoNotReportTrade\",\"since\":\"4.4\",\"sort\":1,\"aliases\":[\"No\"],\"doc\":\"Do Not Report Trade\"},{\"value\":\"Y\",\"name\":\"ReportTrade\",\"since\":\"4.4\",\"sort\":2,\"aliases\":[\"Yes\"],\"doc\":\"Report Trade\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"publishtrdindicator\",\"type\":{\"type\":\"boolean\"}},{\"since\":\"5.0\",\"deprecated\":true}]}",
+      "fix:replacements": "{\"replacements\":[{\"since\":\"5.0.1\",\"when\":\"Y\",\"fills\":[{\"tag\":1390,\"value\":\"1\"}],\"doc\":\"PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)\"},{\"since\":\"5.0.1\",\"when\":\"N\",\"fills\":[{\"tag\":1390,\"value\":\"0\"}],\"doc\":\"PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)\"}]}",
       "fix:tag": "852"
     }
   },
@@ -1084,7 +1085,7 @@
     "metadata": {
       "description": "Used to refer to a previous SecondaryTradeReportRefID when amending the transaction (cancel, replace, release, or reversal).",
       "display": "SecondaryTradeReportRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"secondarytradereportrefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"secondarytradereportrefid\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0\",\"deprecated\":true}]}",
       "fix:tag": "881"
     }
   },
@@ -1242,7 +1243,7 @@
     "metadata": {
       "description": "Indicates whether this message is the last in a sequence of messages for those messages that support fragmentation, such as Allocation Instruction, Mass Quote, Security List, Derivative Security List",
       "display": "LastFragment",
-      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"NotLastMessage\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Not Last Message\"},{\"value\":\"Y\",\"name\":\"LastMessage\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Last Message\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"NotLastMessage\",\"since\":\"4.4\",\"sort\":1,\"aliases\":[\"No\"],\"doc\":\"Not Last Message\"},{\"value\":\"Y\",\"name\":\"LastMessage\",\"since\":\"4.4\",\"sort\":2,\"aliases\":[\"Yes\"],\"doc\":\"Last Message\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"lastfragment\",\"type\":{\"type\":\"boolean\"}}]}",
       "fix:tag": "893"
     }

@@ -474,6 +474,7 @@ impl<'field> FixField<'field>
   pub fn group(&self) -> Option<&'field str>
   pub fn msgtype(&self) -> Option<&'field str>
   pub fn counter(&self) -> Result<Option<i32>>
+  pub fn replacements(&self) -> FixReplacements<'field>
   impl FixFieldMut<'_>
   pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()>
   pub fn set_id(&mut self, branch: &FixBranch, tag: i32) -> Result<()>
@@ -491,8 +492,68 @@ impl<'field> FixField<'field>
   pub fn remove_msgtype(&mut self) -> Option<String>
   pub fn set_counter(&mut self, tag: i32) -> Result<()>
   pub fn remove_counter(&mut self) -> Result<Option<i32>>
+  pub fn set_replacements(&mut self, entries: &[FixReplacement]) -> Result<()>
+  pub fn remove_replacements(&mut self) -> Result<Option<Vec<FixReplacement>>>
   pub struct FixAliases<'field>
   impl<'field> Iterator for FixAliases<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
+
+### yggdryl::fix::document  [rust\src\fix\document.rs]
+pub struct Words<'doc>  (re-exported at the crate root)
+  impl<'doc> Iterator for Words<'doc>  (Item = &'doc str; also FusedIterator)
+  impl Clone, Debug for Words<'_>
+pub struct Numbers<'doc>
+  impl Iterator for Numbers<'_>  (Item = i32; also FusedIterator)
+  impl Clone, Debug for Numbers<'_>
+
+### yggdryl::fix::replacements  [rust\src\fix\replacements.rs]
+pub enum FixFillSource  (Source | Constant(SmolStr) | From(i32) | Join(Vec<i32>))
+  impl Clone, Debug, PartialEq, Eq for FixFillSource
+pub enum FixFill
+  Field { tag: i32, value: FixFillSource }
+  Group { name: SmolStr, members: Vec<FixFill> }
+  impl Clone, Debug, PartialEq, Eq for FixFill
+  impl From<FixFillEntry<'_>> for FixFill
+pub struct FixReplacement
+  pub const fn new(since: Version) -> Self
+  pub const fn with_ep(mut self, ep: u32) -> Self
+  pub fn with_msgtypes<I, S>(mut self, msgtypes: I) -> Self where I: IntoIterator<Item = S>, S: Into<SmolStr>,
+  pub fn with_in<I, S>(mut self, groups: I) -> Self where I: IntoIterator<Item = S>, S: Into<SmolStr>,
+  pub fn with_when(mut self, when: impl Into<SmolStr>) -> Self
+  pub fn with_fills<I>(mut self, fills: I) -> Self where I: IntoIterator<Item = FixFill>,
+  pub fn with_doc(mut self, doc: impl Into<SmolStr>) -> Self
+  pub const fn since(&self) -> Version
+  pub const fn ep(&self) -> Option<u32>
+  pub fn msgtypes(&self) -> &[SmolStr]
+  pub fn in_groups(&self) -> &[SmolStr]
+  pub fn when(&self) -> Option<&str>
+  pub fn fills(&self) -> &[FixFill]
+  pub fn doc(&self) -> Option<&str>
+  impl Clone, Debug, PartialEq, Eq for FixReplacement
+  impl From<FixReplacementEntry<'_>> for FixReplacement
+pub enum FixFillValue<'field>  (Source | Constant(&'field str) | From(i32) | Join(Numbers<'field>))
+  impl Clone, Debug for FixFillValue<'_>
+pub enum FixFillEntry<'field>
+  Field { tag: i32, value: FixFillValue<'field> }
+  Group { name: &'field str, members: FixFills<'field> }
+  impl Clone, Debug for FixFillEntry<'_>
+pub struct FixReplacementEntry<'field>
+  pub const fn since(self) -> Version
+  pub const fn ep(self) -> Option<u32>
+  pub const fn msgtypes(self) -> Words<'field>
+  pub const fn in_groups(self) -> Words<'field>
+  pub const fn when(self) -> Option<&'field str>
+  pub const fn fills(self) -> FixFills<'field>
+  pub const fn doc(self) -> Option<&'field str>
+  pub fn parse_doc(self) -> Result<Option<String>>
+  impl Clone, Copy, Debug, PartialEq, Eq for FixReplacementEntry<'_>
+pub struct FixFills<'field>
+  pub fn next_ok(&mut self) -> Option<FixFillEntry<'field>>
+  impl<'field> Iterator for FixFills<'field>  (Item = Result<FixFillEntry<'field>>; also FusedIterator)
+  impl Clone, Debug for FixFills<'_>
+pub struct FixReplacements<'field>
+  pub fn next_ok(&mut self) -> Option<FixReplacementEntry<'field>>
+  impl<'field> Iterator for FixReplacements<'field>  (Item = Result<FixReplacementEntry<'field>>; also FusedIterator)
+  impl Clone, Debug for FixReplacements<'_>
 
 ### yggdryl::fix::global  [rust\src\fix\global.rs]
 impl FixRegistry
@@ -534,31 +595,51 @@ pub struct FixBranch(SmolStr)  (re-exported at the crate root beside FixAliases,
   impl fmt::Display for FixKey<'_>
 
 ### yggdryl::fix::codec  [rust\src\fix\codec.rs]
+pub const SOH: u8 = 0x01;
+pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
 pub struct FixCodec
+  pub const DEFAULT_BATCH_BYTE_SIZE: u64 = 128 * 1024 * 1024;  (the raw bytes one Arrow batch targets; a target, not a ceiling, and a batch always holds one row)
   pub fn new(registry: Arc<FixRegistry>) -> Self
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn version(&self) -> Option<Version>
   pub const fn branch(&self) -> Option<&FixBranch>
+  pub const fn direction(&self) -> Option<&'static str>
+  pub const fn batch_byte_size(&self) -> u64
+  pub fn payload_column(&self) -> &str
+  pub const fn separator(&self) -> Option<u8>
+  pub fn null_values(&self) -> &[String]
   pub fn with_branch(mut self, branch: &FixBranch) -> Self
   pub const fn with_version(mut self, version: Version) -> Self
   pub const fn with_separator(mut self, separator: u8) -> Self
   pub fn with_payload_column(mut self, column: impl Into<SmolStr>) -> Self
+  pub const fn with_direction(mut self, direction: Option<&'static str>) -> Self  (the direction an unmarked line takes; default `SENT`)
+  pub const fn with_batch_byte_size(mut self, bytes: u64) -> Self
   pub fn with_null_values<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: Into<String>
   pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]>
   pub fn infer_msgtype_text(line: &str) -> Option<&str>
-  pub fn transform_line(&self, row: &[u8], enrich: bool) -> Result<FixMessages>
-  pub fn transform_fix_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg>
-  pub fn transform_ullink_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg>
-  pub fn transform_fixml_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg>
-  pub fn transform_pairs<'a, I>(&self, pairs: I, enrich: bool) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>
-  pub fn transform_record(&self, record: &Scalar, enrich: bool) -> Result<FixMessages>
-  pub fn transform_records<'codec, I>(&'codec self, records: I, enrich: bool) -> impl Iterator<Item = Result<FixMsg>> + 'codec where I: IntoIterator<Item = Scalar>, I::IntoIter: 'codec
-  pub fn transform_arrow_batch(&self, batch: &RecordBatch, options: &FixOptions, enrich: bool) -> Result<RecordBatch>
-  pub fn transform_arrow_reader(&self, source: BatchReader, options: &FixOptions, enrich: bool) -> Result<BatchReader>
-  pub fn enrich_arrow_batch(&self, batch: &RecordBatch, options: &FixOptions) -> Result<RecordBatch>
-  pub fn enrich_arrow_reader(&self, source: BatchReader, options: &FixOptions) -> Result<BatchReader>
-  pub fn enrich_fixmsg(&self, message: FixMsg) -> Result<FixMsg>
-  pub fn enrich_fixmsgs<'codec, I>(&'codec self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + 'codec where I: IntoIterator<Item = FixMsg>, I::IntoIter: 'codec
+  pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages>
+  pub fn parse_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: AsRef<[u8]>  (owns a codec clone; a line that is not a row is an `Err` item)
+  pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg>
+  pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg>
+  pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg>
+  pub fn parse_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>
+  pub fn parse_text_record(&self, record: &Scalar) -> Result<FixMessages>
+  pub fn parse_text_records<I>(&self, records: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = Scalar>
+  pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg>  (never fails; the `Result` is the shape every stage answers in)
+  pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>
+  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>
+  impl Clone for FixCodec
+
+### yggdryl::fix::record  [rust\src\fix\record.rs]
+pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
+
+### yggdryl::fix::batch  [rust\src\fix\batch.rs]  (arrow feature)
+impl FixCodec
+  pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, FIX rows out; the capture's columns lead; batches close on the payload column's raw bytes read once per input batch)
+  pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, filled FIX rows out under the same schema; no re-parse)
+  pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema)
+  pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator<Item = Result<FixMsg>>, I::IntoIter: Send + 'static  (each message through `FixMsg::into_row`; batches close on the arrival record's raw bytes)
+  pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `nofixentries`)
 
 ### yggdryl::fix::messages  [rust\src\fix\messages.rs]
 pub struct FixMessages
@@ -593,6 +674,11 @@ pub struct FixMsg
   pub fn by_path(&self, path: &str) -> Result<&Scalar>
   pub fn get<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Scalar>
   pub fn value<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Scalar>
+  pub fn set<'key>(&mut self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<()>  (row only; typed by the field the key reaches, replaced in place or appended; a bare unknown tag appends a nullable utf8 child named by its decimal; failure leaves the message unchanged)
+  pub fn set_many<'key, I, K>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (K, Scalar)>, K: Into<FixKey<'key>>  (several `set`s with one rebuild; the later of two writes to one child lands)
+  pub fn with_value<'key>(self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<Self>  (the consuming twin of `set`)
+  pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Scalar>  (row only; the value the reached child held)
+  pub fn into_latest(self) -> Result<Self>  (the row restated at the registry's newest version; entries untouched, idempotent)
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg
 
 ### yggdryl::fix::entry  [rust\src\fix\entry.rs]
@@ -619,13 +705,13 @@ pub struct FixAnomalies<'msg>
   impl FusedIterator for FixAnomalies<'_>
 
 ### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
-pub struct Ulconfig  (re-exported at the crate root beside Ulconfigs and fix_ulbridge_fields)
+pub struct UlPlugin  (re-exported at the crate root beside UlPlugins and fix_ulbridge_fields)
   pub fn stable_hash(&self) -> u64
   pub fn new(mbean: Option<&str>, attributes: Scalar, envelope: Scalar) -> Self
-  pub fn from_json_bytes(body: &[u8]) -> Result<Ulconfigs>
-  pub fn from_json_scalar(document: &Scalar) -> Result<Ulconfigs>
-  pub fn from_fixmsg(message: &FixMsg) -> Result<Ulconfig>
-  pub fn into_fixmsg(&self, codec: &FixCodec, enrich: bool) -> Result<FixMsg>
+  pub fn from_json_bytes(body: &[u8]) -> Result<UlPlugins>
+  pub fn from_json_scalar(document: &Scalar) -> Result<UlPlugins>
+  pub fn from_fixmsg(message: &FixMsg) -> Result<UlPlugin>
+  pub fn into_fixmsg(&self, codec: &FixCodec) -> Result<FixMsg>
   pub fn mbean(&self) -> Option<&str>
   pub fn mbean_type(&self) -> Option<&str>
   pub fn plugin_type(&self) -> Option<&str>
@@ -637,9 +723,9 @@ pub struct Ulconfig  (re-exported at the crate root beside Ulconfigs and fix_ulb
   pub const fn as_attributes(&self) -> &Scalar
   pub const fn as_envelope(&self) -> &Scalar
   pub fn attributes(&self) -> impl Iterator<Item = (&str, &Scalar)>
-  impl Clone, Debug, PartialEq, Eq, Hash for Ulconfig
-  pub struct Ulconfigs
-  impl Iterator for Ulconfigs  (Item = Ulconfig; also FusedIterator; lazy over shared Scalar)
+  impl Clone, Debug, PartialEq, Eq, Hash for UlPlugin
+  pub struct UlPlugins
+  impl Iterator for UlPlugins  (Item = UlPlugin; also FusedIterator; lazy over shared Scalar)
 
 ### yggdryl::FixCategory  [rust\src\fix_category.rs]
 pub enum FixCategory { Fields, Messages, Components, Groups }
@@ -719,7 +805,8 @@ pub fn fix_schema_tags() -> Vec<i32>
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>
 impl FixMsg
-  pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits)
+  pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (the inverse of `into_row`: root = schema, value = row, entries rebuilt from `nofixentries`; a row without that column has no entries)
+  pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits; a column with no tag and no counter takes the child of its name, else null)
   pub fn symbol_ticker(&self) -> Scalar
   pub fn market_timestamp(&self) -> Scalar
   pub fn unix_partition(&self, seconds: i64) -> Scalar
@@ -742,7 +829,7 @@ pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
 impl FixRegistry
   pub fn with_ulbridge_fields(mut self) -> Result<Self>
 impl FixCodec
-  pub fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> Result<FixMessages>
+  pub fn parse_ulconfig_line(&self, body: &[u8]) -> Result<FixMessages>
 
 ### yggdryl::holder::buffer  [rust\src\holder\buffer.rs]
 pub struct Buffer
@@ -2290,6 +2377,7 @@ pub trait AsciiValue: ScalarValue
   pub const fn width(&self) -> i32  // FixedAscii only
   pub const SENT: &'static str = "SENT";  // MsgDirection only
   pub const RECV: &'static str = "RECV";  // MsgDirection only
+  pub fn from_spelling(spelling: &str) -> Result<Option<&'static str>>  // MsgDirection only: sent|s|send, recv|r|receive, unknown|"" -> None; ASCII case folded; the one list of spellings both bindings read
   pub fn infer_bytes(line: &[u8]) -> Option<&'static str>  // MsgDirection only
   pub fn infer_text(line: &str) -> Option<&'static str>  // MsgDirection only
   pub fn split_bytes(line: &[u8]) -> (Option<&'static str>, &[u8])  // MsgDirection only

@@ -9,6 +9,9 @@ use smol_str::SmolStr;
 use super::global::autoload;
 use super::registry::control_byte;
 use super::store::shard_of;
+use crate::fix::{
+    FixCodes, FixFill, FixFillEntry, FixFillSource, FixFillValue, FixReplacement, FixReplacements,
+};
 use crate::holder::local::Folder;
 use crate::{
     DataType, Error, Field, FixBranch, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey,
@@ -437,7 +440,7 @@ fn ulbridge_codec() -> crate::FixCodec {
 #[test]
 fn a_bridge_configuration_reads_as_one_flat_message() {
     let codec = ulbridge_codec();
-    let mut messages = codec.transform_line(ULCONFIG_SINGLE, false).unwrap();
+    let mut messages = codec.parse_line(ULCONFIG_SINGLE).unwrap();
     let msg = messages.next().unwrap().unwrap();
     assert!(messages.next().is_none());
     assert!(msg.get_by_name("SessionInterfaces").is_none());
@@ -504,7 +507,7 @@ fn a_bridge_configuration_reads_as_one_flat_message() {
 fn a_wildcard_read_is_one_flat_message_per_mbean() {
     let codec = ulbridge_codec();
     let messages = codec
-        .transform_line(ULCONFIG_WILDCARD, false)
+        .parse_line(ULCONFIG_WILDCARD)
         .unwrap()
         .collect::<crate::Result<Vec<_>>>()
         .unwrap();
@@ -533,7 +536,7 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
     let recovered = crate::UlPlugin::from_fixmsg(&messages[1]).unwrap();
     assert_eq!(recovered.name(), Some("B"));
     assert_eq!(recovered.get("CurrentPort"), Some(&Scalar::from(9905_i64)));
-    let rebuilt = recovered.into_fixmsg(&codec, false).unwrap();
+    let rebuilt = recovered.into_fixmsg(&codec).unwrap();
     assert_eq!(
         rebuilt.by_name("MBean").unwrap(),
         messages[1].by_name("MBean").unwrap()
@@ -546,7 +549,7 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
     // dropping it: a venue sends fields no dictionary has.
     let bare = crate::FixCodec::new(Arc::new(FixRegistry::new()));
     let plain = bare
-        .transform_line(ULCONFIG_WILDCARD, false)
+        .parse_line(ULCONFIG_WILDCARD)
         .unwrap()
         .collect::<crate::Result<Vec<_>>>()
         .unwrap();
@@ -567,7 +570,7 @@ fn ulconfig_bulk_iteration_keeps_request_and_error_envelopes_and_fuses() {
     assert!(configurations.next().is_none());
     assert_eq!(configurations.size_hint(), (0, Some(0)));
     let codec = ulbridge_codec();
-    let message = error.into_fixmsg(&codec, false).unwrap();
+    let message = error.into_fixmsg(&codec).unwrap();
     assert_eq!(message.by_name("Status").unwrap(), &Scalar::from(404_i64));
     assert_eq!(message.by_name("Error").unwrap(), &Scalar::from("missing"));
     assert!(message.get_by_name("SessionInterface").is_none());
@@ -581,7 +584,7 @@ fn ulconfig_bulk_iteration_keeps_request_and_error_envelopes_and_fuses() {
         .next()
         .unwrap();
     assert!(request.mbean().is_none());
-    let message = request.into_fixmsg(&codec, false).unwrap();
+    let message = request.into_fixmsg(&codec).unwrap();
     assert_eq!(message.by_name("Operation").unwrap(), &Scalar::from("read"));
     assert!(message.get_by_name("SessionInterface").is_none());
 }
@@ -628,7 +631,7 @@ fn ulconfig_conversion_reports_an_unrepresentable_attribute() {
     let attributes = Scalar::from_record([("CurrentPort", Scalar::from(f64::NAN))]).unwrap();
     let value = crate::UlPlugin::new(None, attributes, Scalar::Null);
     let codec = crate::FixCodec::new(Arc::new(FixRegistry::new()));
-    let error = value.into_fixmsg(&codec, false).unwrap_err();
+    let error = value.into_fixmsg(&codec).unwrap_err();
     assert!(error.to_string().contains("non-finite"), "{error}");
 }
 
@@ -3163,10 +3166,8 @@ fn a_report_states_what_is_left_once_it_has_stated_the_rest() {
     // ordered minus what was done, and the fill's worth is its quantity at
     // its price.
     let held = codec
-        .transform_fix_line(
-            b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|",
-            true,
-        )
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(held.by_tag(151).unwrap(), &Scalar::from(60.0_f64));
     assert_eq!(held.by_tag(381).unwrap(), &Scalar::from(420.0_f64));
@@ -3176,14 +3177,16 @@ fn a_report_states_what_is_left_once_it_has_stated_the_rest() {
     // A closed order leaves nothing, whatever the arithmetic of the other two
     // would say: Appendix D shows zero on every terminal row.
     let closed = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=4|150=4|38=100|14=40|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=4|150=4|38=100|14=40|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(closed.by_tag(151).unwrap(), &Scalar::from(0.0_f64));
 
     // The same identity read backwards: what was ordered is what is left plus
     // what was done.
     let ordered = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|14=40|151=60|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|14=40|151=60|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(ordered.by_tag(38).unwrap(), &Scalar::from(100.0_f64));
 }
@@ -3194,16 +3197,18 @@ fn a_stated_value_is_never_replaced_and_filling_twice_changes_nothing() {
     // The venue's own arithmetic wins even where it disagrees with the
     // specification's: the row says what was sent.
     let held = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|151=999|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|151=999|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(held.by_tag(151).unwrap(), &Scalar::from(999.0_f64));
 
     // Idempotent: a value derived once is a stated value the second time, so
     // a second pass derives it to itself.
     let once = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
-    let twice = codec.enrich_fixmsg(once.clone()).expect("a second pass");
+    let twice = codec.enrich_message(once.clone()).expect("a second pass");
     assert_eq!(once, twice);
 }
 
@@ -3211,11 +3216,10 @@ fn a_stated_value_is_never_replaced_and_filling_twice_changes_nothing() {
 fn filling_leaves_the_wire_exactly_as_it_arrived() {
     let codec = enriching();
     const LINE: &[u8] = b"8=FIX.4.4|35=8|39=1|38=100|14=40|32=40|31=10.5|54=1|10=0|";
-    let bare = codec
-        .transform_fix_line(LINE, false)
-        .expect("a readable report");
+    let bare = codec.parse_fix_line(LINE).expect("a readable report");
     let filled = codec
-        .transform_fix_line(LINE, true)
+        .parse_fix_line(LINE)
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
 
     // The row gained columns.
@@ -3233,27 +3237,31 @@ fn a_rule_answers_nothing_rather_than_a_guess() {
     let codec = enriching();
     // An input the message never stated: nothing is derived from an absence.
     let held = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(held.get_by_tag(151), None, "no CumQty to subtract");
 
     // A negative remainder means the two inputs were never about one order,
     // so the rule declines rather than stating a quantity that cannot exist.
     let crossed = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=40|14=100|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=40|14=100|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(crossed.get_by_tag(151), None);
 
     // A status the matrices do not place answers nothing either.
     let unknown = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=Z|38=100|14=40|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=Z|38=100|14=40|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(unknown.get_by_tag(151), None);
 
     // A message type the rule does not speak for is left alone: an order has
     // no remainder to state until something reports on it.
     let order = codec
-        .transform_fix_line(b"8=FIX.4.4|35=D|38=100|14=40|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=D|38=100|14=40|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable order");
     assert_eq!(order.get_by_tag(151), None);
 }
@@ -3264,10 +3272,10 @@ fn a_foreign_exchange_trade_settles_in_the_currency_it_was_dealt_in() {
     // Appendix O: the settlement currency defaults to the dealt one, and the
     // settled amount is the traded amount at the stated rate.
     let held = codec
-        .transform_fix_line(
+        .parse_fix_line(
             b"8=FIX.4.4|35=8|39=2|150=F|38=100|14=100|32=100|31=1.25|15=EUR|155=1.1|10=0|",
-            true,
         )
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(held.by_tag(381).unwrap(), &Scalar::from(125.0_f64));
     assert_eq!(
@@ -3280,7 +3288,8 @@ fn a_foreign_exchange_trade_settles_in_the_currency_it_was_dealt_in() {
 
     // A trade that states its own settlement currency keeps it.
     let stated = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=2|15=EUR|120=USD|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=2|15=EUR|120=USD|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(stated.by_tag(120).unwrap().as_str(), Some("USD"));
 }
@@ -3310,7 +3319,7 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
     // entries are the wire and the row is the reading of it.
     let registry = Arc::new(FixRegistry::from_fields([field]).unwrap());
     let message = super::FixCodec::new(Arc::clone(&registry))
-        .transform_fix_line(b"99=N/A|", false)
+        .parse_fix_line(b"99=N/A|")
         .expect("a readable frame");
     assert_eq!(message.get_by_tag(99), Some(&Scalar::Null));
     let entry = message
@@ -3322,7 +3331,7 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
 
     // A value the list does not name is read as the price it is.
     let message = super::FixCodec::new(registry)
-        .transform_fix_line(b"99=12.5|", false)
+        .parse_fix_line(b"99=12.5|")
         .expect("a readable frame");
     assert_eq!(message.by_tag(99).unwrap(), &Scalar::from(12.5_f64));
 }
@@ -3965,6 +3974,473 @@ fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
     assert_eq!(field, before);
 }
 
+/// Fixture C: `Rule80A(47)`, stating every shape a replacement rule has.
+///
+/// Three entries in a deliberate order: a value rule, a rule scoped to two
+/// message types and one repeating group, and a catch-all filling a group
+/// occurrence whose members reach every fill source, one of them a group
+/// again.
+fn rule80a_rules() -> Vec<FixReplacement> {
+    vec![
+        FixReplacement::new(version("4.3"))
+            .with_when("C")
+            .with_fills([
+                FixFill::Field {
+                    tag: 528,
+                    value: FixFillSource::Constant("P".into()),
+                },
+                FixFill::Field {
+                    tag: 529,
+                    value: FixFillSource::Constant("1 3".into()),
+                },
+            ])
+            .with_doc(r#"Program order, non-index arbitrage, for "other" agency"#),
+        FixReplacement::new(version("4.3"))
+            .with_ep(12)
+            .with_msgtypes(["8", "AE"])
+            .with_in(["allocgrp"])
+            .with_when("A")
+            .with_fills([FixFill::Field {
+                tag: 528,
+                value: FixFillSource::Constant("A".into()),
+            }]),
+        FixReplacement::new(version("4.3")).with_fills([FixFill::Group {
+            name: "parties".into(),
+            members: vec![
+                FixFill::Field {
+                    tag: 448,
+                    value: FixFillSource::Source,
+                },
+                FixFill::Field {
+                    tag: 628,
+                    value: FixFillSource::From(115),
+                },
+                FixFill::Group {
+                    name: "ptyssubgrp".into(),
+                    members: vec![FixFill::Field {
+                        tag: 523,
+                        value: FixFillSource::Join(vec![200, 205]),
+                    }],
+                },
+            ],
+        }]),
+    ]
+}
+
+/// The one text fixture C renders to.
+const RULE80A_DOCUMENT: &str = concat!(
+    r#"{"replacements":["#,
+    r#"{"since":"4.3","when":"C","fills":[{"tag":528,"value":"P"},{"tag":529,"value":"1 3"}],"#,
+    r#""doc":"Program order, non-index arbitrage, for \"other\" agency"},"#,
+    r#"{"since":"4.3","ep":12,"msgtypes":["8","AE"],"in":["allocgrp"],"when":"A","#,
+    r#""fills":[{"tag":528,"value":"A"}]},"#,
+    r#"{"since":"4.3","fills":[{"group":"parties","members":[{"tag":448},{"tag":628,"from":115},"#,
+    r#"{"group":"ptyssubgrp","members":[{"tag":523,"join":[200,205]}]}]}]}]}"#,
+);
+
+fn rule80a() -> Field {
+    let mut field = DataType::Utf8.nullable_field("rule80a");
+    field.as_fix_mut().set_tag(47).unwrap();
+    field
+        .as_fix_mut()
+        .set_replacements(&rule80a_rules())
+        .unwrap();
+    field
+}
+
+/// A field carrying one hand-written `fix:replacements` text, unvalidated.
+fn replacing(document: &str) -> Field {
+    let mut field = DataType::Utf8.nullable_field("rule80a");
+    field
+        .set_metadata([("fix:replacements", document)])
+        .unwrap();
+    field
+}
+
+#[test]
+fn a_replacement_document_round_trips_canonically_and_in_order() {
+    let field = rule80a();
+    assert_eq!(
+        field.get_metadata("fix:replacements"),
+        Some(RULE80A_DOCUMENT)
+    );
+
+    // The borrowed read hands back every fact as a slice of that text.
+    let view = field.as_fix();
+    let entries: Vec<_> = view
+        .replacements()
+        .map(|entry| entry.expect("a readable entry"))
+        .collect();
+    assert_eq!(entries.len(), 3);
+    let valued = entries[0];
+    assert_eq!(valued.since(), version("4.3"));
+    assert_eq!(valued.ep(), None);
+    assert_eq!(valued.msgtypes().count(), 0, "every message");
+    assert_eq!(valued.in_groups().count(), 0, "wherever the field sits");
+    assert_eq!(valued.when(), Some("C"));
+    assert_eq!(
+        valued.doc(),
+        Some(r#"Program order, non-index arbitrage, for \"other\" agency"#),
+        "still escaped as stored"
+    );
+    assert_eq!(
+        valued.parse_doc().unwrap().as_deref(),
+        Some(r#"Program order, non-index arbitrage, for "other" agency"#)
+    );
+    let fills: Vec<_> = valued.fills().map(|fill| fill.unwrap()).collect();
+    assert!(matches!(
+        fills.as_slice(),
+        [
+            FixFillEntry::Field {
+                tag: 528,
+                value: FixFillValue::Constant("P")
+            },
+            FixFillEntry::Field {
+                tag: 529,
+                value: FixFillValue::Constant("1 3")
+            },
+        ]
+    ));
+
+    let scoped = entries[1];
+    assert_eq!(scoped.ep(), Some(12));
+    assert_eq!(scoped.msgtypes().collect::<Vec<_>>(), ["8", "AE"]);
+    assert_eq!(scoped.in_groups().collect::<Vec<_>>(), ["allocgrp"]);
+    assert_eq!(scoped.when(), Some("A"));
+    assert_eq!(scoped.doc(), None);
+
+    // A group fill nests, and its members are a walk of their own.
+    let grouped = entries[2];
+    assert_eq!(grouped.when(), None, "the catch-all comes last");
+    let mut fills = grouped.fills();
+    let Some(FixFillEntry::Group { name, mut members }) = fills.next_ok() else {
+        panic!("a group fill");
+    };
+    assert_eq!(name, "parties");
+    assert!(fills.next_ok().is_none());
+    assert!(matches!(
+        members.next_ok(),
+        Some(FixFillEntry::Field {
+            tag: 448,
+            value: FixFillValue::Source
+        })
+    ));
+    assert!(matches!(
+        members.next_ok(),
+        Some(FixFillEntry::Field {
+            tag: 628,
+            value: FixFillValue::From(115)
+        })
+    ));
+    let Some(FixFillEntry::Group { name, mut members }) = members.next_ok() else {
+        panic!("a nested group fill");
+    };
+    assert_eq!(name, "ptyssubgrp");
+    let Some(FixFillEntry::Field {
+        tag: 523,
+        value: FixFillValue::Join(tags),
+    }) = members.next_ok()
+    else {
+        panic!("a join fill");
+    };
+    assert_eq!(tags.collect::<Vec<_>>(), [200, 205]);
+    assert!(members.next_ok().is_none());
+
+    // Owning what was read answers exactly what was written, so taking the
+    // rules away and putting them back produces the same text - and the
+    // order is kept, because it is the rule.
+    let owned: Vec<FixReplacement> = entries.into_iter().map(FixReplacement::from).collect();
+    assert_eq!(owned, rule80a_rules());
+    let mut rebuilt = field.clone();
+    let taken = rebuilt.as_fix_mut().remove_replacements().unwrap().unwrap();
+    assert_eq!(taken, rule80a_rules());
+    assert_eq!(rebuilt.get_metadata("fix:replacements"), None);
+    assert_eq!(rebuilt.as_fix().replacements().count(), 0);
+    rebuilt.as_fix_mut().set_replacements(&taken).unwrap();
+    assert_eq!(rebuilt, field);
+    assert_eq!(
+        rebuilt.as_fix_mut().remove_replacements().unwrap(),
+        Some(taken)
+    );
+    assert_eq!(rebuilt.as_fix_mut().remove_replacements().unwrap(), None);
+}
+
+#[test]
+fn an_empty_replacement_set_removes_the_property() {
+    let mut field = rule80a();
+    field.as_fix_mut().set_replacements(&[]).unwrap();
+    assert_eq!(field.get_metadata("fix:replacements"), None);
+    assert_eq!(field.as_fix().replacements().count(), 0);
+    assert!(field.as_fix().replacements().next_ok().is_none());
+    // Removing what is not there is not an error.
+    assert_eq!(field.as_fix_mut().remove_replacements().unwrap(), None);
+}
+
+#[test]
+fn the_replacement_writer_refuses_what_the_document_cannot_state() {
+    let field_fill = |tag: i32, value: FixFillSource| FixFill::Field { tag, value };
+    let constant = |text: &str| FixFillSource::Constant(text.into());
+    let sound = || FixReplacement::new(version("4.3")).with_fills([field_fill(528, constant("A"))]);
+    for (rules, names) in [
+        // An entry stating no fill restates nothing.
+        (
+            vec![FixReplacement::new(version("4.3"))],
+            "at least one fill",
+        ),
+        // A group occurrence with no member is no occurrence.
+        (
+            vec![
+                FixReplacement::new(version("4.3")).with_fills([FixFill::Group {
+                    name: "parties".into(),
+                    members: Vec::new(),
+                }]),
+            ],
+            "at least one member",
+        ),
+        // A join of one tag is a `from`.
+        (
+            vec![
+                FixReplacement::new(version("4.3"))
+                    .with_fills([field_fill(541, FixFillSource::Join(vec![200]))]),
+            ],
+            "at least two tags",
+        ),
+        // Tags are non-negative wherever they stand.
+        (
+            vec![FixReplacement::new(version("4.3")).with_fills([field_fill(-1, constant("A"))])],
+            "a FIX tag, got -1",
+        ),
+        (
+            vec![
+                FixReplacement::new(version("4.3"))
+                    .with_fills([field_fill(628, FixFillSource::From(-115))]),
+            ],
+            "a FIX tag, got -115",
+        ),
+        (
+            vec![
+                FixReplacement::new(version("4.3"))
+                    .with_fills([field_fill(541, FixFillSource::Join(vec![200, -205]))]),
+            ],
+            "a FIX tag, got -205",
+        ),
+        // What the reader reads back as a word must be written as one.
+        (vec![sound().with_when("")], r#""when""#),
+        (
+            vec![
+                FixReplacement::new(version("4.3"))
+                    .with_fills([field_fill(58, constant(r#"say "hi""#))]),
+            ],
+            r#""value""#,
+        ),
+        (vec![sound().with_in(["alloc\\grp"])], r#""in""#),
+        (
+            vec![
+                FixReplacement::new(version("4.3")).with_fills([FixFill::Group {
+                    name: "".into(),
+                    members: vec![field_fill(448, FixFillSource::Source)],
+                }]),
+            ],
+            r#""group""#,
+        ),
+        // A message type is held to what `set_msgtype` holds one to.
+        (vec![sound().with_msgtypes([""])], "message-code"),
+        // A refusal anywhere in the list refuses the whole list.
+        (
+            vec![sound(), FixReplacement::new(version("4.4"))],
+            "at least one fill",
+        ),
+    ] {
+        let mut field = DataType::Utf8.nullable_field("rule80a");
+        field.as_fix_mut().set_tag(47).unwrap();
+        let error = field.as_fix_mut().set_replacements(&rules).unwrap_err();
+        assert!(error.to_string().contains(names), "{names}: {error}");
+        assert_eq!(
+            field.get_metadata("fix:replacements"),
+            None,
+            "atomic: {names}"
+        );
+    }
+}
+
+#[test]
+fn a_hand_edited_replacement_document_is_refused_at_its_own_byte() {
+    // Each case: the stored text, the reason expected, and the text whose
+    // first byte the refusal must name.
+    for (document, reason, at) in [
+        (
+            r#"{"replacements":[{"fills":[{"tag":528}],"since":"4.3"}]}"#,
+            "out of order",
+            Some(r#""since""#),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528}],"note":"x"}]}"#,
+            r#"unknown key "note""#,
+            Some(r#""note""#),
+        ),
+        (
+            r#"{"replacements":[{"fills":[{"tag":528}]}]}"#,
+            r#"state "since""#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3"}]}"#,
+            r#"state "fills""#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[]}]}"#,
+            r#""fills" to hold at least 1"#,
+            Some(r#"[]"#),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"group":"parties","members":[{"tag":1}]}]}]}"#,
+            r#""tag" and "group" never together"#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"value":"A"}]}]}"#,
+            r#"state "tag""#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"value":"A","from":1}]}]}"#,
+            r#""value" and "from" never together"#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"from":1,"join":[2,3]}]}]}"#,
+            r#""from" and "join" never together"#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"members":[{"tag":1}]}]}]}"#,
+            r#""tag" and "members" never together"#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"value":"A","group":"parties","members":[{"tag":1}]}]}]}"#,
+            r#""group" and "value" never together"#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties"}]}]}"#,
+            r#"state "members""#,
+            None,
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties","members":[]}]}]}"#,
+            r#""members" to hold at least 1"#,
+            Some(r#"[]"#),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":541,"join":[200]}]}]}"#,
+            r#""join" to hold at least 2"#,
+            Some(r#"[200]"#),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":541,"join":[200,4294967295]}]}]}"#,
+            r#""join" to fit in 32 bits"#,
+            Some("4294967295"),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"tag":2147483648}]}]}"#,
+            r#""tag" to fit in 32 bits"#,
+            Some("2147483648"),
+        ),
+        (
+            r#"{"replacements":[{"since":"4.3","when":"a\"b","fills":[{"tag":528}]}]}"#,
+            r#""when" to hold no escape"#,
+            Some(r#""a\"b""#),
+        ),
+        (
+            r#"{"replacements":[]}x"#,
+            "expected the document to end",
+            Some("x"),
+        ),
+        // A refusal inside a nested member names its byte in the whole
+        // document, not in the slice the member walk was reading.
+        (
+            r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties","members":[{"tag":1,"value":"A","from":2}]}]}]}"#,
+            r#""value" and "from" never together"#,
+            Some("]}]}]}"),
+        ),
+    ] {
+        let field = replacing(document);
+        let error = field
+            .as_fix()
+            .replacements()
+            .next()
+            .expect("a refusal")
+            .expect_err("a refusal");
+        let Error::Parse {
+            target, position, ..
+        } = &error
+        else {
+            panic!("{document}: {error}");
+        };
+        assert_eq!(*target, "fix replacements", "{document}");
+        assert!(error.to_string().contains(reason), "{document}: {error}");
+        if let Some(at) = at {
+            assert_eq!(*position, document.find(at).unwrap(), "{document}: {error}");
+        }
+        // The infallible walk answers nothing rather than a wrong entry.
+        assert!(
+            field.as_fix().replacements().next_ok().is_none(),
+            "{document}"
+        );
+        // And taking a document a reader refuses away reports the refusal,
+        // having removed it.
+        let mut taken = field.clone();
+        assert!(
+            taken.as_fix_mut().remove_replacements().is_err(),
+            "{document}"
+        );
+        assert_eq!(taken.get_metadata("fix:replacements"), None, "{document}");
+    }
+
+    // A refusal is fused: the walk ends where it stopped.
+    let field =
+        replacing(r#"{"replacements":[{"since":"4.3"},{"since":"4.4","fills":[{"tag":1}]}]}"#);
+    let mut walk = field.as_fix().replacements();
+    assert!(walk.next().unwrap().is_err());
+    assert!(walk.next().is_none());
+}
+
+#[test]
+fn a_merge_lets_the_incoming_replacements_win_whole() {
+    let mut stored = DataType::Utf8.nullable_field("rule80a");
+    stored.as_fix_mut().set_tag(47).unwrap();
+    stored
+        .as_fix_mut()
+        .set_replacements(&[
+            FixReplacement::new(version("4.3")).with_fills([FixFill::Field {
+                tag: 528,
+                value: FixFillSource::Constant("W".into()),
+            }]),
+        ])
+        .unwrap();
+    let stored_text = stored.get_metadata("fix:replacements").unwrap().to_owned();
+
+    // Two documents have no order between them, so the incoming one is not
+    // folded entry by entry: it replaces the stored one.
+    let mut incoming = rule80a();
+    incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+    assert_eq!(
+        incoming.get_metadata("fix:replacements"),
+        Some(RULE80A_DOCUMENT)
+    );
+
+    // The stored one keeps what only it has.
+    let mut bare = DataType::Utf8.nullable_field("rule80a");
+    bare.as_fix_mut().set_tag(47).unwrap();
+    bare.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+    assert_eq!(
+        bare.get_metadata("fix:replacements"),
+        Some(stored_text.as_str())
+    );
+}
+
 /// Immutable seed fixtures share parsing and compiled plans within this binary.
 fn committed() -> Arc<FixRegistry> {
     static REGISTRY: std::sync::OnceLock<Arc<FixRegistry>> = std::sync::OnceLock::new();
@@ -4179,7 +4655,7 @@ fn every_type_adopted_backward_parses_the_wire_spelling_of_its_era() {
         field.as_fix_mut().set_tag(tag).unwrap();
         let registry = Arc::new(FixRegistry::from_fields([field]).unwrap());
         let message = super::FixCodec::new(registry)
-            .transform_pairs([(tag.to_string().as_bytes(), wire.as_bytes())], false)
+            .parse_pairs([(tag.to_string().as_bytes(), wire.as_bytes())])
             .expect("the row builds");
         assert_ne!(
             message.by_tag(tag).unwrap(),
@@ -4189,15 +4665,22 @@ fn every_type_adopted_backward_parses_the_wire_spelling_of_its_era() {
     }
 }
 
-/// One stored document with every `since` value spelled as `Version` spells it.
+/// One stored document with every `since` and `deprecated` value spelled as
+/// `Version` spells it.
 ///
 /// The generator writes the source file's spelling, the crate writes its own,
 /// and the two parse to one version. Nothing else in the document is touched.
 fn canonical_versions(document: &str) -> String {
     let mut out = String::with_capacity(document.len());
     let mut rest = document;
-    while let Some(at) = rest.find(r#""since":""#) {
-        let (head, tail) = rest.split_at(at + r#""since":""#.len());
+    let next_key = |rest: &str| {
+        [r#""since":""#, r#""deprecated":""#]
+            .into_iter()
+            .filter_map(|key| rest.find(key).map(|at| (at, key)))
+            .min()
+    };
+    while let Some((at, key)) = next_key(rest) {
+        let (head, tail) = rest.split_at(at + key.len());
         out.push_str(head);
         let end = tail.find('"').expect("a closed version");
         let (spelling, tail) = tail.split_at(end);
@@ -4254,9 +4737,12 @@ fn every_committed_lineage_is_the_document_the_rust_writer_renders() {
 
         // Every stored type resolves: the generator writes the crate's own
         // serialized datatype, so nothing here is an unresolvable spelling.
+        // An entry stating no type is a deprecation or a removal, a dated
+        // point about the field that has no type to state.
         for entry in &held {
+            let dtype = entry.parse_dtype().expect("a resolvable type");
             assert!(
-                entry.parse_dtype().expect("a resolvable type").is_some(),
+                dtype.is_some() || entry.is_deprecated() || entry.is_removed(),
                 "{} at {}",
                 field.name(),
                 entry.since()
@@ -4296,14 +4782,139 @@ fn every_committed_lineage_is_the_document_the_rust_writer_renders() {
             );
         }
     }
-    assert_eq!(lineages, 1_564, "fields carrying a lineage");
+    assert_eq!(lineages, 1_603, "fields carrying a lineage");
     // 1,926 before these two phases: 268 entries stated nothing their
     // predecessor did not once types were resolved and the temporal ones
     // adopted backward, and one more was a second statement about one dated
     // point. Two more since: `OrdStatus` and `ExecType` retyped to the crate's
     // `state`, which each lineage records, less the one the generic MsgType
     // datatype's removal collapses back.
-    assert_eq!(entries, 1_670, "lineage entries");
+    assert_eq!(entries, 1_803, "lineage entries");
+}
+
+/// Every tag and group one owned fill names is one the dictionary has.
+fn assert_fills_resolve(registry: &FixRegistry, fills: &[FixFill], owner: &str) {
+    for fill in fills {
+        match fill {
+            FixFill::Field { tag, value } => {
+                assert!(registry.get_field(*tag).is_some(), "{owner} fills {tag}");
+                match value {
+                    FixFillSource::Source | FixFillSource::Constant(_) => {}
+                    FixFillSource::From(from) => {
+                        assert!(registry.get_field(*from).is_some(), "{owner} reads {from}");
+                    }
+                    FixFillSource::Join(tags) => {
+                        for tag in tags {
+                            assert!(registry.get_field(*tag).is_some(), "{owner} joins {tag}");
+                        }
+                    }
+                }
+            }
+            FixFill::Group { name, members } => {
+                assert!(
+                    registry
+                        .get_definition(FixCategory::Groups, name, None)
+                        .is_some(),
+                    "{owner} fills group {name}"
+                );
+                assert_fills_resolve(registry, members, owner);
+            }
+        }
+    }
+}
+
+#[test]
+fn every_committed_code_set_is_the_document_the_rust_writer_renders() {
+    let registry = committed();
+    let mut sets = 0_usize;
+    let mut codes = 0_usize;
+    for field in every_committed_field(&registry) {
+        let Some(stored) = field.as_metadata().get("fix:codes") else {
+            continue;
+        };
+        sets += 1;
+        let held: Vec<FixCode> = field
+            .as_fix()
+            .codes()
+            .map(|code| FixCode::from(code.expect("a readable code")))
+            .collect();
+        assert!(!held.is_empty(), "{} declares a code", field.name());
+        codes += held.len();
+
+        // The cross-host assertion, as for the lineage: the generator wrote
+        // this set in Python, and the Rust writer must reproduce it byte for
+        // byte - key order, sort order, escaping, the legacy codes' dates
+        // and aliases - versions canonicalized for the reason the lineage
+        // assertion states.
+        assert_eq!(
+            FixCodes::render(&held).expect("the codes render"),
+            canonical_versions(stored),
+            "{}",
+            field.name()
+        );
+    }
+    assert_eq!(sets, 2_026, "fields carrying a code set");
+    assert_eq!(codes, 27_209, "code records");
+}
+
+#[test]
+fn every_committed_replacement_is_the_document_the_rust_writer_renders() {
+    let registry = committed();
+    let mut documents = 0_usize;
+    for field in every_committed_field(&registry) {
+        let Some(stored) = field.as_metadata().get("fix:replacements") else {
+            continue;
+        };
+        documents += 1;
+        let held: Vec<FixReplacement> = field
+            .as_fix()
+            .replacements()
+            .map(|entry| FixReplacement::from(entry.expect("a readable entry")))
+            .collect();
+        assert!(
+            !held.is_empty(),
+            "{} states at least one rule",
+            field.name()
+        );
+
+        // The cross-host assertion: the dictionary generator wrote this
+        // document in Python, and re-rendering the entries it holds through
+        // the Rust writer must reproduce it byte for byte, or the two hosts
+        // have forked on key order or spelling. Versions are canonicalized
+        // first, for the reason the lineage assertion states.
+        assert_eq!(
+            FixReplacements::render(&held).expect("the entries render"),
+            canonical_versions(stored),
+            "{}",
+            field.name()
+        );
+
+        // Every name a rule reaches for is one the dictionary resolves, so a
+        // reader applying it never has to guess.
+        for entry in &held {
+            for msgtype in entry.msgtypes() {
+                assert!(
+                    registry.get_msgtype(msgtype, None).is_some(),
+                    "{} applies to message type {msgtype}",
+                    field.name()
+                );
+            }
+            for group in entry.in_groups() {
+                assert!(
+                    registry
+                        .get_definition(FixCategory::Groups, group, None)
+                        .is_some(),
+                    "{} applies inside {group}",
+                    field.name()
+                );
+            }
+            assert_fills_resolve(&registry, entry.fills(), field.name());
+        }
+    }
+    // The generator writes these; a dictionary that carries none yet is a
+    // dictionary with nothing to disagree about, so the count is reported
+    // rather than pinned.
+    eprintln!("{documents} committed fields carry fix:replacements");
 }
 
 #[test]
@@ -4356,7 +4967,7 @@ fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
     // row states 0 rather than nothing.
     let codec = super::FixCodec::new(Arc::clone(&registry)).with_branch(&cme);
     let msg = codec
-        .transform_fix_line(b"55=AAPL|5055=XYZ|VenueOwnThing=?|", false)
+        .parse_fix_line(b"55=AAPL|5055=XYZ|VenueOwnThing=?|")
         .expect("a readable frame");
     let entries = msg.entries();
     assert!(!entries.is_empty());

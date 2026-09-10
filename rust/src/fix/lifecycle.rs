@@ -56,7 +56,7 @@ use smol_str::SmolStr;
 use crate::txhash::{TxHash, unix_from_scalar};
 use crate::types::State;
 use crate::types::ascii::AsciiFamily;
-use crate::{DigestAlgorithm, Field, Result, Scalar, TimeUnit};
+use crate::{DigestAlgorithm, Result, Scalar, TimeUnit};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
@@ -82,7 +82,7 @@ const PART_SEPARATOR: u8 = 0x1F;
 /// Built once per stream and fed every message in order through
 /// [`fill`](Self::fill); [`FixCodec::lifecycle`](super::FixCodec::lifecycle)
 /// does exactly that over an iterator, and the batch reader does it when
-/// [`FixOptions::lifecycle`](super::FixOptions::lifecycle) is on.
+/// asked.
 ///
 /// ```
 /// use std::sync::Arc;
@@ -96,18 +96,16 @@ const PART_SEPARATOR: u8 = 0x1F;
 /// // The order, then its acknowledgement under the venue's own identifier.
 /// let order = life.fill(
 ///     reader
-///         .transform_line(
+///         .parse_line(
 ///             b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.000|10=0|",
-///             false,
 ///         )?
 ///         .next()
 ///         .expect("one message")?,
 /// )?;
 /// let ack = life.fill(
 ///     reader
-///         .transform_line(
+///         .parse_line(
 ///             b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.250|10=0|",
-///             false,
 ///         )?
 ///         .next()
 ///         .expect("one message")?,
@@ -121,9 +119,8 @@ const PART_SEPARATOR: u8 = 0x1F;
 /// // The fill closes the chain, and the venue's identifier is forgotten.
 /// life.fill(
 ///     reader
-///         .transform_line(
+///         .parse_line(
 ///             b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|60=20260102-10:15:31.000|10=0|",
-///             false,
 ///         )?
 ///         .next()
 ///         .expect("one message")?,
@@ -134,8 +131,10 @@ const PART_SEPARATOR: u8 = 0x1F;
 /// ```
 #[derive(Debug)]
 pub struct FixLifecycle {
-    /// The three columns, resolved once, non-null as a built child is.
-    columns: Option<[Field; 3]>,
+    /// Whether the registry holds the three columns, decided once: a stamp
+    /// lands through the message's own writer, which resolves the field
+    /// again, and this only says whether there is one to resolve.
+    stamps: bool,
     /// Every chain ever opened, by index; a closed one is a hole reused.
     chains: Vec<Option<Chain>>,
     /// Which chain each live identifier belongs to.
@@ -161,17 +160,11 @@ impl FixLifecycle {
     /// without them - which none built by this crate is - stamps nothing.
     #[must_use]
     pub fn new(registry: Arc<FixRegistry>) -> Self {
-        let column = |tag: i32| {
-            let mut field = registry.get_field_by_tag(tag)?.clone();
-            field.set_nullable(false);
-            Some(field)
-        };
-        let columns = match (column(INSTID_TAG), column(ID_TAG), column(PERSISTENTID_TAG)) {
-            (Some(instrument), Some(id), Some(persistent)) => Some([instrument, id, persistent]),
-            _ => None,
-        };
+        let stamps = [INSTID_TAG, ID_TAG, PERSISTENTID_TAG]
+            .into_iter()
+            .all(|tag| registry.get_field_by_tag(tag).is_some());
         Self {
-            columns,
+            stamps,
             chains: Vec::new(),
             keys: HashMap::new(),
             free: Vec::new(),
@@ -198,23 +191,24 @@ impl FixLifecycle {
     /// A stated value is never overwritten: a message already carrying an
     /// `id` keeps it, and one carrying a `persistentid` joins nothing new,
     /// which is what makes a second pass over a stamped stream a no-op. The
-    /// entries are untouched.
+    /// entries are untouched: the stamps land through [`FixMsg::set_many`],
+    /// each typed by the dictionary's own column.
     ///
     /// # Errors
     ///
     /// Returns the value contract's refusal when a stamped value does not
     /// fit the column the dictionary declares for it, which the digests
     /// built here cannot provoke.
-    pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg> {
-        if self.columns.is_none() {
+    pub fn fill(&mut self, mut message: FixMsg) -> Result<FixMsg> {
+        if !self.stamps {
             return Ok(message);
         }
         let stated = |tag: i32| message.get_by_tag(tag).is_some_and(|held| !held.is_null());
         let impact = impact_unix(&message);
         let instrument = instrument_digest(&message);
         let keys = chain_keys(&message);
-        // The chain is joined before the columns are borrowed: joining
-        // moves the state, stamping only reads it.
+        // The chain is joined before anything is stamped: joining moves the
+        // state, stamping only reads it.
         let chain = if stated(PERSISTENTID_TAG) {
             None
         } else {
@@ -222,30 +216,24 @@ impl FixLifecycle {
         };
         let persistent =
             chain.and_then(|at| self.chains[at].as_ref().map(|held| held.persistent.clone()));
-        let mut stamped: Vec<(Field, Scalar)> = Vec::with_capacity(3);
-        if let Some([instrument_field, id_field, persistent_field]) = self.columns.as_ref() {
-            if !stated(INSTID_TAG) {
-                if let Some(held) = &instrument {
-                    stamped.push((instrument_field.clone(), Scalar::from(held.to_vec())));
-                }
-            }
-            if !stated(ID_TAG) {
-                let digest = DigestAlgorithm::Xxh3.digest(&message.digest().to_be_bytes());
-                stamped.push((
-                    id_field.clone(),
-                    Scalar::from(TxHash::new(impact, digest).into_bytes().to_vec()),
-                ));
-            }
-            if let Some(held) = persistent {
-                stamped.push((persistent_field.clone(), held));
+        let mut stamps: Vec<(i32, Scalar)> = Vec::with_capacity(3);
+        if !stated(INSTID_TAG) {
+            if let Some(held) = &instrument {
+                stamps.push((INSTID_TAG, Scalar::from(held.to_vec())));
             }
         }
-        let mut typed: Vec<(Field, Scalar)> = Vec::with_capacity(stamped.len());
-        for (field, value) in stamped {
-            let held = field.scalar(value)?;
-            typed.push((field, held));
+        if !stated(ID_TAG) {
+            let digest = DigestAlgorithm::Xxh3.digest(&message.digest().to_be_bytes());
+            stamps.push((
+                ID_TAG,
+                Scalar::from(TxHash::new(impact, digest).into_bytes().to_vec()),
+            ));
         }
-        let message = message.appended_many(typed)?;
+        if let Some(held) = persistent {
+            stamps.push((PERSISTENTID_TAG, held));
+        }
+        // One rebuild for the three, which is what a per-message stamp costs.
+        message.set_many(stamps)?;
         if is_terminal(&message) {
             // A stamped stream read again closes the chain its identifiers
             // reach, exactly as the first pass did.

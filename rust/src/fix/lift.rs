@@ -356,7 +356,7 @@ impl FixMsg {
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
     /// let reader = FixCodec::new(Arc::new(registry));
-    /// let order = reader.transform_fix_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=0|", false)?;
+    /// let order = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=0|")?;
     ///
     /// assert_eq!(order.lifted("id").and_then(yggdryl::Scalar::as_str), Some("ORDER-1"));
     /// assert_eq!(order.lifted("symbol").and_then(yggdryl::Scalar::as_str), Some("AAPL"));

@@ -146,7 +146,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             black_box(
                 codec
-                    .transform_fix_line(black_box(b"35=D|453=1|448=broker|447=D|452=1|"), false)
+                    .parse_fix_line(black_box(b"35=D|453=1|448=broker|447=D|452=1|"))
                     .unwrap(),
             )
         });

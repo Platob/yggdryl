@@ -131,7 +131,7 @@ fn message_codes_keep_the_complete_text_the_wire_declares() {
 fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
     let reader = reader();
     let wire = b"8=FIX.4.4|35=D|453=2|448=A|447=D|452=1|802=2|523=DESK|803=1|523=CLIENT|803=2|448=B|447=D|452=3|802=1|523=OTHER|803=3|55=AAPL|10=0|";
-    let message = reader.transform_fix_line(wire, false).unwrap();
+    let message = reader.parse_fix_line(wire).unwrap();
     assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
     assert_eq!(
         message.by_path("Parties.0.PartyID").unwrap().as_str(),
@@ -181,7 +181,7 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
 #[test]
 fn numeric_group_member_anomalies_keep_omitted_and_repeated_occurrences_aligned() {
     let wire = b"35=D|453=5|448=OMITTED|448=INVALID|452=bogus|448=VALID|452=1|448=OMITTED2|448=OVERFLOW|452=2147483648|10=0|";
-    let message = reader().transform_fix_line(wire, false).unwrap();
+    let message = reader().parse_fix_line(wire).unwrap();
     assert!(message.by_path("Parties.0.PartyRole").unwrap().is_null());
     assert!(message.by_path("Parties.1.PartyRole").unwrap().is_null());
     assert_eq!(
@@ -221,7 +221,7 @@ fn numeric_group_counts_describe_arrivals_without_allocating_stated_lengths() {
         ("-1", "448=A|", 1),
     ] {
         let wire = format!("35=D|453={count}|{members}55=AAPL|10=0|");
-        let message = reader.transform_fix_line(wire.as_bytes(), false).unwrap();
+        let message = reader.parse_fix_line(wire.as_bytes()).unwrap();
         assert_eq!(
             message
                 .by_name("Parties")
@@ -264,7 +264,7 @@ fn numeric_group_counts_describe_arrivals_without_allocating_stated_lengths() {
 fn an_unknown_numeric_group_member_closes_the_scope_without_losing_pairs() {
     let reader = reader();
     let wire = b"35=D|453=1|448=A|9999=outside|447=D|55=AAPL|10=0|";
-    let message = reader.transform_fix_line(wire, false).unwrap();
+    let message = reader.parse_fix_line(wire).unwrap();
     assert_eq!(
         message.by_path("Parties.0.PartyID").unwrap().as_str(),
         Some("A")
@@ -323,7 +323,7 @@ fn nested_counter_anomalies_follow_each_counter_across_reordered_siblings() {
         .unwrap();
     let reader = FixCodec::new(Arc::new(scoped));
     let wire = b"35=ZCNT|453=2|448=A|539=2|524=RIGHT|802=invalid|523=LEFT|448=B|802=1|523=BLEFT|539=0|524=BRIGHT|55=AAPL|10=0|";
-    let message = reader.transform_fix_line(wire, false).unwrap();
+    let message = reader.parse_fix_line(wire).unwrap();
     let anomalies: Vec<_> = message.anomalies().collect();
     assert!(
         matches!(
@@ -495,7 +495,7 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
     // The dialect is read off the frame, so the bytes entry point and the
     // bridge one answer the same message rather than two spellings of it.
     let message = reader.one_line(line, false).unwrap();
-    assert_eq!(message, reader.transform_ullink_line(line, false).unwrap());
+    assert_eq!(message, reader.parse_ullink_line(line).unwrap());
     let without_member_separators: &[u8] =
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2\
 |#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|";
@@ -698,6 +698,7 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
             "bodylength",
             "msgtype",
             "symbol",
+            "version",
             "checksum",
             "timestamp"
         ],
@@ -717,7 +718,7 @@ fn a_message_re_emits_from_its_entries_and_reads_back_equal() {
     let again = reader
         .clone()
         .with_separator(b'|')
-        .transform_fix_line(&bytes, false)
+        .parse_fix_line(&bytes)
         .unwrap();
     assert_eq!(again.entries(), message.entries());
     assert_eq!(again.as_value(), message.as_value());
@@ -992,9 +993,10 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
                 "msgtype",
                 "nopartyids",
                 "parties",
+                "version",
                 "timestamp"
             ],
-            "the counter and the group, beside the two children every message has"
+            "the counter and the group, beside the three children every message has"
         );
         assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
         let occurrences = message.by_name("parties").unwrap().as_sequence().unwrap();
@@ -1063,6 +1065,7 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
             "msgtype",
             "nolinesoftext",
             "linesoftextgrp",
+            "version",
             "timestamp"
         ],
         "{names:?}"
@@ -1407,7 +1410,7 @@ fn a_dateless_clock_never_becomes_the_capture_instant() {
 
 /// Each reader on its own, over the one row shape it owns.
 ///
-/// [`FixCodec::transform_line`] is the door and picks between them; these are the
+/// [`FixCodec::parse_line`] is the door and picks between them; these are the
 /// three it picks, addressed directly, so a caller who already knows what a
 /// row is pays for no classification and a reader's own contract is pinned
 /// where the dispatcher cannot mask it.
@@ -1418,7 +1421,7 @@ fn every_reader_answers_for_the_one_row_shape_it_owns() {
     // A numeric frame, split on the byte it actually uses. No separator is
     // pinned, so the frame's own is inferred.
     let numeric = codec
-        .transform_fix_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|10=0|", false)
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|10=0|")
         .expect("a numeric frame");
     assert_eq!(numeric.as_field().name(), "D");
     assert_eq!(numeric.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
@@ -1426,7 +1429,7 @@ fn every_reader_answers_for_the_one_row_shape_it_owns() {
 
     // A bridge row keys by name, and `#` marks a group rather than a field.
     let bridge = codec
-        .transform_ullink_line(b"MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1", false)
+        .parse_ullink_line(b"MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1")
         .expect("a bridge row");
     assert_eq!(bridge.as_field().name(), "D");
     assert_eq!(bridge.by_name("clordid").unwrap().as_str(), Some("ORDER-1"));
@@ -1435,19 +1438,14 @@ fn every_reader_answers_for_the_one_row_shape_it_owns() {
     // element, so both levels contribute and neither element name becomes a
     // tag of its own.
     let fixml = codec
-        .transform_fixml_line(
-            br#"<Order ClOrdID="XML-1" Side="1"><Instrmt Sym="AAPL"/></Order>"#,
-            false,
-        )
+        .parse_fixml_line(br#"<Order ClOrdID="XML-1" Side="1"><Instrmt Sym="AAPL"/></Order>"#)
         .expect("a FIXML row");
     assert_eq!(fixml.by_name("clordid").unwrap().as_str(), Some("XML-1"));
     assert_eq!(fixml.by_name("sym").unwrap().as_str(), Some("AAPL"));
 
     // A row that is not well-formed XML is a refusal naming its position,
     // where a row that is merely unfamiliar is read and kept.
-    let refused = codec
-        .transform_fixml_line(b"<Order ClOrdID=", false)
-        .unwrap_err();
+    let refused = codec.parse_fixml_line(b"<Order ClOrdID=").unwrap_err();
     assert!(refused.to_string().contains("fixml"), "{refused}");
 }
 
@@ -1521,13 +1519,11 @@ fn read_record_takes_the_payload_column_and_the_columns_beside_it() {
 ///
 /// A capture arrives as records - a text reader answers one per line, with
 /// the payload beside the `url` and `rownum` it came from - so the codec
-/// takes that shape at three widths: one record at a time, one Arrow batch,
-/// and a stream of them. All three are the same read, which is what these
-/// pin: the message a stream answers is the message a record answers.
+/// takes that shape at two widths: one record at a time, and a stream of
+/// Arrow batches. Both are the same read, which is what these pin: the
+/// message a stream answers is the message a record answers.
 #[test]
 fn every_batch_reader_answers_what_the_single_reader_answers() {
-    use yggdryl::FixOptions;
-
     let codec = codec();
     let rows = [
         b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec(),
@@ -1542,7 +1538,7 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
 
     // One record at a time, lazily: the iterator is the stream.
     let read: Vec<_> = codec
-        .transform_records(records.clone(), false)
+        .parse_text_records(records.clone())
         .collect::<Result<Vec<_>, _>>()
         .expect("readable records");
     assert_eq!(read.len(), 2);
@@ -1560,20 +1556,154 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
             .collect::<Vec<_>>(),
     );
     let batch = yggdryl::arrow::batch_from_value(&capture, &values).expect("an Arrow batch");
-    let options = FixOptions::new();
-    let read = codec
-        .transform_arrow_batch(&batch, &options, false)
-        .expect("a readable batch");
-    assert_eq!(read.num_rows(), 2);
-
-    // And the stream, which is the same read without holding a batch of
-    // messages at once.
     let source = yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]);
     let streamed: Vec<_> = codec
-        .transform_arrow_reader(source, &options, false)
+        .parse_text_arrow_reader(source)
         .expect("a readable stream")
         .collect::<Result<Vec<_>, _>>()
         .expect("readable batches");
     assert_eq!(streamed.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
-    assert_eq!(streamed[0], read);
+    // And the same rows back as messages, without a parse: the batch holds
+    // what the record read said.
+    let again: Vec<_> = codec
+        .messages(yggdryl::arrow::batch_reader(
+            streamed[0].schema(),
+            streamed.clone(),
+        ))
+        .collect::<Result<Vec<_>, _>>()
+        .expect("readable rows");
+    assert_eq!(again.len(), 2);
+    assert_eq!(again[0].by_tag(11).unwrap(), read[0].by_tag(11).unwrap());
+    assert_eq!(again[1].entries(), read[1].entries());
+}
+
+#[test]
+fn a_row_inside_a_data_field_is_read_at_its_own_version_and_not_the_frames() {
+    // A dictionary that reaches 5.0.2, holding one field whose code set spells
+    // `Restated` two ways: the value 4.2 knew, and the one that replaced it.
+    // Only one of the two is visible at a version, so which one answers is
+    // exactly which version the read used.
+    let mut scoped = FixRegistry::new();
+    let mut exectype = DataType::Utf8.nullable_field("exectype");
+    exectype.as_fix_mut().set_tag(150).unwrap();
+    exectype
+        .as_fix_mut()
+        .set_lineage(&[
+            yggdryl::FixLineageEntry::new(yggdryl::FixPedigree::new(
+                "4.2".parse::<Version>().unwrap(),
+                None,
+            ))
+            .with_name("exectypeold"),
+            yggdryl::FixLineageEntry::new(yggdryl::FixPedigree::new(
+                "5.0.2".parse::<Version>().unwrap(),
+                None,
+            ))
+            .with_name("exectype"),
+        ])
+        .unwrap();
+    exectype
+        .as_fix_mut()
+        .set_codes(&[
+            yggdryl::FixCode::new("RestatedOld", "1")
+                .with_aliases(["Restated"])
+                .with_deprecated("4.3".parse::<Version>().unwrap()),
+            yggdryl::FixCode::new("Restated", "D")
+                .with_since("4.3".parse::<Version>().unwrap(), None),
+        ])
+        .unwrap();
+    scoped.insert(exectype).unwrap();
+    let registry = Arc::new(scoped);
+    assert_eq!(
+        registry.newest().map(|held| held.version()),
+        Some("5.0.2".parse::<Version>().unwrap())
+    );
+
+    // A 4.2 session carrying a row written to a later FIX, which is what a
+    // bridge relaying into a long-lived session actually sends.
+    let frame: &[u8] = b"8=FIX.4.2|9=0|35=UL|212=17|213=EXECTYPE=Restated|10=0|";
+
+    // The frame's `BeginString` is the envelope's and stays the message's;
+    // the row inside `XmlData` states no version of its own, so it is read at
+    // the dictionary's newest rather than at the session's.
+    let message = FixCodec::new(Arc::clone(&registry))
+        .parse_fix_line(frame)
+        .unwrap();
+    assert_eq!(message.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
+    assert_eq!(message.by_tag(150).unwrap().as_str(), Some("D"));
+
+    // A pinned version is the caller speaking for the whole run and answers
+    // for the nested row too.
+    let dated = FixCodec::new(Arc::clone(&registry))
+        .with_version("4.2".parse::<Version>().unwrap())
+        .parse_fix_line(frame)
+        .unwrap();
+    assert_eq!(dated.by_tag(150).unwrap().as_str(), Some("1"));
+}
+
+#[test]
+fn a_fixml_document_in_a_data_field_fills_the_line_that_carried_it() {
+    let reader = reader();
+    // A bridge relaying an execution report writes the whole document into
+    // `XmlData(213)`, which is the field FIX names for exactly that.
+    let document = br#"<FIXML v="5.0 SP2"><ExecRpt ExecID="E1" ClOrdID="ORDER-1" LastQty="21" LastPx="83.08"><Instrmt Symbol="HOLN" /></ExecRpt></FIXML>"#;
+    let mut frame = Vec::new();
+    frame.extend_from_slice(b"8=FIX.4.2|9=0|35=n|212=");
+    frame.extend_from_slice(document.len().to_string().as_bytes());
+    frame.push(b'|');
+    frame.extend_from_slice(b"213=");
+    frame.extend_from_slice(document);
+    frame.extend_from_slice(b"|10=0|");
+    let message = reader.one_line(&frame, false).unwrap();
+
+    // The frame's own statements stay the frame's, and the document inside
+    // fills what the frame never said - resolved to real tags, typed by the
+    // dictionary rather than kept as one opaque value.
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("n"));
+    assert_eq!(message.by_tag(17).unwrap().as_str(), Some("E1"));
+    assert_eq!(message.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
+    assert_eq!(message.by_tag(32).unwrap().as_f64(), Some(21.0));
+    assert_eq!(message.by_tag(31).unwrap().as_f64(), Some(83.08));
+    // A nested element's attributes are the same pairs, flattened - FIXML
+    // spells a component as an element and a field as an attribute.
+    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("HOLN"));
+
+    // `XmlData` itself is still the bytes it arrived as, and the wire
+    // re-emits byte for byte: a reading of a value is not a second arrival.
+    assert_eq!(message.by_tag(213).unwrap().as_bytes(), Some(&document[..]));
+    assert_eq!(message.into_bytes(b'|'), frame);
+}
+
+#[test]
+fn every_generated_message_carries_the_version_the_read_used() {
+    let frame: &[u8] = b"8=FIX.4.2|35=D|55=AAPL|54=1|10=0|";
+
+    // With nothing pinned, the frame's own `BeginString` is what answered it,
+    // so the two agree and the message says so once.
+    let read = reader().one_line(frame, false).unwrap();
+    assert_eq!(read.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
+    assert_eq!(read.version(), Some(Version::new(4, 2, 0)));
+
+    // A pinned version is the caller speaking for the whole run: every
+    // message the codec makes is read at that target and carries it, while
+    // the frame keeps saying what the session said.
+    let dated = codec()
+        .with_version(Version::new(4, 4, 0))
+        .one_line(frame, false)
+        .unwrap();
+    assert_eq!(dated.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
+    assert_eq!(
+        dated.by_tag(yggdryl::VERSION_TAG).unwrap().as_str(),
+        Some("4.4")
+    );
+    assert_eq!(dated.version(), Some(Version::new(4, 4, 0)));
+
+    // A row that dates itself not at all is read at the dictionary's newest,
+    // and the `BeginString` it never stated is filled from the same answer.
+    let newest = registry().newest().expect("the seed's newest").version();
+    let bare = reader().one_line(b"MSGTYPE=D|SYMBOL=AAPL", false).unwrap();
+    assert_eq!(bare.version(), Some(newest));
+    assert_eq!(
+        bare.by_tag(8).unwrap().as_str(),
+        Some(format!("FIX.{newest}").as_str())
+    );
 }

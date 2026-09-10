@@ -14,28 +14,26 @@
 //! an identifier. [`PyFixBranch`] is what a branch *declaration* is: a key
 //! names a dictionary, a declaration also carries its dialect and its session.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyInt};
+use pyo3::types::{PyBool, PyBytes, PyInt, PyIterator};
 
 use yggdryl::types::MsgDirection;
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField,
-    FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixBranch as CoreFixBranch,
     FixCategory as CoreFixCategory, FixCodec as CoreFixCodec, FixField as CoreFixField,
-    FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMessages as CoreFixMessages,
-    FixMsg as CoreFixMsg, FixOptions as CoreFixOptions, FixRegistry as CoreFixRegistry,
-    IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar, UlPlugin as CoreUlPlugin,
-    UlPlugins as CoreUlPlugins, Version as CoreVersion, from_json_scalar_with_field,
-    into_json_scalar,
+    FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
+    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar,
+    UlPlugin as CoreUlPlugin, UlPlugins as CoreUlPlugins, Version as CoreVersion,
+    from_json_scalar_with_field, into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::media::iceberg::folder_holder_from_value;
-use crate::types::datatype::{arrow_array_from_pyarrow, arrow_array_to_pyarrow};
+use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
 use crate::uri::core_url_from_value;
@@ -163,6 +161,22 @@ impl FixKeyArg {
             Self::Tag(tag) => FixKey::Tag(*tag),
             Self::Name(name) => FixKey::Name(name.as_str()),
         }
+    }
+}
+
+/// The dictionary a caller named, or the process default where none was.
+///
+/// Every entry point that resolves against a registry - a message, a codec,
+/// a lifecycle, the fixed row - takes the same optional argument and falls
+/// back the same way, so the fallback is spelled here once.
+fn registry_or_global(
+    registry: Option<PyRef<'_, PyFixRegistry>>,
+) -> PyResult<Arc<CoreFixRegistry>> {
+    match registry {
+        Some(held) => Ok(Arc::clone(&held.inner)),
+        None => CoreFixRegistry::global()
+            .map(Arc::clone)
+            .map_err(value_error),
     }
 }
 
@@ -988,14 +1002,150 @@ impl PyMsgTypeIterator {
     }
 }
 
+/// Where a Python source failed, held until the stream is asked again.
+///
+/// A core stage pulls its items as values, so a Python failure inside the
+/// pull - an item that is not bytes, a generator that raised - cannot travel
+/// through the stage as an item. It ends the pull instead and lands here, and
+/// the stream raises it in place of the end it would otherwise answer.
+#[derive(Clone, Default)]
+struct Failed(Arc<Mutex<Option<PyErr>>>);
+
+impl Failed {
+    fn set(&self, error: PyErr) {
+        if let Ok(mut held) = self.0.lock() {
+            *held = Some(error);
+        }
+    }
+
+    fn take(&self) -> Option<PyErr> {
+        self.0.lock().ok().and_then(|mut held| held.take())
+    }
+}
+
+/// A Python iterable pulled one item at a time into a core stage.
+///
+/// The iterator is held, never collected: each `next` takes the interpreter,
+/// pulls one item and reads it with `read` into the value the stage takes.
+/// Exhaustion ends the pull. A failure, the iterable's own or the reading's,
+/// ends it too and lands in `failed`, so the stage sees a shorter stream and
+/// the wrapper around it raises what happened.
+struct Pulled<T> {
+    items: Py<PyIterator>,
+    read: fn(&Bound<'_, PyAny>) -> PyResult<T>,
+    failed: Failed,
+    done: bool,
+}
+
+impl<T> Pulled<T> {
+    /// Hold `items`, or report that it is not iterable.
+    fn new(items: &Bound<'_, PyAny>, read: fn(&Bound<'_, PyAny>) -> PyResult<T>) -> PyResult<Self> {
+        Ok(Self {
+            items: PyIterator::from_object(items)?.unbind(),
+            read,
+            failed: Failed::default(),
+            done: false,
+        })
+    }
+}
+
+impl<T> Iterator for Pulled<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        if self.done {
+            return None;
+        }
+        let pulled = Python::attach(|py| {
+            let mut items = self.items.bind(py).clone();
+            items
+                .next()
+                .map(|item| item.and_then(|item| (self.read)(&item)))
+                .transpose()
+        });
+        match pulled {
+            Ok(Some(value)) => Some(value),
+            Ok(None) => {
+                self.done = true;
+                None
+            }
+            Err(error) => {
+                self.done = true;
+                self.failed.set(error);
+                None
+            }
+        }
+    }
+}
+
+/// One captured line, as the bytes it is.
+fn line_bytes(item: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    with_python_bytes(
+        item,
+        "a captured line must be bytes, bytearray, or memoryview",
+        |bytes| Ok(bytes.to_vec()),
+    )
+}
+
+/// One record, as the document the core reads it as.
+fn record_scalar(item: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+    from_py(item).map(stated_document)
+}
+
+/// One message, refusing anything else where it is met.
+fn message_of(item: &Bound<'_, PyAny>) -> PyResult<CoreFixMsg> {
+    Ok(item.extract::<PyRef<'_, PyFixMsg>>()?.inner.clone())
+}
+
+/// A Python failure behind a stream `pyarrow` pulls, as the core reports one.
+///
+/// The batch it would have landed in is being pulled by the Arrow reader
+/// rather than by a Python frame, so it travels as that reader's error and
+/// arrives where the batch would have.
+fn python_failure(error: PyErr) -> CoreError {
+    CoreError::Arrow(arrow_schema::ArrowError::ExternalError(Box::new(error)))
+}
+
+/// A stream of messages, one at a time.
+///
+/// Every stage of the codec answers one of these - one line's messages, a
+/// stream of lines parsed, records parsed, messages filled or stamped, a
+/// batch read back - so a message stream has one shape at this boundary
+/// whatever made it. Nothing is collected: the core iterator is the stream,
+/// and a Python iterable behind it is pulled one item at a time. A line the
+/// reader refuses raises `ValueError` where it is met and the stream goes on
+/// past it; a Python failure behind the stream raises as itself and ends it.
 #[pyclass(name = "FixMessages", module = "yggdryl._native")]
 pub(crate) struct PyFixMessages {
-    inner: CoreFixMessages,
+    /// The stream, behind the lock a class shared between threads needs; a
+    /// batch reader behind it is `Send` and nothing more, and the lock is
+    /// never contended because a cursor is advanced by one caller.
+    inner: Mutex<Box<dyn Iterator<Item = yggdryl::Result<CoreFixMsg>> + Send>>,
+    /// Where the Python source behind `inner` failed, when there is one.
+    failed: Option<Failed>,
 }
 
 impl PyFixMessages {
-    const fn from_inner(inner: CoreFixMessages) -> Self {
-        Self { inner }
+    /// A stream over a core iterator that pulls nothing from Python.
+    fn over<I>(inner: I) -> Self
+    where
+        I: Iterator<Item = yggdryl::Result<CoreFixMsg>> + Send + 'static,
+    {
+        Self {
+            inner: Mutex::new(Box::new(inner)),
+            failed: None,
+        }
+    }
+
+    /// A stream over a core stage fed by a Python iterable.
+    fn pulling<I>(inner: I, failed: Failed) -> Self
+    where
+        I: Iterator<Item = yggdryl::Result<CoreFixMsg>> + Send + 'static,
+    {
+        Self {
+            inner: Mutex::new(Box::new(inner)),
+            failed: Some(failed),
+        }
     }
 }
 
@@ -1007,11 +1157,21 @@ impl PyFixMessages {
         slf
     }
     fn __next__(&mut self) -> PyResult<Option<PyFixMsg>> {
-        self.inner
-            .next()
-            .transpose()
-            .map(|message| message.map(PyFixMsg::from_inner))
-            .map_err(value_error)
+        let next = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .next();
+        match next {
+            Some(held) => held
+                .map(PyFixMsg::from_inner)
+                .map(Some)
+                .map_err(value_error),
+            None => match self.failed.as_ref().and_then(Failed::take) {
+                Some(error) => Err(error),
+                None => Ok(None),
+            },
+        }
     }
 }
 
@@ -1140,23 +1300,36 @@ type MsgPickle = (Py<PyAny>, (String, String, String));
 ///
 /// The schema is one non-null Struct `Field` - the only row schema - and the
 /// value the row it declares, so a mapping input is canonicalized into that
-/// order by the core exactly as every other row is. The message is immutable:
-/// it hashes, pickles, copies and compares by the schema and the value it
-/// carries, against the registry it was resolved against.
-#[pyclass(
-    name = "FixMsg",
-    module = "yggdryl._native",
-    frozen,
-    skip_from_py_object
-)]
+/// order by the core exactly as every other row is. The row is written
+/// through `set` and `remove`; the entries never are, because they are what
+/// the wire carried. The message hashes, pickles, copies and compares by the
+/// schema and the value it carries, against the registry it was resolved
+/// against - and a hashed message is frozen, which is Python's contract for
+/// a hash, so a write after `hash()` refuses and a copy is what takes it.
+#[pyclass(name = "FixMsg", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyFixMsg {
     inner: CoreFixMsg,
+    /// Whether `hash()` was answered, after which the row may not move.
+    hash_locked: bool,
 }
 
 impl PyFixMsg {
     /// Wrap a message the core built.
     pub(crate) const fn from_inner(inner: CoreFixMsg) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            hash_locked: false,
+        }
+    }
+
+    /// Refuse a write to a message something hashed.
+    fn require_mutable(&self) -> PyResult<()> {
+        if self.hash_locked {
+            return Err(PyTypeError::new_err(
+                "a hashed FixMsg is frozen; copy it before mutation",
+            ));
+        }
+        Ok(())
     }
 
     /// Borrow the message the core holds.
@@ -1186,12 +1359,33 @@ impl PyFixMsg {
     ) -> PyResult<Self> {
         let field = core_field_from_value(field)?;
         let value = named_rows(&field, from_py(value)?);
-        let registry = match registry {
-            Some(registry) => Arc::clone(&registry.inner),
-            None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
-        };
-        CoreFixMsg::with_registry(registry, field, value)
-            .map(|inner| Self { inner })
+        CoreFixMsg::with_registry(registry_or_global(registry)?, field, value)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// The message a fixed row holds: the inverse of `into_row`.
+    ///
+    /// `schema` is the row's root - the one `fix_schema` or
+    /// `fix_schema_carrying` built, or the one read off a batch - and `row`
+    /// anything the `Scalar` boundary reads as it: a native `Scalar`, a
+    /// mapping of names, a sequence in the schema's order. The columns are
+    /// the message's children under the schema's names, reached by tag as a
+    /// parsed message's are, and the entries are rebuilt from the
+    /// `nofixentries` column, so `into_bytes` re-emits the line the row was
+    /// read from; a row without that column has no entries. Nothing is
+    /// parsed again. `registry` defaults to the process one.
+    #[staticmethod]
+    #[pyo3(signature = (schema, row, registry=None))]
+    fn from_row(
+        schema: &Bound<'_, PyAny>,
+        row: &Bound<'_, PyAny>,
+        registry: Option<PyRef<'_, PyFixRegistry>>,
+    ) -> PyResult<Self> {
+        let schema = core_field_from_value(schema)?;
+        let row = named_rows(&schema, from_py(row)?);
+        CoreFixMsg::from_row(registry_or_global(registry)?, &schema, &row)
+            .map(Self::from_inner)
             .map_err(value_error)
     }
 
@@ -1202,7 +1396,7 @@ impl PyFixMsg {
         let value = from_json_scalar_with_field(value, &field).map_err(value_error)?;
         let registry = CoreFixRegistry::from_json(registry).map_err(value_error)?;
         CoreFixMsg::with_registry(Arc::new(registry), field, value)
-            .map(|inner| Self { inner })
+            .map(Self::from_inner)
             .map_err(value_error)
     }
 
@@ -1322,6 +1516,41 @@ impl PyFixMsg {
             .map_err(|error| absent(&error))
     }
 
+    /// Writes one value into the row, typed by the field the key resolves to.
+    ///
+    /// `key` is a tag or a name, resolved as a lookup resolves one - through
+    /// the dictionary in this message's own branch, then the standard one -
+    /// and a name the dictionary does not know still reaches a child spelled
+    /// that way. A known field types the value through the core's value
+    /// contract; `None` is stored as a stated null. An existing child is
+    /// replaced where it stands and an absent one appended; a bare tag no
+    /// dictionary explains appends a text child named by its decimal. Only
+    /// the row changes: the entries, the wire and the digest stay what they
+    /// were.
+    ///
+    /// A key reaching no field and no child is a `KeyError` naming it, a value
+    /// the field refuses a `ValueError`, and either leaves the message as it
+    /// was. A hashed message is frozen and refuses with `TypeError`.
+    fn set(&mut self, key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        let key = FixKeyArg::from_py(key)?;
+        let value = from_py(value)?;
+        self.inner
+            .set(key.as_key(), value)
+            .map_err(|error| absent(&error))
+    }
+
+    /// Removes the child a key reaches, answering its value, or `None`.
+    ///
+    /// The key resolves as `set` resolves one, and a key reaching nothing
+    /// answers `None` and changes nothing. The entries are untouched. A hashed
+    /// message is frozen and refuses with `TypeError`.
+    fn remove(&mut self, key: &Bound<'_, PyAny>) -> PyResult<Option<PyScalar>> {
+        self.require_mutable()?;
+        let key = FixKeyArg::from_py(key)?;
+        Ok(self.inner.remove(key.as_key()).map(PyScalar::from_inner))
+    }
+
     /// The `(name, value)` pairs of the root, in the order it declares.
     fn __iter__(&self) -> PyFixMsgIterator {
         PyFixMsgIterator {
@@ -1340,7 +1569,9 @@ impl PyFixMsg {
         self.inner.stable_hash()
     }
 
-    fn __hash__(&self) -> isize {
+    /// Freezes the row, then hashes the schema and the value.
+    fn __hash__(&mut self) -> isize {
+        self.hash_locked = true;
         crate::python_hash(self.stable_hash())
     }
 
@@ -1486,10 +1717,26 @@ impl PyFixMsg {
         PyBytes::new(py, &self.inner.into_bytes(separator))
     }
 
+    /// This message restated at its registry's newest version.
+    ///
+    /// Every child lands under the dictionary's own field, a retired field or
+    /// value fills what stands in for it, and the crate `version` says which
+    /// version the row now speaks. Only the row is restated: the arrival
+    /// record is what the wire carried and is left alone, so `into_bytes`
+    /// re-emits the received line either way, and a second pass answers an
+    /// equal message.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_latest(&self) -> PyResult<Self> {
+        self.inner
+            .clone()
+            .into_latest()
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// A copy that takes writes again, whatever hashed the original.
     fn __copy__(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
+        Self::from_inner(self.inner.clone())
     }
 
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
@@ -1505,13 +1752,17 @@ impl PyFixMsg {
     }
 }
 
-/// One dictionary, reading lines into messages.
+/// One dictionary, reading lines into messages, with the Arrow twins.
 ///
-/// The reader is the whole parse surface: a captured line with a verb in front
+/// The codec is the whole parse surface: a captured line with a verb in front
 /// of it, a bare frame, a numeric frame with a stated separator, a bridge's
-/// name/value text, or pairs a caller already has. Each redirects to the core
-/// method of the same name, so nothing here decides a dialect, a version or a
-/// separator - it only carries what Python said across.
+/// name/value text, a configuration document, pairs a caller already split,
+/// a record a text reader answered. Each redirects to the core method of the
+/// same name, so nothing here decides a dialect, a version or a separator -
+/// it only carries what Python said across. A stage is a call: the stream
+/// methods take any iterable and answer a lazy [`FixMessages`](PyFixMessages),
+/// and the Arrow methods take and answer a `pyarrow.RecordBatchReader` over
+/// the C stream interface, one batch at a time.
 #[pyclass(name = "FixCodec", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyFixCodec {
     inner: CoreFixCodec,
@@ -1519,9 +1770,17 @@ pub(crate) struct PyFixCodec {
 }
 
 impl PyFixCodec {
-    /// Borrow the reader the core holds.
+    /// Borrow the codec the core holds.
     pub(crate) const fn as_inner(&self) -> &CoreFixCodec {
         &self.inner
+    }
+
+    /// A `pyarrow` reader over a core reader an Arrow twin answered.
+    fn reader_to_pyarrow(
+        py: Python<'_>,
+        reader: yggdryl::Result<yggdryl::arrow::BatchReader>,
+    ) -> PyResult<Bound<'_, PyAny>> {
+        batch_reader_to_pyarrow(py, reader.map_err(value_error)?)
     }
 }
 
@@ -1529,7 +1788,7 @@ impl PyFixCodec {
 impl PyFixCodec {
     #[staticmethod]
     fn infer_msgtype_bytes(py: Python<'_>, body: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
-        crate::text::codec::with_python_bytes(
+        with_python_bytes(
             body,
             "a captured line must be bytes, bytearray, or memoryview",
             |body| {
@@ -1544,88 +1803,162 @@ impl PyFixCodec {
         CoreFixCodec::infer_msgtype_text(body).map(str::to_owned)
     }
 
-    #[pyo3(signature = (record, enrich=false))]
-    fn transform_record(&self, record: &Bound<'_, PyAny>, enrich: bool) -> PyResult<PyFixMessages> {
-        let record = stated_document(from_py(record)?);
-        self.inner
-            .transform_record(&record, enrich)
-            .map(PyFixMessages::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Open a reader over one dictionary, or over the process default.
+    /// Open a codec over one dictionary, or over the process default.
+    ///
+    /// Every pin is the core's, spelled once here. `branch` and `version`
+    /// cross as text; `separator` is the byte a numeric frame splits on where
+    /// the line does not say; `payload_column` names the record column a line
+    /// is read from; `null_values` are the spellings that mean nothing was
+    /// sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
+    /// or `"unknown"`; `batch_byte_size` is the raw bytes one Arrow batch
+    /// targets, the core's 128 MiB when unstated.
     #[new]
-    #[pyo3(signature = (registry=None, *, branch=None, version=None, null_values=None))]
+    #[pyo3(signature = (
+        registry=None,
+        *,
+        branch=None,
+        version=None,
+        separator=None,
+        payload_column="body",
+        null_values=None,
+        direction="sent",
+        batch_byte_size=None,
+    ))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         registry: Option<PyRef<'_, PyFixRegistry>>,
         branch: Option<&str>,
         version: Option<&str>,
+        separator: Option<u8>,
+        payload_column: &str,
         null_values: Option<Vec<String>>,
+        direction: &str,
+        batch_byte_size: Option<u64>,
     ) -> PyResult<Self> {
-        let registry = match registry {
-            Some(held) => Arc::clone(&held.inner),
-            None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
-        };
-        let mut inner = CoreFixCodec::new(Arc::clone(&registry));
+        let registry = registry_or_global(registry)?;
+        let mut inner = CoreFixCodec::new(Arc::clone(&registry))
+            .with_payload_column(payload_column)
+            .with_direction(direction_from_py(direction)?);
         if let Some(held) = branch {
             inner = inner.with_branch(&branch_from_py(held)?);
         }
         if let Some(held) = version {
             inner = inner.with_version(version_from_py(held)?);
         }
+        if let Some(held) = separator {
+            inner = inner.with_separator(held);
+        }
         if let Some(held) = null_values {
             inner = inner.with_null_values(held);
+        }
+        if let Some(held) = batch_byte_size {
+            inner = inner.with_batch_byte_size(held);
         }
         Ok(Self { inner, registry })
     }
 
-    /// The dictionary this reader resolves against, sharing it.
+    /// The dictionary this codec resolves against, sharing it.
     #[getter]
     fn registry(&self) -> PyFixRegistry {
         PyFixRegistry::from_arc(Arc::clone(&self.registry))
     }
 
-    /// One captured line, whatever it is wrapped in.
-    #[pyo3(signature = (row, enrich=false))]
-    fn transform_line(&self, row: &[u8], enrich: bool) -> PyResult<PyFixMessages> {
+    /// The dialect every line is read in, or `None` where each line implies
+    /// its own.
+    #[getter]
+    fn branch(&self) -> Option<&str> {
+        self.inner.branch().map(CoreFixBranch::name)
+    }
+
+    /// The version values are read at, or `None` where each line states its
+    /// own.
+    #[getter]
+    fn version(&self) -> Option<String> {
+        self.inner.version().map(|version| version.to_string())
+    }
+
+    /// The byte a numeric frame splits on, or `None` where the line decides.
+    #[getter]
+    fn separator(&self) -> Option<u8> {
+        self.inner.separator()
+    }
+
+    /// The record column a line is read from.
+    #[getter]
+    fn payload_column(&self) -> &str {
+        self.inner.payload_column()
+    }
+
+    /// The spellings that mean nothing was sent.
+    #[getter]
+    fn null_values(&self) -> Vec<String> {
+        self.inner.null_values().to_vec()
+    }
+
+    /// The direction an unmarked line takes: `"sent"`, `"recv"` or
+    /// `"unknown"`.
+    #[getter]
+    fn direction(&self) -> String {
         self.inner
-            .transform_line(row, enrich)
-            .map(PyFixMessages::from_inner)
+            .direction()
+            .map_or_else(|| "unknown".to_owned(), str::to_ascii_lowercase)
+    }
+
+    /// The raw bytes one Arrow batch targets.
+    #[getter]
+    fn batch_byte_size(&self) -> u64 {
+        self.inner.batch_byte_size()
+    }
+
+    /// One captured line, whatever it is wrapped in: its messages.
+    fn parse_line(&self, row: &[u8]) -> PyResult<PyFixMessages> {
+        self.inner
+            .parse_line(row)
+            .map(PyFixMessages::over)
             .map_err(value_error)
     }
 
+    /// A stream of captured lines, lazily: each as `parse_line` reads it.
+    ///
+    /// `lines` is any iterable of bytes-like lines, pulled one line at a time
+    /// as the stream is read, so a capture of ten million lines costs one at
+    /// a time. A line that is not a row at all raises `ValueError` where it
+    /// is met and the stream continues past it; an item that is not bytes
+    /// raises `TypeError` and ends it.
+    fn parse_lines(&self, lines: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+        let pulled = Pulled::new(lines, line_bytes)?;
+        let failed = pulled.failed.clone();
+        Ok(PyFixMessages::pulling(
+            self.inner.parse_lines(pulled),
+            failed,
+        ))
+    }
+
     /// One numeric frame, split on the separator stated or inferred.
-    #[pyo3(signature = (body, separator=None, enrich=false))]
-    fn transform_fix_line(
-        &self,
-        body: &[u8],
-        separator: Option<u8>,
-        enrich: bool,
-    ) -> PyResult<PyFixMsg> {
+    #[pyo3(signature = (body, separator=None))]
+    fn parse_fix_line(&self, body: &[u8], separator: Option<u8>) -> PyResult<PyFixMsg> {
         let codec = match separator {
             Some(held) => self.inner.clone().with_separator(held),
             None => self.inner.clone(),
         };
         codec
-            .transform_fix_line(body, enrich)
+            .parse_fix_line(body)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
 
     /// One bridge frame, whose keys are names rather than tags.
-    #[pyo3(signature = (body, enrich=false))]
-    fn transform_ullink_line(&self, body: &[u8], enrich: bool) -> PyResult<PyFixMsg> {
+    fn parse_ullink_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
         self.inner
-            .transform_ullink_line(body, enrich)
+            .parse_ullink_line(body)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
 
     /// One FIXML row, whose fields are XML attributes.
-    #[pyo3(signature = (body, enrich=false))]
-    fn transform_fixml_line(&self, body: &[u8], enrich: bool) -> PyResult<PyFixMsg> {
+    fn parse_fixml_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
         self.inner
-            .transform_fixml_line(body, enrich)
+            .parse_fixml_line(body)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -1635,11 +1968,10 @@ impl PyFixCodec {
     /// The document is read out of the line it arrived on: a transport writes
     /// a timestamp in front of one and sometimes a duration behind it, and
     /// both are prose.
-    #[pyo3(signature = (body, enrich=false))]
-    fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> PyResult<PyFixMessages> {
+    fn parse_ulconfig_line(&self, body: &[u8]) -> PyResult<PyFixMessages> {
         self.inner
-            .transform_ulconfig_line(body, enrich)
-            .map(PyFixMessages::from_inner)
+            .parse_ulconfig_line(body)
+            .map(PyFixMessages::over)
             .map_err(value_error)
     }
 
@@ -1648,16 +1980,57 @@ impl PyFixCodec {
     /// Taken by value because the borrowed pairs the core reads point into
     /// these strings, so they have to outlive the call rather than the caller.
     #[allow(clippy::needless_pass_by_value)]
-    #[pyo3(signature = (pairs, enrich=false))]
-    fn transform_pairs(&self, pairs: Vec<(String, String)>, enrich: bool) -> PyResult<PyFixMsg> {
+    fn parse_pairs(&self, pairs: Vec<(String, String)>) -> PyResult<PyFixMsg> {
         let borrowed: Vec<(&[u8], &[u8])> = pairs
             .iter()
             .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
             .collect();
         self.inner
-            .transform_pairs(borrowed, enrich)
+            .parse_pairs(borrowed)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
+    }
+
+    /// One record a text reader answered: its messages.
+    ///
+    /// The payload column names the line and the row's own columns -
+    /// `branch`, `beginstring`, `sep`, `timestamp`, `direction`, `plugin` -
+    /// are the parameters of the same name; a mapping states a record as
+    /// well as a native `Scalar` does.
+    fn parse_text_record(&self, record: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+        let record = record_scalar(record)?;
+        self.inner
+            .parse_text_record(&record)
+            .map(PyFixMessages::over)
+            .map_err(value_error)
+    }
+
+    /// A stream of records, lazily: each as `parse_text_record` reads it.
+    fn parse_text_records(&self, records: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+        let pulled = Pulled::new(records, record_scalar)?;
+        let failed = pulled.failed.clone();
+        Ok(PyFixMessages::pulling(
+            self.inner.parse_text_records(pulled),
+            failed,
+        ))
+    }
+
+    /// A stream of Arrow batches of capture rows as batches of FIX rows.
+    ///
+    /// `source` is a `pyarrow.RecordBatchReader`, a table, a batch, or any
+    /// value exporting the Arrow C stream; the answer is a
+    /// `pyarrow.RecordBatchReader` pulling one batch at a time. The schema is
+    /// decided before the first row: the capture's own columns lead and the
+    /// fixed FIX columns follow. Every row is parsed as `parse_text_record`
+    /// parses one, and batches close on the raw bytes of the payload column
+    /// against `batch_byte_size`.
+    fn parse_text_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        source: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let source = batch_reader_from_value(source)?;
+        Self::reader_to_pyarrow(py, self.inner.parse_text_arrow_reader(source))
     }
 
     /// Fills what one message implies but did not carry.
@@ -1666,43 +2039,113 @@ impl PyFixCodec {
     /// Only the row is filled: the arrival record is what the wire carried
     /// and is left alone, so `into_bytes` re-emits the received line either
     /// way, and a stated value is never replaced.
-    fn enrich_fixmsg(&self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
+    fn enrich_message(&self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
         self.inner
-            .enrich_fixmsg(message.inner.clone())
+            .enrich_message(message.inner.clone())
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
 
-    /// Fills a sequence of messages.
-    #[allow(clippy::needless_pass_by_value)]
-    fn enrich_fixmsgs(&self, messages: Vec<PyRef<'_, PyFixMsg>>) -> PyResult<Vec<PyFixMsg>> {
-        messages
-            .into_iter()
-            .map(|held| {
-                self.inner
-                    .enrich_fixmsg(held.inner.clone())
-                    .map(PyFixMsg::from_inner)
-                    .map_err(value_error)
-            })
-            .collect()
+    /// Fills a stream of messages, lazily.
+    ///
+    /// `messages` is any iterable of `FixMsg`; an item that is not one raises
+    /// `TypeError` where it is met.
+    fn enrich_messages(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        Ok(PyFixMessages::pulling(
+            self.inner.enrich_messages(pulled),
+            failed,
+        ))
     }
 
-    /// Stamps a stream of messages with the identities it implies, in order.
+    /// Fills a stream of batches of FIX rows with what each message implies.
+    ///
+    /// `enrich_messages` over batches: each row is a message through
+    /// `FixMsg.from_row`, filled, and written back under the **same** schema,
+    /// so a carried column returns to its place and the arrival record is
+    /// untouched. Nothing is parsed again.
+    fn enrich_messages_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        source: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let source = batch_reader_from_value(source)?;
+        Self::reader_to_pyarrow(py, self.inner.enrich_messages_arrow_reader(source))
+    }
+
+    /// A stream of batches of FIX rows as the stream of messages it holds.
+    ///
+    /// Each row is one message through `FixMsg.from_row` under the source's
+    /// schema, lazily, one batch held at a time: a batch
+    /// `parse_text_arrow_reader` wrote comes back as the messages that made
+    /// it without a parse. One half of what the Arrow twins compose;
+    /// `arrow_reader` is the other.
+    fn messages(&self, source: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+        let source = batch_reader_from_value(source)?;
+        Ok(PyFixMessages::over(self.inner.messages(source)))
+    }
+
+    /// A stream of messages as a stream of batches of FIX rows under `schema`.
+    ///
+    /// `schema` is anything `Field` accepts - the fixed root `fix_schema`
+    /// builds, or the one read off a batch - and `messages` any iterable of
+    /// `FixMsg`, pulled one message at a time as `pyarrow` pulls batches.
+    /// Each message fills one row through `FixMsg.into_row`, and batches
+    /// close on the raw bytes of each message's arrival record against
+    /// `batch_byte_size`. An item that is not a message is the reader's
+    /// error, raised by the batch it would have landed in.
+    fn arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        schema: &Bound<'py, PyAny>,
+        messages: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let schema = core_field_from_value(schema)?;
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
+            failed.take().map(|error| Err(python_failure(error)))
+        }));
+        Self::reader_to_pyarrow(py, self.inner.arrow_reader(schema, messages))
+    }
+
+    /// Stamps a stream of messages with the identities it implies, in order,
+    /// lazily.
     ///
     /// One `FixLifecycle` over the whole iterable: each message gets its
     /// `instid`, its `id` and - where it carries an order identifier - the
     /// `persistentid` of the chain that identifier reaches, and a terminal
-    /// state closes the chain. The iterable is read once, in order, and the
-    /// stamped messages come back as a list in that order.
-    fn lifecycle(&self, messages: &Bound<'_, PyAny>) -> PyResult<Vec<PyFixMsg>> {
-        let mut held: Vec<CoreFixMsg> = Vec::new();
-        for message in messages.try_iter()? {
-            held.push(message?.extract::<PyRef<'_, PyFixMsg>>()?.inner.clone());
-        }
-        self.inner
-            .lifecycle(held)
-            .map(|stamped| stamped.map(PyFixMsg::from_inner).map_err(value_error))
-            .collect()
+    /// state closes the chain. The iterable is pulled once, in order, and an
+    /// item that is not a `FixMsg` raises `TypeError` where it is met.
+    fn lifecycle(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        Ok(PyFixMessages::pulling(self.inner.lifecycle(pulled), failed))
+    }
+
+    /// Writes a stream of batches of FIX rows back to the wire, answering the
+    /// count of lines.
+    ///
+    /// The encode direction of the same exchange: each row is the message
+    /// `messages` reads out of it, written as `into_bytes` with the codec's
+    /// `separator` - `SOH` when none is pinned - then a newline, into `sink`,
+    /// a binary file-like object with `write`. The wire is rebuilt from the
+    /// arrival record, never from the columns, so a batch without the
+    /// `nofixentries` column is refused before a row is read. One batch is
+    /// held at a time.
+    fn write_arrow_reader(
+        &self,
+        source: &Bound<'_, PyAny>,
+        sink: &Bound<'_, PyAny>,
+    ) -> PyResult<u64> {
+        let source = batch_reader_from_value(source)?;
+        let mut writer = PythonWriter::new(sink);
+        let written = self.inner.write_arrow_reader(source, &mut writer);
+        // The sink's own failure is the one to raise: the core reports it
+        // as the write it wrapped.
+        writer.finish()?;
+        written.map_err(value_error)
     }
 
     fn __copy__(&self) -> Self {
@@ -1742,12 +2185,8 @@ impl PyFixLifecycle {
     #[new]
     #[pyo3(signature = (registry=None))]
     fn new(registry: Option<PyRef<'_, PyFixRegistry>>) -> PyResult<Self> {
-        let registry = match registry {
-            Some(held) => Arc::clone(&held.inner),
-            None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
-        };
         Ok(Self {
-            inner: CoreFixLifecycle::new(registry),
+            inner: CoreFixLifecycle::new(registry_or_global(registry)?),
         })
     }
 
@@ -1755,7 +2194,7 @@ impl PyFixLifecycle {
     /// belongs to along.
     ///
     /// A stated `instid`, `id` or `persistentid` is never overwritten, and the
-    /// entries are untouched, so `to_bytes` re-emits the received line.
+    /// entries are untouched, so `into_bytes` re-emits the received line.
     fn fill(&mut self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
         self.inner
             .fill(message.inner.clone())
@@ -1800,10 +2239,7 @@ pub(crate) fn fix_schema(
     registry: Option<PyRef<'_, PyFixRegistry>>,
     name: &str,
 ) -> PyResult<PyField> {
-    let registry = match registry {
-        Some(held) => Arc::clone(&held.inner),
-        None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
-    };
+    let registry = registry_or_global(registry)?;
     yggdryl::fix_schema(&registry, name.to_owned())
         .map(PyField::from_inner)
         .map_err(value_error)
@@ -1830,132 +2266,12 @@ pub(crate) fn fix_schema_carrying(
         .map_err(value_error)
 }
 
-/// Stream one Arrow source's payload column through a dictionary.
-///
-/// The thin redirect to `FixBatchReader::from_column`: the capture's own
-/// columns lead the row, the dictionary's fixed columns follow, and one input
-/// row stays one output row unless `dedup` says otherwise. The reader stays
-/// lazy across the boundary -- `PyArrow` pulls one batch at a time.
-///
-/// Every keyword is the per-stream form of an argument `FixCodec` already
-/// takes per call, so a stream parses exactly as a line does. A row's own
-/// columns speak for that row: `timestamp` stamps its message, `branch`,
-/// `beginstring`, `sep` and `direction` are the parameters of the same name,
-/// `plugin` names the plugin session the row moved from or to - the sender's
-/// for a row its direction says was sent, the target's for one it received -
-/// and any other column named after a field fills it where the frame did not
-/// state it - never as an entry. A column whose folded name a fixed column
-/// takes lands there rather than being carried in front. `enrich` fills what
-/// each line implies; `lifecycle` runs one `FixLifecycle` over the whole read,
-/// so a row's `persistentid` depends on the rows before it.
-#[pyfunction]
-#[pyo3(
-    name = "fix_parse_arrow_reader",
-    signature = (
-        source,
-        registry = None,
-        column = "body",
-        *,
-        name = "fix",
-        branch = None,
-        version = None,
-        separator = None,
-        direction = None,
-        null_values = None,
-        dedup = false,
-        enrich = false,
-        lifecycle = false,
-        batch_row_size = None,
-        batch_byte_size = None,
-    )
-)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn fix_parse_arrow_reader<'py>(
-    py: Python<'py>,
-    source: &Bound<'_, PyAny>,
-    registry: Option<PyRef<'_, PyFixRegistry>>,
-    column: &str,
-    name: &str,
-    branch: Option<&str>,
-    version: Option<&str>,
-    separator: Option<u8>,
-    direction: Option<&str>,
-    null_values: Option<Vec<String>>,
-    dedup: bool,
-    enrich: bool,
-    lifecycle: bool,
-    batch_row_size: Option<usize>,
-    batch_byte_size: Option<u64>,
-) -> PyResult<Bound<'py, PyAny>> {
-    let registry = match registry {
-        Some(held) => Arc::clone(&held.inner),
-        None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
-    };
-    let mut options = CoreFixOptions::new()
-        .with_dedup(dedup)
-        .with_enrich(enrich)
-        .with_lifecycle(lifecycle);
-    options.name = name.into();
-    if let Some(branch) = branch {
-        options = options.with_branch(branch_from_py(branch)?);
-    }
-    if let Some(version) = version {
-        options = options.with_version(version_from_py(version)?);
-    }
-    if let Some(separator) = separator {
-        options = options.with_separator(separator);
-    }
-    if let Some(direction) = direction {
-        options = options.with_direction(direction_from_py(direction)?);
-    }
-    if let Some(spellings) = null_values {
-        options = options.with_null_values(spellings);
-    }
-    options.batch_row_size = batch_row_size;
-    options.batch_byte_size = batch_byte_size;
-    let source = batch_reader_from_value(source)?;
-    let parsed =
-        CoreFixBatchReader::from_column(registry, source, column, options).map_err(value_error)?;
-    batch_reader_to_pyarrow(py, parsed)
-}
-
-/// What a whole payload column says about itself, without building a message.
-///
-/// Three `pyarrow` `utf8` arrays the length of the input, in one shallow pass:
-/// the media type each record infers, the raw `MsgType` its frame spells, and
-/// the direction it moved. `direction` names what an unmarked line took --
-/// `"sent"`, `"recv"`, or `"unknown"`.
-#[pyfunction]
-#[pyo3(name = "fix_classify_arrow_array", signature = (column, direction = "sent"))]
-pub(crate) fn fix_classify_arrow_array<'py>(
-    py: Python<'py>,
-    column: &Bound<'py, PyAny>,
-    direction: &str,
-) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>, Bound<'py, PyAny>)> {
-    let values = arrow_array_from_pyarrow(column)?;
-    let (protocol, msgtype, moved) =
-        yggdryl::classify_arrow_array(&values, direction_from_py(direction)?)
-            .map_err(value_error)?;
-    Ok((
-        arrow_array_to_pyarrow(py, &protocol, None)?,
-        arrow_array_to_pyarrow(py, &msgtype, None)?,
-        arrow_array_to_pyarrow(py, &moved, None)?,
-    ))
-}
-
 /// Read the direction an unmarked line takes, as the core spells it.
 ///
 /// `"unknown"` is the third answer: a capture whose silence really means
 /// nothing, rather than the side that wrote it.
 fn direction_from_py(text: &str) -> PyResult<Option<&'static str>> {
-    match text.to_ascii_uppercase().as_str() {
-        "SENT" | "S" | "SEND" => Ok(Some(MsgDirection::SENT)),
-        "RECV" | "R" | "RECEIVE" => Ok(Some(MsgDirection::RECV)),
-        "UNKNOWN" | "" => Ok(None),
-        other => Err(PyValueError::new_err(format!(
-            "expected one of sent, recv, unknown, got {other:?}"
-        ))),
-    }
+    MsgDirection::from_spelling(text).map_err(value_error)
 }
 
 /// One row's columns, in order, as tags.
@@ -2132,11 +2448,10 @@ impl PyUlPlugin {
     /// carrying `ULBridge`'s fields types a port as a number and a flag as a
     /// boolean, and one that does not keeps every attribute as the text it
     /// arrived as.
-    #[pyo3(signature = (codec, enrich=false))]
     #[allow(clippy::wrong_self_convention)]
-    fn into_fixmsg(&self, codec: &PyFixCodec, enrich: bool) -> PyResult<PyFixMsg> {
+    fn into_fixmsg(&self, codec: &PyFixCodec) -> PyResult<PyFixMsg> {
         self.inner
-            .into_fixmsg(codec.as_inner(), enrich)
+            .into_fixmsg(codec.as_inner())
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }

@@ -657,7 +657,12 @@ impl From<FixCodeValue<'_>> for FixCode {
                 .flatten()
                 .map_or_else(|| SmolStr::new(doc), SmolStr::new)
         });
-        owned.group = code.group().map(SmolStr::new);
+        owned.group = code.group().map(|group| {
+            code.parse_group()
+                .ok()
+                .flatten()
+                .map_or_else(|| SmolStr::new(group), SmolStr::new)
+        });
         owned.since = code.since();
         owned.deprecated = code.deprecated();
         owned.ep = code.ep();

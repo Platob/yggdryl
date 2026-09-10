@@ -29,10 +29,10 @@ and bulk readers return [message iterators](capture.md#a-reader-is-the-whole-par
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
     let frame = b"8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|";
-    let message = codec.transform_fix_line(frame, false)?;
+    let message = codec.parse_fix_line(frame)?;
     let emitted = message.into_bytes(b'|');
     assert_eq!(emitted, frame);
-    assert_eq!(codec.transform_fix_line(&emitted, false)?, message);
+    assert_eq!(codec.parse_fix_line(&emitted)?, message);
     ```
 
 === "Python"
@@ -43,10 +43,10 @@ and bulk readers return [message iterators](capture.md#a-reader-is-the-whole-par
 
     codec = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
     frame = b"8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|"
-    message = codec.transform_fix_line(frame, separator=ord("|"))
+    message = codec.parse_fix_line(frame, separator=ord("|"))
     emitted = message.into_bytes(ord("|"))
     assert emitted == frame
-    assert codec.transform_fix_line(emitted, separator=ord("|")) == message
+    assert codec.parse_fix_line(emitted, separator=ord("|")) == message
     ```
 
 === "JavaScript"
@@ -58,10 +58,10 @@ and bulk readers return [message iterators](capture.md#a-reader-is-the-whole-par
 
     const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config/fix')))
     const frame = Buffer.from('8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|')
-    const message = codec.transformFixLine(frame, 124)
+    const message = codec.parseFixLine(frame, 124)
     const emitted = Buffer.from(message.intoBytes(124))
     assert.deepEqual(emitted, frame)
-    assert.ok(codec.transformFixLine(emitted, 124).equals(message))
+    assert.ok(codec.parseFixLine(emitted, 124).equals(message))
     ```
 
 ## Inspect emitted bytes
@@ -79,8 +79,8 @@ This section renders `assets/fix.json` and needs JavaScript.
   repair an invalid frame.
 - Enum display names in a typed row do not replace the original wire codes.
 - Direction verbs and surrounding capture prose are outside the emitted frame.
-- For streamed Arrow output, Rust's [`write_fix`](arrow.md#back-to-the-wire)
-  reads the `nofixentries` column one row at a time.
+- For streamed Arrow output, [`write_arrow_reader`](arrow.md#back-to-the-wire)
+  writes each row's `nofixentries` back as one line, with the codec's separator.
 
 ## Commands
 

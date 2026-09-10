@@ -47,11 +47,9 @@
 //! all silence. The cost of silence is a null column; the cost of a guess is
 //! a wrong number nobody can tell from a sent one.
 
-use std::sync::Arc;
-
+use crate::Scalar;
 use crate::types::ascii::AsciiFamily;
 use crate::types::{AsciiEnum, Isin, State};
-use crate::{DataType, Field, Result, Scalar};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
@@ -768,12 +766,16 @@ fn single_fill(msg: &FixMsg) -> bool {
 
 /// Fills what `msg` implies, leaving what it stated and what arrived alone.
 ///
-/// # Errors
-///
-/// Returns the value contract's refusal when a derived value does not fit the
-/// column the dictionary declares for it, which a rule's own arithmetic
-/// cannot provoke.
-pub(super) fn enrich(registry: &Arc<FixRegistry>, msg: FixMsg) -> Result<FixMsg> {
+/// Every answer lands through [`FixMsg::set`]: a row already holding the tag
+/// holds a stated null - a spelling the field reads as nothing sent - and the
+/// answer takes that child's place, anything else is appended. The
+/// dictionary's own field types the value on the way in, so a derived column
+/// is indistinguishable from a stated one and carries the same display,
+/// description and `fix:tag` a reader resolves it by - and a value it
+/// refuses, an identifier the check digit does not close, is silence: a
+/// refused write leaves the row exactly as it was, and there is nothing
+/// else here that can fail.
+pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
     let msgtype = msg
         .get_by_tag(35)
         .and_then(Scalar::as_str)
@@ -802,66 +804,10 @@ pub(super) fn enrich(registry: &Arc<FixRegistry>, msg: FixMsg) -> Result<FixMsg>
         let Some(value) = derive(registry, &held, &rule.from) else {
             continue;
         };
-        // The dictionary's own field types the value, so a derived column is
-        // indistinguishable from a stated one and carries the same display,
-        // description and `fix:tag` a reader resolves it by - and a value it
-        // refuses, an identifier the check digit does not close, is silence.
-        let Some(declared) = registry.get_field_by_tag(rule.tag) else {
-            continue;
-        };
-        let Ok(typed) = declared.scalar(value) else {
-            continue;
-        };
         // A rule whose output another rule reads has to be visible to it, so
-        // the message is rebuilt as each one answers rather than once at the
-        // end.
-        held = filled(registry, held, rule.tag, declared.clone(), typed)?;
+        // each answer lands before the next rule runs rather than once at
+        // the end.
+        let _ = held.set(rule.tag, value);
     }
-    Ok(held)
-}
-
-/// One message with `field` carrying `value` at `tag`.
-///
-/// A row already holding the tag holds a stated null - a spelling the field
-/// reads as nothing sent - and the answer takes that child's place. Anything
-/// else is appended rather than inserted in tag order: the row's existing
-/// positions are what every reader that already holds it addresses by, and a
-/// derived field is found by tag rather than by position. The entries are
-/// carried through untouched.
-fn filled(
-    registry: &Arc<FixRegistry>,
-    msg: FixMsg,
-    tag: i32,
-    field: Field,
-    value: Scalar,
-) -> Result<FixMsg> {
-    let root = msg.as_field().clone();
-    let mut members: Vec<Field> = root
-        .dtype()
-        .as_fields()
-        .map(<[Field]>::to_vec)
-        .unwrap_or_default();
-    let mut values: Vec<Scalar> = msg
-        .as_value()
-        .as_sequence()
-        .map(<[Scalar]>::to_vec)
-        .unwrap_or_default();
-    match msg.index_of_tag(tag) {
-        Some(at) => {
-            members[at] = field;
-            values[at] = value;
-        }
-        None => {
-            members.push(field);
-            values.push(value);
-        }
-    }
-    let rebuilt = DataType::from_fields(members)?.required_field(root.name());
-    let entries = msg.into_entries();
-    FixMsg::from_parts(
-        Arc::clone(registry),
-        rebuilt,
-        Scalar::from_sequence(values),
-        entries,
-    )
+    held
 }

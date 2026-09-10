@@ -15,10 +15,10 @@ const PARTIED: &str = "MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1|ORDERQTY=100
 pub fn benchmarks(criterion: &mut Criterion) {
     let reader = FixCodec::new(Arc::new(seed()));
     let order = reader
-        .transform_fix_line(ORDER.as_bytes(), false)
+        .parse_fix_line(ORDER.as_bytes())
         .expect("a readable order");
     let partied = reader
-        .transform_ullink_line(PARTIED.as_bytes(), false)
+        .parse_ullink_line(PARTIED.as_bytes())
         .expect("a readable bridge row");
     assert_eq!(partied.by_tag(453).unwrap(), &yggdryl::Scalar::from(2_i32));
     assert_eq!(

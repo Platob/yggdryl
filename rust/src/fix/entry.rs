@@ -80,6 +80,30 @@ impl FixEntry {
         self
     }
 
+    /// Records the dialect as the signed digest a row already holds.
+    ///
+    /// The row's `branch` column is this value exactly, so an entry read
+    /// back out of a row copies it rather than resolving the branch it
+    /// names, which a capture written against a dictionary this reader lacks
+    /// could not do.
+    #[must_use]
+    pub(super) const fn with_branch_digest(mut self, branch: i32) -> Self {
+        self.branch = branch;
+        self
+    }
+
+    /// Records what arrived under this entry, in the order it arrived.
+    ///
+    /// The other way a tree is built beside [`Self::adopt`]: a row holds each
+    /// entry's children already grouped under it, so reading the row back
+    /// attaches them whole rather than re-deciding which counter each
+    /// member belongs to.
+    #[must_use]
+    pub(super) fn with_children(mut self, children: Vec<FixEntry>) -> Self {
+        self.children = children;
+        self
+    }
+
     /// Returns the tag this entry's key named, or `0` when it named none.
     #[must_use]
     pub const fn tag(&self) -> i32 {

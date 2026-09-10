@@ -801,7 +801,7 @@ impl UlPlugin {
     /// selector and the returned ObjectName occupy their distinct scalar
     /// fields. What the row this plugin arrived on stated is applied last, so
     /// a row's own clock outranks any the document carries.
-    pub fn into_fixmsg(&self, codec: &super::FixCodec, enrich: bool) -> Result<super::FixMsg> {
+    pub fn into_fixmsg(&self, codec: &super::FixCodec) -> Result<super::FixMsg> {
         let mut pairs = Vec::new();
         if let Some(root) = self.envelope.as_record() {
             let request = root
@@ -834,7 +834,7 @@ impl UlPlugin {
             clock: self.stamp.as_ref().and_then(|stamp| stamp.clock.as_ref()),
             fills: &fills,
         };
-        codec.build_pairs_with(&borrowed, extras, enrich)
+        codec.build_pairs_with(&borrowed, extras)
     }
 
     /// The ObjectName the bridge holds this plugin under.
@@ -1066,12 +1066,12 @@ impl super::FixCodec {
     /// Returns [`Error::Parse`](crate::Error) naming the byte position when
     /// the document is not JSON. A conversion's own refusal is yielded by the
     /// iterator rather than raised here.
-    pub fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> Result<super::FixMessages> {
-        self.ulconfig_with(body, super::build::RowExtras::NONE, enrich)
+    pub fn parse_ulconfig_line(&self, body: &[u8]) -> Result<super::FixMessages> {
+        self.ulconfig_with(body, super::build::RowExtras::NONE)
     }
 
-    /// [`Self::transform_ulconfig_line`], with what the row stated beside
-    /// its document.
+    /// [`Self::parse_ulconfig_line`], with what the row stated beside its
+    /// document.
     ///
     /// A row states its clock and its own columns once and the document it
     /// carries answers for as many plugins as it names, so what the row
@@ -1081,7 +1081,6 @@ impl super::FixCodec {
         &self,
         body: &[u8],
         extras: super::build::RowExtras<'_>,
-        enrich: bool,
     ) -> Result<super::FixMessages> {
         // The document as the line carries it: a transport writes a timestamp
         // in front of one and sometimes a duration behind it, and the reader
@@ -1090,10 +1089,6 @@ impl super::FixCodec {
         // in is handing the document itself.
         let mut values = UlPlugin::from_json_bytes(body)?;
         values.stamp = RowStamp::retained(extras);
-        Ok(super::FixMessages::from_ulconfigs(
-            self.clone(),
-            values,
-            enrich,
-        ))
+        Ok(super::FixMessages::from_ulconfigs(self.clone(), values))
     }
 }

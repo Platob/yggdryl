@@ -445,6 +445,21 @@ impl FixRegistry {
         Some(self.catalog.entries[position].field.as_field())
     }
 
+    /// The repeating group `name` reaches under `branch`: that branch's own
+    /// definition, else the standard one - the tier a member resolves by,
+    /// so the codec and a restatement land an occurrence under one
+    /// definition.
+    pub(super) fn known_group(&self, name: &str, branch: &FixBranch) -> Option<&Field> {
+        self.get_definition(FixCategory::Groups, name, Some(branch))
+            .or_else(|| {
+                (!branch.is_standard())
+                    .then(|| {
+                        self.get_definition(FixCategory::Groups, name, Some(&FixBranch::STANDARD))
+                    })
+                    .flatten()
+            })
+    }
+
     /// Resolves a category name, reporting absence with its category and branch.
     pub fn definition(
         &self,

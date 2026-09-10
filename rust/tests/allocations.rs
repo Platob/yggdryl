@@ -509,7 +509,7 @@ fn fix_hash_state_allocation_is_constant_across_catalog_sizes() {
             black_box(held.stable_hash());
         });
         let message = FixCodec::new(std::sync::Arc::new(registry))
-            .transform_fix_line(b"35=H|55=AAPL|", false)
+            .parse_fix_line(b"35=H|55=AAPL|")
             .unwrap();
         costs("message value stable hash", 1, || {
             black_box(message.stable_hash());

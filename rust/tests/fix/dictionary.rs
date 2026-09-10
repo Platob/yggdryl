@@ -373,10 +373,10 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
             _ => {}
         }
     }
-    assert_eq!(times, 56, "zone-less times of day");
-    assert_eq!(naive, 368, "local values, stating no zone");
-    // Sixty-six of the seed's, and the crate's own `timestamp`.
-    assert_eq!(utc, 67, "instants stated in UTC");
+    assert_eq!(times, 57, "zone-less times of day");
+    assert_eq!(naive, 369, "local values, stating no zone");
+    // Sixty-eight of the seed's, and the crate's own `timestamp`.
+    assert_eq!(utc, 69, "instants stated in UTC");
 }
 
 #[test]

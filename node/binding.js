@@ -3330,17 +3330,14 @@ for (const collection of [iceberg.Namespaces, iceberg.Tables]) {
 // in this loader, so the public constructor is the one widening gate and hands
 // the native class the value it already understands.
 const NativeFixMsg = binding.FixMsg
+const asScalar = (value) => (value instanceof Scalar ? value : Scalar.fromJs(value))
 function FixMsg(field, value, registry) {
   if (new.target === undefined) {
     throw new TypeError(
       "Class constructor FixMsg cannot be invoked without 'new'",
     )
   }
-  return new NativeFixMsg(
-    field,
-    value instanceof Scalar ? value : Scalar.fromJs(value),
-    registry,
-  )
+  return new NativeFixMsg(field, asScalar(value), registry)
 }
 FixMsg.prototype = NativeFixMsg.prototype
 Object.defineProperty(FixMsg.prototype, 'constructor', {
@@ -3348,6 +3345,15 @@ Object.defineProperty(FixMsg.prototype, 'constructor', {
   value: FixMsg,
   writable: true,
 })
+// A row read back and a value written cross the same gate the constructor
+// does: whatever `Scalar.fromJs` reads, and the core alone types it.
+FixMsg.fromRow = function fromRow(schema, row, registry) {
+  return NativeFixMsg.fromRow(schema, asScalar(row), registry)
+}
+const nativeFixMsgSet = NativeFixMsg.prototype.set
+NativeFixMsg.prototype.set = function set(key, value) {
+  return nativeFixMsgSet.call(this, key, asScalar(value))
+}
 
 const NativeUlPlugin = binding.UlPlugin
 function UlPlugin(mbean, attributes, envelope) {
@@ -3378,19 +3384,100 @@ UlPlugin.fromFixmsg = function fromFixmsg(message) {
   return NativeUlPlugin.fromFixmsg(message)
 }
 
-const nativeTransformRecord = binding.FixCodec.prototype.transformRecord
-binding.FixCodec.prototype.transformRecord = function transformRecord(record, enrich) {
-  return nativeTransformRecord.call(
-    this,
-    record instanceof Scalar ? record : Scalar.fromJs(record),
-    enrich,
-  )
+// A record crosses as the value `Scalar.fromJs` reads and a batch source as
+// whatever `BatchReader.from` accepts - a reader, an Arrow JS table or batch,
+// IPC bytes - so both widenings live here, beside the conversions they use.
+const nativeParseTextRecord = binding.FixCodec.prototype.parseTextRecord
+binding.FixCodec.prototype.parseTextRecord = function parseTextRecord(record) {
+  return nativeParseTextRecord.call(this, asScalar(record))
+}
+for (const name of ['parseTextArrowReader', 'enrichMessagesArrowReader', 'messages']) {
+  const native = binding.FixCodec.prototype[name]
+  binding.FixCodec.prototype[name] = {
+    [name](source) {
+      return native.call(this, BatchReader.from(source))
+    },
+  }[name]
+}
+const nativeWriteArrowReader = binding.FixCodec.prototype.writeArrowReader
+binding.FixCodec.prototype.writeArrowReader = function writeArrowReader(source, sink) {
+  return nativeWriteArrowReader.call(this, BatchReader.from(source), sink)
+}
+
+// A stage over an iterable pulls one item at a time: the iterable's own
+// protocol runs here, and the native stage asks for the next item only when
+// the stream is read that far, so nothing is collected on the way across.
+// `read` turns one item into the value the native stage takes. What the
+// iterable or the reading throws ends the pull; with a `failed` holder the
+// error is kept there, as itself, for the stream to throw in place of its
+// end - a native stage sees values, never exceptions - and without one it
+// travels through the native stage as that stage's own failure.
+const FAILED = Symbol('yggdryl.fix.failed')
+function pullOf(iterable, read, what, failed) {
+  if (iterable == null || typeof iterable[Symbol.iterator] !== 'function') {
+    throw new TypeError(`${what} must be an iterable`)
+  }
+  const iterator = iterable[Symbol.iterator]()
+  return () => {
+    if (failed !== undefined && failed.error !== undefined) return null
+    try {
+      const step = iterator.next()
+      return step.done ? null : read(step.value)
+    } catch (error) {
+      if (failed === undefined) throw error
+      failed.error = error
+      return null
+    }
+  }
+}
+function asMessage(value) {
+  if (!(value instanceof NativeFixMsg)) {
+    throw new TypeError('every item of a message stream must be a FixMsg')
+  }
+  return value
+}
+{
+  const streams = [
+    ['parseLines', '_parseLinesNative', toBytes, 'lines'],
+    ['parseTextRecords', '_parseTextRecordsNative', asScalar, 'records'],
+    ['enrichMessages', '_enrichMessagesNative', asMessage, 'messages'],
+    ['lifecycle', '_lifecycleNative', asMessage, 'messages'],
+  ]
+  for (const [name, hidden, read, what] of streams) {
+    const native = binding.FixCodec.prototype[hidden]
+    delete binding.FixCodec.prototype[hidden]
+    binding.FixCodec.prototype[name] = {
+      [name](iterable) {
+        const failed = {}
+        const stream = native.call(this, pullOf(iterable, read, what, failed))
+        stream[FAILED] = failed
+        return stream
+      },
+    }[name]
+  }
+  // The batch reader pulls the messages as `pyarrow` would, so a failure
+  // behind it is that reader's error, raised by the batch it would have
+  // landed in.
+  const nativeArrowReader = binding.FixCodec.prototype._arrowReaderNative
+  delete binding.FixCodec.prototype._arrowReaderNative
+  binding.FixCodec.prototype.arrowReader = function arrowReader(schema, messages) {
+    return nativeArrowReader.call(this, intoField(schema), pullOf(messages, asMessage, 'messages'))
+  }
 }
 
 const nativeFixMessagesNext = binding.FixMessages.prototype.next
 binding.FixMessages.prototype.next = function next() {
   const value = nativeFixMessagesNext.call(this)
-  return value === null ? { value: undefined, done: true } : { value, done: false }
+  if (value !== null) return { value, done: false }
+  // A stream over an iterable ends where the iterable failed: the failure
+  // kept for it is thrown once, as itself, in place of the end.
+  const failed = this[FAILED]
+  if (failed !== undefined && failed.error !== undefined) {
+    const { error } = failed
+    failed.error = undefined
+    throw error
+  }
+  return { value: undefined, done: true }
 }
 Object.defineProperty(binding.FixMessages.prototype, Symbol.iterator, {
   configurable: true,

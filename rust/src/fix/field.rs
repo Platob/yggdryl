@@ -14,6 +14,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::codes::{FixCode, FixCodeValue, FixCodes};
 use super::lineage::{FixLineage, FixLineageEntry};
+use super::replacements::{FixReplacement, FixReplacements};
 use super::{FixBranch, FixId};
 use crate::types::folds_equal;
 use crate::{DataType, Error, FixField, FixFieldMut, Result, Version};
@@ -44,6 +45,8 @@ const NULLS: &str = "nulls";
 const LINEAGE: &str = "lineage";
 /// The FIX code set this field's values are drawn from.
 const CODES: &str = "codes";
+/// How a value of this field is restated at a later version.
+const REPLACEMENTS: &str = "replacements";
 const COUNTER: &str = "counter";
 const COMPONENT: &str = "component";
 const FIELD_REF: &str = "field";
@@ -211,9 +214,7 @@ impl<'field> FixField<'field> {
     /// the capture-wide list compares: a venue writing `n/a` and `N/A` in one
     /// file means the same absence twice.
     pub fn is_null_value(&self, value: &str) -> bool {
-        let trimmed = value.trim_matches(|held: char| held.is_ascii_whitespace());
-        self.nulls()
-            .any(|spelling| spelling.eq_ignore_ascii_case(trimmed))
+        spells_absence(self.nulls(), value)
     }
 
     /// Returns the specification's own wording for this field.
@@ -363,6 +364,41 @@ impl<'field> FixField<'field> {
         FixCodes::over(self.get(CODES))
     }
 
+    /// Walks how a value of this field is restated at a later version, in
+    /// document order.
+    ///
+    /// The first entry whose conditions a held value meets is the one that
+    /// answers, which is why the order is the document's and not sorted. The
+    /// iterator is lazy and allocates nothing: every spelling is a slice of
+    /// the stored document, which the field already owns. An absent property
+    /// yields nothing, which is what a field the specification never
+    /// replaced answers.
+    ///
+    /// ```
+    /// use yggdryl::fix::{FixFill, FixFillSource, FixReplacement};
+    /// use yggdryl::{DataType, Version};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut max_floor = DataType::Float64.nullable_field("maxfloor");
+    /// max_floor.as_fix_mut().set_tag(111)?;
+    /// // MaxFloor(111) was replaced by DisplayQty(1138), which takes its value.
+    /// max_floor.as_fix_mut().set_replacements(&[
+    ///     FixReplacement::new("5.0".parse::<Version>()?)
+    ///         .with_fills([FixFill::Field { tag: 1138, value: FixFillSource::Source }]),
+    /// ])?;
+    ///
+    /// let entry = max_floor.as_fix().replacements().next().expect("one rule")?;
+    /// assert_eq!(entry.since(), "5.0".parse::<Version>()?);
+    /// assert_eq!(entry.when(), None, "any stated value");
+    /// let fill = entry.fills().next().expect("one fill")?;
+    /// assert!(matches!(fill, yggdryl::fix::FixFillEntry::Field { tag: 1138, .. }));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn replacements(&self) -> FixReplacements<'field> {
+        FixReplacements::over(self.get(REPLACEMENTS))
+    }
+
     /// Returns the code one wire value stands for.
     ///
     /// The scan stops at the match: `value` leads each record, so this reads
@@ -434,13 +470,16 @@ impl<'field> FixField<'field> {
     /// only by version, the one the message's own version declares answers,
     /// so a dated read is still a dated read.
     fn resolve_value(&self, text: &str, at: Option<Version>) -> Option<&'field str> {
-        let stored = self.get(CODES)?;
-        if at.is_some() {
-            if let Some(held) = resolve_in(stored, text, at) {
-                return Some(held);
-            }
-        }
-        resolve_in(stored, text, None)
+        translate(self.codes_document()?, text, at)
+    }
+
+    /// The stored code-set document, when this field carries one.
+    ///
+    /// What every code read scans; a reader remembering translations across
+    /// a run keys them by this document, because the answer is a fact of the
+    /// document, the version and the text alone.
+    pub(super) fn codes_document(&self) -> Option<&'field str> {
+        self.get(CODES)
     }
 
     /// The one code a predicate matches, or nothing when several do.
@@ -847,6 +886,98 @@ impl FixFieldMut<'_> {
             .map(Some)
     }
 
+    /// Records how a value of this field is restated at a later version.
+    ///
+    /// Entries are rendered canonically in the order given, because the
+    /// order is what the document says: the first entry whose conditions a
+    /// held value meets answers, so a catch-all entry comes last.
+    ///
+    /// An empty slice removes the property, exactly as an empty tag or alias
+    /// list removes its own.
+    ///
+    /// ```
+    /// use yggdryl::fix::{FixFill, FixFillSource, FixReplacement};
+    /// use yggdryl::{DataType, Version};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut broker = DataType::Utf8.nullable_field("execbroker");
+    /// broker.as_fix_mut().set_tag(76)?;
+    /// // ExecBroker(76) became one Parties occurrence: PartyID(448) takes the
+    /// // broker, PartyRole(452) says it is an executing firm.
+    /// broker.as_fix_mut().set_replacements(&[
+    ///     FixReplacement::new("4.3".parse::<Version>()?).with_fills([FixFill::Group {
+    ///         name: "parties".into(),
+    ///         members: vec![
+    ///             FixFill::Field { tag: 448, value: FixFillSource::Source },
+    ///             FixFill::Field { tag: 452, value: FixFillSource::Constant("1".into()) },
+    ///         ],
+    ///     }]),
+    /// ])?;
+    /// assert_eq!(
+    ///     broker.get_metadata("fix:replacements"),
+    ///     Some(concat!(
+    ///         r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties","members":"#,
+    ///         r#"[{"tag":448},{"tag":452,"value":"1"}]}]}]}"#,
+    ///     ))
+    /// );
+    ///
+    /// broker.as_fix_mut().set_replacements(&[])?;
+    /// assert_eq!(broker.get_metadata("fix:replacements"), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when an entry states no fill, a group fill
+    /// states no member, a join names fewer than two tags, a tag is negative,
+    /// or a message type, group name, held value or constant is not a word
+    /// the reader reads back; and the property write's refusal otherwise.
+    /// Either leaves the field unchanged.
+    pub fn set_replacements(&mut self, entries: &[FixReplacement]) -> Result<()> {
+        if entries.is_empty() {
+            self.remove(REPLACEMENTS);
+            return Ok(());
+        }
+        let rendered = FixReplacements::render(entries)?;
+        self.store(REPLACEMENTS, rendered)
+    }
+
+    /// Removes the replacement rules, answering what they held.
+    ///
+    /// ```
+    /// use yggdryl::fix::{FixFill, FixFillSource, FixReplacement};
+    /// use yggdryl::{DataType, Version};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut odd_lot = DataType::Boolean.nullable_field("oddlot");
+    /// odd_lot.as_fix_mut().set_tag(575)?;
+    /// let rules = [FixReplacement::new("5.0".parse::<Version>()?)
+    ///     .with_when("Y")
+    ///     .with_fills([FixFill::Field { tag: 1093, value: FixFillSource::Constant("1".into()) }])];
+    /// odd_lot.as_fix_mut().set_replacements(&rules)?;
+    ///
+    /// assert_eq!(odd_lot.as_fix_mut().remove_replacements()?, Some(rules.to_vec()));
+    /// assert_eq!(odd_lot.as_fix_mut().remove_replacements()?, None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the byte position when the stored
+    /// document does not parse, having already removed it: a document a
+    /// reader refuses is one a caller asked to take away.
+    pub fn remove_replacements(&mut self) -> Result<Option<Vec<FixReplacement>>> {
+        let Some(stored) = self.remove(REPLACEMENTS) else {
+            return Ok(None);
+        };
+        FixReplacements::over(Some(stored.as_str()))
+            .map(|entry| entry.map(FixReplacement::from))
+            .collect::<Result<Vec<_>>>()
+            .map(Some)
+    }
+
     /// Folds another definition of the same field into this one.
     ///
     /// This field is the incoming definition and wins every shared key; the
@@ -863,6 +994,7 @@ impl FixFieldMut<'_> {
     /// | `description` | not folded here at all: it is a generic key, so the metadata merge every protocol shares carries it |
     /// | `fix:lineage` | merged by pedigree, incoming winning an equal pair, re-sorted oldest first |
     /// | `fix:codes` | merged by wire value, incoming winning a shared value |
+    /// | `fix:replacements` | incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
     /// | any other `fix:` key | incoming wins; stored keeps what only it has |
     ///
     /// Precedence is the caller's ordering rather than a field on the merge:
@@ -1042,6 +1174,19 @@ impl FixFieldMut<'_> {
     }
 }
 
+/// Whether `text` is one of `nulls`, the spellings a field states as an
+/// absence: ASCII case-insensitively, against the trimmed text.
+///
+/// The one predicate behind [`FixField::is_null_value`] and the codec's
+/// memo of a field's facts, so a spelling reads as an absence the same way
+/// whether the field was looked up or remembered.
+pub(super) fn spells_absence<'a>(nulls: impl IntoIterator<Item = &'a str>, text: &str) -> bool {
+    let trimmed = text.trim_ascii();
+    nulls
+        .into_iter()
+        .any(|spelling| spelling.eq_ignore_ascii_case(trimmed))
+}
+
 /// The aliases a field declares, in stored priority order.
 ///
 /// Answered by [`FixField::aliases`]. It walks the stored comma-separated
@@ -1091,7 +1236,16 @@ impl FusedIterator for FixSpellings<'_> {}
 /// A merge walks this rather than collecting the keys a field holds, because
 /// the held names are owned `String`s behind a generic snapshot and building
 /// a vector of them to scan `O(n*m)` is what this replaced.
-const MERGED_KEYS: [&str; 7] = [BRANCH, TAG, TAGS, ALIASES, NULLS, LINEAGE, CODES];
+const MERGED_KEYS: [&str; 8] = [
+    BRANCH,
+    TAG,
+    TAGS,
+    ALIASES,
+    NULLS,
+    LINEAGE,
+    CODES,
+    REPLACEMENTS,
+];
 
 /// Render aliases the way the setter renders them.
 fn render_aliases(aliases: &[&str]) -> Option<String> {
@@ -1235,6 +1389,21 @@ fn one_matching<'field>(
 }
 
 /// The three tiers over one already-read document, at one visibility.
+/// [`FixField::code_value_at`] over a stored document: the three tiers as the
+/// version knows them, then as every version does.
+pub(super) fn translate<'field>(
+    stored: &'field str,
+    text: &str,
+    at: Option<Version>,
+) -> Option<&'field str> {
+    if at.is_some() {
+        if let Some(held) = resolve_in(stored, text, at) {
+            return Some(held);
+        }
+    }
+    resolve_in(stored, text, None)
+}
+
 fn resolve_in<'field>(stored: &'field str, text: &str, at: Option<Version>) -> Option<&'field str> {
     let visible = |code: &FixCodeValue<'field>| at.is_none_or(|at| code.defined_at(at));
     // Tier 1: the text as a wire value, exactly. A spelling that is already a

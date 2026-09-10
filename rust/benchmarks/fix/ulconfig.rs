@@ -57,7 +57,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .unwrap();
         assert!(
             first
-                .into_fixmsg(&codec, false)
+                .into_fixmsg(&codec)
                 .unwrap()
                 .get_by_name("SessionInterface")
                 .is_some()
@@ -102,11 +102,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
                     for configuration in UlPlugin::from_json_scalar(black_box(document))
                         .expect("valid wildcard response")
                     {
-                        black_box(
-                            configuration
-                                .into_fixmsg(&codec, false)
-                                .expect("flat UL row"),
-                        );
+                        black_box(configuration.into_fixmsg(&codec).expect("flat UL row"));
                     }
                 });
             },

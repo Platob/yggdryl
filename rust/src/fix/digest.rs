@@ -125,15 +125,15 @@ impl FixMsg {
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
     /// let reader = FixCodec::new(Arc::new(registry));
-    /// let sent = reader.transform_fix_line(b"8=FIX.4.4|9=64|35=D|11=A|55=AAPL|10=203|", false)?;
+    /// let sent = reader.parse_fix_line(b"8=FIX.4.4|9=64|35=D|11=A|55=AAPL|10=203|")?;
     ///
     /// // The frame is not the message: a different separator, a recomputed
     /// // body length and a different checksum are the same message.
-    /// let again = reader.transform_fix_line(b"8=FIX.4.4|9=99|35=D|11=A|55=AAPL|10=000|", false)?;
+    /// let again = reader.parse_fix_line(b"8=FIX.4.4|9=99|35=D|11=A|55=AAPL|10=000|")?;
     /// assert_eq!(sent.digest(), again.digest());
     ///
     /// // A different value is a different message.
-    /// let other = reader.transform_fix_line(b"8=FIX.4.4|35=D|11=A|55=MSFT|10=203|", false)?;
+    /// let other = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A|55=MSFT|10=203|")?;
     /// assert_ne!(sent.digest(), other.digest());
     /// # Ok(())
     /// # }
@@ -223,7 +223,7 @@ fn length_of(bytes: &[u8]) -> [u8; 4] {
 ///     "8=FIX.4.4|35=D|11=B|10=0|",
 ///     "8=FIX.4.4|35=D|11=A|10=0|",
 /// ];
-/// let read = rows.iter().map(|row| reader.transform_fix_line(row.as_bytes(), false).expect("a readable row"));
+/// let read = rows.iter().map(|row| reader.parse_fix_line(row.as_bytes()).expect("a readable row"));
 ///
 /// let mut dedup = FixDedup::new(read);
 /// let kept: Vec<String> = dedup.by_ref().map(|held| held.into_text('|').unwrap()).collect();

@@ -181,7 +181,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,203 scalar fields in 65 shards, 747 components, 580 groups, and 181 messages: 1,573 JSON documents totaling 9,370,670 bytes. It contains 27,103 inline code records on 2,016 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 named definitions states the tag derived from its name - `groups/parties.json` is 209321 - and no two share one.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 747 components, 580 groups, and 181 messages: 1,573 JSON documents totaling 9,271,670 bytes. It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 named definitions states the tag derived from its name - `groups/parties.json` is 209321 - and no two share one. Thirty-eight of the fields are ones FIX has since removed, kept with the version that [removed them](registry.md#versions-are-a-filter-on-the-read); 37 carry [`fix:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all.
 
 The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradingCommunity/orchestrations/blob/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml), with the [documented naming rules](registry.md#group-names). This is a complete resolved catalog workload, so its load/write timings are not comparable to a scalar-only seed or a small FIX-version subset.
 
@@ -301,24 +301,24 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 
 ## Performance
 
-Release measurements on Windows, AMD Ryzen 5 150 with 12 logical CPUs, Rust 1.96, Python 3.12.13, and Node 24.18. Rust uses 10 Criterion samples; Python and Node use 2,000 boundary iterations, with expensive folder loads reduced to a smaller number of rounds.
+The Rust column is one release run of the Criterion target on one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.94.1 release (thin LTO, one codegen unit), 100 samples. The Python and Node columns are an earlier release run on Windows, AMD Ryzen 5 150 with 12 logical CPUs, Python 3.12.13 and Node 24.18, 2,000 boundary iterations each with expensive folder loads reduced to a smaller number of rounds; the two hosts differ, so a row compares a language against its own boundary and not against the Rust figure.
 
 | Folder operation | Rust estimate | Python | Node |
 | --- | ---: | ---: | ---: |
-| Load full seed | 3.98 s | 2.03 s | 1 op/s, rounded |
+| Load full seed | 1.13 s | 2.03 s | 1 op/s, rounded |
 | Load 200 scalar fields | Not measured by this Rust fixture | 4.73 ms | 128 ops/s |
-| Load 1 / 10 / 100 field shards | 1.15 / 7.05 / 84.7 ms | Not isolated | Not isolated |
-| Write 100 field shards | 551 ms | Not isolated | Not isolated |
-| Load full catalog with second branch | 3.41 s | Not isolated | Not isolated |
-| Write full catalog with second branch | 12.1 s | Not isolated | Not isolated |
+| Load 1 / 10 / 100 field shards | 161 us / 945 us / 10.0 ms | Not isolated | Not isolated |
+| Write 100 field shards | 30.7 ms | Not isolated | Not isolated |
+| Load full catalog with second branch | 1.07 s | Not isolated | Not isolated |
+| Write full catalog with second branch | 558 ms | Not isolated | Not isolated |
 
 Different processes and sample counts make these observed boundary costs, not a language speed ranking. The full-seed load resolves referenced components and groups and compiles message/group indexes; scalar-shard fixtures measure a smaller operation.
 
 | Native full-seed snapshot | Rust estimate |
 | --- | ---: |
-| `into_json` | 177 ms |
-| `from_json` | 1.44 s |
-| `stable_hash`, one digester state allocation | 396 ms |
+| `into_json` | 110 ms |
+| `from_json` | 1.06 s |
+| `stable_hash`, one digester state allocation | 191 ms |
 
 | Small catalog boundary | Python | Node |
 | --- | ---: | ---: |
@@ -334,7 +334,7 @@ Root navigation is asserted with `Counted`: loading resolves four category roots
 Regenerate with release bindings installed:
 
 ```bash
-cargo bench -p yggdryl --bench fix -- --sample-size 10 --warm-up-time 0.1 --measurement-time 0.2
+cargo bench -p yggdryl --bench fix -- fix/store
 python python/benchmarks/fix.py --iterations 2000
 ```
 

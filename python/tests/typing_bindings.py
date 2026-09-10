@@ -1237,18 +1237,6 @@ fix_has: bool = 38 in fix_registry_from_fields
 fix_names: list[str] = [entry.name for entry in fix_registry_from_fields]
 fix_registry_from_fields.write_into(Path("build") / "fix")
 
-fix_classified: tuple[pa.Array, pa.Array, pa.Array] = fix.classify_arrow_array(
-    pa.array([b"35=D|55=TTF|"], pa.binary()), "sent"
-)
-fix_parsed: pa.RecordBatchReader = fix.parse_arrow_reader(
-    pa.RecordBatchReader.from_batches(pa.schema([pa.field("body", pa.binary())]), []),
-    fix_registry_from_fields,
-    "body",
-    version="4.4",
-    dedup=True,
-    enrich=True,
-    lifecycle=True,
-)
 
 fix_root: Field = Field(
     "NewOrderSingle", DataType.from_fields([fix_field]), nullable=False
@@ -1286,6 +1274,13 @@ fix_message_regulatory: Scalar | None = fix_message.trd_reg_timestamp("1")
 fix_message_anomalies: list[str] = fix_message.anomalies()
 fix_message_arrivals: list[tuple[int, int, str, str]] = fix_message.entries()
 fix_message_wire: bytes = fix_message.into_bytes(124)
+fix_message.set(38, 200)
+fix_message.set("OrderQty", None)
+fix_message_removed: Scalar | None = fix_message.remove(38)
+fix_message_read_back: fix.FixMsg = fix.FixMsg.from_row(fix_root, {"OrderQty": 100})
+fix_message_read_back_explicit: fix.FixMsg = fix.FixMsg.from_row(
+    fix_root, fix_message_value, fix_registry_from_fields
+)
 
 fix_branch_or_none: fix.FixBranch | None = fix_registry_from_fields.get_branch_by_digest(
     fix_declared_branch.digest()
@@ -1300,19 +1295,41 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,
     branch="cme",
     version="4.2",
+    separator=124,
+    payload_column="line",
     null_values=["<none>"],
+    direction="recv",
+    batch_byte_size=1 << 20,
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
-fix_read_messages: fix.FixMessages = fix_reader.transform_line(b"8=FIX.4.4|35=D|10=0|")
+fix_reader_branch: str | None = fix_reader_pinned.branch
+fix_reader_version: str | None = fix_reader_pinned.version
+fix_reader_separator: int | None = fix_reader_pinned.separator
+fix_reader_payload_column: str = fix_reader_pinned.payload_column
+fix_reader_null_values: list[str] = fix_reader_pinned.null_values
+fix_reader_direction: str = fix_reader_pinned.direction
+fix_reader_batch_byte_size: int = fix_reader_pinned.batch_byte_size
+fix_read_messages: fix.FixMessages = fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|")
 fix_read_text: fix.FixMsg = next(fix_read_messages)
-fix_read_bytes: fix.FixMsg = next(fix_reader.transform_line(b"8=FIX.4.4|35=D|10=0|"))
-fix_read_record: fix.FixMessages = fix_reader.transform_record({"body": b"35=D|"})
-fix_read_config: fix.FixMessages = fix_reader.transform_ulconfig_line(b'{"Name":"Router"}')
-fix_read_frame: fix.FixMsg = fix_reader.transform_fix_line(b"8=FIX.4.4", 1)
-fix_read_bridge: fix.FixMsg = fix_reader.transform_ullink_line(b"#SYMBOL=TTF")
-fix_read_pairs: fix.FixMsg = fix_reader.transform_pairs([("55", "AAPL")])
-fix_read_filled: list[fix.FixMsg] = fix_reader.enrich_fixmsgs([fix_read_text])
-fix_read_stamped: list[fix.FixMsg] = fix_reader.lifecycle(iter([fix_read_text]))
+fix_read_bytes: fix.FixMsg = next(fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|"))
+fix_read_lines: fix.FixMessages = fix_reader.parse_lines([b"8=FIX.4.4|35=D|10=0|", bytearray()])
+fix_read_record: fix.FixMessages = fix_reader.parse_text_record({"body": b"35=D|"})
+fix_read_records: fix.FixMessages = fix_reader.parse_text_records([{"body": b"35=D|"}])
+fix_read_config: fix.FixMessages = fix_reader.parse_ulconfig_line(b'{"Name":"Router"}')
+fix_read_frame: fix.FixMsg = fix_reader.parse_fix_line(b"8=FIX.4.4", 1)
+fix_read_bridge: fix.FixMsg = fix_reader.parse_ullink_line(b"#SYMBOL=TTF")
+fix_read_fixml: fix.FixMsg = fix_reader.parse_fixml_line(b"<Order ClOrdID='A'/>")
+fix_read_pairs: fix.FixMsg = fix_reader.parse_pairs([("55", "AAPL")])
+fix_read_filled: fix.FixMsg = fix_reader.enrich_message(fix_read_text)
+fix_read_filled_stream: fix.FixMessages = fix_reader.enrich_messages([fix_read_text])
+fix_read_latest: fix.FixMsg = fix_read_text.into_latest()
+fix_read_stamped: fix.FixMessages = fix_reader.lifecycle(iter([fix_read_text]))
+fix_capture: pa.Table = pa.table({"body": pa.array([b"8=FIX.4.4|35=D|10=0|"], pa.binary())})
+fix_parsed: pa.RecordBatchReader = fix_reader.parse_text_arrow_reader(fix_capture)
+fix_filled: pa.RecordBatchReader = fix_reader.enrich_messages_arrow_reader(fix_parsed)
+fix_read_back: fix.FixMessages = fix_reader.messages(fix_filled)
+fix_rows: pa.RecordBatchReader = fix_reader.arrow_reader(fix_root, fix_read_back)
+fix_written: int = fix_reader.write_arrow_reader(fix_rows, io.BytesIO())
 fix_life: fix.FixLifecycle = fix.FixLifecycle(fix_registry_from_fields)
 fix_life_default: fix.FixLifecycle = fix.FixLifecycle()
 fix_life_filled: fix.FixMsg = fix_life.fill(fix_read_text)

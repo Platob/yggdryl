@@ -1313,7 +1313,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixBranch`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `parse_arrow_reader()`, `classify_arrow_array()`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), `ULBRIDGE_BRANCH` (`"ulbridge"`, the branch a bridge's own fields declare), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim for a scalar field. The `fix:` vocabulary is typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`, and the definition metadata `codes`, `counter`, `component` and `msgtype`.
+`yggdryl.fix` carries `FixRegistry`, `FixBranch`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), `ULBRIDGE_BRANCH` (`"ulbridge"`, the branch a bridge's own fields declare), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim for a scalar field. The `fix:` vocabulary is typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`, and the definition metadata `codes`, `counter`, `component` and `msgtype`.
 
 | Crossing | Rule |
 | --- | --- |
@@ -1327,10 +1327,11 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
 | branch digests | `branch_by_digest` / `get_branch_by_digest` take the `int` an arrival entry carries and answer the `FixBranch` it names; only a declared branch resolves |
 | `FixMsg.entries()` | `(tag, bid, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
-| `FixMsg` | immutable: equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry |
+| `FixMsg` | equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and `FixMsg.from_row(schema, row, registry=None)` reads a fixed row back, entries included |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; its wire code remains complete UTF-8 text |
-| `FixCodec` | `transform_line`, `transform_record`, `transform_ulconfig_line` return lazy `FixMessages`; specialized FIX, Ullink and FIXML transforms return one `FixMsg` |
-| `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a `list` out for the reader, one at a time for the lifecycle; `FixLifecycle.alive()` counts the chains no terminal state has closed, and the lifecycle is mutable, so unhashable |
+| `FixCodec` | pins are keywords - `branch`, `version`, `separator`, `payload_column`, `null_values`, `direction`, `batch_byte_size`; `parse_line`, `parse_text_record`, `parse_ulconfig_line` return lazy `FixMessages`, `parse_lines`, `parse_text_records`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
+| Arrow twins | `parse_text_arrow_reader`, `enrich_messages_arrow_reader` and `arrow_reader(schema, messages)` take and answer a `pyarrow.RecordBatchReader`, over the C Stream interface; `write_arrow_reader(reader, sink)` writes lines into a binary file-like and answers their count |
+| `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive()` counts the chains no terminal state has closed, and the lifecycle is mutable, so unhashable |
 | output | `FixMsg.into_row(field)` projects a table row; `into_bytes(separator=1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
 | UlPlugin | `UlPlugin.from_json_bytes` / `from_json_scalar` return lazy `UlPlugins`; each selection converts to one flat message with `into_fixmsg` |
 
@@ -1414,7 +1415,7 @@ assert message.get_by_id("5001:cme") is None
 
 # Generic intake is lazy even when the source yields one message.
 wire = b"8=FIX.4.4|35=D|55=AAPL|10=0|"
-messages = FixCodec(registry).transform_line(wire)
+messages = FixCodec(registry).parse_line(wire)
 parsed = next(messages)
 assert next(messages, None) is None
 assert parsed.into_bytes(ord("|")) == wire
@@ -1442,7 +1443,7 @@ document = [
     {"request": {"type": "read", "mbean": "bridge:type=Plugin,name=Prices"},
      "status": 200, "value": {"Name": "Prices"}},
 ]
-messages = codec.transform_ulconfig_line(json.dumps(document).encode())
+messages = codec.parse_ulconfig_line(json.dumps(document).encode())
 assert isinstance(messages, FixMessages)
 assert [message.by_name("Name").as_py() for message in messages] == ["Orders", "Prices"]
 assert next(messages, None) is None

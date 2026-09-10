@@ -6,7 +6,7 @@ A message says what happened; it does not say which order it happened to, beyond
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `FixLifecycle`, `FixCodec::lifecycle`, `FixOptions::lifecycle`, `INSTID_TAG`, `ID_TAG`, `PERSISTENTID_TAG` |
+| Owns | `FixLifecycle`, `FixCodec::lifecycle`, `INSTID_TAG`, `ID_TAG`, `PERSISTENTID_TAG` |
 | Columns | `instid` (65016), `id` (65017), `persistentid` (65018): three of the [crate's own](capture.md#the-crates-own-columns), sixteen bytes each, big-endian |
 | `instid` | the xxh128 digest of the instrument's market, classification, ISIN - else symbol - and currency, upper-cased; null where the message names none of them |
 | `id` | the instant closest to the market impact, in microseconds, then the xxh3 digest of what the message said: every message has one, and ids sort by time |
@@ -16,7 +16,7 @@ A message says what happened; it does not say which order it happened to, beyond
 | Clock | `TransactTime(60)`, else `SendingTime(52)`, else the row's `timestamp`, else the epoch |
 | Stated | a value the message already carries is never overwritten, so a stamped stream read again is a no-op |
 | Entries | untouched: the wire re-emits byte for byte |
-| Bindings | Rust; Python (`FixLifecycle`, `FixCodec.lifecycle`, `parse_arrow_reader(lifecycle=True)`); JavaScript (`FixLifecycle`, `FixCodec.lifecycle`) |
+| Bindings | Rust; Python (`FixLifecycle`, `FixCodec.lifecycle`); JavaScript (`FixLifecycle`, `FixCodec.lifecycle`) |
 
 ## Use
 
@@ -45,7 +45,7 @@ One order's life, six messages long, on one persistent identity.
     ];
     let mut stamped = Vec::new();
     for line in lines {
-        stamped.push(life.fill(reader.transform_line(line, false)?.next().expect("one frame")?)?);
+        stamped.push(life.fill(reader.parse_line(line)?.next().expect("one frame")?)?);
     }
 
     // One chain from the order to the fill, whatever identifier each
@@ -66,7 +66,7 @@ One order's life, six messages long, on one persistent identity.
     // Over an iterator, the codec runs one lifecycle for the whole stream.
     let again: Vec<_> = reader
         .lifecycle(lines.iter().map(|line| {
-            reader.transform_line(line, false).unwrap().next().expect("one frame").unwrap()
+            reader.parse_line(line).unwrap().next().expect("one frame").unwrap()
         }))
         .collect::<yggdryl::Result<_>>()?;
     assert_eq!(again[3].by_tag(PERSISTENTID_TAG)?, chain);
@@ -92,7 +92,7 @@ One order's life, six messages long, on one persistent identity.
         b"8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|60=20260102-10:15:32.000|10=0|",
         b"8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:33.000|10=0|",
     ]
-    stamped = [life.fill(next(reader.transform_line(line))) for line in lines]
+    stamped = [life.fill(next(reader.parse_line(line))) for line in lines]
 
     # One chain from the order to the fill, whatever identifier each
     # message chose, and one instrument.
@@ -109,8 +109,9 @@ One order's life, six messages long, on one persistent identity.
     assert life.alive() == 0
     assert stamped[3].into_bytes(ord("|")) == lines[3]
 
-    # Over an iterable, the codec runs one lifecycle for the whole stream.
-    again = reader.lifecycle(next(reader.transform_line(line)) for line in lines)
+    # Over an iterable, the codec runs one lifecycle for the whole stream,
+    # answering it lazily.
+    again = list(reader.lifecycle(next(reader.parse_line(line)) for line in lines))
     assert again[3].by_tag(PERSISTENTID) == chain
     ```
 
@@ -133,7 +134,7 @@ One order's life, six messages long, on one persistent identity.
       '8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|60=20260102-10:15:32.000|10=0|',
       '8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:33.000|10=0|',
     ]
-    const stamped = lines.map((line) => life.fill(reader.transformLine(Buffer.from(line)).next().value))
+    const stamped = lines.map((line) => life.fill(reader.parseLine(Buffer.from(line)).next().value))
 
     // One chain from the order to the fill, whatever identifier each
     // message chose, and one instrument.
@@ -150,8 +151,9 @@ One order's life, six messages long, on one persistent identity.
     assert.equal(life.alive, 0)
     assert.equal(stamped[3].intoBytes('|'.charCodeAt(0)).toString(), lines[3])
 
-    // Over an array, the reader runs one lifecycle for the whole stream.
-    const again = reader.lifecycle(lines.map((line) => reader.transformLine(Buffer.from(line)).next().value))
+    // Over any iterable, the codec runs one lifecycle for the whole stream,
+    // answering it lazily.
+    const again = [...reader.lifecycle(lines.map((line) => reader.parseLine(Buffer.from(line)).next().value))]
     assert.ok(again[3].byTag(65018).equals(chain))
     ```
 
@@ -171,7 +173,7 @@ The state a message reports - the crate's own `state`, else `OrdStatus`, else `E
 
 ## In a batch read
 
-`FixOptions::lifecycle` runs one `FixLifecycle` over the whole read, so the `persistentid` a row carries depends on the rows before it - which is what a chain is. It is off by default for the reason `enrich` is: a stamped value is indistinguishable from a stated one, so stamping has to be asked for.
+The lifecycle is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a stage is a call: `codec.arrow_reader(schema, codec.lifecycle(codec.messages(reader)))` runs one `FixLifecycle` over the whole read, so the `persistentid` a row carries depends on the rows before it - which is what a chain is. Nothing stamps unasked, for the reason nothing enriches unasked: a stamped value is indistinguishable from a stated one. The example [there](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) lands one order's life in a batch on one chain.
 
 ## Edges
 

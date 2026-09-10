@@ -41,7 +41,6 @@
 //! On a well-known dialect it is empty on every row and costs a validity bit.
 
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use smol_str::SmolStr;
@@ -317,22 +316,52 @@ pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>> {
     schema.fields().iter().map(column_tag).collect()
 }
 
-/// One schema's column tags, shared by the rows read against it.
-type ColumnTags = Rc<[Option<i32>]>;
+/// What one column answers for, read off its field once per schema.
+///
+/// A column declaring a group's `fix:counter` answers with that group; any
+/// other column answers for the tag its field carries; one carrying neither
+/// is a capture's own. Both are metadata reads, and a row is filled through
+/// this so a batch of a million rows reads the schema once.
+#[derive(Clone, Copy)]
+pub(super) struct Column {
+    tag: Option<i32>,
+    counter: Option<i32>,
+}
+
+/// One schema's columns, shared by the rows read against it.
+pub(super) type ColumnPlan = Arc<[Column]>;
+
+/// [`fix_column_tags`] and each column's counter, for one schema.
+///
+/// # Errors
+///
+/// Returns the metadata refusal when a column's `fix:counter` is not a tag.
+pub(super) fn column_plan(schema: &Field) -> Result<ColumnPlan> {
+    schema
+        .fields()
+        .iter()
+        .map(|column| {
+            Ok(Column {
+                tag: column_tag(column),
+                counter: column.as_fix().counter()?,
+            })
+        })
+        .collect()
+}
 
 thread_local! {
-    /// The tag table of the schema this thread last filled one row from.
+    /// The plan of the schema this thread last filled one row from.
     ///
     /// A message read on its own pays the schema's metadata once per column,
     /// which is most of what a row costs, and the schema it is read against
     /// is the same one for a whole capture. The columns' shared storage is
-    /// held beside the table, so the storage outlives the entry and its
+    /// held beside the plan, so the storage outlives the entry and its
     /// address names it and nothing else.
-    static LAST_COLUMN_TAGS: RefCell<Option<(Fields, ColumnTags)>> = const { RefCell::new(None) };
+    static LAST_COLUMN_PLAN: RefCell<Option<(Fields, ColumnPlan)>> = const { RefCell::new(None) };
 }
 
 /// Whether two column lists are one allocation, which is what makes the
-/// remembered table theirs and nobody else's.
+/// remembered plan theirs and nobody else's.
 fn same_storage(left: &Fields, right: &Fields) -> bool {
     match (&left.0, &right.0) {
         (Some(left), Some(right)) => Arc::ptr_eq(left, right),
@@ -341,22 +370,22 @@ fn same_storage(left: &Fields, right: &Fields) -> bool {
     }
 }
 
-/// [`fix_column_tags`] for one schema, remembered across the rows this
-/// thread reads against it.
-fn column_tags_of(schema: &Field) -> ColumnTags {
+/// [`column_plan`] for one schema, remembered across the rows this thread
+/// reads against it.
+fn column_plan_of(schema: &Field) -> Result<ColumnPlan> {
     let DataType::Struct(columns) = schema.dtype() else {
-        return Rc::from(fix_column_tags(schema));
+        return column_plan(schema);
     };
-    LAST_COLUMN_TAGS.with(|held| {
+    LAST_COLUMN_PLAN.with(|held| {
         let mut held = held.borrow_mut();
-        if let Some((known, tags)) = held.as_ref() {
+        if let Some((known, plan)) = held.as_ref() {
             if same_storage(known, columns) {
-                return Rc::clone(tags);
+                return Ok(Arc::clone(plan));
             }
         }
-        let tags: ColumnTags = Rc::from(fix_column_tags(schema));
-        *held = Some((columns.clone(), Rc::clone(&tags)));
-        tags
+        let plan = column_plan(schema)?;
+        *held = Some((columns.clone(), Arc::clone(&plan)));
+        Ok(plan)
     })
 }
 
@@ -502,7 +531,11 @@ pub(super) fn as_instant(held: crate::Scalar) -> crate::Scalar {
 }
 
 /// The members one repeating-group field declares, or None for anything else.
-fn item_fields(field: &Field) -> Option<&[Field]> {
+///
+/// The one reading of a group's item Struct: the row projection, the
+/// restatement and the builder each ask it, so a List no Struct item heads is
+/// "not a group" in exactly one place.
+pub(super) fn item_fields(field: &Field) -> Option<&[Field]> {
     let item = match field.dtype() {
         DataType::List(item) | DataType::LargeList(item) => item.as_ref(),
         _ => return None,
@@ -510,15 +543,140 @@ fn item_fields(field: &Field) -> Option<&[Field]> {
     item.dtype().as_fields()
 }
 
+/// One arrival entry read back out of the row value its level holds.
+///
+/// The inverse of [`entry_scalar`], level by level: the five members in the
+/// order it wrote them, the children walked as the materialized List where
+/// the level holds one and as the leaf's JSON - decoded through the crate's
+/// one parser - where the level folded them. A leaf that cannot be decoded is
+/// a refusal rather than a hole, because a message rebuilt with a pair
+/// missing is a different message. An absent tag reads as `0`, the tag of a
+/// key that named no field, and an absent key or value as empty text; the
+/// branch is copied as the digest the row holds.
+///
+/// # Errors
+///
+/// Returns [`crate::Error::InvalidRecord`] for a value that is not an entry,
+/// or the JSON reader's failure on an undecodable leaf.
+fn entry_from_scalar(pair: &crate::Scalar) -> Result<super::FixEntry> {
+    let Some(held) = pair.as_sequence() else {
+        return Err(crate::Error::InvalidRecord {
+            path: SmolStr::new_static(ENTRIES_COLUMN),
+            reason: crate::text::expected_got("an arrival entry", pair.kind()),
+        });
+    };
+    let integer = |at: usize| {
+        held.get(at)
+            .and_then(crate::Scalar::as_i128)
+            .and_then(|value| i32::try_from(value).ok())
+    };
+    let text = |at: usize| {
+        held.get(at)
+            .and_then(crate::Scalar::as_str)
+            .unwrap_or_default()
+    };
+    let children = match held.get(4) {
+        Some(tail) if tail.as_sequence().is_some() => tail
+            .as_sequence()
+            .unwrap_or_default()
+            .iter()
+            .map(entry_from_scalar)
+            .collect::<Result<Vec<_>>>()?,
+        Some(tail) => match tail.as_bytes() {
+            Some(bytes) if !bytes.is_empty() => crate::from_json_scalar(bytes)?
+                .as_sequence()
+                .unwrap_or_default()
+                .iter()
+                .map(entry_from_scalar)
+                .collect::<Result<Vec<_>>>()?,
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    };
+    let mut entry = super::FixEntry::new(integer(0).unwrap_or(0), text(2), text(3));
+    if let Some(branch) = integer(1) {
+        entry = entry.with_branch_digest(branch);
+    }
+    Ok(entry.with_children(children))
+}
+
 impl super::FixMsg {
+    /// The message a fixed row holds: the inverse of [`Self::into_row`].
+    ///
+    /// The root is `schema` and the value is `row`, checked and canonicalized
+    /// exactly as [`Self::with_registry`] checks one, so the columns are the
+    /// message's children under the names the schema gave them and every
+    /// lookup reaches them by tag as it reaches a parsed message's. The
+    /// branch is the schema's own `fix:branch`. The entries are rebuilt from
+    /// the [`ENTRIES_COLUMN`] - every level the row materialized, and the
+    /// leaf the deepest level folded into decoded through the crate's own
+    /// JSON reader - so [`Self::into_bytes`] re-emits the line the row was
+    /// read from, and a row without that column has no entries. Nothing is
+    /// parsed again: this is what makes a batch of rows a stream of messages
+    /// at the cost of the values it already holds.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::Arc;
+    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
+    /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    /// let schema = fix_schema(&registry, "fix")?;
+    /// let reader = FixCodec::new(Arc::clone(&registry));
+    /// let line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|";
+    /// let order = reader.parse_fix_line(line)?;
+    ///
+    /// let row = order.into_row(&schema)?;
+    /// let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row)?;
+    ///
+    /// // The same message, reached the same way and re-emitted byte for byte.
+    /// assert_eq!(held.by_tag(55)?, order.by_tag(55)?);
+    /// assert_eq!(held.entries(), order.entries());
+    /// assert_eq!(held.into_bytes(b'|'), line);
+    /// // And the row it came from is the row it makes.
+    /// assert_eq!(held.into_row(&schema)?, row);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusal [`Self::with_registry`] raises when the row does
+    /// not fit the schema, [`crate::Error::InvalidRecord`] when the entries
+    /// column holds something that is not an arrival entry, or the JSON
+    /// reader's failure on a leaf it cannot decode.
+    pub fn from_row(
+        registry: Arc<FixRegistry>,
+        schema: &Field,
+        row: &crate::Scalar,
+    ) -> Result<Self> {
+        let mut built = Self::with_registry(registry, schema.clone(), row.clone())?;
+        let entries = schema
+            .index_of(ENTRIES_COLUMN)
+            .and_then(|at| built.as_value().get(at))
+            .and_then(crate::Scalar::as_sequence)
+            .map(|held| {
+                held.iter()
+                    .map(entry_from_scalar)
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+        built.set_entries(entries);
+        Ok(built)
+    }
+
     /// This message as the fixed row a table holds.
     ///
     /// The columns are the schema's own, in its own order, and each is filled
     /// by its scalar tag or logical group's `fix:counter`. A message carrying
     /// nothing at a column answers null there rather than shifting its neighbours, which
     /// is what makes two rows of one capture comparable at all. A column no
-    /// tag or group counter names is a capture's own and is left null for the
-    /// capture reader to fill.
+    /// tag or group counter names is a capture's own: it takes the child of
+    /// the same name where the message has one - which is how a row read
+    /// back through [`Self::from_row`] returns to its schema whole - and is
+    /// left null otherwise, for the capture reader to fill.
     ///
     /// The arrival record closes the row under [`ENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it, and [`UNMAPPED_COLUMN`]
@@ -534,7 +692,7 @@ impl super::FixMsg {
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     /// let schema = fix_schema(&registry, "fix")?;
     /// let reader = FixCodec::new(Arc::clone(&registry));
-    /// let order = reader.transform_fix_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|", false)?;
+    /// let order = reader.parse_fix_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|")?;
     ///
     /// let row = order.into_row(&schema)?;
     /// let held = row.as_sequence().expect("a row");
@@ -553,8 +711,8 @@ impl super::FixMsg {
     /// the arrival column's leaf - the one fallible step, because every other
     /// member is already a value.
     pub fn into_row(&self, schema: &Field) -> Result<crate::Scalar> {
-        let tags = column_tags_of(schema);
-        self.row_values(schema, &tags)
+        let plan = column_plan_of(schema)?;
+        self.row_values(schema, &plan)
             .map(crate::Scalar::from_sequence)
     }
 
@@ -563,13 +721,9 @@ impl super::FixMsg {
     /// What [`Self::into_row`] answers, still open: a reader carrying its own
     /// columns in front of the tags writes them into the slots the schema
     /// left for them and wraps the row once, rather than unwrapping a row to
-    /// wrap it again. `tags` is [`fix_column_tags`] over the same schema,
-    /// read once by the caller rather than once per row.
-    pub(super) fn row_values(
-        &self,
-        schema: &Field,
-        tags: &[Option<i32>],
-    ) -> Result<Vec<crate::Scalar>> {
+    /// wrap it again. `plan` is [`column_plan`] over the same schema, read
+    /// once by the caller rather than once per row.
+    pub(super) fn row_values(&self, schema: &Field, plan: &[Column]) -> Result<Vec<crate::Scalar>> {
         let columns = schema.fields();
         // The arrival record answers both closing columns and is walked once,
         // because the second is a view over the first rather than a second
@@ -586,17 +740,18 @@ impl super::FixMsg {
         // The market clock answers two columns, so it is read once for both.
         let mut clock: Option<crate::Scalar> = None;
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
-        for (column, tag) in columns.iter().zip(tags) {
+        for (column, planned) in columns.iter().zip(plan) {
             values.push(match column.name() {
                 ENTRIES_COLUMN => known.take().unwrap_or(crate::Scalar::Null),
                 UNMAPPED_COLUMN => unknown.take().unwrap_or(crate::Scalar::Null),
                 // A column declaring a group's `fix:counter` answers with
                 // that group, read from the message's own occurrences. Any
                 // other column answers for the tag its field carries; one that
-                // carries none is a capture's own column and nothing in the
-                // message answers for it.
+                // carries none is a capture's own column, and only a child
+                // spelled as it is - what a row read back through `from_row`
+                // holds - answers for it.
                 _ => {
-                    if let Some(counter) = column.as_fix().counter()? {
+                    if let Some(counter) = planned.counter {
                         let value = self
                             .index_of_group(counter)
                             .and_then(|index| self.as_value().get(index))
@@ -604,13 +759,16 @@ impl super::FixMsg {
                             .unwrap_or(crate::Scalar::Null);
                         self.regrouped(counter, column, value)
                     } else {
-                        match *tag {
+                        match planned.tag {
                             Some(tag) => {
                                 let held =
                                     self.regrouped(tag, column, self.column_value(tag, &mut clock));
                                 fitted(column, held)
                             }
-                            None => crate::Scalar::Null,
+                            None => self
+                                .index_of_name(column.name())
+                                .and_then(|at| self.as_value().get(at))
+                                .map_or(crate::Scalar::Null, |held| fitted(column, held.clone())),
                         }
                     }
                 }
@@ -652,7 +810,7 @@ impl super::FixMsg {
                     .map(|member| {
                         spelled
                             .iter()
-                            .position(|name| name.eq_ignore_ascii_case(member.name()))
+                            .position(|name| crate::types::folds_equal(name, member.name()))
                             .and_then(|at| stated.get(at))
                             .cloned()
                             .unwrap_or(crate::Scalar::Null)

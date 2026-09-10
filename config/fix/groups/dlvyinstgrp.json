@@ -3,20 +3,20 @@
   "dtype": {
     "type": "list",
     "field": {
-      "name": "dlvyinst",
+      "name": "dlvyinstcomponent",
       "dtype": {
         "type": "null"
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "dlvyinst"
+        "fix:component": "dlvyinstcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
     "display": "DlvyInstGrp",
-    "fix:component": "dlvyinst",
+    "fix:component": "dlvyinstcomponent",
     "fix:counter": "85",
     "fix:tag": "592201"
   }

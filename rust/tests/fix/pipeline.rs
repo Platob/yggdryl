@@ -23,8 +23,8 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::{
-    FixBatchReader, FixBranch, FixCodec, FixEntry, FixOptions, FixRegistry, IOMedia, Scalar,
-    TimeUnit, Timezone, Url, fix_schema, fix_schema_carrying,
+    FixBranch, FixCodec, FixEntry, FixRegistry, IOMedia, Scalar, TimeUnit, Timezone, Url,
+    fix_schema, fix_schema_carrying,
 };
 
 /// The committed dictionary beside the bridge's own vocabulary.
@@ -105,9 +105,9 @@ fn text() -> RecordOptions {
     text_options().into()
 }
 
-/// The codec options: the bridge's own dialect, pinned for the whole run.
-fn options() -> FixOptions {
-    FixOptions::new().with_branch(FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap())
+/// The codec: the bridge's own dialect, pinned for the whole run.
+fn codec() -> FixCodec {
+    FixCodec::new(registry()).with_branch(&FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap())
 }
 
 /// The first stage alone, as one batch: what the text reader hands the codec.
@@ -123,15 +123,11 @@ fn text_stage(lines: &[&str]) -> RecordBatch {
 
 /// The whole path, as one batch: the capture is far under the byte target.
 fn read(lines: &[&str]) -> RecordBatch {
-    let batches: Vec<RecordBatch> = FixBatchReader::from_column(
-        registry(),
-        corpus(lines).read_arrow_reader(&text()).expect("a reader"),
-        "body",
-        options(),
-    )
-    .expect("the batch reader opens")
-    .map(|batch| batch.expect("a batch"))
-    .collect();
+    let batches: Vec<RecordBatch> = codec()
+        .parse_text_arrow_reader(corpus(lines).read_arrow_reader(&text()).expect("a reader"))
+        .expect("the batch reader opens")
+        .map(|batch| batch.expect("a batch"))
+        .collect();
     assert_eq!(batches.len(), 1, "one batch, under the byte target");
     batches.into_iter().next().expect("the batch")
 }
@@ -686,18 +682,17 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // front of it - the routed row too, because what the row filled from its
     // header is not an entry and so is not re-emitted.
     let mut written: Vec<u8> = Vec::new();
-    let mut emitting = FixOptions::new();
-    emitting.separator = b'|';
-    let source = FixBatchReader::from_column(
-        Arc::clone(&registry),
-        corpus(&CAPTURE)
-            .read_arrow_reader(&text())
-            .expect("a reader"),
-        "body",
-        options(),
-    )
-    .expect("the batch reader opens");
-    let rows = yggdryl::write_fix(source, &mut written, &emitting).expect("the capture writes");
+    let emitting = codec.clone().with_separator(b'|');
+    let source = emitting
+        .parse_text_arrow_reader(
+            corpus(&CAPTURE)
+                .read_arrow_reader(&text())
+                .expect("a reader"),
+        )
+        .expect("the batch reader opens");
+    let rows = emitting
+        .write_arrow_reader(source, &mut written)
+        .expect("the capture writes");
     assert_eq!(rows, CAPTURE.len() as u64);
     let lines: Vec<&str> = std::str::from_utf8(&written)
         .expect("text")

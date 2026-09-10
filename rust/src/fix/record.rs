@@ -9,9 +9,9 @@
 //! This is not the Arrow surface. [`super::batch`] reads a column of payloads
 //! and writes a column of rows, and it is gated on `arrow` because it speaks
 //! Arrow's types. Reading one record speaks none of them, so it lives here
-//! instead and a schema-only build keeps [`FixCodec::transform_record`] - the same
-//! split the Avro codec already draws between its scalar and record surfaces.
-//! Both surfaces end in [`transform_bytes`], which is where a row's own
+//! instead and a schema-only build keeps [`FixCodec::parse_text_record`] - the
+//! same split the Avro codec already draws between its scalar and record
+//! surfaces. Both surfaces end in [`parse_bytes`], which is where a row's own
 //! columns are applied, so a row read one way reads exactly as it reads the
 //! other.
 
@@ -116,21 +116,20 @@ impl<'row> RowParameters<'row> {
 /// every row is, by what the row itself stated.
 pub(super) fn empty(reader: &FixCodec, extras: RowExtras<'_>) -> FixMsg {
     reader
-        .build_pairs_with(&[], extras, false)
+        .build_pairs_with(&[], extras)
         .expect("an empty message builds")
 }
 
 /// One record read against one codec, the payload taken from `payload`.
 ///
-/// [`FixCodec::transform_record`] is the door; this reads the row's own
-/// columns out of the record and hands them on, beside the option-driven path
+/// [`FixCodec::parse_text_record`] is the door; this reads the row's own
+/// columns out of the record and hands them on, beside the cell-driven path
 /// the batch reader takes to the same place. Nothing is copied: the payload
 /// is read where the record holds it, and a parameter is the text it is.
-pub(super) fn transform_record_with(
+pub(super) fn parse_record_with(
     reader: &FixCodec,
     record: &Scalar,
     payload: &str,
-    enrich: bool,
 ) -> Result<FixMessages> {
     let Some(held) = record.as_record() else {
         return Err(Error::Parse {
@@ -146,9 +145,47 @@ pub(super) fn transform_record_with(
             .map(|(_, value)| value)
             .filter(|value| !value.is_null())
     };
-    let bytes = column(payload)
-        .and_then(|held| held.as_bytes().or_else(|| held.as_str().map(str::as_bytes)))
-        .unwrap_or_default();
+    // The payload column is the one column a record must have: a record
+    // without it, or holding something that is neither text nor bytes under
+    // it, would parse nothing, and is refused naming the column rather than
+    // answered as an empty message. A null under it is a row of nothing,
+    // which is still a row.
+    let stated = held
+        .iter()
+        .find(|(known, _)| crate::types::folds_equal(known, payload))
+        .map(|(_, value)| value);
+    let bytes = match stated {
+        None => {
+            let names: Vec<&str> = held.keys().map(|name| name.as_str()).collect();
+            return Err(Error::InvalidRecord {
+                path: smol_str::SmolStr::new(payload),
+                reason: crate::text::expected_got(
+                    format_args!("a text or binary column named {payload}"),
+                    format_args!("a record carrying only [{}]", names.join(", ")),
+                ),
+            });
+        }
+        Some(value) if value.is_null() => &[][..],
+        Some(value) => match value
+            .as_bytes()
+            .or_else(|| value.as_str().map(str::as_bytes))
+        {
+            Some(bytes) => bytes,
+            None => {
+                let actual = value.dtype().map_or_else(
+                    |_| "another value".to_string(),
+                    |dtype| format!("a value of {dtype}"),
+                );
+                return Err(Error::InvalidRecord {
+                    path: smol_str::SmolStr::new(payload),
+                    reason: crate::text::expected_got(
+                        format_args!("a text or binary column named {payload}"),
+                        actual,
+                    ),
+                });
+            }
+        },
+    };
     // Every other column the record carries is offered as a fill: one named
     // after a field the dictionary knows lands on it, the rest are silence.
     // The plugin that logged the line fills the plugin session the line's
@@ -170,12 +207,13 @@ pub(super) fn transform_record_with(
         .collect();
     if let Some(plugin) = column(PLUGIN_COLUMN) {
         // The direction the record states, else the one its line spells,
-        // else sent: the reading the batch reader makes of an unmarked line,
-        // so one record and one batch row fill the same plugin session.
+        // else the codec's default: the reading the batch reader makes of an
+        // unmarked line, so one record and one batch row fill the same
+        // plugin session.
         let direction = column(DIRECTION_COLUMN)
             .and_then(Scalar::as_str)
             .or_else(|| crate::types::MsgDirection::infer_bytes(bytes))
-            .or(Some(crate::types::MsgDirection::SENT));
+            .or(reader.direction());
         if let Some((field, tag)) = plugin_session(reader.registry(), direction) {
             resolved.push((field, tag, plugin));
         }
@@ -195,7 +233,7 @@ pub(super) fn transform_record_with(
         clock: column(CLOCK_COLUMN),
         fills: &fills,
     };
-    transform_bytes(reader, parameters, bytes, enrich)
+    parse_bytes(reader, parameters, bytes)
 }
 
 /// Reads one payload through the byte readers, the row's own parameters
@@ -207,11 +245,10 @@ pub(super) fn transform_record_with(
 /// statement. The codec is the run's, and a row stating nothing reads under
 /// it as it stands; a copy carrying the row's own pins is made only for a
 /// row that states one.
-pub(super) fn transform_bytes(
+pub(super) fn parse_bytes(
     reader: &FixCodec,
     parameters: RowParameters<'_>,
     bytes: &[u8],
-    enrich: bool,
 ) -> Result<FixMessages> {
     let branch = parameters
         .branch
@@ -245,9 +282,9 @@ pub(super) fn transform_bytes(
     // what a record carrying only a payload has to do.
     let built = match parameters.separator.and_then(|held| held.bytes().next()) {
         Some(separator) => reader
-            .split_fix_with(bytes, separator, extras, enrich)
+            .split_fix_with(bytes, separator, extras)
             .map(FixMessages::one),
-        None => reader.transform_line_with(bytes, extras, enrich),
+        None => reader.parse_line_with(bytes, extras),
     };
     Ok(built.unwrap_or_else(|_| FixMessages::one(empty(reader, extras))))
 }

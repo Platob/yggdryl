@@ -5,11 +5,14 @@
 //! Jolokia exchange whose answer is a configuration document, a wildcard
 //! document and an error, FIXML behind a verb, frames spelled with `^A` and
 //! `<SOH>`, a FIXT logon, a `35=UL` frame with exact lengths and real
-//! control-byte separators, a bridge row with null spellings, a marked frame,
-//! a statistics line, an empty body and a warning. The text reader frames
-//! every line under the bridge's own row header; each row is then read on
-//! its own as a record and as a batch of one shape, with enrichment on, and
-//! the two readings are required to agree line for line.
+//! control-byte separators, one more carrying a trade capture whose payload
+//! packs a group inside a group inside a group and separates their members
+//! with the glyphs a viewer prints for those bytes, one carrying a FIXML
+//! document in the same field instead, a bridge row with null spellings, a
+//! marked frame, a statistics line, an empty body and a warning. The text reader frames every line under the bridge's own row
+//! header; each row is then read on its own as a record and as a batch of
+//! one shape, with enrichment on, and the two readings are required to agree
+//! line for line.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -21,7 +24,7 @@ use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::types::State;
 use yggdryl::{
-    FixBatchReader, FixBranch, FixCodec, FixEntry, FixOptions, FixRegistry, IOMedia, MimeType,
+    DataType, FixBranch, FixCodec, FixDedup, FixEntry, FixMsg, FixRegistry, IOMedia, MimeType,
     Scalar, Timezone, Url,
 };
 
@@ -29,7 +32,7 @@ use yggdryl::{
 const LOG: &[u8] = include_bytes!("ulbridge.log");
 
 /// How many lines the capture holds.
-const LINES: usize = 111;
+const LINES: usize = 113;
 
 /// The one line that reads as two rows: a wildcard Jolokia read, which
 /// answers for two MBeans and so yields one message per MBean.
@@ -86,31 +89,53 @@ fn reading() -> RecordOptions {
     options.into()
 }
 
-/// The bridge's own dialect, pinned for the whole run, with enrichment on.
-fn options(rows: Option<usize>) -> FixOptions {
-    let mut options =
-        FixOptions::new().with_branch(FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap());
-    options.enrich = true;
-    options.batch_row_size = rows;
-    options
+/// The codec every read uses: the bridge's own dialect, pinned for the whole
+/// run, and batches closing at `bytes` of raw capture where one is stated.
+fn codec_batching(bytes: Option<u64>) -> FixCodec {
+    let codec = FixCodec::new(registry())
+        .with_branch(&FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap());
+    match bytes {
+        Some(bytes) => codec.with_batch_byte_size(bytes),
+        None => codec,
+    }
 }
 
 /// The codec the row-by-row read uses, over the same dictionary and dialect.
 fn codec() -> FixCodec {
-    FixCodec::new(registry()).with_branch(&FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap())
+    codec_batching(None)
 }
 
-/// Every batch the FIX read yields, `rows` at a time.
-fn batches(rows: Option<usize>) -> Vec<RecordBatch> {
-    FixBatchReader::from_column(
-        registry(),
-        source().read_arrow_reader(&reading()).expect("a reader"),
-        "body",
-        options(rows),
-    )
-    .expect("the batch reader opens")
-    .map(|batch| batch.expect("a batch"))
-    .collect()
+/// One record read and filled: what the batch read does to every row, done
+/// to one, so the two readings are compared with enrichment on both.
+trait Enriched {
+    fn enriched_record(
+        &self,
+        record: &Scalar,
+    ) -> yggdryl::Result<impl Iterator<Item = yggdryl::Result<FixMsg>>>;
+}
+
+impl Enriched for FixCodec {
+    fn enriched_record(
+        &self,
+        record: &Scalar,
+    ) -> yggdryl::Result<impl Iterator<Item = yggdryl::Result<FixMsg>>> {
+        Ok(self
+            .parse_text_record(record)?
+            .map(|held| held.and_then(|held| self.enrich_message(held))))
+    }
+}
+
+/// Every batch the FIX read yields, filled, closing at `bytes` of raw capture.
+fn batches(bytes: Option<u64>) -> Vec<RecordBatch> {
+    let codec = codec_batching(bytes);
+    let parsed = codec
+        .parse_text_arrow_reader(source().read_arrow_reader(&reading()).expect("a reader"))
+        .expect("the batch reader opens");
+    codec
+        .enrich_messages_arrow_reader(parsed)
+        .expect("the filling reader opens")
+        .map(|batch| batch.expect("a batch"))
+        .collect()
 }
 
 /// One read's rows, as the values each holds, with the column names.
@@ -185,8 +210,9 @@ fn every_line_is_a_row_whatever_the_batch_size_and_the_batches_share_one_schema(
         "a row a line, and the wildcard line read once per MBean"
     );
 
-    let small = batches(Some(16));
-    assert_eq!(small.len(), ROWS.div_ceil(16), "sixteen rows a batch");
+    // A target of one byte closes a batch after every row of raw capture.
+    let small = batches(Some(1));
+    assert_eq!(small.len(), ROWS, "a row a batch");
     assert_eq!(small.iter().map(RecordBatch::num_rows).sum::<usize>(), ROWS);
     for batch in &small {
         assert_eq!(
@@ -242,7 +268,7 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
         // wildcard read answers for two MBeans, so one line is two messages
         // and fills the two rows the batch read gave it.
         let messages = codec
-            .transform_record(&record(&text_names, held), true)
+            .enriched_record(&record(&text_names, held))
             .and_then(|messages| messages.collect::<yggdryl::Result<Vec<_>>>())
             .unwrap_or_else(|error| panic!("line {line}: {error}"));
         assert_eq!(next, row_of(line), "line {line} opens at its own row");
@@ -297,7 +323,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
     // `GrossTradeAmt` is no fixed column, so the message answers for it;
     // `SettlCurrency` is one, so the row does.
     let enriched = codec()
-        .transform_record(&record(&text_names, &text[fill]), true)
+        .enriched_record(&record(&text_names, &text[fill]))
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the fill reads");
     let gross = enriched
@@ -316,7 +342,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
 
     // Read without enrichment, the same line states neither.
     let plain = codec()
-        .transform_line(body(&text_names, &text[fill]).as_bytes(), false)
+        .parse_line(body(&text_names, &text[fill]).as_bytes())
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the fill reads");
     assert!(plain.get_by_tag(381).is_none());
@@ -368,7 +394,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
         .position(|held| body(&text_names, held).contains("XX0000000001"))
         .expect("the anonymized line");
     let masked = codec()
-        .transform_record(&record(&text_names, &text[masked]), true)
+        .enriched_record(&record(&text_names, &text[masked]))
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the anonymized line reads");
     for tag in [yggdryl::ISINCODE_TAG, 470] {
@@ -537,14 +563,17 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
         .collect();
     assert_eq!(
         frames.len(),
-        3,
-        "two of the bridge's frames and the exact one"
+        4,
+        "two of the bridge's frames, the exact one and the trade capture"
     );
     for &line in &frames {
         let (row, held) = (line, &rows[row_of(line)]);
         // The frame's own statements stay the frame's.
         assert_eq!(held[column(35)].as_str(), Some("UL"), "row {row}");
-        assert_eq!(held[column(49)].as_str(), Some("ULB_DMZ_BROKER_BDG"));
+        assert!(
+            held[column(49)].as_str().is_some(),
+            "row {row} names a sender"
+        );
         // The row inside XmlData fills what the frame never stated.
         assert!(
             held[column(55)].as_str().is_some(),
@@ -559,10 +588,12 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
             "row {row} LastPx typed from the nested row"
         );
         assert!(held[column(60)].is_null() || matches!(held[column(60)], Scalar::Temporal(_)));
-        // XmlData itself is the bytes it is, whole.
+        // XmlData itself is the bytes it is, whole. It opens with a bridge
+        // key - marked with a `#` by the hop that marks them, bare by the one
+        // that does not - and never with a tag or a document.
         let xml = held[column(213)].as_bytes().expect("XmlData bytes");
         assert!(
-            xml.starts_with(b"#"),
+            xml.starts_with(b"#") || xml[0].is_ascii_uppercase(),
             "row {row}: {}",
             String::from_utf8_lossy(&xml[..40])
         );
@@ -577,7 +608,7 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
             .expect("entries");
         assert_eq!(entries.len(), 10, "row {row}: {entries:?}");
         let message = codec
-            .transform_record(&record(&text_names, &text[line]), true)
+            .enriched_record(&record(&text_names, &text[line]))
             .and_then(|mut messages| messages.next().expect("a message"))
             .expect("the frame reads");
         let data = message
@@ -635,11 +666,11 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
         .collect();
     assert_eq!(rows.len(), 2, "{rows:?}");
     let flat = codec
-        .transform_record(&record(&text_names, &text[rows[0]]), true)
+        .enriched_record(&record(&text_names, &text[rows[0]]))
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the flattened row reads");
     let nested = codec
-        .transform_record(&record(&text_names, &text[rows[1]]), true)
+        .enriched_record(&record(&text_names, &text[rows[1]]))
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the packed row reads");
     for message in [&flat, &nested] {
@@ -722,17 +753,18 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
             .expect("a URL")
             .media_type(),
     );
-    let mut deduplicated = options(None);
-    deduplicated.dedup = true;
-    let kept: usize = FixBatchReader::from_column(
-        registry(),
-        twice.read_arrow_reader(&reading()).expect("a reader"),
-        "body",
-        deduplicated,
-    )
-    .expect("the batch reader opens")
-    .map(|batch| batch.expect("a batch").num_rows())
-    .sum();
+    let parsed = codec
+        .parse_text_arrow_reader(twice.read_arrow_reader(&reading()).expect("a reader"))
+        .expect("the batch reader opens");
+    let schema = yggdryl::Field::from_arrow_schema("fix", &parsed.schema()).expect("the schema");
+    let messages = codec
+        .messages(parsed)
+        .map(|message| message.expect("a message"));
+    let kept: usize = codec
+        .arrow_reader(schema, FixDedup::new(messages).map(Ok))
+        .expect("the batch reader opens")
+        .map(|batch| batch.expect("a batch").num_rows())
+        .sum();
     assert_eq!(kept, 1);
 }
 
@@ -757,7 +789,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     };
     let read = |row: usize| {
         codec
-            .transform_record(&record(&text_names, &text[row]), true)
+            .enriched_record(&record(&text_names, &text[row]))
             .and_then(|mut messages| messages.next().expect("a message"))
             .expect("the row reads")
     };
@@ -783,7 +815,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     // message carries its own MBean's attributes flat.
     let wildcard = find(r#""mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*""#);
     let messages = codec
-        .transform_record(&record(&text_names, &text[wildcard]), true)
+        .enriched_record(&record(&text_names, &text[wildcard]))
         .expect("the wildcard reads")
         .collect::<yggdryl::Result<Vec<_>>>()
         .expect("the wildcard reads");
@@ -883,16 +915,17 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
 fn the_wire_re_emits_from_the_arrival_record_frames_included() {
     let (text_names, text) = text_rows();
     let mut written: Vec<u8> = Vec::new();
-    let mut emitting = FixOptions::new();
-    emitting.separator = b'|';
-    let source = FixBatchReader::from_column(
-        registry(),
-        source().read_arrow_reader(&reading()).expect("a reader"),
-        "body",
-        options(None),
-    )
-    .expect("the batch reader opens");
-    let rows = yggdryl::write_fix(source, &mut written, &emitting).expect("the capture writes");
+    let codec = codec();
+    let parsed = codec
+        .parse_text_arrow_reader(source().read_arrow_reader(&reading()).expect("a reader"))
+        .expect("the batch reader opens");
+    let filled = codec
+        .enrich_messages_arrow_reader(parsed)
+        .expect("the filling reader opens");
+    let rows = codec
+        .with_separator(b'|')
+        .write_arrow_reader(filled, &mut written)
+        .expect("the capture writes");
     assert_eq!(rows, ROWS as u64);
     let lines: Vec<&str> = std::str::from_utf8(&written)
         .expect("text")
@@ -917,4 +950,158 @@ fn the_wire_re_emits_from_the_arrival_record_frames_included() {
         checked += 1;
     }
     assert!(checked >= 9, "{checked} frames checked");
+}
+
+/// The members one group occurrence declares, whatever the reader named the
+/// occurrence itself.
+fn packed_members(group: &yggdryl::Field) -> Vec<&str> {
+    let DataType::List(item) = group.dtype() else {
+        panic!("a list, got {}", group.dtype());
+    };
+    item.fields().iter().map(yggdryl::Field::name).collect()
+}
+
+fn packed_group<'held>(group: &'held yggdryl::Field, name: &str) -> &'held yggdryl::Field {
+    let DataType::List(item) = group.dtype() else {
+        panic!("a list, got {}", group.dtype());
+    };
+    item.fields()
+        .iter()
+        .find(|held| held.name() == name)
+        .unwrap_or_else(|| panic!("{name} inside {}", group.name()))
+}
+
+#[test]
+fn a_document_in_a_data_field_fills_the_frame_that_carried_it() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let line = text
+        .iter()
+        .position(|held| body(&text_names, held).contains("213=<FIXML"))
+        .expect("the frame carrying a document");
+    let message = codec
+        .enriched_record(&record(&text_names, &text[line]))
+        .and_then(|mut messages| messages.next().expect("a message"))
+        .expect("the frame reads");
+
+    // The frame's own statements stay the frame's, and the document inside
+    // `XmlData` fills what the frame never said - real tags, typed by the
+    // dictionary, a nested element's attributes flattened like any other.
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("n"));
+    assert_eq!(
+        message.by_tag(17).unwrap().as_str(),
+        Some("00011377096XEEA0")
+    );
+    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("HOLN"));
+    assert_eq!(message.by_tag(32).unwrap().as_f64(), Some(120.0));
+    assert_eq!(message.by_tag(452).unwrap().as_i64(), Some(11));
+
+    // The field still holds the bytes it arrived as: a reading of a value is
+    // not a second arrival, so the wire re-emits the line exactly.
+    let xml = message.by_tag(213).unwrap().as_bytes().expect("XmlData");
+    assert!(
+        xml.starts_with(b"<FIXML"),
+        "{}",
+        String::from_utf8_lossy(xml)
+    );
+    let entries = message.entries().len();
+    assert_eq!(
+        entries, 10,
+        "the frame's own pairs and nothing the document said"
+    );
+}
+
+#[test]
+fn a_trade_capture_frame_nests_every_group_its_payload_packs() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let line = text
+        .iter()
+        .position(|held| body(&text_names, held).contains("MSGTYPE=tradecapturereport"))
+        .expect("the trade capture frame");
+    let message = codec
+        .enriched_record(&record(&text_names, &text[line]))
+        .and_then(|mut messages| messages.next().expect("a message"))
+        .expect("the frame reads");
+
+    // The frame's own type is the message's: `35=UL` is what the bridge sent
+    // and `MSGTYPE=` inside `XmlData` is what the row it carried calls itself.
+    // The frame states it, so the frame keeps it.
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("UL"));
+
+    // The occurrence packs its members behind the two glyphs a log viewer
+    // prints for the bridge's control bytes, and each becomes its own field.
+    let hedges = message
+        .by_name("nohedgegroups")
+        .expect("the hedge group")
+        .as_sequence()
+        .expect("its occurrences")
+        .to_vec();
+    assert_eq!(hedges.len(), 1);
+    let held = hedges[0].as_sequence().expect("its members").to_vec();
+    assert_eq!(held.len(), 6, "{held:?}");
+    assert_eq!(held[0].as_str(), Some("XAU"), "HedgeCurrency");
+    let root = message.as_field();
+    let hedge = root
+        .get_field_by_path("nohedgegroups")
+        .expect("the hedge group field");
+    assert_eq!(packed_members(hedge)[0], "hedgecurrency");
+
+    // A group packed inside an occurrence nests inside it rather than beside
+    // it, at every depth the payload packs one: the leg carries its own
+    // allocations, and the side its parties, and a party its sub-identifiers.
+    let legs = root.get_field_by_path("nolegs").expect("the leg group");
+    let allocations = packed_group(legs, "legpreallocgrp");
+    assert!(
+        packed_members(allocations).contains(&"legallocaccount"),
+        "{:?}",
+        packed_members(allocations)
+    );
+    let sides = root.get_field_by_path("nosides").expect("the side group");
+    let parties = packed_group(sides, "parties");
+    let subs = packed_group(parties, "ptyssubgrp");
+    assert!(
+        packed_members(subs).contains(&"partysubid"),
+        "{:?}",
+        packed_members(subs)
+    );
+
+    // The bridge counted the control bytes it wrote, so the length it stated
+    // is short of the bytes the log carries and the value runs to the trailer.
+    let stated = message.by_tag(212).unwrap().as_i64().expect("XmlDataLen");
+    let carried = message
+        .by_tag(213)
+        .unwrap()
+        .as_bytes()
+        .expect("XmlData")
+        .len() as i64;
+    assert!(stated < carried, "{stated} stated, {carried} carried");
+
+    // The envelope's `BeginString` is what the session speaks and the row
+    // inside it is written to a later FIX: `RegulatoryTradeIDGrp` is tag 1907,
+    // which no 4.2 session ever named. The codec here pins no version, so the
+    // row is dated by the dictionary's own newest rather than by the frame,
+    // and the frame keeps saying what it said.
+    assert_eq!(message.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
+    assert!(
+        registry().newest().expect("the seed's newest").version()
+            > "4.2".parse().expect("a version")
+    );
+    assert!(
+        packed_members(
+            root.get_field_by_path("regulatorytradeidgrp")
+                .expect("the regulatory trade id group")
+        )
+        .contains(&"tradeid")
+    );
+
+    // A key the dictionary has no field for is kept under its own spelling
+    // rather than dropped, dot and all.
+    assert_eq!(
+        message
+            .by_name("metal.loco")
+            .expect("the venue's own key")
+            .as_str(),
+        Some("LN")
+    );
 }

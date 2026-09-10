@@ -64,7 +64,7 @@ fn the_envelope_is_not_the_message() {
 
     // The same message re-serialized with another separator reads back equal.
     let soh = one.into_bytes(0x01);
-    let again = reader.transform_fix_line(&soh, false).unwrap();
+    let again = reader.parse_fix_line(&soh).unwrap();
     assert_eq!(one.digest(), again.digest());
 
     // The session layer is not the message either: the same order sent a

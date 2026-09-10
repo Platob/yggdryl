@@ -10,7 +10,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, types
-from yggdryl.fix import FixBranch, FixCodec, FixMessages, FixRegistry, MsgType, UlPlugin, UlPlugins, fix_crate_fields, fix_ulbridge_fields, parse_arrow_reader
+from yggdryl.fix import FixBranch, FixCodec, FixMessages, FixRegistry, MsgType, UlPlugin, UlPlugins, fix_crate_fields, fix_ulbridge_fields
 
 
 def _field(name: str, tag: int, dtype: str = "utf8") -> Field:
@@ -205,7 +205,7 @@ def test_bulk_messages_preserve_error_requests_source_columns_and_fuse() -> None
     error = {"request": {"mbean": "com.ullink.ulbridge:type=Bridge", "type": "read"}, "status": 404, "error": "missing"}
     request = {"mbean": "com.ullink.ulbridge:type=Bridge", "type": "read"}
     raw = json.dumps([_wildcard(), error, request]).encode()
-    messages = codec.transform_line(raw)
+    messages = codec.parse_line(raw)
     assert isinstance(messages, FixMessages)
     assert iter(messages) is messages
     del codec
@@ -219,7 +219,8 @@ def test_bulk_messages_preserve_error_requests_source_columns_and_fuse() -> None
     assert next(messages, None) is None
     assert next(messages, None) is None
     capture = pa.table({"url": ["capture.log"], "rownum": [17], "body": pa.array([raw], type=pa.binary())})
-    output = parse_arrow_reader(capture, registry, "body", branch="ulbridge", batch_row_size=1).read_all()
+    # One byte a batch is a batch a row; a bulk document is still one row per MBean.
+    output = FixCodec(registry, branch="ulbridge", batch_byte_size=1).parse_text_arrow_reader(capture).read_all()
     assert output.num_rows == 4
     assert output.column("url").to_pylist() == ["capture.log"] * 4
     assert output.column("rownum").to_pylist() == [17] * 4
@@ -398,7 +399,7 @@ def _numeric_branch_registry(scoped: bool) -> FixRegistry:
 def test_numeric_fields_and_groups_follow_the_pinned_branch(scoped: bool, branch: str, name: str, dtype: str, member: Any, tail: Any) -> None:
     codec = FixCodec(_numeric_branch_registry(scoped), branch=branch)
     wire = b"35=X|6000=1|6001=42|6002=7|55=AAPL|10=0|"
-    message = codec.transform_fix_line(wire)
+    message = codec.parse_fix_line(wire)
     assert message.by_name(f"No{name}Rows").as_py() == 1
     assert message.by_path(f"{name}Rows.0.{name}ID").as_py() == member
     assert message.by_name(f"{name}Value").as_py() == tail
@@ -410,7 +411,7 @@ def test_numeric_fields_and_groups_follow_the_pinned_branch(scoped: bool, branch
 def test_pinned_branch_does_not_borrow_another_venues_counter() -> None:
     codec = FixCodec(_numeric_branch_registry(False), branch="beta")
     wire = b"6100=1|6101=42|55=AAPL|"
-    message = codec.transform_fix_line(wire)
+    message = codec.parse_fix_line(wire)
     for name in ["NoAlphaOnlyRows", "AlphaOnlyRows", "AlphaOnlyID"]:
         assert message.get_by_name(name) is None
     assert message.by_name("6100").as_py() == "1"
