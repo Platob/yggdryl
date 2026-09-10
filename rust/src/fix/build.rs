@@ -68,6 +68,27 @@ impl Known<'_> {
     };
 }
 
+/// The level a key the dictionary does not name resolves against.
+///
+/// The message's own children, indexed by folded name once at registration,
+/// because a wide message has three hundred and a bridge row asks for dozens
+/// of keys it does not know; or one occurrence's declared members, few
+/// enough to walk.
+enum Scope<'level> {
+    Message(Option<&'level super::MsgType>),
+    Members(&'level [Field]),
+}
+
+impl<'level> Scope<'level> {
+    /// The child of this level that `key` names, and the tag it carries.
+    fn child(&self, key: &str) -> Option<(&'level Field, i32)> {
+        match self {
+            Self::Message(message) => message.and_then(|message| message.get_child_by_name(key)),
+            Self::Members(fields) => in_scope(fields, key),
+        }
+    }
+}
+
 /// One key split into what it addresses.
 struct Key<'key> {
     text: &'key str,
@@ -682,7 +703,7 @@ impl<'registry> Builder<'registry> {
         &self,
         key: &str,
         resolved: Option<(&'registry Field, i32)>,
-        scope: &'scope [Field],
+        scope: Scope<'scope>,
     ) -> (Field, i32, Option<&'scope Field>)
     where
         'registry: 'scope,
@@ -690,7 +711,7 @@ impl<'registry> Builder<'registry> {
         if let Some((known, tag)) = resolved {
             return (stated(known), tag, Some(known));
         }
-        if let Some((declared, tag)) = in_scope(scope, key) {
+        if let Some((declared, tag)) = scope.child(key) {
             return (stated(declared), tag, Some(declared));
         }
         let name = folded_name(key);
@@ -729,14 +750,13 @@ impl<'registry> Builder<'registry> {
         }
     }
 
-    /// The children of the message this row declared, which a key resolves
-    /// against when the dictionary holds no name for it.
+    /// The message this row declared, which a flat key resolves against when
+    /// the dictionary holds no name for it.
     ///
-    /// Empty for a row whose type resolves to no message definition, which is
-    /// every row a dialect declares no grammar for.
-    fn scope(&self) -> &'registry [Field] {
-        self.message
-            .map_or(&[], |message| message.as_field().fields())
+    /// Nothing for a row whose type resolves to no message definition, which
+    /// is every row a dialect declares no grammar for.
+    fn scope(&self) -> Scope<'registry> {
+        Scope::Message(self.message)
     }
 
     /// Types one value under one field, translating its code first.
@@ -1091,7 +1111,7 @@ impl<'registry> Builder<'registry> {
                 // only the level declares is read directly, because the
                 // level is this line's own.
                 source = located.field.map(|(field, _)| field);
-                let scope = member_fields(&levels.last().expect("a level").0);
+                let scope = Scope::Members(member_fields(&levels.last().expect("a level").0));
                 let (field, tag, _) = self.field_from(leaf, located.field, scope);
                 (field, tag, false)
             }
