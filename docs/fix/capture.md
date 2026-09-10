@@ -6,7 +6,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `FixCodec`, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
+| Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
 | Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's own twenty, `msgdirection`, then `nofixentries` and `nounmappedfixentries` |
 | Non-null | `beginstring`, `version`, `msghash`, `timestamp`, `unixpartition` - every built message [fills them](#every-message-is-dated-and-versioned); every other column is nullable |
@@ -32,7 +32,7 @@ One line in, one row per message out, with the columns named as the dictionary n
 
     let schema = fix_schema(&registry, "FixMessage")?;
     let reader = FixCodec::new(Arc::clone(&registry));
-    let mut messages = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|", false)?;
+    let mut messages = reader.parse_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")?;
     let order = messages.next().expect("one frame")?;
     assert!(messages.next().is_none());
 
@@ -57,7 +57,7 @@ One line in, one row per message out, with the columns named as the dictionary n
     schema = fix_schema(registry, "FixMessage")
     reader = FixCodec(registry)
 
-    order, = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")
+    order, = reader.parse_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")
     row = order.into_row(schema).as_py()
 
     assert row[schema.index_of("msgtype")] == "D"
@@ -77,7 +77,7 @@ One line in, one row per message out, with the columns named as the dictionary n
     const schema = fix.schema(registry, 'FixMessage')
     const reader = new fix.FixCodec(registry)
 
-    const [order] = reader.transformLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|'))
+    const [order] = reader.parseLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|'))
     const row = order.intoRow(schema).toJSON()
 
     assert.equal(row[schema.indexOf('msgtype')], 'D')
@@ -100,17 +100,21 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 ## A reader is the whole parse surface
 
-`transform_line` accepts captured bytes and returns `FixMessages`, a lazy,
-fallible iterator. `transform_record` uses the payload and options carried by a
-record. `transform_ulconfig_line` splits a bulk or wildcard configuration body.
-The specialized `transform_fix_line`, `transform_fixml_line`,
-`transform_ullink_line` and `transform_pairs` return one message.
+The verb is `parse`, and no reader takes a flag: what happens to a message once it is built - [filling](#what-a-message-implied-is-filled-in), [restating](message.md#restated-at-the-dictionarys-newest-version), [stamping](lifecycle.md) - is a call over the stream, never an argument to the parse.
 
-Python exposes native iterators; JavaScript uses `IterableIterator<FixMsg>`.
-Errors propagate from the native cursor and fuse it. Schema construction and
-group-plan resolution happen before repeated values are processed.
+| Reader | Takes | Answers |
+| --- | --- | --- |
+| `parse_line` | one captured line, the verb and prose around the frame included | `FixMessages`, a lazy fallible iterator: one message, or one per MBean of a bulk configuration |
+| `parse_lines` | any iterator of lines | a lazy iterator of `Result<FixMsg>`; a line that is not a row is an `Err` item and the stream continues |
+| `parse_text_record` | one [text record](../media/text.md#row-schema), its payload and [parameter columns](arrow.md#a-column-is-the-caller-speaking-per-row) | `FixMessages` |
+| `parse_text_records` | any iterator of records | a lazy iterator of `Result<FixMsg>` |
+| `parse_text_arrow_reader` | a `BatchReader` of text records | a `BatchReader` of [fixed rows](arrow.md) |
+| `parse_ulconfig_line` | a bulk or wildcard configuration body | `FixMessages` |
+| `parse_fix_line`, `parse_fixml_line`, `parse_ullink_line`, `parse_pairs` | one body of that dialect, or pairs already split | one `FixMsg` |
 
-Every one of them ends in the same builder, so a document is typed by the rules that type a frame — one nesting builder, one fold, one code translation, one value contract.
+A stream adapter owns a clone of the codec and borrows nothing, so `codec.arrow_reader(schema, codec.parse_lines(lines))` composes without the codec outliving the stream. Python exposes native iterators; JavaScript uses `IterableIterator<FixMsg>`. Errors propagate from the native cursor and fuse it. Schema construction and group-plan resolution happen before repeated values are processed.
+
+Every one of them ends in the same builder, so a document is typed by the rules that type a frame - one nesting builder, one fold, one code translation, one value contract.
 
 Each is the core's own method under the same name in all three languages.
 
@@ -128,7 +132,7 @@ Each is the core's own method under the same name in all three languages.
     // value packs its members behind the two control bytes ULLINK uses.
     let bridge: &[u8] = b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1\
 |#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
-    let held = reader.transform_line(bridge, false)?.next().expect("one frame")?;
+    let held = reader.parse_line(bridge)?.next().expect("one frame")?;
 
     assert_eq!(held.by_tag(55)?.as_str(), Some("TTF"));
     assert_eq!(held.by_tag(44)?.as_f64(), Some(41.25));
@@ -148,7 +152,7 @@ Each is the core's own method under the same name in all three languages.
 
     # A bridge frame: `#`-prefixed name keys, and one group occurrence whose
     # value packs its members behind the two control bytes ULLINK uses.
-    held, = reader.transform_line(
+    held, = reader.parse_line(
         b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
     )
@@ -176,12 +180,76 @@ Each is the core's own method under the same name in all three languages.
         '|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|',
       'binary',
     )
-    const [held] = reader.transformLine(bridge)
+    const [held] = reader.parseLine(bridge)
 
     assert.equal(held.byTag(55).toJSON(), 'TTF')
     assert.equal(held.byTag(44).toJSON(), 41.25)
     // The packed members became three real fields under one nesting.
     assert.equal(held.party('1')[0].toJSON(), 'BUYSIDE')
+    ```
+
+### Lines are a stream
+
+`parse_lines` is the line iterator everything else is built on: nothing is collected, a bulk configuration yields one message per MBean, and a line the reader refuses is an `Err` item the stream continues past - one corrupt line must not end a run over ten million.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{FixCodec, FixRegistry};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+
+    let lines: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|",
+        b"",
+        b"8=FIX.4.4|35=8|37=O1|11=A|10=0|",
+    ];
+    let read: Vec<_> = reader.parse_lines(lines).collect();
+    assert_eq!(read.len(), 3, "a line in is an item out");
+    assert!(read[1].is_err(), "an empty line is not a row, and the stream went on");
+    assert_eq!(read[2].as_ref().expect("a report").by_tag(37)?.as_str(), Some("O1"));
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    import pytest
+
+    from yggdryl.fix import FixCodec, FixRegistry
+
+    reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
+
+    lines = [b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|", b"8=FIX.4.4|35=8|37=O1|11=A|10=0|"]
+    read = reader.parse_lines(lines)
+    assert next(read).by_tag(55).as_py() == "AAPL"
+    assert next(read).by_tag(37).as_py() == "O1"
+    assert next(read, None) is None
+    # An empty line is not a row: the item raises where it is reached.
+    with pytest.raises(ValueError):
+        next(reader.parse_lines([b""]))
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
+
+    const lines = ['8=FIX.4.4|35=D|11=A|55=AAPL|10=0|', '8=FIX.4.4|35=8|37=O1|11=A|10=0|'].map((line) => Buffer.from(line))
+    const read = [...reader.parseLines(lines)]
+    assert.equal(read.length, 2)
+    assert.equal(read[0].byTag(55).asJs(), 'AAPL')
+    assert.equal(read[1].byTag(37).asJs(), 'O1')
+    // An empty line is not a row: the item throws where it is reached.
+    assert.throws(() => [...reader.parseLines([Buffer.alloc(0)])])
     ```
 
 ### A printed separator is still the separator
@@ -404,7 +472,7 @@ The root's children are the standard header in its declared order, the body as i
     let reader = FixCodec::new(registry).with_version("4.4".parse()?);
 
     // A frame stating neither its version nor a clock is still dated and versioned.
-    let bare = reader.transform_line(b"35=D|55=AAPL|10=0|", false)?.next().expect("one frame")?;
+    let bare = reader.parse_line(b"35=D|55=AAPL|10=0|")?.next().expect("one frame")?;
     assert_eq!(bare.by_tag(8)?.as_str(), Some("FIX.4.4"));
     assert_eq!(bare.version().map(|version| version.to_string()), Some("4.4".to_owned()));
     assert_eq!(bare.market_timestamp().temporal_count_at(TimeUnit::Second), Some(0));
@@ -412,7 +480,7 @@ The root's children are the standard header in its declared order, the body as i
     assert_eq!(bare.into_bytes(b'|'), b"35=D|55=AAPL|10=0|");
 
     // A frame stating both keeps its own, and a sub-second clock has a partition.
-    let sent = reader.transform_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|", false)?.next().expect("one frame")?;
+    let sent = reader.parse_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|")?.next().expect("one frame")?;
     assert_eq!(sent.by_tag(8)?.as_str(), Some("FIX.4.2"));
     assert_eq!(sent.market_timestamp().temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_200_415));
     assert_eq!(sent.unix_partition(3_600).as_i64(), Some(1_787_306_400));
@@ -429,12 +497,12 @@ The root's children are the standard header in its declared order, the body as i
     reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()), version="FIX.4.4")
 
     # A frame stating neither its version nor a clock is still dated and versioned.
-    bare = next(reader.transform_line(b"35=D|55=AAPL|10=0|"))
+    bare = next(reader.parse_line(b"35=D|55=AAPL|10=0|"))
     assert bare.by_tag(8).as_py() == "FIX.4.4"
     assert bare.market_timestamp().as_py() == datetime(1970, 1, 1, tzinfo=timezone.utc)
 
     # A frame stating both keeps its own, and a sub-second clock has a partition.
-    sent = next(reader.transform_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|"))
+    sent = next(reader.parse_line(b"8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|"))
     assert sent.by_tag(8).as_py() == "FIX.4.2"
     assert sent.market_timestamp().as_py() == datetime(2026, 8, 21, 10, 30, 0, 415000, tzinfo=timezone.utc)
     assert sent.unix_partition(3_600).as_py() == 1_787_306_400
@@ -451,21 +519,21 @@ The root's children are the standard header in its declared order, the body as i
     const reader = new fix.FixCodec(registry, { version: 'FIX.4.4' })
 
     // A frame stating neither its version nor a clock is still dated and versioned.
-    const bare = reader.transformLine(Buffer.from('35=D|55=AAPL|10=0|')).next().value
+    const bare = reader.parseLine(Buffer.from('35=D|55=AAPL|10=0|')).next().value
     assert.equal(bare.byTag(8).toJSON(), 'FIX.4.4')
     assert.ok(bare.marketTimestamp() !== null)
     // Neither became an entry, so the wire comes back byte for byte.
     assert.equal(bare.intoBytes('|'.charCodeAt(0)).toString(), '35=D|55=AAPL|10=0|')
 
     // A frame stating both keeps its own, and a sub-second clock has a partition.
-    const sent = reader.transformLine(Buffer.from('8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|')).next().value
+    const sent = reader.parseLine(Buffer.from('8=FIX.4.2|35=D|52=20260821-10:30:00.415|55=AAPL|10=0|')).next().value
     assert.equal(sent.byTag(8).toJSON(), 'FIX.4.2')
     assert.ok(sent.unixPartition(3600) !== null)
     ```
 
 ## What a message implied is filled in
 
-A venue sends what its counterparty needs and nothing more, so a row is routinely missing values the message itself already determines: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a fill stating `LastQty` and `LastPx` has said what it was worth, and a message naming its instrument by an ISIN has said which country issued it. With enrichment on - the flag every `transform_*` entry point takes, `FixOptions.enrich` for a [batch](arrow.md), `enrich_fixmsg` for a message already built - the reader fills them.
+A venue sends what its counterparty needs and nothing more, so a row is routinely missing values the message itself already determines: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a fill stating `LastQty` and `LastPx` has said what it was worth, and a message naming its instrument by an ISIN has said which country issued it. Enrichment is a call over what the reader built: `enrich_message` fills one message, `enrich_messages` a stream of them, and [`enrich_messages_arrow_reader`](arrow.md#filled-where-it-sits) a stream of batches, without parsing anything again.
 
 Three things hold whatever the rule. Only the row is filled, never the entries, so `into_bytes` re-emits the wire byte for byte either way. A rule answers only where every input is stated and typed: an identifier no check digit closes, a CFI whose category several security types share and a security type outside every group the specification files answer nothing rather than a guess. And a stated value is never overwritten, which is what makes a second pass change nothing - a value derived once is a stated value the second time.
 
@@ -506,7 +574,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
 
     // A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|";
-    let held = reader.transform_line(line, true)?.next().expect("one frame")?;
+    let held = reader.enrich_message(reader.parse_line(line)?.next().expect("one frame")?)?;
     assert_eq!(held.by_tag(22)?.as_str(), Some("4"));
     assert_eq!(held.by_tag(yggdryl::ISINCODE_TAG)?.as_str(), Some("US0378331005"));
     assert_eq!(held.by_tag(470)?.as_str(), Some("US"));
@@ -520,7 +588,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
     // Only the row was filled: the wire comes back byte for byte.
     assert_eq!(held.into_bytes(b'|'), line);
     // And a second pass changes nothing.
-    assert_eq!(reader.enrich_fixmsg(held.clone())?, held);
+    assert_eq!(reader.enrich_message(held.clone())?, held);
     ```
 
 === "Python"
@@ -534,7 +602,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
 
     # A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
     line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|"
-    held = next(reader.transform_line(line, True))
+    held = reader.enrich_message(next(reader.parse_line(line)))
     assert held.by_tag(22).as_py() == "4"
     assert held.by_tag(65013).as_py() == "US0378331005"  # isincode
     assert held.by_tag(470).as_py() == "US"
@@ -548,7 +616,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
     # Only the row was filled: the wire comes back byte for byte.
     assert held.into_bytes(ord("|")) == line
     # And a second pass changes nothing.
-    assert reader.enrich_fixmsg(held) == held
+    assert reader.enrich_message(held) == held
     ```
 
 === "JavaScript"
@@ -562,7 +630,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
 
     // A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
     const line = '8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|'
-    const held = reader.transformLine(Buffer.from(line), true).next().value
+    const held = reader.enrichMessage(reader.parseLine(Buffer.from(line)).next().value)
     assert.equal(held.byTag(22).toJSON(), '4')
     assert.equal(held.byTag(65013).toJSON(), 'US0378331005') // isincode
     assert.equal(held.byTag(470).toJSON(), 'US')
@@ -576,7 +644,7 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
     // Only the row was filled: the wire comes back byte for byte.
     assert.equal(held.intoBytes('|'.charCodeAt(0)).toString(), line)
     // And a second pass changes nothing.
-    assert.ok(reader.enrichFixmsg(held).equals(held))
+    assert.ok(reader.enrichMessage(held).equals(held))
     ```
 
 ### Edges
@@ -627,11 +695,11 @@ value. Parsing produces three messages; no response is discarded.
     assert_eq!(first.name(), Some("A"));
     assert_eq!(configurations.count(), 2);
 
-    let message = first.into_fixmsg(&codec, false)?;
+    let message = first.into_fixmsg(&codec)?;
     assert_eq!(message.by_name("CurrentPort")?, &Scalar::from(7061_i64));
     assert_eq!(UlPlugin::from_fixmsg(&message)?.name(), Some("A"));
     let mut count = 0;
-    for message in codec.transform_line(body, false)? {
+    for message in codec.parse_line(body)? {
         message?;
         count += 1;
     }
@@ -655,7 +723,7 @@ value. Parsing produces three messages; no response is discarded.
     message = first.into_fixmsg(codec)
     assert message.by_name("CurrentPort").as_py() == 7061
     assert UlPlugin.from_fixmsg(message).name == "A"
-    assert sum(1 for _ in codec.transform_line(body)) == 3
+    assert sum(1 for _ in codec.parse_line(body)) == 3
     ```
 
 === "JavaScript"
@@ -676,7 +744,7 @@ value. Parsing produces three messages; no response is discarded.
     const message = first.intoFixmsg(codec)
     assert.equal(message.byName('CurrentPort').asJs(), 7061)
     assert.equal(fix.UlPlugin.fromFixmsg(message).name, 'A')
-    assert.equal([...codec.transformLine(body)].length, 3)
+    assert.equal([...codec.parseLine(body)].length, 3)
     ```
 
 ### Edges
@@ -800,43 +868,29 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
 - Typed text drops the replacement character and every control character but tab, so a byte a transport mangled does not become a mangled column; the entry keeps the bytes exactly as they arrived.
 - `index_of` on a column the schema does not carry -> `None`, never a wrong column.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single message.
-- [Deduplication](arrow.md#one-row-per-message) removes adjacent duplicate messages after expansion and is off by default.
+- Nothing drops a row unasked: `FixDedup`, Rust only, drops adjacent republications over any message stream, and is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) the caller composes.
 
 ## Performance
 
-Measured on Windows, AMD Ryzen 5 150 (12 logical CPUs), Rust 1.96 release,
-10 Criterion samples with 0.1 s warm-up and 0.2 s measurement. The tracked
-registry now loads all four categories; these results do not compare against
-the previous field-only seed workload.
+`fix/ulconfig`, a bulk configuration document read as the dictionary of its own it is: one Jolokia wildcard answer holding 1, 32 and 256 configurations, walked into them and each read into a message. Release build, one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.94.1 release (thin LTO, one codegen unit).
 
-| Native case | Central estimate |
+| case | estimate |
 | --- | --- |
-| `fix/read/bare` | 28.654 µs |
-| `fix/read/named` | 32.335 µs |
-| `fix/read/grouped` (packed bridge occurrence) | 43.127 µs |
-| `fix/read/numeric_grouped` | 31.721 µs |
-| `fix/read/numeric_grouped_pinned_branch` | 9.8660 µs |
-| `fix/read/ulconfig` | 168.07 µs |
-| `fix/read/emit` | 522.60 ns |
-| `fix/ulconfig/first/256` (already parsed source) | 344.42 ns |
-| `fix/ulconfig/drain/256` (already parsed source) | 112.45 µs |
-| `fix/ulconfig/messages/256` | 8.1357 ms |
+| `fix/ulconfig/first/256`, the first configuration out of the parsed document | 260 ns |
+| `fix/ulconfig/drain/256`, every configuration out of it | 76.6 us |
+| `fix/ulconfig/messages/256`, every configuration read into a message | 2.56 ms |
+| `fix/ulconfig/messages/32` | 318 us |
+| `fix/ulconfig/messages/1` | 9.84 us |
+| `fix/ulconfig/stable_hash_one_state_allocation/256`, one configuration's stable hash | 284 ns |
 
-The pinned-branch case parses `6000=1|6001=42|6002=7|` with `beta` selected while `alpha` and `beta` share those tags and declare different member and tail datatypes. Registry construction and group-plan compilation are outside the timer; this small fixture is separate from the full-seed read cases. The same final run refreshed the `bare` and `numeric_grouped` rows above.
+The first-item and full-drain cases distinguish cursor cost from conversion of every selected configuration: a configuration costs its walk, and a message a build over its attributes, so the messages row is the drain row plus one build per configuration. Allocation tests assert zero allocations for borrowed configuration iteration; each stable hash owns one Xxh3 state buffer. Parsing bytes and building message values allocate.
 
-A document costs about six times a frame, and the difference is what it is: a frame is split on a byte and a document is parsed as JSON and walked. A dated read costs what an undated one costs, within a code translation per value: a version decides which spellings answer, and no field is renamed or retyped for it, so there is nothing per row to resolve or cache.
-
-The first-item and full-drain cases distinguish cursor cost from conversion of
-every selected configuration. Allocation tests assert zero allocations for
-borrowed configuration iteration; each stable hash owns one Xxh3 state buffer.
-Parsing bytes and building message values allocate.
+What one line of each shape costs the codec - a framed tag stream, a bare one, a bridge row keyed by name, a packed occurrence, a document - is measured where the shapes are read together, in [`fix/pipeline`](arrow.md#performance): the `parse_lines` row is the codec over every body of a real capture, and a bridge row of a hundred named keys costs it a hundred dictionary lookups where a frame of twenty tags costs twenty.
 
 Regenerate with:
 
 ```bash
-cargo bench -p yggdryl --bench fix -- fix/read --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10
-cargo bench --locked -p yggdryl --bench fix -- fix/read/numeric_grouped_pinned_branch --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10
-cargo bench -p yggdryl --bench fix -- fix/ulconfig --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10
+cargo bench -p yggdryl --bench fix -- fix/ulconfig
 ```
 
 ## Commands

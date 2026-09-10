@@ -440,7 +440,7 @@ fn ulbridge_codec() -> crate::FixCodec {
 #[test]
 fn a_bridge_configuration_reads_as_one_flat_message() {
     let codec = ulbridge_codec();
-    let mut messages = codec.transform_line(ULCONFIG_SINGLE, false).unwrap();
+    let mut messages = codec.parse_line(ULCONFIG_SINGLE).unwrap();
     let msg = messages.next().unwrap().unwrap();
     assert!(messages.next().is_none());
     assert!(msg.get_by_name("SessionInterfaces").is_none());
@@ -507,7 +507,7 @@ fn a_bridge_configuration_reads_as_one_flat_message() {
 fn a_wildcard_read_is_one_flat_message_per_mbean() {
     let codec = ulbridge_codec();
     let messages = codec
-        .transform_line(ULCONFIG_WILDCARD, false)
+        .parse_line(ULCONFIG_WILDCARD)
         .unwrap()
         .collect::<crate::Result<Vec<_>>>()
         .unwrap();
@@ -536,7 +536,7 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
     let recovered = crate::UlPlugin::from_fixmsg(&messages[1]).unwrap();
     assert_eq!(recovered.name(), Some("B"));
     assert_eq!(recovered.get("CurrentPort"), Some(&Scalar::from(9905_i64)));
-    let rebuilt = recovered.into_fixmsg(&codec, false).unwrap();
+    let rebuilt = recovered.into_fixmsg(&codec).unwrap();
     assert_eq!(
         rebuilt.by_name("MBean").unwrap(),
         messages[1].by_name("MBean").unwrap()
@@ -549,7 +549,7 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
     // dropping it: a venue sends fields no dictionary has.
     let bare = crate::FixCodec::new(Arc::new(FixRegistry::new()));
     let plain = bare
-        .transform_line(ULCONFIG_WILDCARD, false)
+        .parse_line(ULCONFIG_WILDCARD)
         .unwrap()
         .collect::<crate::Result<Vec<_>>>()
         .unwrap();
@@ -570,7 +570,7 @@ fn ulconfig_bulk_iteration_keeps_request_and_error_envelopes_and_fuses() {
     assert!(configurations.next().is_none());
     assert_eq!(configurations.size_hint(), (0, Some(0)));
     let codec = ulbridge_codec();
-    let message = error.into_fixmsg(&codec, false).unwrap();
+    let message = error.into_fixmsg(&codec).unwrap();
     assert_eq!(message.by_name("Status").unwrap(), &Scalar::from(404_i64));
     assert_eq!(message.by_name("Error").unwrap(), &Scalar::from("missing"));
     assert!(message.get_by_name("SessionInterface").is_none());
@@ -584,7 +584,7 @@ fn ulconfig_bulk_iteration_keeps_request_and_error_envelopes_and_fuses() {
         .next()
         .unwrap();
     assert!(request.mbean().is_none());
-    let message = request.into_fixmsg(&codec, false).unwrap();
+    let message = request.into_fixmsg(&codec).unwrap();
     assert_eq!(message.by_name("Operation").unwrap(), &Scalar::from("read"));
     assert!(message.get_by_name("SessionInterface").is_none());
 }
@@ -631,7 +631,7 @@ fn ulconfig_conversion_reports_an_unrepresentable_attribute() {
     let attributes = Scalar::from_record([("CurrentPort", Scalar::from(f64::NAN))]).unwrap();
     let value = crate::UlPlugin::new(None, attributes, Scalar::Null);
     let codec = crate::FixCodec::new(Arc::new(FixRegistry::new()));
-    let error = value.into_fixmsg(&codec, false).unwrap_err();
+    let error = value.into_fixmsg(&codec).unwrap_err();
     assert!(error.to_string().contains("non-finite"), "{error}");
 }
 
@@ -3166,10 +3166,8 @@ fn a_report_states_what_is_left_once_it_has_stated_the_rest() {
     // ordered minus what was done, and the fill's worth is its quantity at
     // its price.
     let held = codec
-        .transform_fix_line(
-            b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|",
-            true,
-        )
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(held.by_tag(151).unwrap(), &Scalar::from(60.0_f64));
     assert_eq!(held.by_tag(381).unwrap(), &Scalar::from(420.0_f64));
@@ -3179,14 +3177,16 @@ fn a_report_states_what_is_left_once_it_has_stated_the_rest() {
     // A closed order leaves nothing, whatever the arithmetic of the other two
     // would say: Appendix D shows zero on every terminal row.
     let closed = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=4|150=4|38=100|14=40|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=4|150=4|38=100|14=40|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(closed.by_tag(151).unwrap(), &Scalar::from(0.0_f64));
 
     // The same identity read backwards: what was ordered is what is left plus
     // what was done.
     let ordered = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|14=40|151=60|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|14=40|151=60|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(ordered.by_tag(38).unwrap(), &Scalar::from(100.0_f64));
 }
@@ -3197,16 +3197,18 @@ fn a_stated_value_is_never_replaced_and_filling_twice_changes_nothing() {
     // The venue's own arithmetic wins even where it disagrees with the
     // specification's: the row says what was sent.
     let held = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|151=999|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|151=999|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(held.by_tag(151).unwrap(), &Scalar::from(999.0_f64));
 
     // Idempotent: a value derived once is a stated value the second time, so
     // a second pass derives it to itself.
     let once = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
-    let twice = codec.enrich_fixmsg(once.clone()).expect("a second pass");
+    let twice = codec.enrich_message(once.clone()).expect("a second pass");
     assert_eq!(once, twice);
 }
 
@@ -3214,11 +3216,10 @@ fn a_stated_value_is_never_replaced_and_filling_twice_changes_nothing() {
 fn filling_leaves_the_wire_exactly_as_it_arrived() {
     let codec = enriching();
     const LINE: &[u8] = b"8=FIX.4.4|35=8|39=1|38=100|14=40|32=40|31=10.5|54=1|10=0|";
-    let bare = codec
-        .transform_fix_line(LINE, false)
-        .expect("a readable report");
+    let bare = codec.parse_fix_line(LINE).expect("a readable report");
     let filled = codec
-        .transform_fix_line(LINE, true)
+        .parse_fix_line(LINE)
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
 
     // The row gained columns.
@@ -3236,27 +3237,31 @@ fn a_rule_answers_nothing_rather_than_a_guess() {
     let codec = enriching();
     // An input the message never stated: nothing is derived from an absence.
     let held = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(held.get_by_tag(151), None, "no CumQty to subtract");
 
     // A negative remainder means the two inputs were never about one order,
     // so the rule declines rather than stating a quantity that cannot exist.
     let crossed = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=40|14=100|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=1|38=40|14=100|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(crossed.get_by_tag(151), None);
 
     // A status the matrices do not place answers nothing either.
     let unknown = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=Z|38=100|14=40|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=Z|38=100|14=40|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(unknown.get_by_tag(151), None);
 
     // A message type the rule does not speak for is left alone: an order has
     // no remainder to state until something reports on it.
     let order = codec
-        .transform_fix_line(b"8=FIX.4.4|35=D|38=100|14=40|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=D|38=100|14=40|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable order");
     assert_eq!(order.get_by_tag(151), None);
 }
@@ -3267,10 +3272,10 @@ fn a_foreign_exchange_trade_settles_in_the_currency_it_was_dealt_in() {
     // Appendix O: the settlement currency defaults to the dealt one, and the
     // settled amount is the traded amount at the stated rate.
     let held = codec
-        .transform_fix_line(
+        .parse_fix_line(
             b"8=FIX.4.4|35=8|39=2|150=F|38=100|14=100|32=100|31=1.25|15=EUR|155=1.1|10=0|",
-            true,
         )
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(held.by_tag(381).unwrap(), &Scalar::from(125.0_f64));
     assert_eq!(
@@ -3283,7 +3288,8 @@ fn a_foreign_exchange_trade_settles_in_the_currency_it_was_dealt_in() {
 
     // A trade that states its own settlement currency keeps it.
     let stated = codec
-        .transform_fix_line(b"8=FIX.4.4|35=8|39=2|15=EUR|120=USD|10=0|", true)
+        .parse_fix_line(b"8=FIX.4.4|35=8|39=2|15=EUR|120=USD|10=0|")
+        .and_then(|held| codec.enrich_message(held))
         .expect("a readable report");
     assert_eq!(stated.by_tag(120).unwrap().as_str(), Some("USD"));
 }
@@ -3313,7 +3319,7 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
     // entries are the wire and the row is the reading of it.
     let registry = Arc::new(FixRegistry::from_fields([field]).unwrap());
     let message = super::FixCodec::new(Arc::clone(&registry))
-        .transform_fix_line(b"99=N/A|", false)
+        .parse_fix_line(b"99=N/A|")
         .expect("a readable frame");
     assert_eq!(message.get_by_tag(99), Some(&Scalar::Null));
     let entry = message
@@ -3325,7 +3331,7 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
 
     // A value the list does not name is read as the price it is.
     let message = super::FixCodec::new(registry)
-        .transform_fix_line(b"99=12.5|", false)
+        .parse_fix_line(b"99=12.5|")
         .expect("a readable frame");
     assert_eq!(message.by_tag(99).unwrap(), &Scalar::from(12.5_f64));
 }
@@ -4649,7 +4655,7 @@ fn every_type_adopted_backward_parses_the_wire_spelling_of_its_era() {
         field.as_fix_mut().set_tag(tag).unwrap();
         let registry = Arc::new(FixRegistry::from_fields([field]).unwrap());
         let message = super::FixCodec::new(registry)
-            .transform_pairs([(tag.to_string().as_bytes(), wire.as_bytes())], false)
+            .parse_pairs([(tag.to_string().as_bytes(), wire.as_bytes())])
             .expect("the row builds");
         assert_ne!(
             message.by_tag(tag).unwrap(),
@@ -4961,7 +4967,7 @@ fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
     // row states 0 rather than nothing.
     let codec = super::FixCodec::new(Arc::clone(&registry)).with_branch(&cme);
     let msg = codec
-        .transform_fix_line(b"55=AAPL|5055=XYZ|VenueOwnThing=?|", false)
+        .parse_fix_line(b"55=AAPL|5055=XYZ|VenueOwnThing=?|")
         .expect("a readable frame");
     let entries = msg.entries();
     assert!(!entries.is_empty());

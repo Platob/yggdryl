@@ -41,6 +41,7 @@ use super::build::{stated as stated_field, typed_spelling};
 use super::codes::FixCodeValue;
 use super::msg::FixMsg;
 use super::replacements::{FixFillEntry, FixFillValue, FixFills, FixReplacementEntry};
+use super::schema::item_fields;
 use super::{FixPedigree, FixRegistry, occurrence_name};
 use crate::types::State;
 use crate::types::ascii::AsciiFamily;
@@ -284,14 +285,6 @@ impl Child {
             })
             .collect();
         Self::Group(field, occurrences)
-    }
-}
-
-/// The member fields a group's item Struct declares.
-fn item_fields(group: &Field) -> Option<&[Field]> {
-    match group.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => item.dtype().as_fields(),
-        _ => None,
     }
 }
 
@@ -881,24 +874,6 @@ impl<'msg> Restater<'msg> {
         code.deprecated()
             .is_none_or(|deprecated| self.newest.is_some_and(|newest| newest < deprecated))
     }
-
-    /// The crate's `version` child set to the newest version, replacing a
-    /// stated one or appended.
-    fn stamp(&self, level: &mut Level, newest: Version) {
-        let Some(field) = super::crated::version_field() else {
-            return;
-        };
-        let spelled = format_smolstr!("{newest}");
-        let value = field
-            .scalar(Scalar::from(spelled.as_str()))
-            .unwrap_or_else(|_| Scalar::from(spelled.as_str()));
-        let at = level.position_of_field(Some(super::VERSION_TAG), field.name());
-        level.write_field(FieldWrite {
-            at,
-            field: field.clone(),
-            value,
-        });
-    }
 }
 
 /// One held value under the registry's field: kept where the child already
@@ -911,6 +886,12 @@ fn retyped(known: &Field, held: &Field, value: &Scalar) -> Scalar {
 }
 
 /// The message restated at its registry's newest version.
+///
+/// The levels are rebuilt whole, because canonicalizing merges and drops
+/// children and a group's item is the union of what its occurrences hold;
+/// the one write that follows - the crate's `version` child taking the
+/// registry's newest version, replacing a stated one or appended - lands
+/// through [`FixMsg::set`] like every other write into a row.
 ///
 /// # Errors
 ///
@@ -930,15 +911,24 @@ pub(super) fn restate(msg: FixMsg) -> Result<FixMsg> {
             msgtype: msg.get_by_tag(35).and_then(Scalar::as_str),
             newest,
         };
-        let mut level = restater.level(Level::unpack(children, values), None)?;
-        if let Some(newest) = newest {
-            restater.stamp(&mut level, newest);
-        }
-        level.pack()?
+        restater
+            .level(Level::unpack(children, values), None)?
+            .pack()?
     };
-    let mut root = root.clone();
-    root.set_dtype(DataType::from_fields(fields)?)?;
+    // The children were each checked by `from_fields`, which is what the
+    // root's setter would check a second time before comparing every child.
+    let root = Field::new_with_metadata(
+        root.name(),
+        DataType::from_fields(fields)?,
+        root.is_nullable(),
+        root.metadata.clone(),
+    );
     let registry = Arc::clone(msg.registry());
     let entries = msg.into_entries();
-    FixMsg::from_parts(registry, root, Scalar::from_sequence(values), entries)
+    let mut restated = FixMsg::from_parts(registry, root, Scalar::from_sequence(values), entries)?;
+    if let Some(newest) = newest {
+        let spelled = format_smolstr!("{newest}");
+        restated.set(super::VERSION_TAG, Scalar::from(spelled.as_str()))?;
+    }
+    Ok(restated)
 }

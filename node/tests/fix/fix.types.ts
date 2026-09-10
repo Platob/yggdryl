@@ -1,4 +1,5 @@
 import {
+  BatchReader,
   Field,
   IOBase,
   MimeType,
@@ -149,6 +150,11 @@ const messageHash: bigint = message.stableHash()
 const clonedMessage: FixMsg = message.clone()
 const messageText: string = message.toString()
 const messageDocument: unknown = message.toJSON()
+message.set(55, 'MSFT')
+message.set('Symbol', null)
+const removedValue: Scalar | null = message.remove(55)
+const readBack: FixMsg = fix.FixMsg.fromRow(field, input)
+const readBackExplicit: FixMsg = fix.FixMsg.fromRow(field, value, loaded)
 
 void explicit
 void nullRegistry
@@ -175,11 +181,18 @@ void messageHash
 void clonedMessage
 void messageText
 void messageDocument
+void removedValue
+void readBack
+void readBackExplicit
 
 // @ts-expect-error a message value is not a bare string
 new fix.FixMsg(field, 'AAPL')
 // @ts-expect-error a message key is a tag or a name
 message.at(55n)
+// @ts-expect-error a write's key is a tag or a name
+message.set(55n, 'MSFT')
+// @ts-expect-error a row is read under a Field, never a number
+fix.FixMsg.fromRow(55, input)
 
 const global: FixRegistry = fix.globalRegistry()
 fix.installGlobalRegistry(global)
@@ -214,29 +227,44 @@ field.fix.id = 5001
 // @ts-expect-error aliases are strings
 field.fix.aliases = [55]
 
-// The reader is a class over one dictionary, with every pin optional.
+// The codec is a class over one dictionary, with every pin optional and
+// read back as it was given.
 const readerClass: typeof FixCodec = fix.FixCodec
 const reader: FixCodec = new fix.FixCodec(loaded)
 const pinned: FixCodec = new fix.FixCodec(loaded, {
   branch: 'cme',
   version: '4.4',
+  separator: 124,
+  payloadColumn: 'line',
   nullValues: ['<none>'],
+  direction: 'recv',
+  batchByteSize: 1 << 20,
 })
 // @ts-expect-error the source and target pins are one `version`
 const stalePin: FixCodec = new fix.FixCodec(loaded, { sourceVersion: '4.2' })
 void stalePin
 const readRegistry: FixRegistry = reader.registry
-const fromText: FixMsg = reader.transformFixLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
-const fromBytes: FixMessages = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
-const fromFrame: FixMsg = reader.transformFixLine(Buffer.from('8=FIX.4.4'), 1)
-const fromBridge: FixMsg = reader.transformUllinkLine(Buffer.from('#SYMBOL=TTF'))
-const fromPairs: FixMsg = reader.transformPairs([['55', 'AAPL']])
-const enriched: FixMsg = reader.enrichFixmsg(fromText)
+const pinnedBranch: string | null = pinned.branch
+const pinnedVersion: string | null = pinned.version
+const pinnedSeparator: number | null = pinned.separator
+const pinnedPayloadColumn: string = pinned.payloadColumn
+const pinnedNullValues: string[] = pinned.nullValues
+const pinnedDirection: string = pinned.direction
+const pinnedBatchByteSize: number = pinned.batchByteSize
+const fromText: FixMsg = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
+const fromBytes: FixMessages = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
+const fromLines: FixMessages = reader.parseLines([Buffer.from('8=FIX.4.4|35=D|10=0|'), '8=FIX.4.4|35=D|10=0|'])
+const fromFrame: FixMsg = reader.parseFixLine(Buffer.from('8=FIX.4.4'), 1)
+const fromBridge: FixMsg = reader.parseUllinkLine(Buffer.from('#SYMBOL=TTF'))
+const fromFixml: FixMsg = reader.parseFixmlLine(Buffer.from("<Order ClOrdID='A'/>"))
+const fromPairs: FixMsg = reader.parsePairs([['55', 'AAPL']])
+const enriched: FixMsg = reader.enrichMessage(fromText)
+const enrichedStream: FixMessages = reader.enrichMessages([fromText, enriched])
 const restated: FixMsg = fromText.intoLatest()
 const readerCopy: FixCodec = reader.clone()
 
 // The lifecycle is a class over one dictionary, or over the process default,
-// and the reader runs one over an array.
+// and the codec runs one over any iterable, lazily.
 const lifeClass: typeof FixLifecycle = fix.FixLifecycle
 const life: FixLifecycle = new fix.FixLifecycle(loaded)
 const defaultLife: FixLifecycle = new fix.FixLifecycle()
@@ -244,22 +272,46 @@ const stamped: FixMsg = life.fill(fromText)
 const alive: number = life.alive
 const lifeRendered: string = life.toString()
 life.clear()
-const stream: FixMsg[] = reader.lifecycle([fromText, stamped])
+const stream: FixMessages = reader.lifecycle([fromText, stamped])
+const stampedAgain: FixMessages = reader.lifecycle(stream)
 
+// The Arrow twins take and answer batch readers, and a stream crosses back.
+const parsedBatches: BatchReader = reader.parseTextArrowReader(BatchReader.fromIpc(new Uint8Array()))
+const filledBatches: BatchReader = reader.enrichMessagesArrowReader(parsedBatches)
+const readBackStream: FixMessages = reader.messages(filledBatches)
+const rows: BatchReader = reader.arrowReader(field, readBackStream)
+const written: number = reader.writeArrowReader(rows, { write(chunk: Uint8Array) { void chunk } })
+
+void pinnedBranch
+void pinnedVersion
+void pinnedSeparator
+void pinnedPayloadColumn
+void pinnedNullValues
+void pinnedDirection
+void pinnedBatchByteSize
+void fromLines
+void fromFixml
 void enriched
+void enrichedStream
 void restated
 void lifeClass
 void defaultLife
 void alive
 void lifeRendered
 void stream
+void stampedAgain
+void written
 
 // @ts-expect-error a lifecycle stamps messages, never lines
 life.fill(Buffer.from('8=FIX.4.4|35=0|10=0|'))
-// @ts-expect-error the stream is an array of messages
+// @ts-expect-error the stream is an iterable of messages
 reader.lifecycle(fromText)
 // @ts-expect-error alive is read, never set
 life.alive = 0
+// @ts-expect-error a stage is a call, never a flag
+reader.parseLine(Buffer.from('35=D|'), true)
+// @ts-expect-error a sink writes chunks
+reader.writeArrowReader(rows, {})
 
 // The fixed row is a schema, and a column is the folded name of its field.
 const fixedSchema: Field = fix.schema(loaded, 'FixMessage')
@@ -361,13 +413,14 @@ const configEnvelope: Scalar = selected.asEnvelope()
 const configMessage: FixMsg = selected.intoFixmsg(reader)
 const recovered: UlPlugin = fix.UlPlugin.fromFixmsg(configMessage)
 const configHash: bigint = selected.stableHash()
-const bulk: FixMessages = reader.transformUlconfigLine(Buffer.from('{}'))
-const records: FixMessages = reader.transformRecord({ body: Buffer.from('35=D|') })
+const bulk: FixMessages = reader.parseUlconfigLine(Buffer.from('{}'))
+const records: FixMessages = reader.parseTextRecord({ body: Buffer.from('35=D|') })
+const recordStream: FixMessages = reader.parseTextRecords([{ body: Buffer.from('35=D|') }])
 const nextMessage: IteratorResult<FixMsg> = bulk.next()
-const allMessages: FixMsg[] = [...records]
+const allMessages: FixMsg[] = [...records, ...recordStream]
 
-// @ts-expect-error the generic transform returns a cursor
-const single: FixMsg = reader.transformLine(Buffer.from('35=D|'))
+// @ts-expect-error the generic parse returns a cursor
+const single: FixMsg = reader.parseLine(Buffer.from('35=D|'))
 // @ts-expect-error retired projection spelling
 message.toRow(field)
 // @ts-expect-error retired projection spelling

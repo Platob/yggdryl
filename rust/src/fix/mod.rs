@@ -157,11 +157,12 @@ mod latest;
 mod lifecycle;
 mod lift;
 mod lineage;
+mod memo;
 mod messages;
 mod msg;
 mod msgtype;
 // Reading one generic record is not the Arrow surface, so it is not gated
-// with it: a schema-only build keeps `FixCodec::read_record`.
+// with it: a schema-only build keeps `FixCodec::parse_text_record`.
 mod catalog;
 mod record;
 mod registry;
@@ -173,12 +174,7 @@ mod tests;
 mod ulbridge;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
-#[cfg(feature = "arrow")]
-pub use batch::{
-    DEFAULT_BATCH_BYTE_SIZE, DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH,
-    classify_arrow_array, write_fix,
-};
-pub use codec::{DEFAULT_NULL_VALUES, FixCodec};
+pub use codec::{DEFAULT_NULL_VALUES, FixCodec, SOH};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
@@ -200,6 +196,7 @@ pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
+pub use record::DEFAULT_PAYLOAD_COLUMN;
 pub use registry::{FixFieldIter, FixRegistry};
 pub use replacements::{
     FixFill, FixFillEntry, FixFillSource, FixFillValue, FixFills, FixReplacement,

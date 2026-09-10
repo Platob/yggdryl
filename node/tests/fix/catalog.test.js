@@ -161,7 +161,7 @@ test('message singleton indices distinguish names from another wire code', () =>
 test('numeric counters remain int32 beside message-scoped occurrence lists', () => {
   const registry = catalog()
   const codec = new fix.FixCodec(registry)
-  const values = [...codec.transformLine(Buffer.from('35=D|453=2|448=ONE|448=TWO|'))]
+  const values = [...codec.parseLine(Buffer.from('35=D|453=2|448=ONE|448=TWO|'))]
   assert.equal(values.length, 1)
   const value = values[0]
   assert.equal(registry.field(453).dtype.toString(), 'int32')
@@ -219,7 +219,7 @@ test('bulk message streams preserve flat configuration rows and fuse', () => {
   const error = { request: { mbean: 'com.ullink.ulbridge:type=Bridge', type: 'read' }, status: 404, error: 'missing' }
   const request = { mbean: 'com.ullink.ulbridge:type=Bridge', type: 'read' }
   const body = Buffer.from(JSON.stringify([wildcard(), error, request]))
-  const cursor = codec.transformLine(body)
+  const cursor = codec.parseLine(body)
   assert.ok(cursor instanceof fix.FixMessages)
   assert.equal(cursor[Symbol.iterator](), cursor)
   const values = [...cursor]
@@ -231,8 +231,8 @@ test('bulk message streams preserve flat configuration rows and fuse', () => {
   assert.ok(values.every(value => value.getByName('SessionInterfaces') === null))
   assert.equal(cursor.next().done, true)
   assert.equal(cursor.next().done, true)
-  assert.equal([...codec.transformUlconfigLine(body)].length, 4)
-  assert.equal([...codec.transformRecord({ url: 'capture.log', rownum: 17, body })].length, 4)
+  assert.equal([...codec.parseUlconfigLine(body)].length, 4)
+  assert.equal([...codec.parseTextRecord({ url: 'capture.log', rownum: 17, body })].length, 4)
   const selected = fix.UlPlugin.fromFixmsg(values[0])
   assert.equal(selected.name, 'Item0')
   assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Item0')

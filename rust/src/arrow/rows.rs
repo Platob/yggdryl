@@ -48,10 +48,16 @@ where
         commit_row_size,
         max_row_size,
         false,
+        None,
     )
 }
 
-/// The one constructor both readers share.
+/// The one constructor every reader shares.
+///
+/// `closes` is the producer's own cut, read off an item before it converts:
+/// the batch closes after a row it answers `true` for. None where the bounds
+/// alone decide.
+#[allow(clippy::too_many_arguments)]
 fn build<I, R>(
     field: &Field,
     rows: I,
@@ -60,6 +66,7 @@ fn build<I, R>(
     commit_row_size: Option<usize>,
     max_row_size: Option<u64>,
     canonical: bool,
+    closes: Option<fn(&R) -> bool>,
 ) -> Result<BatchReader>
 where
     I: IntoIterator<Item = R>,
@@ -80,40 +87,12 @@ where
         pending_error: None,
         done: false,
         canonical,
+        closes,
     }))
 }
 
 /// Widen a fallible stream of core scalar rows into Arrow batches.
 pub(crate) fn result_reader<I>(
-    field: &Field,
-    rows: I,
-    batch_row_size: Option<usize>,
-    batch_byte_size: Option<u64>,
-    commit_row_size: Option<usize>,
-    max_row_size: Option<u64>,
-) -> Result<BatchReader>
-where
-    I: IntoIterator<Item = crate::Result<Scalar>>,
-    I::IntoIter: Send + 'static,
-{
-    reader(
-        field,
-        rows.into_iter().map(FallibleScalar),
-        batch_row_size,
-        batch_byte_size,
-        commit_row_size,
-        max_row_size,
-    )
-}
-
-/// Widen a stream of rows the producer already proved canonical.
-///
-/// The same reader, trusting its source: a producer whose every value went
-/// through the contract of the field it lands under has nothing left for
-/// the per-row canonicalization to find, and a walk that finds nothing is
-/// still a walk over every leaf of every row. The producer states the
-/// proof, and a debug build checks it on every row.
-pub(crate) fn canonical_result_reader<I>(
     field: &Field,
     rows: I,
     batch_row_size: Option<usize>,
@@ -132,7 +111,41 @@ where
         batch_byte_size,
         commit_row_size,
         max_row_size,
+        false,
+        None,
+    )
+}
+
+/// Widen rows the producer already proved canonical into batches the
+/// producer closes.
+///
+/// The same reader, trusting its source: a producer whose every value went
+/// through the contract of the field it lands under has nothing left for
+/// the per-row canonicalization to find, and a walk that finds nothing is
+/// still a walk over every leaf of every row. The producer states the
+/// proof, and a debug build checks it on every row.
+///
+/// No row bound, no byte bound and no cadence of its own: a batch closes
+/// after the row whose [`Closing`] says so, or where the rows end. This is
+/// the shape for a producer that measures its rows by something the
+/// canonicalized value cannot show - the raw bytes a row was read from - and
+/// so decides the cut itself. The one bound kept is the one every reader
+/// has: an error item yields the completed prefix first, then the error,
+/// and fuses the reader.
+pub(crate) fn canonical_closing_reader<I>(field: &Field, rows: I) -> Result<BatchReader>
+where
+    I: IntoIterator<Item = Closing>,
+    I::IntoIter: Send + 'static,
+{
+    build(
+        field,
+        rows,
+        Some(usize::MAX),
+        None,
+        None,
+        None,
         true,
+        Some(|held: &Closing| held.1),
     )
 }
 
@@ -146,8 +159,19 @@ impl TryFrom<FallibleScalar> for Scalar {
     }
 }
 
+/// One row beside whether the batch closes after it.
+pub(crate) struct Closing(pub(crate) crate::Result<Scalar>, pub(crate) bool);
+
+impl TryFrom<Closing> for Scalar {
+    type Error = crate::Error;
+
+    fn try_from(value: Closing) -> crate::Result<Self> {
+        value.0
+    }
+}
+
 /// The one bounded row-to-batch iterator.
-struct Rows<I> {
+struct Rows<I: Iterator> {
     rows: I,
     field: Field,
     schema: SchemaRef,
@@ -160,6 +184,9 @@ struct Rows<I> {
     done: bool,
     /// Whether the producer proved every row canonical under `field`.
     canonical: bool,
+    /// The producer's own cut, where it makes one: whether the batch closes
+    /// after this item.
+    closes: Option<fn(&I::Item) -> bool>,
 }
 
 impl<I> Iterator for Rows<I>
@@ -219,6 +246,7 @@ where
                 self.done = true;
                 break;
             };
+            let closes = self.closes.is_some_and(|closes| closes(&row));
             let value = match row.try_into().map_err(Into::into) {
                 Ok(value) => value,
                 Err(error) => {
@@ -254,6 +282,11 @@ where
                         appended += appended_bytes(&value);
                     }
                     values.push(value);
+                    // The producer's own cut: the row it flagged is the
+                    // last of this batch, whatever the bounds above say.
+                    if closes {
+                        break;
+                    }
                 }
                 Err(error) => {
                     let error = external(error);
@@ -334,8 +367,10 @@ fn external(error: crate::Error) -> ArrowError {
 ///
 /// Every Arrow layout charges something per row beyond the payload - an
 /// offset, a validity bit, a null slot - and a running estimate that charged
-/// nothing would never close a batch of empty rows.
-const ROW_OVERHEAD: u64 = 16;
+/// nothing would never close a batch of empty rows. Shared with the producers
+/// that measure their own rows, so one row costs the same width whichever
+/// statistic charges it.
+pub(crate) const ROW_OVERHEAD: u64 = 16;
 
 /// What one canonicalized row is about to append, near enough to batch by.
 ///
@@ -344,8 +379,9 @@ const ROW_OVERHEAD: u64 = 16;
 /// appended plus a fixed per-row width, and the finished batch's own
 /// accounting is what a caller measures against. Cheap and monotone beats
 /// exact and per-row: an exact measure would cost more than the parse that
-/// produced the row.
-fn appended_bytes(value: &Scalar) -> u64 {
+/// produced the row. A producer closing its own batches charges a row by
+/// this where it has no better statistic for it.
+pub(crate) fn appended_bytes(value: &Scalar) -> u64 {
     ROW_OVERHEAD + payload_bytes(value)
 }
 

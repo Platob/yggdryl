@@ -26,7 +26,7 @@ fn reader() -> FixCodec {
 /// pass changes nothing: every chain of rules reaches its end in one pass.
 fn settled(reader: &FixCodec, line: &[u8]) -> FixMsg {
     let once = reader.one_line(line, true).expect("a readable line");
-    let twice = reader.enrich_fixmsg(once.clone()).expect("a second pass");
+    let twice = reader.enrich_message(once.clone()).expect("a second pass");
     assert_eq!(
         once,
         twice,

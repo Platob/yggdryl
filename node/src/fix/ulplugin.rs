@@ -1,8 +1,8 @@
-//! Native configuration values and their lazy message iterators.
+//! Native configuration values and their lazy iterator.
 
 use napi::bindgen_prelude::{Buffer, Generator, Result};
 use napi_derive::napi;
-use yggdryl::{FixMessages, UlPlugin, UlPlugins};
+use yggdryl::{UlPlugin, UlPlugins};
 
 use super::{JsFixCodec, JsFixMsg};
 use crate::napi_error;
@@ -55,11 +55,16 @@ impl JsUlPlugin {
             .map_err(napi_error)
     }
 
-    /// Convert this selected configuration to one flat native message.
+    /// This plugin as a message typed against `codec`'s dictionary.
+    ///
+    /// The same build every other reader funnels into, so a dictionary
+    /// carrying `ULBridge`'s fields types a port as a number and a flag as a
+    /// boolean, and one that does not keeps every attribute as the text it
+    /// arrived as.
     #[napi]
-    pub fn into_fixmsg(&self, codec: &JsFixCodec, enrich: Option<bool>) -> Result<JsFixMsg> {
+    pub fn into_fixmsg(&self, codec: &JsFixCodec) -> Result<JsFixMsg> {
         self.inner
-            .into_fixmsg(&codec.inner, enrich.unwrap_or(false))
+            .into_fixmsg(&codec.inner)
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
@@ -151,31 +156,5 @@ impl Generator for JsUlPlugins {
     type Return = ();
     fn next(&mut self, _: Option<Self::Next>) -> Option<Self::Yield> {
         self.inner.next().map(|inner| JsUlPlugin { inner })
-    }
-}
-
-/// A native fallible cursor; the JavaScript loader supplies `Symbol.iterator`.
-#[napi(js_name = "FixMessages")]
-pub struct JsFixMessages {
-    inner: FixMessages,
-}
-
-impl JsFixMessages {
-    pub(super) const fn from_core(inner: FixMessages) -> Self {
-        Self { inner }
-    }
-}
-
-#[napi]
-impl JsFixMessages {
-    /// Advance the native cursor, propagating an error or returning null at its end.
-    #[allow(clippy::should_implement_trait)] // JavaScript's iterator adapter needs a throwing next().
-    #[napi(ts_return_type = "IteratorResult<FixMsg>")]
-    pub fn next(&mut self) -> Result<Option<JsFixMsg>> {
-        self.inner
-            .next()
-            .transpose()
-            .map(|value| value.map(JsFixMsg::from_core))
-            .map_err(napi_error)
     }
 }

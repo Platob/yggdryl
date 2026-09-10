@@ -6,11 +6,7 @@ use crate::Result;
 enum Source {
     Empty,
     One(Option<Result<FixMsg>>),
-    Configs {
-        codec: FixCodec,
-        values: UlPlugins,
-        enrich: bool,
-    },
+    Configs { codec: FixCodec, values: UlPlugins },
 }
 
 /// Messages from one captured line or record.
@@ -35,13 +31,9 @@ impl FixMessages {
         })
     }
 
-    pub(super) fn from_ulconfigs(codec: FixCodec, values: UlPlugins, enrich: bool) -> Self {
+    pub(super) fn from_ulconfigs(codec: FixCodec, values: UlPlugins) -> Self {
         Self {
-            source: Source::Configs {
-                codec,
-                values,
-                enrich,
-            },
+            source: Source::Configs { codec, values },
         }
     }
 }
@@ -53,11 +45,9 @@ impl Iterator for FixMessages {
         let value = match &mut self.source {
             Source::Empty => None,
             Source::One(value) => value.take(),
-            Source::Configs {
-                codec,
-                values,
-                enrich,
-            } => values.next().map(|value| value.into_fixmsg(codec, *enrich)),
+            Source::Configs { codec, values } => {
+                values.next().map(|value| value.into_fixmsg(codec))
+            }
         };
         if value.as_ref().is_none_or(Result::is_err) {
             self.source = Source::Empty;

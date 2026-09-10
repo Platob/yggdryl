@@ -8,7 +8,7 @@ your own bytes.
 
 | Aspect | Rule |
 | --- | --- |
-| Native intake | `FixCodec::transform_line` accepts captured bytes and returns a lazy `FixMessages` iterator |
+| Native intake | `FixCodec::parse_line` accepts captured bytes and returns a lazy `FixMessages` iterator; `parse_lines` streams a whole capture |
 | Scalar fields | Values resolve through the field catalog; inline `fix:codes` supplies enum names |
 | Repeating groups | The count remains an `int32` field; a named List holds its component occurrences |
 | Wire record | Original entries retain order and raw values, including values that fail typed conversion |
@@ -26,7 +26,7 @@ your own bytes.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
     let frame = b"recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|";
-    let mut messages = codec.transform_line(frame, false)?;
+    let mut messages = codec.parse_line(frame)?;
     let message = messages.next().expect("one frame")?;
     assert!(messages.next().is_none());
     assert_eq!(message.by_tag(453)?, &yggdryl::Scalar::from(1_i32));
@@ -42,7 +42,7 @@ your own bytes.
 
     codec = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
     frame = b"recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|"
-    message, = codec.transform_line(frame)
+    message, = codec.parse_line(frame)
     assert message.by_tag(453).as_py() == 1
     assert message.by_path("Parties.0.PartyID").as_py() == "BROKER"
     assert message.into_bytes(ord("|")) == frame.removeprefix(b"recv ")
@@ -57,7 +57,7 @@ your own bytes.
 
     const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config/fix')))
     const frame = 'recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|'
-    const [message] = codec.transformLine(Buffer.from(frame))
+    const [message] = codec.parseLine(Buffer.from(frame))
     assert.equal(message.byTag(453).asJs(), 1)
     assert.equal(message.byPath('Parties.0.PartyID').asJs(), 'BROKER')
     assert.equal(Buffer.from(message.intoBytes(124)).toString(), frame.slice(5))

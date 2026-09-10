@@ -28,6 +28,8 @@ mod latest;
 mod lifecycle;
 #[path = "fix/lift.rs"]
 mod lift;
+#[path = "fix/message.rs"]
+mod message;
 #[path = "fix/numeric_branch.rs"]
 mod numeric_branch;
 #[path = "fix/pipeline.rs"]
@@ -137,17 +139,31 @@ fn one_message(
     Ok(message)
 }
 
+/// The one message a singleton fixture yields, filled where asked: a stage
+/// is a call on the codec, so the flag lives in the test helper alone.
+fn one_message_filled(
+    codec: &yggdryl::FixCodec,
+    messages: impl Iterator<Item = yggdryl::Result<yggdryl::FixMsg>>,
+    enrich: bool,
+) -> yggdryl::Result<yggdryl::FixMsg> {
+    let message = one_message(messages)?;
+    if enrich {
+        return codec.enrich_message(message);
+    }
+    Ok(message)
+}
+
 impl OneMessage for yggdryl::FixCodec {
     fn one_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        one_message(self.transform_line(row, enrich)?)
+        one_message_filled(self, self.parse_line(row)?, enrich)
     }
 
     fn one_record(&self, row: &yggdryl::Scalar, enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        one_message(self.transform_record(row, enrich)?)
+        one_message_filled(self, self.parse_text_record(row)?, enrich)
     }
 
     fn one_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        one_message(self.transform_ulconfig_line(row, enrich)?)
+        one_message_filled(self, self.parse_ulconfig_line(row)?, enrich)
     }
 }
 

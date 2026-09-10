@@ -30,7 +30,10 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::entry::FixEntry;
 use super::group_plan::GroupPlan;
-use super::{FixBranch, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
+use super::memo::{Lookup, Memo};
+use super::{
+    FixBranch, FixId, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name,
+};
 use crate::types::State;
 use crate::types::ascii::AsciiFamily;
 use crate::{DataType, Field, Result, Scalar, Version};
@@ -47,6 +50,21 @@ enum Located<'key> {
     },
     /// One occurrence of a repeated flat field.
     Repeated { name: &'key str, occurrence: usize },
+}
+
+/// What the dictionary holds under one key: the field it names, with the
+/// tag that field carries, and the repeating group it heads.
+struct Known<'registry> {
+    field: Option<(&'registry Field, i32)>,
+    group: Option<&'registry Field>,
+}
+
+impl Known<'_> {
+    /// A key the dictionary holds nothing under.
+    const NONE: Self = Self {
+        field: None,
+        group: None,
+    };
 }
 
 /// One key split into what it addresses.
@@ -250,6 +268,13 @@ pub(super) struct Builder<'registry> {
     /// The `BeginString` child a message that stated none is given,
     /// resolved once per codec rather than once per line.
     beginstring: &'registry Field,
+    /// What the run has already asked the dictionary, the codec's own.
+    memo: &'registry Memo,
+    /// The groups this line has addressed so far, by the spelling it
+    /// addressed them with: a bridge names one group once per member it
+    /// packs, and the group resolves once per line rather than once per
+    /// member.
+    groups: Vec<(SmolStr, Field, i32, bool)>,
     branch: FixBranch,
     version: Option<Version>,
     slots: Vec<Slot>,
@@ -313,6 +338,7 @@ impl<'registry> Builder<'registry> {
         registry: &'registry FixRegistry,
         message: Option<&'registry super::MsgType>,
         beginstring: &'registry Field,
+        memo: &'registry Memo,
         branch: FixBranch,
         version: Option<Version>,
         capacity: usize,
@@ -321,6 +347,8 @@ impl<'registry> Builder<'registry> {
             registry,
             message,
             beginstring,
+            memo,
+            groups: Vec::new(),
             branch,
             version,
             slots: Vec::with_capacity(capacity),
@@ -347,7 +375,7 @@ impl<'registry> Builder<'registry> {
                 .and_then(super::field::parse_tag)
                 .and_then(|tag| {
                     let field = self.by_tag(tag)?;
-                    let id = field.as_fix().id().ok()??;
+                    let id = self.registry.identity_of(field)?;
                     Some((tag, self.numeric_plan(id)?))
                 });
             self.push(key, value);
@@ -431,7 +459,7 @@ impl<'registry> Builder<'registry> {
             }
             let values = current.get_or_insert_with(|| vec![Scalar::Null; plan.columns_len()]);
             let text = String::from_utf8_lossy(raw);
-            values[column] = self.typed(plan.column(column), raw, &text);
+            values[column] = self.typed(plan.column(column), Some(plan.column(column)), raw, &text);
             self.record_under(counter, key, &text, tag);
             *cursor += 1;
             if let Some((column, nested)) = plan.nested(tag) {
@@ -567,7 +595,9 @@ impl<'registry> Builder<'registry> {
                     .flatten()
             })
         }?;
-        let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
+        // The tag off the index the registry keeps, never read out of the
+        // field's metadata for every key of every line.
+        let tag = self.registry.identity_of(field).map_or(0, FixId::tag);
         Some((field, tag))
     }
 
@@ -581,13 +611,13 @@ impl<'registry> Builder<'registry> {
         if self.branch.is_standard() {
             return self.registry.get_field_by_tag(tag);
         }
-        if super::FixId::is_admissible(&self.branch, tag) {
-            let id = super::FixId::new(tag, self.branch.digest_signed());
+        if FixId::is_admissible(&self.branch, tag) {
+            let id = FixId::new(tag, self.branch.digest_signed());
             if let Some(field) = self.registry.get_field_by_id(id) {
                 return Some(field);
             }
         }
-        self.registry.get_field_by_id(super::FixId::standard(tag))
+        self.registry.get_field_by_id(FixId::standard(tag))
     }
 
     /// The group a counter tag heads, under the tier a member resolves by.
@@ -595,14 +625,13 @@ impl<'registry> Builder<'registry> {
     /// Counters are scalar fields and the groups they head are catalog
     /// definitions, so this is the one lookup that crosses the two.
     fn by_counter(&self, tag: i32) -> Option<&'registry Field> {
-        if !self.branch.is_standard() && super::FixId::is_admissible(&self.branch, tag) {
-            let id = super::FixId::new(tag, self.branch.digest_signed());
+        if !self.branch.is_standard() && FixId::is_admissible(&self.branch, tag) {
+            let id = FixId::new(tag, self.branch.digest_signed());
             if let Some(group) = self.registry.get_group_by_counter(id) {
                 return Some(group);
             }
         }
-        self.registry
-            .get_group_by_counter(super::FixId::standard(tag))
+        self.registry.get_group_by_counter(FixId::standard(tag))
     }
 
     /// A group's own field, under the same tier a member resolves by.
@@ -626,16 +655,64 @@ impl<'registry> Builder<'registry> {
     /// the key arrived at - the message root for a flat key, the occurrence's
     /// own members for a grouped one - and it is read only where the
     /// dictionary answered nothing, so an unambiguous name costs no scan.
-    fn field_for(&self, key: &str, scope: &[Field]) -> (Field, i32, bool) {
-        if let Some((known, tag)) = self.resolve(key) {
-            return (stated(known), tag, true);
+    ///
+    /// Beside the child comes the declared field it was built from, where
+    /// the dictionary or the scope declared one: what a typed read asks
+    /// about the field is asked of that declaration, and a key no dictionary
+    /// explained has none.
+    ///
+    /// `resolved` is what [`Self::known`] answered for the key: a flat key is
+    /// resolved once and read twice - for the child it builds and for the
+    /// group it may head - so the resolution is passed rather than repeated.
+    fn field_from<'scope>(
+        &self,
+        key: &str,
+        resolved: Option<(&'registry Field, i32)>,
+        scope: &'scope [Field],
+    ) -> (Field, i32, Option<&'scope Field>)
+    where
+        'registry: 'scope,
+    {
+        if let Some((known, tag)) = resolved {
+            return (stated(known), tag, Some(known));
         }
         if let Some((declared, tag)) = in_scope(scope, key) {
-            return (stated(declared), tag, true);
+            return (stated(declared), tag, Some(declared));
         }
         let name = folded_name(key);
         let tag = super::field::parse_tag(key).unwrap_or(0);
-        (DataType::Utf8.nullable_field(name), tag, false)
+        (DataType::Utf8.nullable_field(name), tag, None)
+    }
+
+    /// What the dictionary holds under one key, asked once per run.
+    ///
+    /// The field the key names and the group it heads are facts of the
+    /// registry, the branch tier and the key alone, so the run remembers
+    /// them; a dotted path descends into a definition the identity cannot
+    /// name, and is resolved every time.
+    fn known(&self, key: &str) -> Known<'registry> {
+        if key.contains('.') {
+            return Known {
+                field: self.resolve(key),
+                group: self.by_group(key),
+            };
+        }
+        let lookup = self.memo.lookup(&self.branch, key, || Lookup {
+            field: self
+                .resolve(key)
+                .and_then(|(field, _)| self.registry.identity_of(field)),
+            group: self.by_group(key).is_some(),
+        });
+        Known {
+            field: lookup
+                .field
+                .and_then(|id| Some((self.registry.get_field_by_id(id)?, id.tag()))),
+            group: if lookup.group {
+                self.by_group(key)
+            } else {
+                None
+            },
+        }
     }
 
     /// The children of the message this row declared, which a key resolves
@@ -653,20 +730,36 @@ impl<'registry> Builder<'registry> {
     /// A value that will not type is null rather than a failure: the raw text
     /// stays in the entries, the refusal is readable, and the message still
     /// answers `Ok`. A parse error is for input that is not a message at all.
-    fn typed(&self, field: &Field, raw: &[u8], text: &str) -> Scalar {
+    ///
+    /// `source` is the dictionary's own declaration the field was built from,
+    /// where there is one: what it states about its values - its null
+    /// spellings, its code set - is read off it once per run and remembered,
+    /// because a line asks it for every value and a capture asks it a
+    /// million times. A field with no such declaration is read directly.
+    fn typed(
+        &self,
+        field: &Field,
+        source: Option<&'registry Field>,
+        raw: &[u8],
+        text: &str,
+    ) -> Scalar {
         // What the row types is the text with its unknown characters gone:
         // a byte no encoding explained became U+FFFD in the decode, and a
         // control byte a bridge left in a value is not part of it. The entry
         // keeps the decode as it was, which is what the anomaly reads.
         let cleaned = cleaned(text);
         let text = cleaned.as_ref();
-        let view = field.as_fix();
+        let facts = source.map(|source| self.memo.facts(source));
         // A spelling this field states as its own absence types as null while
         // the entry keeps the text: which spelling means "nothing was sent" is
         // a fact about the field, and the row is the interpretation where the
         // entries are what arrived. The capture-wide list is the other half of
         // the pair and was applied before this key was resolved at all.
-        if view.is_null_value(text) {
+        let absent = match &facts {
+            Some(facts) => facts.is_null(text),
+            None => field.as_fix().is_null_value(text),
+        };
+        if absent {
             return Scalar::Null;
         }
         // A `data` field's value is bytes, and the row is where they live:
@@ -676,7 +769,15 @@ impl<'registry> Builder<'registry> {
                 .scalar(Scalar::from(raw.to_vec()))
                 .unwrap_or(Scalar::Null);
         }
-        typed_spelling(field, text, self.version)
+        // The translation is the one step of a typed read that walks a
+        // document, and the one whose answer repeats across a run.
+        match (&facts, source) {
+            (Some(facts), Some(source)) => {
+                let translated = self.memo.translation(source, facts, text, self.version);
+                typed_translation(field, text, translated.as_deref(), self.version)
+            }
+            _ => typed_spelling(field, text, self.version),
+        }
     }
 
     /// One flat child, appended in arrival order.
@@ -690,7 +791,8 @@ impl<'registry> Builder<'registry> {
         // A tag reaches the dictionary once, and which half it is in decides
         // the rest: the counter and the scalar readings are the same probe
         // filtered two ways, and a numeric key is most of every frame.
-        let (field, tag, known) = if let Some(parsed) = super::field::parse_tag(key) {
+        let mut located = Known::NONE;
+        let (field, tag, source) = if let Some(parsed) = super::field::parse_tag(key) {
             // A tag an open group declares is that group's member, placed in
             // the occurrence the frame's order implies; any other tag closes
             // every group still open, because a numeric frame ends a group
@@ -705,7 +807,7 @@ impl<'registry> Builder<'registry> {
             // A blind probe here answers with whichever branch holds the tag.
             match self.by_tag(parsed) {
                 Some(found) => {
-                    let tag = found.as_fix().tag().ok().flatten().unwrap_or(0);
+                    let tag = self.registry.identity_of(found).map_or(0, FixId::tag);
                     if found.dtype().is_nested() {
                         if self.shadowed(found.name()) {
                             return;
@@ -725,27 +827,30 @@ impl<'registry> Builder<'registry> {
                         });
                         return;
                     }
-                    (stated(found), tag, true)
+                    (stated(found), tag, Some(found))
                 }
                 None => (
                     DataType::Utf8.nullable_field(folded_name(key)),
                     parsed,
-                    false,
+                    None,
                 ),
             }
         } else {
-            self.field_for(key, self.scope())
+            located = self.known(key);
+            self.field_from(key, located.field, self.scope())
         };
         if self.shadowed(field.name()) {
             return;
         }
-        let value = self.typed(&field, raw, text);
+        let value = self.typed(&field, source, raw, text);
         self.record(key, text, tag);
-        self.slot_for(field, tag, known).values.push(value);
+        self.slot_for(field, tag, source.is_some())
+            .values
+            .push(value);
         // The counter's child is built first, so the count keeps the column
         // its own field names; the group it heads is opened after it, empty
         // until a member arrives - located, indexed or numbered.
-        if let Some((group, counter)) = self.counter(key) {
+        if let Some((group, counter)) = self.counter_from(&located) {
             if !self.shadowed(group.name()) {
                 // Not `known`, for the reason the numeric path states: the
                 // counter holds the tag, the group it heads does not.
@@ -757,12 +862,12 @@ impl<'registry> Builder<'registry> {
     /// The repeating group a flat key names, when it names one.
     ///
     /// Counters resolve as scalar fields; the catalog supplies the group.
-    fn counter(&self, key: &str) -> Option<(Field, i32)> {
-        if let Some(group) = self.by_group(key) {
+    fn counter_from(&self, located: &Known<'registry>) -> Option<(Field, i32)> {
+        if let Some(group) = located.group {
             return Some((stated(group), group.as_fix().counter().ok()??));
         }
-        let (counter, tag) = self.resolve(key)?;
-        let id = counter.as_fix().id().ok()??;
+        let (counter, tag) = located.field?;
+        let id = self.registry.identity_of(counter)?;
         let group = self.numeric_group(id)?;
         Some((stated(group), tag))
     }
@@ -811,7 +916,7 @@ impl<'registry> Builder<'registry> {
         for inner in &self.open[1..=depth] {
             member.push_str(inner.name.as_str());
             member.push('[');
-            member.push_str(itoa_usize(inner.occurrence.unwrap_or(0)).as_str());
+            member.push_str(&format_smolstr!("{}", inner.occurrence.unwrap_or(0)));
             member.push_str("].");
         }
         member.push_str(key);
@@ -835,7 +940,8 @@ impl<'registry> Builder<'registry> {
         // An indexed counter is the group stated per occurrence: the group
         // slot holds what each index said, and no scalar column is built
         // beside it.
-        if let Some((field, tag)) = self.counter(name) {
+        let located = self.known(name);
+        if let Some((field, tag)) = self.counter_from(&located) {
             if self.shadowed(field.name()) {
                 return;
             }
@@ -848,13 +954,13 @@ impl<'registry> Builder<'registry> {
             slot.values[occurrence] = Scalar::from(text);
             return;
         }
-        let (field, tag, known) = self.field_for(name, self.scope());
+        let (field, tag, source) = self.field_from(name, located.field, self.scope());
         if self.shadowed(field.name()) {
             return;
         }
-        let value = self.typed(&field, raw, text);
+        let value = self.typed(&field, source, raw, text);
         self.record(key, text, tag);
-        let slot = self.slot_for(field, tag, known);
+        let slot = self.slot_for(field, tag, source.is_some());
         // Indices may be partial or out of order, so occurrences are built by
         // index and a gap is null.
         while slot.values.len() <= occurrence {
@@ -871,10 +977,14 @@ impl<'registry> Builder<'registry> {
     /// every string as a name, so a numeric key resolves only tag-first,
     /// and the dictionary's own field answers for both - two spellings of
     /// one group would otherwise build two columns carrying one tag.
-    fn group_field(&self, group: &str) -> (Field, i32, bool) {
-        match self.counter(group) {
+    fn group_field(&mut self, group: &str) -> (Field, i32, bool) {
+        if let Some((_, field, tag, known)) = self.groups.iter().find(|(held, ..)| held == group) {
+            return (field.clone(), *tag, *known);
+        }
+        let located = self.known(group);
+        let answer = match self.counter_from(&located) {
             Some((field, tag)) => (field, tag, true),
-            None => match self.by_group(group) {
+            None => match located.group {
                 Some(known) => {
                     let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
                     (stated(known), tag, true)
@@ -885,7 +995,10 @@ impl<'registry> Builder<'registry> {
                     false,
                 ),
             },
-        }
+        };
+        self.groups
+            .push((SmolStr::new(group), answer.0.clone(), answer.1, answer.2));
+        answer
     }
 
     /// One member of one occurrence of a repeating group, at any depth.
@@ -945,26 +1058,34 @@ impl<'registry> Builder<'registry> {
         // The leaf: a value under its field, or a nested group's counter
         // opening that group in the occurrence - resolved as the flat
         // counter resolves, through the dictionary's nested half first.
+        let mut source = None;
         let (leaf_field, leaf_tag, nested_counter) = if leaf.is_empty() {
             (
                 DataType::Utf8.nullable_field(occurrence_name(&levels.last().expect("a level").0)),
                 0,
                 false,
             )
-        } else if let Some((field, tag)) = self.counter(leaf) {
-            (field, tag, true)
         } else {
-            // The occurrence's own members are the level this leaf arrived
-            // at, so a spelling the dictionary shares between two tags
-            // resolves to the one this group declares.
-            let scope = member_fields(&levels.last().expect("a level").0);
-            let (field, tag, _) = self.field_for(leaf, scope);
-            (field, tag, false)
+            let located = self.known(leaf);
+            if let Some((field, tag)) = self.counter_from(&located) {
+                (field, tag, true)
+            } else {
+                // The occurrence's own members are the level this leaf
+                // arrived at, so a spelling the dictionary shares between
+                // two tags resolves to the one this group declares. A member
+                // the dictionary named is read through its declaration; one
+                // only the level declares is read directly, because the
+                // level is this line's own.
+                source = located.field.map(|(field, _)| field);
+                let scope = member_fields(&levels.last().expect("a level").0);
+                let (field, tag, _) = self.field_from(leaf, located.field, scope);
+                (field, tag, false)
+            }
         };
         let value = if leaf.is_empty() || nested_counter {
             Scalar::Null
         } else {
-            self.typed(&leaf_field, raw, text)
+            self.typed(&leaf_field, source, raw, text)
         };
         // Recorded after the path resolves, so the entry can ride under the
         // counter pair that heads it - when that pair actually arrived.
@@ -1598,6 +1719,19 @@ pub(super) fn typed_spelling(field: &Field, text: &str, at: Option<Version>) -> 
         Some(at) => view.code_value_at(at, text),
         None => view.code_value(text),
     };
+    typed_translation(field, text, translated, at)
+}
+
+/// [`typed_spelling`], the translation already made: `translated` is the wire
+/// value the field's code set gives `text` at `at`, or nothing where the set
+/// gives none, exactly as the builder's own table answers it.
+fn typed_translation(
+    field: &Field,
+    text: &str,
+    translated: Option<&str>,
+    at: Option<Version>,
+) -> Scalar {
+    let view = field.as_fix();
     let spelling = translated.unwrap_or(text);
     // A state is read through the name the field gives its code before
     // the code itself, because two fields share a letter and not a
@@ -1662,28 +1796,16 @@ fn in_scope<'held>(scope: &'held [Field], key: &str) -> Option<(&'held Field, i3
 
 /// The members one repeating group declares, as a level a key resolves in.
 fn member_fields(group: &Field) -> &[Field] {
-    match group.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => item.fields(),
-        _ => &[],
-    }
+    super::schema::item_fields(group).unwrap_or_default()
 }
 
 /// The tags one repeating group declares as its direct members, the first
 /// being the delimiter that opens an occurrence.
 fn declared_members(group: &Field) -> Vec<i32> {
-    let item = match group.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => item,
-        _ => return Vec::new(),
-    };
-    item.fields()
+    member_fields(group)
         .iter()
         .filter_map(|member| member.as_fix().tag().ok().flatten())
         .collect()
-}
-
-/// One occurrence index as text, for a located key.
-fn itoa_usize(value: usize) -> SmolStr {
-    smol_str::format_smolstr!("{value}")
 }
 
 /// The `BeginString` child a built message carries when its line stated
@@ -1712,15 +1834,11 @@ const fn is_binary(dtype: &DataType) -> bool {
 ///
 /// The entry keeps the arrival casing, because the entries are the wire
 /// record and the row is the interpretation; this is the interpretation's
-/// side of that split.
+/// side of that split. The fold is the crate's one name fold; a key the fold
+/// empties - separators alone - keeps its own spelling, because a child has
+/// to be called something.
 fn folded_name(key: &str) -> String {
-    let mut name = String::with_capacity(key.len());
-    for character in key.chars() {
-        if matches!(character, '_' | '-' | ' ') {
-            continue;
-        }
-        name.extend(character.to_lowercase());
-    }
+    let name = crate::types::normalized(key);
     if name.is_empty() {
         key.to_owned()
     } else {

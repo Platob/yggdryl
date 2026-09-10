@@ -502,7 +502,8 @@ impl TextOptions {
     /// typed by what its syntax can match. Public because a caller composing a
     /// text read with something that reads its payload needs the columns
     /// before there is a resource to read, exactly as
-    /// [`FixOptions::source_field`](crate::FixOptions::source_field) does.
+    /// [`fix_schema`](crate::fix_schema) answers the codec's before a byte is
+    /// read.
     ///
     /// # Errors
     ///

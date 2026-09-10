@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import io
 import json
 import pickle
 import gc
@@ -25,8 +26,10 @@ import tempfile
 import timeit
 from collections.abc import Callable
 
+import pyarrow as pa
+
 from yggdryl import DataType, Field, MimeType, types
-from yggdryl.fix import STANDARD_BRANCH, FixCodec, FixMsg, FixRegistry, UlPlugin
+from yggdryl.fix import STANDARD_BRANCH, FixCodec, FixMsg, FixRegistry, UlPlugin, fix_schema
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
@@ -233,10 +236,61 @@ BRIDGE_REGISTRY = copy.copy(SEED_REGISTRY)
 BRIDGE_REGISTRY.with_ulbridge_fields()
 BRIDGE_CODEC = FixCodec(BRIDGE_REGISTRY, branch="ulbridge")
 NUMERIC_GROUP = b"8=FIX.4.4|35=D|453=1|448=BROKER|447=D|452=1|10=0|"
-assert CODEC.transform_fix_line(NUMERIC_GROUP).by_tag(453).as_py() == 1
-assert CODEC.transform_fix_line(NUMERIC_GROUP).by_path("Parties.0.PartyID").as_py() == "BROKER"
+assert CODEC.parse_fix_line(NUMERIC_GROUP).by_tag(453).as_py() == 1
+assert CODEC.parse_fix_line(NUMERIC_GROUP).by_path("Parties.0.PartyID").as_py() == "BROKER"
 assert FixRegistry.from_json(CATALOG_JSON) == CATALOG
 assert pickle.loads(CATALOG_PICKLE) == CATALOG
+
+# The stream and Arrow doors, over a capture of wide orders: what is measured
+# is the crossing - one pull per line, one batch per pull - beside the parse.
+FIXED_SCHEMA = fix_schema(SEED_REGISTRY)
+LINES = [b"8=FIX.4.4|35=D|11=ORDER-%06d|55=AAPL|54=1|38=100|58=%s|10=0|" % (index, b"x" * 200) for index in range(256)]
+CAPTURE = pa.table({"body": pa.array(LINES, pa.binary())})
+PARSED = next(CODEC.parse_line(LINES[0]))
+PARSED_ROW = PARSED.into_row(FIXED_SCHEMA)
+PARSED_BATCH = CODEC.parse_text_arrow_reader(CAPTURE).read_all()
+assert PARSED_BATCH.num_rows == len(LINES)
+assert len(list(CODEC.parse_lines(LINES))) == len(LINES)
+
+
+def _parse_lines_drain() -> int:
+    return sum(1 for _ in CODEC.parse_lines(LINES))
+
+
+def _parse_text_records_drain() -> int:
+    return sum(1 for _ in CODEC.parse_text_records({"body": line} for line in LINES))
+
+
+def _parse_text_arrow_reader() -> int:
+    return CODEC.parse_text_arrow_reader(CAPTURE).read_all().num_rows
+
+
+def _enrich_messages_arrow_reader() -> int:
+    return CODEC.enrich_messages_arrow_reader(PARSED_BATCH).read_all().num_rows
+
+
+def _messages_drain() -> int:
+    return sum(1 for _ in CODEC.messages(PARSED_BATCH))
+
+
+def _arrow_reader_over_lines() -> int:
+    return CODEC.arrow_reader(FIXED_SCHEMA, CODEC.parse_lines(LINES)).read_all().num_rows
+
+
+def _write_arrow_reader() -> int:
+    return CODEC.write_arrow_reader(PARSED_BATCH, io.BytesIO())
+
+
+def _message_set() -> None:
+    copy.copy(PARSED).set(55, "MSFT")
+
+
+def _message_remove() -> object:
+    return copy.copy(PARSED).remove(55)
+
+
+def _message_from_row() -> object:
+    return FixMsg.from_row(FIXED_SCHEMA, PARSED_ROW, SEED_REGISTRY)
 
 
 
@@ -258,12 +312,9 @@ def _category_mutation(operation: str) -> FixRegistry:
     return registry
 
 
-def _register_vocabulary(bridge: bool) -> FixRegistry:
+def _register_bridge_vocabulary() -> FixRegistry:
     registry = FixRegistry()
-    if bridge:
-        registry.with_ulbridge_fields()
-    else:
-        registry.with_crate_fields()
+    registry.with_ulbridge_fields()
     return registry
 
 def _wildcard(count: int) -> bytes:
@@ -337,22 +388,32 @@ def main() -> None:
         _measure("catalog copy baseline", lambda: copy.copy(CATALOG), args.iterations)
         for operation in ("create", "insert", "update", "remove"):
             _measure(f"catalog {operation} including copy", lambda operation=operation: _category_mutation(operation), args.iterations)
-        _measure("register crate vocabulary", lambda: _register_vocabulary(False), args.iterations)
-        _measure("register bridge vocabulary", lambda: _register_vocabulary(True), args.iterations)
+        _measure("register bridge vocabulary", _register_bridge_vocabulary, args.iterations)
         singleton = CATALOG.msgtype("D")
         _measure("singleton stable hash", singleton.stable_hash, args.iterations)
         _measure("singleton field view", lambda: singleton.field, args.iterations)
 
-        _measure("numeric group, compiled plan", lambda: CODEC.transform_fix_line(NUMERIC_GROUP), args.iterations)
+        _measure("numeric group, compiled plan", lambda: CODEC.parse_fix_line(NUMERIC_GROUP), args.iterations)
+        _measure("message set", _message_set, args.iterations)
+        _measure("message remove", _message_remove, args.iterations)
+        _measure("message from_row", _message_from_row, args.iterations)
+        streams = max(1, args.iterations // 50)
+        _measure(f"parse_lines drain/{len(LINES)}", _parse_lines_drain, streams)
+        _measure(f"parse_text_records drain/{len(LINES)}", _parse_text_records_drain, streams)
+        _measure(f"parse_text_arrow_reader/{len(LINES)}", _parse_text_arrow_reader, streams)
+        _measure(f"enrich_messages_arrow_reader/{len(LINES)}", _enrich_messages_arrow_reader, streams)
+        _measure(f"messages drain/{len(LINES)}", _messages_drain, streams)
+        _measure(f"arrow_reader over parse_lines/{len(LINES)}", _arrow_reader_over_lines, streams)
+        _measure(f"write_arrow_reader/{len(LINES)}", _write_arrow_reader, streams)
         for count in (1, 32, 64):
             body = _wildcard(count)
             assert len(list(UlPlugin.from_json_bytes(body))) == count
-            assert len(list(BRIDGE_CODEC.transform_line(body))) == count
+            assert len(list(BRIDGE_CODEC.parse_line(body))) == count
             _measure(f"UlPlugins first/{count}", lambda body=body: next(UlPlugin.from_json_bytes(body)), args.iterations)
             _measure(f"UlPlugins drain/{count}", lambda body=body: list(UlPlugin.from_json_bytes(body)), args.iterations)
-            _measure(f"FixMessages first/{count}", lambda body=body: next(BRIDGE_CODEC.transform_line(body)), args.iterations)
-            _measure(f"FixMessages drain/{count}", lambda body=body: list(BRIDGE_CODEC.transform_line(body)), args.iterations)
-            _measure(f"record messages drain/{count}", lambda body=body: list(BRIDGE_CODEC.transform_record({"body": body})), args.iterations)
+            _measure(f"FixMessages first/{count}", lambda body=body: next(BRIDGE_CODEC.parse_line(body)), args.iterations)
+            _measure(f"FixMessages drain/{count}", lambda body=body: list(BRIDGE_CODEC.parse_line(body)), args.iterations)
+            _measure(f"record messages drain/{count}", lambda body=body: list(BRIDGE_CODEC.parse_text_record({"body": body})), args.iterations)
             first = next(UlPlugin.from_json_bytes(body))
             _measure(f"UlPlugin hash/{count}", first.stable_hash, args.iterations)
         loads = max(1, args.iterations // 100)

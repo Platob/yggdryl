@@ -542,6 +542,56 @@ impl MsgDirection {
     /// The direction of a line the transport marked as arriving.
     pub const RECV: &'static str = "RECV";
 
+    /// Reads a direction a caller spelled, as a pin or an argument.
+    ///
+    /// The one place the spellings are listed, so a binding accepts exactly
+    /// what another does and the core stores nothing it did not read:
+    /// `sent`, `s` and `send` are [`Self::SENT`]; `recv`, `r` and `receive`
+    /// are [`Self::RECV`]; `unknown` and the empty text are `None`, the
+    /// direction nothing states. ASCII case is folded and nothing else is:
+    /// this reads a word a caller chose, where [`Self::infer_bytes`] reads
+    /// the prose a transport wrote in front of a line.
+    ///
+    /// ```
+    /// use yggdryl::types::MsgDirection;
+    ///
+    /// assert_eq!(MsgDirection::from_spelling("Sent")?, Some(MsgDirection::SENT));
+    /// assert_eq!(MsgDirection::from_spelling("r")?, Some(MsgDirection::RECV));
+    /// assert_eq!(MsgDirection::from_spelling("")?, None);
+    /// assert!(MsgDirection::from_spelling("sideways").is_err());
+    /// # Ok::<(), yggdryl::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`](crate::Error::Parse) naming the spelling
+    /// when it is none of the listed ones.
+    pub fn from_spelling(spelling: &str) -> Result<Option<&'static str>> {
+        if spelling.eq_ignore_ascii_case("sent")
+            || spelling.eq_ignore_ascii_case("s")
+            || spelling.eq_ignore_ascii_case("send")
+        {
+            return Ok(Some(Self::SENT));
+        }
+        if spelling.eq_ignore_ascii_case("recv")
+            || spelling.eq_ignore_ascii_case("r")
+            || spelling.eq_ignore_ascii_case("receive")
+        {
+            return Ok(Some(Self::RECV));
+        }
+        if spelling.is_empty() || spelling.eq_ignore_ascii_case("unknown") {
+            return Ok(None);
+        }
+        Err(crate::Error::Parse {
+            target: "msgdirection",
+            position: 0,
+            reason: crate::text::expected_got(
+                "one of sent, recv, unknown",
+                format_args!("{spelling:?}"),
+            ),
+        })
+    }
+
     /// Reads which way one captured byte line moved.
     ///
     /// The verb is read **in front of the payload**, never inside it. Where a

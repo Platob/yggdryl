@@ -19,7 +19,7 @@ use std::sync::Arc;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
-use yggdryl::{FixBatchReader, FixCodec, FixOptions, FixRegistry, IOMedia, Scalar, Url, write_fix};
+use yggdryl::{FixCodec, FixRegistry, IOMedia, Scalar, Url};
 
 /// The committed dictionary, plus the bridge's own vocabulary.
 fn registry() -> Arc<FixRegistry> {
@@ -168,24 +168,23 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     assert_eq!(records.len(), CAPTURE.len(), "a line in is a row out");
 
     let one_at_a_time: Vec<_> = codec
-        .transform_records(records.clone(), true)
+        .parse_text_records(records.clone())
+        .map(|held| held.and_then(|held| codec.enrich_message(held)))
         .map(|held| held.expect("a message"))
         .collect();
     assert_eq!(one_at_a_time.len(), CAPTURE.len());
 
     // Batched: the same capture through the batch reader, which is the same
-    // read with the rows held in Arrow instead of one at a time.
-    let mut options = FixOptions::new();
-    options.enrich = true;
-    let batched: Vec<_> = FixBatchReader::from_column(
-        Arc::clone(&registry),
-        source.read_arrow_reader(&text()).expect("a reader"),
-        "body",
-        options,
-    )
-    .expect("the batch reader opens")
-    .map(|batch| batch.expect("a batch"))
-    .collect();
+    // read with the rows held in Arrow instead of one at a time, then the
+    // same filling over the rows.
+    let parsed = codec
+        .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
+        .expect("the batch reader opens");
+    let batched: Vec<_> = codec
+        .enrich_messages_arrow_reader(parsed)
+        .expect("the filling reader opens")
+        .map(|batch| batch.expect("a batch"))
+        .collect();
     let rows: usize = batched.iter().map(arrow_array::RecordBatch::num_rows).sum();
     assert_eq!(rows, CAPTURE.len(), "the batch path keeps the row count");
     // One batch, because the capture is far under the 128 MiB target.
@@ -338,23 +337,21 @@ fn enrichment_fills_the_columns_and_leaves_the_wire_alone() {
 fn an_enriched_capture_still_writes_back_the_wire_it_was_read_from() {
     let registry = registry();
     let source = handle();
-    let mut options = FixOptions::new();
-    options.enrich = true;
+    let codec = FixCodec::new(Arc::clone(&registry)).with_separator(b'|');
 
-    let reader = FixBatchReader::from_column(
-        Arc::clone(&registry),
-        source.read_arrow_reader(&text()).expect("a reader"),
-        "body",
-        options,
-    )
-    .expect("the batch reader opens");
+    let parsed = codec
+        .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
+        .expect("the batch reader opens");
+    let reader = codec
+        .enrich_messages_arrow_reader(parsed)
+        .expect("the filling reader opens");
 
     // The wire is rebuilt from each row's arrival record, never from its
     // columns, so a filled column cannot leak into a re-emitted frame.
     let mut written: Vec<u8> = Vec::new();
-    let mut emitting = FixOptions::new();
-    emitting.separator = b'|';
-    let rows = write_fix(reader, &mut written, &emitting).expect("the capture writes");
+    let rows = codec
+        .write_arrow_reader(reader, &mut written)
+        .expect("the capture writes");
     assert_eq!(rows, CAPTURE.len() as u64);
 
     // The two framed reports come back exactly as they arrived, filled or not.
@@ -369,19 +366,17 @@ fn an_enriched_capture_still_writes_back_the_wire_it_was_read_from() {
 fn the_batch_states_what_each_line_was_and_which_way_it_moved() {
     let registry = registry();
     let source = handle();
-    let mut options = FixOptions::new();
-    options.enrich = true;
+    let codec = FixCodec::new(registry);
 
-    let batch = FixBatchReader::from_column(
-        registry,
-        source.read_arrow_reader(&text()).expect("a reader"),
-        "body",
-        options,
-    )
-    .expect("the batch reader opens")
-    .next()
-    .expect("a batch")
-    .expect("a batch");
+    let parsed = codec
+        .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
+        .expect("the batch reader opens");
+    let batch = codec
+        .enrich_messages_arrow_reader(parsed)
+        .expect("the filling reader opens")
+        .next()
+        .expect("a batch")
+        .expect("a batch");
 
     // The capture's own columns lead the row and are carried through, which is
     // what lets a monitor join a parsed capture back to its source by
@@ -494,7 +489,7 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
     // the ObjectName, the attributes and their types.
     let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
     let codec = FixCodec::new(registry()).with_branch(&branch);
-    let message = held[0].into_fixmsg(&codec, false).expect("a typed message");
+    let message = held[0].into_fixmsg(&codec).expect("a typed message");
     assert_eq!(
         message
             .get_by_path("PriorityLevel")
@@ -512,7 +507,7 @@ fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
     let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
     let codec = FixCodec::new(registry()).with_branch(&branch);
     let messages = codec
-        .transform_line(WILDCARD.as_bytes(), false)
+        .parse_line(WILDCARD.as_bytes())
         .expect("a wildcard response")
         .collect::<yggdryl::Result<Vec<_>>>()
         .expect("each configuration converts");
@@ -547,7 +542,7 @@ fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
         })
         .into();
     let read = codec
-        .transform_records(records, false)
+        .parse_text_records(records)
         .collect::<yggdryl::Result<Vec<_>>>()
         .expect("record iteration expands each configuration");
     assert_eq!(read.len(), 3);
@@ -573,8 +568,11 @@ fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
     ));
     let source = yggdryl::arrow::batch_from_value(&field, &value).unwrap();
     let batch = codec
-        .transform_arrow_batch(&source, &FixOptions::new(), false)
-        .expect("bulk responses expand batch rows");
+        .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
+        .expect("bulk responses expand batch rows")
+        .next()
+        .expect("one batch")
+        .expect("a batch");
     assert_eq!(batch.num_rows(), 3);
     assert_eq!(
         column(&batch, "rownum"),

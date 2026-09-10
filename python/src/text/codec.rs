@@ -405,7 +405,7 @@ enum WriterMode {
 /// Bytes are attempted first. An initial `TypeError` switches the adapter to
 /// an incremental UTF-8 text writer, retaining at most an incomplete code
 /// point between core writes.
-struct PythonWriter<'py> {
+pub(crate) struct PythonWriter<'py> {
     destination: Bound<'py, PyAny>,
     mode: WriterMode,
     pending_utf8: Vec<u8>,
@@ -413,7 +413,7 @@ struct PythonWriter<'py> {
 }
 
 impl<'py> PythonWriter<'py> {
-    fn new(destination: &Bound<'py, PyAny>) -> Self {
+    pub(crate) fn new(destination: &Bound<'py, PyAny>) -> Self {
         Self {
             destination: destination.clone(),
             mode: WriterMode::Unknown,
@@ -501,7 +501,8 @@ impl<'py> PythonWriter<'py> {
         Ok(())
     }
 
-    fn finish(&mut self) -> PyResult<()> {
+    /// The Python failure a write swallowed, once the core is done writing.
+    pub(crate) fn finish(&mut self) -> PyResult<()> {
         if let Some(error) = self.error.take() {
             return Err(error);
         }

@@ -18,23 +18,32 @@ mod catalog;
 mod ulplugin;
 
 pub use catalog::{JsFixDefinitionIterator, JsMsgType, JsMsgTypeIterator};
-pub use ulplugin::{JsFixMessages, JsUlPlugin, JsUlPlugins};
+pub use ulplugin::{JsUlPlugin, JsUlPlugins};
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::thread::ThreadId;
 
 use napi::JsValue as _;
-use napi::bindgen_prelude::{Buffer, ClassInstance, Env, Generator, Result, Unknown, ValueType};
+use napi::bindgen_prelude::{
+    Buffer, ClassInstance, Env, FromNapiValue, Function, FunctionRef, Generator,
+    JsObjectValue as _, Object, Result, Status, Unknown, ValueType,
+};
 use napi_derive::napi;
+use yggdryl::types::MsgDirection;
 use yggdryl::{
-    Field as CoreField, FixBranch as CoreFixBranch, FixCategory, FixCodec as CoreFixCodec,
-    FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
-    FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
+    Error as CoreError, Field as CoreField, FixBranch as CoreFixBranch, FixCategory,
+    FixCodec as CoreFixCodec, FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle,
+    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
 };
 
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
+use crate::iomedia::JsBatchReader;
 use crate::text::codec::JsScalar;
 use crate::types::field::JsField;
 use crate::{exact_i32, exact_i64, napi_error, napi_type_error};
+
+/// The root a batch of FIX rows is named by, the core's own spelling.
+const ROOT_NAME: &str = "fix";
 
 /// What a mutation says when something else still holds the dictionary.
 const SHARED: &str =
@@ -802,9 +811,11 @@ fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(f64, f64, Strin
 ///
 /// The schema is one non-null Struct `Field` - the only row schema - and the
 /// value the row it declares, so a plain object crosses as the record the core
-/// canonicalizes into that order exactly as every other row is. The message is
-/// immutable: it compares, hashes, renders and clones by the schema and the
-/// value it carries, against the registry it was resolved against.
+/// canonicalizes into that order exactly as every other row is. The row is
+/// written through `set` and `remove`; the entries never are, because they are
+/// what the wire carried. The message compares, hashes, renders and clones by
+/// the schema and the value it carries, against the registry it was resolved
+/// against.
 #[napi(js_name = "FixMsg")]
 pub struct JsFixMsg {
     inner: CoreFixMsg,
@@ -833,6 +844,29 @@ impl JsFixMsg {
         let registry = registry_or_global(registry)?;
         CoreFixMsg::with_registry(registry, field.inner.clone(), value.inner.clone())
             .map(|inner| Self { inner })
+            .map_err(napi_error)
+    }
+
+    /// The message a fixed row holds: the inverse of `intoRow`.
+    ///
+    /// `schema` is the row's root - the one `fix.schema` or
+    /// `fix.schemaCarrying` built, or a batch reader's `field` - and `row` the
+    /// row under it, which the loader widens from whatever `Scalar.fromJs`
+    /// reads. The columns are the message's children under the schema's
+    /// names, reached by tag as a parsed message's are, and the entries are
+    /// rebuilt from the `nofixentries` column, so `intoBytes` re-emits the
+    /// line the row was read from; a row without that column has no entries.
+    /// Nothing is parsed again. The process default is the registry when
+    /// none is named.
+    #[napi(factory)]
+    pub fn from_row(
+        schema: &JsField,
+        row: &JsScalar,
+        registry: Option<ClassInstance<'_, JsFixRegistry>>,
+    ) -> Result<Self> {
+        let registry = registry_or_global(registry)?;
+        CoreFixMsg::from_row(registry, &schema.inner, &row.inner)
+            .map(Self::from_core)
             .map_err(napi_error)
     }
 
@@ -977,6 +1011,38 @@ impl JsFixMsg {
             .value(key.as_key())
             .map(|value| JsScalar::from_core(value.clone()))
             .map_err(napi_error)
+    }
+
+    /// Writes one value into the row, typed by the field the key resolves to.
+    ///
+    /// `key` is a tag or a name, resolved as a lookup resolves one - through
+    /// the dictionary in this message's own branch, then the standard one -
+    /// and a name the dictionary does not know still reaches a child spelled
+    /// that way. `value` is whatever `Scalar.fromJs` reads, widened by the
+    /// loader; a known field types it through the core's value contract, and
+    /// `null` is stored as a stated null. An existing child is replaced where
+    /// it stands and an absent one appended; a bare tag no dictionary explains
+    /// appends a text child named by its decimal. Only the row changes: the
+    /// entries, the wire and the digest stay what they were.
+    ///
+    /// A key reaching no field and no child, or a value the field refuses,
+    /// throws the core's refusal and leaves the message as it was.
+    #[napi(ts_args_type = "key: number | string, value: unknown")]
+    pub fn set(&mut self, env: Env, key: Unknown<'_>, value: &JsScalar) -> Result<()> {
+        let key = FixKeyArg::from_js(env, &key, "key")?;
+        self.inner
+            .set(key.as_key(), value.inner.clone())
+            .map_err(napi_error)
+    }
+
+    /// Removes the child a key reaches, answering its value, or `null`.
+    ///
+    /// The key resolves as `set` resolves one, and a key reaching nothing
+    /// answers `null` and changes nothing. The entries are untouched.
+    #[napi(ts_args_type = "key: number | string")]
+    pub fn remove(&mut self, env: Env, key: Unknown<'_>) -> Result<Option<JsScalar>> {
+        let key = FixKeyArg::from_js(env, &key, "key")?;
+        Ok(self.inner.remove(key.as_key()).map(JsScalar::from_core))
     }
 
     /// The `[name, value]` pairs of the root, in the order it declares.
@@ -1219,18 +1285,229 @@ fn answered(value: &Scalar) -> Option<JsScalar> {
     (!value.is_null()).then(|| JsScalar::from_core(value.clone()))
 }
 
-/// One dictionary, reading captured lines into messages.
+/// Where a JavaScript source behind a stream failed, kept for the stream.
 ///
-/// The reader is the whole parse surface: a captured line with a verb in front
+/// A core stage pulls its items as values, so a failure inside the pull - an
+/// item the loader could not read, an iterator that threw - cannot travel
+/// through the stage as an item. It ends the pull instead and lands here, as
+/// the status and reason a new error is raised with, because the error
+/// itself holds handles that do not cross threads.
+#[derive(Clone, Default)]
+struct Failed(Arc<Mutex<Option<(Status, String)>>>);
+
+impl Failed {
+    fn set(&self, error: &napi::Error) {
+        if let Ok(mut held) = self.0.lock() {
+            *held = Some((error.status, error.reason.clone()));
+        }
+    }
+
+    fn take(&self) -> Option<napi::Error> {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|mut held| held.take())
+            .map(|(status, reason)| napi::Error::new(status, reason))
+    }
+}
+
+/// A JavaScript iterable pulled one item at a time into a core stage.
+///
+/// The loader hands over a bound pull function, `() => item | null`, so the
+/// iterable's own protocol runs in JavaScript and each item arrives here
+/// already read into the value the stage takes. Like the record bridge in
+/// `iomedia`, it is called only on the isolate thread that supplied it and
+/// only within the native call advancing the stream, which is what makes the
+/// environment it is borrowed back with valid. Exhaustion ends the pull; a
+/// failure ends it too and lands in `failed`, so the stage sees a shorter
+/// stream and the wrapper around it throws what happened.
+struct Pulled<T: FromNapiValue> {
+    pull: FunctionRef<(), Option<T>>,
+    environment: usize,
+    thread: ThreadId,
+    failed: Failed,
+    done: bool,
+}
+
+impl<T: FromNapiValue> Pulled<T> {
+    fn new(env: Env, pull: Function<'_, (), Option<T>>) -> Result<Self> {
+        Ok(Self {
+            pull: pull.create_ref()?,
+            environment: env.raw().expose_provenance(),
+            thread: std::thread::current().id(),
+            failed: Failed::default(),
+            done: false,
+        })
+    }
+
+    fn pull(&self) -> Result<Option<T>> {
+        if std::thread::current().id() != self.thread {
+            return Err(napi_error(
+                "a JavaScript message iterable can only be pulled on the isolate thread that supplied it",
+            ));
+        }
+        let env = Env::from_raw(std::ptr::with_exposed_provenance_mut(self.environment));
+        self.pull.borrow_back(&env)?.call(())
+    }
+}
+
+impl<T: FromNapiValue> Iterator for Pulled<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        if self.done {
+            return None;
+        }
+        match self.pull() {
+            Ok(Some(value)) => Some(value),
+            Ok(None) => {
+                self.done = true;
+                None
+            }
+            Err(error) => {
+                self.done = true;
+                self.failed.set(&error);
+                None
+            }
+        }
+    }
+}
+
+/// A JavaScript failure behind a stream a batch reader pulls, as the core
+/// reports one.
+///
+/// The batch it would have landed in is being pulled by the reader rather
+/// than by a JavaScript frame, so it travels as that reader's error and
+/// arrives where the batch would have.
+fn javascript_failure(error: napi::Error) -> CoreError {
+    CoreError::Arrow(arrow_schema::ArrowError::ExternalError(Box::new(
+        std::io::Error::other(error.reason.clone()),
+    )))
+}
+
+/// A stream of messages, one at a time.
+///
+/// Every stage of the codec answers one of these - one line's messages, a
+/// stream of lines parsed, records parsed, messages filled or stamped, a
+/// batch read back - so a message stream has one shape at this boundary
+/// whatever made it. Nothing is collected: the core iterator is the stream,
+/// and a JavaScript iterable behind it is pulled one item at a time. A line
+/// the reader refuses throws where it is met and the stream goes on past it;
+/// a failure in the iterable behind the stream throws and ends it. The loader
+/// supplies `Symbol.iterator` over `next`.
+#[napi(js_name = "FixMessages")]
+pub struct JsFixMessages {
+    inner: Box<dyn Iterator<Item = yggdryl::Result<CoreFixMsg>>>,
+    /// Where the JavaScript source behind `inner` failed, when there is one.
+    failed: Option<Failed>,
+}
+
+impl JsFixMessages {
+    /// A stream over a core iterator that pulls nothing from JavaScript.
+    pub(super) fn over<I>(inner: I) -> Self
+    where
+        I: Iterator<Item = yggdryl::Result<CoreFixMsg>> + 'static,
+    {
+        Self {
+            inner: Box::new(inner),
+            failed: None,
+        }
+    }
+
+    /// A stream over a core stage fed by a JavaScript iterable.
+    fn pulling<I>(inner: I, failed: Failed) -> Self
+    where
+        I: Iterator<Item = yggdryl::Result<CoreFixMsg>> + 'static,
+    {
+        Self {
+            inner: Box::new(inner),
+            failed: Some(failed),
+        }
+    }
+}
+
+#[napi]
+impl JsFixMessages {
+    /// Advance the stream: the next message, or `null` at its end.
+    ///
+    /// A line the reader refused throws here and the stream continues on
+    /// the next call; a failure behind the stream throws once, in place of
+    /// the end.
+    #[allow(clippy::should_implement_trait)] // JavaScript's iterator adapter needs a throwing next().
+    #[napi(ts_return_type = "IteratorResult<FixMsg>")]
+    pub fn next(&mut self) -> Result<Option<JsFixMsg>> {
+        match self.inner.next() {
+            Some(held) => held.map(JsFixMsg::from_core).map(Some).map_err(napi_error),
+            None => match self.failed.as_ref().and_then(Failed::take) {
+                Some(error) => Err(error),
+                None => Ok(None),
+            },
+        }
+    }
+}
+
+/// A JavaScript sink with `write(chunk)`, as the writer the core writes into.
+///
+/// Bound once, called per line, on the thread and within the call that
+/// supplied it. The first failure is kept and every write after it refuses,
+/// so the core stops and the failure is what the caller sees.
+struct JsSink<'env> {
+    sink: Object<'env>,
+    write: Function<'env, Buffer, Unknown<'env>>,
+    failed: Option<napi::Error>,
+}
+
+impl<'env> JsSink<'env> {
+    fn new(sink: Object<'env>) -> Result<Self> {
+        let write: Function<'env, Buffer, Unknown<'env>> =
+            sink.get_named_property("write").map_err(|error| {
+                napi_error(format!(
+                    "expected a sink defining write(chunk: Uint8Array): {error}"
+                ))
+            })?;
+        Ok(Self {
+            sink,
+            write,
+            failed: None,
+        })
+    }
+}
+
+impl std::io::Write for JsSink<'_> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.failed.is_some() {
+            return Err(std::io::Error::other("the sink already failed"));
+        }
+        match self.write.apply(self.sink, Buffer::from(bytes.to_vec())) {
+            Ok(_) => Ok(bytes.len()),
+            Err(error) => {
+                let reason = error.reason.clone();
+                self.failed = Some(error);
+                Err(std::io::Error::other(reason))
+            }
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// One dictionary, reading captured lines into messages, with the Arrow twins.
+///
+/// The codec is the whole parse surface: a captured line with a verb in front
 /// of it, a bare frame, a numeric frame with a stated separator, a bridge's
-/// name/value text, or pairs a caller already has. Each redirects to the core
-/// method of the same name, so nothing here decides a dialect, a version or a
-/// separator - it only carries what JavaScript said across.
+/// name/value text, a configuration document, pairs a caller already split,
+/// a record a text reader answered. Each redirects to the core method of the
+/// same name, so nothing here decides a dialect, a version or a separator -
+/// it only carries what JavaScript said across. A stage is a call: the
+/// stream methods take any iterable and answer a lazy `FixMessages`, the
+/// Arrow methods take and answer a `BatchReader`, one batch at a time.
 ///
 /// Every message it builds opens with `beginstring` - the wire's own, else
 /// the version the message was read at - and closes with the crate's
 /// `timestamp`: the first clock the message carries, else the epoch. Neither
-/// is an entry unless the line carried it, so `toBytes` re-emits the line
+/// is an entry unless the line carried it, so `intoBytes` re-emits the line
 /// byte for byte.
 #[napi(js_name = "FixCodec")]
 pub struct JsFixCodec {
@@ -1240,7 +1517,15 @@ pub struct JsFixCodec {
 
 #[napi]
 impl JsFixCodec {
-    /// Open a reader over one dictionary, or over the process default.
+    /// Open a codec over one dictionary, or over the process default.
+    ///
+    /// Every pin is the core's, spelled once here. `branch` and `version`
+    /// cross as text; `separator` is the byte a numeric frame splits on where
+    /// the line does not say; `payloadColumn` names the record column a line
+    /// is read from; `nullValues` are the spellings that mean nothing was
+    /// sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
+    /// or `"unknown"`; `batchByteSize` is the raw bytes one Arrow batch
+    /// targets, the core's 128 MiB when unstated.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -1255,51 +1540,82 @@ impl JsFixCodec {
         if let Some(held) = &options.version {
             inner = inner.with_version(version_from_js(held)?);
         }
+        if let Some(held) = options.separator {
+            inner = inner.with_separator(separator_byte(Some(held))?);
+        }
+        if let Some(held) = options.payload_column {
+            inner = inner.with_payload_column(held);
+        }
         if let Some(held) = options.null_values {
             inner = inner.with_null_values(held);
+        }
+        if let Some(held) = &options.direction {
+            inner = inner.with_direction(direction_from_js(held)?);
+        }
+        if let Some(held) = options.batch_byte_size {
+            let bytes = exact_i64(held, "batchByteSize")?;
+            let bytes = u64::try_from(bytes)
+                .map_err(|_| napi_error("batchByteSize must not be negative"))?;
+            inner = inner.with_batch_byte_size(bytes);
         }
         Ok(Self { inner, registry })
     }
 
-    /// The dictionary this reader resolves against, sharing it.
+    /// The dictionary this codec resolves against, sharing it.
     #[napi(getter)]
     pub fn registry(&self) -> JsFixRegistry {
         JsFixRegistry::from_arc(Arc::clone(&self.registry))
     }
 
-    /// Messages in one captured line, including every bulk configuration.
-    #[napi]
-    pub fn transform_line(&self, row: Buffer, enrich: Option<bool>) -> Result<JsFixMessages> {
-        self.inner
-            .transform_line(&row, enrich.unwrap_or(false))
-            .map(JsFixMessages::from_core)
-            .map_err(napi_error)
+    /// The dialect every line is read in, or `null` where each line implies
+    /// its own.
+    #[napi(getter)]
+    pub fn branch(&self) -> Option<String> {
+        self.inner.branch().map(|branch| branch.name().to_owned())
     }
 
-    /// Messages in a bulk or wildcard UL configuration response, lazily.
-    #[napi]
-    pub fn transform_ulconfig_line(
-        &self,
-        body: Buffer,
-        enrich: Option<bool>,
-    ) -> Result<JsFixMessages> {
-        self.inner
-            .transform_ulconfig_line(&body, enrich.unwrap_or(false))
-            .map(JsFixMessages::from_core)
-            .map_err(napi_error)
+    /// The version values are read at, or `null` where each line states its
+    /// own.
+    #[napi(getter)]
+    pub fn version(&self) -> Option<String> {
+        self.inner.version().map(|version| version.to_string())
     }
 
-    /// Messages carried by one native record.
-    #[napi]
-    pub fn transform_record(
-        &self,
-        record: &JsScalar,
-        enrich: Option<bool>,
-    ) -> Result<JsFixMessages> {
+    /// The byte a numeric frame splits on, or `null` where the line decides.
+    #[napi(getter)]
+    pub fn separator(&self) -> Option<u32> {
+        self.inner.separator().map(u32::from)
+    }
+
+    /// The record column a line is read from.
+    #[napi(getter)]
+    pub fn payload_column(&self) -> String {
+        self.inner.payload_column().to_owned()
+    }
+
+    /// The spellings that mean nothing was sent.
+    #[napi(getter)]
+    pub fn null_values(&self) -> Vec<String> {
+        self.inner.null_values().to_vec()
+    }
+
+    /// The direction an unmarked line takes: `"sent"`, `"recv"` or
+    /// `"unknown"`.
+    #[napi(getter)]
+    pub fn direction(&self) -> String {
         self.inner
-            .transform_record(&record.inner, enrich.unwrap_or(false))
-            .map(JsFixMessages::from_core)
-            .map_err(napi_error)
+            .direction()
+            .map_or_else(|| "unknown".to_owned(), str::to_ascii_lowercase)
+    }
+
+    /// The raw bytes one Arrow batch targets.
+    ///
+    /// A byte count is a JavaScript number, exact to 2^53, as every count
+    /// at this boundary is.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(getter)]
+    pub fn batch_byte_size(&self) -> f64 {
+        self.inner.batch_byte_size() as f64
     }
 
     /// The complete raw message code declared by captured bytes.
@@ -1314,14 +1630,38 @@ impl JsFixCodec {
         CoreFixCodec::infer_msgtype_text(&body).map(ToOwned::to_owned)
     }
 
+    /// One captured line, whatever it is wrapped in: its messages.
+    #[napi]
+    pub fn parse_line(&self, row: Buffer) -> Result<JsFixMessages> {
+        self.inner
+            .parse_line(&row)
+            .map(JsFixMessages::over)
+            .map_err(napi_error)
+    }
+
+    /// A stream of captured lines, lazily: each as `parseLine` reads it.
+    ///
+    /// The loader turns the iterable into the pull function this takes, so
+    /// a file of ten million lines costs one line at a time. A line that is
+    /// not a row at all throws where it is met and the stream continues past
+    /// it; an item that is not bytes throws and ends it.
+    #[napi(js_name = "_parseLinesNative", skip_typescript)]
+    pub fn parse_lines_native(
+        &self,
+        env: Env,
+        pull: Function<'_, (), Option<Buffer>>,
+    ) -> Result<JsFixMessages> {
+        let pulled = Pulled::new(env, pull)?;
+        let failed = pulled.failed.clone();
+        Ok(JsFixMessages::pulling(
+            self.inner.parse_lines(pulled),
+            failed,
+        ))
+    }
+
     /// One numeric frame, split on the separator stated or inferred.
     #[napi]
-    pub fn transform_fix_line(
-        &self,
-        body: Buffer,
-        separator: Option<f64>,
-        enrich: Option<bool>,
-    ) -> Result<JsFixMsg> {
+    pub fn parse_fix_line(&self, body: Buffer, separator: Option<f64>) -> Result<JsFixMsg> {
         let codec = match separator {
             Some(held) => self
                 .inner
@@ -1330,44 +1670,95 @@ impl JsFixCodec {
             None => self.inner.clone(),
         };
         codec
-            .transform_fix_line(&body, enrich.unwrap_or(false))
+            .parse_fix_line(&body)
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
     /// One bridge frame, whose keys are names rather than tags.
     #[napi]
-    pub fn transform_ullink_line(&self, body: Buffer, enrich: Option<bool>) -> Result<JsFixMsg> {
+    pub fn parse_ullink_line(&self, body: Buffer) -> Result<JsFixMsg> {
         self.inner
-            .transform_ullink_line(&body, enrich.unwrap_or(false))
+            .parse_ullink_line(&body)
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
     /// One FIXML row, whose fields are XML attributes.
     #[napi]
-    pub fn transform_fixml_line(&self, body: Buffer, enrich: Option<bool>) -> Result<JsFixMsg> {
+    pub fn parse_fixml_line(&self, body: Buffer) -> Result<JsFixMsg> {
         self.inner
-            .transform_fixml_line(&body, enrich.unwrap_or(false))
+            .parse_fixml_line(&body)
             .map(JsFixMsg::from_core)
+            .map_err(napi_error)
+    }
+
+    /// One bridge configuration document, as a Jolokia answer states it:
+    /// one message per `MBean`, lazily.
+    #[napi]
+    pub fn parse_ulconfig_line(&self, body: Buffer) -> Result<JsFixMessages> {
+        self.inner
+            .parse_ulconfig_line(&body)
+            .map(JsFixMessages::over)
             .map_err(napi_error)
     }
 
     /// Pairs a caller already holds, in the order they arrived.
     #[napi(ts_args_type = "pairs: Array<[string, string]>")]
-    pub fn transform_pairs(
-        &self,
-        pairs: Vec<(String, String)>,
-        enrich: Option<bool>,
-    ) -> Result<JsFixMsg> {
+    pub fn parse_pairs(&self, pairs: Vec<(String, String)>) -> Result<JsFixMsg> {
         let borrowed: Vec<(&[u8], &[u8])> = pairs
             .iter()
             .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
             .collect();
         self.inner
-            .transform_pairs(borrowed, enrich.unwrap_or(false))
+            .parse_pairs(borrowed)
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
+    }
+
+    /// One record a text reader answered: its messages.
+    ///
+    /// The payload column names the line, and the row's own columns -
+    /// `branch`, `beginstring`, `sep`, `timestamp`, `direction`, `plugin` -
+    /// are the parameters of the same name. The loader widens the record from
+    /// whatever `Scalar.fromJs` reads.
+    #[napi(ts_args_type = "record: unknown")]
+    pub fn parse_text_record(&self, record: &JsScalar) -> Result<JsFixMessages> {
+        self.inner
+            .parse_text_record(&record.inner)
+            .map(JsFixMessages::over)
+            .map_err(napi_error)
+    }
+
+    /// A stream of records, lazily: each as `parseTextRecord` reads it.
+    #[napi(js_name = "_parseTextRecordsNative", skip_typescript)]
+    pub fn parse_text_records_native(
+        &self,
+        env: Env,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsScalar>>>,
+    ) -> Result<JsFixMessages> {
+        let pulled = Pulled::new(env, pull)?;
+        let failed = pulled.failed.clone();
+        let records = pulled.map(|record| record.inner.clone());
+        Ok(JsFixMessages::pulling(
+            self.inner.parse_text_records(records),
+            failed,
+        ))
+    }
+
+    /// A stream of Arrow batches of capture rows as batches of FIX rows.
+    ///
+    /// The schema is decided before the first row: the capture's own columns
+    /// lead and the fixed FIX columns follow. Every row is parsed as
+    /// `parseTextRecord` parses one, and batches close on the raw bytes of
+    /// the payload column against `batchByteSize`. The source is consumed.
+    #[napi]
+    pub fn parse_text_arrow_reader(&self, source: &mut JsBatchReader) -> Result<JsBatchReader> {
+        let parsed = self
+            .inner
+            .parse_text_arrow_reader(source.take()?)
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(parsed, ROOT_NAME))
     }
 
     /// Fills what one message implies but did not carry.
@@ -1377,27 +1768,133 @@ impl JsFixCodec {
     /// is left alone, so `intoBytes` re-emits the received line either way, and
     /// a stated value is never replaced.
     #[napi]
-    pub fn enrich_fixmsg(&self, message: &JsFixMsg) -> Result<JsFixMsg> {
+    pub fn enrich_message(&self, message: &JsFixMsg) -> Result<JsFixMsg> {
         self.inner
-            .enrich_fixmsg(message.inner.clone())
+            .enrich_message(message.inner.clone())
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
-    /// Stamps an array of messages with the identities it implies, in order.
+    /// Fills a stream of messages, lazily.
+    #[napi(js_name = "_enrichMessagesNative", skip_typescript)]
+    pub fn enrich_messages_native(
+        &self,
+        env: Env,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
+    ) -> Result<JsFixMessages> {
+        let pulled = Pulled::new(env, pull)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled.map(|message| message.inner.clone());
+        Ok(JsFixMessages::pulling(
+            self.inner.enrich_messages(messages),
+            failed,
+        ))
+    }
+
+    /// Fills a stream of batches of FIX rows with what each message implies.
     ///
-    /// One `FixLifecycle` over the whole array: each message gets its
+    /// `enrichMessages` over batches: each row is a message through
+    /// `FixMsg.fromRow`, filled, and written back under the **same** schema,
+    /// so a carried column returns to its place and the arrival record is
+    /// untouched. Nothing is parsed again. The source is consumed.
+    #[napi]
+    pub fn enrich_messages_arrow_reader(
+        &self,
+        source: &mut JsBatchReader,
+    ) -> Result<JsBatchReader> {
+        let filled = self
+            .inner
+            .enrich_messages_arrow_reader(source.take()?)
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(filled, ROOT_NAME))
+    }
+
+    /// A stream of batches of FIX rows as the stream of messages it holds.
+    ///
+    /// Each row is one message through `FixMsg.fromRow` under the source's
+    /// schema, lazily, one batch held at a time: a batch
+    /// `parseTextArrowReader` wrote comes back as the messages that made it
+    /// without a parse. One half of what the Arrow twins compose;
+    /// `arrowReader` is the other. The source is consumed.
+    #[napi]
+    pub fn messages(&self, source: &mut JsBatchReader) -> Result<JsFixMessages> {
+        Ok(JsFixMessages::over(self.inner.messages(source.take()?)))
+    }
+
+    /// A stream of messages as a stream of batches of FIX rows under `schema`.
+    ///
+    /// The loader turns the iterable into the pull function this takes, and
+    /// the reader pulls one message at a time as its batches are read. Each
+    /// message fills one row through `FixMsg.intoRow`, and batches close on
+    /// the raw bytes of each message's arrival record against
+    /// `batchByteSize`. An item that is not a message is the reader's error,
+    /// thrown by the batch it would have landed in.
+    #[napi(js_name = "_arrowReaderNative", skip_typescript)]
+    pub fn arrow_reader_native(
+        &self,
+        env: Env,
+        schema: &JsField,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
+    ) -> Result<JsBatchReader> {
+        let pulled = Pulled::new(env, pull)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled
+            .map(|message| Ok(message.inner.clone()))
+            .chain(std::iter::from_fn(move || {
+                failed.take().map(|error| Err(javascript_failure(error)))
+            }));
+        let reader = self
+            .inner
+            .arrow_reader(schema.inner.clone(), messages)
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(reader, schema.inner.name()))
+    }
+
+    /// Stamps a stream of messages with the identities it implies, in order,
+    /// lazily.
+    ///
+    /// One `FixLifecycle` over the whole iterable: each message gets its
     /// `instid`, its `id` and - where it carries an order identifier - the
     /// `persistentid` of the chain that identifier reaches, and a terminal
-    /// state closes the chain. The array is the stream, so the chain a
-    /// message joins depends on the messages before it; a stream longer than
-    /// one array is fed to one `FixLifecycle` instead.
-    #[napi(ts_args_type = "messages: Array<FixMsg>")]
-    pub fn lifecycle(&self, messages: Vec<ClassInstance<'_, JsFixMsg>>) -> Result<Vec<JsFixMsg>> {
-        self.inner
-            .lifecycle(messages.iter().map(|message| message.inner.clone()))
-            .map(|held| held.map(JsFixMsg::from_core).map_err(napi_error))
-            .collect()
+    /// state closes the chain. The iterable is pulled once, in order, so the
+    /// chain a message joins depends on the messages before it.
+    #[napi(js_name = "_lifecycleNative", skip_typescript)]
+    pub fn lifecycle_native(
+        &self,
+        env: Env,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
+    ) -> Result<JsFixMessages> {
+        let pulled = Pulled::new(env, pull)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled.map(|message| message.inner.clone());
+        Ok(JsFixMessages::pulling(
+            self.inner.lifecycle(messages),
+            failed,
+        ))
+    }
+
+    /// Writes a stream of batches of FIX rows back to the wire, answering the
+    /// count of lines.
+    ///
+    /// The encode direction of the same exchange: each row is the message
+    /// `messages` reads out of it, written as `intoBytes` with the codec's
+    /// `separator` - `SOH` when none is pinned - then a newline, into `sink`,
+    /// anything with `write(chunk: Uint8Array)`. The wire is rebuilt from the
+    /// arrival record, never from the columns, so a batch without the
+    /// `nofixentries` column is refused before a row is read. One batch is
+    /// held at a time, and the source is consumed.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(ts_args_type = "source: BatchReader, sink: { write(chunk: Uint8Array): unknown }")]
+    pub fn write_arrow_reader(&self, source: &mut JsBatchReader, sink: Object<'_>) -> Result<f64> {
+        let source = source.take()?;
+        let mut sink = JsSink::new(sink)?;
+        let written = self.inner.write_arrow_reader(source, &mut sink);
+        // The sink's own failure is the one to throw: the core reports it as
+        // the write it wrapped.
+        if let Some(error) = sink.failed.take() {
+            return Err(error);
+        }
+        written.map(|count| count as f64).map_err(napi_error)
     }
 
     /// A cheap clone: the dictionary is shared and the pins are copied.
@@ -1409,14 +1906,14 @@ impl JsFixCodec {
         }
     }
 
-    /// How this reader renders: the dictionary it reads against.
+    /// How this codec renders: the dictionary it reads against.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> String {
         format!("FixCodec({} fields)", self.registry.len())
     }
 }
 
-/// How a reader is pinned, where a caller pins it at all.
+/// How a codec is pinned, where a caller pins it at all.
 #[napi(object)]
 #[derive(Default)]
 pub struct FixCodecOptions {
@@ -1424,8 +1921,25 @@ pub struct FixCodecOptions {
     pub branch: Option<String>,
     /// The version built messages are expressed in.
     pub version: Option<String>,
+    /// The byte a numeric frame splits on where the line does not say.
+    pub separator: Option<f64>,
+    /// The record column a line is read from; `body` when unstated.
+    pub payload_column: Option<String>,
     /// The spellings that mean "nothing was sent".
     pub null_values: Option<Vec<String>>,
+    /// What an unmarked line took: `sent`, `recv`, or `unknown`; `sent` when
+    /// unstated.
+    pub direction: Option<String>,
+    /// The raw bytes one Arrow batch targets; the core's 128 MiB when unstated.
+    pub batch_byte_size: Option<f64>,
+}
+
+/// Read the direction an unmarked line takes, as the core spells it.
+///
+/// `unknown` is the third answer: a capture whose silence really means
+/// nothing, rather than the side that wrote it.
+fn direction_from_js(text: &str) -> Result<Option<&'static str>> {
+    MsgDirection::from_spelling(text).map_err(napi_error)
 }
 
 /// Read one FIX version, or report the native parse failure.
@@ -1442,7 +1956,7 @@ fn version_from_js(text: &str) -> Result<CoreVersion> {
 /// the market's own clock; `persistentid`, the order chain that every message
 /// sharing one of its identifiers carries. A terminal state closes the chain
 /// and forgets its identifiers, so what is held is the orders still alive.
-/// `FixCodec.lifecycle` runs one of these over an array.
+/// `FixCodec.lifecycle` runs one of these over an iterable.
 #[napi(js_name = "FixLifecycle")]
 pub struct JsFixLifecycle {
     inner: CoreFixLifecycle,

@@ -14,7 +14,9 @@ const os = require('node:os')
 const path = require('node:path')
 const { performance } = require('node:perf_hooks')
 
-const { Field, MimeType, Scalar, fields, fix } = require('yggdryl')
+const arrow = require('apache-arrow')
+
+const { BatchReader, Field, MimeType, Scalar, fields, fix } = require('yggdryl')
 
 const iterations = Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '5000', 10)
 if (!Number.isSafeInteger(iterations) || iterations <= 0) {
@@ -27,6 +29,16 @@ function benchmark(name, operation) {
   for (let index = 0; index < iterations; index += 1) operation()
   const elapsed = performance.now() - started
   const rate = Math.round((iterations * 1_000) / elapsed)
+  console.log(`${name}: ${rate.toLocaleString('en-US')} operations/second`)
+}
+
+// A whole stream costs milliseconds, so it runs a fiftieth of the hit count.
+function benchmarkStreams(name, rounds, operation) {
+  for (let index = 0; index < Math.min(rounds, 5); index += 1) operation()
+  const started = performance.now()
+  for (let index = 0; index < rounds; index += 1) operation()
+  const elapsed = performance.now() - started
+  const rate = Math.round((rounds * 1_000) / elapsed)
   console.log(`${name}: ${rate.toLocaleString('en-US')} operations/second`)
 }
 
@@ -139,6 +151,21 @@ function drain(values) {
   return count
 }
 
+// The stream and Arrow doors, over a capture of wide orders: what is measured
+// is the crossing - one pull per line, one batch per pull - beside the parse.
+const seedCodec = new fix.FixCodec(registry)
+const fixedSchema = fix.schema(registry)
+const encoder = new TextEncoder()
+const LINES = Array.from({ length: 256 }, (_, index) =>
+  encoder.encode(`8=FIX.4.4|35=D|11=ORDER-${String(index).padStart(6, '0')}|55=AAPL|54=1|38=100|58=${'x'.repeat(200)}|10=0|`),
+)
+const capture = new arrow.Table({ body: arrow.vectorFromArray(LINES, new arrow.Binary()) })
+const parsed = seedCodec.parseLine(Buffer.from(LINES[0])).next().value
+const parsedRow = parsed.intoRow(fixedSchema)
+const parsedIpc = seedCodec.parseTextArrowReader(capture).intoIpc()
+if (drain(seedCodec.parseLines(LINES)) !== LINES.length) throw new Error('line cardinality mismatch')
+const sink = { write() {} }
+
 function wildcard(size) {
   return Buffer.from(JSON.stringify({
     request: { mbean: 'com.ullink.ulbridge.sessioninterfaces.plugins:*', type: 'read' },
@@ -228,21 +255,43 @@ try {
     copy.createDefinition('messages', empty)
     return copy.removeDefinition('messages', 'NewMessage')
   })
-  benchmark('fix/numeric_group_parse', () => drain(codec.transformLine(Buffer.from('35=D|453=2|448=ONE|448=TWO|'))))
+  benchmark('fix/numeric_group_parse', () => drain(codec.parseLine(Buffer.from('35=D|453=2|448=ONE|448=TWO|'))))
   benchmark('fix/message_into_row', () => message.intoRow(order))
   benchmark('fix/message_into_bytes', () => message.intoBytes(124))
+  benchmark('fix/message_set', () => parsed.clone().set(55, 'MSFT'))
+  benchmark('fix/message_remove', () => parsed.clone().remove(55))
+  benchmark('fix/message_from_row', () => fix.FixMsg.fromRow(fixedSchema, parsedRow, registry))
+  const streams = Math.max(1, Math.round(iterations / 50))
+  benchmarkStreams(`fix/parse_lines_drain/${LINES.length}`, streams, () => drain(seedCodec.parseLines(LINES)))
+  benchmarkStreams(`fix/parse_text_records_drain/${LINES.length}`, streams, () =>
+    drain(seedCodec.parseTextRecords(LINES.map((body) => ({ body })))),
+  )
+  benchmarkStreams(`fix/parse_text_arrow_reader/${LINES.length}`, streams, () =>
+    seedCodec.parseTextArrowReader(capture).intoTable().numRows,
+  )
+  benchmarkStreams(`fix/enrich_messages_arrow_reader/${LINES.length}`, streams, () =>
+    seedCodec.enrichMessagesArrowReader(BatchReader.fromIpc(parsedIpc)).intoTable().numRows,
+  )
+  benchmarkStreams(`fix/messages_drain/${LINES.length}`, streams, () =>
+    drain(seedCodec.messages(BatchReader.fromIpc(parsedIpc))),
+  )
+  benchmarkStreams(`fix/arrow_reader_over_parse_lines/${LINES.length}`, streams, () =>
+    seedCodec.arrowReader(fixedSchema, seedCodec.parseLines(LINES)).intoTable().numRows,
+  )
+  benchmarkStreams(`fix/write_arrow_reader/${LINES.length}`, streams, () =>
+    seedCodec.writeArrowReader(BatchReader.fromIpc(parsedIpc), sink),
+  )
   for (const size of [1, 32, 64]) {
     const body = wildcard(size)
-    if (drain(ulcodec.transformLine(body)) !== size) throw new Error('bulk cardinality mismatch')
+    if (drain(ulcodec.parseLine(body)) !== size) throw new Error('bulk cardinality mismatch')
     const selected = fix.UlPlugin.fromJsonBytes(body)[Symbol.iterator]().next().value
     benchmark(`fix/ulconfigs_first/${size}`, () => fix.UlPlugin.fromJsonBytes(body)[Symbol.iterator]().next().value)
     benchmark(`fix/ulconfigs_drain/${size}`, () => drain(fix.UlPlugin.fromJsonBytes(body)))
-    benchmark(`fix/messages_first/${size}`, () => ulcodec.transformLine(body).next().value)
-    benchmark(`fix/messages_drain/${size}`, () => drain(ulcodec.transformLine(body)))
-    benchmark(`fix/records_drain/${size}`, () => drain(ulcodec.transformRecord({ url: 'capture.log', body })))
+    benchmark(`fix/messages_first/${size}`, () => ulcodec.parseLine(body).next().value)
+    benchmark(`fix/messages_drain/${size}`, () => drain(ulcodec.parseLine(body)))
+    benchmark(`fix/records_drain/${size}`, () => drain(ulcodec.parseTextRecord({ url: 'capture.log', body })))
     benchmark(`fix/ulconfig_hash/${size}`, () => selected.stableHash())
   }
-  benchmark('fix/register_crate_fields', () => new fix.FixRegistry().withCrateFields())
   benchmark('fix/register_ulbridge_fields', () => new fix.FixRegistry().withUlbridgeFields())
   benchmarkLoad('fix/from_handle_seed', () => fix.FixRegistry.fromHandle(SEED))
   benchmarkLoad(`fix/from_handle_${WIDE_FIELDS}_fields`, () =>

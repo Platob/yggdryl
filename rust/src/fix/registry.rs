@@ -268,6 +268,11 @@ pub struct FixRegistry {
     names: Index<u64>,
     aliases: Index<u64>,
     positions_by_id: Vec<usize>,
+    /// Each field's canonical identity, by position: what the maps answer a
+    /// position with, read back without the two metadata reads and the
+    /// branch parse the field's own view costs. Kept in step by
+    /// [`Self::index`], which runs after every change to `fields`.
+    identities: Vec<Option<FixId>>,
     branches: BranchTable,
     branch_order: Vec<u32>,
     newest: Option<FixPedigree>,
@@ -307,6 +312,7 @@ impl FixRegistry {
             names: Index::default(),
             aliases: Index::default(),
             positions_by_id: Vec::new(),
+            identities: Vec::new(),
             branches: BranchTable::default(),
             branch_order: Vec::new(),
             newest: None,
@@ -959,6 +965,7 @@ impl FixRegistry {
         self.departing(position);
         self.unindex(position, position);
         let removed = self.fields.swap_remove(position);
+        self.identities.swap_remove(position);
         if position != last {
             self.index(position);
         }
@@ -1142,15 +1149,10 @@ impl FixRegistry {
     }
 
     fn canonical_name_matches(&self, position: usize, branch: &FixBranch, name: &str) -> bool {
-        self.fields.get(position).is_some_and(|field| {
-            field.name().eq_ignore_ascii_case(name)
-                && field
-                    .as_fix()
-                    .id()
-                    .ok()
-                    .flatten()
-                    .is_some_and(|id| id.branch_digest() == branch.digest())
-        })
+        self.fields
+            .get(position)
+            .is_some_and(|field| field.name().eq_ignore_ascii_case(name))
+            && self.identity_at(position, branch)
     }
 
     fn alias_matches(&self, position: usize, branch: &FixBranch, name: &str) -> bool {
@@ -1159,13 +1161,34 @@ impl FixRegistry {
                 .as_fix()
                 .aliases()
                 .any(|alias| alias.eq_ignore_ascii_case(name))
-                && field
-                    .as_fix()
-                    .id()
-                    .ok()
-                    .flatten()
-                    .is_some_and(|id| id.branch_digest() == branch.digest())
-        })
+        }) && self.identity_at(position, branch)
+    }
+
+    /// Whether the field at `position` belongs to `branch`, by the identity
+    /// the index remembers for it.
+    fn identity_at(&self, position: usize, branch: &FixBranch) -> bool {
+        self.identities
+            .get(position)
+            .copied()
+            .flatten()
+            .is_some_and(|id| id.branch_digest() == branch.digest())
+    }
+
+    /// The canonical identity of one of this registry's own fields, read off
+    /// the index rather than out of the field's metadata.
+    ///
+    /// A borrowed field the registry answered points into its own storage,
+    /// and that position remembers the identity; a field it does not hold - a
+    /// definition's member, a message's child - answers what its own
+    /// metadata says, exactly as [`FixField::id`](crate::FixField::id) does.
+    pub(super) fn identity_of(&self, field: &Field) -> Option<FixId> {
+        let start = self.fields.as_ptr() as usize;
+        let at =
+            (std::ptr::from_ref(field) as usize).wrapping_sub(start) / std::mem::size_of::<Field>();
+        match self.fields.get(at) {
+            Some(held) if std::ptr::eq(held, field) => self.identities.get(at).copied().flatten(),
+            _ => field.as_fix().id().ok().flatten(),
+        }
     }
 
     fn check_free(
@@ -1223,10 +1246,17 @@ impl FixRegistry {
             return;
         };
         let view = field.as_fix();
+        // Remembered first, whatever the field answers: every position has
+        // an entry, so a field that indexes nothing still identifies nothing.
+        let identity = view.id().ok().flatten();
+        if position >= self.identities.len() {
+            self.identities.resize(position + 1, None);
+        }
+        self.identities[position] = identity;
         let Ok(branch) = view.branch() else {
             return;
         };
-        let Ok(Some(id)) = view.id() else {
+        let Some(id) = identity else {
             return;
         };
         self.ids.insert(id, position);
@@ -1243,9 +1273,10 @@ impl FixRegistry {
                 .insert(name_digest(&branch, alias, ALIAS_SEED), position);
         }
         let ordered = self.positions_by_id.partition_point(|held| {
-            self.fields
+            self.identities
                 .get(*held)
-                .and_then(|field| field.as_fix().id().ok().flatten())
+                .copied()
+                .flatten()
                 .is_some_and(|held| held < id)
         });
         self.positions_by_id.insert(ordered, position);

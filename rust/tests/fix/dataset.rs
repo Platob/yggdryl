@@ -24,8 +24,8 @@ use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::types::State;
 use yggdryl::{
-    DataType, FixBatchReader, FixBranch, FixCodec, FixEntry, FixOptions, FixRegistry, IOMedia,
-    MimeType, Scalar, Timezone, Url,
+    DataType, FixBranch, FixCodec, FixDedup, FixEntry, FixMsg, FixRegistry, IOMedia, MimeType,
+    Scalar, Timezone, Url,
 };
 
 /// The capture, exactly as the bridge wrote it.
@@ -89,31 +89,53 @@ fn reading() -> RecordOptions {
     options.into()
 }
 
-/// The bridge's own dialect, pinned for the whole run, with enrichment on.
-fn options(rows: Option<usize>) -> FixOptions {
-    let mut options =
-        FixOptions::new().with_branch(FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap());
-    options.enrich = true;
-    options.batch_row_size = rows;
-    options
+/// The codec every read uses: the bridge's own dialect, pinned for the whole
+/// run, and batches closing at `bytes` of raw capture where one is stated.
+fn codec_batching(bytes: Option<u64>) -> FixCodec {
+    let codec = FixCodec::new(registry())
+        .with_branch(&FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap());
+    match bytes {
+        Some(bytes) => codec.with_batch_byte_size(bytes),
+        None => codec,
+    }
 }
 
 /// The codec the row-by-row read uses, over the same dictionary and dialect.
 fn codec() -> FixCodec {
-    FixCodec::new(registry()).with_branch(&FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap())
+    codec_batching(None)
 }
 
-/// Every batch the FIX read yields, `rows` at a time.
-fn batches(rows: Option<usize>) -> Vec<RecordBatch> {
-    FixBatchReader::from_column(
-        registry(),
-        source().read_arrow_reader(&reading()).expect("a reader"),
-        "body",
-        options(rows),
-    )
-    .expect("the batch reader opens")
-    .map(|batch| batch.expect("a batch"))
-    .collect()
+/// One record read and filled: what the batch read does to every row, done
+/// to one, so the two readings are compared with enrichment on both.
+trait Enriched {
+    fn enriched_record(
+        &self,
+        record: &Scalar,
+    ) -> yggdryl::Result<impl Iterator<Item = yggdryl::Result<FixMsg>>>;
+}
+
+impl Enriched for FixCodec {
+    fn enriched_record(
+        &self,
+        record: &Scalar,
+    ) -> yggdryl::Result<impl Iterator<Item = yggdryl::Result<FixMsg>>> {
+        Ok(self
+            .parse_text_record(record)?
+            .map(|held| held.and_then(|held| self.enrich_message(held))))
+    }
+}
+
+/// Every batch the FIX read yields, filled, closing at `bytes` of raw capture.
+fn batches(bytes: Option<u64>) -> Vec<RecordBatch> {
+    let codec = codec_batching(bytes);
+    let parsed = codec
+        .parse_text_arrow_reader(source().read_arrow_reader(&reading()).expect("a reader"))
+        .expect("the batch reader opens");
+    codec
+        .enrich_messages_arrow_reader(parsed)
+        .expect("the filling reader opens")
+        .map(|batch| batch.expect("a batch"))
+        .collect()
 }
 
 /// One read's rows, as the values each holds, with the column names.
@@ -188,8 +210,9 @@ fn every_line_is_a_row_whatever_the_batch_size_and_the_batches_share_one_schema(
         "a row a line, and the wildcard line read once per MBean"
     );
 
-    let small = batches(Some(16));
-    assert_eq!(small.len(), ROWS.div_ceil(16), "sixteen rows a batch");
+    // A target of one byte closes a batch after every row of raw capture.
+    let small = batches(Some(1));
+    assert_eq!(small.len(), ROWS, "a row a batch");
     assert_eq!(small.iter().map(RecordBatch::num_rows).sum::<usize>(), ROWS);
     for batch in &small {
         assert_eq!(
@@ -245,7 +268,7 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
         // wildcard read answers for two MBeans, so one line is two messages
         // and fills the two rows the batch read gave it.
         let messages = codec
-            .transform_record(&record(&text_names, held), true)
+            .enriched_record(&record(&text_names, held))
             .and_then(|messages| messages.collect::<yggdryl::Result<Vec<_>>>())
             .unwrap_or_else(|error| panic!("line {line}: {error}"));
         assert_eq!(next, row_of(line), "line {line} opens at its own row");
@@ -300,7 +323,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
     // `GrossTradeAmt` is no fixed column, so the message answers for it;
     // `SettlCurrency` is one, so the row does.
     let enriched = codec()
-        .transform_record(&record(&text_names, &text[fill]), true)
+        .enriched_record(&record(&text_names, &text[fill]))
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the fill reads");
     let gross = enriched
@@ -319,7 +342,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
 
     // Read without enrichment, the same line states neither.
     let plain = codec()
-        .transform_line(body(&text_names, &text[fill]).as_bytes(), false)
+        .parse_line(body(&text_names, &text[fill]).as_bytes())
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the fill reads");
     assert!(plain.get_by_tag(381).is_none());
@@ -371,7 +394,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
         .position(|held| body(&text_names, held).contains("XX0000000001"))
         .expect("the anonymized line");
     let masked = codec()
-        .transform_record(&record(&text_names, &text[masked]), true)
+        .enriched_record(&record(&text_names, &text[masked]))
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the anonymized line reads");
     for tag in [yggdryl::ISINCODE_TAG, 470] {
@@ -585,7 +608,7 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
             .expect("entries");
         assert_eq!(entries.len(), 10, "row {row}: {entries:?}");
         let message = codec
-            .transform_record(&record(&text_names, &text[line]), true)
+            .enriched_record(&record(&text_names, &text[line]))
             .and_then(|mut messages| messages.next().expect("a message"))
             .expect("the frame reads");
         let data = message
@@ -643,11 +666,11 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
         .collect();
     assert_eq!(rows.len(), 2, "{rows:?}");
     let flat = codec
-        .transform_record(&record(&text_names, &text[rows[0]]), true)
+        .enriched_record(&record(&text_names, &text[rows[0]]))
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the flattened row reads");
     let nested = codec
-        .transform_record(&record(&text_names, &text[rows[1]]), true)
+        .enriched_record(&record(&text_names, &text[rows[1]]))
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the packed row reads");
     for message in [&flat, &nested] {
@@ -730,17 +753,18 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
             .expect("a URL")
             .media_type(),
     );
-    let mut deduplicated = options(None);
-    deduplicated.dedup = true;
-    let kept: usize = FixBatchReader::from_column(
-        registry(),
-        twice.read_arrow_reader(&reading()).expect("a reader"),
-        "body",
-        deduplicated,
-    )
-    .expect("the batch reader opens")
-    .map(|batch| batch.expect("a batch").num_rows())
-    .sum();
+    let parsed = codec
+        .parse_text_arrow_reader(twice.read_arrow_reader(&reading()).expect("a reader"))
+        .expect("the batch reader opens");
+    let schema = yggdryl::Field::from_arrow_schema("fix", &parsed.schema()).expect("the schema");
+    let messages = codec
+        .messages(parsed)
+        .map(|message| message.expect("a message"));
+    let kept: usize = codec
+        .arrow_reader(schema, FixDedup::new(messages).map(Ok))
+        .expect("the batch reader opens")
+        .map(|batch| batch.expect("a batch").num_rows())
+        .sum();
     assert_eq!(kept, 1);
 }
 
@@ -765,7 +789,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     };
     let read = |row: usize| {
         codec
-            .transform_record(&record(&text_names, &text[row]), true)
+            .enriched_record(&record(&text_names, &text[row]))
             .and_then(|mut messages| messages.next().expect("a message"))
             .expect("the row reads")
     };
@@ -791,7 +815,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     // message carries its own MBean's attributes flat.
     let wildcard = find(r#""mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*""#);
     let messages = codec
-        .transform_record(&record(&text_names, &text[wildcard]), true)
+        .enriched_record(&record(&text_names, &text[wildcard]))
         .expect("the wildcard reads")
         .collect::<yggdryl::Result<Vec<_>>>()
         .expect("the wildcard reads");
@@ -891,16 +915,17 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
 fn the_wire_re_emits_from_the_arrival_record_frames_included() {
     let (text_names, text) = text_rows();
     let mut written: Vec<u8> = Vec::new();
-    let mut emitting = FixOptions::new();
-    emitting.separator = b'|';
-    let source = FixBatchReader::from_column(
-        registry(),
-        source().read_arrow_reader(&reading()).expect("a reader"),
-        "body",
-        options(None),
-    )
-    .expect("the batch reader opens");
-    let rows = yggdryl::write_fix(source, &mut written, &emitting).expect("the capture writes");
+    let codec = codec();
+    let parsed = codec
+        .parse_text_arrow_reader(source().read_arrow_reader(&reading()).expect("a reader"))
+        .expect("the batch reader opens");
+    let filled = codec
+        .enrich_messages_arrow_reader(parsed)
+        .expect("the filling reader opens");
+    let rows = codec
+        .with_separator(b'|')
+        .write_arrow_reader(filled, &mut written)
+        .expect("the capture writes");
     assert_eq!(rows, ROWS as u64);
     let lines: Vec<&str> = std::str::from_utf8(&written)
         .expect("text")
@@ -955,7 +980,7 @@ fn a_document_in_a_data_field_fills_the_frame_that_carried_it() {
         .position(|held| body(&text_names, held).contains("213=<FIXML"))
         .expect("the frame carrying a document");
     let message = codec
-        .transform_record(&record(&text_names, &text[line]), true)
+        .enriched_record(&record(&text_names, &text[line]))
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the frame reads");
 
@@ -995,7 +1020,7 @@ fn a_trade_capture_frame_nests_every_group_its_payload_packs() {
         .position(|held| body(&text_names, held).contains("MSGTYPE=tradecapturereport"))
         .expect("the trade capture frame");
     let message = codec
-        .transform_record(&record(&text_names, &text[line]), true)
+        .enriched_record(&record(&text_names, &text[line]))
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the frame reads");
 

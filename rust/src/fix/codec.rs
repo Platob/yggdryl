@@ -7,7 +7,7 @@
 //! understands, and hands the pairs over. None of them parses a message and
 //! none of them builds a tree of its own.
 //!
-//! # Why `transform_*` and not `read_*`
+//! # Why `parse_*` and not `read_*`
 //!
 //! `read_*` names an I/O operation in this crate: it asks a handle for bytes
 //! and names the core type it answers, as `read_all_bytes` and
@@ -16,7 +16,22 @@
 //! rows in the message vocabulary, so the family is named for what it does to
 //! its input rather than for where the input came from. The two families then
 //! compose without either shadowing the other: a handle's `read_arrow_reader`
-//! feeds this codec's [`FixCodec::transform_arrow_reader`].
+//! feeds this codec's [`FixCodec::parse_text_arrow_reader`].
+//!
+//! # Three verbs, each an iterator, each with an Arrow twin
+//!
+//! `parse_*` turns what a capture holds into messages: one line
+//! ([`FixCodec::parse_line`]), a stream of them ([`FixCodec::parse_lines`]),
+//! one generic record or a stream of them ([`FixCodec::parse_text_record`],
+//! [`FixCodec::parse_text_records`]), and a stream of Arrow batches of
+//! capture rows ([`FixCodec::parse_text_arrow_reader`]). `enrich_*` fills
+//! what a message implies ([`FixCodec::enrich_message`],
+//! [`FixCodec::enrich_messages`], [`FixCodec::enrich_messages_arrow_reader`]).
+//! The two converters between the message and the Arrow shape -
+//! [`FixCodec::messages`] and [`FixCodec::arrow_reader`] - are what the Arrow
+//! twins compose, and are public so a caller composes the same way. A stage
+//! is a call, never a flag: nothing here takes an `enrich` argument, and
+//! nothing enriches on the way out of a parse.
 //!
 //! # A row is a log line
 //!
@@ -50,6 +65,7 @@ use crate::mime_type::line;
 use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 use super::build::{Builder, RowExtras, root_name};
+use super::memo::Memo;
 use super::{FixBranch, FixMessages, FixMsg, FixRegistry};
 
 /// One bridge row split into its pairs, beside the message type it declared.
@@ -163,6 +179,9 @@ fn data_span(
     Some((found, found + 1))
 }
 
+/// The separator FIX itself writes between two pairs.
+pub const SOH: u8 = 0x01;
+
 /// The spellings that mean "nothing was sent", by default.
 ///
 /// A bridge with nothing to say writes one of these, and a reader that keeps
@@ -186,13 +205,40 @@ pub struct FixCodec {
     separator: Option<u8>,
     payload_column: SmolStr,
     null_values: Vec<String>,
+    /// The direction a line with no verb in front of its payload took.
+    direction: Option<&'static str>,
+    /// The raw bytes one Arrow batch of messages targets.
+    batch_byte_size: u64,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
     /// look the field up per line.
     beginstring: Field,
+    /// What this run has already asked its dictionary, shared by every
+    /// stream the codec is cloned into: a capture asks the same few
+    /// questions a million times, and each is answered off the dictionary
+    /// once.
+    memo: Arc<Memo>,
 }
 
 impl FixCodec {
+    /// The raw bytes one Arrow batch targets when the caller states none.
+    ///
+    /// A capture is tens of millions of lines and the row shape varies by
+    /// three orders of magnitude between a heartbeat and a market-data
+    /// snapshot, so a row bound alone makes memory unpredictable: the same
+    /// bound is a few megabytes of one and gigabytes of the other. Targeting
+    /// the bytes the rows were read from keeps a batch about the same size
+    /// whatever arrived, and 128 MiB is large enough that the per-batch cost
+    /// (building the arrays, crossing a reader boundary, writing a row group)
+    /// is amortized to nothing, while still leaving several batches in flight
+    /// on an ordinary machine.
+    ///
+    /// It is a target rather than a ceiling, measured on the input rather
+    /// than on the batch built: a batch closes after the row that carries
+    /// the running total over it, so it always holds at least one row and
+    /// one enormous message can never produce an empty batch.
+    pub const DEFAULT_BATCH_BYTE_SIZE: u64 = 128 * 1024 * 1024;
+
     /// Borrows the message type declared by a captured line without parsing a message.
     #[must_use]
     pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]> {
@@ -219,7 +265,10 @@ impl FixCodec {
                 .iter()
                 .map(|spelling| (*spelling).to_owned())
                 .collect(),
+            direction: Some(crate::types::MsgDirection::SENT),
+            batch_byte_size: Self::DEFAULT_BATCH_BYTE_SIZE,
             beginstring,
+            memo: Arc::new(Memo::new()),
         }
     }
 
@@ -239,6 +288,36 @@ impl FixCodec {
     #[must_use]
     pub const fn branch(&self) -> Option<&FixBranch> {
         self.branch.as_ref()
+    }
+
+    /// The direction a line with no verb in front of its payload takes.
+    #[must_use]
+    pub const fn direction(&self) -> Option<&'static str> {
+        self.direction
+    }
+
+    /// The raw bytes one Arrow batch of messages targets.
+    #[must_use]
+    pub const fn batch_byte_size(&self) -> u64 {
+        self.batch_byte_size
+    }
+
+    /// The column a record's payload is read from.
+    #[must_use]
+    pub fn payload_column(&self) -> &str {
+        &self.payload_column
+    }
+
+    /// The byte a numeric frame is split on, where the caller pinned one.
+    #[must_use]
+    pub const fn separator(&self) -> Option<u8> {
+        self.separator
+    }
+
+    /// The spellings that mean "nothing was sent".
+    #[must_use]
+    pub fn null_values(&self) -> &[String] {
+        &self.null_values
     }
 
     /// Pins the dialect, so no row is read under the standard one.
@@ -270,15 +349,47 @@ impl FixCodec {
         self
     }
 
-    /// Names the record column [`Self::transform_record`] reads the payload from.
+    /// Names the record column [`Self::parse_text_record`] reads the payload from.
     #[must_use]
     pub fn with_payload_column(mut self, column: impl Into<SmolStr>) -> Self {
         self.payload_column = column.into();
         self
     }
 
-    /// Replaces the spellings that mean "nothing was sent".
+    /// Sets the direction a line with no verb in front of its payload takes.
     ///
+    /// `SENT` by default: a session's own log is written by the side doing
+    /// the sending, so its unmarked lines are the ones it sent and its
+    /// inbound lines are the ones it bothered to mark. A capture taken from
+    /// the other side sets `RECV`, and one whose silence really means unknown
+    /// sets `None`. Any verb a line does carry beats this, and so does a
+    /// `direction` column a record or a batch row states.
+    ///
+    /// The value is stored as the `msgdirection` column holds it, so it is
+    /// [`MsgDirection::SENT`](crate::types::MsgDirection::SENT),
+    /// [`MsgDirection::RECV`](crate::types::MsgDirection::RECV) or `None`
+    /// and nothing else; a spelling from outside the crate crosses
+    /// [`MsgDirection::from_spelling`](crate::types::MsgDirection::from_spelling)
+    /// first, which is the one place the spellings are listed.
+    #[must_use]
+    pub const fn with_direction(mut self, direction: Option<&'static str>) -> Self {
+        self.direction = direction;
+        self
+    }
+
+    /// Sets the raw bytes one Arrow batch of messages targets.
+    ///
+    /// Read by [`Self::parse_text_arrow_reader`] and [`Self::arrow_reader`],
+    /// and through it by everything that batches; the default is
+    /// [`Self::DEFAULT_BATCH_BYTE_SIZE`]. Zero closes a batch after every
+    /// row, since a batch always holds one.
+    #[must_use]
+    pub const fn with_batch_byte_size(mut self, bytes: u64) -> Self {
+        self.batch_byte_size = bytes;
+        self
+    }
+
+    /// Replaces the spellings that mean "nothing was sent".
     ///
     /// Empty keeps every literal, which is what a venue for whom the text
     /// `null` is a value sets: the default is a convention, and a convention
@@ -313,7 +424,7 @@ impl FixCodec {
             .any(|spelling| spelling.as_bytes().eq_ignore_ascii_case(trimmed))
     }
 
-    /// Transforms one log line into an iterator of messages, selecting the
+    /// Parses one log line into an iterator of messages, selecting the
     /// dialect from its frame. A bulk UL configuration yields one message
     /// per selected MBean; the other dialects yield one message.
     ///
@@ -331,17 +442,54 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] for input that is not a row at all.
-    pub fn transform_line(&self, row: &[u8], enrich: bool) -> Result<FixMessages> {
-        self.transform_line_with(row, RowExtras::NONE, enrich)
+    pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages> {
+        self.parse_line_with(row, RowExtras::NONE)
     }
 
-    /// [`Self::transform_line`], with what the row stated beside its line.
-    pub(super) fn transform_line_with(
-        &self,
-        row: &[u8],
-        extras: RowExtras<'_>,
-        enrich: bool,
-    ) -> Result<FixMessages> {
+    /// Parses a stream of log lines into a stream of messages, lazily.
+    ///
+    /// The line iterator everything else is built on: each line is read as
+    /// [`Self::parse_line`] reads it, a bulk configuration yielding one
+    /// message per MBean, and a line that is not a row at all is an `Err`
+    /// item - the stream continues past it, because one corrupt line must not
+    /// end a run over ten million. Nothing is collected: the iterator is the
+    /// stream. Every stage answers an iterator that owns its codec and
+    /// borrows nothing, so the stages compose into [`Self::arrow_reader`]
+    /// without the codec outliving the stream.
+    ///
+    /// Composed into [`Self::arrow_reader`], that `Err` item is the batch
+    /// reader's error: the completed prefix is yielded, then the error, and
+    /// the reader fuses, as every batch reader in the crate does - a
+    /// consumer of batches has no row to put a refused line in. A caller
+    /// wanting a row per line, refused lines included, reads the capture
+    /// through [`Self::parse_text_arrow_reader`], which answers such a line
+    /// as a row holding an empty message.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::Arc;
+    /// # use yggdryl::{FixCodec, FixRegistry};
+    /// let codec = FixCodec::new(Arc::new(FixRegistry::new()));
+    /// let lines = ["8=FIX.4.4|35=D|11=A|10=0|", "8=FIX.4.4|35=8|37=O1|10=0|"];
+    /// let read: Vec<_> = codec.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
+    /// assert_eq!(read.len(), 2);
+    /// assert_eq!(read[1].by_tag(37)?.as_str(), Some("O1"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn parse_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<[u8]>,
+    {
+        let codec = self.clone();
+        lines
+            .into_iter()
+            .flat_map(move |line| FixMessages::from_result(codec.parse_line(line.as_ref())))
+    }
+
+    /// [`Self::parse_line`], with what the row stated beside its line.
+    pub(super) fn parse_line_with(&self, row: &[u8], extras: RowExtras<'_>) -> Result<FixMessages> {
         if row.is_empty() {
             return Err(Error::Parse {
                 target: "fix",
@@ -352,36 +500,32 @@ impl FixCodec {
         let start = line::payload_at(row).unwrap_or(row.len());
         let body = &row[start..];
         if numeric_frame(body) {
-            return self
-                .fix_line_with(body, extras, enrich)
-                .map(FixMessages::one);
+            return self.fix_line_with(body, extras).map(FixMessages::one);
         }
         // An XML document a transport wrote prose in front of opens before
         // any pair the locator could read as a bridge row, and is read as
         // the document it is, by its attributes.
         if let Some((_, open)) = line::document_behind_prefix(row) {
-            return self
-                .fixml_with(&row[open..], extras, enrich)
-                .map(FixMessages::one);
+            return self.fixml_with(&row[open..], extras).map(FixMessages::one);
         }
         // A payload opening with `{` is a bridge configuration document, and
         // nothing else is: the locator points at a key, which starts with a
         // digit or a letter, and points at an object only where it found one.
         // So the test costs one byte rather than a second classification.
         if matches!(body.first(), Some(b'{' | b'[')) {
-            return self.ulconfig_with(body, extras, enrich);
+            return self.ulconfig_with(body, extras);
         }
         // A FIXML row states no `key=value` frame, so the locator finds none
         // and leaves nothing to read. The document is the payload, and it
         // opens at the first tag - which is also how a prefix is dropped from
         // one, since everything before that tag is text the reader skips.
         if body.is_empty() && memchr::memchr(b'<', row).is_some() {
-            return self.fixml_with(row, extras, enrich).map(FixMessages::one);
+            return self.fixml_with(row, extras).map(FixMessages::one);
         }
-        self.ullink_with(body, extras, enrich).map(FixMessages::one)
+        self.ullink_with(body, extras).map(FixMessages::one)
     }
 
-    /// Transforms one numeric FIX frame.
+    /// Parses one numeric FIX frame.
     ///
     /// The separator is the one [`Self::with_separator`] pinned; with none
     /// pinned a frame spelling its `SOH` as `\x01`, `^A` or `<SOH>` is
@@ -396,18 +540,18 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
-    pub fn transform_fix_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg> {
-        self.fix_line_with(body, RowExtras::NONE, enrich)
+    pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg> {
+        self.fix_line_with(body, RowExtras::NONE)
     }
 
-    /// [`Self::transform_fix_line`], with what the row stated beside its frame.
-    fn fix_line_with(&self, body: &[u8], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
+    /// [`Self::parse_fix_line`], with what the row stated beside its frame.
+    fn fix_line_with(&self, body: &[u8], extras: RowExtras<'_>) -> Result<FixMsg> {
         if let Some(separator) = self.separator {
-            return self.split_fix_with(body, separator, extras, enrich);
+            return self.split_fix_with(body, separator, extras);
         }
         match unescaped(body) {
-            Some(held) => self.split_fix_with(&held, 0x01, extras, enrich),
-            None => self.split_fix_with(body, separator_of(body), extras, enrich),
+            Some(held) => self.split_fix_with(&held, SOH, extras),
+            None => self.split_fix_with(body, separator_of(body), extras),
         }
     }
 
@@ -417,7 +561,6 @@ impl FixCodec {
         body: &[u8],
         separator: u8,
         extras: RowExtras<'_>,
-        enrich: bool,
     ) -> Result<FixMsg> {
         let mut pairs: Vec<(&[u8], &[u8])> = Vec::new();
         // The data values that are bridge rows, read after the frame's own
@@ -460,10 +603,10 @@ impl FixCodec {
             }
             at = next;
         }
-        self.build(&pairs, &nested, extras, enrich)
+        self.build(&pairs, &nested, extras)
     }
 
-    /// Transforms one bridge row of `NAME=VALUE` pairs.
+    /// Parses one bridge row of `NAME=VALUE` pairs.
     ///
     /// A `SOH` or pipe delimiter preserves spaces inside a value. A row with
     /// neither delimiter uses spaces between pairs.
@@ -483,18 +626,18 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
-    pub fn transform_ullink_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg> {
-        self.ullink_with(body, RowExtras::NONE, enrich)
+    pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg> {
+        self.ullink_with(body, RowExtras::NONE)
     }
 
-    /// [`Self::transform_ullink_line`], with what the row stated beside its row.
-    fn ullink_with(&self, body: &[u8], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
+    /// [`Self::parse_ullink_line`], with what the row stated beside its row.
+    fn ullink_with(&self, body: &[u8], extras: RowExtras<'_>) -> Result<FixMsg> {
         let (_, resolved) = self.ullink_pairs(body);
         let pairs: Vec<(&[u8], &[u8])> = resolved
             .iter()
             .map(|(key, value)| (key.as_ref(), *value))
             .collect();
-        self.build(&pairs, &[], extras, enrich)
+        self.build(&pairs, &[], extras)
     }
 
     /// One bridge row as the pairs the builder takes: `#` twins judged, and
@@ -634,7 +777,7 @@ impl FixCodec {
         }
     }
 
-    /// Transforms one FIXML row: every element's attributes, in document order.
+    /// Parses one FIXML row: every element's attributes, in document order.
     ///
     /// FIXML spells a field as an XML attribute and a component as a nested
     /// element, so the attributes *are* the pairs and the nesting flattens the
@@ -650,27 +793,27 @@ impl FixCodec {
     ///
     /// Returns [`Error::Parse`] naming the byte position when the row is not
     /// well-formed XML, and the builder's refusal otherwise.
-    pub fn transform_fixml_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg> {
-        self.fixml_with(body, RowExtras::NONE, enrich)
+    pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg> {
+        self.fixml_with(body, RowExtras::NONE)
     }
 
-    /// [`Self::transform_fixml_line`], with what the row stated beside its document.
-    fn fixml_with(&self, body: &[u8], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
+    /// [`Self::parse_fixml_line`], with what the row stated beside its document.
+    fn fixml_with(&self, body: &[u8], extras: RowExtras<'_>) -> Result<FixMsg> {
         let owned = fixml_pairs(body)?;
         let pairs: Vec<(&[u8], &[u8])> = owned
             .iter()
             .map(|(key, value)| (key.as_slice(), value.as_slice()))
             .collect();
-        self.build(&pairs, &[], extras, enrich)
+        self.build(&pairs, &[], extras)
     }
 
-    /// Transforms one generic record: its payload column, under its own columns.
+    /// Parses one generic record: its payload column, under its own columns.
     ///
     /// The crate already has a generic record - a name-to-value map, one
     /// `Scalar` variant - and every row-oriented reader in it produces one, so
     /// taking that shape means this accepts a row from any of them with no
     /// conversion at the boundary. The payload column is read by
-    /// [`Self::transform_line`]; every other named column is a fact this codec
+    /// [`Self::parse_line`]; every other named column is a fact this codec
     /// already holds, stated per row.
     ///
     /// | column | supplies |
@@ -682,123 +825,38 @@ impl FixCodec {
     /// | `direction` | the direction, stated |
     ///
     /// A row outranks this codec, because a column is the caller speaking per
-    /// row where the codec is the caller speaking per run. A column that is
-    /// absent, null or empty is silence, never an instruction and never an
-    /// error - so a record carrying only a payload reads exactly as the bytes
-    /// would, which is what makes this an entry point and not a second
-    /// contract.
+    /// row where the codec is the caller speaking per run. A parameter column
+    /// that is absent, null or empty is silence, never an instruction and
+    /// never an error - so a record carrying only a payload reads exactly as
+    /// the bytes would, which is what makes this an entry point and not a
+    /// second contract. The payload column is the one column a record must
+    /// have: a null under it is a row holding an empty message, and a record
+    /// without it would parse nothing.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when the value is not a record at all.
-    pub fn transform_record(&self, record: &Scalar, enrich: bool) -> Result<FixMessages> {
-        super::record::transform_record_with(self, record, &self.payload_column, enrich)
+    /// Returns [`Error::Parse`] when the value is not a record at all, and
+    /// [`Error::InvalidRecord`] naming the payload column when the record has
+    /// no column of that name or holds neither text nor bytes under it.
+    pub fn parse_text_record(&self, record: &Scalar) -> Result<FixMessages> {
+        super::record::parse_record_with(self, record, &self.payload_column)
     }
 
-    /// Transforms a stream of generic records, one message per record, lazily.
+    /// Parses a stream of generic records, one message per record, lazily.
     ///
     /// Nothing is collected: the iterator is the stream, so a capture of ten
     /// million rows costs one message at a time. Each record is read exactly
-    /// as [`Self::transform_record`] reads it, so what a row states about itself
-    /// still outranks what this codec holds for the run.
-    pub fn transform_records<'codec, I>(
-        &'codec self,
-        records: I,
-        enrich: bool,
-    ) -> impl Iterator<Item = Result<FixMsg>> + 'codec
+    /// as [`Self::parse_text_record`] reads it, so what a row states about
+    /// itself still outranks what this codec holds for the run; a record that
+    /// is not one is an `Err` item and the stream continues.
+    pub fn parse_text_records<I>(&self, records: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator<Item = Scalar>,
-        I::IntoIter: 'codec,
     {
-        records.into_iter().flat_map(move |record| {
-            FixMessages::from_result(self.transform_record(&record, enrich))
-        })
-    }
-
-    /// Transforms one Arrow batch of capture rows into one Arrow batch of
-    /// messages.
-    ///
-    /// The batch a text reader answers with is already the shape this wants -
-    /// one row per line, the payload in a named column and the capture's own
-    /// `url`, `rownum` and `direction` beside it - so this takes it whole
-    /// rather than through a row-at-a-time boundary, and carries those columns
-    /// through ahead of the FIX ones.
-    ///
-    /// One batch in, one batch out, with the row count preserved. Use
-    /// [`Self::transform_arrow_reader`] for a stream, which is the same read
-    /// without holding a batch's worth of messages at once.
-    ///
-    /// # Errors
-    ///
-    /// Returns the schema grammar's refusal when the options do not make a
-    /// root field, and the Arrow layer's own failure.
-    #[cfg(feature = "arrow")]
-    pub fn transform_arrow_batch(
-        &self,
-        batch: &arrow_array::RecordBatch,
-        options: &super::FixOptions,
-        enrich: bool,
-    ) -> Result<arrow_array::RecordBatch> {
-        let schema = batch.schema();
-        let source = crate::arrow::batch_reader(schema, [batch.clone()]);
-        let read = self.transform_arrow_reader(source, options, enrich)?;
-        Ok(crate::arrow::ArrowValue::from_reader(read)?.into_batch()?)
-    }
-
-    /// Transforms a stream of Arrow batches into a stream of message batches.
-    ///
-    /// The payload column is this codec's, so a reader whose payload is not
-    /// `body` names it with [`Self::with_payload_column`] once for the run.
-    ///
-    /// # Errors
-    ///
-    /// Returns the schema grammar's refusal when the options do not make a
-    /// root field, or the source reader's own failure.
-    #[cfg(feature = "arrow")]
-    pub fn transform_arrow_reader(
-        &self,
-        source: crate::arrow::BatchReader,
-        options: &super::FixOptions,
-        enrich: bool,
-    ) -> Result<crate::arrow::BatchReader> {
-        // The flag is the argument the caller passed rather than whatever the
-        // options happened to carry, so one spelling decides it.
-        let mut options = options.clone();
-        options.enrich = enrich;
-        super::batch::FixBatchReader::from_codec(self, source, &options)
-    }
-
-    /// Reads one Arrow batch of capture rows into one batch of filled messages.
-    ///
-    /// [`Self::transform_arrow_batch`] with the filling asked for, which is
-    /// the spelling a caller who always wants it writes once.
-    ///
-    /// # Errors
-    ///
-    /// Returns what [`Self::transform_arrow_batch`] returns.
-    #[cfg(feature = "arrow")]
-    pub fn enrich_arrow_batch(
-        &self,
-        batch: &arrow_array::RecordBatch,
-        options: &super::FixOptions,
-    ) -> Result<arrow_array::RecordBatch> {
-        self.transform_arrow_batch(batch, options, true)
-    }
-
-    /// Reads a stream of capture batches into a stream of filled messages.
-    ///
-    /// [`Self::transform_arrow_reader`] with the filling asked for.
-    ///
-    /// # Errors
-    ///
-    /// Returns what [`Self::transform_arrow_reader`] returns.
-    #[cfg(feature = "arrow")]
-    pub fn enrich_arrow_reader(
-        &self,
-        source: crate::arrow::BatchReader,
-        options: &super::FixOptions,
-    ) -> Result<crate::arrow::BatchReader> {
-        self.transform_arrow_reader(source, options, true)
+        let codec = self.clone();
+        records
+            .into_iter()
+            .flat_map(move |record| FixMessages::from_result(codec.parse_text_record(&record)))
     }
 
     /// Fills what one message implies but did not carry.
@@ -817,27 +875,26 @@ impl FixCodec {
     ///
     /// # Errors
     ///
-    /// Returns the value contract's refusal when a derived value does not fit
-    /// the column the dictionary declares for it.
-    pub fn enrich_fixmsg(&self, message: FixMsg) -> Result<FixMsg> {
-        super::enrich::enrich(&self.registry, message)
+    /// Never fails: a derived value the column refuses is silence rather
+    /// than a refusal, and the `Result` is the shape every stage of a
+    /// message stream answers in.
+    pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg> {
+        Ok(super::enrich::enrich(&self.registry, message))
     }
 
     /// Fills a stream of messages, lazily.
     ///
     /// Nothing is collected: the iterator is the stream, so a capture of ten
-    /// million messages costs one at a time.
-    pub fn enrich_fixmsgs<'codec, I>(
-        &'codec self,
-        messages: I,
-    ) -> impl Iterator<Item = Result<FixMsg>> + 'codec
+    /// million messages costs one at a time. [`Self::enrich_messages_arrow_reader`]
+    /// is the same pass over batches of rows.
+    pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator<Item = FixMsg>,
-        I::IntoIter: 'codec,
     {
+        let registry = Arc::clone(&self.registry);
         messages
             .into_iter()
-            .map(move |message| self.enrich_fixmsg(message))
+            .map(move |message| Ok(super::enrich::enrich(&registry, message)))
     }
 
     /// Stamps a stream of messages with the identities it implies, in order.
@@ -847,13 +904,9 @@ impl FixCodec {
     /// identifier - the `persistentid` of the chain that identifier reaches,
     /// and a terminal state closes the chain. Nothing is collected: the
     /// iterator is the stream, and what is held is the orders still alive.
-    pub fn lifecycle<'codec, I>(
-        &'codec self,
-        messages: I,
-    ) -> impl Iterator<Item = Result<FixMsg>> + 'codec
+    pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator<Item = FixMsg>,
-        I::IntoIter: 'codec,
     {
         let mut life = super::FixLifecycle::new(Arc::clone(&self.registry));
         messages.into_iter().map(move |message| life.fill(message))
@@ -864,12 +917,12 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns the builder's refusal.
-    pub fn transform_pairs<'a, I>(&self, pairs: I, enrich: bool) -> Result<FixMsg>
+    pub fn parse_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg>
     where
         I: IntoIterator<Item = (&'a [u8], &'a [u8])>,
     {
         let held: Vec<(&[u8], &[u8])> = pairs.into_iter().collect();
-        self.build(&held, &[], RowExtras::NONE, enrich)
+        self.build(&held, &[], RowExtras::NONE)
     }
 
     /// The build a reader outside this module funnels into.
@@ -877,9 +930,8 @@ impl FixCodec {
         &self,
         pairs: &[(&[u8], &[u8])],
         extras: RowExtras<'_>,
-        enrich: bool,
     ) -> Result<FixMsg> {
-        self.build(pairs, &[], extras, enrich)
+        self.build(pairs, &[], extras)
     }
 
     /// The one build every reader funnels into.
@@ -894,7 +946,6 @@ impl FixCodec {
         pairs: &[(&[u8], &[u8])],
         nested: &[&[u8]],
         extras: RowExtras<'_>,
-        enrich: bool,
     ) -> Result<FixMsg> {
         // A row states no dialect, so the caller's pin is the only source: a
         // capture is one session and the branch is a fact about the run.
@@ -909,6 +960,7 @@ impl FixCodec {
             &self.registry,
             message,
             &self.beginstring,
+            &self.memo,
             branch.clone(),
             version,
             pairs.len(),
@@ -925,11 +977,7 @@ impl FixCodec {
         }
         let mut built = builder.finish(root_name(msgtype.as_deref()).as_str(), extras.clock)?;
         built.field.as_fix_mut().set_branch(&branch)?;
-        let built = FixMsg::from_built(Arc::clone(&self.registry), built)?;
-        if enrich {
-            return self.enrich_fixmsg(built);
-        }
-        Ok(built)
+        FixMsg::from_built(Arc::clone(&self.registry), built)
     }
 
     /// Reads one row a data field carried into the line it arrived on.
@@ -1034,7 +1082,7 @@ impl FixCodec {
                                 .flatten()
                         })
                 }?;
-                let id = counter.as_fix().id().ok()??;
+                let id = self.registry.identity_of(counter)?;
                 match message.filter(|message| message.has_group_counter(id)) {
                     Some(message) => message.get_group_by_counter(id),
                     None => self.registry.get_group_by_counter(id),
@@ -1175,7 +1223,7 @@ fn numeric_frame(body: &[u8]) -> bool {
 /// splitter. `None` where nothing was escaped, so the ordinary path allocates
 /// nothing.
 fn unescaped(body: &[u8]) -> Option<Vec<u8>> {
-    if memchr::memchr(0x01, body).is_some() {
+    if memchr::memchr(SOH, body).is_some() {
         return None;
     }
     let marker = line::SOH_MARKERS
@@ -1187,7 +1235,7 @@ fn unescaped(body: &[u8]) -> Option<Vec<u8>> {
     let mut start = 0;
     while let Some(at) = memchr::memmem::find(&body[start..], marker) {
         held.extend_from_slice(&body[start..start + at]);
-        held.push(0x01);
+        held.push(SOH);
         start += at + marker.len();
     }
     held.extend_from_slice(&body[start..]);
@@ -1196,8 +1244,8 @@ fn unescaped(body: &[u8]) -> Option<Vec<u8>> {
 
 /// The separator a numeric frame uses: SOH when the body holds one, else `|`.
 fn separator_of(body: &[u8]) -> u8 {
-    if memchr::memchr(0x01, body).is_some() {
-        0x01
+    if memchr::memchr(SOH, body).is_some() {
+        SOH
     } else {
         b'|'
     }

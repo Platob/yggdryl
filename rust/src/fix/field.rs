@@ -214,9 +214,7 @@ impl<'field> FixField<'field> {
     /// the capture-wide list compares: a venue writing `n/a` and `N/A` in one
     /// file means the same absence twice.
     pub fn is_null_value(&self, value: &str) -> bool {
-        let trimmed = value.trim_matches(|held: char| held.is_ascii_whitespace());
-        self.nulls()
-            .any(|spelling| spelling.eq_ignore_ascii_case(trimmed))
+        spells_absence(self.nulls(), value)
     }
 
     /// Returns the specification's own wording for this field.
@@ -472,13 +470,16 @@ impl<'field> FixField<'field> {
     /// only by version, the one the message's own version declares answers,
     /// so a dated read is still a dated read.
     fn resolve_value(&self, text: &str, at: Option<Version>) -> Option<&'field str> {
-        let stored = self.get(CODES)?;
-        if at.is_some() {
-            if let Some(held) = resolve_in(stored, text, at) {
-                return Some(held);
-            }
-        }
-        resolve_in(stored, text, None)
+        translate(self.codes_document()?, text, at)
+    }
+
+    /// The stored code-set document, when this field carries one.
+    ///
+    /// What every code read scans; a reader remembering translations across
+    /// a run keys them by this document, because the answer is a fact of the
+    /// document, the version and the text alone.
+    pub(super) fn codes_document(&self) -> Option<&'field str> {
+        self.get(CODES)
     }
 
     /// The one code a predicate matches, or nothing when several do.
@@ -1173,6 +1174,19 @@ impl FixFieldMut<'_> {
     }
 }
 
+/// Whether `text` is one of `nulls`, the spellings a field states as an
+/// absence: ASCII case-insensitively, against the trimmed text.
+///
+/// The one predicate behind [`FixField::is_null_value`] and the codec's
+/// memo of a field's facts, so a spelling reads as an absence the same way
+/// whether the field was looked up or remembered.
+pub(super) fn spells_absence<'a>(nulls: impl IntoIterator<Item = &'a str>, text: &str) -> bool {
+    let trimmed = text.trim_ascii();
+    nulls
+        .into_iter()
+        .any(|spelling| spelling.eq_ignore_ascii_case(trimmed))
+}
+
 /// The aliases a field declares, in stored priority order.
 ///
 /// Answered by [`FixField::aliases`]. It walks the stored comma-separated
@@ -1375,6 +1389,21 @@ fn one_matching<'field>(
 }
 
 /// The three tiers over one already-read document, at one visibility.
+/// [`FixField::code_value_at`] over a stored document: the three tiers as the
+/// version knows them, then as every version does.
+pub(super) fn translate<'field>(
+    stored: &'field str,
+    text: &str,
+    at: Option<Version>,
+) -> Option<&'field str> {
+    if at.is_some() {
+        if let Some(held) = resolve_in(stored, text, at) {
+            return Some(held);
+        }
+    }
+    resolve_in(stored, text, None)
+}
+
 fn resolve_in<'field>(stored: &'field str, text: &str, at: Option<Version>) -> Option<&'field str> {
     let visible = |code: &FixCodeValue<'field>| at.is_none_or(|at| code.defined_at(at));
     // Tier 1: the text as a wire value, exactly. A spelling that is already a

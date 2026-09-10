@@ -511,7 +511,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
 
     // Every reader linked to the registry restates by the edited rule.
     let reader = FixCodec::new(Arc::new(registry));
-    let read = reader.transform_line(b"8=FIX.4.2|35=D|11=A|47=A|10=0|", false)?.next().expect("one frame")?;
+    let read = reader.parse_line(b"8=FIX.4.2|35=D|11=A|47=A|10=0|")?.next().expect("one frame")?;
     let latest = read.into_latest()?;
     assert_eq!(latest.by_tag(528)?.as_str(), Some("P"));
     assert_eq!(latest.by_tag(47)?.as_str(), Some("A"), "the source stays as read");
@@ -535,7 +535,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
 
     # Every reader linked to the registry restates by the edited rule.
     reader = FixCodec(registry)
-    read = next(reader.transform_line(b"8=FIX.4.2|35=D|11=A|47=A|10=0|"))
+    read = next(reader.parse_line(b"8=FIX.4.2|35=D|11=A|47=A|10=0|"))
     latest = read.into_latest()
     assert latest.by_tag(528).as_py() == "P"
     assert latest.by_tag(47).as_py() == "A", "the source stays as read"
@@ -560,7 +560,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
 
     // Every reader linked to the registry restates by the edited rule.
     const reader = new fix.FixCodec(registry)
-    const read = reader.transformLine(Buffer.from('8=FIX.4.2|35=D|11=A|47=A|10=0|')).next().value
+    const read = reader.parseLine(Buffer.from('8=FIX.4.2|35=D|11=A|47=A|10=0|')).next().value
     const latest = read.intoLatest()
     assert.equal(latest.byTag(528).toJSON(), 'P')
     assert.equal(latest.byTag(47).toJSON(), 'A', 'the source stays as read')
@@ -782,60 +782,38 @@ An ObjectName's `type=` property supplies its raw configuration type; otherwise 
 
 ## Performance
 
-Measured in release mode on Windows, AMD Ryzen 5 150 with 12 logical CPUs, Rust 1.96, Python 3.12.13, and Node 24.18. Python and Node ran 2,000 boundary iterations; Rust Criterion used 10 samples, 100 ms warm-up, and a 200 ms target measurement window.
+The Rust column is one release run of the Criterion target on one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.94.1 release (thin LTO, one codegen unit), 100 samples, Criterion's default warm-up and measurement window. The Python and Node columns are an earlier release run on Windows, AMD Ryzen 5 150 with 12 logical CPUs, Python 3.12.13 and Node 24.18, 2,000 boundary iterations each; the two hosts differ, so a row compares a language against its own boundary and not against the Rust figure.
 
 | Read | Rust estimate | Python | Node |
 | --- | ---: | ---: | ---: |
-| Scalar tag hit | 9.16 ns | 184 ns | 346,699 ops/s |
-| Folded scalar name hit | 346 ns | 522 ns | 242,181 ops/s |
-| Named group lookup | 138 ns | 336 ns | 385,758 ops/s |
-| Message singleton lookup | 61.1 ns | 296 ns | 359,589 ops/s |
-| Message-scoped group lookup | 35.9 ns | Not isolated | Not isolated |
+| Scalar tag hit | 5.62 ns | 184 ns | 346,699 ops/s |
+| Folded scalar name hit | 152 ns | 522 ns | 242,181 ops/s |
+| Named group lookup | 185 ns | 336 ns | 385,758 ops/s |
+| Message singleton lookup | 44.7 ns | 296 ns | 359,589 ops/s |
+| Message-scoped group lookup | 22.8 ns | Not isolated | Not isolated |
 
 Rust lookup rows borrow the full seed's native definitions; binding rows include their wrapper boundary. Python's category iterators cover the full seed, while Node's category iterator benchmarks use a small catalog with two fields and one definition in each other category, so their first/drain results are not a cross-language comparison.
 
 | Mutation | Rust estimate | Workload |
 | --- | ---: | --- |
-| Insert into seed | 217 us | New independent scalar field |
-| Referenced metadata update in seed | 1.13 s | Atomically refresh the full reference graph |
-| Per-field metadata merge | 11.3 us | `FixFieldMut::merge_with` |
-| Small-registry merged update | 21.7 us | `FixRegistry::update` |
-| Catalog merge with inline-code union | 112.89 us | Two scalar fields plus one component, group and message; imported references refresh against the merged fields |
+| Insert into seed | 113 us | New independent scalar field |
+| Referenced metadata update in seed | 854 ms | Atomically refresh the full reference graph |
+| Per-field metadata merge | 6.89 us | `FixFieldMut::merge_with` |
+| Small-registry merged update | 23.3 us | `FixRegistry::update` |
+| Catalog merge with inline-code union | 99.8 us | Two scalar fields plus one component, group and message; imported references refresh against the merged fields |
 
 The catalog merge excludes the setup clone from its timer and includes source validation, code union, reference resolution and final validation. It uses a small catalog, separate from the seed mutation cases.
 
 ### Classifying a capture
 
-The shallow raw FIXML message-code scan measured 963 ns in Rust; Python's Ullink message-code inference measured 639 ns and Node's measured 1,230,618 ops/s. These rows use different wire fixtures and describe their own boundary costs.
-
-`fix/classify`, over a `.log` handle read as records - 4,000 lines cycling the five shapes, of which the bridge configuration documents are most of the bytes. Release build, one Linux x86_64 container; the baseline is the same read with the three classification columns off, which is the only honest comparison because it is the same work minus the readings.
-
-| case | median | per row | against the plain read |
-| --- | --- | --- | --- |
-| `read_arrow_reader`, no classification | 4.89 ms | 1.22 us | - |
-| the same with `mimetype`, `msgtype` and `direction` | 15.2 ms | 3.8 us | 3.1x |
-
-The three readings on their own, one line each:
-
-| shape | bytes | `mimetype` | `msgtype` | `direction` |
-| --- | --- | --- | --- | --- |
-| framed FIX with prose either side | 85 | 609 ns | 575 ns | 367 ns |
-| a bare tag stream | 64 | 574 ns | 566 ns | 235 ns |
-| a bridge row keyed by name | 78 | 432 ns | 421 ns | 205 ns |
-| a sentence nothing matches | 52 | 102 ns | 76.8 ns | 1.15 us |
-| a bridge configuration document | 840 | 1.38 us | 1.37 us | 1.11 us |
-
-The scan is linear in the line, so a document is a long line rather than a different kind of work. The one asymmetry is the sentence: with no frame to bound the prose, a direction is read against the whole of it - which is exactly what a document does *not* pay, because its bound is where the object opens.
-
-Classification is opt-in per column for that reason. A capture that only needs rows pays the 1.22 us; one that needs to know what each line is pays the reading over the bytes it has.
+The shallow raw FIXML message-code scan measured 963 ns in Rust; Python's Ullink message-code inference measured 639 ns and Node's measured 1,230,618 ops/s. These rows use different wire fixtures and describe their own boundary costs. What the text reader's three classification columns cost over a whole capture is measured where the capture is read, in [`fix/pipeline`](arrow.md#performance).
 
 Borrowed Rust lookups, singleton views, and compiled group-plan lookups have counting-allocator coverage. Stable hashing allocates one native digester state, and snapshots/projections allocate by contract; the [store measurements](store.md#performance) cover the full graph separately.
 
 Regenerate from the repository root with release bindings installed:
 
 ```bash
-cargo bench -p yggdryl --bench fix -- --sample-size 10 --warm-up-time 0.1 --measurement-time 0.2
-cargo bench --locked -p yggdryl --bench fix -- fix/mutate/merge_catalog_inline_codes --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10
+cargo bench -p yggdryl --bench fix -- 'fix/(resolve|mutate|store)'
 python python/benchmarks/fix.py --iterations 2000
 ```
 

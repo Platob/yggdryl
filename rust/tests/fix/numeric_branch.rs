@@ -97,7 +97,7 @@ fn numeric_scalars_and_groups_follow_the_pinned_branch() {
         ] {
             let branch = FixBranch::from_str(branch).unwrap();
             let codec = FixCodec::new(Arc::clone(&registry)).with_branch(&branch);
-            let message = codec.transform_fix_line(wire, false).unwrap();
+            let message = codec.parse_fix_line(wire).unwrap();
             assert_eq!(
                 message.by_name(&format!("No{name}Rows")).unwrap(),
                 &Scalar::from(1_i32)
@@ -125,7 +125,7 @@ fn numeric_scalars_and_groups_follow_the_pinned_branch() {
 fn a_pinned_branch_does_not_borrow_another_venues_numeric_counter() {
     let codec = FixCodec::new(registry(false)).with_branch(&FixBranch::from_str("beta").unwrap());
     let wire = b"6100=1|6101=42|55=AAPL|";
-    let message = codec.transform_fix_line(wire, false).unwrap();
+    let message = codec.parse_fix_line(wire).unwrap();
     assert!(message.get_by_name("NoAlphaOnlyRows").is_none());
     assert!(message.get_by_name("AlphaOnlyRows").is_none());
     assert!(message.get_by_name("AlphaOnlyID").is_none());

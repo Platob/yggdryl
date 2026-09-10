@@ -449,7 +449,27 @@ declare module './index' {
     next(): IteratorResult<FixMsg>
   }
   interface FixCodec {
-    transformRecord(record: unknown, enrich?: boolean | null): FixMessages
+    /**
+     * A stream of captured lines, pulled one line at a time as the stream is
+     * read; each line is read as `parseLine` reads it.
+     */
+    parseLines(lines: Iterable<string | ArrayBufferLike | ArrayBufferView>): FixMessages
+    /** A stream of records, pulled one at a time; each as `parseTextRecord` reads it. */
+    parseTextRecords(records: Iterable<unknown>): FixMessages
+    /** A stream of messages filled with what each implies, one at a time. */
+    enrichMessages(messages: Iterable<FixMsg>): FixMessages
+    /** One lifecycle over a whole stream of messages, one at a time. */
+    lifecycle(messages: Iterable<FixMsg>): FixMessages
+    /**
+     * A stream of messages as batches of FIX rows under `schema`, closed on
+     * the raw bytes of each message's arrival record.
+     */
+    arrowReader(schema: Field, messages: Iterable<FixMsg>): BatchReader
+    /** The batch twins take whatever `BatchReader.from` accepts. */
+    parseTextArrowReader(source: BatchSource): BatchReader
+    enrichMessagesArrowReader(source: BatchSource): BatchReader
+    messages(source: BatchSource): FixMessages
+    writeArrowReader(source: BatchSource, sink: { write(chunk: Uint8Array): unknown }): number
   }
 
   interface Field {
@@ -2812,6 +2832,11 @@ export interface FixMsgConstructor {
     value: FixValueInput,
     registry?: FixRegistry | null,
   ): FixMsg
+  /**
+   * The message a fixed row holds: the inverse of `intoRow`, its entries
+   * rebuilt from the `nofixentries` column without a parse.
+   */
+  fromRow(schema: Field, row: FixValueInput, registry?: FixRegistry | null): FixMsg
   readonly prototype: FixMsg
 }
 
@@ -2842,10 +2867,14 @@ export interface Fix {
   readonly FixRegistry: typeof FixRegistry
   /** A FIX message: a value plus the registry that types it. */
   readonly FixMsg: FixMsgConstructor
-  /** One dictionary, reading captured lines into messages. */
+  /**
+   * One dictionary, reading captured lines into messages, enriching them,
+   * and the Arrow twin of each - a pin is on the codec, a stage is a call.
+   */
   readonly FixCodec: typeof FixCodec
   /** Immutable registry-owned message definitions. */
   readonly MsgType: abstract new () => MsgType
+  /** A lazy stream of messages: what every stage of `FixCodec` answers. */
   readonly FixMessages: abstract new () => FixMessages
   readonly UlPlugin: UlPluginConstructor
   readonly UlPlugins: abstract new () => UlPlugins

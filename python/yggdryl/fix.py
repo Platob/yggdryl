@@ -8,7 +8,9 @@ once at the boundary, so neither has a class of its own. :class:`FixRegistry` re
 those fields by identifier, by tag, by branch-qualified name or by
 branch-qualified dotted path and persists them as JSON shards through any
 ``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
-was resolved against. Every registry holds this crate's own fields from
+was resolved against, written through :meth:`FixMsg.set` and
+:meth:`FixMsg.remove` and read back from a fixed row by :meth:`FixMsg.from_row`.
+Every registry holds this crate's own fields from
 construction - ``FixRegistry()`` is those twenty fields, never nothing - and a
 store neither writes them nor overrides them. Resolution, folding, merging,
 sharding and validation are native; this module only names them.
@@ -27,22 +29,38 @@ flat typed message. :func:`fix_ulbridge_fields` is the dictionary
 those attributes type against, which
 :meth:`FixRegistry.with_ulbridge_fields` registers.
 
-:class:`FixCodec` turns a captured line into a lazy :class:`FixMessages`
-iterator. Every message it builds opens with ``beginstring`` - the wire's own,
-else the version the message was read at - and closes with the crate's
-``timestamp``: the row's own clock where the capture stated one, else the first
-clock the message carries, else the epoch, so
+:class:`FixCodec` parses lines into messages and enriches messages, each
+as an iterator and each with an Arrow-batch twin. :meth:`FixCodec.parse_line`
+turns one captured line into a lazy :class:`FixMessages` stream and
+:meth:`FixCodec.parse_lines` a whole iterable of lines, one line at a time;
+:meth:`FixCodec.parse_text_record` and :meth:`FixCodec.parse_text_records` read
+the records a text reader answers, the payload column beside the row's own
+``branch``, ``beginstring``, ``sep``, ``timestamp``, ``direction`` and
+``plugin`` parameters. Every message it builds opens with ``beginstring`` - the
+wire's own, else the version the message was read at - and closes with the
+crate's ``timestamp``: the row's own clock where the capture stated one, else
+the first clock the message carries, else the epoch, so
 :meth:`FixMsg.market_timestamp` always answers.
-:func:`parse_arrow_reader` turns a whole Arrow capture into batches of them --
-the capture's own columns first, the dictionary's fixed columns after, one
-source row's columns repeated for each returned message. A capture's
-``timestamp`` column stamps its row; its
-``plugin`` column names the plugin session the row moved from or to - the
-sender's for a line the row's ``direction`` says was sent, which is what an
-unmarked line is read as, the target's for one it received; and any other
+:meth:`FixCodec.parse_text_arrow_reader` turns a whole Arrow capture into
+batches of FIX rows - the capture's own columns first, the dictionary's fixed
+columns after, one source row's columns repeated for each message a bulk
+document expands to - closed on the raw bytes of the payload column against
+the codec's ``batch_byte_size``. A capture's ``timestamp`` column stamps its
+row; its ``plugin`` column names the plugin session the row moved from or to -
+the sender's for a line the row's ``direction`` says was sent, which is what
+an unmarked line is read as, the target's for one it received; and any other
 column named after a field - ``senderSessionId``, or a bridge's ``seqNum`` for
 ``MsgSeqNum`` - fills that field where the frame did not state it, without
-becoming an entry.
+becoming an entry. :meth:`FixCodec.enrich_message` and
+:meth:`FixCodec.enrich_messages` fill what a message implied but did not carry,
+and :meth:`FixCodec.enrich_messages_arrow_reader` does the same over batches
+of rows without parsing them again, through the two converters every stage
+composes over batches: :meth:`FixCodec.messages` reads a batch back as the
+messages that made it and :meth:`FixCodec.arrow_reader` writes messages as
+batches under a schema. :meth:`FixCodec.write_arrow_reader` is the encode
+direction, re-emitting every row's wire. A pin - ``branch``, ``version``,
+``separator``, ``payload_column``, ``null_values``, ``direction``,
+``batch_byte_size`` - is on the codec; a stage is a call.
 :func:`fix_schema` is the one fixed row a whole capture lands in - columns
 spelled by the dictionary's folded canonical names, ``msgtype`` and never
 ``35``, so a column is found with ``schema.index_of("msgtype")`` and nothing has
@@ -68,8 +86,8 @@ belongs to - joined on ``OrigClOrdID``, ``ClOrdID``, ``OrderID``,
 ``SecondaryClOrdID`` and ``SecondaryOrderID``, closed by a terminal state, so
 :meth:`FixLifecycle.alive` counts the orders still open and
 :meth:`FixLifecycle.clear` forgets them. :meth:`FixCodec.lifecycle` runs one over
-an iterable of messages, and ``parse_arrow_reader(lifecycle=True)`` runs one over
-a whole capture.
+an iterable of messages, lazily, and composes over a whole capture through
+:meth:`FixCodec.messages` and :meth:`FixCodec.arrow_reader`.
 
 A branch is a ``str`` wherever it is a *key*; :class:`FixBranch` is what a
 *declaration* is, because a declaration also carries the dialect's default FIX
@@ -103,9 +121,7 @@ from ._native import (
     UlPlugin,
     UlPlugins,
     fix_cfb_fields,
-    fix_classify_arrow_array as classify_arrow_array,
     fix_crate_fields,
-    fix_parse_arrow_reader as parse_arrow_reader,
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
@@ -128,7 +144,6 @@ __all__ = [
     "MsgType",
     "UlPlugin",
     "UlPlugins",
-    "classify_arrow_array",
     "fix_cfb_fields",
     "fix_crate_fields",
     "fix_schema",
@@ -137,5 +152,4 @@ __all__ = [
     "fix_ulbridge_fields",
     "global_registry",
     "install_global_registry",
-    "parse_arrow_reader",
 ]

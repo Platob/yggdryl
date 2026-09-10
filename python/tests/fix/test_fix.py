@@ -46,7 +46,6 @@ from yggdryl.fix import (
     fix_ulbridge_fields,
     global_registry,
     install_global_registry,
-    parse_arrow_reader,
 )
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
@@ -1289,21 +1288,21 @@ def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> No
     """One reader, five entry points, and each is the core's own."""
     reader = FixCodec(seed)
 
-    framed = next(reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|"))
+    framed = next(reader.parse_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|"))
     assert framed.by_tag(55).as_py() == "AAPL"
-    assert next(reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|")).by_tag(55).as_py() == "AAPL"
-    assert reader.transform_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
+    assert next(reader.parse_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|")).by_tag(55).as_py() == "AAPL"
+    assert reader.parse_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
         55
     ).as_py() == "AAPL"
-    assert reader.transform_pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
+    assert reader.parse_pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
 
     # A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
     # whose value packs its members behind the two control bytes ULLINK uses.
-    bridge = reader.transform_ullink_line(
+    bridge = reader.parse_ullink_line(
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
     )
-    inferred = next(reader.transform_line(
+    inferred = next(reader.parse_line(
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|"
     ))
@@ -1324,9 +1323,11 @@ def test_arrow_reader_uses_separatorless_group_inference(seed: FixRegistry) -> N
         b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|"
     )
-    parsed = parse_arrow_reader(
-        pa.table({"body": pa.array([bridge], pa.binary())}), seed, "body"
-    ).read_all()
+    parsed = (
+        FixCodec(seed)
+        .parse_text_arrow_reader(pa.table({"body": pa.array([bridge], pa.binary())}))
+        .read_all()
+    )
     # The counter and the group it plans are two columns, each spelled by the
     # dictionary's folded name: the count itself, and the occurrences beside it.
     assert parsed.column("nopartyids").to_pylist() == [1]
@@ -1346,14 +1347,14 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
     # dictionary's own whatever version read the row, and the 4.2 spelling
     # still reaches it as an alias.
     dated = FixCodec(seed, version="4.2")
-    named = next(dated.transform_line(b"8=FIX.4.4|35=8|32=100|10=0|"))
+    named = next(dated.parse_line(b"8=FIX.4.4|35=8|32=100|10=0|"))
     assert named.field.index_of("lastqty") is not None
     assert named.get_by_name("lastshares") is not None
     assert named.get_by_name("lastqty") is not None
 
     # A stated absence produces no field at all.
     silent = FixCodec(seed, null_values=["<none>"])
-    assert next(silent.transform_line(b"8=FIX.4.4|35=D|55=<none>|10=0|")).get_by_tag(55) is None
+    assert next(silent.parse_line(b"8=FIX.4.4|35=D|55=<none>|10=0|")).get_by_tag(55) is None
 
     with pytest.raises(ValueError):
         FixCodec(seed, branch="not a branch")
@@ -1362,22 +1363,22 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
 def test_a_reader_fills_what_the_line_implied_and_leaves_the_wire_alone(
     seed: FixRegistry,
 ) -> None:
-    """Enrichment is a flag; the rules are the core's."""
+    """Enrichment is a call; the rules are the core's."""
     reader = FixCodec(seed)
 
     # A `SecurityID` an ISIN's check digit closes has stated its source, and
     # under that source the crate's `isincode` column and the country its
     # prefix names.
     line = b"8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|"
-    filled = next(reader.transform_line(line, True))
+    filled = reader.enrich_message(next(reader.parse_line(line)))
     assert filled.by_tag(22).as_py() == "4"
     assert filled.by_tag(65013).as_py() == "US0378331005"
     assert filled.by_tag(470).as_py() == "US"
     # An order stating no time in force is a day order.
     assert filled.by_tag(59).as_py() == "0"
 
-    # Without the flag the line states none of them.
-    bare = next(reader.transform_line(line))
+    # Unfilled, the line states none of them.
+    bare = next(reader.parse_line(line))
     assert bare.get_by_tag(22) is None
     assert bare.get_by_tag(65013) is None
     assert bare.get_by_tag(470) is None
@@ -1385,10 +1386,12 @@ def test_a_reader_fills_what_the_line_implied_and_leaves_the_wire_alone(
     # Only the row was filled: the wire comes back byte for byte, and a second
     # pass changes nothing.
     assert filled.into_bytes(ord("|")) == line
-    assert reader.enrich_fixmsg(filled) == filled
+    assert reader.enrich_message(filled) == filled
 
     # A value no standard closes answers nothing rather than a guess.
-    opaque = next(reader.transform_line(b"8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|", True))
+    opaque = reader.enrich_message(
+        next(reader.parse_line(b"8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|"))
+    )
     assert opaque.get_by_tag(22) is None
     assert opaque.get_by_tag(65013) is None
 
@@ -1403,7 +1406,7 @@ REPORT = (
 
 def test_a_message_restates_at_the_dictionarys_newest_version(seed: FixRegistry) -> None:
     """Restatement is a method; the rules are the dictionary's."""
-    read = next(FixCodec(seed).transform_line(REPORT))
+    read = next(FixCodec(seed).parse_line(REPORT))
     assert read.by_tag(65001).as_py() == "4.2"
     assert read.by_tag(150).as_py() == "40PARTFILL"
     assert read.get_by_tag(528) is None
@@ -1494,7 +1497,7 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
     assert FixCodec.infer_msgtype_bytes(LOGGED) == b"Plugin"
 
     reader = FixCodec(bridge, branch=ULBRIDGE_BRANCH)
-    message = next(reader.transform_ulconfig_line(LOGGED))
+    message = next(reader.parse_ulconfig_line(LOGGED))
     # FIX's own names stay FIX's and the bridge's own are the bridge's, both
     # inside the occurrence the document answered for.
     assert message.by_path("SenderCompID").as_py() == "CLI.PROD.TRD"
@@ -1502,8 +1505,8 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
     # The registered vocabulary types a port as a number and a flag as a flag.
     assert message.by_path("CurrentPort").as_py() == 9726
     assert message.by_path("NeedCFBReload").as_py() is False
-    # `transform_line` finds the same document behind the same prose.
-    assert next(reader.transform_line(LOGGED)) == message
+    # `parse_line` finds the same document behind the same prose.
+    assert next(reader.parse_line(LOGGED)) == message
 
 
 def test_every_plugin_a_document_answers_for_crosses_both_ways(
@@ -1641,7 +1644,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     ]
 
     reader = FixCodec(seed)
-    message = next(reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|"))
+    message = next(reader.parse_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|"))
     row = message.into_row(schema).as_py()
     assert len(row) == len(columns)
     assert row[schema.index_of("beginstring")] == "FIX.4.4"
@@ -1682,7 +1685,7 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
 
     # A column no tag names is the capture's, so a row answers null there: the
     # capture fills it, and nothing in the message says what it held.
-    row = next(FixCodec(seed).transform_line(b"8=FIX.4.4|35=D|10=0|")).into_row(carried).as_py()
+    row = next(FixCodec(seed).parse_line(b"8=FIX.4.4|35=D|10=0|")).into_row(carried).as_py()
     assert row[0] is None
     assert row[carried.index_of("msgtype")] == "D"
 
@@ -1841,7 +1844,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
     # The header in rank order whatever the input order, the body, the
     # version the read used, the trailer, and the crate's own `timestamp`
     # closing the message.
-    message = next(reader.transform_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|"))
+    message = next(reader.parse_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|"))
     assert _root_names(message) == [
         "beginstring",
         "bodylength",
@@ -1873,14 +1876,14 @@ def test_every_built_message_carries_its_version_and_its_clock(
     # The stamp is a child and never an entry: the wire re-emits byte for
     # byte, and nothing the row added is in the arrival record.
     wire = b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=000|"
-    order = next(reader.transform_line(wire))
+    order = next(reader.parse_line(wire))
     assert order.into_bytes(ord("|")) == wire
     assert {tag for tag, _, _, _ in order.entries()} == {8, 35, 11, 55, 54, 38, 10}
 
     # The message's own clocks, in decreasing exactness: TransactTime(60)
     # outranks SendingTime(52), and a sub-second clock still has a partition.
     clocked = next(
-        reader.transform_line(
+        reader.parse_line(
             b"8=FIX.4.4|35=8|52=20260102-09:30:00.500|60=20260102-09:29:59.250|10=0|"
         )
     )
@@ -1894,7 +1897,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
 
     # A message that stated no version is read at one all the same, and the
     # version it was read at is not sent: it is not an entry either.
-    stated = reader.transform_pairs([("55", "AAPL")])
+    stated = reader.parse_pairs([("55", "AAPL")])
     assert _root_names(stated)[0] == "beginstring"
     assert _root_names(stated)[-1] == "timestamp"
     assert stated.by_tag(8).as_py().startswith("FIX.")
@@ -1902,7 +1905,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
     assert not stated.into_bytes(ord("|")).startswith(b"8=")
 
     # A bridge frame and a FIXML row are built the same way.
-    bridge = reader.transform_ullink_line(b"|#SYMBOL=TTF|#SIDE=1|")
+    bridge = reader.parse_ullink_line(b"|#SYMBOL=TTF|#SIDE=1|")
     assert _root_names(bridge)[0] == "beginstring"
     assert _root_names(bridge)[-1] == "timestamp"
     assert bridge.market_timestamp() is not None
@@ -1925,7 +1928,7 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
             ),
         }
     )
-    parsed = parse_arrow_reader(source, seed, "body").read_all()
+    parsed = FixCodec(seed).parse_text_arrow_reader(source).read_all()
     names = parsed.schema.names
 
     # The capture's own columns lead the row and the fixed columns follow. A
@@ -1989,7 +1992,7 @@ def test_the_plugin_that_logged_a_row_fills_the_session_its_direction_names(
             ),
         }
     )
-    parsed = parse_arrow_reader(source, seed, "body").read_all()
+    parsed = FixCodec(seed).parse_text_arrow_reader(source).read_all()
     names = parsed.schema.names
 
     # `plugin` and `direction` are parameters of the row, and neither is a
@@ -2146,7 +2149,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     life = FixLifecycle(seed)
     stamped: list[FixMsg] = []
     for line in LIFE:
-        stamped.append(life.fill(next(reader.transform_line(line))))
+        stamped.append(life.fill(next(reader.parse_line(line))))
         # Alive from the first message to the fill that ends it.
         assert life.alive() == int(len(stamped) < len(LIFE))
 
@@ -2178,7 +2181,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     # joining yesterday's, which ended: dated by its own clock, it is another
     # identity.
     tomorrow = LIFE[0].replace(b"20260102", b"20260103")
-    again = life.fill(next(reader.transform_line(tomorrow)))
+    again = life.fill(next(reader.parse_line(tomorrow)))
     assert _identity(again, PERSISTENTID_TAG) != chains[0]
     assert life.alive() == 1
     life.clear()
@@ -2186,7 +2189,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     assert repr(life) == "FixLifecycle(0 alive)"
     # The same line at the same instant is the same chain identity, which is
     # what makes two reads of one capture agree.
-    replayed = life.fill(next(reader.transform_line(LIFE[0])))
+    replayed = life.fill(next(reader.parse_line(LIFE[0])))
     assert _identity(replayed, PERSISTENTID_TAG) == chains[0]
     assert _identity(replayed, ID_TAG) == ids[0]
 
@@ -2197,9 +2200,12 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
 
 def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> None:
     reader = FixCodec(seed)
-    heartbeat = next(reader.transform_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|"))
-    # The codec runs one lifecycle over any iterable, a generator included.
-    stamped = reader.lifecycle(held for held in [heartbeat])
+    heartbeat = next(reader.parse_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|"))
+    # The codec runs one lifecycle over any iterable, a generator included,
+    # and answers the stream lazily.
+    stream = reader.lifecycle(held for held in [heartbeat])
+    assert isinstance(stream, FixMessages)
+    stamped = list(stream)
     assert len(stamped) == 1
     (held,) = stamped
     # Every message has an id; no identifier, no chain; no instrument, no
@@ -2211,13 +2217,17 @@ def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> 
     # stated, and the epoch where the message states no clock at all.
     sent = _identity(held, ID_TAG)
     assert sent is not None and int.from_bytes(sent[:8], "big") == 1_767_348_930_000_000
-    (undated,) = reader.lifecycle([next(reader.transform_line(b"8=FIX.4.4|35=0|10=0|"))])
+    (undated,) = list(reader.lifecycle([next(reader.parse_line(b"8=FIX.4.4|35=0|10=0|"))]))
     undated_id = _identity(undated, ID_TAG)
     assert undated_id is not None and undated_id[:8] == bytes(8)
 
-    # An element that is not a message is refused where it is met.
+    # An element that is not a message is refused where it is met: the first
+    # message is answered, the stray line raises in its place.
+    mixed = reader.lifecycle([heartbeat, b"8=FIX.4.4|35=0|10=0|"])
+    assert next(mixed) == held
     with pytest.raises(TypeError):
-        reader.lifecycle([heartbeat, b"8=FIX.4.4|35=0|10=0|"])
+        next(mixed)
+    assert next(mixed, None) is None
 
     # The process default is the registry a lifecycle built over nothing uses.
     assert FixLifecycle().alive() == 0
@@ -2230,7 +2240,7 @@ def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
     life = FixLifecycle(seed)
 
     def identity(line: bytes) -> bytes | None:
-        return _identity(life.fill(next(reader.transform_line(line))), INSTID_TAG)
+        return _identity(life.fill(next(reader.parse_line(line))), INSTID_TAG)
 
     # An ISIN outranks a symbol, so the same security under two symbols is
     # one instrument, and case is not a difference.
@@ -2253,8 +2263,8 @@ def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
 
 def test_a_stamped_stream_read_again_keeps_what_it_carries(seed: FixRegistry) -> None:
     reader = FixCodec(seed)
-    once = reader.lifecycle(next(reader.transform_line(line)) for line in LIFE)
-    twice = reader.lifecycle(once)
+    once = list(reader.lifecycle(next(reader.parse_line(line)) for line in LIFE))
+    twice = list(reader.lifecycle(once))
     for first, second in zip(once, twice):
         for tag in (INSTID_TAG, ID_TAG, PERSISTENTID_TAG):
             assert _identity(first, tag) == _identity(second, tag), tag
@@ -2263,9 +2273,13 @@ def test_a_stamped_stream_read_again_keeps_what_it_carries(seed: FixRegistry) ->
 
 
 def test_a_batch_read_runs_one_lifecycle_over_the_whole_capture(seed: FixRegistry) -> None:
-    """`lifecycle` is a per-stream flag: a row's chain depends on the rows before it."""
+    """A stage is a call: the lifecycle composes over the messages a batch holds."""
+    codec = FixCodec(seed)
     source = pa.table({"body": pa.array(LIFE, pa.binary())})
-    parsed = parse_arrow_reader(source, seed, "body", lifecycle=True).read_all()
+    read = codec.parse_text_arrow_reader(source)
+    schema = Field.from_arrow_schema(read.schema, "fix")
+    parsed = codec.arrow_reader(schema, codec.lifecycle(codec.messages(read))).read_all()
+    assert parsed.schema.names == read.schema.names, "the same schema in and out"
     chains = parsed.column("persistentid").to_pylist()
     assert len(chains) == len(LIFE)
     assert chains[0] is not None and all(held == chains[0] for held in chains)
@@ -2275,26 +2289,35 @@ def test_a_batch_read_runs_one_lifecycle_over_the_whole_capture(seed: FixRegistr
     # fixed width the datatype declares.
     states = [held.rstrip(b"\0") for held in parsed.column("ordstatus").to_pylist()[1:3]]
     assert states == [b"20NEW", b"40PARTFILL"]
-    # Off by default: a stamped value is indistinguishable from a stated one.
-    bare = parse_arrow_reader(source, seed, "body").read_all()
+    # Not stamped unless asked: a stamped value is indistinguishable from a
+    # stated one.
+    bare = codec.parse_text_arrow_reader(source).read_all()
     assert bare.column("persistentid").to_pylist() == [None] * len(LIFE)
     assert bare.column("id").to_pylist() == [None] * len(LIFE)
-    # `enrich` is the other per-stream flag, and the two compose.
-    both = parse_arrow_reader(source, seed, "body", enrich=True, lifecycle=True).read_all()
+    # Enrichment is another call over the same stream, and the two compose.
+    both = codec.arrow_reader(
+        schema, codec.lifecycle(codec.enrich_messages(codec.messages(codec.parse_text_arrow_reader(source))))
+    ).read_all()
     assert both.column("persistentid").to_pylist() == chains
     assert both.column("state").to_pylist()[1].rstrip(b"\0") == b"20NEW"
 
 
 def test_a_batch_read_lands_at_the_newest_version_when_asked(seed: FixRegistry) -> None:
-    """`latest` is the per-stream form of `FixMsg.into_latest`."""
+    """A stage is a call: the restatement composes between the parse and the batch."""
+    codec = FixCodec(seed)
     source = pa.table({"body": pa.array([REPORT], pa.binary())})
-    restated = parse_arrow_reader(source, seed, "body", latest=True).read_all()
+    # Restated as messages, before the row: the fixed row has no column for a
+    # retired field such as `ExecTransType(20)`, so a row read back would
+    # restate without it.
+    restated = codec.arrow_reader(
+        fix_schema(seed), (message.into_latest() for message in codec.parse_lines([REPORT]))
+    ).read_all()
     assert restated.column("version").to_pylist() == ["5.0.2"]
     assert restated.column("exectype").to_pylist()[0].rstrip(b"\0") == b"40TRDCXL"
     assert restated.column("nopartyids").to_pylist() == [2]
     assert restated.column("parties").to_pylist()[0][0]["partyid"] == "BRKR"
-    # Off by default: the row speaks the version it was read at.
-    read = parse_arrow_reader(source, seed, "body").read_all()
+    # Unrestated, the row speaks the version it was read at.
+    read = codec.parse_text_arrow_reader(source).read_all()
     assert read.column("version").to_pylist() == ["4.2"]
     assert read.column("exectype").to_pylist()[0].rstrip(b"\0") == b"40PARTFILL"
     assert read.column("nopartyids").to_pylist() == [None]

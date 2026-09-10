@@ -9,8 +9,7 @@ use std::sync::Arc;
 use yggdryl::fix::{FixCode, FixFill, FixFillSource, FixLineageEntry, FixPedigree, FixReplacement};
 use yggdryl::types::State;
 use yggdryl::{
-    DataType, Field, FixBatchReader, FixCategory, FixCodec, FixMsg, FixOptions, FixRegistry,
-    Scalar, VERSION_TAG, Version,
+    DataType, Field, FixCategory, FixCodec, FixMsg, FixRegistry, Scalar, VERSION_TAG, Version,
 };
 
 fn version(text: &str) -> Version {
@@ -679,15 +678,23 @@ fn a_removed_field_with_no_rule_and_a_source_the_rule_cannot_place_stay() {
 fn a_batch_read_lands_at_the_newest_version_when_asked() {
     let registry = super::committed_registry();
     let newest = registry.newest().expect("a dated dictionary").version();
+    let codec = FixCodec::new(Arc::clone(&registry));
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("the fixed schema");
+    // A stage is a call: the restatement composes over the message stream
+    // between the parse and the batch.
     let rows = |on: bool| {
-        FixBatchReader::from_rows(
-            Arc::clone(&registry),
-            vec![Ok(REPORT.to_vec())],
-            FixOptions::new().with_latest(on),
-        )
-        .expect("a reader")
-        .map(|batch| batch.expect("a batch"))
-        .collect::<Vec<_>>()
+        let messages = codec.parse_lines([REPORT]).map(move |held| {
+            if on {
+                held.and_then(FixMsg::into_latest)
+            } else {
+                held
+            }
+        });
+        codec
+            .arrow_reader(schema.clone(), messages)
+            .expect("a reader")
+            .map(|batch| batch.expect("a batch"))
+            .collect::<Vec<_>>()
     };
     let column = |batches: &[arrow_array::RecordBatch], tag: i32| {
         use arrow_array::cast::AsArray;
@@ -699,10 +706,15 @@ fn a_batch_read_lands_at_the_newest_version_when_asked() {
     let read = rows(false);
     assert_eq!(column(&read, VERSION_TAG), "4.2");
 
-    // The generic record entry point honours the same option.
+    // The generic record door composes the same way.
     let record = Scalar::from_record([("body", Scalar::from(REPORT.to_vec()))]).expect("a record");
-    let options = FixOptions::new().with_latest(true);
-    let message = FixMsg::from_record(Arc::clone(&registry), &record, &options).expect("a message");
+    let message = codec
+        .parse_text_record(&record)
+        .expect("a readable record")
+        .next()
+        .expect("one message")
+        .and_then(FixMsg::into_latest)
+        .expect("a message");
     assert_eq!(message.version(), Some(newest));
     assert_eq!(text(&message, 528), Some("A"));
 }
