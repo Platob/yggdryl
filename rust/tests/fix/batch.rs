@@ -1295,3 +1295,128 @@ fn dedup_composes_over_the_messages_a_batch_holds() {
     assert_eq!(row_count(&kept), 2, "the adjacent republication went");
     assert_eq!(dedup.dropped(), 1);
 }
+
+#[test]
+fn a_rows_dialect_is_read_from_its_pluginid_column_with_no_field_to_fill() {
+    // The dialect a row names and the field the same column fills are two
+    // answers to one cell, and only the first is the dictionary's business:
+    // a registry holding no `pluginid` field of its own still reads its rows
+    // under the dialect they name for themselves.
+    let (registry, _) = plugin_registry();
+    let mut without = registry.as_ref().clone();
+    assert!(without.remove(yggdryl::PLUGINID_TAG).is_some());
+    let codec = FixCodec::new(Arc::new(without));
+    let body: &[u8] = b"MSGTYPE=D|CLORDID=A|VENUETAG=dark";
+
+    let alone = one_of(
+        &codec,
+        &Scalar::from_record([
+            ("body", Scalar::from(body.to_vec())),
+            ("pluginid", Scalar::from("VNU")),
+        ])
+        .unwrap(),
+    );
+    assert_eq!(alone.branch().name(), "venue");
+    assert_eq!(alone.by_tag(5001).unwrap().as_str(), Some("dark"));
+    assert!(
+        alone.get_by_tag(yggdryl::PLUGINID_TAG).is_none(),
+        "no field of that name is there to fill"
+    );
+
+    let capture = DataType::from_fields([
+        DataType::Binary.required_field("body"),
+        DataType::Utf8.nullable_field("pluginid"),
+    ])
+    .unwrap()
+    .required_field("capture");
+    let values = Scalar::from_sequence([Scalar::from_sequence([
+        Scalar::from(body.to_vec()),
+        Scalar::from("VNU"),
+    ])]);
+    let batch = yggdryl::arrow::batch_from_value(&capture, &values).unwrap();
+    let read = batches(
+        codec
+            .parse_text_arrow_reader(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap(),
+    );
+    assert_eq!(row_count(&read), 1);
+    let streamed: Vec<FixMsg> = codec
+        .messages(yggdryl::arrow::batch_reader(read[0].schema(), read.clone()))
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+
+    // The two readers read one row one way. A row read back off a batch
+    // carries the batch's own root, so the dialect it was read under is what
+    // its arrival record resolved to: the venue's own tag, under the venue.
+    assert_eq!(streamed.len(), 1);
+    assert_eq!(streamed[0].entries(), alone.entries());
+    assert!(
+        streamed[0]
+            .entries()
+            .iter()
+            .any(|entry| entry.tag() == 5001),
+        "the venue's field resolved, so the row was read under the venue"
+    );
+}
+
+#[test]
+fn a_payload_column_spelled_pluginid_is_the_payload_and_names_no_dialect() {
+    // The column [`FixCodec::with_payload_column`] names is the payload and
+    // nothing else, whatever it is spelled: its text never picks a dialect
+    // and never fills the crate's own `pluginid` field, or a capture whose
+    // payload column happened to be spelled so would read every line under
+    // whatever dialect the line's first bytes resembled.
+    let (registry, _) = plugin_registry();
+    let codec = FixCodec::new(registry).with_payload_column("pluginid");
+    // One payload spelling a registered branch's name exactly, and one that
+    // is a frame, so the column is proven to be read as the payload.
+    let bodies = ["venue", "8=FIX.4.4|35=D|11=A|10=0|"];
+
+    let records: Vec<Scalar> = bodies
+        .iter()
+        .map(|body| Scalar::from_record([("pluginid", Scalar::from(*body))]).unwrap())
+        .collect();
+    let alone: Vec<FixMsg> = records
+        .iter()
+        .map(|record| one_of(&codec, record))
+        .collect();
+
+    let capture = DataType::from_fields([DataType::Utf8.required_field("pluginid")])
+        .unwrap()
+        .required_field("capture");
+    let values = Scalar::from_sequence(
+        bodies
+            .iter()
+            .map(|body| Scalar::from_sequence([Scalar::from(*body)]))
+            .collect::<Vec<_>>(),
+    );
+    let batch = yggdryl::arrow::batch_from_value(&capture, &values).unwrap();
+    let read = batches(
+        codec
+            .parse_text_arrow_reader(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap(),
+    );
+    assert_eq!(row_count(&read), bodies.len());
+    let streamed: Vec<FixMsg> = codec
+        .messages(yggdryl::arrow::batch_reader(read[0].schema(), read.clone()))
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(streamed.len(), bodies.len());
+
+    for (row, message) in alone.iter().enumerate() {
+        for read in [message, &streamed[row]] {
+            assert!(read.branch().is_standard(), "row {row}");
+            assert!(
+                read.get_by_tag(yggdryl::PLUGINID_TAG)
+                    .is_none_or(Scalar::is_null),
+                "row {row}: the payload never fills the plugin"
+            );
+            assert!(read.get_by_tag(5001).is_none(), "row {row}");
+        }
+        assert_eq!(message.entries(), streamed[row].entries(), "row {row}");
+    }
+    // The frame was read as the payload; the branch name held nothing to read.
+    assert_eq!(alone[1].by_tag(11).unwrap().as_str(), Some("A"));
+    assert!(alone[0].get_by_tag(11).is_none());
+    assert!(alone[0].entries().is_empty());
+}

@@ -92,18 +92,20 @@ impl FixCodec {
     ///
     /// Each row is read cell by cell out of the arrays and parsed through the
     /// same funnel as a line: the payload as [`Self::parse_line`] reads it,
-    /// the `pluginid`, `beginstring`, `sep`, `timestamp` and `direction`
-    /// columns as [`Self::parse_text_record`] reads them - `pluginid` both
-    /// filling its own column and naming the dialect the row is read under -
-    /// and every other column named after a field the dictionary knows
-    /// filling that field where the line left it unsaid. Where each column
-    /// sits and which field it fills is decided once from the schema, and a
-    /// row's dialect once per distinct plugin name, so no row copies the
-    /// codec or asks the dictionary a question the row before it asked. A
-    /// line the reader refuses is a
-    /// row holding an empty message, never a row lost, so a row in is a row
-    /// out; a bulk configuration document is one row per MBean, each
-    /// repeating its source row's carried columns. The direction column
+    /// the `pluginid`, `beginstring`, `sep` and `timestamp` columns as
+    /// [`Self::parse_text_record`] reads them - `pluginid` both filling its
+    /// own column and naming the dialect the row is read under - the
+    /// `direction` column, which this reader alone reads, and every other
+    /// column named after a field the dictionary knows filling that field
+    /// where the line left it unsaid. `direction` is a parameter to both
+    /// readers even so, because a column the record reader left to the fills
+    /// would silently land on a field. Where each column sits and which
+    /// field it fills is decided once from the schema, and a row's dialect
+    /// once per distinct plugin name, so no row copies the codec or asks the
+    /// dictionary a question the row before it asked. A line the reader
+    /// refuses is a row holding an empty message, never a row lost, so a row
+    /// in is a row out; a bulk configuration document is one row per MBean,
+    /// each repeating its source row's carried columns. The direction column
     /// [`MSGDIRECTION_TAG`](super::MSGDIRECTION_TAG) names takes the row's
     /// `direction` column, else the verb in front of its payload, else
     /// [`Self::with_direction`].
@@ -534,10 +536,13 @@ struct Columns {
     clock: Option<usize>,
     /// The column naming the plugin that logged the row.
     ///
-    /// One of the fills - every registry holds the crate's own field of that
-    /// name - and read on the way through them as the dialect the row is
-    /// read under, so the cell is read once for both. A payload column
-    /// spelled so is the payload alone, as the record reader has it.
+    /// Its own position, not a fill's: the dialect a row is read under is
+    /// stated by this column whether or not the dictionary also holds a
+    /// field for it to fill, and a registry that dropped the crate's own
+    /// `pluginid` still reads its rows under the dialect they name. The cell
+    /// is decoded once and the same value fills the field where there is
+    /// one. A payload column spelled so is the payload alone, as the record
+    /// reader has it.
     pluginid: Option<usize>,
     /// The columns whose names reach a field, each beside the field it fills.
     ///
@@ -639,20 +644,26 @@ impl Rows {
             })
             .or_else(|| MsgDirection::infer_bytes(&payload))
             .or(self.codec.direction());
+        // The plugin that logged the row, read by its own column and decoded
+        // once: it names the row's dialect whether or not the dictionary also
+        // holds a field of that name, and where it does the same value is
+        // what fills it.
+        let mut plugin = stated(self.columns.pluginid)?;
+        let branch = plugin
+            .as_ref()
+            .and_then(Scalar::as_str)
+            .and_then(|named| self.codec.dialect_of(named));
         // The cells that fill fields, read only where the row states them.
-        // The plugin that logged the row is one of them, and the cell read
-        // for its fill is the one read for the row's dialect.
-        let mut branch = None;
         let mut cells: Vec<(&Field, i32, Scalar)> = Vec::with_capacity(self.columns.fills.len());
         for (at, field, tag) in &self.columns.fills {
-            let Some(value) = stated(Some(*at))? else {
+            let held = if Some(*at) == self.columns.pluginid {
+                plugin.take()
+            } else {
+                stated(Some(*at))?
+            };
+            let Some(value) = held else {
                 continue;
             };
-            if Some(*at) == self.columns.pluginid {
-                branch = value
-                    .as_str()
-                    .and_then(|plugin| self.codec.dialect_of(plugin));
-            }
             cells.push((field, *tag, value));
         }
         let fills: Vec<Fill<'_>> = cells

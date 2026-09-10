@@ -451,8 +451,13 @@ impl FixCodec {
 
     /// Whether a column named `name` fills a field under this codec.
     ///
-    /// Decided the way the builder decides it, so a batch reader that asks
-    /// once per column and the builder that fills once per row agree.
+    /// A column is the caller's, not the line's, so it resolves under the
+    /// codec's own pin and then the standard branch - the run's tier, asked
+    /// once per column rather than once per row. A row's own `pluginid`
+    /// names the dialect its *keys* resolve in, which is a different
+    /// question: it moves what the line spells, never where a column lands,
+    /// so a stream's columns fill the same fields whatever dialect each row
+    /// turns out to name.
     pub(super) fn fill_target(&self, name: &str) -> Option<(Field, i32)> {
         let branch = self.branch.as_ref().unwrap_or(FixBranch::standard());
         let (field, tag) = super::build::fill_field(&self.registry, branch, name)?;
@@ -1108,7 +1113,11 @@ impl FixCodec {
     /// | `beginstring` | the version |
     /// | `sep` | the separator, which also means the payload is a FIX frame |
     /// | `timestamp` | the row's own clock, which stamps the message |
-    /// | `direction` | the direction, stated |
+    ///
+    /// `direction` is a parameter here too, and the one this reader does not
+    /// read: only [`Self::parse_text_arrow_reader`] has a column to put it
+    /// in. It stays a parameter so a capture's own `direction` column cannot
+    /// silently become a fill on the field of that name.
     ///
     /// A row outranks this codec, because a column is the caller speaking per
     /// row where the codec is the caller speaking per run: a `pluginid` the
@@ -1158,10 +1167,10 @@ impl FixCodec {
     /// as [`Self::parse_text_record`] reads it, so what a row states about
     /// itself still outranks what this codec holds for the run - its
     /// `pluginid` fills its column and picks its dialect, its `beginstring`
-    /// its version - and nothing is copied per row for it: the codec is
-    /// cloned once into the stream, and a row's dialect is resolved once per
-    /// distinct plugin name. A record that is not one is an `Err` item and
-    /// the stream continues.
+    /// its version - at the cost of neither: the codec is cloned once into
+    /// the stream, and a row's dialect is resolved once per distinct plugin
+    /// name rather than once per row. A record that is not one is an `Err`
+    /// item and the stream continues.
     pub fn parse_text_records<I>(&self, records: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator<Item = Scalar>,
