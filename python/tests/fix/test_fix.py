@@ -1930,7 +1930,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
     wire = b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=000|"
     order = next(reader.parse_line(wire))
     assert order.into_bytes(ord("|")) == wire
-    assert {tag for tag, _, _, _ in order.entries()} == {8, 35, 11, 55, 54, 38, 10}
+    assert {tag for tag, _, _ in order.entries()} == {8, 35, 11, 55, 54, 38, 10}
 
     # The message's own clocks, in decreasing exactness: TransactTime(60)
     # outranks SendingTime(52), and a sub-second clock still has a partition.
@@ -1953,7 +1953,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
     assert _root_names(stated)[0] == "beginstring"
     assert _root_names(stated)[-1] == "timestamp"
     assert stated.by_tag(8).as_py().startswith("FIX.")
-    assert {tag for tag, _, _, _ in stated.entries()} == {55}
+    assert {tag for tag, _, _ in stated.entries()} == {55}
     assert not stated.into_bytes(ord("|")).startswith(b"8=")
 
     # A bridge frame and a FIXML row are built the same way.
@@ -2073,7 +2073,7 @@ def test_a_rows_pluginid_fills_its_field_and_names_the_dialect_it_is_read_under(
         assert (held.as_py() if held is not None else None) == spelled, spelled
         assert all(
             tag not in (crated["pluginid"], crated["prevpluginid"])
-            for tag, _, _, _ in message.entries()
+            for tag, _, _ in message.entries()
         ), spelled
 
     # A column speaks per row where the codec speaks per run: the pin stands
