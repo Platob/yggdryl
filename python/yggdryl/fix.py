@@ -35,9 +35,11 @@ turns one captured line into a lazy :class:`FixMessages` stream and
 :meth:`FixCodec.parse_lines` a whole iterable of lines, one line at a time;
 :meth:`FixCodec.parse_text_record` and :meth:`FixCodec.parse_text_records` read
 the records a text reader answers, the payload column beside the row's own
-``branch``, ``beginstring``, ``sep``, ``timestamp``, ``direction`` and
-``plugin`` parameters. Every message it builds opens with ``beginstring`` - the
-wire's own, else the version the message was read at - and closes with the
+``pluginid``, ``beginstring``, ``sep`` and ``timestamp`` parameters -
+``direction`` is a parameter of theirs too, and the one only
+:meth:`FixCodec.parse_text_arrow_reader` has a column to put in. Every message
+it builds opens with ``beginstring`` - the wire's own, else the version the
+message was read at - and closes with the
 crate's ``timestamp``: the row's own clock where the capture stated one, else
 the first clock the message carries, else the epoch, so
 :meth:`FixMsg.market_timestamp` always answers.
@@ -46,12 +48,12 @@ batches of FIX rows - the capture's own columns first, the dictionary's fixed
 columns after, one source row's columns repeated for each message a bulk
 document expands to - closed on the raw bytes of the payload column against
 the codec's ``batch_byte_size``. A capture's ``timestamp`` column stamps its
-row; its ``plugin`` column names the plugin session the row moved from or to -
-the sender's for a line the row's ``direction`` says was sent, which is what
-an unmarked line is read as, the target's for one it received; and any other
-column named after a field - ``senderSessionId``, or a bridge's ``seqNum`` for
-``MsgSeqNum`` - fills that field where the frame did not state it, without
-becoming an entry. :meth:`FixCodec.enrich_message` and
+row; its ``pluginid`` column names the plugin that logged the line, and where
+that text is the name or an alias of a branch the dictionary declares it also
+names the dialect the row is read under, outranking the codec's own pin; and
+any other column named after a field - ``prevpluginid``, ``senderSessionId``,
+or a bridge's ``seqNum`` for ``MsgSeqNum`` - fills that field where the frame
+did not state it, without becoming an entry. :meth:`FixCodec.enrich_message` and
 :meth:`FixCodec.enrich_messages` fill what a message implied but did not carry,
 and :meth:`FixCodec.enrich_messages_arrow_reader` does the same over batches
 of rows without parsing them again, through the two converters every stage
@@ -72,10 +74,11 @@ specification: twenty standard fields from tag 65000, above every tag FIX or
 a venue publishes, so they need no branch of their own. ``msghash``,
 ``version``, ``symbolticker``, ``timestamp``, ``unixpartition``,
 ``parentclordid`` and ``parentorderid``; what a bridge's own log states about a
-line - ``sendersessionid``, the session the message itself names, ``msgctxid``, the
-plugins ``senderpluginid`` and ``targetpluginid`` and the plugin sessions
-``sendersessionname`` and ``targetsessionname`` it moved between; the
-three facts a row derives from what the message said - ``isincode``,
+line - ``sendersessionid``, the session the message itself names, ``msgctxid``,
+the plugin ``pluginid`` that logged it and the ``prevpluginid`` it came
+through before that, and the session names ``sendersessionname`` and
+``targetsessionname`` the line spells; the three facts a row derives from what
+the message said - ``isincode``,
 ``miccode`` and ``state``; and the three identities a stream implies -
 ``instid``, ``id`` and ``persistentid``.
 

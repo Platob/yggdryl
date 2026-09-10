@@ -1354,6 +1354,7 @@ fix_root.fix.msgtype = "D"
 fix_message_code: str | None = fix_root.fix.msgtype
 fix_catalog = fix.FixRegistry.from_fields([fix_counter])
 fix_catalog.create_definition("components", fix_component)
+fix_added_definition: bool = fix_catalog.add_definition("components", fix_component)
 fix_inserted_definition: Field | None = fix_catalog.insert_definition("groups", fix_group)
 fix_updated_definition: Field = fix_catalog.update_definition("groups", fix_group)
 fix_definition: Field = fix_catalog.definition("groups", "parties")
@@ -1398,6 +1399,7 @@ fix_cblock: list[Field] = fix.fix_cfb_fields("cblocks/bloomberg.cfb")
 fix_cblock_named: list[Field] = fix.fix_cfb_fields(
     Path("cblocks") / "bloomberg.cfb", "bloomberg"
 )
+fix_added_field: bool = fix_registry_from_fields.add_field(fix_field)
 fix_folded: tuple[int, int] = fix_registry_from_fields.add_fields(fix_cblock)
 fix_combined: tuple[int, int] = fix_registry_from_fields.merge_with(fix_registry_loaded)
 fix_ingested: tuple[int, int] = fix_registry_from_fields.add_cfb_file(

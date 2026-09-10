@@ -297,6 +297,26 @@ impl PyFixRegistry {
         ))
     }
 
+    /// Fold one field in, adding it when absent and merging it when stored.
+    ///
+    /// The lenient counterpart of `insert`, which replaces, and of `update`,
+    /// which refuses everything new. Answers `True` when the field arrived
+    /// and `False` when it folded into a stored one: a canonical identity the
+    /// dictionary holds merges, a name folding to a stored canonical name or
+    /// alias in the same branch merges into that field - aliases and
+    /// alternate tags become the union and the incoming canonical tag joins
+    /// them unless another field in the branch answers it - a nested field is
+    /// redirected to `add_definition` under the category its shape names, and
+    /// one of this crate's own tags is skipped as already held.
+    ///
+    /// One mutation: a refusal - no `fix:tag`, a key another field holds in
+    /// the same branch, a datatype disagreeing with the stored field - leaves
+    /// the dictionary exactly as it was.
+    fn add_field(&mut self, field: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let field = core_field_from_value(field)?;
+        self.inner_mut()?.add_field(field).map_err(value_error)
+    }
+
     /// Fold `fields` in, adding what is absent and merging what is stored.
     ///
     /// Each entry is anything `Field` accepts. A field whose canonical
@@ -441,6 +461,30 @@ impl PyFixRegistry {
         self.inner_mut()?
             .insert_definition(category, field)
             .map(|field| field.map(PyField::from_inner))
+            .map_err(value_error)
+    }
+
+    /// Fold a named definition into the one its name reaches.
+    ///
+    /// The lenient counterpart of `create_definition`, which refuses a name
+    /// it holds, and of `insert_definition`, which replaces one wholesale.
+    /// Answers `True` when the definition arrived and `False` when it merged;
+    /// `"fields"` redirects to `add_field`.
+    ///
+    /// A merge keeps the stored definition's identity, name and every member
+    /// it declares, in its order, and appends the members it lacks - for a
+    /// group, to the occurrence inside the list, and to the component when
+    /// that occurrence is a component's. It is one level deep: a member both
+    /// sides declare stays the stored one, so a member whose datatype - or
+    /// whose restated reference - disagrees is refused. Every message and
+    /// component referencing the definition sees the appended members.
+    ///
+    /// One mutation: a refusal leaves the dictionary exactly as it was.
+    fn add_definition(&mut self, category: &str, field: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
+        let field = core_field_from_value(field)?;
+        self.inner_mut()?
+            .add_definition(category, field)
             .map_err(value_error)
     }
 
@@ -1993,10 +2037,18 @@ impl PyFixCodec {
 
     /// One record a text reader answered: its messages.
     ///
-    /// The payload column names the line and the row's own columns -
-    /// `branch`, `beginstring`, `sep`, `timestamp`, `direction`, `plugin` -
-    /// are the parameters of the same name; a mapping states a record as
-    /// well as a native `Scalar` does.
+    /// The payload column names the line, and the row's own `pluginid`,
+    /// `beginstring`, `sep` and `timestamp` columns are the parameters of
+    /// the same name - the plugin that logged the line, the version, the
+    /// separator, the row's clock. A `pluginid` whose text is the name or an
+    /// alias of a branch the dictionary declares is also the dialect the row
+    /// is read under, outranking the codec's own pin; any other keeps the
+    /// pin, then the standard branch. Every other named column fills the
+    /// field its name reaches, `pluginid` included. A mapping states a record
+    /// as well as a native `Scalar` does.
+    ///
+    /// `direction` is a parameter here too, and the one this reader does not
+    /// read: only `parse_text_arrow_reader` has a column to put it in.
     fn parse_text_record(&self, record: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let record = record_scalar(record)?;
         self.inner
@@ -2287,12 +2339,13 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// The digest, the version read, the cross-venue symbol, the market clock, the
 /// partition it falls in, the two parent order identifiers no standard tag
 /// names, what a bridge's own log states about a line - the session the
-/// message itself names, its message context, the plugins and the plugin
-/// sessions it moved between - the three facts a row derives from what the
-/// message said: its ISIN, its market and the order's state - and the three
-/// identities a stream implies, which `FixLifecycle` stamps: the instrument,
-/// the message and the order chain. Every registry holds them from
-/// construction; this is the listing.
+/// message itself names, its message context, the plugin that logged it and
+/// the one it came through before that, and the two session names the line
+/// spells - the three facts a row derives from what the message said: its
+/// ISIN, its market and the order's state - and the three identities a
+/// stream implies, which `FixLifecycle` stamps: the instrument, the message
+/// and the order chain. Every registry holds them from construction; this is
+/// the listing.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
