@@ -15,7 +15,7 @@
 //! | `Parties[0].PartyID` | which group, which occurrence, which member |
 //! | `NoPartyIDs[0].PartyID` | a wire counter resolving the same group |
 //! | `VenueOwnThing` | an unknown name, kept |
-//! | `#NoPartyIDs[0]` | a marked spelling a reader kept whole beside its bare twin: one child under its own name, its packed value its value |
+//! | `#NoPartyIDs[0]` | a marked spelling a reader left marked: one child under its own name, its packed value its value |
 //! | `""`, `"   "` | dropped |
 //!
 //! # What it refuses to lose
@@ -81,11 +81,11 @@ impl<'key> Key<'key> {
     /// grammar is needed to build real nesting from it. Inferring a group
     /// from bare repetition alone is a different problem and needs one.
     ///
-    /// A key still carrying its `#` was kept whole by the reader because the
-    /// row spelled the same name bare, and the bare spelling took the
-    /// structure: `#NOPARTYIDS[0]` is one flat child under its own name, so
-    /// its occurrences never write over the count `#NOPARTYIDS` stated
-    /// beside them.
+    /// A key still carrying its `#` is one the reader left marked - kept
+    /// whole beside a bare twin that took the structure, or a twice-marked
+    /// key's bare - and is one flat child under its own name at any depth:
+    /// `#NOPARTYIDS[0]` never writes over the count `#NOPARTYIDS` stated
+    /// beside it.
     fn parse(text: &'key str) -> Self {
         if text.starts_with('#') {
             return Self {

@@ -979,6 +979,122 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
 }
 
 #[test]
+fn an_implicit_run_nests_a_declared_group_at_every_depth_and_lifts_what_no_level_declares() {
+    let reader = reader();
+    // No close anywhere, three levels deep: the party is bounded by what the
+    // side's party group declares, and the sub-identifier it declares is
+    // skipped whole inside it, so the party's own `PARTYID` lands on the
+    // party and the second party opens after it.
+    let row: &[u8] = b"MSGTYPE=AE|NOSIDES=1\
+|NOSIDES[0]=NOPARTYIDS=2\x04\x03NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03";
+    let message = reader.one_line(row, false).unwrap();
+    assert_eq!(
+        message
+            .by_path("TrdCapRptSideGrp.0.Parties.0.PtysSubGrp.0.PartySubID")
+            .unwrap(),
+        &Scalar::from("a")
+    );
+    assert_eq!(
+        message
+            .by_path("TrdCapRptSideGrp.0.Parties.0.PartyID")
+            .unwrap(),
+        &Scalar::from("X")
+    );
+    assert_eq!(
+        message
+            .by_path("TrdCapRptSideGrp.0.Parties.0.PartyRole")
+            .unwrap()
+            .as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        message
+            .by_path("TrdCapRptSideGrp.0.Parties.1.PartyID")
+            .unwrap(),
+        &Scalar::from("Y")
+    );
+
+    // A pair no level declares ends the sub-identifier, then the party, and
+    // lands on the side - the packed value's own occurrence - with
+    // everything after it, because without a close nothing says where the
+    // bridge meant it to go.
+    let lifted: &[u8] = b"MSGTYPE=AE|NOSIDES=1\
+|NOSIDES[0]=NOPARTYIDS=1\x04\x03NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03VENUE_SEQ=7\x04\x03PARTYID=X\x04\x03";
+    let message = reader.one_line(lifted, false).unwrap();
+    let members = |path: &str| -> Vec<String> {
+        let group = message.as_field().get_field_by_path(path).expect(path);
+        let DataType::List(item) = group.dtype() else {
+            panic!("{path}: a list, got {}", group.dtype());
+        };
+        item.fields()
+            .iter()
+            .map(|field| field.name().to_owned())
+            .collect()
+    };
+    let side = members("trdcaprptsidegrp");
+    assert!(
+        side.contains(&"venueseq".to_owned()) && side.contains(&"partyid".to_owned()),
+        "{side:?}"
+    );
+    assert!(
+        !members("trdcaprptsidegrp.parties").contains(&"venueseq".to_owned()),
+        "{:?}",
+        members("trdcaprptsidegrp.parties")
+    );
+}
+
+#[test]
+fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_once_more() {
+    let reader = reader();
+    // The frame's own marks are judged, and the row inside its data field by
+    // its own bare spellings: the frame's `#SYMBOL` drops its mark, the
+    // row's `#ORDERID` restates the row's bare one and goes.
+    let nested = "MSGTYPE=D|ORDERID=9|#ORDERID=9|#SIDE=1";
+    let frame = format!(
+        "8=FIX.4.2|35=UL|#SYMBOL=TTF|212={}|213={nested}|10=0|",
+        nested.len()
+    );
+    let message = reader.one_line(frame.as_bytes(), false).unwrap();
+    let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
+    assert_eq!(keys, ["8", "35", "SYMBOL", "212", "213", "10"]);
+    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("TTF"));
+    assert_eq!(message.by_tag(37).unwrap().as_str(), Some("9"));
+    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("1"));
+    assert!(message.by_name("#orderid").is_err());
+
+    // A key marked twice is judged one mark at a time: `##ORDERID` twins
+    // `#ORDERID` as `#ORDERID` twins `ORDERID`.
+    let restated = reader
+        .one_line(b"MSGTYPE=D|#ORDERID=123|##ORDERID=123", false)
+        .unwrap();
+    assert_eq!(restated.by_tag(37).unwrap().as_str(), Some("123"));
+    let keys: Vec<&str> = restated.entries().iter().map(FixEntry::key).collect();
+    assert_eq!(keys, ["MSGTYPE", "ORDERID"]);
+    let beside = reader
+        .one_line(b"MSGTYPE=D|#ORDERID=123|##ORDERID=345", false)
+        .unwrap();
+    assert_eq!(beside.by_tag(37).unwrap().as_str(), Some("123"));
+    let at = beside
+        .as_field()
+        .index_of("##orderid")
+        .expect("the twice-marked key");
+    assert_eq!(
+        beside.as_value().as_sequence().expect("a row")[at].as_str(),
+        Some("345")
+    );
+    let alone = reader.one_line(b"MSGTYPE=D|##ORDERID=345", false).unwrap();
+    assert!(alone.get_by_tag(37).is_none());
+    let at = alone
+        .as_field()
+        .index_of("#orderid")
+        .expect("one mark gone");
+    assert_eq!(
+        alone.as_value().as_sequence().expect("a row")[at].as_str(),
+        Some("345")
+    );
+}
+
+#[test]
 fn indexed_occurrences_are_built_by_index_and_a_gap_is_null() {
     let reader = reader();
     // Out of order and gapped: `[2]` before `[0]`, with `[1]` absent.

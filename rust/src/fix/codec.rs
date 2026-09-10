@@ -95,9 +95,17 @@ enum Hashed<'body> {
     Duplicate,
     /// The row's sole spelling: the key without its mark.
     Bare(&'body [u8]),
-    /// Beside a bare twin stating something else: the key as it arrived.
+    /// Beside a bare twin of its key or of its stem, stating other bytes
+    /// or numbering other occurrences: the key as it arrived.
     Verbatim,
 }
+
+/// How deep a packed value nests before the reader stops nesting it.
+///
+/// The bound a message schema is held to, so a run of openers a bridge never
+/// closed cannot recurse the reader off its stack: past it an opener is one
+/// more member of the occurrence it is in, its packed value its value.
+const PACKED_DEPTH: usize = 64;
 
 /// What separates the members packed inside one bridge group occurrence.
 ///
@@ -107,13 +115,6 @@ enum Hashed<'body> {
 /// so an occurrence packed inside another closes with two in a row - its own
 /// trailing one, then the one between it and the next member - and the empty
 /// segment between them is where the bridge says the inner occurrence ends.
-/// How deep a packed value nests before the reader stops nesting it.
-///
-/// The bound a message schema is held to, so a run of openers a bridge never
-/// closed cannot recurse the reader off its stack: past it an opener is one
-/// more member of the occurrence it is in, its packed value its value.
-const PACKED_DEPTH: usize = 64;
-
 const MEMBER_SEPARATORS: [&[u8]; 4] = [
     b"\x04\x03",
     b"\x01",
@@ -949,11 +950,12 @@ impl FixCodec {
     /// so this one reaches the close that balances the ones opened inside it.
     /// Implicit, it reaches as far as the dictionary declares: a member the
     /// group declares, or an occurrence of a group it declares, skipped whole
-    /// by the same rule. The first segment it does not declare ends it - and
-    /// ends every enclosing occurrence that does not declare it either, each
-    /// judging that segment in turn - so an undeclared pair lands on the
-    /// nearest enclosing occurrence that declares it, or on the packed
-    /// value's own, and what follows it lands there too.
+    /// by the same rule. The first segment it does not declare ends it, as
+    /// does a close - the run's own trailing one, in a run that carries no
+    /// other - and an undeclared pair ends every enclosing occurrence that
+    /// does not declare it either, each judging that segment in turn, so it
+    /// lands on the nearest enclosing occurrence that declares it, or on the
+    /// packed value's own, and what follows it lands there too.
     fn extent(
         &self,
         segments: &[Segment<'_>],
@@ -1283,8 +1285,23 @@ impl FixCodec {
         builder.end_nested();
     }
 
+    /// One lookup under the tier every key resolves by: this codec's dialect,
+    /// then the standard one where the dialect is not it - and where no
+    /// dialect is pinned, the one answer an unpinned lookup gives.
+    fn tiered<'registry, T>(
+        &'registry self,
+        look: impl Fn(Option<&FixBranch>) -> Option<&'registry T>,
+    ) -> Option<&'registry T> {
+        look(self.branch.as_ref()).or_else(|| {
+            self.branch
+                .as_ref()
+                .filter(|held| !held.is_standard())
+                .and_then(|_| look(Some(&FixBranch::STANDARD)))
+        })
+    }
+
     /// The message definition a row's type names, under the tier every key
-    /// resolves by: this codec's dialect, then the standard one.
+    /// resolves by.
     ///
     /// A dialect declares its own vocabulary and rarely a message of its own,
     /// and the row a bridge writes calls itself by FIX's name - so a pinned
@@ -1292,15 +1309,7 @@ impl FixCodec {
     /// declares, `NoLegs` and `NoSides` among them, without the context that
     /// says which group a shared counter heads.
     fn declared_message(&self, code: &str) -> Option<&super::MsgType> {
-        self.registry
-            .get_msgtype(code, self.branch.as_ref())
-            .or_else(|| {
-                self.branch
-                    .as_ref()
-                    .is_some_and(|held| !held.is_standard())
-                    .then(|| self.registry.get_msgtype(code, Some(&FixBranch::STANDARD)))
-                    .flatten()
-            })
+        self.tiered(|branch| self.registry.get_msgtype(code, branch))
     }
 
     /// The direct members the addressed repeating group declares.
@@ -1345,18 +1354,7 @@ impl FixCodec {
                 } else {
                     // A dialect that spells no such counter falls back to the
                     // standard branch, where FIX's own fields live.
-                    self.registry
-                        .get_field_by_name(group, self.branch.as_ref())
-                        .or_else(|| {
-                            self.branch
-                                .as_ref()
-                                .is_some_and(|held| !held.is_standard())
-                                .then(|| {
-                                    self.registry
-                                        .get_field_by_name(group, Some(&FixBranch::STANDARD))
-                                })
-                                .flatten()
-                        })
+                    self.tiered(|branch| self.registry.get_field_by_name(group, branch))
                 }?;
                 let id = self.registry.identity_of(counter)?;
                 match message.filter(|message| message.has_group_counter(id)) {
@@ -1669,14 +1667,16 @@ const fn name_separator(byte: u8) -> bool {
     matches!(byte, b'_' | b'-' | b' ')
 }
 
-/// Judges one `#` key, stripped of its mark, against `twins` - the bare
-/// spellings it may restate, absences already left out.
+/// Judges one `#` key, stripped of its mark, against `twins` - the spellings
+/// it may restate, absences already left out.
 ///
 /// The twin is judged on the stem - the group a `NAME[0]` key addresses, or
 /// the whole key - so a bare group claims every marked occurrence of it,
-/// however many the two state. A twin spelled exactly as the key and stating
-/// the same bytes makes the marked pair a duplicate; the bytes are compared
-/// as they are, because a value is a value and `abc` is not `ABC`.
+/// however many the two state. A twin whose whole key, not only its stem,
+/// folds equal to the key's and that states the same bytes makes the marked
+/// pair a duplicate; the bytes are compared trimmed of the space the row put
+/// around them and never folded, because a value is a value and `abc` is
+/// not `ABC`.
 fn judge_hashed<'body>(
     stripped: &'body [u8],
     value: &[u8],
@@ -1704,9 +1704,10 @@ fn stem_of(key: &[u8]) -> &[u8] {
 
 /// Whether two key spellings name one field under the FIX name fold.
 ///
-/// The twin that keeps a `#` is judged by the identity every key resolves
-/// by - case and separators fold away - because `OrderId=1|#ORDERID=2` merges
-/// under one name exactly as the same-cased pair would.
+/// The identity a `#` key's twin is judged by - whether the mark drops,
+/// stays, or the pair goes as a duplicate - because case and separators fold
+/// away, and `OrderId=1|#ORDERID=2` merges under one name exactly as the
+/// same-cased pair would.
 fn folds_twin(left: &[u8], right: &[u8]) -> bool {
     let mut left = left.iter().filter(|byte| !name_separator(**byte));
     let mut right = right.iter().filter(|byte| !name_separator(**byte));

@@ -306,7 +306,8 @@ impl FixMsg {
         })
     }
 
-    /// Returns what arrived, in arrival order, untranslated.
+    /// Returns what arrived and was read as sent, in arrival order,
+    /// untranslated.
     #[must_use]
     pub fn entries(&self) -> &[FixEntry] {
         &self.entries

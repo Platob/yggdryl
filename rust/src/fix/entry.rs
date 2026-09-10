@@ -3,8 +3,10 @@
 //! A [`FixMsg`](crate::FixMsg) carries two facts about one message and this
 //! is the second of them. The row is the *interpretation*: values typed,
 //! codes translated, names canonical, groups nested, header ordered. The
-//! entries are what *arrived*: raw text, arrival order, untranslated,
-//! including pairs no dictionary explained.
+//! entries are what *arrived*, as the reader read it: raw text, arrival
+//! order, untranslated, including pairs no dictionary explained - and
+//! without the pairs the reader reads as never sent, a stated absence and a
+//! bridge's marked restatement of a bare pair, which the capture edges list.
 //!
 //! Neither derives from the other. A translated `4` cannot say whether the
 //! wire carried `4` or `PercentageWaivedCashDiscount`, so lossless
