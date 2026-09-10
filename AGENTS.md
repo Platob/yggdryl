@@ -228,9 +228,10 @@ never to a wrapper's own buffer.
   the field: cell `i` is a `TypedScalar` borrowing child `i`, built by the
   field's own row canonicalization from a `Sequence` or a `Record`, read with
   `get`/`get_by_name`/`get_by_index`/`names`/`iter`/`as_str` and subscripts,
-  and collapsed with `into_scalar`. It resolves a name as the field does -
-  exactly, then ASCII case-insensitively - and it is not a second schema: it
-  adds no accessor a `Field` does not already answer.
+  and collapsed with `into_scalar`. A name reaches a cell exactly as
+  `Field::index_of` resolves it - by exact match; a folded name or a dotted
+  path reaches no cell - and it is not a second schema: it adds no accessor a
+  `Field` does not already answer.
 - Add no second row type, schema accessor, or per-row map/JSON bridge; a
   binding's row helper closes over one Struct `Field`.
 

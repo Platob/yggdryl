@@ -18,8 +18,8 @@ use crate::{Error, Field, Result, Scalar};
 /// it: cell `i` is a [`TypedScalar`] borrowing the `i`th child of that field,
 /// and the row borrows the field itself. It is a view over the one schema,
 /// not a second one - it adds no accessor a `Field` does not already answer,
-/// and it resolves a name exactly as the field does, an exact match first and
-/// an ASCII case-insensitive one after.
+/// and a name reaches a cell exactly as [`Field::index_of`] resolves it: by
+/// exact match, so a key the field refuses the row refuses too.
 ///
 /// Building one canonicalizes the row through the field's own row
 /// canonicalization, so an ordered [`Scalar::Sequence`](Scalar) and a named
@@ -48,7 +48,8 @@ use crate::{Error, Field, Result, Scalar};
 /// assert_eq!(record.len(), 2);
 /// assert_eq!(record.get_by_name("id").and_then(|cell| cell.as_i64()), Some(7));
 /// assert_eq!(record.as_str("symbol"), Some("AAPL"));
-/// assert_eq!(record["SYMBOL"].name(), "symbol");
+/// // A name resolves exactly, as the field's own lookup does.
+/// assert!(record.get_by_name("SYMBOL").is_none());
 /// assert_eq!(record.names().collect::<Vec<_>>(), ["id", "symbol"]);
 /// // The row is the ordered sequence the schema declares.
 /// assert_eq!(
@@ -109,6 +110,10 @@ impl<'a> TypedRecord<'a> {
     }
 
     /// Look up a cell by position or by name.
+    ///
+    /// A [`FieldKey::Path`] is read as one child's exact name: a cell is a
+    /// direct child of the field, so a dotted path, which names a descendant
+    /// [`Field::get_field`] would walk to, reaches no cell and answers `None`.
     pub fn get<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&TypedScalar<'a>> {
         match key.into() {
             FieldKey::Index(index) => self.get_by_index(index),
@@ -116,19 +121,10 @@ impl<'a> TypedRecord<'a> {
         }
     }
 
-    /// Look up a cell by name: an exact match first, then an ASCII
-    /// case-insensitive one.
+    /// Look up a cell by its child's exact name, as [`Field::index_of`]
+    /// resolves it.
     pub fn get_by_name(&self, name: &str) -> Option<&TypedScalar<'a>> {
-        let fields = self.field.fields();
-        let position = fields
-            .iter()
-            .position(|child| child.name() == name)
-            .or_else(|| {
-                fields
-                    .iter()
-                    .position(|child| child.name().eq_ignore_ascii_case(name))
-            })?;
-        self.values.get(position)
+        self.values.get(self.field.index_of(name)?)
     }
 
     /// Look up a cell by position.

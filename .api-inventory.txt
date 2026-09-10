@@ -3349,8 +3349,8 @@ pub struct UncheckedTypedScalar<'a>
   pub const fn value(&self) -> &Scalar
   pub const fn is_null(&self) -> bool
   pub fn checked(self) -> Result<TypedScalar<'a>>
-  pub fn as_str(&self) -> Option<&str>  // and as_bytes: the held value when it already has that shape
-  pub fn as_bool(&self) -> Option<bool>  // and as_i64, as_u64, as_i128, as_f64, as_integer, as_float, as_decimal, as_temporal: the field's reading of the held value
+  pub fn as_str(&self) -> Option<&str>  // and as_bytes, as_bool: the held value when it already has that shape, never read
+  pub fn as_i64(&self) -> Option<i64>  // and as_u64, as_i128, as_f64, as_integer, as_float, as_decimal, as_temporal: the field's reading of the held value
   pub fn into_value(self) -> Scalar
 
 ### yggdryl::types::typed::record  [rust\src\types\typed\record.rs]

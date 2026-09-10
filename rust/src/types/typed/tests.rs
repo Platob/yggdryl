@@ -4,6 +4,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use crate::types::UncheckedTypedScalar;
+use crate::types::temporal::{Interval, Temporal};
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, TypedScalar};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
@@ -221,7 +222,9 @@ fn the_text_is_the_canonical_spelling_the_display_writes() {
         assert_eq!(typed.into_str(), expected);
     }
 
-    // A value with no text of its own writes its family's own form.
+    // A value with no text of its own writes its family's own form: a row as
+    // its sequence, an interval as its components, a payload the text
+    // spelling refused - bytes that are not UTF-8 - as its hex.
     let row = Scalar::from_sequence([Scalar::from(1_i64)]);
     let field = row.inferred_scalar_field().unwrap();
     let typed = TypedScalar::new(&field, row.clone()).unwrap();
@@ -229,6 +232,15 @@ fn the_text_is_the_canonical_spelling_the_display_writes() {
         typed.to_string(),
         format!("{:?}", row.as_sequence().unwrap())
     );
+    let interval = Scalar::Temporal(Temporal::Interval(
+        Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
+    ));
+    let typed = TypedScalar::infer(interval).unwrap();
+    assert_eq!(typed.to_string(), "1mo:2d:3ns@month_day_nano");
+    assert_eq!(typed.into_str(), "1mo:2d:3ns@month_day_nano");
+    let typed = TypedScalar::infer(Scalar::from(&[0xff_u8, 0x00][..])).unwrap();
+    assert_eq!(typed.to_string(), "ff00");
+    assert_eq!(typed.into_str(), "ff00");
 }
 
 #[test]
@@ -303,11 +315,13 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
     );
     // An integer is not a float value, so the reading is no reading at all.
     assert_eq!(UncheckedTypedScalar::new(&ratio, 2_i64).as_f64(), None);
+    // A boolean is borrowed as held, like text and bytes: a spelling of one
+    // is not read until the pairing is proven.
     let flag = Field::new("flag", DataType::Boolean, false);
-    assert_eq!(
-        UncheckedTypedScalar::new(&flag, "true").as_bool(),
-        Some(true)
-    );
+    assert_eq!(UncheckedTypedScalar::new(&flag, true).as_bool(), Some(true));
+    let spelled = UncheckedTypedScalar::from_str(&flag, "true");
+    assert_eq!(spelled.as_bool(), None);
+    assert_eq!(spelled.checked().unwrap().as_bool(), Some(true));
     assert_eq!(
         UncheckedTypedScalar::new(&flag, false).as_bool(),
         Some(false)

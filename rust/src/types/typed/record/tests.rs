@@ -59,11 +59,13 @@ fn a_row_pairs_every_cell_with_its_child() {
 }
 
 #[test]
-fn a_name_resolves_exactly_and_then_without_case() {
+fn a_name_resolves_exactly_as_the_field_resolves_it() {
     let schema = DataType::from_fields([
         Field::new("Symbol", DataType::Utf8, false),
         Field::new("symbol", DataType::Utf8, false),
-        Field::new("Venue", DataType::Utf8, false),
+        DataType::from_fields([Field::new("px", DataType::Float64, false)])
+            .unwrap()
+            .required_field("leg"),
     ])
     .unwrap()
     .required_field("row");
@@ -72,17 +74,30 @@ fn a_name_resolves_exactly_and_then_without_case() {
         Scalar::from_sequence([
             Scalar::from("upper"),
             Scalar::from("lower"),
-            Scalar::from("XNAS"),
+            Scalar::from_sequence([Scalar::from(1.5_f64)]),
         ]),
     )
     .unwrap();
-    // The exact name wins over a folded one that comes first.
+    // The field's own child lookup owns the rule: every key answers the same
+    // child on both sides, and a folded name misses on both.
+    for key in [
+        "symbol", "Symbol", "SYMBOL", "leg", "LEG", "px", "leg.px", "absent",
+    ] {
+        assert_eq!(
+            record.get_by_name(key).map(TypedScalar::name),
+            schema
+                .index_of(key)
+                .map(|index| schema.fields()[index].name()),
+            "{key}"
+        );
+    }
     assert_eq!(record.as_str("symbol"), Some("lower"));
     assert_eq!(record.as_str("Symbol"), Some("upper"));
-    // A name no child spells exactly folds to the first child that does.
-    assert_eq!(record.as_str("SYMBOL"), Some("upper"));
-    assert_eq!(record.as_str("venue"), Some("XNAS"));
-    assert_eq!(record["VENUE"].as_str(), Some("XNAS"));
+    assert!(record.get("SYMBOL").is_none());
+    // A dotted path names a descendant the field walks to, never a cell.
+    assert_eq!(schema.get_field("leg.px").map(Field::name), Some("px"));
+    assert!(record.get("leg.px").is_none());
+    assert_eq!(record["leg"].get(0).and_then(Scalar::as_f64), Some(1.5));
 }
 
 #[test]

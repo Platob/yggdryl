@@ -1544,16 +1544,11 @@ fn reading_a_typed_row_costs_one_allocation_and_its_accessors_none() {
                     .expect("a cell"),
             );
         });
-        free(
-            &format!("looking up a cell of {width} without case"),
-            || {
-                black_box(
-                    black_box(&record)
-                        .get_by_name(black_box(&folded))
-                        .expect("a cell"),
-                );
-            },
-        );
+        // A name resolves exactly, so a folded one is a miss, and a miss
+        // walks the same children without allocating either.
+        free(&format!("missing a cell of {width} by name"), || {
+            assert!(black_box(&record).get_by_name(black_box(&folded)).is_none());
+        });
         free(&format!("looking up a cell of {width} by position"), || {
             black_box(
                 black_box(&record)

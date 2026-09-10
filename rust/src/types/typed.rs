@@ -762,26 +762,23 @@ impl<'a> TypedScalar<'a> {
 }
 
 /// Write a value's canonical text, or its family's own form when it has none.
+///
+/// `text_from_value` owns the spelling, and it declines exactly four shapes:
+/// a null, a nested value, a temporal without a classic spelling, and a bytes
+/// or geometry payload it read and refused. Only those reach the arms below,
+/// each writing what its family prints - the hex of a payload, an interval's
+/// components, a row as its sequence.
 fn write_value(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Result {
-    if let Some(Ok(text)) = crate::types::text::text_from_value(value) {
-        return formatter.write_str(&text);
-    }
-    match value {
-        Scalar::Null => formatter.write_str("null"),
-        Scalar::Boolean(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Integer(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Floating(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Decimal(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Temporal(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Text(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Ascii(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Enum(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Bytes(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Geospatial(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Uuid(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Version(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Url(held) => fmt::Display::fmt(held, formatter),
-        Scalar::Nested(held) => fmt::Display::fmt(held, formatter),
+    match crate::types::text::text_from_value(value) {
+        Some(Ok(text)) => formatter.write_str(&text),
+        Some(Err(_)) | None => match value {
+            Scalar::Null => formatter.write_str("null"),
+            Scalar::Temporal(held) => fmt::Display::fmt(held, formatter),
+            Scalar::Bytes(held) => fmt::Display::fmt(held, formatter),
+            Scalar::Geospatial(held) => fmt::Display::fmt(held, formatter),
+            Scalar::Nested(held) => fmt::Display::fmt(held, formatter),
+            _ => unreachable!("every other family spells text, answered above"),
+        },
     }
 }
 
@@ -864,9 +861,10 @@ impl From<TypedScalar<'_>> for Scalar {
 /// it. Every numeric accessor casts on read - text `"42"` under an `Int64`
 /// field answers `Some(42)` - by running the datatype's own value contract
 /// and reading the family view of its answer, so a reading that fails
-/// answers `None` rather than an error. The borrowing accessors hand back the
-/// held value only when it already has that shape, because a cast result
-/// cannot be borrowed.
+/// answers `None` rather than an error. [`Self::as_str`], [`Self::as_bytes`]
+/// and [`Self::as_bool`] borrow instead: they hand back the held value only
+/// when it already has that shape, and never read it - text `"true"` under
+/// a Boolean field answers `None` until [`Self::checked`] proves it.
 ///
 /// The state is unproven, so the pairing has no equality, hash, or serde:
 /// [`Self::checked`] is the door to a value that does.
@@ -962,9 +960,9 @@ impl<'a> UncheckedTypedScalar<'a> {
         self.value.as_bytes()
     }
 
-    /// The held boolean, or the field's reading of the value as one.
+    /// Borrow the held value when it already is a boolean.
     pub fn as_bool(&self) -> Option<bool> {
-        self.value.as_bool().or_else(|| self.read()?.as_bool())
+        self.value.as_bool()
     }
 
     /// The field's reading of the value as an `i64`, when it fits.
