@@ -663,6 +663,56 @@ test('insert, update and remove carry the core rules across', () => {
   assert.throws(() => registry.insert(Field.from('Untagged: utf8')), /fix:tag/)
 })
 
+test('addField answers whether the field arrived or folded into a stored one', () => {
+  const registry = fix.FixRegistry.fromFields([
+    fixField('Symbol', 'utf8', 55, { tags: [65], aliases: ['Ticker'], description: 'stored' }),
+    fixField('Price', 'float64', 44),
+  ])
+
+  // A name that folds to a stored name merges into that field: the stored
+  // identity, spelling and nullability stand, the alternate tags and the
+  // aliases are the union - stored order first, the incoming canonical tag
+  // last - and the incoming metadata wins a shared key.
+  const incoming = fixField('symbol', 'utf8', 9001, {
+    tags: [66],
+    aliases: ['Sym', 'TICKER'],
+    description: 'incoming',
+  })
+  assert.equal(registry.addField(incoming), false)
+  assert.equal(registry.size, 2 + CRATED)
+  const stored = registry.fieldByTag(55)
+  assert.equal(stored.name, 'Symbol')
+  assert.equal(stored.fix.id, '55:')
+  assert.deepEqual(stored.fix.tags, [65, 66, 9001])
+  assert.deepEqual(stored.fix.aliases, ['Ticker', 'Sym'])
+  assert.equal(stored.fix.description, 'incoming')
+
+  // Every spelling the incoming field carried now reaches the stored one.
+  for (const key of [9001, 66, 65, 'sym', 'TICKER']) {
+    assert.equal(registry.field(key).name, 'Symbol', `${key}`)
+  }
+
+  // Folding it again changes nothing, and a field nothing answers to arrives
+  // whole.
+  const folded = registry.intoJson()
+  assert.equal(registry.addField(incoming), false)
+  assert.equal(registry.intoJson(), folded)
+  assert.equal(registry.addField(fixField('TransactTime', 'utf8', 60)), true)
+  assert.equal(registry.size, 3 + CRATED)
+
+  // A datatype that disagrees with the stored field is refused, and the
+  // refusal writes nothing: merging metadata never redeclares a datatype.
+  const settled = registry.intoJson()
+  assert.throws(() => registry.addField(fixField('SYMBOL', 'int32', 9002)), /utf8/)
+  assert.equal(registry.intoJson(), settled)
+  assert.equal(registry.getFieldByTag(9002), null)
+
+  // One of this crate's own tags is every dictionary's already: neither added
+  // nor merged.
+  assert.equal(registry.addField(fix.crateFields()[0]), false)
+  assert.equal(registry.intoJson(), settled)
+})
+
 test('a shared registry refuses mutation and a clone is independent', () => {
   const registry = seed()
   const root = fields.struct('row', [registry.fieldByTag(55)], { nullable: false })
@@ -1377,8 +1427,8 @@ test('the crate fields declare their own protocols', () => {
       'parentorderid',
       'sendersessionid',
       'msgctxid',
-      'senderpluginid',
-      'targetpluginid',
+      'pluginid',
+      'prevpluginid',
       'sendersessionname',
       'targetsessionname',
       'isincode',
@@ -1402,8 +1452,8 @@ test('the crate fields declare their own protocols', () => {
       'ParentOrderID',
       'SenderSessionId',
       'MsgCtxId',
-      'SenderPluginId',
-      'TargetPluginId',
+      'PluginId',
+      'PrevPluginId',
       'SenderSessionName',
       'TargetSessionName',
       'ISINCode',
@@ -1438,16 +1488,17 @@ test('the crate fields declare their own protocols', () => {
 
 test("the bridge's six facts are crate fields, and every registry holds them", () => {
   // What a bridge's own log states about a line: the session the message
-  // itself belongs to, the message context it was handled under, and the
-  // plugins and plugin sessions it moved between.
+  // itself belongs to, the message context it was handled under, the plugin
+  // that logged it and the one it came through before that, and the two
+  // session names the line spells.
   const held = fix.crateFields().slice(7, 13)
   assert.deepEqual(
     held.map((field) => [field.name, field.display, field.fix.id]),
     [
       ['sendersessionid', 'SenderSessionId', '65007:'],
       ['msgctxid', 'MsgCtxId', '65008:'],
-      ['senderpluginid', 'SenderPluginId', '65009:'],
-      ['targetpluginid', 'TargetPluginId', '65010:'],
+      ['pluginid', 'PluginId', '65009:'],
+      ['prevpluginid', 'PrevPluginId', '65010:'],
       ['sendersessionname', 'SenderSessionName', '65011:'],
       ['targetsessionname', 'TargetSessionName', '65012:'],
     ],
@@ -1455,7 +1506,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   assert.ok(held.every((field) => field.dtype.equals(DataType.from('utf8'))))
   assert.ok(held.every((field) => field.nullable))
   assert.ok(held.every((field) => field.description))
-  // The plugin sessions answer to the spellings a bridge row writes them
+  // The session names answer to the spellings a bridge row writes them
   // under, so `ULFROMSESSIONNAME=` lands on the sender's session by name.
   assert.deepEqual(
     held.slice(4).map((field) => field.fix.aliases),
@@ -1502,7 +1553,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
     assert.equal(registry.fieldByName('SenderSessionId', fix.STANDARD_BRANCH).fix.tag, 65007)
     assert.equal(registry.fieldByTag(65012).name, 'targetsessionname')
     assert.equal(registry.field('msgctxid').fix.id, '65008:')
-    assert.equal(registry.has('senderpluginid'), true)
+    assert.equal(registry.has('pluginid'), true)
     assert.equal(registry.fieldByName('ULToSessionName', fix.STANDARD_BRANCH).name, 'targetsessionname')
   }
 

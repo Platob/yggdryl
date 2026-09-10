@@ -139,6 +139,14 @@ const definition = fields.struct('NewOrderSingle', [counter, occurrence], { null
 definition.fix.msgtype = 'D'
 catalog.createDefinition('messages', definition)
 const snapshot = catalog.intoJson()
+// The lenient field verb, both answers: `party_id` folds to the stored
+// `PartyID` and merges into it, `Symbol` is a name nothing answers to.
+const foldingField = Field.from('party_id: utf8')
+foldingField.fix.tag = 9001
+const arrivingField = Field.from('Symbol: utf8')
+arrivingField.fix.tag = 55
+if (catalog.clone().addField(foldingField) !== false) throw new Error('party_id should fold')
+if (catalog.clone().addField(arrivingField) !== true) throw new Error('Symbol should arrive')
 const singleton = catalog.msgtype('D')
 const codec = new fix.FixCodec(catalog)
 const ulregistry = new fix.FixRegistry()
@@ -163,6 +171,26 @@ const capture = new arrow.Table({ body: arrow.vectorFromArray(LINES, new arrow.B
 const parsed = seedCodec.parseLine(Buffer.from(LINES[0])).next().value
 const parsedRow = parsed.intoRow(fixedSchema)
 const parsedIpc = seedCodec.parseTextArrowReader(capture).intoIpc()
+// The record door with a dialect each row names for itself: every other row
+// spells the branch a vendor field declared, the rest a plugin no branch is
+// named after, which keeps the codec's pin. A plugin's dialect resolves off
+// the codec's memo after the first row spelling it, so this is what a row
+// costs read under a dialect it names for itself.
+const pluginRegistry = (() => {
+  const held = registry.clone()
+  const venue = Field.from('VenueTag: utf8')
+  venue.fix.id = `5001:${VENDOR_BRANCH}`
+  held.insert(venue)
+  return held
+})()
+const pluginCodec = new fix.FixCodec(pluginRegistry)
+const PLUGIN_RECORDS = LINES.map((body, index) => ({
+  body,
+  pluginid: index % 2 === 0 ? VENDOR_BRANCH : 'OMS_X1_TradeCapture',
+}))
+if (drain(pluginCodec.parseTextRecords(PLUGIN_RECORDS)) !== LINES.length) {
+  throw new Error('pluginid record cardinality mismatch')
+}
 if (drain(seedCodec.parseLines(LINES)) !== LINES.length) throw new Error('line cardinality mismatch')
 const sink = { write() {} }
 
@@ -248,6 +276,22 @@ try {
     changed.fix.description = 'Reviewed'
     return copy.updateDefinition('components', changed)
   })
+  benchmark('fix/catalog_add_field_merging', () => {
+    const copy = catalog.clone()
+    copy.addField(foldingField)
+    return copy
+  })
+  benchmark('fix/catalog_add_field_arriving', () => {
+    const copy = catalog.clone()
+    copy.addField(arrivingField)
+    return copy
+  })
+  benchmark('fix/catalog_add_definition', () => {
+    const copy = catalog.clone()
+    const changed = copy.definition('components', 'Party')
+    changed.fix.description = 'Reviewed'
+    return copy.addDefinition('components', changed)
+  })
   benchmark('fix/catalog_create_remove', () => {
     const copy = catalog.clone()
     const empty = fields.struct('NewMessage', [], { nullable: false })
@@ -265,6 +309,9 @@ try {
   benchmarkStreams(`fix/parse_lines_drain/${LINES.length}`, streams, () => drain(seedCodec.parseLines(LINES)))
   benchmarkStreams(`fix/parse_text_records_drain/${LINES.length}`, streams, () =>
     drain(seedCodec.parseTextRecords(LINES.map((body) => ({ body })))),
+  )
+  benchmarkStreams(`fix/parse_text_records_pluginid_drain/${LINES.length}`, streams, () =>
+    drain(pluginCodec.parseTextRecords(PLUGIN_RECORDS)),
   )
   benchmarkStreams(`fix/parse_text_arrow_reader/${LINES.length}`, streams, () =>
     seedCodec.parseTextArrowReader(capture).intoTable().numRows,

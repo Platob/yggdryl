@@ -1216,10 +1216,18 @@ export declare class FixCodec {
   /**
    * One record a text reader answered: its messages.
    *
-   * The payload column names the line, and the row's own columns -
-   * `branch`, `beginstring`, `sep`, `timestamp`, `direction`, `plugin` -
-   * are the parameters of the same name. The loader widens the record from
-   * whatever `Scalar.fromJs` reads.
+   * The payload column names the line, and the row's own `pluginid`,
+   * `beginstring`, `sep` and `timestamp` columns are the parameters of the
+   * same name - the plugin that logged the line, the version, the
+   * separator, the row's clock. A `pluginid` whose text is the name or an
+   * alias of a branch the dictionary declares is also the dialect the row
+   * is read under, outranking the codec's own pin; any other keeps the
+   * pin, then the standard branch. Every other named column fills the
+   * field its name reaches, `pluginid` included. The loader widens the
+   * record from whatever `Scalar.fromJs` reads.
+   *
+   * `direction` is a parameter here too, and the one this reader does not
+   * read: only `parseTextArrowReader` has a column to put it in.
    */
   parseTextRecord(record: unknown): FixMessages
   /**
@@ -1624,6 +1632,25 @@ export declare class FixRegistry {
   definition(category: string, name: string, branch?: string | undefined | null): JsField
   /** Definitions in native category order, retaining the registry while active. */
   definitions(category: string): FixDefinitionIterator
+  /**
+   * Fold a named definition into the one its name reaches.
+   *
+   * The lenient counterpart of `createDefinition`, which refuses a name it
+   * holds, and of `insertDefinition`, which replaces one wholesale.
+   * Answers `true` when the definition arrived and `false` when it merged;
+   * `"fields"` redirects to `addField`.
+   *
+   * A merge keeps the stored definition's identity, name and every member
+   * it declares, in its order, and appends the members it lacks - for a
+   * group, to the occurrence inside the list, and to the component when
+   * that occurrence is a component's. It is one level deep: a member both
+   * sides declare stays the stored one, so a member whose datatype - or
+   * whose restated reference - disagrees is refused. Every message and
+   * component referencing the definition sees the appended members.
+   *
+   * One mutation: a refusal leaves the dictionary exactly as it was.
+   */
+  addDefinition(category: string, field: JsField): boolean
   /** Insert or replace a complete native category definition atomically. */
   insertDefinition(category: string, field: JsField): JsField | null
   /** Create a definition, refusing an existing identity. */
@@ -1645,10 +1672,10 @@ export declare class FixRegistry {
    *
    * Every registry starts here: the twenty standard fields from tag 65000
    * that `fixCrateFields` lists - the digest, the clock and its partition,
-   * the session a message states, the bridge's message context, the
-   * plugin sessions a line moved between and the identities a lifecycle
-   * pass stamps - are what a row is typed by, so a dictionary loaded from
-   * a store, built from fields or left alone holds them alike.
+   * the session a message states, the bridge's message context, the plugin
+   * that logged a line and the session names it spells, and the identities
+   * a lifecycle pass stamps - are what a row is typed by, so a dictionary
+   * loaded from a store, built from fields or left alone holds them alike.
    */
   constructor()
   /**
@@ -1747,6 +1774,24 @@ export declare class FixRegistry {
   get(key: number | string): JsField | null
   /** Whether a tag or name reaches a field by deterministic best match. */
   has(key: number | string): boolean
+  /**
+   * Fold one field in, adding it when absent and merging it when stored.
+   *
+   * The lenient counterpart of `insert`, which replaces, and of `update`,
+   * which refuses everything new. Answers `true` when the field arrived
+   * and `false` when it folded into a stored one: a canonical identity the
+   * dictionary holds merges, a name folding to a stored canonical name or
+   * alias in the same branch merges into that field - aliases and
+   * alternate tags become the union and the incoming canonical tag joins
+   * them unless another field in the branch answers it - a nested field is
+   * redirected to `addDefinition` under the category its shape names, and
+   * one of this crate's own tags is skipped as already held.
+   *
+   * One mutation: a refusal - no `fix:tag`, a key another field holds in
+   * the same branch, a datatype disagreeing with the stored field - leaves
+   * the dictionary exactly as it was.
+   */
+  addField(field: JsField): boolean
   /** Add a field, answering the one it replaced. */
   insert(field: JsField): JsField | null
   /**
@@ -4972,11 +5017,12 @@ export interface FixCodecOptions {
  *
  * The digest, the version read at, the ticker, the clock and its partition,
  * the parent identifiers, the session the message states, the bridge's
- * message context, the plugins and plugin sessions a line moved between, the
- * ISIN, MIC and order state a row derives, and the instrument, message and
- * order-chain identities a lifecycle pass stamps. Every registry already
- * holds them, so this is the listing a schema or a document walks rather than
- * something a caller registers.
+ * message context, the plugin that logged the line and the one it came
+ * through before that, the two session names the line spells, the ISIN, MIC
+ * and order state a row derives, and the instrument, message and order-chain
+ * identities a lifecycle pass stamps. Every registry already holds them, so
+ * this is the listing a schema or a document walks rather than something a
+ * caller registers.
  */
 export declare function fixCrateFields(): Array<JsField>
 
@@ -5002,8 +5048,8 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
  * A bridge's own row header spells the session instance it handled a line on
  * as `senderSessionId` for that reason, so the value reaches the FIX column
  * rather than leading the row - and never over a reading the message stated
- * itself. Its `plugin` capture fills the session the line's direction names:
- * the sender's for a line it sent, the target's for one it received.
+ * itself. Its `pluginid` capture reaches the crate's own column of that name
+ * the same way, and is what a row's dialect is read from.
  */
 export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsField
 

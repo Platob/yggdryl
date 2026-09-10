@@ -178,6 +178,55 @@ test('parseTextRecords pulls one record at a time', () => {
   assert.equal([...new fix.FixCodec(configRegistry()).parseTextRecords([{ body: Buffer.from(BULK_CONFIG) }])].length, 2)
 })
 
+test("a row's pluginid names the dialect it is read under and fills its own column", () => {
+  // A dialect with one field of its own, so `VENUETAG` resolves under it and
+  // nowhere else; inserting a field on a branch is what declares the branch.
+  const registry = seed()
+  for (const [name, id] of [['VenueTag', '5001:venue'], ['OtherTag', '5002:elsewhere']]) {
+    const field = Field.from(`${name}: utf8`)
+    field.fix.id = id
+    registry.insert(field)
+  }
+  const codec = new fix.FixCodec(registry)
+  const pinned = new fix.FixCodec(registry, { branch: 'venue' })
+  const elsewhere = new fix.FixCodec(registry, { branch: 'elsewhere' })
+  const body = Buffer.from('MSGTYPE=D|CLORDID=A|VENUETAG=dark')
+
+  // A `pluginid` naming a branch the dictionary declares is the dialect the
+  // row is read under; any other - a plugin no branch is named after, a null,
+  // an empty string - keeps the codec's pin, then the standard branch. The
+  // column fills the crate's own field either way, exactly as it was spelled.
+  for (const spelled of ['venue', 'VENUE', 'OMS_X1_TradeCapture', null, '']) {
+    const [message] = codec.parseTextRecord({ pluginid: spelled, body })
+    const named = spelled === 'venue' || spelled === 'VENUE'
+    assert.equal(message.branch, named ? 'venue' : fix.STANDARD_BRANCH, `${spelled}`)
+    // The dialect's own field resolves only where the row named the dialect;
+    // anywhere else the key is kept under the spelling it arrived in.
+    const resolved = message.getByTag(5001)
+    assert.equal(resolved === null ? null : resolved.asJs(), named ? 'dark' : null, `${spelled}`)
+    const held = message.getByName('pluginid')
+    assert.equal(held === null ? null : held.asJs(), spelled, `${spelled}`)
+  }
+
+  // A column speaks per row where a codec speaks per run: a row naming no
+  // dialect keeps the pin, and a row naming one outranks a pin naming another.
+  assert.equal([...pinned.parseTextRecord({ body })][0].byTag(5001).asJs(), 'dark')
+  assert.equal([...elsewhere.parseTextRecord({ pluginid: 'venue', body })][0].branch, 'venue')
+  assert.equal([...elsewhere.parseTextRecord({ pluginid: 'ULBridge', body })][0].branch, 'elsewhere')
+
+  // Nothing fills `prevpluginid` but a column of that name, and the two
+  // session names are only ever what the line itself spells, through the
+  // aliases a bridge row writes them under.
+  const [carried] = codec.parseTextRecord({ pluginid: 'venue', prevpluginid: 'ULFilter', body })
+  assert.equal(carried.getByName('prevpluginid').asJs(), 'ULFilter')
+  const spoken = '|#SYMBOL=TTF|#ULFROMSESSIONNAME=OMS_X1_OrderOut|#ULTOSESSIONNAME=ULMSG_BROKER_BDG_DMZ_CLI|'
+  const [stated] = codec.parseTextRecord({ pluginid: 'venue', body: Buffer.from(spoken) })
+  assert.equal(stated.getByName('sendersessionname').asJs(), 'OMS_X1_OrderOut')
+  assert.equal(stated.getByName('targetsessionname').asJs(), 'ULMSG_BROKER_BDG_DMZ_CLI')
+  assert.equal(stated.getByName('prevpluginid'), null)
+  assert.equal(stated.getByName('sendersessionid'), null)
+})
+
 test('the codec answers the pins it was given', () => {
   const registry = seed()
   const bare = new fix.FixCodec(registry)
