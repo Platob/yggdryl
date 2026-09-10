@@ -459,15 +459,23 @@ fn definition_merges_refuse_a_member_that_disagrees_atomically() {
     );
     assert_eq!(registry, before);
 
-    // A reference restated as an inline member is the same disagreement.
-    let inline = DataType::from_fields([tagged("PartyID", 448, DataType::Utf8)])
+    // A reference restated inline under another datatype is the same
+    // disagreement, and the refusal names the reference and both datatypes.
+    let inline = DataType::from_fields([tagged("PartyID", 448, DataType::Int32)])
         .unwrap()
         .required_field("Party");
     let error = registry
         .add_definition(FixCategory::Components, inline)
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
-    assert!(error.to_string().contains("reference"), "{error}");
+    let message = error.to_string();
+    assert!(
+        message.contains("Party.PartyID")
+            && message.contains("reference")
+            && message.contains("utf8")
+            && message.contains("int32"),
+        "{message}"
+    );
     assert_eq!(registry, before);
 
     // A message under another code, and a group under another counter, are
@@ -667,5 +675,284 @@ fn the_strict_verbs_keep_refusing_and_replacing() {
                 .unwrap()
         ),
         ["Other"]
+    );
+}
+
+#[test]
+fn a_member_stated_inline_agrees_with_the_reference_stored_for_it() {
+    let mut registry = catalog();
+
+    // A dictionary built in memory states `PartyID` inline where the loaded
+    // one references it: both describe tag 448 as utf8, so the stored
+    // reference stays and only the new member arrives.
+    let inline = DataType::from_fields([
+        tagged("partyid", 448, DataType::Utf8),
+        DataType::Utf8.nullable_field("PartyNote"),
+    ])
+    .unwrap()
+    .required_field("Party");
+    assert!(
+        !registry
+            .add_definition(FixCategory::Components, inline)
+            .unwrap()
+    );
+    let party = registry
+        .definition(FixCategory::Components, "Party", None)
+        .unwrap();
+    assert_eq!(names(party), ["PartyID", "PartyNote"]);
+    assert_eq!(party.fields()[0].as_fix().field_ref(), Some("partyid"));
+    assert_eq!(
+        registry
+            .field_by_path("NewOrderSingle.Parties.PartyNote", None)
+            .unwrap()
+            .dtype(),
+        &DataType::Utf8
+    );
+
+    // The other way round: a stored inline member, restated by a reference
+    // to the field of that datatype, is kept inline; a reference to a field
+    // of another datatype is refused.
+    registry
+        .add_field(tagged("Symbol", 55, DataType::Utf8))
+        .unwrap();
+    registry
+        .create_definition(
+            FixCategory::Components,
+            DataType::from_fields([DataType::Utf8.nullable_field("Symbol")])
+                .unwrap()
+                .required_field("Instrument"),
+        )
+        .unwrap();
+    let mut symbol = registry.field(55).unwrap().clone();
+    symbol.as_fix_mut().set_field_ref("Symbol").unwrap();
+    let restated = DataType::from_fields([symbol])
+        .unwrap()
+        .required_field("Instrument");
+    assert!(
+        !registry
+            .add_definition(FixCategory::Components, restated)
+            .unwrap()
+    );
+    let instrument = registry
+        .definition(FixCategory::Components, "Instrument", None)
+        .unwrap();
+    assert!(instrument.fields()[0].as_fix().field_ref().is_none());
+    let before = registry.clone();
+    let mut count = tagged("Symbol", 9003, DataType::Int32);
+    count.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
+    let disagreeing = DataType::from_fields([count])
+        .unwrap()
+        .required_field("Instrument");
+    let error = registry
+        .add_definition(FixCategory::Components, disagreeing)
+        .unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    let message = error.to_string();
+    assert!(
+        message.contains("Instrument.Symbol") && message.contains("int32"),
+        "{message}"
+    );
+    assert_eq!(registry, before);
+}
+
+#[test]
+fn a_required_spelling_folds_into_a_nullable_referenced_field_keeping_its_shape() {
+    let mut registry = catalog();
+    let mut respelled = DataType::Utf8.required_field("partyid");
+    respelled.as_fix_mut().set_tag(9001).unwrap();
+    assert!(!registry.add_field(respelled).unwrap());
+
+    // The stored shape stays, and every reference to the field carries the
+    // merged metadata.
+    let stored = registry.field_by_tag(448).unwrap();
+    assert!(stored.is_nullable());
+    assert_eq!(stored.as_fix().tags().unwrap(), [9001]);
+    assert!(std::ptr::eq(
+        registry.get_field_by_tag(9001).unwrap(),
+        stored
+    ));
+    for path in ["Party.PartyID", "NewOrderSingle.Parties.PartyID"] {
+        let member = registry.field_by_path(path, None).unwrap();
+        assert_eq!(member.as_fix().tags().unwrap(), [9001], "{path}");
+        assert!(member.is_nullable(), "{path}");
+    }
+    assert_eq!(
+        FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
+        registry
+    );
+}
+
+#[test]
+fn a_separator_respelling_is_a_spelling_of_the_stored_name() {
+    let mut symbol = tagged("Symbol", 55, DataType::Utf8);
+    symbol.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    let mut registry = FixRegistry::from_fields([symbol]).unwrap();
+
+    // The crate's one fold drops `_`, `-` and space beside the case, so a
+    // name lookup, the fold by name and the alias dedupe all read `Sym_bol`
+    // as `Symbol` and `Tick-er` as `Ticker`.
+    assert_eq!(registry.field("sym_bol").unwrap().name(), "Symbol");
+    assert_eq!(registry.field("Tick-er").unwrap().name(), "Symbol");
+    let mut respelled = tagged("Sym_bol", 9001, DataType::Utf8);
+    respelled
+        .as_fix_mut()
+        .set_aliases(["Tick-er", "SYM"])
+        .unwrap();
+    assert!(!registry.add_field(respelled).unwrap());
+    let stored = registry.field_by_tag(9001).unwrap();
+    assert_eq!(stored.name(), "Symbol");
+    assert_eq!(stored.as_fix().tags().unwrap(), [9001]);
+    assert_eq!(
+        stored.as_fix().aliases().collect::<Vec<_>>(),
+        ["Ticker", "SYM"]
+    );
+    assert_eq!(registry.len(), 1 + super::crated());
+
+    // By identity the same respelling is the stored name too.
+    let mut described = tagged("sym-bol", 55, DataType::Utf8);
+    described.as_fix_mut().set_description("respelled").unwrap();
+    assert!(!registry.add_field(described.clone()).unwrap());
+    assert_eq!(registry.field(55).unwrap().description(), Some("respelled"));
+    assert_eq!(registry.field(55).unwrap().name(), "Symbol");
+
+    // The strict verbs read the fold the same way: a replacement keeps the
+    // stored spelling, and a second identity under the stored name is the
+    // conflict it always was.
+    registry.update(described).unwrap();
+    assert_eq!(registry.field(55).unwrap().name(), "Symbol");
+    assert_eq!(
+        registry
+            .insert(tagged("SYM_BOL", 55, DataType::Utf8))
+            .unwrap()
+            .unwrap()
+            .name(),
+        "Symbol"
+    );
+    assert_eq!(registry.field(55).unwrap().name(), "Symbol");
+    let before = registry.clone();
+    let error = registry
+        .insert(tagged("Sym_bol", 9002, DataType::Utf8))
+        .unwrap_err();
+    assert!(error.is_conflict(), "{error}");
+    assert_eq!(registry, before);
+}
+
+#[test]
+fn a_canonical_identity_supersedes_the_alternate_another_field_lists() {
+    // FIX itself does this: `QuoteAckStatus` is tag 1865, and `QuoteStatus`
+    // lists 1865 as the tag it superseded. The canonical holder answers the
+    // identifier whichever arrived first, exactly as a canonical name
+    // answers over an alias - the alternate is a fallback, never a claim.
+    let mut price = tagged("Price", 44, DataType::Float64);
+    price.as_fix_mut().set_tags(&[9001]).unwrap();
+    let mut registry = FixRegistry::from_fields([price]).unwrap();
+    assert!(
+        registry
+            .add_field(tagged("Symbol", 9001, DataType::Utf8))
+            .unwrap()
+    );
+    assert_eq!(
+        registry.field(FixId::standard(9001)).unwrap().name(),
+        "Symbol"
+    );
+    assert_eq!(registry.field(44).unwrap().as_fix().tags().unwrap(), [9001]);
+
+    let mut ticker = tagged("Ticker", 55, DataType::Utf8);
+    ticker.as_fix_mut().set_tags(&[44]).unwrap();
+    assert!(registry.add_field(ticker).unwrap());
+    assert_eq!(registry.field(FixId::standard(44)).unwrap().name(), "Price");
+    assert_eq!(registry.field(55).unwrap().as_fix().tags().unwrap(), [44]);
+    assert_eq!(registry.len(), 3 + super::crated());
+}
+
+#[test]
+fn a_group_occurrence_folds_its_members_into_the_component_and_nothing_else() {
+    let mut registry = catalog();
+    let mut member = DataType::from_fields([DataType::Utf8.nullable_field("PartyNote")])
+        .unwrap()
+        .required_field("party");
+    member
+        .as_fix_mut()
+        .set_description("occurrence wording")
+        .unwrap();
+    let mut group = DataType::list(member).nullable_field("parties");
+    group.as_fix_mut().set_counter(453).unwrap();
+    group.as_fix_mut().set_description("group wording").unwrap();
+    assert!(!registry.add_definition(FixCategory::Groups, group).unwrap());
+
+    // The occurrence's root describes the group's occurrence, not the
+    // component it happens to be: the member arrives there, the wording
+    // does not, and the group takes its own.
+    let party = registry
+        .definition(FixCategory::Components, "Party", None)
+        .unwrap();
+    assert_eq!(names(party), ["PartyID", "PartyNote"]);
+    assert_eq!(party.description(), None);
+    let parties = registry
+        .definition(FixCategory::Groups, "Parties", None)
+        .unwrap();
+    assert_eq!(parties.description(), Some("group wording"));
+    assert_eq!(occurrence(parties).description(), None);
+}
+
+#[test]
+fn a_reference_to_a_definition_arriving_in_the_same_merge_restates_an_inline_member() {
+    // The target states the group inline inside its component; the source
+    // holds the group as a definition and references it from the component.
+    // Both describe one shape, and the group arrives in the same merge as
+    // the reference to it, after the components in category order.
+    let fields = [
+        tagged("NoHops", 627, DataType::Int32),
+        tagged("HopID", 628, DataType::Utf8),
+    ];
+    let hop = DataType::from_fields([DataType::Utf8.nullable_field("HopID")])
+        .unwrap()
+        .required_field("Hop");
+    let mut target = FixRegistry::from_fields(fields.clone()).unwrap();
+    target
+        .create_definition(
+            FixCategory::Components,
+            DataType::from_fields([DataType::list(hop.clone()).nullable_field("Hops")])
+                .unwrap()
+                .required_field("Route"),
+        )
+        .unwrap();
+
+    let mut source = FixRegistry::from_fields(fields).unwrap();
+    let mut hops = DataType::list(hop).nullable_field("Hops");
+    hops.as_fix_mut().set_counter(627).unwrap();
+    source.create_definition(FixCategory::Groups, hops).unwrap();
+    let mut restated = source
+        .definition(FixCategory::Groups, "Hops", None)
+        .unwrap()
+        .clone();
+    restated.as_fix_mut().set_group("Hops").unwrap();
+    source
+        .create_definition(
+            FixCategory::Components,
+            DataType::from_fields([restated, DataType::Utf8.nullable_field("RouteID")])
+                .unwrap()
+                .required_field("Route"),
+        )
+        .unwrap();
+
+    assert_eq!(target.merge_with(&source).unwrap(), (0, 2));
+    let route = target
+        .definition(FixCategory::Components, "Route", None)
+        .unwrap();
+    assert_eq!(names(route), ["Hops", "RouteID"]);
+    assert!(route.fields()[0].as_fix().group().is_none(), "kept inline");
+    assert_eq!(
+        target
+            .definition(FixCategory::Groups, "Hops", None)
+            .unwrap()
+            .as_fix()
+            .counter()
+            .unwrap(),
+        Some(627)
+    );
+    assert_eq!(
+        FixRegistry::from_json(&target.into_json().unwrap()).unwrap(),
+        target
     );
 }

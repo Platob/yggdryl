@@ -17,6 +17,7 @@ use std::iter::FusedIterator;
 use smol_str::format_smolstr;
 
 use super::{FixBranch, FixId, FixKey, FixPedigree};
+use crate::types::folds_equal;
 use crate::xxhash::Xxh64;
 use crate::{Error, Field, IOBase, Result, Url, Version};
 
@@ -105,7 +106,7 @@ fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Fiel
     field
         .fields()
         .iter()
-        .find(|held| crate::types::folds_equal(held.name(), name))
+        .find(|held| folds_equal(held.name(), name))
 }
 
 #[cfg(test)]
@@ -611,7 +612,8 @@ impl FixRegistry {
         Ok(())
     }
 
-    /// Adds a field, replacing only an equal canonical identity and name.
+    /// Adds a field, replacing only an equal canonical identity and folded
+    /// name, under the stored spelling.
     pub fn insert(&mut self, field: Field) -> Result<Option<Field>> {
         if self.get_field_by_id(canonical_id(&field)?).is_some() {
             let mut staged = self.clone();
@@ -656,7 +658,7 @@ impl FixRegistry {
     }
 
     /// Merges a definition into the field with the same canonical identity.
-    /// Case-insensitive input names retain the stored canonical spelling.
+    /// A name folding to the stored one retains the stored canonical spelling.
     pub fn update(&mut self, field: Field) -> Result<()> {
         let mut staged = self.clone();
         staged.update_resolved(field)?;
@@ -674,7 +676,7 @@ impl FixRegistry {
             return Err(absent(FixKey::Id(id)));
         };
         let stored = &self.fields[position];
-        if !stored.name().eq_ignore_ascii_case(field.name()) {
+        if !folds_equal(stored.name(), field.name()) {
             return Err(Error::InvalidRecord {
                 path: field.name().into(),
                 reason: crate::text::expected_got(
@@ -707,16 +709,19 @@ impl FixRegistry {
     /// Folds `field` into the stored field at `position`, which its name
     /// reaches.
     ///
-    /// The stored field is the one being described, so it keeps its identity
-    /// and its canonical spelling, and everything else folds with the
-    /// precedence [`Self::update`] has: the incoming side wins a shared key.
-    /// What is specific to a fold by name is the identity the incoming field
-    /// carried: its name becomes an alias and its tag an alternate, because a
-    /// second dictionary calling tag 9001 `Symbol` is stating a second
-    /// spelling of tag 55's field, not a second field. The tag is left out
-    /// when the branch already answers it - a tag is one field's, and this
-    /// field is not the one that claimed it - which is noted through `log`
-    /// at debug level rather than refused, since the name was the match.
+    /// The stored field is the one being described, so it keeps its identity,
+    /// its canonical spelling and its shape - the datatype has to agree, and
+    /// the nullability stays the stored one, because a second spelling of a
+    /// field is not a statement about whether it may be absent - and
+    /// everything else folds with the precedence [`Self::update`] has: the
+    /// incoming side wins a shared key. What is specific to a fold by name is
+    /// the identity the incoming field carried: its name becomes an alias and
+    /// its tag an alternate, because a second dictionary calling tag 9001
+    /// `Symbol` is stating a second spelling of tag 55's field, not a second
+    /// field. The tag is left out when the branch already answers it - a tag
+    /// is one field's, and this field is not the one that claimed it - which
+    /// is noted through `log` at debug level rather than refused, since the
+    /// name was the match.
     fn merge_named(&mut self, position: usize, field: Field) -> Result<()> {
         self.validate_definition(crate::FixCategory::Fields, &field)?;
         let branch = field.as_fix().branch()?;
@@ -729,6 +734,7 @@ impl FixRegistry {
         }
         let mut merged = field.clone();
         merged.set_name(stored.name());
+        merged.set_nullable(stored.is_nullable());
         merged.set_metadata(field.as_metadata().merge_with(stored.as_metadata())?.iter())?;
         // The identity is the stored field's, and it is written before the
         // `fix:` fold, which holds both sides to one tag.
@@ -753,14 +759,17 @@ impl FixRegistry {
             _ if claimed(&tags, incoming.tag()) => {}
             _ => tags.push(incoming.tag()),
         }
+        // Spellings dedupe under the same fold the index resolves them by,
+        // so no alias is kept that the stored name or an earlier alias
+        // already answers for.
         let mut aliases: Vec<&str> = stored.as_fix().aliases().collect();
         for alias in field
             .as_fix()
             .aliases()
             .chain(std::iter::once(field.name()))
         {
-            if !alias.eq_ignore_ascii_case(stored.name())
-                && !aliases.iter().any(|held| held.eq_ignore_ascii_case(alias))
+            if !folds_equal(alias, stored.name())
+                && !aliases.iter().any(|held| folds_equal(held, alias))
             {
                 aliases.push(alias);
             }
@@ -824,14 +833,17 @@ impl FixRegistry {
     ///    metadata wins a shared key.
     /// 4. Otherwise a name that folds to a stored field's canonical name or
     ///    to one of its aliases, in the same branch, merges *into* that
-    ///    field. The stored field keeps its identity and its name; aliases
-    ///    and alternate tags are the union, the stored ones first; the
-    ///    incoming name joins the aliases unless it is the canonical one; the
-    ///    incoming canonical tag joins the alternate tags unless a field in
-    ///    the branch already answers it, in which case it is left out and
-    ///    noted through `log` at debug level; generic metadata and the `fix:`
-    ///    keys fold with the precedence of rule 3. A datatype that disagrees
-    ///    is refused as rule 3 refuses it.
+    ///    field. Folding is the crate's one fold, the one every name lookup
+    ///    resolves by: ASCII case, and the `_`, `-` and space separators, so
+    ///    `party_id` is a spelling of `PartyID`. The stored field keeps its
+    ///    identity, its name and its nullability; aliases and alternate tags
+    ///    are the union, the stored ones first, deduplicated under the same
+    ///    fold; the incoming name joins the aliases unless it is the
+    ///    canonical one; the incoming canonical tag joins the alternate tags
+    ///    unless a field in the branch already answers it, in which case it
+    ///    is left out and noted through `log` at debug level; generic
+    ///    metadata and the `fix:` keys fold with the precedence of rule 3. A
+    ///    datatype that disagrees is refused as rule 3 refuses it.
     /// 5. Otherwise it is inserted.
     ///
     /// Staged like [`Self::insert`]: a refusal leaves the dictionary exactly
@@ -877,8 +889,11 @@ impl FixRegistry {
     /// meeting a stored `float64` field is refused: merging metadata does not
     /// change the field's declared datatype.
     pub fn add_field(&mut self, field: Field) -> Result<bool> {
+        if let Some(category) = Self::definition_category_of(&field)? {
+            return self.add_definition(category, field);
+        }
         let mut staged = self.clone();
-        let added = staged.fold_field(field)?.unwrap_or(false);
+        let added = staged.fold_scalar(field)?.unwrap_or(false);
         staged.validate_catalog()?;
         *self = staged;
         Ok(added)
@@ -1127,11 +1142,27 @@ impl FixRegistry {
     /// staging: `None` when it was this crate's own and so neither added nor
     /// merged, else whether it arrived.
     fn fold_field(&mut self, field: Field) -> Result<Option<bool>> {
-        if field.dtype().is_nested() {
-            let category = super::catalog::definition_category(&field)
-                .ok_or_else(|| super::catalog::not_scalar(&field))?;
-            return self.fold_definition(category, field).map(Some);
+        match Self::definition_category_of(&field)? {
+            Some(category) => self.fold_definition(category, field).map(Some),
+            None => self.fold_scalar(field),
         }
+    }
+
+    /// The category a nested field is a definition of, or `None` for a
+    /// scalar; a nested datatype that is no definition is refused as the
+    /// scalar rule refuses it.
+    fn definition_category_of(field: &Field) -> Result<Option<crate::FixCategory>> {
+        if !field.dtype().is_nested() {
+            return Ok(None);
+        }
+        super::catalog::definition_category(field)
+            .map(Some)
+            .ok_or_else(|| super::catalog::not_scalar(field))
+    }
+
+    /// One scalar through rules 2 to 5 of [`Self::add_field`], without the
+    /// staging and without the catalog validation the staged verbs run.
+    fn fold_scalar(&mut self, field: Field) -> Result<Option<bool>> {
         // The crate's own fields are every dictionary's, so folding one is
         // folding a field onto itself, and never a source's to redefine.
         if field
@@ -1366,10 +1397,16 @@ impl FixRegistry {
             .is_some_and(|held| held.has_identity(branch))
     }
 
+    /// Whether the field at `position` is the one `name` names in `branch`.
+    ///
+    /// The recheck behind a digest hit, so it tests exactly the equivalence
+    /// [`name_digest`] hashes - the crate's one fold - and nothing narrower:
+    /// a spelling the index keys as a stored name and the recheck then
+    /// refuses would be neither found nor insertable.
     fn canonical_name_matches(&self, position: usize, branch: &FixBranch, name: &str) -> bool {
         self.fields
             .get(position)
-            .is_some_and(|field| field.name().eq_ignore_ascii_case(name))
+            .is_some_and(|field| folds_equal(field.name(), name))
             && self.identity_at(position, branch)
     }
 
@@ -1378,7 +1415,7 @@ impl FixRegistry {
             field
                 .as_fix()
                 .aliases()
-                .any(|alias| alias.eq_ignore_ascii_case(name))
+                .any(|alias| folds_equal(alias, name))
         }) && self.identity_at(position, branch)
     }
 

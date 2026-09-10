@@ -70,8 +70,9 @@
 //! mappings - is not here and needs an evaluator; "transcoding" names both
 //! and only the lineage-driven half lives in this module.
 //!
-//! Names fold ASCII case once, on the way in, so a query spelled in any case
-//! finds the field and the answer is always the canonical spelling. A tag
+//! Names fold once, on the way in - ASCII case, and the `_`, `-` and space
+//! separators - so a query spelled in any case or with any separator finds
+//! the field and the answer is always the canonical spelling. A tag
 //! query never consults names and a name query never consults tags, and an
 //! alias can never take a name away from a field that claims it canonically.
 //! An explicit branch pins one dictionary. When omitted, resolution tries the

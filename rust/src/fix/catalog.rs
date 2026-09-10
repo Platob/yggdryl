@@ -361,59 +361,16 @@ fn occurrence_of(group: &Field) -> Result<&Field> {
     }
 }
 
-/// What a child is, for a refusal that names both sides.
-fn describe(field: &Field) -> SmolStr {
-    match reference(field) {
-        Some((category, name)) => format_smolstr!("a reference to {category} {name:?}"),
-        None => format_smolstr!("the datatype {}", field.dtype()),
-    }
-}
-
-/// Whether an incoming child restates the stored one its name folds onto.
-///
-/// A reference is compared as a reference - the target it names, never the
-/// expansion either side happens to hold, because two registries expand one
-/// component differently exactly when one of them extended it - and an
-/// inline child by its datatype. One level and nothing else: a child both
-/// sides declare is the stored one, so what its own children say is not
-/// this merge's to read.
-fn agree(owner: &str, held: &Field, child: &Field) -> Result<()> {
-    let same = match (reference(held), reference(child)) {
-        (Some((category, name)), Some((other, spelling))) => {
-            category == other && folds_equal(name, spelling)
+/// What a child is, for a refusal that names both sides: a reference by its
+/// target and the datatype that target has, an inline child by its own.
+fn describe(field: &Field, resolved: Option<&DataType>) -> SmolStr {
+    match (reference(field), resolved) {
+        (Some((category, name)), Some(dtype)) => {
+            format_smolstr!("a reference to {category} {name:?}, the datatype {dtype}")
         }
-        (None, None) => held.dtype() == child.dtype(),
-        _ => false,
-    };
-    if same {
-        return Ok(());
+        (Some((category, name)), None) => format_smolstr!("a reference to {category} {name:?}"),
+        (None, _) => format_smolstr!("the datatype {}", field.dtype()),
     }
-    Err(Error::InvalidRecord {
-        path: format_smolstr!("{owner}.{}", held.name()),
-        reason: crate::text::expected_got(
-            format_args!("{} stored for it", describe(held)),
-            describe(child),
-        ),
-    })
-}
-
-/// The stored children, then every incoming child no stored one answers to.
-///
-/// Order is the stored definition's, because a message's members are read
-/// positionally by everything that walks it; what arrives is appended in
-/// the order it was declared.
-fn merge_children(owner: &str, stored: &[Field], incoming: &[Field]) -> Result<Vec<Field>> {
-    let mut merged: Vec<Field> = stored.to_vec();
-    for child in incoming {
-        match merged
-            .iter()
-            .find(|held| folds_equal(held.name(), child.name()))
-        {
-            Some(held) => agree(owner, held, child)?,
-            None => merged.push(child.clone()),
-        }
-    }
-    Ok(merged)
 }
 
 /// The incoming document's metadata laid over the stored one's, on the
@@ -865,7 +822,10 @@ impl FixRegistry {
     /// declare is the stored one, one level deep: its own children are not
     /// merged and its datatype never changes, so an incoming member that
     /// disagrees in datatype with the stored one of its name - or restates a
-    /// different reference - is refused. Metadata folds as
+    /// different reference - is refused. A reference and an inline member
+    /// agree when the reference's target has the inline datatype: `PartyID`
+    /// stated inline as `utf8` restates a reference to the `utf8` field
+    /// `PartyID`, and the stored form is what stays. Metadata folds as
     /// [`Self::add_field`] folds it: the incoming side wins a shared key, the
     /// identity keys excepted, and the `fix:` keys follow
     /// [`FixFieldMut::merge_with`](crate::FixFieldMut::merge_with), which
@@ -948,8 +908,7 @@ impl FixRegistry {
         Ok(false)
     }
 
-    /// Folds one incoming definition over the documents, answering whether it
-    /// arrived new.
+    /// Folds one incoming definition over the documents.
     ///
     /// A document nothing stored answers to is added as the store would read
     /// it; one a stored document answers to, by folded name in its branch, is
@@ -960,17 +919,17 @@ impl FixRegistry {
         category: FixCategory,
         branch: &FixBranch,
         incoming: &Field,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         let incoming = compact(incoming.clone(), true)?;
         let Some((key, stored)) = documents.get(category, branch, incoming.name()) else {
             let key = (category, branch.clone(), incoming.name().to_owned());
             documents.put(key, incoming);
-            return Ok(true);
+            return Ok(());
         };
         let (key, stored) = (key.clone(), stored.clone());
         let merged = self.merge_documents(documents, category, &stored, &incoming)?;
         documents.put(key, merged);
-        Ok(false)
+        Ok(())
     }
 
     /// One level of `incoming` folded into `stored`, both compact.
@@ -986,8 +945,10 @@ impl FixRegistry {
             let (held, item) = (occurrence_of(stored)?, occurrence_of(incoming)?);
             let occurrence = match (reference(held), reference(item)) {
                 // The stored occurrence is a component's, so what the incoming
-                // one adds belongs to that component: it is folded there, and
-                // the group - with every other reference - reads it back from
+                // one adds belongs to that component: its members are folded
+                // there - only its members, since the occurrence's own root
+                // is the group's business and is merged above - and the
+                // group, with every other reference, reads them back from
                 // there once the documents resolve.
                 (Some((FixCategory::Components, name)), None) => {
                     let branch = held.as_fix().branch()?;
@@ -996,26 +957,30 @@ impl FixRegistry {
                     else {
                         return Err(Error::absent(FixCategory::Components.as_str(), name));
                     };
-                    let (key, component) = (key.clone(), component.clone());
-                    let mut members = item.clone();
-                    members.set_name(component.name());
-                    let component = self.merge_documents(
+                    let (key, mut component) = (key.clone(), component.clone());
+                    let members = self.merge_children(
                         documents,
-                        FixCategory::Components,
-                        &component,
-                        &members,
+                        component.name(),
+                        component.fields(),
+                        item.fields(),
                     )?;
+                    component.set_dtype(DataType::from_fields(members)?)?;
                     documents.put(key, component);
                     held.clone()
                 }
                 (None, None) => {
                     let mut occurrence = merge_root(held, item)?;
-                    let members = merge_children(stored.name(), held.fields(), item.fields())?;
+                    let members = self.merge_children(
+                        documents,
+                        stored.name(),
+                        held.fields(),
+                        item.fields(),
+                    )?;
                     occurrence.set_dtype(DataType::from_fields(members)?)?;
                     occurrence
                 }
                 _ => {
-                    agree(stored.name(), held, item)?;
+                    self.agree(documents, stored.name(), held, item)?;
                     held.clone()
                 }
             };
@@ -1025,7 +990,8 @@ impl FixRegistry {
                 DataType::list(occurrence)
             }
         } else {
-            DataType::from_fields(merge_children(
+            DataType::from_fields(self.merge_children(
+                documents,
                 stored.name(),
                 stored.fields(),
                 incoming.fields(),
@@ -1033,6 +999,95 @@ impl FixRegistry {
         };
         merged.set_dtype(dtype)?;
         Ok(merged)
+    }
+
+    /// The stored children, then every incoming child no stored one answers
+    /// to.
+    ///
+    /// Order is the stored definition's, because a message's members are read
+    /// positionally by everything that walks it; what arrives is appended in
+    /// the order it was declared.
+    fn merge_children(
+        &self,
+        documents: &Documents,
+        owner: &str,
+        stored: &[Field],
+        incoming: &[Field],
+    ) -> Result<Vec<Field>> {
+        let mut merged: Vec<Field> = stored.to_vec();
+        for child in incoming {
+            match merged
+                .iter()
+                .find(|held| folds_equal(held.name(), child.name()))
+            {
+                Some(held) => self.agree(documents, owner, held, child)?,
+                None => merged.push(child.clone()),
+            }
+        }
+        Ok(merged)
+    }
+
+    /// Whether an incoming child restates the stored one its name folds onto.
+    ///
+    /// Two references agree on the target they name, never on the expansion
+    /// either side happens to hold, because two registries expand one
+    /// component differently exactly when one of them extended it. Two
+    /// inline children agree on their datatype. A reference on one side and
+    /// an inline child on the other agree when the target's datatype is the
+    /// inline one - a dictionary built in memory states `PartyID` inline
+    /// where a loaded one references it, and both describe tag 448 - and the
+    /// stored side is what is kept, whichever form it has. One level and
+    /// nothing else: a child both sides declare is the stored one, so what
+    /// its own children say is not this merge's to read.
+    fn agree(&self, documents: &Documents, owner: &str, held: &Field, child: &Field) -> Result<()> {
+        // Resolved only where one side is a reference and the other is not:
+        // two references agree or disagree on what they name, and resolving
+        // them would ask for a target that may be arriving in this very fold.
+        let (mut held_target, mut child_target) = (None, None);
+        let same = match (reference(held), reference(child)) {
+            (Some((category, name)), Some((other, spelling))) => {
+                category == other && folds_equal(name, spelling)
+            }
+            (None, None) => held.dtype() == child.dtype(),
+            (Some(_), None) => {
+                held_target = Some(self.referenced_dtype(documents, held)?);
+                held_target.as_ref() == Some(child.dtype())
+            }
+            (None, Some(_)) => {
+                child_target = Some(self.referenced_dtype(documents, child)?);
+                child_target.as_ref() == Some(held.dtype())
+            }
+        };
+        if same {
+            return Ok(());
+        }
+        Err(Error::InvalidRecord {
+            path: format_smolstr!("{owner}.{}", held.name()),
+            reason: crate::text::expected_got(
+                format_args!("{} stored for it", describe(held, held_target.as_ref())),
+                describe(child, child_target.as_ref()),
+            ),
+        })
+    }
+
+    /// The datatype the reference `field` carries resolves to, in the compact
+    /// shape the documents hold: a field's from this registry, a named
+    /// definition's from the documents being folded, so a definition
+    /// extended earlier in the same fold answers extended.
+    fn referenced_dtype(&self, documents: &Documents, field: &Field) -> Result<DataType> {
+        let (category, name) = reference(field)
+            .ok_or_else(|| Error::absent("a field, component, or group reference", field.name()))?;
+        let branch = field.as_fix().branch()?;
+        if category == FixCategory::Fields {
+            return Ok(self
+                .definition(category, name, Some(&branch))?
+                .dtype()
+                .clone());
+        }
+        documents
+            .get(category, &branch, name)
+            .map(|(_, document)| document.dtype().clone())
+            .ok_or_else(|| Error::absent(category.as_str(), name))
     }
 
     /// Removes a definition only when every remaining reference stays valid.
@@ -1322,6 +1377,10 @@ impl FixRegistry {
     /// before this, so a field reference resolves against the union.
     pub(super) fn merge_catalog(&mut self, other: &Self) -> Result<()> {
         let mut documents = Documents::from_registry(self)?;
+        // What arrives new is put before anything merges, so a member that
+        // references it on one side and states it inline on the other is
+        // compared against it whatever category it belongs to.
+        let mut folding = Vec::new();
         for category in [
             FixCategory::Components,
             FixCategory::Groups,
@@ -1330,9 +1389,16 @@ impl FixRegistry {
             for field in other.catalog.iter(category) {
                 let branch = field.as_fix().branch()?;
                 self.check_branch(&branch)?;
-                self.fold_document(&mut documents, category, &branch, field)?;
+                if documents.get(category, &branch, field.name()).is_none() {
+                    self.fold_document(&mut documents, category, &branch, field)?;
+                } else {
+                    folding.push((category, branch.clone(), field));
+                }
                 self.ensure_branch(branch);
             }
+        }
+        for (category, branch, field) in folding {
+            self.fold_document(&mut documents, category, &branch, field)?;
         }
         self.resolve_catalog(documents.raw)?;
         self.validate_catalog()
