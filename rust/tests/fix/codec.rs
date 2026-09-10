@@ -671,6 +671,19 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
         restated.into_bytes(b'|'),
         b"8=FIX.4.2|35=UL|ORDERID=123|10=0|"
     );
+
+    // The row's type is read after the marks are judged, so a type the
+    // bridge marked names the message - and the message is what splits a
+    // separator-less occurrence of a counter half the dictionary shares at
+    // the members its own group declares.
+    let typed = reader
+        .one_line(b"#MSGTYPE=s|#NOSIDES=1|#NOSIDES[0]=SIDE=1CLORDID=X", false)
+        .unwrap();
+    assert_eq!(typed.by_tag(35).unwrap().as_str(), Some("s"));
+    assert_eq!(
+        typed.by_path("SideCrossOrdModGrp.0.ClOrdID").unwrap(),
+        &Scalar::from("X")
+    );
 }
 
 #[test]
@@ -787,6 +800,48 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
         // The row and the group agree, so there is no miscount to report.
         assert_eq!(message.anomalies().count(), 0, "{spelled}");
     }
+
+    // A marked group goes only whole. A marked count restating the bare one
+    // beside occurrences the bare group never numbered is no second spelling
+    // of the bare count - it counts the marked occurrences - so it stays
+    // verbatim with them; a marked group restating the bare group pair for
+    // pair goes pair for pair.
+    let counted: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=B\x04\x03PARTYROLE=1\
+|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
+    let message = reader.one_line(counted, false).unwrap();
+    assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
+    assert_eq!(
+        message.by_path("Parties.0.PartyID").unwrap(),
+        &Scalar::from("B")
+    );
+    let at = message
+        .as_field()
+        .index_of("#nopartyids")
+        .expect("the marked count");
+    assert_eq!(
+        message.as_value().as_sequence().expect("a row")[at].as_str(),
+        Some("1")
+    );
+    let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
+    assert!(
+        keys.contains(&"#NOPARTYIDS") && keys.contains(&"#NOPARTYIDS[0]"),
+        "{keys:?}"
+    );
+    assert_eq!(message.anomalies().count(), 0);
+    let restated: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1\
+|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
+    let message = reader.one_line(restated, false).unwrap();
+    assert_eq!(
+        message.by_path("Parties.0.PartyID").unwrap(),
+        &Scalar::from("A")
+    );
+    assert!(message.as_field().index_of("#nopartyids").is_none());
+    assert!(
+        message
+            .entries()
+            .iter()
+            .all(|entry| !entry.key().starts_with('#'))
+    );
 }
 
 #[test]
@@ -882,6 +937,45 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     };
     let names: Vec<&str> = item.fields().iter().map(yggdryl::Field::name).collect();
     assert!(names.contains(&"venueseq"), "{names:?}");
+
+    // A close is an empty segment and nothing else: a segment of spaces
+    // between two separators is residue, and the run stays bounded by the
+    // dictionary.
+    let spaced: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1\
+|NOPARTYIDS[0]=PARTYID=X\x04\x03 \x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03PARTYROLE=1\x04\x03";
+    let message = reader.one_line(spaced, false).unwrap();
+    assert_eq!(
+        message.by_path("Parties.0.PartyRole").unwrap().as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        message
+            .by_path("Parties.0.PtysSubGrp.0.PartySubIDType")
+            .unwrap()
+            .as_i64(),
+        Some(1)
+    );
+
+    // A run of openers nothing closes nests as deep as a schema may and no
+    // deeper: past that an opener is one more member, and a line of two
+    // thousand of them reads rather than exhausting the stack.
+    let mut deep = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=\x04\x03".to_vec();
+    for _ in 0..2000 {
+        deep.extend_from_slice(b"NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03");
+    }
+    let message = reader.one_line(&deep, false).unwrap();
+    assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
+    let mut arrived = Vec::new();
+    keys(message.entries(), &mut arrived);
+    assert_eq!(
+        arrived
+            .iter()
+            .filter(|key| key.ends_with("PARTYSUBID") || key.ends_with("NOPARTYSUBIDS[0]"))
+            .count(),
+        2000,
+        "{} entries",
+        arrived.len()
+    );
 }
 
 #[test]

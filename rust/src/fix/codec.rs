@@ -107,6 +107,13 @@ enum Hashed<'body> {
 /// so an occurrence packed inside another closes with two in a row - its own
 /// trailing one, then the one between it and the next member - and the empty
 /// segment between them is where the bridge says the inner occurrence ends.
+/// How deep a packed value nests before the reader stops nesting it.
+///
+/// The bound a message schema is held to, so a run of openers a bridge never
+/// closed cannot recurse the reader off its stack: past it an opener is one
+/// more member of the occurrence it is in, its packed value its value.
+const PACKED_DEPTH: usize = 64;
+
 const MEMBER_SEPARATORS: [&[u8]; 4] = [
     b"\x04\x03",
     b"\x01",
@@ -635,13 +642,10 @@ impl FixCodec {
         // marked nothing pays nothing.
         if hashed {
             let arrived = pairs;
-            let bare = self.bare_spellings(&arrived);
             pairs = arrived
                 .iter()
-                .filter_map(|&(key, value)| {
-                    self.hashed_key(key, value, &arrived, &bare)
-                        .map(|(key, _)| (key, value))
-                })
+                .zip(self.judged_keys(&arrived))
+                .filter_map(|(&(_, value), judged)| judged.map(|(key, _)| (key, value)))
                 .collect();
         }
         self.build(&pairs, &nested, extras)
@@ -666,9 +670,12 @@ impl FixCodec {
     /// | `ORDERID=123\|#ORDERID=123` | `OrderID` 123 once: the marked pair is a second spelling of the same bytes and is dropped, row and entries alike |
     /// | `ORDERID=123\|#ORDERID=345` | `OrderID` 123 beside `#ORDERID` 345: two keys, so the marked one stays verbatim - its own child, its own entry - whichever arrived first |
     /// | `NOPARTYIDS=2\|…\|#NOPARTYIDS=6\|#NOPARTYIDS[0]=…` | the bare group is the dictionary's; every marked key of that group stays verbatim and whole, occurrence and count alike, because a group is one thing however many occurrences it states |
+    /// | `NOPARTYIDS=1\|NOPARTYIDS[0]=…\|#NOPARTYIDS=1\|#NOPARTYIDS[0]=…` | the marked count restates the bare one, but a marked group goes only whole: while any marked key of it stays, every one does, count included; a marked group restating the bare group pair for pair goes pair for pair |
     ///
-    /// Residue that will not split stays as one unknown key, verbatim: never
-    /// dropped, never fatal.
+    /// The twin is a spelling, never an identity: a tag and a marked name -
+    /// `55=AAPL|#SYMBOL=AAPL` - state two values, exactly as a tag and a bare
+    /// name do. Residue that will not split stays as one unknown key,
+    /// verbatim: never dropped, never fatal.
     ///
     /// # Errors
     ///
@@ -711,23 +718,28 @@ impl FixCodec {
             hashed |= pair.0.first() == Some(&b'#');
             arrived.push(pair);
         }
-        // Each `#` key is judged against the row's bare spellings, gathered
-        // once: a bridge row is mostly `#` keys, so the probed list stays
-        // short, and a row with no `#` at all gathers nothing.
-        let bare = if hashed {
-            self.bare_spellings(&arrived)
+        // Every `#` key is judged before the row's type is read, so a type
+        // the bridge marked names the message exactly as a bare one does,
+        // and one kept verbatim beside a bare type does not. A row with no
+        // `#` at all judges nothing.
+        let kept: Vec<(&[u8], &[u8], bool)> = if hashed {
+            arrived
+                .iter()
+                .zip(self.judged_keys(&arrived))
+                .filter_map(|(&(_, value), judged)| judged.map(|(key, whole)| (key, value, whole)))
+                .collect()
         } else {
-            Vec::new()
+            arrived
+                .iter()
+                .map(|&(key, value)| (key, value, false))
+                .collect()
         };
-        let mut resolved: Vec<(Cow<'_, [u8]>, &[u8])> = Vec::with_capacity(arrived.len());
-        let msgtype = msgtype_of(&arrived);
+        let mut resolved: Vec<(Cow<'_, [u8]>, &[u8])> = Vec::with_capacity(kept.len());
+        let msgtype = msgtype_of(kept.iter().map(|&(key, value, _)| (key, value)));
         let message = msgtype
             .as_deref()
             .and_then(|code| self.declared_message(code));
-        for &(key, value) in &arrived {
-            let Some((key, whole)) = self.hashed_key(key, value, &arrived, &bare) else {
-                continue;
-            };
+        for &(key, value, whole) in &kept {
             if whole {
                 // Verbatim means whole: the twinned `#` key is its own key
                 // and the packed value is its value, so no group rendering
@@ -753,12 +765,62 @@ impl FixCodec {
                         .rev()
                         .skip(1)
                         .any(|segment| matches!(segment, Segment::Close));
-                    self.render_members(&path, &segments, message, explicit, &mut resolved);
+                    self.render_members(&path, &segments, message, explicit, 0, &mut resolved);
                 }
                 _ => resolved.push((Cow::Borrowed(key), value)),
             }
         }
         (message, resolved)
+    }
+
+    /// Every arriving key with its `#` judged: the key to build under and
+    /// whether it is kept whole, or `None` for a marked pair that only
+    /// restates a bare one.
+    ///
+    /// Each `#` key is judged against the row's bare spellings, gathered
+    /// once: a bridge row is mostly `#` keys, so the probed list stays short.
+    /// Then a marked group goes only whole. Its count and its occurrences are
+    /// judged pair by pair, and a count restating the bare one beside
+    /// occurrences the bare group never numbered would leave those
+    /// occurrences without their count - so where any marked key of a group
+    /// stays verbatim, every marked key of that group does.
+    fn judged_keys<'body>(
+        &self,
+        arrived: &[(&'body [u8], &'body [u8])],
+    ) -> Vec<Option<(&'body [u8], bool)>> {
+        let bare = self.bare_spellings(arrived);
+        let mut judged: Vec<Option<(&'body [u8], bool)>> = arrived
+            .iter()
+            .map(|&(key, value)| self.hashed_key(key, value, arrived, &bare))
+            .collect();
+        let marked = |key: &'body [u8]| key.strip_prefix(b"#").map(line::trim_ascii);
+        // The stems of the marked groups kept verbatim: a stem some marked
+        // key of the row indexes, and some marked key of which was kept.
+        let whole: Vec<&[u8]> = arrived
+            .iter()
+            .zip(&judged)
+            .filter(|(_, judged)| matches!(judged, Some((_, true))))
+            .filter_map(|(&(key, _), _)| marked(key).map(stem_of))
+            .filter(|stem| {
+                arrived.iter().any(|&(key, _)| {
+                    marked(key).is_some_and(|stripped| {
+                        group_index(stripped).is_some() && folds_twin(stem_of(stripped), stem)
+                    })
+                })
+            })
+            .collect();
+        if !whole.is_empty() {
+            for (&(key, _), judged) in arrived.iter().zip(&mut judged) {
+                if judged.is_none()
+                    && marked(key).is_some_and(|stripped| {
+                        whole.iter().any(|stem| folds_twin(stem, stem_of(stripped)))
+                    })
+                {
+                    *judged = Some((key, true));
+                }
+            }
+        }
+        judged
     }
 
     /// The row's bare spellings: every pair not marked `#` whose value is
@@ -825,13 +887,17 @@ impl FixCodec {
     ///
     /// `explicit` is decided once for the whole packed value, because a
     /// bridge closes every occurrence it packs or none of them, and a nested
-    /// slice of a closed run may hold no close of its own.
+    /// slice of a closed run may hold no close of its own. `depth` is how
+    /// many occurrences this one is packed inside, held to
+    /// [`PACKED_DEPTH`]: past it an opener is one more member, so a run of
+    /// openers nothing closed ends in a wide row rather than in the stack.
     fn render_members<'registry, 'value>(
         &'registry self,
         path: &[u8],
         segments: &[Segment<'value>],
         message: Option<&'registry super::MsgType>,
         explicit: bool,
+        depth: usize,
         out: &mut Vec<(Cow<'value, [u8]>, &'value [u8])>,
     ) {
         let mut at = 0;
@@ -851,7 +917,9 @@ impl FixCodec {
                 key
             };
             match group_index(member) {
-                Some((sub, index)) if memchr::memchr(b'=', held).is_some() => {
+                Some((sub, index))
+                    if depth < PACKED_DEPTH && memchr::memchr(b'=', held).is_some() =>
+                {
                     let sub_declared = self.group_members(sub, message);
                     let mut sub_path = rendered(sub);
                     sub_path.extend_from_slice(b"[");
@@ -862,7 +930,7 @@ impl FixCodec {
                     let end = self.extent(segments, at, sub_declared, message, explicit);
                     let mut nested = members(held, sub_declared);
                     nested.extend_from_slice(&segments[at..end]);
-                    self.render_members(&sub_path, &nested, message, explicit, out);
+                    self.render_members(&sub_path, &nested, message, explicit, depth + 1, out);
                     at = end;
                     // The close that ended it is spent with it.
                     if explicit && matches!(segments.get(at), Some(Segment::Close)) {
@@ -879,9 +947,13 @@ impl FixCodec {
     ///
     /// Explicit, the bridge closed every occurrence it packed inside the run,
     /// so this one reaches the close that balances the ones opened inside it.
-    /// Implicit, it reaches as far as the dictionary declares - a member the
+    /// Implicit, it reaches as far as the dictionary declares: a member the
     /// group declares, or an occurrence of a group it declares, skipped whole
-    /// by the same rule - and ends at the first segment it does not.
+    /// by the same rule. The first segment it does not declare ends it - and
+    /// ends every enclosing occurrence that does not declare it either, each
+    /// judging that segment in turn - so an undeclared pair lands on the
+    /// nearest enclosing occurrence that declares it, or on the packed
+    /// value's own, and what follows it lands there too.
     fn extent(
         &self,
         segments: &[Segment<'_>],
@@ -1117,7 +1189,7 @@ impl FixCodec {
         // capture is one session and the branch is a fact about the run.
         let branch = self.branch.clone().unwrap_or_default();
         let version = self.version.or_else(|| self.infer_version(pairs, &branch));
-        let msgtype = msgtype_of(pairs);
+        let msgtype = msgtype_of(pairs.iter().copied());
 
         let message = msgtype
             .as_deref()
@@ -1178,7 +1250,7 @@ impl FixCodec {
                 .iter()
                 .map(|(key, value)| (key.as_slice(), value.as_slice()))
                 .collect();
-            let declared = msgtype_of(&held)
+            let declared = msgtype_of(held.iter().copied())
                 .as_deref()
                 .and_then(|code| self.declared_message(code));
             self.nest(builder, declared, &held, branch);
@@ -1355,13 +1427,13 @@ fn value_of<'a>(pairs: &[(&'a [u8], &'a [u8])], key: &[u8]) -> Option<&'a [u8]> 
 }
 
 /// The message type a row declares, by `35=` or by `MSGTYPE=`.
-fn msgtype_of(pairs: &[(&[u8], &[u8])]) -> Option<String> {
+fn msgtype_of<'a>(pairs: impl IntoIterator<Item = (&'a [u8], &'a [u8])>) -> Option<String> {
     for (key, value) in pairs {
         // The key folds the way every other key folds, so `MSG_TYPE` and
         // `Msg Type` name the type too.
         let folded =
             std::str::from_utf8(key).is_ok_and(|key| crate::types::folds_equal(key, "MsgType"));
-        if folded || *key == b"35" {
+        if folded || key == b"35" {
             return Some(String::from_utf8_lossy(value).into_owned());
         }
     }
@@ -1492,14 +1564,15 @@ fn group_index(key: &[u8]) -> Option<(&[u8], usize)> {
 /// ULLINK separates members with EOT then ETX, and sometimes omits the
 /// separator. An explicit spelling is authoritative. With neither spelling
 /// present, only direct members declared by the addressed group can begin
-/// another pair. An empty segment - two separators in a row - is a close,
-/// kept for the renderer to end a nested occurrence on; a segment that is
-/// neither a pair nor empty is residue and stays out.
+/// another pair. An empty segment - two separators in a row, nothing at all
+/// between them - is a close, kept for the renderer to end a nested
+/// occurrence on; a segment that is neither a pair nor empty is residue and
+/// stays out.
 fn members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<Segment<'value>> {
     split_members(value, declared)
         .into_iter()
         .filter_map(|part| {
-            if line::trim_ascii(part).is_empty() {
+            if part.is_empty() {
                 return Some(Segment::Close);
             }
             split_pair(part).map(|(key, value)| Segment::Pair(key, value))
