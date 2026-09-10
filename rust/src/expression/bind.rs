@@ -29,7 +29,7 @@ use super::eval::{Row, convert};
 use super::parser::{Direction, NullsOrder, Statement};
 use super::selector::{Attributes, Cost, Selector};
 use super::typing::common_type;
-use super::{Comparison, Expression, Function, Literal, Operator, Safety, FieldSegment};
+use super::{Comparison, Expression, FieldSegment, Function, Literal, Operator, Safety};
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// What one node costs to answer, in units of "a free attribute read".

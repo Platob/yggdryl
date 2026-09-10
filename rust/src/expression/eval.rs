@@ -32,7 +32,7 @@ use super::selector::Attributes;
 use super::typing::{
     decimal_parts, is_binary, is_text, step_field, temporal_parts, unwrap_dictionary,
 };
-use super::{Comparison, Function, Literal, Operator, Safety, FieldSegment};
+use super::{Comparison, FieldSegment, Function, Literal, Operator, Safety};
 use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit, Timezone};
 
 /// One row's worth of context: its column values and its holder.

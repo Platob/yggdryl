@@ -42,7 +42,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::display::{is_bare_identifier, is_reserved};
 use super::selector::Selector;
 use super::{
-    Comparison, Expression, Function, Literal, Operator, RECURSION_LIMIT, Safety, FieldSegment,
+    Comparison, Expression, FieldSegment, Function, Literal, Operator, RECURSION_LIMIT, Safety,
 };
 use crate::{DataType, Error, I256, Result, Scalar};
 

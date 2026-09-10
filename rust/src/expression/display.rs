@@ -25,7 +25,7 @@ use std::fmt::{self, Write as _};
 use smol_str::SmolStr;
 
 use super::parser::{Direction, NullsOrder, Order, Projection, Statement};
-use super::{Comparison, Expression, Function, Literal, Operator, Safety, FieldSegment};
+use super::{Comparison, Expression, Function, Literal, Operator, Safety};
 use crate::types::Nested;
 use crate::{DataType, Floating, Integer, Scalar};
 

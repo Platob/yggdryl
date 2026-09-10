@@ -28,7 +28,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::{Expression, Function, Literal, Operator, Safety, FieldSegment};
+use super::{Expression, FieldSegment, Function, Literal, Operator, Safety};
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
