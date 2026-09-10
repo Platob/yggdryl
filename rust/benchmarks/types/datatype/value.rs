@@ -2,8 +2,8 @@ use std::hint::black_box;
 
 use criterion::Criterion;
 use yggdryl::{
-    DataType, Enum, Field, Float16, Float32, Float64, I256, IOMode, Scalar, TimeUnit, Timezone,
-    TypedScalar,
+    DataType, Enum, Field, FieldScalar, Float16, Float32, Float64, I256, IOMode, Scalar, TimeUnit,
+    Timezone,
 };
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
@@ -54,14 +54,14 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("typed_infer", |bencher| {
         bencher.iter(|| {
-            let integer = TypedScalar::infer(black_box(&typed_integer).clone()).unwrap();
-            let decimal = TypedScalar::infer(black_box(&typed_decimal).clone()).unwrap();
+            let integer = FieldScalar::infer(black_box(&typed_integer).clone()).unwrap();
+            let decimal = FieldScalar::infer(black_box(&typed_decimal).clone()).unwrap();
             black_box((integer, decimal))
         });
     });
     group.bench_function("typed_new", |bencher| {
         bencher.iter(|| {
-            TypedScalar::new(black_box(&typed_field), black_box(&typed_integer).clone()).unwrap()
+            FieldScalar::new(black_box(&typed_field), black_box(&typed_integer).clone()).unwrap()
         });
     });
     group.bench_function("stable_hash_i256", |bencher| {

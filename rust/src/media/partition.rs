@@ -89,7 +89,7 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
             &inferred
         }
     };
-    let array = crate::TypedScalar::new(field, value.clone())?.into_arrow_array()?;
+    let array = crate::FieldScalar::new(field, value.clone())?.into_arrow_array()?;
     match ArrayFormatter::try_new(array.as_ref(), &partition_format()) {
         Ok(formatter) => Ok(smol_str::SmolStr::new(formatter.value(0).to_string())),
         // Arrow's formatter carries no timezone database, so a zoned instant

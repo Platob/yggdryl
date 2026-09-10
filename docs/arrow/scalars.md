@@ -6,7 +6,7 @@ One value across the array boundary, both ways, under the materialization budget
 
 | Key | Value |
 | --- | --- |
-| Owns | `scalar_array`, `scalar_value`, `TypedScalar::into_arrow_array`, `from_arrow_array`, `try_from_arrow_array` |
+| Owns | `scalar_array`, `scalar_value`, `FieldScalar::into_arrow_array`, `from_arrow_array`, `try_from_arrow_array` |
 | Validates | The exact `Field`: name, nullability, dictionary options, metadata, extension identity |
 | Null rule | A non-nullable Field takes a logical null only as its datatype's canonical default |
 | Copies | None; a decoded child is a slice of its parent's buffers |
@@ -43,32 +43,32 @@ Rust only.
     assert!(scalar_array(&field, &Scalar::Null).is_err());
     ```
 
-## TypedScalar without a Field
+## FieldScalar without a Field
 
-A [`TypedScalar`](../types/scalar.md) projects through a synthetic non-nullable Field, with the same canonical-default exception.
+A [`FieldScalar`](../types/scalar.md) projects through a synthetic non-nullable Field, with the same canonical-default exception.
 
 === "Rust"
 
     ```rust
     use arrow_array::Array;
     use yggdryl::types::Int64Scalar;
-    use yggdryl::{DataType, TypedScalar, Scalar};
+    use yggdryl::{DataType, FieldScalar, Scalar};
 
-    let price = TypedScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
+    let price = FieldScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
     let array = price.clone().into_arrow_array()?;
     assert_eq!(array.len(), 1);
-    assert_eq!(TypedScalar::from_arrow_array(DataType::Int64, array.as_ref())?, price);
+    assert_eq!(FieldScalar::from_arrow_array(DataType::Int64, array.as_ref())?, price);
 
     // The marker-narrowed decode checks the datatype at compile time too.
     let typed = Int64Scalar::try_from_arrow_array(DataType::Int64, array.as_ref())?;
     assert_eq!(typed.value(), &Scalar::from(7_i64));
 
     // A null projects only when the datatype's own default spells it...
-    let nothing = TypedScalar::from_parts(DataType::Null, Scalar::Null)?;
+    let nothing = FieldScalar::from_parts(DataType::Null, Scalar::Null)?;
     assert_eq!(nothing.into_arrow_array()?.logical_null_count(), 1);
 
     // ...an int64 null belongs to a nullable Field, so the pairing refuses it.
-    let absent = TypedScalar::from_parts(DataType::Int64, Scalar::Null)?;
+    let absent = FieldScalar::from_parts(DataType::Int64, Scalar::Null)?;
     assert!(absent.into_arrow_array().is_err());
     ```
 

@@ -1,4 +1,4 @@
-//! The typed row view: one Struct [`Field`] and a typed value per child.
+//! The row view: one Struct [`Field`] and one [`FieldScalar`] per child.
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -8,14 +8,14 @@ use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 use smol_str::SmolStr;
 
-use super::TypedScalar;
+use super::FieldScalar;
 use crate::types::FieldKey;
 use crate::{Error, Field, Result, Scalar};
 
 /// One row under one Struct [`Field`], with every cell proven.
 ///
 /// The row schema is a non-null Struct `Field`, and this is a row read under
-/// it: cell `i` is a [`TypedScalar`] borrowing the `i`th child of that field,
+/// it: cell `i` is a [`FieldScalar`] borrowing the `i`th child of that field,
 /// and the row borrows the field itself. It is a view over the one schema,
 /// not a second one - it adds no accessor a `Field` does not already answer,
 /// and a name reaches a cell exactly as [`Field::index_of`] resolves it: by
@@ -29,10 +29,10 @@ use crate::{Error, Field, Result, Scalar};
 /// allocates nothing; [`Self::into_scalar`] is the allocating counterpart.
 ///
 /// Equality and hashing read the field's datatype and the cells, never its
-/// name, nullability, or metadata - the rule [`TypedScalar`] states.
+/// name, nullability, or metadata - the rule [`FieldScalar`] states.
 ///
 /// ```
-/// use yggdryl::{DataType, Scalar, TypedRecord};
+/// use yggdryl::{DataType, Scalar, FieldRecord};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let row = DataType::from_fields([
@@ -41,7 +41,7 @@ use crate::{Error, Field, Result, Scalar};
 /// ])?
 /// .required_field("row");
 ///
-/// let record = TypedRecord::new(&row, Scalar::from_record([
+/// let record = FieldRecord::new(&row, Scalar::from_record([
 ///     ("symbol", Scalar::from("AAPL")),
 ///     ("id", Scalar::from(7)),
 /// ])?)?;
@@ -60,12 +60,12 @@ use crate::{Error, Field, Result, Scalar};
 /// # }
 /// ```
 #[derive(Clone)]
-pub struct TypedRecord<'a> {
+pub struct FieldRecord<'a> {
     field: &'a Field,
-    values: Vec<TypedScalar<'a>>,
+    values: Vec<FieldScalar<'a>>,
 }
 
-impl<'a> TypedRecord<'a> {
+impl<'a> FieldRecord<'a> {
     /// Read one row under a non-null Struct field.
     ///
     /// # Errors
@@ -89,7 +89,7 @@ impl<'a> TypedRecord<'a> {
             .fields()
             .iter()
             .zip(cells)
-            .map(|(child, value)| TypedScalar::from_checked(child, value.clone()))
+            .map(|(child, value)| FieldScalar::from_checked(child, value.clone()))
             .collect();
         Ok(Self { field, values })
     }
@@ -114,7 +114,7 @@ impl<'a> TypedRecord<'a> {
     /// A [`FieldKey::Path`] is read as one child's exact name: a cell is a
     /// direct child of the field, so a dotted path, which names a descendant
     /// [`Field::get_field`] would walk to, reaches no cell and answers `None`.
-    pub fn get<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&TypedScalar<'a>> {
+    pub fn get<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&FieldScalar<'a>> {
         match key.into() {
             FieldKey::Index(index) => self.get_by_index(index),
             FieldKey::Path(name) => self.get_by_name(name),
@@ -123,12 +123,12 @@ impl<'a> TypedRecord<'a> {
 
     /// Look up a cell by its child's exact name, as [`Field::index_of`]
     /// resolves it.
-    pub fn get_by_name(&self, name: &str) -> Option<&TypedScalar<'a>> {
+    pub fn get_by_name(&self, name: &str) -> Option<&FieldScalar<'a>> {
         self.values.get(self.field.index_of(name)?)
     }
 
     /// Look up a cell by position.
-    pub fn get_by_index(&self, index: usize) -> Option<&TypedScalar<'a>> {
+    pub fn get_by_index(&self, index: usize) -> Option<&FieldScalar<'a>> {
         self.values.get(index)
     }
 
@@ -138,7 +138,7 @@ impl<'a> TypedRecord<'a> {
     }
 
     /// Iterate over the cells in schema order.
-    pub fn iter(&self) -> std::slice::Iter<'_, TypedScalar<'a>> {
+    pub fn iter(&self) -> std::slice::Iter<'_, FieldScalar<'a>> {
         self.values.iter()
     }
 
@@ -154,7 +154,7 @@ impl<'a> TypedRecord<'a> {
     /// answers, without building the sequence.
     pub fn stable_hash(&self) -> u64 {
         let mut state = crate::xxhash::Xxh3::new();
-        crate::xxhash::write_row_bytes(&mut state, self.values.iter().map(TypedScalar::value));
+        crate::xxhash::write_row_bytes(&mut state, self.values.iter().map(FieldScalar::value));
         state.as_u64()
     }
 
@@ -162,7 +162,7 @@ impl<'a> TypedRecord<'a> {
     pub fn into_values(self) -> Vec<Scalar> {
         self.values
             .into_iter()
-            .map(TypedScalar::into_value)
+            .map(FieldScalar::into_value)
             .collect()
     }
 
@@ -170,12 +170,12 @@ impl<'a> TypedRecord<'a> {
     ///
     /// One allocation: the sequence's own storage.
     pub fn into_scalar(self) -> Scalar {
-        Scalar::from_sequence(self.values.into_iter().map(TypedScalar::into_value))
+        Scalar::from_sequence(self.values.into_iter().map(FieldScalar::into_value))
     }
 }
 
 #[cfg(feature = "arrow")]
-impl<'a> TypedRecord<'a> {
+impl<'a> FieldRecord<'a> {
     /// Read one row of a batch under the field the batch was written under.
     ///
     /// The caller guarantees the batch is under `field`: the columns are
@@ -186,7 +186,7 @@ impl<'a> TypedRecord<'a> {
     ///
     /// ```
     /// use yggdryl::arrow::batch_from_value;
-    /// use yggdryl::{DataType, Scalar, TypedRecord};
+    /// use yggdryl::{DataType, Scalar, FieldRecord};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let row = DataType::from_fields([
@@ -200,10 +200,10 @@ impl<'a> TypedRecord<'a> {
     /// ]);
     /// let batch = batch_from_value(&row, &rows)?;
     ///
-    /// let second = TypedRecord::from_arrow_batch(&row, &batch, 1)?;
+    /// let second = FieldRecord::from_arrow_batch(&row, &batch, 1)?;
     /// assert_eq!(second["id"].as_i64(), Some(2));
     /// assert!(second["symbol"].is_null());
-    /// assert!(TypedRecord::from_arrow_batch(&row, &batch, 2).is_err());
+    /// assert!(FieldRecord::from_arrow_batch(&row, &batch, 2).is_err());
     /// # Ok(())
     /// # }
     /// ```
@@ -237,7 +237,7 @@ impl<'a> TypedRecord<'a> {
         let mut values = Vec::with_capacity(field.field_len());
         for (child, column) in field.fields().iter().zip(batch.columns()) {
             let value = crate::arrow::value::value_from_array(child.dtype(), column.as_ref(), row)?;
-            values.push(TypedScalar::new(child, value)?);
+            values.push(FieldScalar::new(child, value)?);
         }
         Ok(Self { field, values })
     }
@@ -254,18 +254,18 @@ impl<'a> TypedRecord<'a> {
     }
 }
 
-impl<'a> IntoIterator for TypedRecord<'a> {
-    type Item = TypedScalar<'a>;
-    type IntoIter = std::vec::IntoIter<TypedScalar<'a>>;
+impl<'a> IntoIterator for FieldRecord<'a> {
+    type Item = FieldScalar<'a>;
+    type IntoIter = std::vec::IntoIter<FieldScalar<'a>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.values.into_iter()
     }
 }
 
-impl<'r, 'a> IntoIterator for &'r TypedRecord<'a> {
-    type Item = &'r TypedScalar<'a>;
-    type IntoIter = std::slice::Iter<'r, TypedScalar<'a>>;
+impl<'r, 'a> IntoIterator for &'r FieldRecord<'a> {
+    type Item = &'r FieldScalar<'a>;
+    type IntoIter = std::slice::Iter<'r, FieldScalar<'a>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.values.iter()
@@ -277,8 +277,8 @@ impl<'r, 'a> IntoIterator for &'r TypedRecord<'a> {
 /// # Panics
 ///
 /// Panics when the row has no cell at that position.
-impl<'a> Index<usize> for TypedRecord<'a> {
-    type Output = TypedScalar<'a>;
+impl<'a> Index<usize> for FieldRecord<'a> {
+    type Output = FieldScalar<'a>;
 
     fn index(&self, index: usize) -> &Self::Output {
         self.get_by_index(index).unwrap_or_else(|| {
@@ -292,13 +292,13 @@ impl<'a> Index<usize> for TypedRecord<'a> {
 }
 
 /// Subscripting a row by name reaches that cell, resolved as
-/// [`TypedRecord::get_by_name`] resolves it.
+/// [`FieldRecord::get_by_name`] resolves it.
 ///
 /// # Panics
 ///
 /// Panics when no child of the field carries that name.
-impl<'a> Index<&str> for TypedRecord<'a> {
-    type Output = TypedScalar<'a>;
+impl<'a> Index<&str> for FieldRecord<'a> {
+    type Output = FieldScalar<'a>;
 
     fn index(&self, name: &str) -> &Self::Output {
         self.get_by_name(name).unwrap_or_else(|| {
@@ -311,10 +311,10 @@ impl<'a> Index<&str> for TypedRecord<'a> {
     }
 }
 
-impl fmt::Debug for TypedRecord<'_> {
+impl fmt::Debug for FieldRecord<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("TypedRecord")
+            .debug_struct("FieldRecord")
             .field("field", &self.field)
             .field("values", &self.values)
             .finish()
@@ -322,7 +322,7 @@ impl fmt::Debug for TypedRecord<'_> {
 }
 
 /// The row as `{name=value, ...}`, each value written as its cell writes it.
-impl fmt::Display for TypedRecord<'_> {
+impl fmt::Display for FieldRecord<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("{")?;
         for (index, cell) in self.values.iter().enumerate() {
@@ -337,35 +337,35 @@ impl fmt::Display for TypedRecord<'_> {
     }
 }
 
-impl PartialEq for TypedRecord<'_> {
+impl PartialEq for FieldRecord<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.field.dtype() == other.field.dtype() && self.values == other.values
     }
 }
 
-impl Eq for TypedRecord<'_> {}
+impl Eq for FieldRecord<'_> {}
 
-impl Hash for TypedRecord<'_> {
+impl Hash for FieldRecord<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.field.dtype().hash(state);
         self.values.hash(state);
     }
 }
 
-impl Serialize for TypedRecord<'_> {
+impl Serialize for FieldRecord<'_> {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let mut structure = serializer.serialize_struct("TypedRecord", 2)?;
+        let mut structure = serializer.serialize_struct("FieldRecord", 2)?;
         structure.serialize_field("field", self.field)?;
         structure.serialize_field("values", &self.values)?;
         structure.end()
     }
 }
 
-impl From<TypedRecord<'_>> for Scalar {
-    fn from(record: TypedRecord<'_>) -> Self {
+impl From<FieldRecord<'_>> for Scalar {
+    fn from(record: FieldRecord<'_>) -> Self {
         record.into_scalar()
     }
 }

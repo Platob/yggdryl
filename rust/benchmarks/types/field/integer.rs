@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
 use yggdryl::types::{Int64Field, StructField, integer};
-use yggdryl::{DataType, Field, Scalar, TypedRecord};
+use yggdryl::{DataType, Field, FieldRecord, Scalar};
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("typed/integer");
@@ -67,9 +67,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
             }
         })))
         .expect("the benchmark row satisfies its schema");
-    let record = TypedRecord::new(&root, row.clone()).expect("the benchmark row is typed");
+    let record = FieldRecord::new(&root, row.clone()).expect("the benchmark row is typed");
     group.bench_function("new", |bencher| {
-        bencher.iter(|| TypedRecord::new(black_box(&root), black_box(&row).clone()).unwrap());
+        bencher.iter(|| FieldRecord::new(black_box(&root), black_box(&row).clone()).unwrap());
     });
     group.bench_function("get_by_name", |bencher| {
         bencher.iter(|| {

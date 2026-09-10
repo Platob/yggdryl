@@ -511,7 +511,7 @@ fn a_scalar_couples_its_own_digest() {
         Scalar::from(1_i64).txhash(1, DigestAlgorithm::Xxh3)
     );
     let field = Field::new("id", DataType::Int64, false);
-    let typed = crate::TypedScalar::new(&field, 1_i64).unwrap();
+    let typed = crate::FieldScalar::new(&field, 1_i64).unwrap();
     assert_eq!(
         typed.txhash(1, DigestAlgorithm::Xxh3),
         Scalar::from(1_i64).txhash(1, DigestAlgorithm::Xxh3)
@@ -520,7 +520,7 @@ fn a_scalar_couples_its_own_digest() {
         .unwrap()
         .required_field("row");
     let record =
-        crate::TypedRecord::new(&row, Scalar::from_sequence([Scalar::from(1_i64)])).unwrap();
+        crate::FieldRecord::new(&row, Scalar::from_sequence([Scalar::from(1_i64)])).unwrap();
     assert_eq!(
         record.txhash(1, DigestAlgorithm::Xxh3),
         Scalar::from_sequence([Scalar::from(1_i64)]).txhash(1, DigestAlgorithm::Xxh3)

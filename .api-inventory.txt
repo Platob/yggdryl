@@ -2440,7 +2440,7 @@ pub fn txh32(input: &[u8], unix: i64) -> TxHash
   pub fn digest(input: &[u8], unix: i64, algorithm: DigestAlgorithm) -> TxHash
 
 ### yggdryl::txhash::scalar  [rust\src\txhash\scalar.rs]
-pub fn txhash(&self, unix: i64, algorithm: DigestAlgorithm) -> TxHash  (on Scalar, TypedScalar<'_>, and TypedRecord<'_>)
+pub fn txhash(&self, unix: i64, algorithm: DigestAlgorithm) -> TxHash  (on Scalar, FieldScalar<'_>, and FieldRecord<'_>)
 
 ### yggdryl::txhash::time  [rust\src\txhash\time.rs]
 pub const DEFAULT_UNIT: TimeUnit = TimeUnit::Microsecond;
@@ -3350,10 +3350,10 @@ pub trait TextValue: ScalarValue
   pub fn storage(&self) -> &SmolStr
 
 ### yggdryl::types::typed  [rust\src\types\typed.rs]
-pub struct TypedScalar<'a>
+pub struct FieldScalar<'a>
   pub fn new(field: &'a Field, value: impl Into<Scalar>) -> Result<Self>
   pub fn parse_str(field: &'a Field, text: &str) -> Result<Self>
-  pub fn infer(value: Scalar) -> Result<TypedScalar<'static>>
+  pub fn infer(value: Scalar) -> Result<FieldScalar<'static>>
   pub const fn field(&self) -> &'a Field
   pub const fn dtype(&self) -> &'a DataType
   pub fn name(&self) -> &'a str
@@ -3366,9 +3366,9 @@ pub struct TypedScalar<'a>
   pub fn into_str(self) -> SmolStr
   pub fn from_arrow_array( field: &'a Field, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn into_arrow_array(self) -> crate::arrow::Result<arrow_array::ArrayRef>
-  impl AsRef<Scalar> for TypedScalar<'_>
-  impl From<TypedScalar<'_>> for Scalar
-pub struct UncheckedTypedScalar<'a>
+  impl AsRef<Scalar> for FieldScalar<'_>
+  impl From<FieldScalar<'_>> for Scalar
+pub struct UncheckedFieldScalar<'a>
   pub fn new(field: &'a Field, value: impl Into<Scalar>) -> Self
   pub fn from_str(field: &'a Field, text: &str) -> Self
   pub const fn field(&self) -> &'a Field
@@ -3376,31 +3376,31 @@ pub struct UncheckedTypedScalar<'a>
   pub fn name(&self) -> &'a str
   pub const fn value(&self) -> &Scalar
   pub const fn is_null(&self) -> bool
-  pub fn checked(self) -> Result<TypedScalar<'a>>
+  pub fn checked(self) -> Result<FieldScalar<'a>>
   pub fn as_str(&self) -> Option<&str>  // and as_bytes, as_bool: the held value when it already has that shape, never read
   pub fn as_i64(&self) -> Option<i64>  // and as_u64, as_i128, as_f64, as_integer, as_float, as_decimal, as_temporal: the field's reading of the held value
   pub fn into_value(self) -> Scalar
 
 ### yggdryl::types::typed::record  [rust\src\types\typed\record.rs]
-pub struct TypedRecord<'a>
+pub struct FieldRecord<'a>
   pub fn new(field: &'a Field, row: impl Into<Scalar>) -> Result<Self>
   pub fn from_arrow_batch( field: &'a Field, batch: &arrow_array::RecordBatch, row: usize, ) -> crate::arrow::Result<Self>
   pub const fn field(&self) -> &'a Field
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
-  pub fn get<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&TypedScalar<'a>>
-  pub fn get_by_name(&self, name: &str) -> Option<&TypedScalar<'a>>
-  pub fn get_by_index(&self, index: usize) -> Option<&TypedScalar<'a>>
+  pub fn get<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&FieldScalar<'a>>
+  pub fn get_by_name(&self, name: &str) -> Option<&FieldScalar<'a>>
+  pub fn get_by_index(&self, index: usize) -> Option<&FieldScalar<'a>>
   pub fn names(&self) -> impl Iterator<Item = &'a str> + use<'a>
-  pub fn iter(&self) -> std::slice::Iter<'_, TypedScalar<'a>>
+  pub fn iter(&self) -> std::slice::Iter<'_, FieldScalar<'a>>
   pub fn as_str<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&str>
   pub fn stable_hash(&self) -> u64
   pub fn into_values(self) -> Vec<Scalar>
   pub fn into_scalar(self) -> Scalar
   pub fn into_arrow_batch(self) -> crate::arrow::Result<arrow_array::RecordBatch>
-  impl IntoIterator for TypedRecord<'a>  // and for &TypedRecord<'a>
-  impl Index<usize> for TypedRecord<'a>  // and Index<&str>
-  impl From<TypedRecord<'_>> for Scalar
+  impl IntoIterator for FieldRecord<'a>  // and for &FieldRecord<'a>
+  impl Index<usize> for FieldRecord<'a>  // and Index<&str>
+  impl From<FieldRecord<'_>> for Scalar
 
 ### yggdryl::types::typed::shared  [rust\src\types\typed\shared.rs]
 pub fn shared_field(&self) -> Option<&'static Field>  (on DataType and on Scalar)
@@ -3646,7 +3646,7 @@ pub const SECRET_MINIMUM_LENGTH: usize = 136;
 ### yggdryl::xxhash::scalar  [rust\src\xxhash\scalar.rs]
 pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>>
   pub fn write_bytes(&self, sink: &mut impl Hasher)
-  pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest  (on Scalar, TypedScalar<'_>, and TypedRecord<'_>)
+  pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest  (on Scalar, FieldScalar<'_>, and FieldRecord<'_>)
   pub struct ValueBytes<'a>
 
 ### yggdryl::xxhash::state  [rust\src\xxhash\state.rs]

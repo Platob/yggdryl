@@ -3,7 +3,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::{DataType, Field, Scalar, TypedRecord, TypedScalar};
+use crate::{DataType, Field, FieldRecord, FieldScalar, Scalar};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -32,7 +32,7 @@ fn row() -> Scalar {
 #[test]
 fn a_row_pairs_every_cell_with_its_child() {
     let schema = schema();
-    let record = TypedRecord::new(&schema, row()).unwrap();
+    let record = FieldRecord::new(&schema, row()).unwrap();
     assert_eq!(record.len(), 3);
     assert!(!record.is_empty());
     assert!(std::ptr::eq(record.field(), &schema));
@@ -50,7 +50,7 @@ fn a_row_pairs_every_cell_with_its_child() {
     assert_eq!(record.as_str(0), None);
     assert_eq!(record.as_str("absent"), None);
     assert_eq!(
-        record.get(2).and_then(TypedScalar::as_decimal),
+        record.get(2).and_then(FieldScalar::as_decimal),
         Some((crate::I256::from_i128(150), 2))
     );
     assert_eq!(record.get("price"), record.get_by_index(2));
@@ -69,7 +69,7 @@ fn a_name_resolves_exactly_as_the_field_resolves_it() {
     ])
     .unwrap()
     .required_field("row");
-    let record = TypedRecord::new(
+    let record = FieldRecord::new(
         &schema,
         Scalar::from_sequence([
             Scalar::from("upper"),
@@ -84,7 +84,7 @@ fn a_name_resolves_exactly_as_the_field_resolves_it() {
         "symbol", "Symbol", "SYMBOL", "leg", "LEG", "px", "leg.px", "absent",
     ] {
         assert_eq!(
-            record.get_by_name(key).map(TypedScalar::name),
+            record.get_by_name(key).map(FieldScalar::name),
             schema
                 .index_of(key)
                 .map(|index| schema.fields()[index].name()),
@@ -109,8 +109,8 @@ fn a_named_record_and_an_ordered_sequence_read_alike() {
         ("id", Scalar::from(7)),
     ])
     .unwrap();
-    let from_record = TypedRecord::new(&schema, named).unwrap();
-    let from_sequence = TypedRecord::new(&schema, row()).unwrap();
+    let from_record = FieldRecord::new(&schema, named).unwrap();
+    let from_sequence = FieldRecord::new(&schema, row()).unwrap();
     assert_eq!(from_record, from_sequence);
     assert_eq!(hash_of(&from_record), hash_of(&from_sequence));
     // The cells are what the field stores: the id was narrowed on the way in.
@@ -126,37 +126,37 @@ fn a_named_record_and_an_ordered_sequence_read_alike() {
 #[test]
 fn the_root_must_be_a_required_struct_and_the_row_must_fit_it() {
     let nullable = schema().with_nullable(true);
-    let refused = TypedRecord::new(&nullable, row()).unwrap_err().to_string();
+    let refused = FieldRecord::new(&nullable, row()).unwrap_err().to_string();
     assert!(refused.contains("non-null struct root"), "{refused}");
 
     let leaf = Field::new("id", DataType::Int64, false);
-    let refused = TypedRecord::new(&leaf, row()).unwrap_err().to_string();
+    let refused = FieldRecord::new(&leaf, row()).unwrap_err().to_string();
     assert!(refused.contains("struct root"), "{refused}");
 
     let schema = schema();
     let short = Scalar::from_sequence([Scalar::from(7_i64)]);
-    let refused = TypedRecord::new(&schema, short).unwrap_err().to_string();
+    let refused = FieldRecord::new(&schema, short).unwrap_err().to_string();
     assert!(refused.contains("3"), "{refused}");
 
     let wrong = Scalar::from_sequence([Scalar::from("seven"), Scalar::Null, Scalar::Null]);
-    let refused = TypedRecord::new(&schema, wrong).unwrap_err().to_string();
+    let refused = FieldRecord::new(&schema, wrong).unwrap_err().to_string();
     assert!(refused.contains("id"), "{refused}");
 
     let missing = Scalar::from_sequence([Scalar::Null, Scalar::Null, Scalar::Null]);
     assert!(
-        TypedRecord::new(&schema, missing).is_err(),
+        FieldRecord::new(&schema, missing).is_err(),
         "id is required"
     );
 
     let extra =
         Scalar::from_record([("id", Scalar::from(1)), ("volume", Scalar::from(1))]).unwrap();
-    assert!(TypedRecord::new(&schema, extra).is_err());
+    assert!(FieldRecord::new(&schema, extra).is_err());
 }
 
 #[test]
 fn an_empty_struct_reads_an_empty_row() {
     let schema = DataType::from_fields([]).unwrap().required_field("row");
-    let record = TypedRecord::new(&schema, Scalar::from_sequence([])).unwrap();
+    let record = FieldRecord::new(&schema, Scalar::from_sequence([])).unwrap();
     assert!(record.is_empty());
     assert_eq!(record.names().count(), 0);
     assert_eq!(record.to_string(), "{}");
@@ -166,10 +166,10 @@ fn an_empty_struct_reads_an_empty_row() {
 #[test]
 fn a_row_iterates_by_value_and_by_reference() {
     let schema = schema();
-    let record = TypedRecord::new(&schema, row()).unwrap();
-    let names: Vec<&str> = (&record).into_iter().map(TypedScalar::name).collect();
+    let record = FieldRecord::new(&schema, row()).unwrap();
+    let names: Vec<&str> = (&record).into_iter().map(FieldScalar::name).collect();
     assert_eq!(names, ["id", "symbol", "price"]);
-    let values: Vec<Scalar> = record.into_iter().map(TypedScalar::into_value).collect();
+    let values: Vec<Scalar> = record.into_iter().map(FieldScalar::into_value).collect();
     assert_eq!(values, row().as_sequence().unwrap());
 }
 
@@ -177,12 +177,12 @@ fn a_row_iterates_by_value_and_by_reference() {
 fn rows_compare_by_datatype_and_cells_and_never_by_the_root_around_them() {
     let first = schema();
     let renamed = schema().with_name("trade");
-    let left = TypedRecord::new(&first, row()).unwrap();
-    let right = TypedRecord::new(&renamed, row()).unwrap();
+    let left = FieldRecord::new(&first, row()).unwrap();
+    let right = FieldRecord::new(&renamed, row()).unwrap();
     assert_eq!(left, right);
     assert_eq!(hash_of(&left), hash_of(&right));
 
-    let other = TypedRecord::new(
+    let other = FieldRecord::new(
         &first,
         Scalar::from_sequence([Scalar::from(8_i64), Scalar::Null, Scalar::Null]),
     )
@@ -196,29 +196,29 @@ fn rows_compare_by_datatype_and_cells_and_never_by_the_root_around_them() {
     ])
     .unwrap()
     .required_field("row");
-    let wide = TypedRecord::new(&widened, row()).unwrap();
+    let wide = FieldRecord::new(&widened, row()).unwrap();
     assert_ne!(left, wide, "another datatype is another row");
 }
 
 #[test]
 fn a_row_displays_its_named_cells() {
     let schema = schema();
-    let record = TypedRecord::new(&schema, row()).unwrap();
+    let record = FieldRecord::new(&schema, row()).unwrap();
     assert_eq!(record.to_string(), "{id=7, symbol=AAPL, price=1.50}");
-    let absent = TypedRecord::new(
+    let absent = FieldRecord::new(
         &schema,
         Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null, Scalar::Null]),
     )
     .unwrap();
     assert_eq!(absent.to_string(), "{id=1, symbol=null, price=null}");
     let debug = format!("{record:?}");
-    assert!(debug.starts_with("TypedRecord {"), "{debug}");
+    assert!(debug.starts_with("FieldRecord {"), "{debug}");
 }
 
 #[test]
 fn a_row_serializes_as_its_field_and_cells() {
     let schema = schema();
-    let record = TypedRecord::new(&schema, row()).unwrap();
+    let record = FieldRecord::new(&schema, row()).unwrap();
     let encoded: serde_json::Value = serde_json::to_value(&record).unwrap();
     assert_eq!(encoded["field"], serde_json::to_value(&schema).unwrap());
     assert_eq!(encoded["values"].as_array().map(Vec::len), Some(3));
@@ -232,7 +232,7 @@ fn a_row_serializes_as_its_field_and_cells() {
 #[should_panic(expected = "is not a child of the field")]
 fn subscripting_an_absent_name_panics_like_a_field_does() {
     let schema = schema();
-    let record = TypedRecord::new(&schema, row()).unwrap();
+    let record = FieldRecord::new(&schema, row()).unwrap();
     let _ = &record["volume"];
 }
 
@@ -240,22 +240,22 @@ fn subscripting_an_absent_name_panics_like_a_field_does() {
 #[should_panic(expected = "out of range")]
 fn subscripting_a_position_past_the_row_panics_like_a_field_does() {
     let schema = schema();
-    let record = TypedRecord::new(&schema, row()).unwrap();
+    let record = FieldRecord::new(&schema, row()).unwrap();
     let _ = &record[3];
 }
 
 #[cfg(feature = "arrow")]
 mod arrow {
-    use super::{DataType, Field, Scalar, TypedRecord, row, schema};
+    use super::{DataType, Field, FieldRecord, Scalar, row, schema};
 
     #[test]
     fn a_row_round_trips_through_a_one_row_batch() {
         let schema = schema();
-        let record = TypedRecord::new(&schema, row()).unwrap();
+        let record = FieldRecord::new(&schema, row()).unwrap();
         let batch = record.clone().into_arrow_batch().unwrap();
         assert_eq!(batch.num_rows(), 1);
         assert_eq!(batch.num_columns(), 3);
-        let decoded = TypedRecord::from_arrow_batch(&schema, &batch, 0).unwrap();
+        let decoded = FieldRecord::from_arrow_batch(&schema, &batch, 0).unwrap();
         assert_eq!(decoded, record);
         assert_eq!(decoded.into_scalar(), row());
     }
@@ -268,7 +268,7 @@ mod arrow {
             Scalar::from_sequence([Scalar::from(8_i64), Scalar::Null, Scalar::d128(1, 2)]),
         ]);
         let batch = crate::arrow::batch_from_value(&schema, &rows).unwrap();
-        let second = TypedRecord::from_arrow_batch(&schema, &batch, 1).unwrap();
+        let second = FieldRecord::from_arrow_batch(&schema, &batch, 1).unwrap();
         assert_eq!(second["id"].as_i64(), Some(8));
         assert!(second["symbol"].is_null());
         assert_eq!(second.as_str("symbol"), None);
@@ -276,7 +276,7 @@ mod arrow {
         // at the field's scale, so it is the value the row was built from.
         assert_eq!(second["price"].value(), &Scalar::d128(1, 2));
 
-        let past = TypedRecord::from_arrow_batch(&schema, &batch, 2)
+        let past = FieldRecord::from_arrow_batch(&schema, &batch, 2)
             .unwrap_err()
             .to_string();
         assert!(past.contains("row 2"), "{past}");
@@ -284,12 +284,12 @@ mod arrow {
         let narrower = DataType::from_fields([Field::new("id", DataType::Int64, false)])
             .unwrap()
             .required_field("row");
-        let refused = TypedRecord::from_arrow_batch(&narrower, &batch, 0)
+        let refused = FieldRecord::from_arrow_batch(&narrower, &batch, 0)
             .unwrap_err()
             .to_string();
         assert!(refused.contains("columns"), "{refused}");
 
         let nullable = schema.clone().with_nullable(true);
-        assert!(TypedRecord::from_arrow_batch(&nullable, &batch, 0).is_err());
+        assert!(FieldRecord::from_arrow_batch(&nullable, &batch, 0).is_err());
     }
 }

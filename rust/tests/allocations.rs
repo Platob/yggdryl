@@ -26,11 +26,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
-use yggdryl::types::{MsgDirection, UncheckedTypedScalar};
+use yggdryl::types::{MsgDirection, UncheckedFieldScalar};
 use yggdryl::{
-    DataType, DataTypeId, Field, FixBranch, FixCode, FixCodec, FixId, FixLineageEntry, FixMsg,
-    FixPedigree, FixRegistry, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, TimeUnit,
-    Timezone, TypedRecord, TypedScalar, Version,
+    DataType, DataTypeId, Field, FieldRecord, FieldScalar, FixBranch, FixCode, FixCodec, FixId,
+    FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType, PythonKind,
+    PythonMetadata, Scalar, TimeUnit, Timezone, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -1454,13 +1454,13 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
 }
 
 #[test]
-fn inferring_a_typed_scalar_borrows_a_prebuilt_field_and_allocates_nothing() {
+fn inferring_a_field_scalar_borrows_a_prebuilt_field_and_allocates_nothing() {
     // The typed view borrows the field the crate keeps for the datatype, so
     // typing a leaf value that names itself builds no field and no copy of
     // one - once, and a thousand times, for every prebuilt id.
     for (id, value) in prebuilt_values() {
         free(&format!("inferring a typed {id:?}"), || {
-            black_box(TypedScalar::infer(black_box(&value).clone()).expect("the value infers"));
+            black_box(FieldScalar::infer(black_box(&value).clone()).expect("the value infers"));
         });
     }
     // A parameterized leaf is interned on its first ask and borrowed after.
@@ -1482,7 +1482,7 @@ fn typing_a_value_a_field_already_holds_allocates_nothing() {
     // a whole canonical row under its Struct root.
     let (root, row) = payload_row();
     free("typing a canonical row under its root", || {
-        black_box(TypedScalar::new(black_box(&root), black_box(&row).clone()).expect("typed"));
+        black_box(FieldScalar::new(black_box(&root), black_box(&row).clone()).expect("typed"));
     });
     for (index, cell) in row.as_sequence().expect("a row").iter().enumerate() {
         let field = &root.fields()[index];
@@ -1490,13 +1490,13 @@ fn typing_a_value_a_field_already_holds_allocates_nothing() {
             &format!("typing the canonical {} cell", field.name()),
             || {
                 black_box(
-                    TypedScalar::new(black_box(field), black_box(cell).clone()).expect("typed"),
+                    FieldScalar::new(black_box(field), black_box(cell).clone()).expect("typed"),
                 );
             },
         );
     }
     let text = Field::new("symbol", DataType::Utf8, false);
-    let unchecked = UncheckedTypedScalar::from_str(
+    let unchecked = UncheckedFieldScalar::from_str(
         &text,
         "a symbol far longer than any inline string buffer can hold",
     );
@@ -1532,9 +1532,9 @@ fn reading_a_typed_row_costs_one_allocation_and_its_accessors_none() {
     for width in [4_usize, 64, 1_024] {
         let (root, row) = wide_row(width);
         costs(&format!("typing a canonical {width}-column row"), 1, || {
-            black_box(TypedRecord::new(black_box(&root), black_box(&row).clone()).expect("typed"));
+            black_box(FieldRecord::new(black_box(&root), black_box(&row).clone()).expect("typed"));
         });
-        let record = TypedRecord::new(&root, row.clone()).expect("typed");
+        let record = FieldRecord::new(&root, row.clone()).expect("typed");
         let last = format!("column_{}", width - 1);
         let folded = last.to_ascii_uppercase();
         free(&format!("looking up a cell of {width} by name"), || {

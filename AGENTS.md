@@ -108,7 +108,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | --- | --- |
 | `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
 | `iobase.rs` | the single `IOBase` trait and its behavior modules |
-| `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, typed views (`TypedScalar`, `TypedRecord`, the prebuilt shared fields), datatype families |
+| `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, field-borrowing values (`FieldScalar`, `FieldRecord`, the prebuilt shared fields), datatype families |
 | `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
@@ -135,7 +135,7 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 
 - One row schema: a non-null Struct `Field`. Rows canonicalize to ordered
   `Scalar::Sequence`; `Scalar::Record` is a sorted name-to-scalar *input* shape.
-  No second row/schema class or accessor; `TypedRecord<'_>` is a borrowed view
+  No second row/schema class or accessor; `FieldRecord<'_>` is a borrowed view
   of one row under that field, never a class of its own.
 - `Field` alone owns metadata and cache-aware mutation; `DataType` has none.
   Protocol metadata is inert `<scheme>:<property>` text in one map; a protocol
@@ -173,7 +173,7 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 | value | `Scalar` | one variant per physical width |
 | checked value | `DataType::scalar(v)`, `Field::scalar(v)` | the only way a caller value becomes a stored one |
 | narrowed view | `TypedField<K>`, `TypedFieldRef<'_, K>` | a marker validating the variant; parameters stay in the wrapped `Field` |
-| typed value | `TypedScalar<'_>`, `TypedRecord<'_>` | a borrowed `Field` and the value its `scalar` contract answered; `UncheckedTypedScalar<'_>` is the pairing before that proof |
+| field-borrowing value | `FieldScalar<'_>`, `FieldRecord<'_>` | a borrowed `Field` and the value its `scalar` contract answered; `UncheckedFieldScalar<'_>` is the pairing before that proof |
 | Arrow value | `arrow::ArrowValue` | one scalar, array, batch, or stream under one `Field` |
 
 Equivalences a change keeps lossless, in both directions:
@@ -224,8 +224,8 @@ never to a wrapper's own buffer.
 - `ArrowValue` reports `shape`, `is_scalar`/`is_array`/`is_batch`/`is_stream`,
   `row_size`, `column_size`; borrows with `as_array`/`as_batch`; consumes with
   `into_array`/`into_batch`/`into_reader`/`into_scalar`; converts with `cast`.
-- `TypedRecord<'_>` is the typed row view under one Struct `Field`, borrowing
-  the field: cell `i` is a `TypedScalar` borrowing child `i`, built by the
+- `FieldRecord<'_>` is the row view under one Struct `Field`, borrowing
+  the field: cell `i` is a `FieldScalar` borrowing child `i`, built by the
   field's own row canonicalization from a `Sequence` or a `Record`, read with
   `get`/`get_by_name`/`get_by_index`/`names`/`iter`/`as_str` and subscripts,
   and collapsed with `into_scalar`. A name reaches a cell exactly as
@@ -241,7 +241,7 @@ never to a wrapper's own buffer.
 | --- | --- | --- |
 | accept | `from_str`/`from_*`, `Uri::from_path`, `impl Into<Holder>`, `MimeType`/`MediaType`, `Coded::infer`, `text::io::Plan::infer`, `RecordOptions::for_media_type`, binding coercion (§3, §4) | every documented spelling of one thing, each listed and tested |
 | resolve | `DataType::from_str`, `Field::from_str`, `DataType::LOGICAL_NAMES`, `Scalar::dtype`, `inferred_*_field`, `DataType::scalar`/`Field::scalar` | one exact answer or a typed error, computed once |
-| carry | `DataType`, `Field`, `Scalar`, `TypedField<K>`, `TypedScalar<'_>`/`TypedRecord<'_>`, the dispatch enums | the proof travels with the value; no later caller re-derives it |
+| carry | `DataType`, `Field`, `Scalar`, `TypedField<K>`, `FieldScalar<'_>`/`FieldRecord<'_>`, the dispatch enums | the proof travels with the value; no later caller re-derives it |
 | exploit | `ArrowCastPlan::compile`/`preflight`/`apply`, `scalar_array`/`scalar_value`, cached Arrow projections, `as_integer`/`as_float`/`as_decimal`/`as_temporal`, `default_value` | schema-dependent work leaves the per-item path |
 
 - Precedence, where the caller did not say: an explicit argument, then a declared
@@ -288,10 +288,10 @@ timing alone proves nothing:
 
 - borrowed views allocate nothing: `as_*`, `as_array`, `as_batch`, `as_field`,
   `TypedFieldRef`, `ProtocolField`; `into_*` is the allocating counterpart.
-- typing allocates nothing where the proof already exists: `TypedScalar::infer`
-  borrows the prebuilt shared field of a leaf datatype, `TypedScalar::new`
-  answers a canonical value untouched, and `TypedRecord::get*`/`names`/`iter`
-  borrow; `TypedRecord::new` (the cells' `Vec`), `into_scalar`, and `into_str`
+- typing allocates nothing where the proof already exists: `FieldScalar::infer`
+  borrows the prebuilt shared field of a leaf datatype, `FieldScalar::new`
+  answers a canonical value untouched, and `FieldRecord::get*`/`names`/`iter`
+  borrow; `FieldRecord::new` (the cells' `Vec`), `into_scalar`, and `into_str`
   allocate by contract.
 - an exact cast returns the caller's own batch, and `Representation::Bits` shares
   the value buffer between two same-width layouts.
@@ -349,9 +349,9 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   `config` = `home` + `.config`; `temporary` wraps the platform temporary
   directory. All three construct a handle and create nothing; nothing else
   reaches these directories through `std::env` or concatenation.
-- `TypedScalar<'_>` = one borrowed `Field` + the `Scalar` its `scalar` contract
-  answered; `TypedRecord<'_>` = one borrowed Struct `Field` + one `TypedScalar`
-  per child. `TypedScalar::infer` borrows `DataType::shared_field`, the one
+- `FieldScalar<'_>` = one borrowed `Field` + the `Scalar` its `scalar` contract
+  answered; `FieldRecord<'_>` = one borrowed Struct `Field` + one `FieldScalar`
+  per child. `FieldScalar::infer` borrows `DataType::shared_field`, the one
   prebuilt nullable `value` field per leaf datatype - parameter-free leaves in
   a table by `DataTypeId`, parameterized leaves interned under a fixed bound,
   nested and geospatial datatypes never. `parse_str` is the one text-to-typed
@@ -385,7 +385,7 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 - A typed view compares, orders, and hashes over `(dtype, value)` - never the
   field's name, nullability, or metadata - so a value is one value whichever
   column holds it, and its `stable_hash` is the value's own. A borrowing view
-  implements `Serialize` and never `Deserialize`; `UncheckedTypedScalar` has no
+  implements `Serialize` and never `Deserialize`; `UncheckedFieldScalar` has no
   equality, hash, or serde because its state is unproven.
 
 ## Datatypes, parsers, errors
@@ -690,8 +690,8 @@ change to `media/iceberg/`.
 
 - One sealed zero-sized marker per datatype variant. `TypedField<K>` owns one
   `Field`; borrowed forms and `ProtocolField`/`ProtocolFieldMut` own one pointer
-  (plus a `Scheme`); `TypedScalar<'_>` owns one pointer and one `Scalar`,
-  `TypedRecord<'_>` one pointer and the cells' `Vec`. No duplicated state, no
+  (plus a `Scheme`); `FieldScalar<'_>` owns one pointer and one `Scalar`,
+  `FieldRecord<'_>` one pointer and the cells' `Vec`. No duplicated state, no
   unchecked mutable path that can invalidate the marker or the pairing.
 - Arrow schema parity is lossless; the C Data Interface routes only through core
   recursive `DataType`/`Field` exporters, and bindings never build schemas

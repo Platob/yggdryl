@@ -12,8 +12,8 @@ use arrow_schema::DataType as ArrowDataType;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::types::{AsciiFamily, CfiField, CountryField, CurrencyField, MicField};
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, AsciiEnum, DataType, DataTypeId, DataTypeKind, Field, Scalar,
-    TypedScalar,
+    ArrowCast, ArrowCastOptions, AsciiEnum, DataType, DataTypeId, DataTypeKind, Field, FieldScalar,
+    Scalar,
 };
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -414,7 +414,7 @@ fn the_typed_field_and_scalar_aliases_name_their_code() {
 
     // The pairing is the field's value contract, so the text becomes the code
     // leaf on the way in.
-    let value = TypedScalar::new(ccy.as_field(), "USD").unwrap();
+    let value = FieldScalar::new(ccy.as_field(), "USD").unwrap();
     assert_eq!(value.dtype(), &DataType::Currency);
     assert_eq!(value.name(), "ccy");
     assert_eq!(value.as_str(), Some("USD"));
@@ -427,7 +427,7 @@ fn the_typed_field_and_scalar_aliases_name_their_code() {
             .try_into_typed::<yggdryl::types::ascii::CurrencyType>()
             .is_err()
     );
-    assert!(TypedScalar::new(venue.as_field(), "XPARIS").is_err());
+    assert!(FieldScalar::new(venue.as_field(), "XPARIS").is_err());
 }
 
 #[test]

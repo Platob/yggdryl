@@ -83,7 +83,7 @@ pub use temporal::scalars::TemporalFamily;
 pub use temporal::*;
 pub use text::*;
 pub use typed::{
-    FieldType, TypedField, TypedFieldRef, TypedRecord, TypedScalar, UncheckedTypedScalar,
+    FieldRecord, FieldScalar, FieldType, TypedField, TypedFieldRef, UncheckedFieldScalar,
 };
 pub use url::*;
 pub use uuid::*;

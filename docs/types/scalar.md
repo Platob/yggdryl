@@ -1,6 +1,6 @@
 # Scalar
 
-`Scalar` is the one value every layer speaks; the vocabulary, families, and `TypedScalar` sit beside it.
+`Scalar` is the one value every layer speaks; the vocabulary, families, and `FieldScalar` sit beside it.
 
 ## Contract
 
@@ -14,7 +14,7 @@
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
 | `Enum` | Kind, spelling, ordinal; JSON, YAML, TOML, and host projections emit the spelling |
 | Views | `as_integer`, `as_float`, `as_decimal`, `as_temporal`; total equality, ordering, hash |
-| Bindings | `yggdryl.enums`, `enums`; `TypedScalar` and the `wkb` reader Rust only |
+| Bindings | `yggdryl.enums`, `enums`; `FieldScalar` and the `wkb` reader Rust only |
 
 ## Use
 
@@ -105,15 +105,15 @@ assert_eq!(time.as_temporal().unwrap().family(), TemporalFamily::Time);
 assert_eq!(decimal.as_decimal(), Some((I256::from_i128(1_250), 2)));
 ```
 
-## TypedScalar
+## FieldScalar
 
 One value and one datatype, checked against each other, one alias per datatype. Rust only.
 
 ```rust
-use yggdryl::types::{Int64Scalar, TypedScalar};
+use yggdryl::types::{Int64Scalar, FieldScalar};
 use yggdryl::{DataType, Scalar};
 
-let price = TypedScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
+let price = FieldScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
 assert_eq!(price.dtype(), &DataType::Int64);
 
 // The same pairing, with the datatype fixed at compile time.

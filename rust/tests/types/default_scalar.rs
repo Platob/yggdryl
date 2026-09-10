@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone, TypedScalar, UnionMode};
+use yggdryl::{DataType, DataTypeId, Field, FieldScalar, Scalar, TimeUnit, Timezone, UnionMode};
 
 fn representative_types() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -93,7 +93,7 @@ fn datatype_defaults_round_trip_through_the_public_scalar_boundary() {
         // both directions. A leaf borrows the field the crate keeps for its
         // datatype; a nested datatype has none and pairs under the local one.
         let shared = dtype.shared_field().unwrap_or(&field);
-        let typed = TypedScalar::from_arrow_array(shared, array.as_ref())
+        let typed = FieldScalar::from_arrow_array(shared, array.as_ref())
             .unwrap_or_else(|error| panic!("{} typed decode failed: {error}", dtype.kind()));
         assert_eq!(typed.dtype(), &dtype);
         assert!(
@@ -222,9 +222,9 @@ fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_n
         // ...while a typed pairing is the field's own contract with no such
         // exception: it holds the null-only default under a nullable Field
         // and projects exactly what the field-directed boundary projects.
-        assert!(TypedScalar::new(&field, expected.clone()).is_err());
+        assert!(FieldScalar::new(&field, expected.clone()).is_err());
         let holder = field.clone().with_nullable(true);
-        let typed = TypedScalar::new(&holder, expected.clone()).unwrap();
+        let typed = FieldScalar::new(&holder, expected.clone()).unwrap();
         assert_eq!(
             typed.into_arrow_array().unwrap().as_ref(),
             scalar_array(&holder, &expected).unwrap().as_ref()

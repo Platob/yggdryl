@@ -336,25 +336,25 @@ impl<H: Hasher> std::fmt::Write for HasherWriter<'_, H> {
     }
 }
 
-impl crate::TypedScalar<'_> {
+impl crate::FieldScalar<'_> {
     /// Return this value's digest under `algorithm`.
     ///
     /// The field is proof, not content: the digest is the value's, so a
-    /// `TypedScalar` and the `Scalar` inside it answer the same.
+    /// `FieldScalar` and the `Scalar` inside it answer the same.
     pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest {
         self.value().digest(algorithm)
     }
 }
 
-impl crate::TypedRecord<'_> {
+impl crate::FieldRecord<'_> {
     /// Return this row's digest under `algorithm`.
     ///
     /// The row digests as the ordered sequence it canonicalizes to, so it
-    /// answers what [`crate::TypedRecord::into_scalar`] followed by
+    /// answers what [`crate::FieldRecord::into_scalar`] followed by
     /// [`Scalar::digest`] answers, without building the sequence.
     pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest {
         let mut digester = algorithm.digester();
-        write_row_bytes(&mut digester, self.iter().map(crate::TypedScalar::value));
+        write_row_bytes(&mut digester, self.iter().map(crate::FieldScalar::value));
         digester.as_digest()
     }
 }

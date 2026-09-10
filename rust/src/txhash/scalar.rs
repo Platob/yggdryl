@@ -23,20 +23,20 @@ impl Scalar {
     }
 }
 
-impl crate::TypedScalar<'_> {
+impl crate::FieldScalar<'_> {
     /// Couple a microsecond instant with this value's digest.
     ///
     /// The field is proof, not content: the answer is the value's, so a
-    /// `TypedScalar` and the `Scalar` inside it answer the same.
+    /// `FieldScalar` and the `Scalar` inside it answer the same.
     pub fn txhash(&self, unix: i64, algorithm: DigestAlgorithm) -> TxHash {
         self.value().txhash(unix, algorithm)
     }
 }
 
-impl crate::TypedRecord<'_> {
+impl crate::FieldRecord<'_> {
     /// Couple a microsecond instant with this row's digest.
     ///
-    /// The digest half is exactly [`crate::TypedRecord::digest`], so a row
+    /// The digest half is exactly [`crate::FieldRecord::digest`], so a row
     /// answers here what its canonical sequence answers.
     pub fn txhash(&self, unix: i64, algorithm: DigestAlgorithm) -> TxHash {
         TxHash::new(unix, self.digest(algorithm))

@@ -130,10 +130,11 @@ pub use types::{
     TemporalType, TextType, UnionFields, UrlField, UrlType, Version, VersionField, VersionType,
 };
 pub use types::{
-    AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRef, FieldType,
-    Floating, FloatingValue, GeospatialValue, Integer, IntegerValue, NestedValue, OwnedDifferences,
-    PartitionFieldNames, PartitionFields, Pretty, Scalar, ScalarFamily, ScalarValue,
-    TemporalFamily, TemporalValue, TextValue, TypedField, TypedFieldRef, TypedRecord, TypedScalar,
+    AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRecord,
+    FieldRef, FieldScalar, FieldType, Floating, FloatingValue, GeospatialValue, Integer,
+    IntegerValue, NestedValue, OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty,
+    Scalar, ScalarFamily, ScalarValue, TemporalFamily, TemporalValue, TextValue, TypedField,
+    TypedFieldRef,
 };
 pub use union_mode::UnionMode;
 pub use uri::{

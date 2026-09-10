@@ -12,7 +12,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schem
 use yggdryl::types::{
     AsciiField, CfiField, CountryField, CurrencyField, FixedAsciiField, MicField, ascii,
 };
-use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, TypedScalar};
+use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, FieldScalar};
 
 use super::typed::assert_typed_marker;
 
@@ -50,20 +50,20 @@ fn ascii_markers_cover_the_widths_and_the_codes() {
 
     // The typed value is checked under the one ASCII rule for its width.
     let width = FixedAsciiField::try_new("code", DataType::FixedAscii(8), false).unwrap();
-    let code = TypedScalar::new(width.as_field(), "ABC").unwrap();
+    let code = FieldScalar::new(width.as_field(), "ABC").unwrap();
     assert_eq!(code.as_str(), Some("ABC"));
     assert_eq!(code.value().id(), yggdryl::DataTypeId::FixedAscii);
-    assert!(TypedScalar::new(width.as_field(), "ABCDEFGHI").is_err());
+    assert!(FieldScalar::new(width.as_field(), "ABCDEFGHI").is_err());
 
     // A typed code value is checked at the width its own standard fixes.
     let ccy = CurrencyField::new("ccy", false);
     assert_eq!(
-        TypedScalar::new(ccy.as_field(), "USD").unwrap().as_str(),
+        FieldScalar::new(ccy.as_field(), "USD").unwrap().as_str(),
         Some("USD")
     );
-    assert!(TypedScalar::new(ccy.as_field(), "EURO").is_err());
+    assert!(FieldScalar::new(ccy.as_field(), "EURO").is_err());
     let cfi = CfiField::new("classification", false);
-    assert!(TypedScalar::new(cfi.as_field(), "ESVUFR").is_ok());
+    assert!(FieldScalar::new(cfi.as_field(), "ESVUFR").is_ok());
 }
 
 // ---------------------------------------------------------------------------

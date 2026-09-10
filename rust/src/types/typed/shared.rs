@@ -1,8 +1,8 @@
 //! Prebuilt shared fields, one per leaf datatype.
 //!
-//! A typed view borrows its field, and a value that names its own datatype
+//! A [`FieldScalar`] borrows its field, and a value that names its own datatype
 //! has no field to borrow - so the crate keeps one nullable `value` field per
-//! leaf datatype for the life of the program, and [`TypedScalar`] borrows
+//! leaf datatype for the life of the program, and [`FieldScalar`] borrows
 //! that. A parameter-free leaf is built once into a table indexed by
 //! [`DataTypeId`]; a leaf whose identity carries a parameter - a decimal's
 //! scale, a timestamp's unit and zone, a fixed width - is interned on first
@@ -10,7 +10,7 @@
 //! datatypes and geospatial parameters are unbounded, so nothing is kept for
 //! them and a caller pairs those under a field of its own.
 //!
-//! [`TypedScalar`]: super::TypedScalar
+//! [`FieldScalar`]: super::FieldScalar
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, PoisonError, RwLock};

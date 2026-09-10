@@ -1334,9 +1334,9 @@ mod values {
     }
 
     #[test]
-    fn a_typed_scalar_digests_as_the_value_inside_it() {
+    fn a_field_scalar_digests_as_the_value_inside_it() {
         let field = crate::Field::new("symbol", crate::DataType::Utf8, false);
-        let typed = crate::TypedScalar::new(&field, "AAPL").unwrap();
+        let typed = crate::FieldScalar::new(&field, "AAPL").unwrap();
         for algorithm in DigestAlgorithm::ALL {
             assert_eq!(
                 typed.digest(algorithm),
@@ -1347,7 +1347,7 @@ mod values {
     }
 
     #[test]
-    fn a_typed_record_digests_as_the_sequence_it_canonicalizes_to() {
+    fn a_field_record_digests_as_the_sequence_it_canonicalizes_to() {
         let row = crate::DataType::from_fields([
             crate::Field::new("id", crate::DataType::Int64, false),
             crate::Field::new("symbol", crate::DataType::Utf8, true),
@@ -1361,7 +1361,7 @@ mod values {
         .required_field("row");
         let nested = Scalar::from_sequence([Scalar::from(1_i32), Scalar::Null]);
         let cells = [Scalar::from(7_i64), Scalar::from("AAPL"), nested];
-        let record = crate::TypedRecord::new(&row, Scalar::from_sequence(cells.clone())).unwrap();
+        let record = crate::FieldRecord::new(&row, Scalar::from_sequence(cells.clone())).unwrap();
         let sequence = Scalar::from_sequence(cells);
         assert_eq!(record.stable_hash(), sequence.stable_hash());
         for algorithm in DigestAlgorithm::ALL {
@@ -1375,7 +1375,7 @@ mod values {
         let empty = crate::DataType::from_fields([])
             .unwrap()
             .required_field("row");
-        let record = crate::TypedRecord::new(&empty, Scalar::from_sequence([])).unwrap();
+        let record = crate::FieldRecord::new(&empty, Scalar::from_sequence([])).unwrap();
         assert_eq!(
             record.stable_hash(),
             Scalar::from_sequence([]).stable_hash()

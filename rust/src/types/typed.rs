@@ -1,12 +1,19 @@
-//! Typed views over the generic [`Field`] and [`Scalar`] values.
+//! Views that narrow or pair the generic [`Field`] and [`Scalar`] values.
+//!
+//! Two families, and the difference is what each one holds. A [`TypedField`]
+//! narrows one field to a datatype marker, so a caller that already knows the
+//! variant says so in the type. A [`FieldScalar`] holds a field and the value
+//! that field's own contract answered, so a reader downstream takes the name,
+//! the datatype and the value from one place; [`FieldRecord`] is a row of
+//! them, and [`UncheckedFieldScalar`] is the same pairing before the proof.
 //!
 //! Two kinds of proof live here. A compile-time marker ([`FieldType`]) narrows
 //! a [`Field`] to one datatype variant without copying it: [`TypedField`]
 //! owns the field, [`TypedFieldRef`] borrows it. A runtime pairing
-//! ([`TypedScalar`], [`TypedRecord`]) borrows a field and carries the value
+//! ([`FieldScalar`], [`FieldRecord`]) borrows a field and carries the value
 //! that field's own contract answered for it, so a reader downstream takes the
 //! datatype, the name and the value from one place and re-derives none of
-//! them. [`UncheckedTypedScalar`] is the pairing before that proof, for a
+//! them. [`UncheckedFieldScalar`] is the pairing before that proof, for a
 //! reader that wants the field's reading of a wire value without committing
 //! to it.
 
@@ -27,7 +34,7 @@ use crate::{DataType, Error, Result, Scalar};
 mod record;
 mod shared;
 
-pub use record::TypedRecord;
+pub use record::FieldRecord;
 
 pub(crate) mod sealed {
     pub trait Sealed {}
@@ -437,32 +444,32 @@ impl<K: FieldType> Borrow<Field> for TypedFieldRef<'_, K> {
 /// field's name, nullability, or metadata: two pairings of one value under
 /// two columns of the same datatype are the same typed value, exactly as a
 /// bare [`Scalar`] is one value whichever column stored it. The same rule
-/// holds for [`TypedRecord`].
+/// holds for [`FieldRecord`].
 ///
 /// ```
-/// use yggdryl::{DataType, Field, Scalar, TypedScalar};
+/// use yggdryl::{DataType, Field, Scalar, FieldScalar};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let price = Field::new("price", DataType::Int32, false);
-/// let typed = TypedScalar::new(&price, 7_i64)?;
+/// let typed = FieldScalar::new(&price, 7_i64)?;
 /// assert_eq!(typed.name(), "price");
 /// assert_eq!(typed.dtype(), &DataType::Int32);
 /// // The value was narrowed to the width the field declares.
 /// assert_eq!(typed.value(), &Scalar::from(7_i32));
 /// assert_eq!(typed.as_i64(), Some(7));
 /// // Nullability is the field's rule, so a required column refuses a null.
-/// assert!(TypedScalar::new(&price, Scalar::Null).is_err());
-/// assert!(TypedScalar::new(&price, "seven").is_err());
+/// assert!(FieldScalar::new(&price, Scalar::Null).is_err());
+/// assert!(FieldScalar::new(&price, "seven").is_err());
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Clone)]
-pub struct TypedScalar<'a> {
+pub struct FieldScalar<'a> {
     field: &'a Field,
     value: Scalar,
 }
 
-impl<'a> TypedScalar<'a> {
+impl<'a> FieldScalar<'a> {
     /// Pair a field with a value it accepts.
     ///
     /// This is [`Field::scalar`], and nothing else: the pairing exists exactly
@@ -487,12 +494,12 @@ impl<'a> TypedScalar<'a> {
     /// behind - a number, a date, a code - and answers the exact value.
     ///
     /// ```
-    /// use yggdryl::{DataType, Field, Scalar, TypedScalar};
+    /// use yggdryl::{DataType, Field, Scalar, FieldScalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let size = Field::new("size", DataType::Int64, false);
-    /// assert_eq!(TypedScalar::parse_str(&size, "42")?.value(), &Scalar::from(42_i64));
-    /// assert!(TypedScalar::parse_str(&size, "forty-two").is_err());
+    /// assert_eq!(FieldScalar::parse_str(&size, "42")?.value(), &Scalar::from(42_i64));
+    /// assert!(FieldScalar::parse_str(&size, "forty-two").is_err());
     /// # Ok(())
     /// # }
     /// ```
@@ -517,16 +524,16 @@ impl<'a> TypedScalar<'a> {
     /// caller's own.
     ///
     /// ```
-    /// use yggdryl::{DataType, Scalar, TypedScalar};
+    /// use yggdryl::{DataType, Scalar, FieldScalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let typed = TypedScalar::infer(Scalar::from(7_i64))?;
+    /// let typed = FieldScalar::infer(Scalar::from(7_i64))?;
     /// assert_eq!(typed.dtype(), &DataType::Int64);
     /// assert_eq!(typed.name(), "value");
     /// assert!(typed.field().is_nullable());
     ///
     /// let row = Scalar::from_sequence([Scalar::from(1_i64)]);
-    /// let refused = TypedScalar::infer(row).unwrap_err().to_string();
+    /// let refused = FieldScalar::infer(row).unwrap_err().to_string();
     /// assert!(refused.contains("list"), "{refused}");
     /// # Ok(())
     /// # }
@@ -537,18 +544,18 @@ impl<'a> TypedScalar<'a> {
     /// Returns an error when the value names no single datatype, which is
     /// what [`Scalar::dtype`] reports, or names one the crate prebuilds no
     /// shared field for, in which case the error names that datatype.
-    pub fn infer(value: Scalar) -> Result<TypedScalar<'static>> {
+    pub fn infer(value: Scalar) -> Result<FieldScalar<'static>> {
         let dtype = value.dtype()?;
         let Some(field) = dtype.shared_field() else {
             return Err(Error::InvalidDataType {
-                kind: "TypedScalar",
+                kind: "FieldScalar",
                 reason: format_smolstr!(
                     "no shared field is prebuilt for datatype {dtype}; pair the value under a \
-                     field of your own through TypedScalar::new"
+                     field of your own through FieldScalar::new"
                 ),
             });
         };
-        TypedScalar::new(field, value)
+        FieldScalar::new(field, value)
     }
 
     /// Pair a field with a value its contract already answered.
@@ -697,7 +704,7 @@ impl<'a> TypedScalar<'a> {
 }
 
 #[cfg(feature = "arrow")]
-impl<'a> TypedScalar<'a> {
+impl<'a> FieldScalar<'a> {
     /// Decode row 0 of a one-row Arrow array under the field.
     ///
     /// [`crate::arrow::scalar_value`] reads the array - exactly one row, the
@@ -707,12 +714,12 @@ impl<'a> TypedScalar<'a> {
     /// holds the canonical one.
     ///
     /// ```
-    /// use yggdryl::{DataType, Field, Scalar, TypedScalar};
+    /// use yggdryl::{DataType, Field, Scalar, FieldScalar};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let field = Field::new("size", DataType::Int64, false);
-    /// let array = TypedScalar::new(&field, 7_i64)?.into_arrow_array()?;
-    /// let typed = TypedScalar::from_arrow_array(&field, array.as_ref())?;
+    /// let array = FieldScalar::new(&field, 7_i64)?.into_arrow_array()?;
+    /// let typed = FieldScalar::from_arrow_array(&field, array.as_ref())?;
     /// assert_eq!(typed.value(), &Scalar::from(7));
     /// # Ok(())
     /// # }
@@ -739,15 +746,15 @@ impl<'a> TypedScalar<'a> {
     /// without a second walk over the value.
     ///
     /// ```
-    /// use yggdryl::{DataType, Field, TypedScalar};
+    /// use yggdryl::{DataType, Field, FieldScalar};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let field = Field::new("size", DataType::Int64, true);
-    /// let array = TypedScalar::new(&field, 7_i64)?.into_arrow_array()?;
+    /// let array = FieldScalar::new(&field, 7_i64)?.into_arrow_array()?;
     /// assert_eq!(array.len(), 1);
     /// assert_eq!(array.data_type(), &arrow_schema::DataType::Int64);
     /// // A null is what the nullable column stores, so it projects too.
-    /// assert!(TypedScalar::new(&field, yggdryl::Scalar::Null)?.into_arrow_array()?.is_null(0));
+    /// assert!(FieldScalar::new(&field, yggdryl::Scalar::Null)?.into_arrow_array()?.is_null(0));
     /// # Ok(())
     /// # }
     /// ```
@@ -782,37 +789,37 @@ fn write_value(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Resul
     }
 }
 
-impl fmt::Debug for TypedScalar<'_> {
+impl fmt::Debug for FieldScalar<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("TypedScalar")
+            .debug_struct("FieldScalar")
             .field("field", &self.field)
             .field("value", &self.value)
             .finish()
     }
 }
 
-impl fmt::Display for TypedScalar<'_> {
+impl fmt::Display for FieldScalar<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_value(formatter, &self.value)
     }
 }
 
-impl PartialEq for TypedScalar<'_> {
+impl PartialEq for FieldScalar<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.dtype() == other.dtype() && self.value == other.value
     }
 }
 
-impl Eq for TypedScalar<'_> {}
+impl Eq for FieldScalar<'_> {}
 
-impl PartialOrd for TypedScalar<'_> {
+impl PartialOrd for FieldScalar<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for TypedScalar<'_> {
+impl Ord for FieldScalar<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.dtype()
             .cmp(other.dtype())
@@ -820,42 +827,42 @@ impl Ord for TypedScalar<'_> {
     }
 }
 
-impl Hash for TypedScalar<'_> {
+impl Hash for FieldScalar<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.dtype().hash(state);
         self.value.hash(state);
     }
 }
 
-impl Serialize for TypedScalar<'_> {
+impl Serialize for FieldScalar<'_> {
     /// Write the field and the value; the proof does not survive a
     /// serialization, which is why the pairing implements no `Deserialize`.
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let mut structure = serializer.serialize_struct("TypedScalar", 2)?;
+        let mut structure = serializer.serialize_struct("FieldScalar", 2)?;
         structure.serialize_field("field", self.field)?;
         structure.serialize_field("value", &self.value)?;
         structure.end()
     }
 }
 
-impl AsRef<Scalar> for TypedScalar<'_> {
+impl AsRef<Scalar> for FieldScalar<'_> {
     fn as_ref(&self) -> &Scalar {
         &self.value
     }
 }
 
-impl From<TypedScalar<'_>> for Scalar {
-    fn from(typed: TypedScalar<'_>) -> Self {
+impl From<FieldScalar<'_>> for Scalar {
+    fn from(typed: FieldScalar<'_>) -> Self {
         typed.into_value()
     }
 }
 
 /// A [`Field`] and a value it has not yet proven.
 ///
-/// This is the pairing before the check [`TypedScalar`] carries: a wire
+/// This is the pairing before the check [`FieldScalar`] carries: a wire
 /// spelling and the field a reader resolved it to, held together so the
 /// reader can ask for the field's reading of the value without committing to
 /// it. Every numeric accessor casts on read - text `"42"` under an `Int64`
@@ -870,12 +877,12 @@ impl From<TypedScalar<'_>> for Scalar {
 /// [`Self::checked`] is the door to a value that does.
 ///
 /// ```
-/// use yggdryl::types::UncheckedTypedScalar;
+/// use yggdryl::types::UncheckedFieldScalar;
 /// use yggdryl::{DataType, Field, Scalar};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let size = Field::new("size", DataType::Int64, false);
-/// let unchecked = UncheckedTypedScalar::from_str(&size, "42");
+/// let unchecked = UncheckedFieldScalar::from_str(&size, "42");
 /// // The held text is borrowed as it is, and cast when read as a number.
 /// assert_eq!(unchecked.as_str(), Some("42"));
 /// assert_eq!(unchecked.as_i64(), Some(42));
@@ -884,19 +891,19 @@ impl From<TypedScalar<'_>> for Scalar {
 /// let checked = unchecked.checked()?;
 /// assert_eq!(checked.value(), &Scalar::from(42_i64));
 ///
-/// let wrong = UncheckedTypedScalar::from_str(&size, "forty-two");
+/// let wrong = UncheckedFieldScalar::from_str(&size, "forty-two");
 /// assert_eq!(wrong.as_i64(), None);
 /// assert!(wrong.checked().is_err());
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Clone)]
-pub struct UncheckedTypedScalar<'a> {
+pub struct UncheckedFieldScalar<'a> {
     field: &'a Field,
     value: Scalar,
 }
 
-impl<'a> UncheckedTypedScalar<'a> {
+impl<'a> UncheckedFieldScalar<'a> {
     /// Hold a value beside a field without checking it.
     pub fn new(field: &'a Field, value: impl Into<Scalar>) -> Self {
         Self {
@@ -940,9 +947,9 @@ impl<'a> UncheckedTypedScalar<'a> {
     ///
     /// # Errors
     ///
-    /// Returns what [`TypedScalar::new`] returns for the held value.
-    pub fn checked(self) -> Result<TypedScalar<'a>> {
-        TypedScalar::new(self.field, self.value)
+    /// Returns what [`FieldScalar::new`] returns for the held value.
+    pub fn checked(self) -> Result<FieldScalar<'a>> {
+        FieldScalar::new(self.field, self.value)
     }
 
     /// The datatype's reading of the held value, when it has one.
@@ -1011,10 +1018,10 @@ impl<'a> UncheckedTypedScalar<'a> {
     }
 }
 
-impl fmt::Debug for UncheckedTypedScalar<'_> {
+impl fmt::Debug for UncheckedFieldScalar<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("UncheckedTypedScalar")
+            .debug_struct("UncheckedFieldScalar")
             .field("field", &self.field)
             .field("value", &self.value)
             .finish()
