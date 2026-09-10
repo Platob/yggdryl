@@ -43,10 +43,10 @@ and bulk readers return [message iterators](capture.md#a-reader-is-the-whole-par
 
     codec = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
     frame = b"8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|"
-    message = codec.parse_fix_line(frame, separator=ord("|"))
+    message = codec.parse_fix_line(frame)
     emitted = message.into_bytes(ord("|"))
     assert emitted == frame
-    assert codec.parse_fix_line(emitted, separator=ord("|")) == message
+    assert codec.parse_fix_line(emitted) == message
     ```
 
 === "JavaScript"
@@ -58,10 +58,10 @@ and bulk readers return [message iterators](capture.md#a-reader-is-the-whole-par
 
     const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config/fix')))
     const frame = Buffer.from('8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|')
-    const message = codec.parseFixLine(frame, 124)
+    const message = codec.parseFixLine(frame)
     const emitted = Buffer.from(message.intoBytes(124))
     assert.deepEqual(emitted, frame)
-    assert.ok(codec.parseFixLine(emitted, 124).equals(message))
+    assert.ok(codec.parseFixLine(emitted).equals(message))
     ```
 
 ## Inspect emitted bytes
