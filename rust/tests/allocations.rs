@@ -1569,3 +1569,52 @@ fn reading_a_typed_row_costs_one_allocation_and_its_accessors_none() {
         });
     }
 }
+
+/// A framed body of `pairs` pairs, every one of them a field the dictionary
+/// holds.
+///
+/// The keys are the generated tags [`fix_registry`] writes, so each pair
+/// resolves to its own child and no two repeat: what grows between the sizes
+/// below is the width of the message and nothing else.
+fn fix_pairs_line(pairs: usize) -> Vec<u8> {
+    let mut line = b"35=D".to_vec();
+    for index in 0..pairs.saturating_sub(1) {
+        line.extend_from_slice(format!("|{}={index}", 1_000 + index).as_bytes());
+    }
+    line.push(b'|');
+    line
+}
+
+/// What reading a message off a line costs today, by how many pairs the line
+/// carries: four, sixteen and sixty-four.
+///
+/// Three widths rather than one, because the interesting number is not the
+/// total but how it grows: 22 at four pairs, 37 at sixteen and 87 at
+/// sixty-four is fifteen allocations for twelve more pairs and fifty for
+/// forty-eight more. Two of those per pair are the owned key and value copies
+/// an entry makes today, which is exactly what a read over ranges of the
+/// line's own page would stop paying - so this table is what that claim will
+/// be read against, and a single width could not tell a per-pair cost from a
+/// per-message one.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 22), (16, 37), (64, 87)];
+
+#[test]
+fn a_fix_message_read_from_a_line_costs_what_its_pairs_cost() {
+    let codec = FixCodec::new(Arc::new(fix_registry(64)));
+    for (pairs, each) in FIX_LINE_COSTS {
+        let line = fix_pairs_line(pairs);
+        // The read is inside the counted closure, which is the whole point:
+        // a message parsed outside one measures nothing about the parse.
+        costs(
+            &format!("a {pairs}-pair line read as a message"),
+            each,
+            || {
+                black_box(
+                    codec
+                        .parse_fix_line(black_box(&line))
+                        .expect("a readable line"),
+                );
+            },
+        );
+    }
+}

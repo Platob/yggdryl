@@ -16,6 +16,8 @@ mod dictionary;
 mod digest;
 #[path = "fix/enrich.rs"]
 mod enrich;
+#[path = "fix/equivalence.rs"]
+mod equivalence;
 #[path = "fix/global_env.rs"]
 mod global_env;
 #[path = "fix/global_home.rs"]

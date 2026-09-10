@@ -78,6 +78,77 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     folder.remove(true).unwrap();
 }
 
+/// The bridge's own capture, the same bytes the FIX suite reads it from.
+#[cfg(feature = "arrow")]
+const CAPTURE: &[u8] = include_bytes!("fix/ulbridge.log");
+
+/// Reading a capture as text and then as FIX asks storage for it once.
+///
+/// The two readers compose - the text reader frames and classifies the lines,
+/// the codec reads each framed body into a message - and the composition is
+/// where a second decode would hide, because each half is correct on its own
+/// while the pair reads the file twice. So the count is taken over both at
+/// once: one bounded stream, and the codec never reaching past it.
+#[cfg(feature = "arrow")]
+#[test]
+fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
+    use yggdryl::media::RecordOptions;
+    use yggdryl::media::text::TextOptions;
+    use yggdryl::{FixCodec, FixRegistry, IOMedia, Timezone};
+
+    /// How many lines the capture holds, which is how many rows the text
+    /// reader answers.
+    const LINES: usize = 113;
+    /// How many FIX rows they read as: a row a line, and the wildcard Jolokia
+    /// line's second MBean once more.
+    const ROWS: usize = 114;
+    /// What one bounded stream over the capture costs, before a message is
+    /// built from any of it.
+    const DECODE: &str =
+        "pstream_bytes=1 url=1 bound_location=3 mtime=1 media_type=1 is_container=1 parent=1";
+
+    let handle = source(CAPTURE, "file:///bridge.log");
+    let calls = Arc::clone(handle.calls());
+    let mut options = TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .expect("the bridge's row header compiles")
+        .with_timezone(Timezone::UTC);
+    options.parse_direction = true;
+    options.parse_mimetype = true;
+    let options: RecordOptions = options.into();
+    let codec = FixCodec::new(Arc::new(
+        FixRegistry::new()
+            .with_ulbridge_fields()
+            .expect("the bridge's own fields"),
+    ));
+
+    costs("the capture read as text alone", &calls, DECODE, || {
+        let read: usize = handle
+            .read_arrow_reader(&options)
+            .expect("a text reader")
+            .map(|batch| batch.expect("a batch").num_rows())
+            .sum();
+        assert_eq!(read, LINES);
+    });
+    // The same count with the codec on top: the messages are built out of the
+    // bytes that stream already returned, so the composition costs the decode
+    // and nothing besides it.
+    costs(
+        "the capture read as text and then as FIX",
+        &calls,
+        DECODE,
+        || {
+            let text = handle.read_arrow_reader(&options).expect("a text reader");
+            let read: usize = codec
+                .parse_text_arrow_reader(text)
+                .expect("a FIX reader")
+                .map(|batch| batch.expect("a batch").num_rows())
+                .sum();
+            assert_eq!(read, ROWS);
+        },
+    );
+}
+
 #[test]
 fn a_byte_read_is_one_call_whichever_shape_it_takes() {
     let handle = source(&payload(4096), "file:///lake/part.bin");
