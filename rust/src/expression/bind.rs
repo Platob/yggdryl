@@ -29,8 +29,8 @@ use super::eval::{Row, convert};
 use super::parser::{Direction, NullsOrder, Statement};
 use super::selector::{Attributes, Cost, Selector};
 use super::typing::common_type;
-use super::{Comparison, Expression, FieldSegment, Function, Operator, Safety};
-use crate::{DataType, Error, Field, Result, Scalar, TypedScalar};
+use super::{Comparison, Expression, Function, Literal, Operator, Safety, FieldSegment};
+use crate::{DataType, Error, Field, Result, Scalar};
 
 /// What one node costs to answer, in units of "a free attribute read".
 ///
@@ -1136,7 +1136,7 @@ impl Binder<'_> {
 }
 
 /// Return whether a literal is representable in a datatype without loss.
-fn fits(dtype: &DataType, held: &TypedScalar) -> bool {
+fn fits(dtype: &DataType, held: &Literal) -> bool {
     let Ok(converted) = convert(dtype, held.value(), Safety::Strict) else {
         return false;
     };
@@ -1260,7 +1260,7 @@ fn incompatible(expected: &str) -> Error {
 /// decided without a second representation to keep in step.
 pub(crate) fn rebuild(node: &Node) -> Expression {
     match &node.kind {
-        Kind::Literal(value) => TypedScalar::from_parts(node.field.dtype().clone(), value.clone())
+        Kind::Literal(value) => Literal::new(node.field.dtype().clone(), value.clone())
             .map_or_else(|_| Expression::literal(value.clone()), Expression::Literal),
         Kind::Column(_) => Expression::column(node.field.name()),
         Kind::Path(base, steps) => Expression::Path(Box::new(rebuild(base)), steps.clone()),

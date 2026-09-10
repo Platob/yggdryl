@@ -8,11 +8,9 @@ use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::arithmetic::{Arithmetic, ArithmeticTarget, invalid_binary};
-use crate::types::typed::define_scalar_type;
 use crate::types::value::{PathSegment, ValidationFailure, canonical_error, expected};
 use crate::{
-    AnyType, DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue,
-    TimeUnit,
+    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue, TimeUnit,
 };
 
 /// Operations shared by every signed and unsigned integer representation.
@@ -94,50 +92,6 @@ integer_leaf!(Int128, i128);
 integer_leaf!(UInt128, u128);
 
 const _: () = assert!(std::mem::size_of::<Int32>() == 4);
-
-define_scalar_type!(Int8Scalar, super::Int8Type, "int8", crate::DataType::Int8);
-define_scalar_type!(
-    Int16Scalar,
-    super::Int16Type,
-    "int16",
-    crate::DataType::Int16
-);
-define_scalar_type!(
-    Int32Scalar,
-    super::Int32Type,
-    "int32",
-    crate::DataType::Int32
-);
-define_scalar_type!(
-    Int64Scalar,
-    super::Int64Type,
-    "int64",
-    crate::DataType::Int64
-);
-define_scalar_type!(
-    UInt8Scalar,
-    super::UInt8Type,
-    "uint8",
-    crate::DataType::UInt8
-);
-define_scalar_type!(
-    UInt16Scalar,
-    super::UInt16Type,
-    "uint16",
-    crate::DataType::UInt16
-);
-define_scalar_type!(
-    UInt32Scalar,
-    super::UInt32Type,
-    "uint32",
-    crate::DataType::UInt32
-);
-define_scalar_type!(
-    UInt64Scalar,
-    super::UInt64Type,
-    "uint64",
-    crate::DataType::UInt64
-);
 
 pub(crate) fn canonical_signed(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
     let Some(integer) = value.as_i128() else {
@@ -295,10 +249,9 @@ pub enum Integer {
 const _: () = assert!(std::mem::size_of::<Integer>() == 32);
 
 macro_rules! integer_scalar_value {
-    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $dtype:expr) => {
+    ($leaf:ident, $variant:ident, $id:ident, $dtype:expr) => {
         impl ScalarValue for $leaf {
             type Family = Integer;
-            type Type = $marker;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Integer;
@@ -332,32 +285,18 @@ macro_rules! integer_scalar_value {
     };
 }
 
-integer_scalar_value!(Int8, super::Int8Type, I8, Int8, |_: &Int8| DataType::Int8);
-integer_scalar_value!(Int16, super::Int16Type, I16, Int16, |_: &Int16| {
-    DataType::Int16
-});
-integer_scalar_value!(Int32, super::Int32Type, I32, Int32, |_: &Int32| {
-    DataType::Int32
-});
-integer_scalar_value!(Int64, super::Int64Type, I64, Int64, |_: &Int64| {
-    DataType::Int64
-});
-integer_scalar_value!(UInt8, super::UInt8Type, U8, UInt8, |_: &UInt8| {
-    DataType::UInt8
-});
-integer_scalar_value!(UInt16, super::UInt16Type, U16, UInt16, |_: &UInt16| {
-    DataType::UInt16
-});
-integer_scalar_value!(UInt32, super::UInt32Type, U32, UInt32, |_: &UInt32| {
-    DataType::UInt32
-});
-integer_scalar_value!(UInt64, super::UInt64Type, U64, UInt64, |_: &UInt64| {
-    DataType::UInt64
-});
-integer_scalar_value!(Int128, AnyType, I128, Int128, |value: &Int128| {
+integer_scalar_value!(Int8, I8, Int8, |_: &Int8| DataType::Int8);
+integer_scalar_value!(Int16, I16, Int16, |_: &Int16| { DataType::Int16 });
+integer_scalar_value!(Int32, I32, Int32, |_: &Int32| { DataType::Int32 });
+integer_scalar_value!(Int64, I64, Int64, |_: &Int64| { DataType::Int64 });
+integer_scalar_value!(UInt8, U8, UInt8, |_: &UInt8| { DataType::UInt8 });
+integer_scalar_value!(UInt16, U16, UInt16, |_: &UInt16| { DataType::UInt16 });
+integer_scalar_value!(UInt32, U32, UInt32, |_: &UInt32| { DataType::UInt32 });
+integer_scalar_value!(UInt64, U64, UInt64, |_: &UInt64| { DataType::UInt64 });
+integer_scalar_value!(Int128, I128, Int128, |value: &Int128| {
     wide_integer_dtype(value.get().unsigned_abs())
 });
-integer_scalar_value!(UInt128, AnyType, U128, UInt128, |value: &UInt128| {
+integer_scalar_value!(UInt128, U128, UInt128, |value: &UInt128| {
     wide_integer_dtype(value.get())
 });
 

@@ -48,19 +48,13 @@ pub(crate) use ascii::{
     ASCII_EXTENSION_NAME, ascii_bytes, ascii_free_text, ascii_text, code_cell_text,
     code_for_extension,
 };
-pub use ascii::{
-    AsciiScalar, CfiScalar, CountryScalar, CurrencyScalar, FixedAsciiScalar, IsinScalar, MicScalar,
-};
 #[cfg(feature = "arrow")]
 pub(crate) use ascii::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
     TIMEINFORCE_WIDTH, code_refusal, code_text,
 };
 pub use boolean::*;
-pub use boolean::{BooleanScalar, NullScalar};
 pub use bytes::*;
-pub use bytes::{BinaryScalar, BinaryViewScalar, FixedSizeBinaryScalar, LargeBinaryScalar};
-pub use decimal::scalars::{Decimal32Scalar, Decimal64Scalar, Decimal128Scalar, Decimal256Scalar};
 pub use decimal::*;
 pub(crate) use default::{
     default_value_for_field, preflight_schema, preflight_schema_shape, value_is_logically_null,
@@ -71,41 +65,30 @@ pub use dtype::DataType;
 pub(crate) use dtype::{invalid, validate_non_negative};
 pub use enumeration::Enum;
 pub use field::*;
-pub use floating::scalars::{Float16Scalar, Float32Scalar, Float64Scalar, Floating};
+pub use floating::scalars::Floating;
 pub use floating::*;
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;
 pub use geospatial::*;
 pub(crate) use geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
-pub use geospatial::{GeographyScalar, GeometryScalar};
-pub use integer::scalars::{
-    Int8Scalar, Int16Scalar, Int32Scalar, Int64Scalar, Integer, UInt8Scalar, UInt16Scalar,
-    UInt32Scalar, UInt64Scalar,
-};
+pub use integer::scalars::Integer;
 pub use integer::*;
 pub(crate) use merge::Recode;
 pub use merge::Widening;
 pub use nested::*;
-pub use nested::{
-    DictionaryScalar, FixedSizeListScalar, LargeListScalar, LargeListViewScalar, ListScalar,
-    ListViewScalar, MapScalar, RunEndEncodedScalar, StructScalar, UnionScalar, VariantScalar,
-};
 pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
 pub use scalar::{Scalar, ScalarFamily, ScalarValue};
-pub use temporal::scalars::{
-    Date32Scalar, Date64Scalar, DateTime64Scalar, Duration32Scalar, Duration64Scalar,
-    IntervalScalar, TemporalFamily, Time32Scalar, Time64Scalar,
-};
+pub use temporal::scalars::TemporalFamily;
 pub use temporal::*;
 pub use text::*;
-pub use text::{LargeUtf8Scalar, Utf8Scalar, Utf8ViewScalar};
-pub use typed::{AnyType, FieldType, TypedField, TypedFieldRef, TypedScalar};
+pub use typed::{
+    FieldType, TypedField, TypedFieldRef, TypedRecord, TypedScalar, UncheckedTypedScalar,
+};
 pub use url::*;
-pub use uuid::UuidScalar;
 pub use uuid::*;
 pub(crate) use uuid::{UUID_EXTENSION_NAME, uuid_bytes, uuid_parse, uuid_text};
-pub(crate) use value::{dtype_scalar, validate_dtype_value_for};
+pub(crate) use value::dtype_scalar;
 pub(crate) use version::VERSION_EXTENSION_NAME;
 pub use version::*;
 

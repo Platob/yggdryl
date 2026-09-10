@@ -6,4 +6,4 @@ mod scalars;
 
 pub use fields::*;
 pub(crate) use scalars::boolean_from_text;
-pub use scalars::{Boolean, BooleanScalar, Null, NullScalar};
+pub use scalars::{Boolean, Null};

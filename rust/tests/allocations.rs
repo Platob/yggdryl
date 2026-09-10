@@ -26,10 +26,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
-use yggdryl::types::MsgDirection;
+use yggdryl::types::{MsgDirection, UncheckedTypedScalar};
 use yggdryl::{
-    DataType, Field, FixBranch, FixCode, FixCodec, FixId, FixLineageEntry, FixMsg, FixPedigree,
-    FixRegistry, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, Timezone, Version,
+    DataType, DataTypeId, Field, FixBranch, FixCode, FixCodec, FixId, FixLineageEntry, FixMsg,
+    FixPedigree, FixRegistry, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, TimeUnit,
+    Timezone, TypedRecord, TypedScalar, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -1376,6 +1377,199 @@ fn a_same_unit_instant_column_shares_its_buffer() {
                 txhash::arrow::unix_array(black_box(&seconds), TimeUnit::Microsecond)
                     .expect("an instant column")
                     .len(),
+            );
+        });
+    }
+}
+
+/// One value per prebuilt shared field, built through the datatype's own
+/// contract so each names exactly the datatype it is pinned under.
+///
+/// `Variant` keeps a shared field but no value names it - a variant value
+/// describes itself - so it is the one prebuilt id with nothing to infer.
+fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
+    let seeds: [(DataTypeId, Scalar); 33] = [
+        (DataTypeId::Null, Scalar::Null),
+        (DataTypeId::Boolean, Scalar::from(true)),
+        (DataTypeId::Int8, Scalar::from(1_i64)),
+        (DataTypeId::Int16, Scalar::from(1_i64)),
+        (DataTypeId::Int32, Scalar::from(1_i64)),
+        (DataTypeId::Int64, Scalar::from(1_i64)),
+        (DataTypeId::UInt8, Scalar::from(1_i64)),
+        (DataTypeId::UInt16, Scalar::from(1_i64)),
+        (DataTypeId::UInt32, Scalar::from(1_i64)),
+        (DataTypeId::UInt64, Scalar::from(1_i64)),
+        (DataTypeId::Float16, Scalar::from(1.5_f64)),
+        (DataTypeId::Float32, Scalar::from(1.5_f64)),
+        (DataTypeId::Float64, Scalar::from(1.5_f64)),
+        (DataTypeId::Date32, Scalar::date32(19_723)),
+        (DataTypeId::Date64, Scalar::date32(19_723)),
+        (DataTypeId::Binary, Scalar::from(&b"ABC"[..])),
+        (DataTypeId::LargeBinary, Scalar::from(&b"ABC"[..])),
+        (DataTypeId::BinaryView, Scalar::from(&b"ABC"[..])),
+        (DataTypeId::Utf8, Scalar::from("AAPL")),
+        (DataTypeId::LargeUtf8, Scalar::from("AAPL")),
+        (DataTypeId::Utf8View, Scalar::from("AAPL")),
+        (DataTypeId::Ascii, Scalar::from("AAPL")),
+        (DataTypeId::Country, Scalar::from("US")),
+        (DataTypeId::Currency, Scalar::from("USD")),
+        (DataTypeId::Mic, Scalar::from("XNAS")),
+        (DataTypeId::Cfi, Scalar::from("ESVUFR")),
+        (DataTypeId::Isin, Scalar::from("US0378331005")),
+        (DataTypeId::Side, Scalar::from("1")),
+        (DataTypeId::State, Scalar::from("20NEW")),
+        (DataTypeId::TimeInForce, Scalar::from("0")),
+        (DataTypeId::MsgDirection, Scalar::from(MsgDirection::SENT)),
+        (
+            DataTypeId::Uuid,
+            Scalar::from("123e4567-e89b-12d3-a456-426614174000"),
+        ),
+        (DataTypeId::Version, Scalar::from("5.0.2")),
+    ];
+    let mut values: Vec<(DataTypeId, Scalar)> = seeds
+        .into_iter()
+        .map(|(id, seed)| {
+            let dtype = DataType::from_str(id.as_str()).expect("the id names a datatype");
+            let value = dtype
+                .scalar(seed)
+                .expect("the seed is a value of the datatype");
+            assert_eq!(value.dtype().expect("a leaf names itself"), dtype, "{id:?}");
+            (id, value)
+        })
+        .collect();
+    let url = DataType::Url
+        .scalar("https://example.com/a")
+        .expect("the text is a URL");
+    values.push((DataTypeId::Url, url));
+    // Every prebuilt id is either pinned here or the one that nothing names.
+    let pinned: std::collections::HashSet<DataTypeId> = values.iter().map(|(id, _)| *id).collect();
+    for id in DataTypeId::ALL {
+        let prebuilt = !id.is_parameterized()
+            && DataType::from_str(id.as_str()).is_ok_and(|dtype| dtype.id() == id);
+        if prebuilt && id != DataTypeId::Variant {
+            assert!(pinned.contains(&id), "{id:?} has a shared field and no pin");
+        }
+    }
+    values
+}
+
+#[test]
+fn inferring_a_typed_scalar_borrows_a_prebuilt_field_and_allocates_nothing() {
+    // The typed view borrows the field the crate keeps for the datatype, so
+    // typing a leaf value that names itself builds no field and no copy of
+    // one - once, and a thousand times, for every prebuilt id.
+    for (id, value) in prebuilt_values() {
+        free(&format!("inferring a typed {id:?}"), || {
+            black_box(TypedScalar::infer(black_box(&value).clone()).expect("the value infers"));
+        });
+    }
+    // A parameterized leaf is interned on its first ask and borrowed after.
+    for dtype in [
+        DataType::decimal128(10, 2).expect("a valid decimal"),
+        DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).expect("a valid instant"),
+        DataType::FixedAscii(4),
+    ] {
+        free(&format!("looking up the shared field of {dtype}"), || {
+            black_box(black_box(&dtype).shared_field().expect("an interned field"));
+        });
+    }
+}
+
+#[test]
+fn typing_a_value_a_field_already_holds_allocates_nothing() {
+    // The pairing is the field's own value contract, which answers a value
+    // already in its declared representation untouched; the same holds for
+    // a whole canonical row under its Struct root.
+    let (root, row) = payload_row();
+    free("typing a canonical row under its root", || {
+        black_box(TypedScalar::new(black_box(&root), black_box(&row).clone()).expect("typed"));
+    });
+    for (index, cell) in row.as_sequence().expect("a row").iter().enumerate() {
+        let field = &root.fields()[index];
+        free(
+            &format!("typing the canonical {} cell", field.name()),
+            || {
+                black_box(
+                    TypedScalar::new(black_box(field), black_box(cell).clone()).expect("typed"),
+                );
+            },
+        );
+    }
+    let text = Field::new("symbol", DataType::Utf8, false);
+    let unchecked = UncheckedTypedScalar::from_str(
+        &text,
+        "a symbol far longer than any inline string buffer can hold",
+    );
+    free("borrowing the text an unchecked pairing holds", || {
+        black_box(
+            black_box(&unchecked)
+                .as_str()
+                .expect("the held value is text"),
+        );
+    });
+}
+
+/// A canonical row of `width` integer columns under its Struct root.
+fn wide_row(width: usize) -> (Field, Scalar) {
+    let root = DataType::from_fields(
+        (0..width).map(|index| DataType::Int64.required_field(format!("column_{index}"))),
+    )
+    .expect("the row schema is valid")
+    .required_field("row");
+    let row = root
+        .canonicalize_value(Scalar::from_sequence(
+            (0..width).map(|index| Scalar::from(i64::try_from(index).expect("the index fits"))),
+        ))
+        .expect("the row satisfies its schema");
+    (root, row)
+}
+
+#[test]
+fn reading_a_typed_row_costs_one_allocation_and_its_accessors_none() {
+    // A typed row is the cells' `Vec` and nothing else: the row is proven by
+    // the one canonicalization walk, each cell borrows its child, and a
+    // shared value clones a reference. Reading back out borrows.
+    for width in [4_usize, 64, 1_024] {
+        let (root, row) = wide_row(width);
+        costs(&format!("typing a canonical {width}-column row"), 1, || {
+            black_box(TypedRecord::new(black_box(&root), black_box(&row).clone()).expect("typed"));
+        });
+        let record = TypedRecord::new(&root, row.clone()).expect("typed");
+        let last = format!("column_{}", width - 1);
+        let folded = last.to_ascii_uppercase();
+        free(&format!("looking up a cell of {width} by name"), || {
+            black_box(
+                black_box(&record)
+                    .get_by_name(black_box(&last))
+                    .expect("a cell"),
+            );
+        });
+        free(
+            &format!("looking up a cell of {width} without case"),
+            || {
+                black_box(
+                    black_box(&record)
+                        .get_by_name(black_box(&folded))
+                        .expect("a cell"),
+                );
+            },
+        );
+        free(&format!("looking up a cell of {width} by position"), || {
+            black_box(
+                black_box(&record)
+                    .get_by_index(black_box(width - 1))
+                    .expect("a cell"),
+            );
+        });
+        free(&format!("naming the {width} columns"), || {
+            black_box(black_box(&record).names().count());
+        });
+        free(&format!("iterating the {width} cells"), || {
+            black_box(
+                black_box(&record)
+                    .iter()
+                    .filter(|cell| cell.is_null())
+                    .count(),
             );
         });
     }

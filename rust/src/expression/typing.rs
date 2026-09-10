@@ -28,7 +28,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::{Expression, FieldSegment, Function, Operator, Safety};
+use super::{Expression, Function, Literal, Operator, Safety, FieldSegment};
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
@@ -765,7 +765,7 @@ fn function_field(
             let segment = match key.dtype() {
                 dtype if is_integer(dtype) => FieldSegment::Index(0),
                 _ => FieldSegment::Key(
-                    crate::TypedScalar::from_parts(key.dtype().clone(), Scalar::Null)
+                    Literal::new(key.dtype().clone(), Scalar::Null)
                         .map_err(|error| typing_error(format_smolstr!("{error}")))?,
                 ),
             };

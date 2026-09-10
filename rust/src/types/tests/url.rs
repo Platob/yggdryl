@@ -8,7 +8,8 @@ use arrow_schema::DataType as ArrowDataType;
 use super::super::DataType;
 use crate::arrow::{scalar_array, scalar_value};
 use crate::{
-    ArrowCast, ArrowCastOptions, DataTypeId, DataTypeKind, Field, Scalar, Url, UrlField, UrlScalar,
+    ArrowCast, ArrowCastOptions, DataTypeId, DataTypeKind, Field, Scalar, TypedScalar, Url,
+    UrlField,
 };
 
 fn url(text: &str) -> Scalar {
@@ -209,9 +210,9 @@ fn defaults_merges_and_typed_fields_do_not_fall_through() {
 
     let typed = UrlField::new("location", true);
     assert_eq!(typed.dtype(), &DataType::Url);
-    let scalar = UrlScalar::new(url("https://example.com/a")).unwrap();
+    let scalar = TypedScalar::new(typed.as_field(), url("https://example.com/a")).unwrap();
     assert_eq!(scalar.dtype(), &DataType::Url);
-    assert!(UrlScalar::new(Scalar::from(7_i64)).is_err());
+    assert!(TypedScalar::new(typed.as_field(), 7_i64).is_err());
 }
 
 #[test]

@@ -23,12 +23,22 @@ impl Scalar {
     }
 }
 
-impl<K: crate::types::FieldType> crate::TypedScalar<K> {
+impl crate::TypedScalar<'_> {
     /// Couple a microsecond instant with this value's digest.
     ///
-    /// The datatype marker is validation, not content: the answer is the
-    /// value's, so a `TypedScalar` and the `Scalar` inside it answer the same.
+    /// The field is proof, not content: the answer is the value's, so a
+    /// `TypedScalar` and the `Scalar` inside it answer the same.
     pub fn txhash(&self, unix: i64, algorithm: DigestAlgorithm) -> TxHash {
         self.value().txhash(unix, algorithm)
+    }
+}
+
+impl crate::TypedRecord<'_> {
+    /// Couple a microsecond instant with this row's digest.
+    ///
+    /// The digest half is exactly [`crate::TypedRecord::digest`], so a row
+    /// answers here what its canonical sequence answers.
+    pub fn txhash(&self, unix: i64, algorithm: DigestAlgorithm) -> TxHash {
+        TxHash::new(unix, self.digest(algorithm))
     }
 }

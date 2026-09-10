@@ -22,7 +22,6 @@ use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
-use crate::types::typed::define_scalar_type;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{
     DataType, DataTypeId, DataTypeKind, Error, I256, Result, Scalar, ScalarFamily, ScalarValue,
@@ -187,10 +186,9 @@ impl Hash for Decimal {
 const _: () = assert!(std::mem::size_of::<Decimal>() == 48);
 
 macro_rules! decimal_value {
-    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $native:ty) => {
+    ($leaf:ident, $variant:ident, $id:ident, $native:ty) => {
         impl ScalarValue for $leaf {
             type Family = Decimal;
-            type Type = $marker;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Decimal;
@@ -246,13 +244,12 @@ macro_rules! decimal_value {
     };
 }
 
-decimal_value!(Decimal32, super::Decimal32Type, D32, Decimal32, i32);
-decimal_value!(Decimal64, super::Decimal64Type, D64, Decimal64, i64);
-decimal_value!(Decimal128, super::Decimal128Type, D128, Decimal128, i128);
+decimal_value!(Decimal32, D32, Decimal32, i32);
+decimal_value!(Decimal64, D64, Decimal64, i64);
+decimal_value!(Decimal128, D128, Decimal128, i128);
 
 impl ScalarValue for Decimal256 {
     type Family = Decimal;
-    type Type = super::Decimal256Type;
 
     const ID: DataTypeId = DataTypeId::Decimal256;
     const KIND: DataTypeKind = DataTypeKind::Decimal;
@@ -330,11 +327,6 @@ impl ScalarFamily for Decimal {
         }
     }
 }
-
-define_scalar_type!(Decimal32Scalar, super::Decimal32Type, "decimal32");
-define_scalar_type!(Decimal64Scalar, super::Decimal64Type, "decimal64");
-define_scalar_type!(Decimal128Scalar, super::Decimal128Type, "decimal128");
-define_scalar_type!(Decimal256Scalar, super::Decimal256Type, "decimal256");
 
 impl Scalar {
     /// Build the narrowest exact decimal width that holds `unscaled`.

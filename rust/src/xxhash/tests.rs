@@ -1335,14 +1335,51 @@ mod values {
 
     #[test]
     fn a_typed_scalar_digests_as_the_value_inside_it() {
-        let typed =
-            crate::TypedScalar::from_parts(crate::DataType::Utf8, Scalar::from("AAPL")).unwrap();
+        let field = crate::Field::new("symbol", crate::DataType::Utf8, false);
+        let typed = crate::TypedScalar::new(&field, "AAPL").unwrap();
         for algorithm in DigestAlgorithm::ALL {
             assert_eq!(
                 typed.digest(algorithm),
                 Scalar::from("AAPL").digest(algorithm)
             );
         }
+        assert_eq!(typed.stable_hash(), Scalar::from("AAPL").stable_hash());
+    }
+
+    #[test]
+    fn a_typed_record_digests_as_the_sequence_it_canonicalizes_to() {
+        let row = crate::DataType::from_fields([
+            crate::Field::new("id", crate::DataType::Int64, false),
+            crate::Field::new("symbol", crate::DataType::Utf8, true),
+            crate::Field::new(
+                "legs",
+                crate::DataType::list(crate::Field::new("item", crate::DataType::Int32, true)),
+                true,
+            ),
+        ])
+        .unwrap()
+        .required_field("row");
+        let nested = Scalar::from_sequence([Scalar::from(1_i32), Scalar::Null]);
+        let cells = [Scalar::from(7_i64), Scalar::from("AAPL"), nested];
+        let record = crate::TypedRecord::new(&row, Scalar::from_sequence(cells.clone())).unwrap();
+        let sequence = Scalar::from_sequence(cells);
+        assert_eq!(record.stable_hash(), sequence.stable_hash());
+        for algorithm in DigestAlgorithm::ALL {
+            assert_eq!(record.digest(algorithm), sequence.digest(algorithm));
+        }
+        assert_eq!(
+            record.clone().into_scalar().stable_hash(),
+            record.stable_hash()
+        );
+        // The empty row frames as the empty sequence, exactly as a row digest does.
+        let empty = crate::DataType::from_fields([])
+            .unwrap()
+            .required_field("row");
+        let record = crate::TypedRecord::new(&empty, Scalar::from_sequence([])).unwrap();
+        assert_eq!(
+            record.stable_hash(),
+            Scalar::from_sequence([]).stable_hash()
+        );
     }
 
     #[test]

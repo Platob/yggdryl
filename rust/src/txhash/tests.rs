@@ -510,10 +510,20 @@ fn a_scalar_couples_its_own_digest() {
         Scalar::from(1_i8).txhash(1, DigestAlgorithm::Xxh3),
         Scalar::from(1_i64).txhash(1, DigestAlgorithm::Xxh3)
     );
-    let typed = crate::types::Int64Scalar::new(Scalar::from(1_i64)).unwrap();
+    let field = Field::new("id", DataType::Int64, false);
+    let typed = crate::TypedScalar::new(&field, 1_i64).unwrap();
     assert_eq!(
         typed.txhash(1, DigestAlgorithm::Xxh3),
         Scalar::from(1_i64).txhash(1, DigestAlgorithm::Xxh3)
+    );
+    let row = DataType::from_fields([field.clone()])
+        .unwrap()
+        .required_field("row");
+    let record =
+        crate::TypedRecord::new(&row, Scalar::from_sequence([Scalar::from(1_i64)])).unwrap();
+    assert_eq!(
+        record.txhash(1, DigestAlgorithm::Xxh3),
+        Scalar::from_sequence([Scalar::from(1_i64)]).txhash(1, DigestAlgorithm::Xxh3)
     );
 }
 

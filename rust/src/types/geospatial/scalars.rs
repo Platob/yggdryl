@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::typed::define_scalar_type;
 use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue};
 
 /// Borrowing access shared by geometry and geography values.
@@ -135,10 +134,9 @@ impl Hash for Geospatial {
 const _: () = assert!(std::mem::size_of::<Geospatial>() == 24);
 
 macro_rules! geospatial_value {
-    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $constructor:ident) => {
+    ($leaf:ident, $variant:ident, $id:ident, $constructor:ident) => {
         impl ScalarValue for $leaf {
             type Family = Geospatial;
-            type Type = $marker;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Geospatial;
@@ -182,11 +180,10 @@ macro_rules! geospatial_value {
     };
 }
 
-geospatial_value!(Geometry, super::GeometryType, Geometry, Geometry, geometry);
+geospatial_value!(Geometry, Geometry, Geometry, geometry);
 
 impl ScalarValue for Geography {
     type Family = Geospatial;
-    type Type = super::GeographyType;
 
     const ID: DataTypeId = DataTypeId::Geography;
     const KIND: DataTypeKind = DataTypeKind::Geospatial;
@@ -256,6 +253,3 @@ impl ScalarFamily for Geospatial {
         }
     }
 }
-
-define_scalar_type!(GeometryScalar, super::GeometryType, "geometry");
-define_scalar_type!(GeographyScalar, super::GeographyType, "geography");

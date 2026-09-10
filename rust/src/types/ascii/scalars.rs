@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use super::dtypes::ISIN_WIDTH;
-use crate::types::typed::define_scalar_type;
 use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
 
 /// Borrowing access shared by every ASCII representation.
@@ -960,10 +959,9 @@ impl Hash for AsciiFamily {
 }
 
 macro_rules! ascii_value {
-    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $dtype:ident, $width:expr) => {
+    ($leaf:ident, $variant:ident, $id:ident, $dtype:ident, $width:expr) => {
         impl ScalarValue for $leaf {
             type Family = AsciiFamily;
-            type Type = $marker;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Ascii;
@@ -1009,30 +1007,15 @@ macro_rules! ascii_value {
     };
 }
 
-ascii_value!(Ascii, super::AsciiType, Ascii, Ascii, Ascii, None);
-ascii_value!(
-    Country,
-    super::CountryType,
-    Country,
-    Country,
-    Country,
-    Some(2)
-);
-ascii_value!(
-    Currency,
-    super::CurrencyType,
-    Currency,
-    Currency,
-    Currency,
-    Some(3)
-);
-ascii_value!(Mic, super::MicType, Mic, Mic, Mic, Some(4));
-ascii_value!(Cfi, super::CfiType, Cfi, Cfi, Cfi, Some(6));
-ascii_value!(Isin, super::IsinType, Isin, Isin, Isin, Some(12));
-ascii_value!(Side, super::SideType, Side, Side, Side, Some(4));
+ascii_value!(Ascii, Ascii, Ascii, Ascii, None);
+ascii_value!(Country, Country, Country, Country, Some(2));
+ascii_value!(Currency, Currency, Currency, Currency, Some(3));
+ascii_value!(Mic, Mic, Mic, Mic, Some(4));
+ascii_value!(Cfi, Cfi, Cfi, Cfi, Some(6));
+ascii_value!(Isin, Isin, Isin, Isin, Some(12));
+ascii_value!(Side, Side, Side, Side, Some(4));
 ascii_value!(
     MsgDirection,
-    super::MsgDirectionType,
     MsgDirection,
     MsgDirection,
     MsgDirection,
@@ -1041,7 +1024,6 @@ ascii_value!(
 
 impl ScalarValue for FixedAscii {
     type Family = AsciiFamily;
-    type Type = super::FixedAsciiType;
 
     const ID: DataTypeId = DataTypeId::FixedAscii;
     const KIND: DataTypeKind = DataTypeKind::Ascii;
@@ -1131,45 +1113,3 @@ impl ScalarFamily for AsciiFamily {
         }
     }
 }
-
-define_scalar_type!(
-    AsciiScalar,
-    super::AsciiType,
-    "ascii",
-    crate::DataType::Ascii
-);
-define_scalar_type!(FixedAsciiScalar, super::FixedAsciiType, "fixed_ascii");
-define_scalar_type!(
-    CountryScalar,
-    super::CountryType,
-    "country",
-    crate::DataType::Country
-);
-define_scalar_type!(
-    CurrencyScalar,
-    super::CurrencyType,
-    "currency",
-    crate::DataType::Currency
-);
-define_scalar_type!(MicScalar, super::MicType, "mic", crate::DataType::Mic);
-define_scalar_type!(CfiScalar, super::CfiType, "cfi", crate::DataType::Cfi);
-define_scalar_type!(IsinScalar, super::IsinType, "isin", crate::DataType::Isin);
-define_scalar_type!(SideScalar, super::SideType, "side", crate::DataType::Side);
-define_scalar_type!(
-    MsgDirectionScalar,
-    super::MsgDirectionType,
-    "direction",
-    crate::DataType::MsgDirection
-);
-define_scalar_type!(
-    StateScalar,
-    super::StateType,
-    "state",
-    crate::DataType::State
-);
-define_scalar_type!(
-    TimeInForceScalar,
-    super::TimeInForceType,
-    "timeinforce",
-    crate::DataType::TimeInForce
-);

@@ -88,9 +88,12 @@ fn datatype_defaults_round_trip_through_the_public_scalar_boundary() {
             dtype.kind()
         );
 
-        // The same array decodes as a typed pairing, which re-projects to an
-        // equal one-row array: the default is closed under both directions.
-        let typed = TypedScalar::from_arrow_array(dtype.clone(), array.as_ref())
+        // The same array decodes as a typed pairing under the field, which
+        // re-projects to an equal one-row array: the default is closed under
+        // both directions. A leaf borrows the field the crate keeps for its
+        // datatype; a nested datatype has none and pairs under the local one.
+        let shared = dtype.shared_field().unwrap_or(&field);
+        let typed = TypedScalar::from_arrow_array(shared, array.as_ref())
             .unwrap_or_else(|error| panic!("{} typed decode failed: {error}", dtype.kind()));
         assert_eq!(typed.dtype(), &dtype);
         assert!(
@@ -216,10 +219,16 @@ fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_n
         // through a non-nullable Field...
         let field = Field::new("value", dtype.clone(), false);
         assert_eq!(scalar_value(&field, array.as_ref()).unwrap(), expected);
-        // ...and the typed pairing projects the same null-only default out
-        // through its synthetic non-nullable Field.
-        let typed = TypedScalar::from_parts(dtype, expected).unwrap();
-        assert_eq!(typed.into_arrow_array().unwrap().as_ref(), array.as_ref());
+        // ...while a typed pairing is the field's own contract with no such
+        // exception: it holds the null-only default under a nullable Field
+        // and projects exactly what the field-directed boundary projects.
+        assert!(TypedScalar::new(&field, expected.clone()).is_err());
+        let holder = field.clone().with_nullable(true);
+        let typed = TypedScalar::new(&holder, expected.clone()).unwrap();
+        assert_eq!(
+            typed.into_arrow_array().unwrap().as_ref(),
+            scalar_array(&holder, &expected).unwrap().as_ref()
+        );
     }
 
     let union = DataType::union(

@@ -32,7 +32,7 @@ use super::selector::Attributes;
 use super::typing::{
     decimal_parts, is_binary, is_text, step_field, temporal_parts, unwrap_dictionary,
 };
-use super::{Comparison, FieldSegment, Function, Operator, Safety};
+use super::{Comparison, Function, Literal, Operator, Safety, FieldSegment};
 use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit, Timezone};
 
 /// One row's worth of context: its column values and its holder.
@@ -702,7 +702,7 @@ fn call(
             let key = values.get(1).cloned().unwrap_or(Scalar::Null);
             let segment = match key.as_i64() {
                 Some(index) if key.as_str().is_none() => FieldSegment::Index(index),
-                _ => FieldSegment::Key(crate::TypedScalar::from_value(key)?),
+                _ => FieldSegment::Key(Literal::infer(key)?),
             };
             apply_step(&container.field, first, &segment)
         }
@@ -964,9 +964,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             if let Some(text) = value.as_str() {
                 return canonical(Scalar::from(SmolStr::new(text)));
             }
-            let inferred = crate::TypedScalar::from_value(value.clone())
-                .map(|held| held.dtype().clone())
-                .unwrap_or(DataType::Null);
+            let inferred = value.dtype().unwrap_or(DataType::Null);
             match super::display::literal_text(&inferred, value) {
                 Some(text) => canonical(Scalar::from(text)),
                 None => refuse("a value with a text form"),

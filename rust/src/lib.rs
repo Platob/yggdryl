@@ -125,16 +125,15 @@ pub use types::protocol::{
     SparkFieldMut, SqlField, SqlFieldMut, UrnField, UrnFieldMut,
 };
 pub use types::{
-    AnyType, AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRef,
-    FieldType, Floating, FloatingValue, GeospatialValue, Integer, IntegerValue, NestedValue,
-    OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar, ScalarFamily,
-    ScalarValue, TemporalFamily, TemporalValue, TextValue, TypedField, TypedFieldRef, TypedScalar,
-};
-pub use types::{
     AsciiEnum, AsciiType, BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
     GeospatialParameters, GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType,
-    TemporalType, TextType, UnionFields, UrlField, UrlScalar, UrlType, Version, VersionField,
-    VersionScalar, VersionType,
+    TemporalType, TextType, UnionFields, UrlField, UrlType, Version, VersionField, VersionType,
+};
+pub use types::{
+    AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRef, FieldType,
+    Floating, FloatingValue, GeospatialValue, Integer, IntegerValue, NestedValue, OwnedDifferences,
+    PartitionFieldNames, PartitionFields, Pretty, Scalar, ScalarFamily, ScalarValue,
+    TemporalFamily, TemporalValue, TextValue, TypedField, TypedFieldRef, TypedRecord, TypedScalar,
 };
 pub use union_mode::UnionMode;
 pub use uri::{

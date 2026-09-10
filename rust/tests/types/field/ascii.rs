@@ -12,8 +12,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schem
 use yggdryl::types::{
     AsciiField, CfiField, CountryField, CurrencyField, FixedAsciiField, MicField, ascii,
 };
-use yggdryl::types::{CfiScalar, CurrencyScalar, FixedAsciiScalar};
-use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Scalar};
+use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, TypedScalar};
 
 use super::typed::assert_typed_marker;
 
@@ -50,21 +49,21 @@ fn ascii_markers_cover_the_widths_and_the_codes() {
     assert!(CfiField::try_new("code", DataType::FixedAscii(8), false).is_err());
 
     // The typed value is checked under the one ASCII rule for its width.
-    let code =
-        FixedAsciiScalar::try_from_parts(DataType::FixedAscii(8), Scalar::from("ABC")).unwrap();
-    assert_eq!(code.value(), &Scalar::from("ABC"));
-    assert!(
-        FixedAsciiScalar::try_from_parts(DataType::FixedAscii(8), Scalar::from("ABCDEFGHI"))
-            .is_err()
-    );
+    let width = FixedAsciiField::try_new("code", DataType::FixedAscii(8), false).unwrap();
+    let code = TypedScalar::new(width.as_field(), "ABC").unwrap();
+    assert_eq!(code.as_str(), Some("ABC"));
+    assert_eq!(code.value().id(), yggdryl::DataTypeId::FixedAscii);
+    assert!(TypedScalar::new(width.as_field(), "ABCDEFGHI").is_err());
 
     // A typed code value is checked at the width its own standard fixes.
+    let ccy = CurrencyField::new("ccy", false);
     assert_eq!(
-        CurrencyScalar::new(Scalar::from("USD")).unwrap().value(),
-        &Scalar::from("USD")
+        TypedScalar::new(ccy.as_field(), "USD").unwrap().as_str(),
+        Some("USD")
     );
-    assert!(CurrencyScalar::new(Scalar::from("EURO")).is_err());
-    assert!(CfiScalar::new(Scalar::from("ESVUFR")).is_ok());
+    assert!(TypedScalar::new(ccy.as_field(), "EURO").is_err());
+    let cfi = CfiField::new("classification", false);
+    assert!(TypedScalar::new(cfi.as_field(), "ESVUFR").is_ok());
 }
 
 // ---------------------------------------------------------------------------

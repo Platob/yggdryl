@@ -290,6 +290,7 @@ pub struct Bound
 ### yggdryl::expression  [rust\src\expression\mod.rs]
 pub use apply::{ApplyExpression, ApplyExpressionStream};
   pub use bind::{Bound, BoundStatement};
+  pub use literal::Literal;
   pub use parser::{Direction, NullsOrder, Order, Projection, Statement, needs_quoting};
   pub use pushdown::{Bounds, ColumnBounds, Residual};
   pub use selector::{Attributes, Cost, Handle, Selector, read_handle};
@@ -299,6 +300,14 @@ pub use apply::{ApplyExpression, ApplyExpressionStream};
   pub fn field(name: impl Into<SmolStr>) -> Self
   pub const fn index(position: i64) -> Self
   pub fn key(value: Scalar) -> Result<Self>
+  pub struct Literal
+  pub fn new(dtype: DataType, value: impl Into<Scalar>) -> Result<Self>
+  pub fn infer(value: Scalar) -> Result<Self>
+  pub const fn null() -> Self
+  pub const fn dtype(&self) -> &DataType
+  pub const fn value(&self) -> &Scalar
+  pub const fn is_null(&self) -> bool
+  pub fn into_parts(self) -> (DataType, Scalar)
   pub enum Comparison
   pub const fn as_str(self) -> &'static str
   pub const fn is_two_valued(self) -> bool
@@ -354,7 +363,7 @@ pub use apply::{ApplyExpression, ApplyExpressionStream};
   pub fn try_cast(self, dtype: DataType) -> Self
   pub fn case(branches: impl IntoIterator<Item = (Self, Self)>, otherwise: Option<Self>) -> Self
   pub const fn is_literal(&self) -> bool
-  pub const fn as_literal(&self) -> Option<&TypedScalar>
+  pub const fn as_literal(&self) -> Option<&Literal>
   pub fn as_column(&self) -> Option<&str>
   pub fn is_always_true(&self) -> bool
   pub fn is_always_false(&self) -> bool
@@ -1795,11 +1804,9 @@ pub struct Text<H: IOBase>
   pub fn read_text_lines(&self) -> Result<super::TextLines>
 
 ### yggdryl::types::url  [rust\src\types\url\mod.rs]
-pub use fields::{UrlField, UrlScalar, UrlType};
+pub use fields::{UrlField, UrlType};
   pub type UrlField = TypedField<UrlType>;
   pub struct UrlType
-  pub type UrlScalar = TypedScalar<UrlType>;
-  pub fn new(value: Scalar) -> Result<Self>
   impl ScalarFamily for Url
   impl ScalarValue for Url
   impl From<Url> for Scalar
@@ -2405,7 +2412,7 @@ pub fn txh32(input: &[u8], unix: i64) -> TxHash
   pub fn digest(input: &[u8], unix: i64, algorithm: DigestAlgorithm) -> TxHash
 
 ### yggdryl::txhash::scalar  [rust\src\txhash\scalar.rs]
-pub fn txhash(&self, unix: i64, algorithm: DigestAlgorithm) -> TxHash  (on Scalar and on TypedScalar<K>)
+pub fn txhash(&self, unix: i64, algorithm: DigestAlgorithm) -> TxHash  (on Scalar, TypedScalar<'_>, and TypedRecord<'_>)
 
 ### yggdryl::txhash::time  [rust\src\txhash\time.rs]
 pub const DEFAULT_UNIT: TimeUnit = TimeUnit::Microsecond;
@@ -2884,7 +2891,6 @@ pub struct Version
   pub const fn minor(self) -> u8
   pub const fn patch(self) -> u16
   pub struct VersionType
-  pub type VersionScalar = TypedScalar<VersionType>;
   pub type VersionField = TypedField<VersionType>;
 
 ### yggdryl::types::integer  [rust\src\types\integer\dtypes.rs]
@@ -3316,23 +3322,60 @@ pub trait TextValue: ScalarValue
   pub fn storage(&self) -> &SmolStr
 
 ### yggdryl::types::typed  [rust\src\types\typed.rs]
-pub struct TypedScalar<K: FieldType = AnyType>
-  pub fn try_from_parts(dtype: DataType, value: Scalar) -> Result<Self>
-  pub fn try_from_value(value: Scalar) -> Result<Self>
-  pub fn from_parts(dtype: DataType, value: Scalar) -> Result<Self>
-  pub fn from_value(value: Scalar) -> Result<Self>
-  pub const fn dtype(&self) -> &DataType
+pub struct TypedScalar<'a>
+  pub fn new(field: &'a Field, value: impl Into<Scalar>) -> Result<Self>
+  pub fn parse_str(field: &'a Field, text: &str) -> Result<Self>
+  pub fn infer(value: Scalar) -> Result<TypedScalar<'static>>
+  pub const fn field(&self) -> &'a Field
+  pub const fn dtype(&self) -> &'a DataType
+  pub fn name(&self) -> &'a str
   pub const fn value(&self) -> &Scalar
   pub const fn is_null(&self) -> bool
-  pub fn into_parts(self) -> (DataType, Scalar)
+  pub fn as_str(&self) -> Option<&str>  // and as_bytes, as_bool, as_i64, as_u64, as_i128, as_f64, as_integer, as_float, as_decimal, as_temporal, as_sequence, as_record, get, get_key_str: the Scalar accessors, delegated
+  pub fn stable_hash(&self) -> u64
   pub fn into_value(self) -> Scalar
-  pub fn into_any(self) -> TypedScalar
-  pub fn try_into_typed<J: FieldType>(self) -> Result<TypedScalar<J>>
+  pub fn into_parts(self) -> (&'a Field, Scalar)
+  pub fn into_str(self) -> SmolStr
+  pub fn from_arrow_array( field: &'a Field, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn into_arrow_array(self) -> crate::arrow::Result<arrow_array::ArrayRef>
-  pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
-  pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
-  pub fn new(value: Scalar) -> Result<Self>
-  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, UuidScalar, VersionScalar included)
+  impl AsRef<Scalar> for TypedScalar<'_>
+  impl From<TypedScalar<'_>> for Scalar
+pub struct UncheckedTypedScalar<'a>
+  pub fn new(field: &'a Field, value: impl Into<Scalar>) -> Self
+  pub fn from_str(field: &'a Field, text: &str) -> Self
+  pub const fn field(&self) -> &'a Field
+  pub const fn dtype(&self) -> &'a DataType
+  pub fn name(&self) -> &'a str
+  pub const fn value(&self) -> &Scalar
+  pub const fn is_null(&self) -> bool
+  pub fn checked(self) -> Result<TypedScalar<'a>>
+  pub fn as_str(&self) -> Option<&str>  // and as_bytes: the held value when it already has that shape
+  pub fn as_bool(&self) -> Option<bool>  // and as_i64, as_u64, as_i128, as_f64, as_integer, as_float, as_decimal, as_temporal: the field's reading of the held value
+  pub fn into_value(self) -> Scalar
+
+### yggdryl::types::typed::record  [rust\src\types\typed\record.rs]
+pub struct TypedRecord<'a>
+  pub fn new(field: &'a Field, row: impl Into<Scalar>) -> Result<Self>
+  pub fn from_arrow_batch( field: &'a Field, batch: &arrow_array::RecordBatch, row: usize, ) -> crate::arrow::Result<Self>
+  pub const fn field(&self) -> &'a Field
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn get<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&TypedScalar<'a>>
+  pub fn get_by_name(&self, name: &str) -> Option<&TypedScalar<'a>>
+  pub fn get_by_index(&self, index: usize) -> Option<&TypedScalar<'a>>
+  pub fn names(&self) -> impl Iterator<Item = &'a str> + use<'a>
+  pub fn iter(&self) -> std::slice::Iter<'_, TypedScalar<'a>>
+  pub fn as_str<'key>(&self, key: impl Into<FieldKey<'key>>) -> Option<&str>
+  pub fn stable_hash(&self) -> u64
+  pub fn into_values(self) -> Vec<Scalar>
+  pub fn into_scalar(self) -> Scalar
+  pub fn into_arrow_batch(self) -> crate::arrow::Result<arrow_array::RecordBatch>
+  impl IntoIterator for TypedRecord<'a>  // and for &TypedRecord<'a>
+  impl Index<usize> for TypedRecord<'a>  // and Index<&str>
+  impl From<TypedRecord<'_>> for Scalar
+
+### yggdryl::types::typed::shared  [rust\src\types\typed\shared.rs]
+pub fn shared_field(&self) -> Option<&'static Field>  (on DataType and on Scalar)
 pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
   pub struct TypedField<K: FieldType>
@@ -3575,7 +3618,7 @@ pub const SECRET_MINIMUM_LENGTH: usize = 136;
 ### yggdryl::xxhash::scalar  [rust\src\xxhash\scalar.rs]
 pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>>
   pub fn write_bytes(&self, sink: &mut impl Hasher)
-  pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest
+  pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest  (on Scalar, TypedScalar<'_>, and TypedRecord<'_>)
   pub struct ValueBytes<'a>
 
 ### yggdryl::xxhash::state  [rust\src\xxhash\state.rs]

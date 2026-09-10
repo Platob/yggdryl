@@ -22,7 +22,7 @@ pub(crate) mod casts;
 mod fields;
 mod value;
 
-pub use fields::{UrlField, UrlScalar, UrlType};
+pub use fields::{UrlField, UrlType};
 
 /// The Arrow extension name preserving [`crate::DataType::Url`] over its Utf8
 /// storage.

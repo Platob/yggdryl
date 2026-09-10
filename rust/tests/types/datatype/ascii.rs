@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, Int64Array, RecordBatch, StringArray};
 use yggdryl::arrow::batch_reader;
+use yggdryl::expression::Literal;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::{DataType, Expression, Field, Scalar, TypedScalar, Url};
+use yggdryl::{DataType, Expression, Field, Scalar, Url};
 use yggdryl::{IOBase, IOMedia};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -231,11 +232,7 @@ fn an_ascii_literal_has_a_text_form() {
     };
     assert_eq!(
         **literal,
-        Expression::Literal({
-            let dtype = DataType::FixedAscii(4);
-            let value = dtype.scalar(Scalar::from("USD")).unwrap();
-            TypedScalar::from_parts(dtype, value).unwrap()
-        })
+        Expression::Literal(Literal::new(DataType::FixedAscii(4), "USD").unwrap())
     );
     // The literal prints in its own datatype and re-parses; a registered code
     // spells a literal of its own, which is not the literal of the width that

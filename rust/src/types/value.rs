@@ -214,6 +214,18 @@ impl Field {
     /// Returns an error naming what the field is when it is not a usable root.
     pub fn validate_struct_root(&self) -> Result<()> {
         self.validate()?;
+        self.require_struct_root()
+    }
+
+    /// Validates that this field has the shape of a record schema root.
+    ///
+    /// The shape half of [`Self::validate_struct_root`]: nullability and the
+    /// Struct datatype, and nothing below them. A typed row proves each cell
+    /// through its child's own value contract, which is the walk
+    /// [`Self::scalar`] runs without re-validating the datatype's parameters,
+    /// so it asks only this per row and leaves the schema-wide validation to
+    /// the boundary that published the schema.
+    pub(crate) fn require_struct_root(&self) -> Result<()> {
         if self.is_nullable() {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new("$"),
@@ -271,14 +283,14 @@ pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
 
 /// Validate one value against the datatype it claims, outside any row.
 ///
-/// A [`crate::TypedScalar`] is one value and one datatype with no field around
-/// them, so it validates through the same walk a column value takes and
-/// reports the same failures, rooted at the value itself. A null is accepted
-/// by every datatype that can spell one, because nullability belongs to the
-/// field that holds the column rather than to the value in it - and a union
-/// and a run-end layout cannot: each spells absence through a child, so a
-/// bare null is not a value either of them holds.
-pub(crate) fn validate_dtype_value_for(dtype: &DataType, value: &Scalar) -> Result<()> {
+/// The check half of [`dtype_scalar`]: a value with no field around it
+/// validates through the same walk a column value takes and reports the same
+/// failures, rooted at the value itself. A null is accepted by every datatype
+/// that can spell one, because nullability belongs to the field that holds
+/// the column rather than to the value in it - and a union and a run-end
+/// layout cannot: each spells absence through a child, so a bare null is not
+/// a value either of them holds.
+fn validate_dtype_value_for(dtype: &DataType, value: &Scalar) -> Result<()> {
     if spells_bare_null(dtype, value) {
         return Ok(());
     }

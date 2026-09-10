@@ -4,7 +4,6 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::typed::define_scalar_type;
 use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
 
 /// One RFC 9562 identifier stored as its big-endian 128-bit value.
@@ -70,7 +69,6 @@ impl ScalarFamily for Uuid {
 
 impl ScalarValue for Uuid {
     type Family = Self;
-    type Type = super::UuidType;
 
     const ID: DataTypeId = DataTypeId::Uuid;
     const KIND: DataTypeKind = DataTypeKind::Uuid;
@@ -95,5 +93,3 @@ impl ScalarValue for Uuid {
         <Self as ScalarFamily>::from_scalar(value)
     }
 }
-
-define_scalar_type!(UuidScalar, super::UuidType, "uuid", crate::DataType::Uuid);
