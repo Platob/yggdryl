@@ -288,14 +288,14 @@ A column is the caller speaking per row and a pin is the caller speaking per run
 
 A fill is named the way a key is: a column whose folded name resolves in the message's branch, then the standard one, then any dictionary the registry holds - so a `senderSessionId` capture reaches the crate's own `sendersessionid` - and last through the bridge's own spellings of standard fields, `seqNum` reaching `MsgSeqNum(34)`. It is row-only: never an entry, so it is not in `nofixentries`, not re-emitted by `write_arrow_reader` and not in `msghash`; a value the field cannot hold fills nothing rather than a null; and a column named by a tag's digits fills nothing, because a name is what reaches a field. Which columns fill is decided once, from the schema and the dictionary, rather than per row.
 
-`branch`, `sep` and `direction` are still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. `beginstring` and `timestamp` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided, and its `timestamp` column holds what a `timestamp` column stated. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
+`sep` and `direction` are still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. `beginstring` and `timestamp` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided, and its `timestamp` column holds what a `timestamp` column stated. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
 
 ### A bridge log names what it fills
 
 `yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text.md#row-schema) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level - with every capture named for what it fills. Rust names the constant; the regex is the same text, ending in one space, in any binding's `rowheader`.
 
 ```text
-^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<senderSessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) 
+^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<senderSessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) 
 ```
 
 | Capture | Typed as | In a batch read |
@@ -305,12 +305,12 @@ A fill is named the way a key is: a column whose folded name resolves in the mes
 | `senderSessionId` | utf8, nullable | the session instance the bridge handled the line on; folds onto `sendersessionid` (65007), so it fills that column rather than leading the row, and never over a reading the message stated |
 | `msgCtxId` | utf8, nullable | fills `msgctxid` (65008) |
 | `seqNum` | int64, nullable | fills `msgseqnum` (34) where the frame did not carry it; carried in front too, since no FIX column is named `seqnum` |
-| `plugin` | utf8 | carried in front, and a parameter: fills `sendersessionname` (65011) for a line the row says was sent and `targetsessionname` (65012) for one it received |
+| `pluginid` | utf8 | fills `pluginid` (65009), the plugin that logged the line; where its text names a dialect the dictionary declares, it is also the branch the row is read under |
 | `level` | utf8 | the capture's own column |
 
 The session uid, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
 
-The plugin is the one capture read as a parameter rather than as a fill by name: with the row's direction - stated in its `direction` column, else read off the line's verb, else the codec's `direction`, which is what a session's own log means by silence - it fills the plugin session the line moved from or to. A bridge row that spells `ULFROMSESSIONNAME` or `ULTOSESSIONNAME` itself keeps its own statement, because a fill never overrides a value the message stated.
+The plugin is read twice over, from one cell: it fills the crate's own `pluginid` column by name, like any capture named after a field, and where its text is the name or an alias of a dialect the dictionary declares it is the branch the row is read under, outranking the codec's own pin. A plugin no branch is named after leaves that pin standing. The two session names are only ever what the line itself spells, through the `ULFROMSESSIONNAME` and `ULTOSESSIONNAME` aliases they answer to.
 
 === "Rust"
 
@@ -321,7 +321,7 @@ The plugin is the one capture read as a parameter rather than as a fill by name:
     let options = TextOptions::new().try_with_rowheader(ULBRIDGE_ROWHEADER)?;
     let captures = options.source_field()?;
     let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-    assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "plugin", "level"]));
+    assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "pluginid", "level"]));
     // Typed from the pattern before a byte is read.
     assert_eq!(captures.field("seqNum")?.dtype(), &DataType::Int64);
     ```

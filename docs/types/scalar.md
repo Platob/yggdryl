@@ -107,19 +107,45 @@ assert_eq!(decimal.as_decimal(), Some((I256::from_i128(1_250), 2)));
 
 ## FieldScalar
 
-One value and one datatype, checked against each other, one alias per datatype. Rust only.
+One `Field` and the value its own contract answered, held together. The field is
+borrowed, so a reader downstream takes the name, the datatype and the value from
+one place and nothing copies the schema per value. Rust only.
 
 ```rust
-use yggdryl::types::{Int64Scalar, FieldScalar};
-use yggdryl::{DataType, Scalar};
+use yggdryl::{DataType, Field, FieldScalar, Scalar};
 
-let price = FieldScalar::from_parts(DataType::Int64, Scalar::from(7_i64))?;
-assert_eq!(price.dtype(), &DataType::Int64);
+let price = Field::new("price", DataType::Int32, false);
+let held = FieldScalar::new(&price, 7_i64)?;
+assert_eq!(held.name(), "price");
+assert_eq!(held.dtype(), &DataType::Int32);
+// The value was narrowed to the width the field declares.
+assert_eq!(held.value(), &Scalar::from(7_i32));
+assert_eq!(held.as_i64(), Some(7));
 
-// The same pairing, with the datatype fixed at compile time.
-let typed: Int64Scalar = price.try_into_typed()?;
-assert_eq!(typed.value(), &Scalar::from(7_i64));
-assert!(Int64Scalar::new(Scalar::from("seven")).is_err());
+// Nullability is the field's rule, so a required column refuses a null.
+assert!(FieldScalar::new(&price, Scalar::Null).is_err());
+
+// Text reads under the field, which is the one door from text to a value.
+assert_eq!(FieldScalar::parse_str(&price, "42")?.as_i64(), Some(42));
+
+// A value that names its own datatype borrows the field the crate prebuilt
+// for it, so inferring one copies nothing.
+let inferred = FieldScalar::infer(Scalar::from(7_i64))?;
+assert_eq!(inferred.dtype(), &DataType::Int64);
+```
+
+`UncheckedFieldScalar` is the same pairing before that proof: it holds whatever
+it was given and casts on read, and `checked` is where it becomes a
+`FieldScalar`.
+
+```rust
+use yggdryl::types::UncheckedFieldScalar;
+use yggdryl::{DataType, Field};
+
+let quantity = Field::new("quantity", DataType::Int64, false);
+let raw = UncheckedFieldScalar::from_str(&quantity, "42");
+assert_eq!(raw.as_i64(), Some(42));
+assert_eq!(raw.checked()?.value(), &yggdryl::Scalar::from(42_i64));
 ```
 
 ## Inferred fields
