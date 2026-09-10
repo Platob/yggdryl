@@ -67,6 +67,7 @@ pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};
 pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
+pub use expression::{FieldPath, FieldSegment};
 pub use fix::MsgType;
 pub use fix::{
     CRATE_TAG_MAX, CRATE_TAG_MIN, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS,

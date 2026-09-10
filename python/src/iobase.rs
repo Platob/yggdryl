@@ -2216,6 +2216,28 @@ impl PyIOBase {
         self.read_reader(py, &options)
     }
 
+    /// Decode this resource into typed text lines.
+    ///
+    /// The one decode entry point for plain text: every record method routes
+    /// through the same iterator, so a caller reading lines and a caller
+    /// reading batches read one decode. Lines are pulled one at a time and
+    /// never collected.
+    #[pyo3(signature = (*, options = None))]
+    fn read_text_lines(
+        &self,
+        options: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<crate::text_line::PyTextLines> {
+        let options = self.resolve_options(options)?;
+        let RecordOptions::Text(text) = options else {
+            return Err(PyValueError::new_err(
+                "read_text_lines expects plain-text record options",
+            ));
+        };
+        let lines = yggdryl::media::text::read_text_lines(self.inner()?, text.as_ref())
+            .map_err(crate::holder::fs::storage_error)?;
+        Ok(crate::text_line::PyTextLines::from_core(lines))
+    }
+
     /// Replace this resource with the batches `reader` yields.
     ///
     /// This typed entry point accepts a `pyarrow.RecordBatchReader` or another

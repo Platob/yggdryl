@@ -1,5 +1,6 @@
 //! Flat options for the `text/plain` record encoding.
 
+use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 
 use regex::bytes::Regex;
@@ -7,7 +8,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 #[cfg(feature = "arrow")]
 use crate::media::IORecordOptions;
-use crate::{DataType, Error, Field, Level, Metadata, Result, Timezone};
+use crate::{DataType, Error, Field, FieldPath, Level, Metadata, Result, Timezone};
 
 use super::{LeadingFragment, LineSep};
 
@@ -21,6 +22,9 @@ pub(crate) const BASE_COLUMNS: [&str; 4] = ["url", "rownum", "body", "dropped_by
 /// capture spelled this way is an ordinary one, so the flag alone decides
 /// whether the name belongs to the reader or to the expression.
 pub(crate) const MTIME_COLUMN: &str = "mtime";
+
+/// The column stating what a line was classified as.
+pub(crate) const MIMETYPE_COLUMN: &str = "mimetype";
 
 /// The one datatype the `mtime` column is read and stored at.
 ///
@@ -131,8 +135,6 @@ pub struct TextOptions {
     pub parse_mtime: bool,
     /// Whether to classify each line and emit a `mimetype` column.
     pub parse_mimetype: bool,
-    /// Whether to read each line's message type and emit a `msgtype` column.
-    pub parse_msgtype: bool,
     /// Whether to read each line's direction, emit a `direction` column, and
     /// take the marker off the body.
     pub parse_direction: bool,
@@ -148,6 +150,16 @@ pub struct TextOptions {
     /// row-in / row-out correspondence: the output no longer aligns with its
     /// input by position.
     pub dedup_adjacent: bool,
+    /// Emitted name for a column, keyed by its default name.
+    ///
+    /// Renaming decides what a column is called and never whether one exists:
+    /// a key naming no column is refused rather than read as a request to add
+    /// one. Lifting an entry into a column of its own is `lift_names`, and
+    /// keeping those two jobs apart is what stops one fact having two owners.
+    ///
+    /// Ordered rather than hashed, because these options are compared, ordered
+    /// and hashed, and two equal configurations must have one stored form.
+    pub rename_columns: BTreeMap<SmolStr, SmolStr>,
     framing: bool,
     leading_fragment: LeadingFragment,
     max_record_byte_size: Option<u64>,
@@ -158,6 +170,7 @@ pub struct TextOptions {
     autotype: bool,
     timezone: Option<Timezone>,
     captures: Vec<Field>,
+    lift_names: Option<Vec<FieldPath>>,
 }
 
 impl TextOptions {
@@ -181,9 +194,9 @@ impl TextOptions {
             start_rownum: None,
             parse_mtime: true,
             parse_mimetype: false,
-            parse_msgtype: false,
             parse_direction: false,
             dedup_adjacent: false,
+            rename_columns: BTreeMap::new(),
             framing: false,
             leading_fragment: LeadingFragment::Keep,
             max_record_byte_size: None,
@@ -194,6 +207,7 @@ impl TextOptions {
             autotype: true,
             timezone: None,
             captures: Vec::new(),
+            lift_names: None,
         }
     }
 
@@ -450,6 +464,90 @@ impl TextOptions {
         self.captures.iter().map(Field::name)
     }
 
+    /// Borrow the entry paths lifted into columns of their own.
+    ///
+    /// `None` is not "lift nothing": it is the default policy, which lifts
+    /// nothing beyond what the row header already declares as captures.
+    /// `Some` with an empty list means the same thing said explicitly, and
+    /// `Some` with paths lifts exactly those, in that order, after the fixed
+    /// columns.
+    #[must_use]
+    pub fn lift_names(&self) -> Option<&[FieldPath]> {
+        self.lift_names.as_deref()
+    }
+
+    /// Set or clear the lifted entry paths.
+    ///
+    /// Resolved here, once. Nothing downstream re-parses a path, and a caller
+    /// reading one in a loop hoists it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the path grammar's refusal, naming the byte position, for a
+    /// path that will not parse. Failure leaves the options unchanged.
+    pub fn set_lift_names<I, S>(&mut self, paths: Option<I>) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.lift_names = paths
+            .map(|paths| {
+                paths
+                    .into_iter()
+                    .map(|path| FieldPath::from_str(path.as_ref()))
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?;
+        Ok(())
+    }
+
+    /// Set or clear the lifted entry paths already resolved.
+    pub fn set_lift_paths(&mut self, paths: Option<Vec<FieldPath>>) {
+        self.lift_names = paths;
+    }
+
+    /// Return these options with lifted entry paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same refusal as [`Self::set_lift_names`].
+    pub fn try_with_lift_names<I, S>(mut self, paths: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.set_lift_names(Some(paths))?;
+        Ok(self)
+    }
+
+    /// Borrow the emitted-name overrides.
+    #[must_use]
+    pub const fn rename_columns(&self) -> &BTreeMap<SmolStr, SmolStr> {
+        &self.rename_columns
+    }
+
+    /// Return these options with one column renamed.
+    #[must_use]
+    pub fn with_renamed_column(mut self, from: impl Into<SmolStr>, to: impl Into<SmolStr>) -> Self {
+        self.rename_columns.insert(from.into(), to.into());
+        self
+    }
+
+    /// The lifted paths, empty where none are declared.
+    pub(crate) fn lift_paths(&self) -> &[FieldPath] {
+        self.lift_names.as_deref().unwrap_or_default()
+    }
+
+    /// Compile the column plan these options answer with.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusals the plan states for a rename naming no column, two
+    /// columns emitting one name, or a lifted path with no name to take.
+    pub(crate) fn plan(&self) -> Result<super::plan::TextPlan> {
+        super::plan::TextPlan::compile(self)
+    }
+
     /// Return a deterministic hash of the complete flat configuration.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
@@ -510,63 +608,7 @@ impl TextOptions {
     /// Returns the schema grammar's refusal when the columns do not make a
     /// struct.
     pub fn source_field(&self) -> Result<Field> {
-        let mut fields = Vec::with_capacity(7 + self.captures.len());
-        fields.push(described(
-            // Typed as the location it holds, so a column read out of a text
-            // table is a value a handle can be opened from rather than prose
-            // that looks like one. Nullable because an unlocated buffer has no
-            // URL, and the empty string is not one.
-            DataType::Url.nullable_field("url"),
-            "The URL of the object this line was read from.",
-        )?);
-        if self.start_rownum.is_some() {
-            fields.push(described(
-                DataType::Int64.required_field("rownum"),
-                "The physical line number within that object.",
-            )?);
-        }
-        if self.parse_mtime {
-            fields.push(described(
-                mtime_dtype().nullable_field(MTIME_COLUMN),
-                "When the record was written: its own captured timestamp, or the handle's modification time when it declares none.",
-            )?);
-        }
-        if self.parse_direction {
-            fields.push(described(
-                DataType::MsgDirection.nullable_field("direction"),
-                "Which way the line moved, read from the verb in front of it.",
-            )?);
-        }
-        if self.parse_mimetype {
-            fields.push(described(
-                DataType::Utf8.required_field("mimetype"),
-                "What the line was classified as.",
-            )?);
-        }
-        if self.parse_msgtype {
-            fields.push(described(
-                DataType::Utf8.nullable_field("msgtype"),
-                "The message type read from the line.",
-            )?);
-        }
-        fields.push(described(
-            DataType::Binary.required_field("body"),
-            "The line itself, with whatever was read off its front removed.",
-        )?);
-        if self.max_record_byte_size.is_some() {
-            fields.push(described(
-                DataType::UInt64.nullable_field("dropped_byte_size"),
-                "How many bytes of this record went over the retained limit.",
-            )?);
-        }
-        fields.extend(
-            self.captures
-                .iter()
-                .enumerate()
-                .filter(|(index, _)| !self.consumes_capture(*index))
-                .map(|(index, capture)| self.capture_dtype(index).nullable_field(capture.name())),
-        );
-        Ok(DataType::from_fields(fields)?.required_field(self.name.clone()))
+        self.plan()?.field(self.name.clone())
     }
 
     /// Whether the `mtime` column, rather than a column of its own, is where
@@ -608,24 +650,6 @@ impl TextOptions {
             (dtype, _) => dtype.clone(),
         }
     }
-
-    /// Every capture's datatype, in the order the row header declares them.
-    pub(crate) fn capture_dtypes(&self) -> Vec<DataType> {
-        (0..self.captures.len())
-            .map(|index| self.capture_dtype(index))
-            .collect()
-    }
-}
-
-/// One fixed column with the wording that says what it is.
-///
-/// On the generic `description` key, not behind a scheme: what a column holds
-/// is a fact about the column, and every catalog the crate writes to has a
-/// place for one. A caller declaring its own root replaces these along with
-/// everything else, which is what declaring a root means.
-fn described(mut field: Field, description: &str) -> Result<Field> {
-    field.set_description(description)?;
-    Ok(field)
 }
 
 impl Default for TextOptions {

@@ -50,6 +50,7 @@ mod bind;
 mod display;
 mod eval;
 mod parser;
+mod path;
 mod pushdown;
 mod selector;
 mod serde;
@@ -70,6 +71,7 @@ use crate::{DataType, Error, Result, TypedScalar};
 pub use apply::{ApplyExpression, ApplyExpressionStream};
 pub use bind::{Bound, BoundStatement};
 pub use parser::{Direction, NullsOrder, Order, Projection, Statement, needs_quoting};
+pub use path::{FieldPath, FieldSegment};
 pub use pushdown::{Bounds, ColumnBounds, Residual};
 pub use selector::{Attributes, Cost, Handle, Selector, read_handle};
 
@@ -91,50 +93,6 @@ pub const RECURSION_LIMIT: usize = 32;
 /// literals is one level deep and still unbounded work. The node budget is
 /// checked once, before any recursive walk, so a walk never has to check.
 pub const NODE_LIMIT: usize = 100_000;
-
-/// One step of a path into a nested value.
-///
-/// Written once in the grammar, resolved once against the container's datatype,
-/// and applied identically by the scalar and the vectorized evaluators.
-#[derive(Clone, Debug, Eq, PartialEq, Hash, ::serde::Serialize, ::serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Segment {
-    /// `.name` - a struct child, resolved ASCII case-insensitively the way
-    /// every cast in this crate resolves a name.
-    Field(SmolStr),
-    /// `[0]`, `[-1]` - one list element by position, 0-based, a negative index
-    /// counting back from the end. Out of range is null rather than an error,
-    /// because absence is not a failure on the read path anywhere else here.
-    Index(i64),
-    /// `['k']` - one map entry by key, the key read once through the map's own
-    /// key type. A struct child may also be reached this way when the key is
-    /// text, which is the spelling JSON tooling already uses.
-    Key(TypedScalar),
-}
-
-impl Segment {
-    /// Name a struct child.
-    #[must_use]
-    pub fn field(name: impl Into<SmolStr>) -> Self {
-        Self::Field(name.into())
-    }
-
-    /// Name a list element by position.
-    #[must_use]
-    pub const fn index(position: i64) -> Self {
-        Self::Index(position)
-    }
-
-    /// Name a map entry by key.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the value and the datatype it is paired with
-    /// disagree.
-    pub fn key(value: crate::Scalar) -> Result<Self> {
-        Ok(Self::Key(TypedScalar::from_value(value)?))
-    }
-}
 
 /// A comparison between two expressions.
 #[derive(
@@ -404,7 +362,7 @@ pub enum Function {
     /// How many items a list or a map holds.
     Size,
     /// `get(container, key_or_index)` - the functional spelling of a
-    /// [`Segment`], for when the key is computed rather than written.
+    /// [`FieldSegment`], for when the key is computed rather than written.
     ///
     /// Spelled `get` rather than `element_at` deliberately: several engines
     /// ship an `element_at` and they disagree about whether its index is
@@ -561,7 +519,7 @@ pub enum Expression {
     Column(SmolStr),
     /// A path into a nested value: a base expression and the steps that reach
     /// inside it, so `trade.legs[0]['ccy']` is one node resolved recursively.
-    Path(Box<Expression>, Arc<[Segment]>),
+    Path(Box<Expression>, Arc<[FieldSegment]>),
     /// An attribute of the *handle* rather than of the rows - `&holder.size`,
     /// `&holder.partition['year']`. See [`Selector`] for the cost table.
     Attribute(Selector),
@@ -706,8 +664,8 @@ impl Expression {
     /// second node, which is what keeps `a.b.c` one node and makes equality
     /// between two spellings of the same path structural.
     #[must_use]
-    pub fn path(self, segments: impl IntoIterator<Item = Segment>) -> Self {
-        let mut steps: Vec<Segment> = Vec::new();
+    pub fn path(self, segments: impl IntoIterator<Item = FieldSegment>) -> Self {
+        let mut steps: Vec<FieldSegment> = Vec::new();
         let base = match self {
             Self::Path(base, held) => {
                 steps.extend(held.iter().cloned());
@@ -725,13 +683,13 @@ impl Expression {
     /// Reach one struct child, or one string-keyed map entry.
     #[must_use]
     pub fn child(self, name: impl Into<SmolStr>) -> Self {
-        self.path([Segment::Field(name.into())])
+        self.path([FieldSegment::Field(name.into())])
     }
 
     /// Reach one list element by position, 0-based.
     #[must_use]
     pub fn at(self, index: i64) -> Self {
-        self.path([Segment::Index(index)])
+        self.path([FieldSegment::Index(index)])
     }
 
     /// Conjoin every expression, flattening nested conjunctions.
@@ -1347,35 +1305,6 @@ const fn variant_rank(expression: &Expression) -> u8 {
         Expression::Struct(_) => 20,
         Expression::List(_) => 21,
         Expression::Map(_) => 22,
-    }
-}
-
-/// A total order over path segments, consistent with structural equality.
-impl Ord for Segment {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
-
-        let rank = |segment: &Self| match segment {
-            Self::Field(_) => 0_u8,
-            Self::Index(_) => 1,
-            Self::Key(_) => 2,
-        };
-        let ordered = rank(self).cmp(&rank(other));
-        if ordered != Ordering::Equal {
-            return ordered;
-        }
-        match (self, other) {
-            (Self::Field(left), Self::Field(right)) => left.cmp(right),
-            (Self::Index(left), Self::Index(right)) => left.cmp(right),
-            (Self::Key(left), Self::Key(right)) => left.cmp(right),
-            _ => Ordering::Equal,
-        }
-    }
-}
-
-impl PartialOrd for Segment {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
     }
 }
 

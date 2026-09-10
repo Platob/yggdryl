@@ -85,7 +85,6 @@ fn reading() -> RecordOptions {
     options.start_rownum = Some(1);
     options.parse_direction = true;
     options.parse_mimetype = true;
-    options.parse_msgtype = true;
     options.into()
 }
 

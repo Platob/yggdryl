@@ -25,7 +25,7 @@ use std::fmt::{self, Write as _};
 use smol_str::SmolStr;
 
 use super::parser::{Direction, NullsOrder, Order, Projection, Statement};
-use super::{Comparison, Expression, Function, Operator, Safety, Segment};
+use super::{Comparison, Expression, Function, Operator, Safety};
 use crate::types::Nested;
 use crate::{DataType, Floating, Integer, Scalar, TypedScalar};
 
@@ -97,7 +97,7 @@ pub(crate) fn write_at(
         Expression::Path(base, steps) => {
             write_at(formatter, base, Precedence::Atom)?;
             for step in steps.iter() {
-                write_segment(formatter, step)?;
+                write!(formatter, "{step}")?;
             }
             Ok(())
         }
@@ -287,21 +287,6 @@ fn write_arguments(formatter: &mut fmt::Formatter<'_>, arguments: &[Expression])
         write_at(formatter, argument, Precedence::Disjunction)?;
     }
     formatter.write_char(')')
-}
-
-fn write_segment(formatter: &mut fmt::Formatter<'_>, segment: &Segment) -> fmt::Result {
-    match segment {
-        Segment::Field(name) => {
-            formatter.write_char('.')?;
-            write_identifier(formatter, name)
-        }
-        Segment::Index(index) => write!(formatter, "[{index}]"),
-        Segment::Key(key) => {
-            formatter.write_char('[')?;
-            write_literal(formatter, key)?;
-            formatter.write_char(']')
-        }
-    }
 }
 
 /// Write one identifier, quoting it only when the bare spelling would not
@@ -541,12 +526,6 @@ pub(crate) fn hex_text(bytes: &[u8]) -> String {
         let _ = write!(text, "{byte:02x}");
     }
     text
-}
-
-impl fmt::Display for Segment {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_segment(formatter, self)
-    }
 }
 
 impl fmt::Display for Comparison {

@@ -2301,6 +2301,82 @@ impl PyTextOptions {
         PyTuple::new(py, self.inner.capture_names())
     }
 
+    /// The columns a text read answers, built without reading anything.
+    ///
+    /// Every column is settled here - the fixed ones, the row header's
+    /// captures, and every lifted entry path - so a caller composing a text
+    /// read with something that reads its payload has the schema before there
+    /// is a resource to read.
+    fn source_field(&self) -> PyResult<PyField> {
+        self.inner
+            .source_field()
+            .map(PyField::from_inner)
+            .map_err(value_error)
+    }
+
+    /// The emitted name of each column, keyed by its default name.
+    ///
+    /// Renaming decides what a column is called and never whether one exists:
+    /// a key naming no column is refused. Lifting an entry into a column of
+    /// its own is `lift_names`.
+    #[getter]
+    fn rename_columns<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let renames = PyDict::new(py);
+        for (from, to) in self.inner.rename_columns() {
+            renames.set_item(from.as_str(), to.as_str())?;
+        }
+        Ok(renames)
+    }
+
+    #[setter]
+    fn set_rename_columns(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.rename_columns.clear();
+        let Some(value) = value else {
+            return Ok(());
+        };
+        let mapping = value.cast::<PyMapping>().map_err(|_| {
+            PyTypeError::new_err("rename_columns expects a mapping of column name to name")
+        })?;
+        for entry in mapping.items()?.try_iter()? {
+            let entry = entry?;
+            let pair = entry
+                .cast::<PyTuple>()
+                .map_err(|_| PyTypeError::new_err("rename_columns expects name/name pairs"))?;
+            let from: String = pair.get_item(0)?.extract()?;
+            let to: String = pair.get_item(1)?.extract()?;
+            self.inner.rename_columns.insert(from.into(), to.into());
+        }
+        Ok(())
+    }
+
+    /// The entry paths lifted into columns of their own.
+    ///
+    /// `None` lifts nothing beyond the row header's own captures; an empty
+    /// list says the same thing explicitly.
+    #[getter]
+    fn lift_names<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyTuple>>> {
+        self.inner
+            .lift_names()
+            .map(|paths| PyTuple::new(py, paths.iter().map(ToString::to_string)))
+            .transpose()
+    }
+
+    #[setter]
+    fn set_lift_names(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+        self.require_mutable()?;
+        let Some(value) = value else {
+            self.inner.set_lift_paths(None);
+            return Ok(());
+        };
+        let mut paths = Vec::new();
+        for held in value.try_iter()? {
+            paths.push(crate::text_line::core_path_from_value(&held?)?);
+        }
+        self.inner.set_lift_paths(Some(paths));
+        Ok(())
+    }
+
     fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
     }

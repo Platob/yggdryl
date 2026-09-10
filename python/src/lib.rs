@@ -33,6 +33,7 @@ mod iobase;
 mod iomedia;
 mod media;
 mod text;
+mod text_line;
 mod txhash;
 mod types;
 mod uri;
@@ -407,6 +408,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<media::avro::PyAvroBlock>()?;
     module.add_class::<media::avro::PyAvroBlockIterator>()?;
     module.add_class::<expression::PyExpression>()?;
+    text_line::register(module)?;
     module.add_class::<expression::PyBound>()?;
     module.add_class::<expression::PyStatement>()?;
     module.add_class::<expression::PyBoundStatement>()?;

@@ -96,7 +96,6 @@ fn text_options() -> TextOptions {
     options.start_rownum = Some(1);
     options.parse_direction = true;
     options.parse_mimetype = true;
-    options.parse_msgtype = true;
     options
 }
 
@@ -611,9 +610,9 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // The text reader's bodies are what the codec reads, so the line read
     // runs over them rather than over the raw lines. Where the line alone
     // answers nothing, what the batch answers is what the row's own columns
-    // stated: the text reader's `msgtype` reading, or the header's `seqNum`.
+    // stated - here the header's `seqNum`. The reader states no message type
+    // of its own: a line's type is what its frame says, read by the codec.
     let stage = text_stage(&CAPTURE);
-    let classified = column(&stage, "msgtype");
     let sequenced = column(&stage, "seqNum");
     let bodies = column(&read, "body");
     let rendered = |value: &Scalar| match value {
@@ -632,7 +631,6 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
                 .unwrap_or_else(|error| panic!("row {row}: {error}"));
             let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
             let expected = match (tag, &alone) {
-                (35, Scalar::Null) => rendered(&classified[row]),
                 (34, Scalar::Null) => rendered(&sequenced[row]),
                 _ => rendered(&alone),
             };

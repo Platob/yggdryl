@@ -884,7 +884,6 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
     );
     let mut options = TextOptions::new();
     options.parse_mimetype = true;
-    options.parse_msgtype = true;
     options.parse_direction = true;
 
     // The columns a classifying read declares, in order.
@@ -896,10 +895,7 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
         .iter()
         .map(Field::name)
         .collect();
-    assert_eq!(
-        names,
-        ["url", "mtime", "direction", "mimetype", "msgtype", "body"]
-    );
+    assert_eq!(names, ["url", "mtime", "direction", "mimetype", "body"]);
 
     let batches = collect(&source, options);
     assert_eq!(
@@ -915,10 +911,6 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
             Some("application/xml"),
             Some("application/octet-stream"),
         ]
-    );
-    assert_eq!(
-        texts(&batches, "msgtype"),
-        [Some("D"), Some("8"), None, None, None]
     );
     // Reading the verb takes exactly the verb off the body: a body that kept
     // it would carry a word no protocol sent. What it does *not* take is the
@@ -1385,7 +1377,6 @@ fn captures_are_typed_by_name_whatever_fixed_columns_precede_them() {
     // that count was wrong and a capture was parsed at another column's type.
     let mut options = options(r"^(?<seen>\d{4}-\d{2}-\d{2}) id=(?<id>\d+) ");
     options.parse_mimetype = true;
-    options.parse_msgtype = true;
     options.parse_direction = true;
     let batch = collect(&named("wide.log", b"2020-01-02 id=7 first\n"), options)
         .pop()
@@ -1398,4 +1389,625 @@ fn captures_are_typed_by_name_whatever_fixed_columns_precede_them() {
         batch.schema().field_with_name("id").unwrap().data_type(),
         &arrow_schema::DataType::Int64
     );
+}
+
+// --- The decoded row value and its parts ---
+
+mod values {
+    use std::sync::Arc;
+
+    use crate::media::text::{TextBytes, TextEntries, TextEntry, TextLine};
+    use crate::{FieldPath, FieldSegment};
+
+    fn page(bytes: &[u8]) -> Arc<Vec<u8>> {
+        Arc::new(bytes.to_vec())
+    }
+
+    fn path(text: &str) -> FieldPath {
+        FieldPath::from_str(text).expect("path parses")
+    }
+
+    fn entry(key: &str, value: &str) -> TextEntry {
+        TextEntry::new(
+            TextBytes::from_bytes(key).expect("a key"),
+            TextBytes::from_bytes(value).expect("a value"),
+        )
+    }
+
+    #[test]
+    fn a_range_borrows_its_page_and_copies_nothing() {
+        let page = page(b"alpha beta gamma");
+        let middle = TextBytes::from_page(&page, 6, 10).expect("inside the page");
+        assert_eq!(middle.as_bytes(), b"beta");
+        assert_eq!(middle.len(), 4);
+        assert_eq!(middle.start(), 6);
+        assert_eq!(middle.end(), 10);
+        // The range points into the very page it was taken from.
+        assert!(Arc::ptr_eq(middle.page().expect("a page"), &page));
+    }
+
+    #[test]
+    fn an_empty_range_retains_no_page() {
+        let page = page(b"alpha");
+        let empty = TextBytes::from_page(&page, 2, 2).expect("an empty range");
+        assert!(empty.is_empty());
+        assert_eq!(empty.as_bytes(), b"");
+        assert!(empty.page().is_none(), "an empty range pins nothing");
+        assert_eq!(Arc::strong_count(&page), 1);
+    }
+
+    #[test]
+    fn a_range_outside_its_page_is_refused() {
+        let page = page(b"alpha");
+        assert!(TextBytes::from_page(&page, 0, 6).is_err());
+        assert!(TextBytes::from_page(&page, 4, 2).is_err());
+        assert!(TextBytes::from_page(&page, 0, 5).is_ok());
+    }
+
+    #[test]
+    fn identity_is_the_bytes_and_never_the_page() {
+        let left = TextBytes::from_page(&page(b"xxbetayy"), 2, 6).expect("inside");
+        let right = TextBytes::from_page(&page(b"beta"), 0, 4).expect("inside");
+        assert_eq!(left, right, "same bytes, different pages");
+        assert_eq!(
+            crate::stable_hash_of(&left),
+            crate::stable_hash_of(&right),
+            "equal values must hash alike"
+        );
+        assert!(left <= right && right <= left);
+    }
+
+    #[test]
+    fn slicing_stays_inside_the_same_page() {
+        let page = page(b"alpha beta gamma");
+        let tail = TextBytes::from_page(&page, 6, 16).expect("inside");
+        let inner = tail.slice(0, 4).expect("inside the range");
+        assert_eq!(inner.as_bytes(), b"beta");
+        assert!(Arc::ptr_eq(inner.page().expect("a page"), &page));
+        assert!(tail.slice(0, 99).is_err());
+    }
+
+    #[test]
+    fn an_entry_tree_is_found_by_path_at_every_depth() {
+        let nested = TextEntries::from_iter([entry("PartyID", "ACME")]);
+        let entries = TextEntries::from_iter([
+            entry("35", "D"),
+            entry("55", "AAPL"),
+            TextEntry::new(
+                TextBytes::from_bytes("213").expect("a key"),
+                TextBytes::new(),
+            )
+            .with_entries(nested),
+        ]);
+        let line =
+            TextLine::new(0, TextBytes::from_bytes("body").expect("a body")).with_entries(entries);
+
+        assert_eq!(
+            line.get_entry_by_path(&path("55"))
+                .and_then(|held| held.value().as_str()),
+            Some("AAPL")
+        );
+        assert_eq!(
+            line.get_entry_by_path(&path("\"213\".PartyID"))
+                .and_then(|held| held.value().as_str()),
+            Some("ACME")
+        );
+        assert_eq!(
+            line.get_entry_by_path(&path("[1]"))
+                .and_then(|held| held.key().as_str()),
+            Some("55")
+        );
+        assert_eq!(
+            line.get_entry_by_path(&path("[-1]"))
+                .and_then(|held| held.key().as_str()),
+            Some("213")
+        );
+    }
+
+    #[test]
+    fn a_miss_is_null_and_never_an_error_or_a_panic() {
+        let line = TextLine::new(0, TextBytes::new())
+            .with_entries(TextEntries::from_iter([entry("a", "1")]));
+        for text in ["b", "a.b", "a.b.c", "[9]", "[-9]"] {
+            assert!(
+                line.get_entry_by_path(&path(text)).is_none(),
+                "{text} must miss"
+            );
+        }
+        // A line carrying no tree at all misses the same way.
+        let bare = TextLine::new(0, TextBytes::new());
+        assert!(bare.get_entry_by_path(&path("a")).is_none());
+        // The raising form says why, and names the path.
+        let error = bare.entry_by_path(&path("a")).expect_err("raises");
+        assert!(error.to_string().contains('a'), "{error}");
+    }
+
+    #[test]
+    fn a_key_with_no_value_is_found_and_is_not_a_miss() {
+        let line = TextLine::new(0, TextBytes::new())
+            .with_entries(TextEntries::from_iter([entry("a", "")]));
+        let found = line
+            .get_entry_by_path(&path("a"))
+            .expect("the key is there");
+        assert!(found.value().is_empty());
+    }
+
+    #[test]
+    fn the_setter_creates_what_is_not_there() {
+        let mut line = TextLine::new(0, TextBytes::new());
+        line.set_entry_by_path(
+            &path("order.price"),
+            TextBytes::from_bytes("12").expect("a value"),
+        )
+        .expect("creates both levels");
+        assert_eq!(
+            line.get_entry_by_path(&path("order.price"))
+                .and_then(|held| held.value().as_str()),
+            Some("12")
+        );
+        // Setting again replaces rather than appending a second entry.
+        line.set_entry_by_path(
+            &path("order.price"),
+            TextBytes::from_bytes("13").expect("a value"),
+        )
+        .expect("replaces");
+        assert_eq!(
+            line.entries().map(TextEntries::len),
+            Some(1),
+            "one root entry"
+        );
+        assert_eq!(
+            line.get_entry_by_path(&path("order.price"))
+                .and_then(|held| held.value().as_str()),
+            Some("13")
+        );
+    }
+
+    #[test]
+    fn a_position_naming_no_entry_refuses_and_changes_nothing() {
+        let mut line = TextLine::new(0, TextBytes::new())
+            .with_entries(TextEntries::from_iter([entry("a", "1")]));
+        let before = line.clone();
+        let error = line
+            .set_entry_by_path(&path("[4]"), TextBytes::from_bytes("x").expect("a value"))
+            .expect_err("a position names an entry that exists");
+        assert!(error.to_string().contains("position"), "{error}");
+        assert_eq!(line, before, "a refusal leaves the line unchanged");
+    }
+
+    #[test]
+    fn the_root_path_is_not_a_place_to_set() {
+        let mut line = TextLine::new(0, TextBytes::new());
+        assert!(
+            line.set_entry_by_path(&FieldPath::root(), TextBytes::new())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn removing_takes_one_entry_at_the_path() {
+        let mut line = TextLine::new(0, TextBytes::new())
+            .with_entries(TextEntries::from_iter([entry("a", "1"), entry("b", "2")]));
+        let removed = line.remove_entry_by_path(&path("a")).expect("removes");
+        assert_eq!(removed.key().as_str(), Some("a"));
+        assert_eq!(line.entries().map(TextEntries::len), Some(1));
+        assert!(line.remove_entry_by_path(&path("a")).is_none());
+    }
+
+    #[test]
+    fn a_repeated_key_is_two_entries_reachable_by_position() {
+        let line = TextLine::new(0, TextBytes::new()).with_entries(TextEntries::from_iter([
+            entry("tag", "first"),
+            entry("tag", "second"),
+        ]));
+        assert_eq!(
+            line.get_entry_by_path(&path("tag"))
+                .and_then(|held| held.value().as_str()),
+            Some("first"),
+            "a name reaches the first"
+        );
+        assert_eq!(
+            line.get_entry_by_path(&path("[1]"))
+                .and_then(|held| held.value().as_str()),
+            Some("second")
+        );
+    }
+
+    #[test]
+    fn a_line_carries_what_no_other_field_can_recover() {
+        let mut line = TextLine::new(7, TextBytes::from_bytes("hello").expect("a body"));
+        assert_eq!(line.index(), 7);
+        line.set_timestamp(Some(1_700_000_000_000_000_000));
+        line.set_dropped_byte_size(Some(12));
+        line.set_direction(Some("out"));
+        assert_eq!(line.timestamp(), Some(1_700_000_000_000_000_000));
+        assert_eq!(line.dropped_byte_size(), Some(12));
+        assert_eq!(line.direction(), Some("out"));
+        assert_eq!(line.body().as_str(), Some("hello"));
+    }
+
+    #[test]
+    fn a_path_segment_naming_nothing_addressable_misses_rather_than_panics() {
+        let line = TextLine::new(0, TextBytes::new())
+            .with_entries(TextEntries::from_iter([entry("a", "1")]));
+        let by_index = FieldPath::new([FieldSegment::index(0)]);
+        assert!(line.get_entry_by_path(&by_index).is_some());
+        let deep = FieldPath::new([FieldSegment::index(0), FieldSegment::field("x")]);
+        assert!(line.get_entry_by_path(&deep).is_none());
+    }
+}
+
+// --- The one decode path, the plan, and the two new options ---
+
+mod decoding {
+    use arrow_array::{Array as _, BinaryArray, StringArray};
+
+    use crate::FieldPath;
+    use crate::media::text::{TextOptions, into_arrow_batch, read_text_lines};
+
+    use super::named;
+
+    fn lines(source: &[u8], options: &TextOptions) -> Vec<crate::media::text::TextLine> {
+        read_text_lines(&named("app.log", source), options)
+            .expect("the configuration is settled")
+            .map(|line| line.expect("a line decodes"))
+            .collect()
+    }
+
+    #[test]
+    fn every_line_becomes_one_typed_row() {
+        let options = TextOptions::new();
+        let decoded = lines(b"first\nsecond\nthird\n", &options);
+        assert_eq!(decoded.len(), 3);
+        assert_eq!(decoded[0].index(), 0);
+        assert_eq!(decoded[2].index(), 2);
+        assert_eq!(decoded[1].body().as_str(), Some("second"));
+        // The URL is one shared value, not one rebuilt per line.
+        assert_eq!(
+            decoded[0].url().map(ToString::to_string),
+            decoded[2].url().map(ToString::to_string)
+        );
+    }
+
+    #[test]
+    fn a_read_whose_columns_want_no_entry_builds_no_tree() {
+        let options = TextOptions::new();
+        let decoded = lines(b"35=D|55=AAPL\n", &options);
+        assert!(
+            decoded[0].entries().is_none(),
+            "nothing asked for a tree, so none was built"
+        );
+        assert!(decoded[0].bodytype().is_none(), "and nothing classified it");
+    }
+
+    #[test]
+    fn declaring_a_lifted_path_builds_the_tree_and_the_column() {
+        let options = TextOptions::new()
+            .try_with_lift_names(["55"])
+            .expect("the path parses");
+        let decoded = lines(b"35=D|55=AAPL\n", &options);
+        let entries = decoded[0].entries().expect("a lifted column wants a tree");
+        assert!(entries.len() >= 2, "both pairs were read");
+        let path = FieldPath::from_str("55").expect("the path parses");
+        assert_eq!(
+            decoded[0]
+                .get_entry_by_path(&path)
+                .and_then(|held| held.value().as_str()),
+            Some("AAPL")
+        );
+
+        let batch = into_arrow_batch(decoded, &options).expect("a batch builds");
+        let column = batch
+            .column_by_name("55")
+            .expect("the lifted column is there");
+        assert_eq!(
+            column
+                .as_any()
+                .downcast_ref::<BinaryArray>()
+                .expect("lifted values are binary")
+                .value(0),
+            b"AAPL"
+        );
+    }
+
+    #[test]
+    fn a_lifted_path_no_line_carries_is_null_rather_than_a_refusal() {
+        let options = TextOptions::new()
+            .try_with_lift_names(["absent"])
+            .expect("the path parses");
+        let decoded = lines(b"35=D\n", &options);
+        let batch = into_arrow_batch(decoded, &options).expect("a batch builds");
+        let column = batch.column_by_name("absent").expect("the column exists");
+        assert!(column.is_null(0), "a path nothing carried is null");
+        // And the column exists in the schema whether or not a row filled it.
+        assert!(
+            options
+                .source_field()
+                .expect("a schema")
+                .get_field_by_path("absent")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn renaming_changes_what_a_column_is_called_and_nothing_else() {
+        let options = TextOptions::new()
+            .with_renamed_column("body", "payload")
+            .with_renamed_column("url", "source");
+        let batch = into_arrow_batch(lines(b"hello\n", &options), &options).expect("a batch");
+        assert!(batch.column_by_name("payload").is_some());
+        assert!(batch.column_by_name("source").is_some());
+        assert!(
+            batch.column_by_name("body").is_none(),
+            "the old name is gone"
+        );
+        assert_eq!(
+            batch
+                .column_by_name("payload")
+                .expect("renamed")
+                .as_any()
+                .downcast_ref::<BinaryArray>()
+                .expect("still binary")
+                .value(0),
+            b"hello"
+        );
+    }
+
+    #[test]
+    fn a_rename_naming_no_column_is_refused_at_options_time() {
+        let options = TextOptions::new().with_renamed_column("nosuch", "x");
+        let error = options
+            .source_field()
+            .expect_err("a rename must name a column");
+        let rendered = error.to_string();
+        assert!(rendered.contains("nosuch"), "{rendered}");
+        assert!(rendered.contains("lift_names"), "{rendered}");
+    }
+
+    #[test]
+    fn two_columns_may_not_emit_one_name() {
+        let options = TextOptions::new().with_renamed_column("body", "url");
+        let error = options.source_field().expect_err("one column per name");
+        assert!(error.to_string().contains("twice"), "{error}");
+    }
+
+    #[test]
+    fn a_lifted_path_names_its_own_column_with_an_alias() {
+        // `as` names the column in the same breath that selects it, so no
+        // rename is needed for the common case.
+        let options = TextOptions::new()
+            .try_with_lift_names(["\"55\" as symbol"])
+            .expect("the path parses");
+        let batch = into_arrow_batch(
+            lines(
+                b"55=AAPL
+",
+                &options,
+            ),
+            &options,
+        )
+        .expect("a batch");
+        assert!(batch.column_by_name("symbol").is_some());
+        assert!(batch.column_by_name("55").is_none());
+        assert_eq!(
+            batch
+                .column_by_name("symbol")
+                .expect("aliased")
+                .as_any()
+                .downcast_ref::<BinaryArray>()
+                .expect("lifted values are binary")
+                .value(0),
+            b"AAPL"
+        );
+    }
+
+    #[test]
+    fn two_lifted_paths_ending_alike_are_told_apart_by_their_aliases() {
+        // Without aliases both would take the last segment's name and collide.
+        let options = TextOptions::new()
+            .try_with_lift_names(["a.id as left_id", "b.id as right_id"])
+            .expect("the paths parse");
+        let field = options.source_field().expect("a schema");
+        let children = field.dtype().as_fields().expect("a struct");
+        let names: Vec<&str> = children.iter().map(crate::Field::name).collect();
+        assert!(names.contains(&"left_id"));
+        assert!(names.contains(&"right_id"));
+    }
+
+    #[test]
+    fn a_lifted_path_may_be_renamed_like_any_other_column() {
+        let options = TextOptions::new()
+            .try_with_lift_names(["55"])
+            .expect("the path parses")
+            .with_renamed_column("55", "symbol");
+        let batch = into_arrow_batch(lines(b"55=AAPL\n", &options), &options).expect("a batch");
+        assert!(batch.column_by_name("symbol").is_some());
+        assert!(batch.column_by_name("55").is_none());
+    }
+
+    #[test]
+    fn the_classification_column_comes_from_one_scan() {
+        let mut options = TextOptions::new();
+        options.parse_mimetype = true;
+        let decoded = lines(
+            b"8=FIX.4.2|35=D|10=001
+",
+            &options,
+        );
+        assert!(decoded[0].bodytype().is_some());
+        let batch = into_arrow_batch(decoded, &options).expect("a batch");
+        let shape = batch
+            .column_by_name("mimetype")
+            .expect("the column is there")
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("utf8")
+            .value(0)
+            .to_owned();
+        assert_eq!(shape, "text/fix");
+    }
+
+    #[test]
+    fn the_schema_a_batch_carries_is_the_schema_the_options_declared() {
+        let mut options = TextOptions::new();
+        options.start_rownum = Some(1);
+        options.parse_mimetype = true;
+        let options = options
+            .try_with_lift_names(["55"])
+            .expect("the path parses");
+        let declared = options.source_field().expect("a schema");
+        let batch = into_arrow_batch(lines(b"55=AAPL\n", &options), &options).expect("a batch");
+        let schema = batch.schema();
+        let names: Vec<&str> = schema
+            .fields()
+            .iter()
+            .map(|field| field.name().as_str())
+            .collect();
+        let declared_fields = declared.fields();
+        let expected: Vec<&str> = declared_fields.iter().map(crate::Field::name).collect();
+        assert_eq!(
+            names, expected,
+            "the plan and the schema are one derivation"
+        );
+    }
+
+    #[test]
+    fn an_empty_object_answers_its_columns_and_no_rows() {
+        let options = TextOptions::new();
+        let batch = into_arrow_batch(Vec::new(), &options).expect("a batch");
+        assert_eq!(batch.num_rows(), 0);
+        assert!(batch.column_by_name("body").is_some());
+    }
+
+    #[test]
+    fn a_lifted_path_with_no_name_to_take_is_refused() {
+        let mut options = TextOptions::new();
+        options.set_lift_paths(Some(vec![FieldPath::root()]));
+        assert!(options.source_field().is_err());
+    }
+}
+
+// --- Reading Arrow back into lines ---
+
+mod intake {
+    use crate::FieldPath;
+    use crate::media::text::{
+        TextOptions, from_arrow_batch, from_arrow_reader, into_arrow_batch, read_text_lines,
+    };
+
+    use super::named;
+
+    fn decode(source: &[u8], options: &TextOptions) -> Vec<crate::media::text::TextLine> {
+        read_text_lines(&named("app.log", source), options)
+            .expect("a settled configuration")
+            .map(|line| line.expect("a line"))
+            .collect()
+    }
+
+    #[test]
+    fn a_batch_round_trips_back_into_its_lines() {
+        let mut options = TextOptions::new();
+        options.start_rownum = Some(0);
+        options.parse_mimetype = true;
+        let lines = decode(b"first\nsecond\n", &options);
+        let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
+        let back = from_arrow_batch(&batch, &options).expect("lines read back");
+
+        assert_eq!(back.len(), lines.len());
+        for (read, original) in back.iter().zip(&lines) {
+            assert_eq!(read.body(), original.body());
+            assert_eq!(read.index(), original.index());
+            assert_eq!(
+                read.url().map(ToString::to_string),
+                original.url().map(ToString::to_string)
+            );
+            assert_eq!(read.timestamp(), original.timestamp());
+        }
+    }
+
+    #[test]
+    fn a_column_named_the_way_someone_else_writes_it_is_still_found() {
+        let options = TextOptions::new();
+        // A producer that calls the body `payload` and the object `source`.
+        let renamed = TextOptions::new()
+            .with_renamed_column("body", "payload")
+            .with_renamed_column("url", "source");
+        let lines = decode(b"hello\n", &renamed);
+        let foreign = into_arrow_batch(lines, &renamed).expect("a batch");
+
+        // Read under the ordinary names: the aliases carry it.
+        let back = from_arrow_batch(&foreign, &options).expect("lines read back");
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].body().as_str(), Some("hello"));
+        assert!(back[0].url().is_some(), "source resolved to url");
+    }
+
+    #[test]
+    fn a_case_difference_alone_still_matches() {
+        let renamed = TextOptions::new().with_renamed_column("body", "BODY");
+        let lines = decode(b"hello\n", &renamed);
+        let batch = into_arrow_batch(lines, &renamed).expect("a batch");
+        let back = from_arrow_batch(&batch, &TextOptions::new()).expect("lines read back");
+        assert_eq!(back[0].body().as_str(), Some("hello"));
+    }
+
+    #[test]
+    fn a_column_the_batch_does_not_carry_leaves_its_field_at_the_default() {
+        let mut with_rownum = TextOptions::new();
+        with_rownum.start_rownum = Some(5);
+        let lines = decode(b"only\n", &TextOptions::new());
+        let batch = into_arrow_batch(lines, &TextOptions::new()).expect("a batch");
+        // The reading options want a rownum column the batch has none of.
+        let back = from_arrow_batch(&batch, &with_rownum).expect("lines read back");
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].index(), 0, "the position it was read at");
+        assert_eq!(back[0].body().as_str(), Some("only"));
+    }
+
+    #[test]
+    fn a_lifted_column_round_trips_back_into_its_entry() {
+        let options = TextOptions::new()
+            .try_with_lift_names(["55"])
+            .expect("the path parses");
+        let lines = decode(b"55=AAPL\n", &options);
+        let batch = into_arrow_batch(lines, &options).expect("a batch");
+        let back = from_arrow_batch(&batch, &options).expect("lines read back");
+        let path = FieldPath::from_str("55").expect("the path parses");
+        assert_eq!(
+            back[0]
+                .get_entry_by_path(&path)
+                .and_then(|held| held.value().as_str()),
+            Some("AAPL")
+        );
+    }
+
+    #[test]
+    fn streamed_batches_read_back_one_at_a_time() {
+        let mut options = TextOptions::new();
+        options.batch_row_size = Some(1);
+        let lines = decode(b"a\nb\nc\n", &options);
+        let reader = crate::media::text::into_arrow_reader(
+            lines.into_iter().map(Ok).collect::<Vec<_>>(),
+            &options,
+        )
+        .expect("a reader");
+        let back: Vec<_> = from_arrow_reader(reader, &options)
+            .expect("a settled configuration")
+            .map(|line| line.expect("a line"))
+            .collect();
+        assert_eq!(back.len(), 3);
+        assert_eq!(back[2].body().as_str(), Some("c"));
+    }
+
+    #[test]
+    fn a_timestamp_wider_than_the_column_is_refused_by_name() {
+        let options = TextOptions::new();
+        let mut lines = decode(b"one\n", &options);
+        // The line counts in 128 bits; the column holds 64.
+        lines[0].set_timestamp(Some(i128::from(i64::MAX) + 1));
+        let error = into_arrow_batch(lines, &options).expect_err("a count that will not fit");
+        let rendered = error.to_string();
+        assert!(rendered.contains("mtime"), "{rendered}");
+        assert!(rendered.contains("64-bit"), "{rendered}");
+    }
 }

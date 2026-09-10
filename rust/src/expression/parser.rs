@@ -41,7 +41,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::display::{is_bare_identifier, is_reserved};
 use super::selector::Selector;
-use super::{Comparison, Expression, Function, Operator, RECURSION_LIMIT, Safety, Segment};
+use super::{Comparison, Expression, FieldSegment, Function, Operator, RECURSION_LIMIT, Safety};
 use crate::{DataType, Error, I256, Result, Scalar, TypedScalar};
 
 /// Which way one ordering key sorts.
@@ -195,7 +195,7 @@ impl Projection {
         match &self.expression {
             Expression::Column(name) => name.clone(),
             Expression::Path(_, steps) => match steps.last() {
-                Some(Segment::Field(name)) => name.clone(),
+                Some(FieldSegment::Field(name)) => name.clone(),
                 _ => SmolStr::new(self.expression.to_string()),
             },
             other => SmolStr::new(other.to_string()),
@@ -965,7 +965,7 @@ impl<'input> Parser<'input> {
     }
 
     /// Read one path step: an integer position, or a constant key.
-    fn segment(&mut self) -> Result<Segment> {
+    fn segment(&mut self) -> Result<FieldSegment> {
         let position = self.position();
         let negative = self.eat_symbol("-");
         if let Some(Token::Number(text)) = self.peek().cloned() {
@@ -979,7 +979,7 @@ impl<'input> Parser<'input> {
                         ),
                     )
                 })?;
-                return Ok(Segment::Index(if negative {
+                return Ok(FieldSegment::Index(if negative {
                     -magnitude
                 } else {
                     magnitude
@@ -999,7 +999,7 @@ impl<'input> Parser<'input> {
                 "expected a constant key; use get(container, key) for a computed one",
             ));
         };
-        Ok(Segment::Key(held))
+        Ok(FieldSegment::Key(held))
     }
 
     fn identifier(&mut self) -> Result<SmolStr> {

@@ -29,7 +29,7 @@ use super::eval::{Row, convert};
 use super::parser::{Direction, NullsOrder, Statement};
 use super::selector::{Attributes, Cost, Selector};
 use super::typing::common_type;
-use super::{Comparison, Expression, Function, Operator, Safety, Segment};
+use super::{Comparison, Expression, FieldSegment, Function, Operator, Safety};
 use crate::{DataType, Error, Field, Result, Scalar, TypedScalar};
 
 /// What one node costs to answer, in units of "a free attribute read".
@@ -57,7 +57,7 @@ pub(crate) enum Kind {
     /// A column, by index into the bound schema.
     Column(usize),
     /// A path into a value.
-    Path(Box<Node>, Arc<[Segment]>),
+    Path(Box<Node>, Arc<[FieldSegment]>),
     /// A holder attribute.
     Attribute(Selector),
     /// Conjunction, operands ordered cheapest-first.

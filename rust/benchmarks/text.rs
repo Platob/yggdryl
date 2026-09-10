@@ -24,6 +24,7 @@ criterion_group!(
     placeholder::placeholder_benchmarks,
     line::text_options_benchmarks,
     line::text_records_benchmarks,
+    line::text_line_benchmarks,
     json::format::json_benchmarks,
     toml::format::toml_benchmarks,
     yaml::format::yaml_benchmarks,
