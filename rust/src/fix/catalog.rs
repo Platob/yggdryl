@@ -390,6 +390,34 @@ impl FixRegistry {
         self.catalog.entries[position].field.message()
     }
 
+    /// The message `spelling` names under `branch`, by the tier a key
+    /// resolves by: the branch's own declaration, else - for a branch that
+    /// is not the standard one and declares the code not at all - the
+    /// standard one's. An omitted or standard branch reads as an omitted
+    /// one does, the standard namespace first.
+    ///
+    /// Ambiguity is an answer, not an absence: a code the branch declares
+    /// twice names nothing, in that branch or in the one below it. The
+    /// codec reads a row against this and the anomaly reader compares the
+    /// row against the same, so one grammar is what both mean.
+    pub(super) fn known_msgtype(
+        &self,
+        spelling: &str,
+        branch: Option<&FixBranch>,
+    ) -> Option<&MsgType> {
+        let Some(branch) = branch.filter(|held| !held.is_standard()) else {
+            return self.get_msgtype(spelling, None);
+        };
+        let declared = self
+            .get_branch_by_digest(branch.digest_signed())
+            .filter(|held| held.has_identity(branch))
+            .and_then(|_| self.catalog.message_position(branch, spelling));
+        match declared {
+            Some(position) => self.catalog.entries[position?].field.message(),
+            None => self.get_msgtype(spelling, Some(&FixBranch::STANDARD)),
+        }
+    }
+
     /// Borrows a unique registry-owned message type, raising absence or ambiguity.
     pub fn msgtype(&self, spelling: &str, branch: Option<&FixBranch>) -> Result<&MsgType> {
         self.get_msgtype(spelling, branch).ok_or_else(|| {

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::types::State;
-use yggdryl::{DataType, FixCategory, FixCodec, FixEntry, FixRegistry, Scalar, Version};
+use yggdryl::{DataType, FixBranch, FixCategory, FixCodec, FixEntry, FixRegistry, Scalar, Version};
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -1092,6 +1092,101 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
         alone.as_value().as_sequence().expect("a row")[at].as_str(),
         Some("345")
     );
+}
+
+#[test]
+fn a_mark_is_judged_where_a_row_is_split_and_nowhere_else() {
+    let reader = reader();
+    // A member a rendered occurrence carries marked is a member like any
+    // other: the reader opens a marked occurrence packed inside a party,
+    // bounded by its close, and the builder nests it as its key says - an
+    // unknown group of the party's own.
+    let packed: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1\
+|NOPARTYIDS[0]=PARTYID=a\x04\x03#NOPARTYSUBIDS[0]=PARTYSUBID=s\x04\x03PARTYSUBIDTYPE=1\x04\x03\x04\x03PARTYROLE=1\x04\x03";
+    let message = reader.one_line(packed, false).unwrap();
+    assert_eq!(
+        message.by_path("Parties.0.PartyRole").unwrap().as_i64(),
+        Some(1)
+    );
+    let party = message
+        .as_field()
+        .get_field_by_path("parties")
+        .expect("parties");
+    let DataType::List(item) = party.dtype() else {
+        panic!("a list");
+    };
+    let marked = item.field("#nopartysubids").expect("the marked group");
+    let DataType::List(sub) = marked.dtype() else {
+        panic!("a list, got {}", marked.dtype());
+    };
+    let names: Vec<&str> = sub.fields().iter().map(yggdryl::Field::name).collect();
+    assert_eq!(names, ["partysubid", "partysubidtype"]);
+
+    // Pairs a caller split are built as they are: a mark is neither judged
+    // nor dropped, and a marked occurrence is one flat child.
+    let built = reader
+        .parse_pairs([
+            (b"MSGTYPE".as_slice(), b"D".as_slice()),
+            (b"SYMBOL", b"S"),
+            (b"#SYMBOL", b"S"),
+            (b"#NOPARTYIDS[0]", b"whole"),
+        ])
+        .unwrap();
+    assert_eq!(built.by_tag(55).unwrap().as_str(), Some("S"));
+    assert_eq!(built.by_name("#symbol").unwrap().as_str(), Some("S"));
+    let at = built
+        .as_field()
+        .index_of("#nopartyids[0]")
+        .expect("the marked occurrence");
+    assert_eq!(
+        built.as_value().as_sequence().expect("a row")[at].as_str(),
+        Some("whole")
+    );
+}
+
+#[test]
+fn a_dialect_declaring_a_code_twice_names_no_message_and_the_standard_does_not_answer() {
+    // A dialect's own message wins where it declares the code once, the
+    // standard one answers where it declares it not at all, and a code it
+    // declares twice names nothing: ambiguity is an answer, not an absence,
+    // so the standard grammar never stands in for a dialect's doubled one.
+    let dual = FixBranch::from_str("dual").unwrap();
+    let declare = |registry: &mut FixRegistry, name: &str| {
+        let mut allocation = DataType::Int32.nullable_field("AllocQty");
+        allocation.as_fix_mut().set_tag(80).unwrap();
+        let mut message = DataType::from_fields([allocation])
+            .unwrap()
+            .required_field(name);
+        message.as_fix_mut().set_branch(&dual).unwrap();
+        message.as_fix_mut().set_msgtype("J").unwrap();
+        registry
+            .create_definition(FixCategory::Messages, message)
+            .unwrap();
+    };
+    let frame: &[u8] = b"8=FIX.4.4|35=J|70=A1|78=1|79=ACC|80=5|10=0|";
+    let grouped = |message: &yggdryl::FixMsg| message.get_by_name("allocgrp").is_some();
+
+    // Undeclared: the standard AllocationInstruction folds the allocation
+    // group the frame states flat.
+    let mut registry = registry().as_ref().clone();
+    registry.set_branch(dual.clone()).unwrap();
+    let none = FixCodec::new(Arc::new(registry.clone())).with_branch(&dual);
+    assert!(grouped(&none.one_line(frame, false).unwrap()));
+
+    // Declared once: the dialect's own grammar, which declares no group.
+    declare(&mut registry, "AllocIn");
+    let once = FixCodec::new(Arc::new(registry.clone())).with_branch(&dual);
+    let message = once.one_line(frame, false).unwrap();
+    assert!(!grouped(&message));
+    assert_eq!(message.by_tag(80).unwrap().as_f64(), Some(5.0));
+
+    // Declared twice: no message, so no grammar of anyone's.
+    declare(&mut registry, "AllocOut");
+    assert!(registry.get_msgtype("J", Some(&dual)).is_none());
+    let twice = FixCodec::new(Arc::new(registry)).with_branch(&dual);
+    let message = twice.one_line(frame, false).unwrap();
+    assert!(!grouped(&message));
+    assert_eq!(message.anomalies().count(), 0);
 }
 
 #[test]

@@ -294,8 +294,7 @@ impl<'msg> FixAnomalies<'msg> {
                 .and_then(|code| {
                     message
                         .registry()
-                        .get_msgtype(code, Some(message.branch()))
-                        .or_else(|| message.registry().get_msgtype(code, None))
+                        .known_msgtype(code, Some(message.branch()))
                 }),
             numeric: Vec::new(),
         }

@@ -1154,6 +1154,10 @@ impl FixCodec {
 
     /// Builds one message from pairs the caller already split.
     ///
+    /// The pairs are built as they are: a `#` is judged where a row is
+    /// split, never here, so a key carrying one builds as one flat child
+    /// under its own spelling, and two pairs are two pairs however alike.
+    ///
     /// # Errors
     ///
     /// Returns the builder's refusal.
@@ -1285,23 +1289,8 @@ impl FixCodec {
         builder.end_nested();
     }
 
-    /// One lookup under the tier every key resolves by: this codec's dialect,
-    /// then the standard one where the dialect is not it - and where no
-    /// dialect is pinned, the one answer an unpinned lookup gives.
-    fn tiered<'registry, T>(
-        &'registry self,
-        look: impl Fn(Option<&FixBranch>) -> Option<&'registry T>,
-    ) -> Option<&'registry T> {
-        look(self.branch.as_ref()).or_else(|| {
-            self.branch
-                .as_ref()
-                .filter(|held| !held.is_standard())
-                .and_then(|_| look(Some(&FixBranch::STANDARD)))
-        })
-    }
-
     /// The message definition a row's type names, under the tier every key
-    /// resolves by.
+    /// resolves by: this codec's dialect, then the standard one.
     ///
     /// A dialect declares its own vocabulary and rarely a message of its own,
     /// and the row a bridge writes calls itself by FIX's name - so a pinned
@@ -1309,7 +1298,7 @@ impl FixCodec {
     /// declares, `NoLegs` and `NoSides` among them, without the context that
     /// says which group a shared counter heads.
     fn declared_message(&self, code: &str) -> Option<&super::MsgType> {
-        self.tiered(|branch| self.registry.get_msgtype(code, branch))
+        self.registry.known_msgtype(code, self.branch.as_ref())
     }
 
     /// The direct members the addressed repeating group declares.
@@ -1354,7 +1343,18 @@ impl FixCodec {
                 } else {
                     // A dialect that spells no such counter falls back to the
                     // standard branch, where FIX's own fields live.
-                    self.tiered(|branch| self.registry.get_field_by_name(group, branch))
+                    self.registry
+                        .get_field_by_name(group, self.branch.as_ref())
+                        .or_else(|| {
+                            self.branch
+                                .as_ref()
+                                .is_some_and(|held| !held.is_standard())
+                                .then(|| {
+                                    self.registry
+                                        .get_field_by_name(group, Some(&FixBranch::STANDARD))
+                                })
+                                .flatten()
+                        })
                 }?;
                 let id = self.registry.identity_of(counter)?;
                 match message.filter(|message| message.has_group_counter(id)) {

@@ -15,7 +15,7 @@
 //! | `Parties[0].PartyID` | which group, which occurrence, which member |
 //! | `NoPartyIDs[0].PartyID` | a wire counter resolving the same group |
 //! | `VenueOwnThing` | an unknown name, kept |
-//! | `#NoPartyIDs[0]` | a marked spelling a reader left marked: one child under its own name, its packed value its value |
+//! | `#NoPartyIDs[0]` | a spelling a reader left marked, at the top of a row: one child under its own name, its packed value its value |
 //! | `""`, `"   "` | dropped |
 //!
 //! # What it refuses to lose
@@ -80,19 +80,7 @@ impl<'key> Key<'key> {
     /// The key states group, occurrence and member itself, so no message
     /// grammar is needed to build real nesting from it. Inferring a group
     /// from bare repetition alone is a different problem and needs one.
-    ///
-    /// A key still carrying its `#` is one the reader left marked - kept
-    /// whole beside a bare twin that took the structure, or a twice-marked
-    /// key's bare - and is one flat child under its own name at any depth:
-    /// `#NOPARTYIDS[0]` never writes over the count `#NOPARTYIDS` stated
-    /// beside it.
     fn parse(text: &'key str) -> Self {
-        if text.starts_with('#') {
-            return Self {
-                text,
-                located: Located::Flat,
-            };
-        }
         let located = match text.split_once('[') {
             Some((head, rest)) => match rest.split_once(']') {
                 Some((index, tail)) => index
@@ -542,7 +530,20 @@ impl<'registry> Builder<'registry> {
             return;
         }
         let value_text = String::from_utf8_lossy(value);
-        let located = Key::parse(key_text);
+        // A key arriving still marked `#` is one the reader left so - kept
+        // whole beside a bare twin that took the structure, or a twice-marked
+        // key's bare - and is one flat child under its own name, so
+        // `#NOPARTYIDS[0]` never writes over the count `#NOPARTYIDS` stated
+        // beside it. A member a rendered occurrence carries marked is a
+        // member like any other, and nests as its key says.
+        let located = if key_text.starts_with('#') {
+            Key {
+                text: key_text,
+                located: Located::Flat,
+            }
+        } else {
+            Key::parse(key_text)
+        };
         match located.located {
             Located::Flat => self.push_flat(located.text, &value_text, value),
             Located::Repeated { name, occurrence } => {
