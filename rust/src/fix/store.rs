@@ -97,13 +97,16 @@ fn located(error: Error, entry: &Holder) -> Error {
     }
 }
 
-type DefinitionKey = (FixCategory, FixBranch, String);
+/// What one named definition is keyed by: its category, its branch, and its
+/// canonical spelling.
+pub(super) type DefinitionKey = (FixCategory, FixBranch, String);
 
-fn definition_key(category: FixCategory, field: &Field) -> Result<DefinitionKey> {
+pub(super) fn definition_key(category: FixCategory, field: &Field) -> Result<DefinitionKey> {
     Ok((category, field.as_fix().branch()?, field.name().to_owned()))
 }
 
-fn reference(field: &Field) -> Option<(FixCategory, &str)> {
+/// The definition a field restates, when it carries a reference marker.
+pub(super) fn reference(field: &Field) -> Option<(FixCategory, &str)> {
     let view = field.as_fix();
     view.field_ref()
         .map(|name| (FixCategory::Fields, name))
@@ -252,7 +255,15 @@ impl Resolver<'_> {
     }
 }
 
-fn compact(mut field: Field, root: bool) -> Result<Field> {
+/// The document a store writes for a resolved definition: every referenced
+/// child folded back to the Null placeholder that names its target, so the
+/// target's tree is stated once, where the target is.
+///
+/// The root is kept whole even when it carries a marker, because a group
+/// names its component on its own root and is still the definition. Applied
+/// to a document already compact it changes nothing, which is what lets one
+/// fold hand a document on to the resolver without asking which it was given.
+pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
     if !root {
         if let Some((category, name)) = reference(&field) {
             let name = name.to_owned();
@@ -431,15 +442,37 @@ impl FixRegistry {
         Ok(registry)
     }
 
-    pub(super) fn refresh_references(&mut self) -> Result<()> {
-        let raw = self
-            .catalog
+    /// Every named definition as the document a store writes, keyed as the
+    /// resolver keys it.
+    ///
+    /// The catalog holds resolved trees; this is the same catalog with every
+    /// reference folded back to its marker, which is the shape a fold edits
+    /// and [`Self::resolve_catalog`] reads. What a merge appends to one
+    /// definition is therefore seen by every definition referencing it the
+    /// moment the map is resolved again, because none of them holds a copy.
+    pub(super) fn compact_catalog(&self) -> Result<BTreeMap<DefinitionKey, Field>> {
+        self.catalog
             .all()
             .map(|entry| {
                 let field = compact(entry.field.as_field().clone(), true)?;
                 Ok((definition_key(entry.category, &field)?, field))
             })
-            .collect::<Result<BTreeMap<_, _>>>()?;
+            .collect()
+    }
+
+    /// Re-resolves every named definition against the fields now held.
+    pub(super) fn refresh_references(&mut self) -> Result<()> {
+        let raw = self.compact_catalog()?;
+        self.resolve_catalog(raw)
+    }
+
+    /// Replaces the catalog with `raw` resolved against this registry's
+    /// fields.
+    ///
+    /// Nothing is adopted until every document resolved and re-entered the
+    /// catalog, so a document naming a definition the map lacks, or a graph
+    /// that cycles, leaves the catalog as it was.
+    pub(super) fn resolve_catalog(&mut self, raw: BTreeMap<DefinitionKey, Field>) -> Result<()> {
         let mut resolver = Resolver {
             fields: self,
             raw,

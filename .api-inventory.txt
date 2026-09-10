@@ -756,6 +756,7 @@ impl FixRegistry
   pub fn insert_definition(&mut self, category: FixCategory, field: Field) -> Result<Option<Field>>
   pub fn create_definition(&mut self, category: FixCategory, field: Field) -> Result<()>
   pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field>
+  pub fn add_definition(&mut self, category: FixCategory, field: Field) -> Result<bool>  (true = arrived; an existing name merges one level deep: stored members kept in order, new ones appended, references re-resolved)
   pub fn remove_definition(&mut self, category: FixCategory, name: &str, branch: Option<&FixBranch>) -> Result<Option<Field>>
   pub fn get_group_by_counter(&self, id: FixId) -> Option<&Field>
   pub fn group_by_counter(&self, id: FixId) -> Result<&Field>
@@ -778,6 +779,9 @@ pub struct FixRegistry
   pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool
   pub fn insert(&mut self, field: Field) -> Result<Option<Field>>
   pub fn update(&mut self, field: Field) -> Result<()>
+  pub fn add_field(&mut self, field: Field) -> Result<bool>  (true = arrived; a stored identity or a folded stored name/alias in the branch merges, a nested field redirects to add_definition)
+  pub fn add_fields<I>(&mut self, fields: I) -> Result<(usize, usize)> where I: IntoIterator<Item = Field>,  (added, merged) under add_field's rules, one staged mutation
+  pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)>  (branches, fields and definitions folded under add_field/add_definition's rules, one staged mutation)
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field>
   pub fn branch_of(&self, id: FixId) -> Option<&FixBranch>
   pub fn get_branch_by_digest(&self, digest: i32) -> Option<&FixBranch>

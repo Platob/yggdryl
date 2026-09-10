@@ -28,6 +28,8 @@ mod latest;
 mod lifecycle;
 #[path = "fix/lift.rs"]
 mod lift;
+#[path = "fix/merge.rs"]
+mod merge;
 #[path = "fix/message.rs"]
 mod message;
 #[path = "fix/numeric_branch.rs"]

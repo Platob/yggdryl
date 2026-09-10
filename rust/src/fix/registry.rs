@@ -241,6 +241,18 @@ fn absent(what: impl fmt::Display) -> Error {
     Error::absent("fix field", what)
 }
 
+/// The refusal a merge raises when the incoming datatype is not the stored
+/// one: merging metadata never changes a field's declared datatype.
+fn datatype_disagreement(stored: &Field, id: FixId, incoming: &Field) -> Error {
+    Error::InvalidRecord {
+        path: incoming.name().into(),
+        reason: crate::text::expected_got(
+            format_args!("the datatype {} stored for {id}", stored.dtype()),
+            incoming.dtype(),
+        ),
+    }
+}
+
 /// The identity a field enters the registry under.
 pub(super) fn canonical_id(field: &Field) -> Result<FixId> {
     field
@@ -628,28 +640,9 @@ impl FixRegistry {
         if let Some(position) = replacing {
             field.set_name(self.fields[position].name());
         }
-        let refresh =
-            replacing.is_some_and(|position| metadata_only_change(&self.fields[position], &field));
-        if refresh {
-            self.validate_catalog()?;
-        }
-
         self.ensure_branch(branch);
         match replacing {
-            Some(position) => {
-                self.departing(position);
-                self.unindex(position, position);
-                let prior = std::mem::replace(&mut self.fields[position], field);
-                self.index(position);
-                self.settle();
-                if refresh {
-                    self.refresh_references()?;
-                }
-                if id.tag() == 35 {
-                    self.refresh_msgtype_aliases();
-                }
-                Ok(Some(prior))
-            }
+            Some(position) => self.replace_field(position, field, id).map(Some),
             None => {
                 let position = self.fields.len();
                 self.fields.push(field);
@@ -691,13 +684,7 @@ impl FixRegistry {
             });
         }
         if stored.dtype() != field.dtype() {
-            return Err(Error::InvalidRecord {
-                path: field.name().into(),
-                reason: crate::text::expected_got(
-                    format_args!("the datatype {} stored for {id}", stored.dtype()),
-                    field.dtype(),
-                ),
-            });
+            return Err(datatype_disagreement(stored, id, &field));
         }
         // The incoming definition is what the merge folds the stored one
         // into, so the caller's ordering is the precedence: a generator
@@ -713,13 +700,95 @@ impl FixRegistry {
         merged.as_fix_mut().merge_with(&stored.as_fix())?;
         let alternate = alternate_ids(&merged, &branch)?;
         self.check_free(&merged, &branch, id, &alternate, Some(position))?;
-        let refresh = metadata_only_change(stored, &merged);
+        self.replace_field(position, merged, id)?;
+        Ok(())
+    }
+
+    /// Folds `field` into the stored field at `position`, which its name
+    /// reaches.
+    ///
+    /// The stored field is the one being described, so it keeps its identity
+    /// and its canonical spelling, and everything else folds with the
+    /// precedence [`Self::update`] has: the incoming side wins a shared key.
+    /// What is specific to a fold by name is the identity the incoming field
+    /// carried: its name becomes an alias and its tag an alternate, because a
+    /// second dictionary calling tag 9001 `Symbol` is stating a second
+    /// spelling of tag 55's field, not a second field. The tag is left out
+    /// when the branch already answers it - a tag is one field's, and this
+    /// field is not the one that claimed it - which is noted through `log`
+    /// at debug level rather than refused, since the name was the match.
+    fn merge_named(&mut self, position: usize, field: Field) -> Result<()> {
+        self.validate_definition(crate::FixCategory::Fields, &field)?;
+        let branch = field.as_fix().branch()?;
+        self.check_branch(&branch)?;
+        let incoming = canonical_id(&field)?;
+        let stored = &self.fields[position];
+        let id = canonical_id(stored)?;
+        if stored.dtype() != field.dtype() {
+            return Err(datatype_disagreement(stored, id, &field));
+        }
+        let mut merged = field.clone();
+        merged.set_name(stored.name());
+        merged.set_metadata(field.as_metadata().merge_with(stored.as_metadata())?.iter())?;
+        // The identity is the stored field's, and it is written before the
+        // `fix:` fold, which holds both sides to one tag.
+        merged.as_fix_mut().set_tag(id.tag())?;
+        merged.as_fix_mut().merge_with(&stored.as_fix())?;
+        // Stored order first, then what only the incoming field states. The
+        // canonical tag is nobody's alternate, its own field's included.
+        let mut tags = stored.as_fix().tags()?;
+        let claimed = |tags: &[i32], tag: i32| tag == id.tag() || tags.contains(&tag);
+        for tag in field.as_fix().tags()? {
+            if !claimed(&tags, tag) {
+                tags.push(tag);
+            }
+        }
+        match self.position_by_id(incoming) {
+            Some(holder) if holder != position => log::debug!(
+                "tag {} of {:?} stays with {:?}",
+                incoming.tag(),
+                field.name(),
+                self.fields[holder].name()
+            ),
+            _ if claimed(&tags, incoming.tag()) => {}
+            _ => tags.push(incoming.tag()),
+        }
+        let mut aliases: Vec<&str> = stored.as_fix().aliases().collect();
+        for alias in field
+            .as_fix()
+            .aliases()
+            .chain(std::iter::once(field.name()))
+        {
+            if !alias.eq_ignore_ascii_case(stored.name())
+                && !aliases.iter().any(|held| held.eq_ignore_ascii_case(alias))
+            {
+                aliases.push(alias);
+            }
+        }
+        merged.as_fix_mut().set_tags(&tags)?;
+        merged.as_fix_mut().set_aliases(&aliases)?;
+        let alternate = alternate_ids(&merged, &branch)?;
+        self.check_free(&merged, &branch, id, &alternate, Some(position))?;
+        self.replace_field(position, merged, id)?;
+        Ok(())
+    }
+
+    /// Puts `merged` where the field at `position` was, answering what stood
+    /// there.
+    ///
+    /// `merged` carries the identity `id` the position already answers to,
+    /// and the caller has proven every key it holds free. A change to the
+    /// metadata alone is what the catalog's references restate, so that one
+    /// re-resolves them; a change to the datatype is one they refuse, and the
+    /// caller's validation is what refuses it.
+    fn replace_field(&mut self, position: usize, merged: Field, id: FixId) -> Result<Field> {
+        let refresh = metadata_only_change(&self.fields[position], &merged);
         if refresh {
             self.validate_catalog()?;
         }
         self.departing(position);
         self.unindex(position, position);
-        self.fields[position] = merged;
+        let prior = std::mem::replace(&mut self.fields[position], merged);
         self.index(position);
         self.settle();
         if refresh {
@@ -728,36 +797,131 @@ impl FixRegistry {
         if id.tag() == 35 {
             self.refresh_msgtype_aliases();
         }
-        Ok(())
+        Ok(prior)
     }
 
-    /// Adds every field, folding into one already stored under its identity.
+    /// Adds one field, folding it into what the dictionary already holds.
     ///
-    /// Add or update, in bulk: a field whose canonical identity the dictionary
-    /// does not hold is [inserted](Self::insert), and one it holds is
-    /// [merged](Self::update). That is what reading a second source over a
-    /// first wants - a definition the dictionary lacks arrives, and one it has
-    /// keeps every key only it declares - where a bare `insert` would replace
-    /// wholesale and a bare `update` would refuse everything new.
+    /// The lenient counterpart of [`Self::insert`], which replaces, and of
+    /// [`Self::update`], which refuses everything new: reading a second
+    /// source over a first wants a definition the dictionary lacks to arrive
+    /// and one it has to keep every key only it declares. Answers `true`
+    /// when a field or a named definition arrived and `false` when the
+    /// incoming one folded into a stored one. The rules, in order:
     ///
-    /// The caller's order is the precedence, exactly as [`Self::update`]'s is:
-    /// merge the lowest-priority source first and the highest arrives last and
-    /// wins. Answers the count added and the count merged, in that order, and
-    /// records the same pair through `log` at debug level.
+    /// 1. A nested field is a named definition and goes to
+    ///    [`Self::add_definition`] under the category its shape names: a
+    ///    `List` or `LargeList` of non-null Struct occurrences is a group, a
+    ///    Struct declaring `fix:msgtype` is a message, any other Struct is a
+    ///    component. Any other nested datatype is refused as a scalar field
+    ///    would refuse it.
+    /// 2. One of this crate's own tags is every dictionary's already, so it is
+    ///    neither added nor merged: skipped, answering `false`.
+    /// 3. A canonical identity the dictionary holds - the branch and the tag
+    ///    together, because the same tag in two branches is two fields -
+    ///    merges exactly as [`Self::update`] merges: the name must fold to
+    ///    the stored one, the datatype must equal it, and the incoming
+    ///    metadata wins a shared key.
+    /// 4. Otherwise a name that folds to a stored field's canonical name or
+    ///    to one of its aliases, in the same branch, merges *into* that
+    ///    field. The stored field keeps its identity and its name; aliases
+    ///    and alternate tags are the union, the stored ones first; the
+    ///    incoming name joins the aliases unless it is the canonical one; the
+    ///    incoming canonical tag joins the alternate tags unless a field in
+    ///    the branch already answers it, in which case it is left out and
+    ///    noted through `log` at debug level; generic metadata and the `fix:`
+    ///    keys fold with the precedence of rule 3. A datatype that disagrees
+    ///    is refused as rule 3 refuses it.
+    /// 5. Otherwise it is inserted.
     ///
-    /// The identity is the whole probe. A tag alone is not: the same tag in
-    /// two branches is two fields, and a merge keyed on the tag would fold a
-    /// venue's definition into the specification's.
+    /// Staged like [`Self::insert`]: a refusal leaves the dictionary exactly
+    /// as it was.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, FixId, FixRegistry};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    /// symbol.as_fix_mut().set_tag(55)?;
+    /// let mut registry = FixRegistry::from_fields([symbol])?;
+    ///
+    /// // A venue's file calls the same field `symbol`, under its own tag and
+    /// // with a second name: that is a second spelling of tag 55's field.
+    /// let mut incoming = DataType::Utf8.nullable_field("symbol");
+    /// incoming.as_fix_mut().set_tag(9001)?;
+    /// incoming.as_fix_mut().set_aliases(["Ticker"])?;
+    /// assert!(!registry.add_field(incoming)?, "folded into the stored field");
+    ///
+    /// let stored = registry.field_by_tag(9001)?;
+    /// assert_eq!(stored.name(), "Symbol");
+    /// assert_eq!(stored.as_fix().id()?, Some(FixId::standard(55)));
+    /// assert_eq!(stored.as_fix().tags()?, [9001]);
+    /// assert!(stored.as_fix().aliases().any(|alias| alias == "Ticker"));
+    /// assert_eq!(registry.field_by_name("ticker", None)?.name(), "Symbol");
+    ///
+    /// // A field nothing stored answers to arrives.
+    /// let mut price = DataType::Float64.nullable_field("Price");
+    /// price.as_fix_mut().set_tag(44)?;
+    /// assert!(registry.add_field(price)?);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns what [`Self::insert`] and [`Self::update`] return - absence for
-    /// a field carrying no `fix:tag`, a conflict for a key another field holds
-    /// in the same branch, and a typed refusal for a name or a datatype that
-    /// disagrees with the stored definition. An incoming `float32` field
+    /// Returns what [`Self::insert`], [`Self::update`] and
+    /// [`Self::add_definition`] return: absence for a scalar carrying no
+    /// `fix:tag`, a conflict for an alias or alternate tag another field
+    /// holds in the same branch, and [`Error::InvalidRecord`] for a datatype
+    /// that disagrees with the stored definition. An incoming `float32` field
     /// meeting a stored `float64` field is refused: merging metadata does not
     /// change the field's declared datatype.
+    pub fn add_field(&mut self, field: Field) -> Result<bool> {
+        let mut staged = self.clone();
+        let added = staged.fold_field(field)?.unwrap_or(false);
+        staged.validate_catalog()?;
+        *self = staged;
+        Ok(added)
+    }
+
+    /// Adds every field, the way [`Self::add_field`] adds one.
     ///
+    /// The bulk form of exactly those rules: a scalar merges into the field
+    /// its identity or its name reaches and is inserted otherwise, a nested
+    /// field is a named definition and folds through
+    /// [`Self::add_definition`], and one of this crate's own tags is skipped.
+    /// Answers the count added and the count merged, in that order, and
+    /// records the same pair through `log` at debug level; a skipped field
+    /// counts as neither.
+    ///
+    /// The caller's order is the precedence, exactly as [`Self::update`]'s
+    /// is: merge the lowest-priority source first and the highest arrives
+    /// last and wins.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, FixCategory, FixRegistry};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    /// symbol.as_fix_mut().set_tag(55)?;
+    /// let mut registry = FixRegistry::from_fields([symbol.clone()])?;
+    ///
+    /// // Tag 55 is stored and merges; tag 44 is new; the Struct is a component.
+    /// symbol.as_fix_mut().set_description("Ticker symbol")?;
+    /// let mut price = DataType::Float64.nullable_field("Price");
+    /// price.as_fix_mut().set_tag(44)?;
+    /// let instrument = DataType::from_fields([DataType::Utf8.nullable_field("Symbol")])?
+    ///     .required_field("Instrument");
+    /// assert_eq!(registry.add_fields([symbol, price, instrument])?, (2, 1));
+    /// assert_eq!(registry.field_by_tag(55)?.description(), Some("Ticker symbol"));
+    /// assert_eq!(registry.definitions(FixCategory::Components).count(), 1);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::add_field`] returns for any one of the fields.
     /// The whole fold is one mutation: it is staged and only then adopted, so
     /// a refusal on the last field of a thousand leaves the dictionary exactly
     /// as it was and what a caller fixes is the source. That costs one copy of
@@ -776,10 +940,13 @@ impl FixRegistry {
     /// Folds another dictionary into this one.
     ///
     /// The one place two dictionaries combine. Every field folds exactly as
-    /// [`Self::add_fields`] folds one - absent identity inserts, stored
-    /// identity merges - and every dialect folds beside them: one this
-    /// dictionary does not hold arrives whole, and one it holds takes the
-    /// incoming record while keeping every spelling it already answered to.
+    /// [`Self::add_field`] folds one - a stored identity or a stored name
+    /// merges, anything else inserts - every named definition folds as
+    /// [`Self::add_definition`] folds one, its members appended to the stored
+    /// definition of its name rather than replacing them, and every dialect
+    /// folds beside them: one this dictionary does not hold arrives whole,
+    /// and one it holds takes the incoming record while keeping every
+    /// spelling it already answered to.
     ///
     /// Aliases accumulate rather than replace, because reading a second
     /// source is not a statement that the first one's names were wrong. The
@@ -788,12 +955,46 @@ impl FixRegistry {
     ///
     /// Answers the count added and the count merged, over the fields.
     ///
+    /// ```
+    /// use yggdryl::{DataType, FixCategory, FixRegistry};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    /// symbol.as_fix_mut().set_tag(55)?;
+    /// let mut held = FixRegistry::from_fields([symbol.clone()])?;
+    /// held.create_definition(
+    ///     FixCategory::Components,
+    ///     DataType::from_fields([symbol.clone()])?.required_field("Instrument"),
+    /// )?;
+    ///
+    /// // The other dictionary holds the same field under its own tag, with a
+    /// // second name, and knows one more member of the component.
+    /// let mut ticker = DataType::Utf8.nullable_field("symbol");
+    /// ticker.as_fix_mut().set_tag(9001)?;
+    /// ticker.as_fix_mut().set_aliases(["Ticker"])?;
+    /// let mut other = FixRegistry::from_fields([ticker])?;
+    /// let venue = DataType::Utf8.nullable_field("VenueSymbol");
+    /// other.create_definition(
+    ///     FixCategory::Components,
+    ///     DataType::from_fields([symbol, venue])?.required_field("Instrument"),
+    /// )?;
+    ///
+    /// assert_eq!(held.merge_with(&other)?, (0, 1));
+    /// let stored = held.field_by_tag(9001)?;
+    /// assert_eq!(stored.name(), "Symbol");
+    /// assert_eq!(stored.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
+    /// let instrument = held.definition(FixCategory::Components, "Instrument", None)?;
+    /// assert_eq!(instrument.fields()[1].name(), "VenueSymbol");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
-    /// Returns what [`Self::set_branch`], [`Self::insert`] and
-    /// [`Self::update`] return. One mutation: the branches and the fields are
-    /// staged together and adopted together, so a refusal anywhere leaves
-    /// this dictionary exactly as it was.
+    /// Returns what [`Self::set_branch`], [`Self::add_field`] and
+    /// [`Self::add_definition`] return. One mutation: the branches, the
+    /// fields and the definitions are staged together and adopted together,
+    /// so a refusal anywhere leaves this dictionary exactly as it was.
     pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)> {
         other.validate_catalog()?;
         let mut staged = self.clone();
@@ -900,7 +1101,7 @@ impl FixRegistry {
         Ok(held)
     }
 
-    /// Adds every field, folding one already stored under its identity.
+    /// Adds every field, the way [`Self::fold_field`] adds one.
     ///
     /// The fold itself, without the staging: [`Self::add_fields`] is this plus
     /// the copy that makes it one mutation, and a caller already holding a
@@ -912,31 +1113,48 @@ impl FixRegistry {
         let mut added = 0_usize;
         let mut merged = 0_usize;
         for field in fields {
-            // The crate's own fields are every dictionary's, so folding
-            // them is folding a field onto itself: neither added nor merged,
-            // and never a source's to redefine.
-            if field
-                .as_fix()
-                .tag()
-                .ok()
-                .flatten()
-                .is_some_and(super::is_crate_tag)
-            {
-                continue;
-            }
-            if self
-                .canonical_position_by_id(canonical_id(&field)?)
-                .is_some()
-            {
-                self.update_resolved(field)?;
-                merged += 1;
-            } else {
-                self.insert_resolved(field)?;
-                added += 1;
+            match self.fold_field(field)? {
+                Some(true) => added += 1,
+                Some(false) => merged += 1,
+                None => {}
             }
         }
         log::debug!("added {added} and merged {merged} fix field definitions");
         Ok((added, merged))
+    }
+
+    /// One field through the rules [`Self::add_field`] states, without the
+    /// staging: `None` when it was this crate's own and so neither added nor
+    /// merged, else whether it arrived.
+    fn fold_field(&mut self, field: Field) -> Result<Option<bool>> {
+        if field.dtype().is_nested() {
+            let category = super::catalog::definition_category(&field)
+                .ok_or_else(|| super::catalog::not_scalar(&field))?;
+            return self.fold_definition(category, field).map(Some);
+        }
+        // The crate's own fields are every dictionary's, so folding one is
+        // folding a field onto itself, and never a source's to redefine.
+        if field
+            .as_fix()
+            .tag()
+            .ok()
+            .flatten()
+            .is_some_and(super::is_crate_tag)
+        {
+            return Ok(None);
+        }
+        let id = canonical_id(&field)?;
+        if self.canonical_position_by_id(id).is_some() {
+            self.update_resolved(field)?;
+            return Ok(Some(false));
+        }
+        let branch = field.as_fix().branch()?;
+        if let Some(position) = self.position_by_name(&branch, field.name()) {
+            self.merge_named(position, field)?;
+            return Ok(Some(false));
+        }
+        self.insert_resolved(field)?;
+        Ok(Some(true))
     }
 
     /// Removes an unreferenced field a tag, identifier, name, or alias reaches.

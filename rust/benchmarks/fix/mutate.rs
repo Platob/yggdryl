@@ -81,6 +81,65 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    // The lenient verb, one staged mutation each: a scalar folding into the
+    // field its name reaches, a Struct redirected to the components, and a
+    // component gaining a member that every reference to it then carries -
+    // which re-resolves the seed's whole catalog, and is the honest cost.
+    let mut renamed = DataType::Utf8.nullable_field("symbol");
+    renamed.as_fix_mut().set_tag(9_001).unwrap();
+    renamed.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    group.bench_function("add_field_same_name_merge", |bencher| {
+        bencher.iter_batched(
+            || (registry.clone(), renamed.clone()),
+            |(mut registry, field)| {
+                black_box(registry.add_field(field).unwrap());
+                registry
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    let nested = DataType::from_fields([DataType::Utf8.nullable_field("VenueSymbol")])
+        .unwrap()
+        .required_field("VenueInstrument");
+    group.bench_function("add_field_nested_redirect", |bencher| {
+        bencher.iter_batched(
+            || (registry.clone(), nested.clone()),
+            |(mut registry, field)| {
+                black_box(registry.add_field(field).unwrap());
+                registry
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    let mut seeded = registry.clone();
+    let mut venue_symbol = DataType::Utf8.nullable_field("VenueSymbol");
+    venue_symbol.as_fix_mut().set_tag(9_010).unwrap();
+    seeded.add_field(venue_symbol).unwrap();
+    let mut member = seeded.field(9_010).unwrap().clone();
+    member.as_fix_mut().set_field_ref("VenueSymbol").unwrap();
+    let mut instrument = seeded
+        .definition(FixCategory::Components, "Instrument", None)
+        .unwrap()
+        .clone();
+    instrument
+        .set_dtype(
+            DataType::from_fields(instrument.fields().iter().cloned().chain([member])).unwrap(),
+        )
+        .unwrap();
+    group.bench_function("add_definition_extends_component", |bencher| {
+        bencher.iter_batched(
+            || (seeded.clone(), instrument.clone()),
+            |(mut registry, field)| {
+                black_box(
+                    registry
+                        .add_definition(FixCategory::Components, field)
+                        .unwrap(),
+                );
+                registry
+            },
+            BatchSize::SmallInput,
+        );
+    });
     let middle_tag = i32::try_from(5_000 + LARGE_FIELDS / 2).expect("the middle tag fits i32");
     group.bench_function(format!("remove_from_{LARGE_FIELDS}"), |bencher| {
         bencher.iter_batched(
