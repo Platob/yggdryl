@@ -117,3 +117,41 @@ test('a rename naming no column is refused when the schema is asked for', () => 
   options.renameColumns = { nosuch: 'x' }
   assert.throws(() => options.sourceField(), /nosuch/)
 })
+
+test('a trailing as names what the path reached', () => {
+  const path = new FieldPath('order.line[0].price as price')
+  assert.equal(path.alias, 'price')
+  assert.equal(path.columnName, 'price')
+  assert.equal(path.length, 4)
+  assert.equal(path.toString(), 'order.line[0].price as price')
+})
+
+test('without an alias the last segment names it', () => {
+  const path = new FieldPath('order.line.price')
+  assert.equal(path.alias, null)
+  assert.equal(path.columnName, 'price')
+})
+
+test('a segment may still be named as', () => {
+  assert.equal(new FieldPath('order.as').alias, null)
+  assert.equal(new FieldPath('order.as').columnName, 'as')
+  assert.equal(new FieldPath('assets').alias, null)
+})
+
+test('a malformed alias is refused', () => {
+  for (const text of ['price as', 'price as one two', 'as name']) {
+    assert.throws(() => new FieldPath(text), /field path/)
+  }
+})
+
+test('a lifted path names its column with its alias', () => {
+  const options = new TextOptions()
+  options.liftNames = ['"55" as symbol']
+  const field = options.sourceField()
+  const names = []
+  for (let at = 0; at < field.fieldLen; at += 1) {
+    names.push(field.fieldAt(at).name)
+  }
+  assert.ok(names.includes('symbol'))
+  assert.ok(!names.includes('55'))
+})

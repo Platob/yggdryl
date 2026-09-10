@@ -119,7 +119,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `text/` | JSON/YAML/TOML over `Scalar` |
 | `uri/` | URI, URL, URN |
 | `arrow/` | Arrow interop; recursive cast planning stays with `Field` |
-| `expression/` | expression grammar, bound statements |
+| `expression/` | expression grammar, bound statements, `FieldPath`/`FieldSegment` |
 | `xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
 | `fix/` | FIX protocol behavior |
 | binding `lib.rs` | boundary helpers, exports, registration - nothing else |
@@ -151,8 +151,9 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
   `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`, `MediaType`, `MimeType`,
   `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No local copies, no `enums`
   module. `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside
-  `Codec`, `FieldSegment` beside `FieldPath`; `Scalar` -> `types`, storage
-  variants -> `holder`, record settings -> `media`.
+  `Codec`; `Scalar` -> `types`, storage variants -> `holder`, record settings ->
+  `media`, `FieldPath`/`FieldSegment` -> `expression`, whose grammar already
+  writes their steps.
 - `IOMode` = `ReadOnly`, `Overwrite`, `Append`, `Merge`, `Random`; operations
   reject modes that do not apply; no alias.
 - `DataTypeId` = exact variant, `DataTypeKind` = family. `TimeUnit` is the only
@@ -253,10 +254,12 @@ never to a wrapper's own buffer.
   `IOBase` call counts are where it shows.
 - **Paths are resolved, never split.** Every path into a nested schema or value
   is a `FieldPath`, parsed once at its boundary by that type's one parser and
-  carried resolved. Its grammar is the whole vocabulary: `.name` for a struct
-  child, `[0]` and `[-1]` for a list element, `['key']` for a map entry, and a
-  quoted name for one carrying a dot, so a field named `a.b` has exactly one
-  spelling and it is not two levels. A surface may accept a path as text at its
+  carried resolved. It lives in `expression/`, whose grammar writes the same
+  steps and shares the one segment type. Its grammar is the whole vocabulary:
+  `.name` for a struct child, `[0]` and `[-1]` for a list element, `['key']` for
+  a map entry, a quoted name for one carrying a dot, so a field named `a.b` has
+  exactly one spelling and it is not two levels, and a trailing `as name` saying
+  what to call what the path reached. A surface may accept a path as text at its
   own intake and must resolve it there; past that boundary nothing takes a path
   as a string, splits one at a separator, or writes a second path grammar. A
   path used per row, per column, per batch or per node is hoisted out of that

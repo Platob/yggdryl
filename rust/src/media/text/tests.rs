@@ -1772,6 +1772,49 @@ mod decoding {
     }
 
     #[test]
+    fn a_lifted_path_names_its_own_column_with_an_alias() {
+        // `as` names the column in the same breath that selects it, so no
+        // rename is needed for the common case.
+        let options = TextOptions::new()
+            .try_with_lift_names(["\"55\" as symbol"])
+            .expect("the path parses");
+        let batch = into_arrow_batch(
+            lines(
+                b"55=AAPL
+",
+                &options,
+            ),
+            &options,
+        )
+        .expect("a batch");
+        assert!(batch.column_by_name("symbol").is_some());
+        assert!(batch.column_by_name("55").is_none());
+        assert_eq!(
+            batch
+                .column_by_name("symbol")
+                .expect("aliased")
+                .as_any()
+                .downcast_ref::<BinaryArray>()
+                .expect("lifted values are binary")
+                .value(0),
+            b"AAPL"
+        );
+    }
+
+    #[test]
+    fn two_lifted_paths_ending_alike_are_told_apart_by_their_aliases() {
+        // Without aliases both would take the last segment's name and collide.
+        let options = TextOptions::new()
+            .try_with_lift_names(["a.id as left_id", "b.id as right_id"])
+            .expect("the paths parse");
+        let field = options.source_field().expect("a schema");
+        let children = field.dtype().as_fields().expect("a struct");
+        let names: Vec<&str> = children.iter().map(crate::Field::name).collect();
+        assert!(names.contains(&"left_id"));
+        assert!(names.contains(&"right_id"));
+    }
+
+    #[test]
     fn a_lifted_path_may_be_renamed_like_any_other_column() {
         let options = TextOptions::new()
             .try_with_lift_names(["55"])

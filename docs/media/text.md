@@ -17,7 +17,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 | `parse_mtime` / `parseMtime` | emit `mtime`, filled by the row header's `mtime` capture or by the handle's own modification time; default `true` |
 | `parse_mimetype`, `parse_direction` | classify each record and add the column named, off by default |
 | `rename_columns` / `renameColumns` | emitted name for a column, keyed by its default name; a key naming no column is refused |
-| `lift_names` / `liftNames` | entry paths lifted into columns of their own; unset lifts nothing beyond the row header's captures |
+| `lift_names` / `liftNames` | entry paths lifted into columns of their own, each named by its `as` alias where it writes one; unset lifts nothing beyond the row header's captures |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
 
@@ -269,8 +269,12 @@ page. Resolve a path once and reuse it; the column plan already does.
 `lift_names` names the entry paths that become columns of their own. The column
 exists in the schema whether or not any row carries that entry — a row without
 it is null — so the schema is still complete before a byte is read, exactly as
-`autotype` already guarantees for captures. A lifted column is named by the last
-segment of its path, and `rename_columns` renames it like any other column.
+`autotype` already guarantees for captures.
+
+A lifted column takes the path's [alias](../types/paths.md#aliases) where it
+writes one, and the last segment's own name otherwise. `"55" as symbol` selects
+and names in one breath, which is also how two paths ending in the same segment
+are told apart. `rename_columns` still renames it like any other column.
 
 The two options have one job each and meet only at the compiled column plan:
 renaming decides what a column is called and never whether one exists, lifting

@@ -217,3 +217,147 @@ fn serde_round_trips_through_the_canonical_text() {
 fn whitespace_around_steps_is_ignored() {
     assert_eq!(parse(" order . line [ 0 ] "), parse("order.line[0]"));
 }
+
+#[test]
+fn a_trailing_as_names_what_the_path_reached() {
+    let path = parse("order.line[0].price as price");
+    assert_eq!(path.len(), 4, "the alias is not a segment");
+    assert_eq!(path.alias(), Some("price"));
+    assert_eq!(path.column_name(), Some("price"));
+    assert_eq!(path.to_string(), "order.line[0].price as price");
+}
+
+#[test]
+fn the_keyword_is_read_in_any_case_and_the_alias_may_be_quoted() {
+    assert_eq!(parse("price AS unit").alias(), Some("unit"));
+    assert_eq!(parse("price As unit").alias(), Some("unit"));
+    assert_eq!(parse("price as \"unit price\"").alias(), Some("unit price"));
+    // Single quotes are accepted at intake and render as the canonical form.
+    assert_eq!(parse("price as 'unit price'").alias(), Some("unit price"));
+    assert_eq!(
+        render("price as 'unit price'"),
+        "price as \"unit price\"",
+        "one canonical spelling comes back out"
+    );
+}
+
+#[test]
+fn without_an_alias_a_path_is_named_by_its_last_segment() {
+    assert_eq!(parse("order.line.price").column_name(), Some("price"));
+    assert_eq!(parse("order.line.price").alias(), None);
+    // A position names nothing, so neither does a path ending on one.
+    assert_eq!(parse("legs[0]").column_name(), None);
+    assert_eq!(parse("legs['k']").column_name(), Some("k"));
+}
+
+#[test]
+fn a_segment_may_still_be_named_as() {
+    // The keyword is only read where a path already has something to alias,
+    // and a name after a dot is a name.
+    let path = parse("order.as");
+    assert_eq!(path.len(), 2);
+    assert_eq!(path.alias(), None);
+    assert_eq!(path.column_name(), Some("as"));
+    // And a name merely starting with those letters is one name.
+    assert_eq!(parse("assets").column_name(), Some("assets"));
+    assert_eq!(parse("assets").alias(), None);
+}
+
+#[test]
+fn an_alias_survives_rendering_and_reparsing() {
+    for text in [
+        "price as unit",
+        "order.line[0] as first",
+        "tags['k'] as key",
+        "\"a.b\" as ab",
+        "price as \"unit price\"",
+        "price as \"say \"\"hi\"\"\"",
+    ] {
+        let once = parse(text);
+        let rendered = once.to_string();
+        assert_eq!(
+            FieldPath::from_str(&rendered).expect("rendered path parses"),
+            once,
+            "{text} rendered as {rendered}"
+        );
+        assert!(once.alias().is_some(), "{text} declares an alias");
+    }
+}
+
+#[test]
+fn a_malformed_alias_names_where_it_stopped() {
+    for text in [
+        "price as",
+        "price as ",
+        "price as \"unterminated",
+        "price as one two",
+        "price as [0]",
+        "as name",
+    ] {
+        let error = FieldPath::from_str(text).expect_err(&format!("{text} must be refused"));
+        assert!(
+            error.to_string().contains("field path"),
+            "{text} refused as {error}"
+        );
+    }
+}
+
+#[test]
+fn an_alias_is_part_of_the_value() {
+    let plain = parse("price");
+    let aliased = parse("price as unit");
+    assert_ne!(plain, aliased, "two paths naming differently are different");
+    assert_ne!(plain.stable_hash(), aliased.stable_hash());
+    assert_eq!(aliased, parse("price as unit"));
+    assert_eq!(aliased.stable_hash(), parse("price as unit").stable_hash());
+}
+
+#[test]
+fn an_alias_is_set_and_cleared_without_reparsing() {
+    let path = parse("order.price")
+        .try_with_alias("cost")
+        .expect("a name to call it");
+    assert_eq!(path.to_string(), "order.price as cost");
+
+    let mut cleared = path.clone();
+    cleared.set_alias(None).expect("clearing always works");
+    assert_eq!(cleared.alias(), None);
+    assert_eq!(cleared, parse("order.price"));
+}
+
+#[test]
+fn an_empty_alias_and_one_on_the_root_are_both_refused() {
+    let mut path = parse("order.price");
+    let before = path.clone();
+    assert!(path.set_alias(Some("")).is_err());
+    assert_eq!(path, before, "a refusal leaves the path unchanged");
+
+    let error = FieldPath::root()
+        .try_with_alias("x")
+        .expect_err("the root reaches what it is applied to");
+    assert!(error.to_string().contains("root"), "{error}");
+}
+
+#[test]
+fn walking_up_or_down_drops_the_alias() {
+    let path = parse("order.line.price as cost");
+    // An alias names what the whole path reached; a parent reaches something
+    // else, and a longer path reaches something else again.
+    assert_eq!(
+        path.parent()
+            .and_then(|held| held.alias().map(str::to_owned)),
+        None
+    );
+    assert_eq!(path.join(FieldSegment::field("net")).alias(), None);
+}
+
+#[test]
+fn an_alias_serde_round_trips_through_the_canonical_text() {
+    let path = parse("order.line[0] as first");
+    let json = serde_json::to_string(&path).expect("serializes");
+    assert_eq!(json, "\"order.line[0] as first\"");
+    assert_eq!(
+        serde_json::from_str::<FieldPath>(&json).expect("deserializes"),
+        path
+    );
+}

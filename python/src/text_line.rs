@@ -101,6 +101,21 @@ impl PyFieldPath {
         self.inner.as_name()
     }
 
+    /// What to call what this path reaches, written `... as name`.
+    #[getter]
+    fn alias(&self) -> Option<&str> {
+        self.inner.alias()
+    }
+
+    /// The name this path gives what it reaches.
+    ///
+    /// The alias where one is written, and the last segment's own name
+    /// otherwise. A lifted text column takes this.
+    #[getter]
+    fn column_name(&self) -> Option<&str> {
+        self.inner.column_name()
+    }
+
     /// Whether this path selects the value it is applied to.
     #[getter]
     fn is_root(&self) -> bool {

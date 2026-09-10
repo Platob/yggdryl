@@ -32,7 +32,7 @@ use super::selector::Attributes;
 use super::typing::{
     decimal_parts, is_binary, is_text, step_field, temporal_parts, unwrap_dictionary,
 };
-use super::{Comparison, Function, Operator, Safety, Segment};
+use super::{Comparison, FieldSegment, Function, Operator, Safety};
 use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit, Timezone};
 
 /// One row's worth of context: its column values and its holder.
@@ -268,13 +268,13 @@ impl Node {
 }
 
 /// Reach one step into a value, answering null for anything absent.
-fn apply_step(field: &Field, value: &Scalar, segment: &Segment) -> Scalar {
+fn apply_step(field: &Field, value: &Scalar, segment: &FieldSegment) -> Scalar {
     if value.is_null() {
         return Scalar::Null;
     }
     match segment {
-        Segment::Field(name) => struct_child(field, value, name),
-        Segment::Index(position) => {
+        FieldSegment::Field(name) => struct_child(field, value, name),
+        FieldSegment::Index(position) => {
             let Some(items) = value.as_sequence() else {
                 return Scalar::Null;
             };
@@ -291,7 +291,7 @@ fn apply_step(field: &Field, value: &Scalar, segment: &Segment) -> Scalar {
                 .cloned()
                 .unwrap_or(Scalar::Null)
         }
-        Segment::Key(key) => {
+        FieldSegment::Key(key) => {
             if let Some(entries) = value.as_mapping() {
                 let dtype = key.dtype();
                 return entries
@@ -701,8 +701,8 @@ fn call(
                 .ok_or_else(|| missing("a container for get"))?;
             let key = values.get(1).cloned().unwrap_or(Scalar::Null);
             let segment = match key.as_i64() {
-                Some(index) if key.as_str().is_none() => Segment::Index(index),
-                _ => Segment::Key(crate::TypedScalar::from_value(key)?),
+                Some(index) if key.as_str().is_none() => FieldSegment::Index(index),
+                _ => FieldSegment::Key(crate::TypedScalar::from_value(key)?),
             };
             apply_step(&container.field, first, &segment)
         }

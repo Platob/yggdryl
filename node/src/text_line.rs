@@ -76,6 +76,21 @@ impl JsFieldPath {
         self.inner.as_name().map(ToOwned::to_owned)
     }
 
+    /// What to call what this path reaches, written `... as name`.
+    #[napi(getter)]
+    pub fn alias(&self) -> Option<String> {
+        self.inner.alias().map(ToOwned::to_owned)
+    }
+
+    /// The name this path gives what it reaches.
+    ///
+    /// The alias where one is written, and the last segment's own name
+    /// otherwise. A lifted text column takes this.
+    #[napi(getter)]
+    pub fn column_name(&self) -> Option<String> {
+        self.inner.column_name().map(ToOwned::to_owned)
+    }
+
     /// Whether this path selects the value it is applied to.
     #[napi(getter)]
     pub fn is_root(&self) -> bool {

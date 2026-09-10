@@ -16,8 +16,8 @@ use pyo3::types::{PyDict, PyList, PyString, PyTuple};
 use yggdryl::expression::{
     Bound as CoreBound, BoundStatement as CoreBoundStatement, Bounds as CoreBounds,
     ColumnBounds as CoreColumnBounds, Comparison as CoreComparison, Direction,
-    Function as CoreFunction, NullsOrder, Operator, Order as CoreOrder,
-    Projection as CoreProjection, Segment as CoreSegment, Selector as CoreSelector,
+    FieldSegment as CoreSegment, Function as CoreFunction, NullsOrder, Operator,
+    Order as CoreOrder, Projection as CoreProjection, Selector as CoreSelector,
     Statement as CoreStatement,
 };
 use yggdryl::{Expression as CoreExpression, Scalar};

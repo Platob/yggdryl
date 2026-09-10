@@ -1108,6 +1108,15 @@ export declare class FieldPath {
   get segments(): Array<string | number>
   /** The single name this path addresses, when it addresses exactly one. */
   get name(): string | null
+  /** What to call what this path reaches, written `... as name`. */
+  get alias(): string | null
+  /**
+   * The name this path gives what it reaches.
+   *
+   * The alias where one is written, and the last segment's own name
+   * otherwise. A lifted text column takes this.
+   */
+  get columnName(): string | null
   /** Whether this path selects the value it is applied to. */
   get isRoot(): boolean
   /** How many segments this path has. */

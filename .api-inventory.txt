@@ -1666,14 +1666,14 @@ pub const NULL_PARTITION: &str = "null";
   pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
   pub fn set_transform(&mut self, transform: Function) -> Result<()>
 
-### yggdryl::field_path  [rust\src\field_path.rs]
+### yggdryl::expression::path  [rust\src\expression\path.rs]
 pub enum FieldSegment
   pub fn field(name: impl Into<SmolStr>) -> Self
   pub const fn index(position: i64) -> Self
   pub fn key(value: Scalar) -> Result<Self>
   pub fn as_name(&self) -> Option<&str>
   pub const fn as_index(&self) -> Option<i64>
-pub struct FieldPath(Arc<[FieldSegment]>);
+pub struct FieldPath
   pub fn root() -> Self
   pub fn new(segments: impl IntoIterator<Item = FieldSegment>) -> Self
   pub fn from_str(value: &str) -> Result<Self>
@@ -1686,6 +1686,10 @@ pub struct FieldPath(Arc<[FieldSegment]>);
   pub fn parent(&self) -> Option<Self>
   pub fn join(&self, segment: FieldSegment) -> Self
   pub fn as_name(&self) -> Option<&str>
+  pub fn alias(&self) -> Option<&str>
+  pub fn set_alias(&mut self, alias: Option<&str>) -> Result<()>
+  pub fn try_with_alias(self, alias: &str) -> Result<Self>
+  pub fn column_name(&self) -> Option<&str>
   pub fn stable_hash(&self) -> u64
 
 ### yggdryl::media::text::bytes  [rust\src\media\text\bytes.rs]

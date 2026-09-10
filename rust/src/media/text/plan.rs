@@ -166,17 +166,18 @@ impl TextPlan {
             );
         }
         for path in options.lift_paths() {
-            // A lifted column is named by the last segment of its path, which
-            // is the name the entry itself carries. Renaming it is the
-            // rename map's job, and a collision is what tells a caller to.
-            let name = path
-                .last()
-                .and_then(crate::FieldSegment::as_name)
-                .map(SmolStr::new)
-                .ok_or_else(|| Error::InvalidRecord {
+            // A lifted column takes the path's alias where it writes one, and
+            // the last segment's own name otherwise. `55 as symbol` therefore
+            // names its column in the same breath that selects it, and the
+            // rename map stays for columns that are already there.
+            let name = path.column_name().map(SmolStr::new).ok_or_else(|| {
+                Error::InvalidRecord {
                     path: SmolStr::new_static("$.lift_names"),
-                    reason: format_smolstr!("expected a lifted path ending in a name, got {path}"),
-                })?;
+                    reason: format_smolstr!(
+                        "expected a lifted path ending in a name, or one aliased with `as`, got {path}"
+                    ),
+                }
+            })?;
             push_named(
                 &mut columns,
                 TextSource::Entry(path.clone()),

@@ -143,3 +143,40 @@ class TestTextOptions:
 def test_the_native_module_exports_every_new_name() -> None:
     for name in ("FieldPath", "TextLine", "TextEntry", "TextEntries", "TextLines"):
         assert hasattr(yggdryl, name) or hasattr(yggdryl.media, name), name
+
+
+class TestFieldPathAlias:
+    def test_a_trailing_as_names_what_the_path_reached(self) -> None:
+        path = FieldPath("order.line[0].price as price")
+        assert path.alias == "price"
+        assert path.column_name == "price"
+        assert len(path) == 4
+        assert str(path) == "order.line[0].price as price"
+
+    def test_without_an_alias_the_last_segment_names_it(self) -> None:
+        path = FieldPath("order.line.price")
+        assert path.alias is None
+        assert path.column_name == "price"
+
+    def test_a_segment_may_still_be_named_as(self) -> None:
+        assert FieldPath("order.as").alias is None
+        assert FieldPath("order.as").column_name == "as"
+        assert FieldPath("assets").alias is None
+
+    def test_an_alias_is_part_of_the_value(self) -> None:
+        assert FieldPath("price as unit") != FieldPath("price")
+        assert FieldPath("price as unit") == FieldPath("price as unit")
+
+    def test_a_malformed_alias_is_refused(self) -> None:
+        for text in ("price as", "price as one two", "as name"):
+            with pytest.raises(ValueError, match="field path"):
+                FieldPath(text)
+
+    def test_a_lifted_path_names_its_column_with_its_alias(self) -> None:
+        options = TextOptions()
+        options.lift_names = ['"55" as symbol']
+        names = [child.name for child in options.source_field()]
+        assert "symbol" in names
+        assert "55" not in names
+        line = next(iter(source(b"55=AAPL\n").read_text_lines(options=options)))
+        assert line.get_entry_by_path("55").value == b"AAPL"

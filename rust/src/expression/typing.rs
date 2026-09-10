@@ -28,7 +28,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::{Expression, Function, Operator, Safety, Segment};
+use super::{Expression, FieldSegment, Function, Operator, Safety};
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
@@ -334,10 +334,10 @@ fn unify(held: Option<&DataType>, next: &DataType, expression: &Expression) -> R
 }
 
 /// Step one path segment through a field's datatype.
-pub(crate) fn step_field(field: &Field, segment: &Segment) -> Result<Field> {
+pub(crate) fn step_field(field: &Field, segment: &FieldSegment) -> Result<Field> {
     let dtype = unwrap_dictionary(field.dtype());
     match segment {
-        Segment::Field(name) => match dtype {
+        FieldSegment::Field(name) => match dtype {
             DataType::Struct(fields) => fields
                 .as_fields()
                 .iter()
@@ -358,7 +358,7 @@ pub(crate) fn step_field(field: &Field, segment: &Segment) -> Result<Field> {
                 "expected a struct or a map to reach .{name} through, got {other}"
             ))),
         },
-        Segment::Index(_) => match dtype {
+        FieldSegment::Index(_) => match dtype {
             DataType::List(item)
             | DataType::ListView(item)
             | DataType::FixedSizeList(item, _)
@@ -368,7 +368,7 @@ pub(crate) fn step_field(field: &Field, segment: &Segment) -> Result<Field> {
                 "expected a list to index into, got {other}"
             ))),
         },
-        Segment::Key(key) => match dtype {
+        FieldSegment::Key(key) => match dtype {
             DataType::Map(map) => {
                 let keys = map_key_field(map)?;
                 common_type(keys.dtype(), key.dtype()).ok_or_else(|| {
@@ -763,8 +763,8 @@ fn function_field(
                 .get(1)
                 .ok_or_else(|| typing_error("expected a key for get"))?;
             let segment = match key.dtype() {
-                dtype if is_integer(dtype) => Segment::Index(0),
-                _ => Segment::Key(
+                dtype if is_integer(dtype) => FieldSegment::Index(0),
+                _ => FieldSegment::Key(
                     crate::TypedScalar::from_parts(key.dtype().clone(), Scalar::Null)
                         .map_err(|error| typing_error(format_smolstr!("{error}")))?,
                 ),

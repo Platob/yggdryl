@@ -11,7 +11,8 @@
 //! One grammar answers all of it: `.name` for a struct child, `[0]` and `[-1]`
 //! for a list element, `['key']` for a map entry. A name the bare spelling
 //! cannot carry is quoted, so `a.b` has exactly one spelling and it is not two
-//! levels.
+//! levels. A trailing `as name`, spelled the way SQL spells it, says what to
+//! call what the path reached - the one thing a selector cannot say by itself.
 //!
 //! This is a *selector*: it says which child a caller wants. It is not the
 //! crate-private `Path` cons-list a recursive walk carries to report where a
@@ -29,6 +30,9 @@ use crate::{Error, Result, Scalar};
 
 /// What a parse failure names itself as.
 const TARGET: &str = "field path";
+
+/// The quote a text key is written in.
+const QUOTE: u8 = b'\'';
 
 /// One step of a path into a nested schema or value.
 ///
@@ -160,12 +164,16 @@ impl fmt::Display for FieldSegment {
     }
 }
 
-/// One resolved path into a nested schema or value.
+/// One resolved path into a nested schema or value, and what to call what it
+/// reaches.
 ///
 /// Cloning shares the segments rather than copying them, so a path hoisted out
 /// of a loop and handed to each iteration costs one reference count.
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct FieldPath(Arc<[FieldSegment]>);
+pub struct FieldPath {
+    segments: Arc<[FieldSegment]>,
+    alias: Option<SmolStr>,
+}
 
 impl FieldPath {
     /// The empty path, which selects the value it is applied to.
@@ -179,7 +187,10 @@ impl FieldPath {
     /// The way to build a path from parts: nothing is rendered to text and
     /// nothing is parsed back.
     pub fn new(segments: impl IntoIterator<Item = FieldSegment>) -> Self {
-        Self(segments.into_iter().collect())
+        Self {
+            segments: segments.into_iter().collect(),
+            alias: None,
+        }
     }
 
     /// Parse one path.
@@ -195,56 +206,125 @@ impl FieldPath {
     /// Borrow the resolved segments.
     #[must_use]
     pub fn segments(&self) -> &[FieldSegment] {
-        &self.0
+        &self.segments
     }
 
     /// The number of segments.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.segments.len()
     }
 
     /// Whether this is the empty path.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.segments.is_empty()
     }
 
     /// Whether this path selects the value it is applied to.
     #[must_use]
     pub fn is_root(&self) -> bool {
-        self.0.is_empty()
+        self.segments.is_empty()
     }
 
     /// The first segment.
     #[must_use]
     pub fn first(&self) -> Option<&FieldSegment> {
-        self.0.first()
+        self.segments.first()
     }
 
     /// The last segment.
     #[must_use]
     pub fn last(&self) -> Option<&FieldSegment> {
-        self.0.last()
+        self.segments.last()
     }
 
     /// The path without its last segment.
+    ///
+    /// The alias is not carried up: it names what the whole path reached, and
+    /// the parent reaches something else.
     #[must_use]
     pub fn parent(&self) -> Option<Self> {
-        let (_, head) = self.0.split_last()?;
-        Some(Self(head.iter().cloned().collect()))
+        let (_, head) = self.segments.split_last()?;
+        Some(Self::new(head.iter().cloned()))
     }
 
     /// This path with one more segment.
+    ///
+    /// The alias is dropped for the same reason [`Self::parent`] drops it.
     #[must_use]
     pub fn join(&self, segment: FieldSegment) -> Self {
-        Self(
-            self.0
+        Self::new(
+            self.segments
                 .iter()
                 .cloned()
-                .chain(std::iter::once(segment))
-                .collect(),
+                .chain(std::iter::once(segment)),
         )
+    }
+
+    /// What to call what this path reaches.
+    ///
+    /// Written the way SQL writes it - `order.line[0].price as price` - and it
+    /// answers the one question a selector cannot: a path says which value to
+    /// take, and an alias says what the column holding it is called. Without
+    /// one, a caller naming a column from a path falls back to the last
+    /// segment's own name.
+    #[must_use]
+    pub fn alias(&self) -> Option<&str> {
+        self.alias.as_deref()
+    }
+
+    /// Set or clear what to call what this path reaches.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] for an empty alias, or for one on the root
+    /// path: the root reaches the value it is applied to, so there is nothing
+    /// there for a name to be about. Failure leaves the path unchanged.
+    pub fn set_alias(&mut self, alias: Option<&str>) -> Result<()> {
+        let Some(alias) = alias else {
+            self.alias = None;
+            return Ok(());
+        };
+        if alias.is_empty() {
+            return Err(Error::Parse {
+                target: TARGET,
+                position: 0,
+                reason: SmolStr::new_static("expected a name after `as`, got an empty one"),
+            });
+        }
+        if self.is_root() {
+            return Err(Error::Parse {
+                target: TARGET,
+                position: 0,
+                reason: SmolStr::new_static(
+                    "expected a path to alias, got the root; the root reaches what it is applied to",
+                ),
+            });
+        }
+        self.alias = Some(SmolStr::new(alias));
+        Ok(())
+    }
+
+    /// Return this path with an alias.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same refusals as [`Self::set_alias`].
+    pub fn try_with_alias(mut self, alias: &str) -> Result<Self> {
+        self.set_alias(Some(alias))?;
+        Ok(self)
+    }
+
+    /// The name this path gives what it reaches.
+    ///
+    /// The alias where one is written, and the last segment's own name
+    /// otherwise. This is what a caller building a column from a path reads,
+    /// so the fallback lives here rather than at each call site.
+    #[must_use]
+    pub fn column_name(&self) -> Option<&str> {
+        self.alias()
+            .or_else(|| self.last().and_then(FieldSegment::as_name))
     }
 
     /// The single name this path addresses, when it addresses exactly one.
@@ -253,7 +333,7 @@ impl FieldPath {
     /// caller can answer without walking.
     #[must_use]
     pub fn as_name(&self) -> Option<&str> {
-        match self.0.as_ref() {
+        match self.segments.as_ref() {
             [segment] => segment.as_name(),
             _ => None,
         }
@@ -268,7 +348,7 @@ impl FieldPath {
 
 impl fmt::Display for FieldPath {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (index, segment) in self.0.iter().enumerate() {
+        for (index, segment) in self.segments.iter().enumerate() {
             match segment {
                 // The leading dot is written between steps, never in front of
                 // the first one: a one-name path renders as that name, which
@@ -276,6 +356,12 @@ impl fmt::Display for FieldPath {
                 FieldSegment::Field(name) if index == 0 => write_identifier(formatter, name)?,
                 segment => write!(formatter, "{segment}")?,
             }
+        }
+        // An alias never sits on the root, so this never opens the rendering
+        // with a space, and parsing it back is the exact inverse.
+        if let Some(alias) = &self.alias {
+            formatter.write_str(" as ")?;
+            write_identifier(formatter, alias)?;
         }
         Ok(())
     }
@@ -295,7 +381,7 @@ impl From<FieldSegment> for FieldPath {
 
 impl AsRef<[FieldSegment]> for FieldPath {
     fn as_ref(&self) -> &[FieldSegment] {
-        &self.0
+        &self.segments
     }
 }
 
@@ -304,7 +390,7 @@ impl<'a> IntoIterator for &'a FieldPath {
     type IntoIter = std::slice::Iter<'a, FieldSegment>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
+        self.segments.iter()
     }
 }
 
@@ -405,6 +491,7 @@ impl<'a> Parser<'a> {
 
     fn path(mut self) -> Result<FieldPath> {
         let mut segments: Vec<FieldSegment> = Vec::new();
+        let mut alias = None;
         self.skip_space();
         if self.at == self.bytes.len() {
             return Ok(FieldPath::root());
@@ -432,8 +519,37 @@ impl<'a> Parser<'a> {
             if self.at == self.bytes.len() {
                 break;
             }
+            if self.eat_as() {
+                alias = Some(self.alias_name()?);
+                self.skip_space();
+                if self.at != self.bytes.len() {
+                    return Err(self.fail("expected the end of the path after its alias"));
+                }
+                break;
+            }
         }
-        Ok(FieldPath::new(segments))
+        Ok(FieldPath {
+            segments: segments.into(),
+            alias,
+        })
+    }
+
+    /// Take the `as` keyword, when that is what comes next.
+    ///
+    /// A boundary is required after it, so `assets` stays one name rather than
+    /// `as` followed by `sets`. The keyword is only looked for once a path has
+    /// something to alias, which is what leaves `as` usable as a segment name.
+    fn eat_as(&mut self) -> bool {
+        let rest = &self.bytes[self.at..];
+        if rest.len() < 2 || !rest[..2].eq_ignore_ascii_case(b"as") {
+            return false;
+        }
+        match rest.get(2) {
+            Some(byte) if byte.is_ascii_whitespace() || *byte == b'"' || *byte == QUOTE => {}
+            _ => return false,
+        }
+        self.at += 2;
+        true
     }
 
     /// Read one `[...]` step: a position, or a constant key.
@@ -471,6 +587,19 @@ impl<'a> Parser<'a> {
                 position: start,
                 reason: format_smolstr!("expected a position that fits in 64 bits, got {text:?}"),
             })
+    }
+
+    /// Read one alias, bare or quoted either way.
+    ///
+    /// Wider at intake than a segment name is, because an alias is written by
+    /// hand and both quotes are spellings people reach for. It still renders
+    /// back one way.
+    fn alias_name(&mut self) -> Result<SmolStr> {
+        self.skip_space();
+        if self.peek() == Some(QUOTE) {
+            return Ok(SmolStr::new(self.quoted(QUOTE)?));
+        }
+        self.name()
     }
 
     /// Read one segment name, bare or double-quoted.
