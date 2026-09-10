@@ -87,6 +87,22 @@ impl<H: IOBase> Text<H> {
         self.with_options(options)
     }
 
+    /// Decode this handle into typed lines under its retained configuration.
+    ///
+    /// The one decode entry point, reached with the options this wrapper
+    /// already holds. Every record method routes through the same iterator, so
+    /// a caller reading lines and a caller reading batches read one decode.
+    ///
+    /// # Errors
+    ///
+    /// Returns the configuration's refusals - a framing mode with no header
+    /// pattern, a rename naming no column, a lifted path with no name - before
+    /// a byte is read.
+    #[cfg(feature = "arrow")]
+    pub fn read_text_lines(&self) -> Result<super::TextLines> {
+        super::read_text_lines(&self.handle, &self.options)
+    }
+
     #[cfg(feature = "arrow")]
     fn require_text_options<'a>(&self, options: &'a RecordOptions) -> Result<&'a TextOptions> {
         match options {

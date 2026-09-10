@@ -21,6 +21,7 @@ mod iobase;
 mod iomedia;
 mod media;
 mod text;
+mod text_line;
 mod types;
 // These private exports are discovered through NAPI's generated registration
 // inventory rather than ordinary Rust call sites.

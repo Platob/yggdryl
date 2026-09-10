@@ -151,8 +151,8 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
   `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`, `MediaType`, `MimeType`,
   `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No local copies, no `enums`
   module. `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside
-  `Codec`; `Scalar` -> `types`, storage variants -> `holder`, record settings ->
-  `media`.
+  `Codec`, `FieldSegment` beside `FieldPath`; `Scalar` -> `types`, storage
+  variants -> `holder`, record settings -> `media`.
 - `IOMode` = `ReadOnly`, `Overwrite`, `Append`, `Merge`, `Random`; operations
   reject modes that do not apply; no alias.
 - `DataTypeId` = exact variant, `DataTypeKind` = family. `TimeUnit` is the only
@@ -251,6 +251,19 @@ never to a wrapper's own buffer.
   the pattern before a byte is read. A per-row `from_str`, dictionary rebuild,
   metadata lookup, or format branch is a defect, and the benchmark plus the
   `IOBase` call counts are where it shows.
+- **Paths are resolved, never split.** Every path into a nested schema or value
+  is a `FieldPath`, parsed once at its boundary by that type's one parser and
+  carried resolved. Its grammar is the whole vocabulary: `.name` for a struct
+  child, `[0]` and `[-1]` for a list element, `['key']` for a map entry, and a
+  quoted name for one carrying a dot, so a field named `a.b` has exactly one
+  spelling and it is not two levels. A surface may accept a path as text at its
+  own intake and must resolve it there; past that boundary nothing takes a path
+  as a string, splits one at a separator, or writes a second path grammar. A
+  path used per row, per column, per batch or per node is hoisted out of that
+  loop - one parsed inside one is a defect the benchmark and the allocation
+  count will show. `FieldPath` is the selector a caller writes; the crate-private
+  `Path` cons-list is where a recursive walk reports a failure, and the two never
+  merge.
 - Nothing re-enters the boundary from inside: no round trip through text, JSON,
   or a host runtime's casting to recover a type the value already carries, and no
   second inference over values a `Field` types.

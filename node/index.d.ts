@@ -1098,6 +1098,32 @@ export declare class Field {
 }
 export type JsField = Field
 
+/** One resolved path into a nested schema or value. */
+export declare class FieldPath {
+  /** Parse one path. */
+  constructor(value?: string | undefined | null)
+  /** The empty path, which selects the value it is applied to. */
+  static root(): FieldPath
+  /** The segments, each a name or a position. */
+  get segments(): Array<string | number>
+  /** The single name this path addresses, when it addresses exactly one. */
+  get name(): string | null
+  /** Whether this path selects the value it is applied to. */
+  get isRoot(): boolean
+  /** How many segments this path has. */
+  get length(): number
+  /** This path without its last segment. */
+  parent(): FieldPath | null
+  /** This path with one more named or positional segment. */
+  join(segment: string | number): FieldPath
+  /** A deterministic hash of the complete path. */
+  stableHash(): number
+  toString(): string
+  /** Whether two paths select the same thing. */
+  equals(other: FieldPath): boolean
+}
+export type JsFieldPath = FieldPath
+
 /**
  * One dictionary, reading captured lines into messages, with the Arrow twins.
  *
@@ -2313,6 +2339,15 @@ export declare class IOBase {
    * out.
    */
   readArrowReader(options?: JsRecordOptions | undefined | null): JsBatchReader
+  /**
+   * Decode this resource into typed text lines.
+   *
+   * The one decode entry point for plain text: every record method routes
+   * through the same iterator, so a caller reading lines and a caller
+   * reading batches read one decode. Lines are pulled one at a time and
+   * never collected.
+   */
+  readTextLines(options?: JsTextOptions | undefined | null): TextLineIterator
   /**
    * Replace this resource's rows with every batch `batches` yields.
    *
@@ -3835,6 +3870,97 @@ export declare class Tables {
 }
 export type JsTables = Tables
 
+/** The ordered entries one line or one nested payload declared. */
+export declare class TextEntries {
+  get length(): number
+  /** One entry by position, counting back from the end when negative. */
+  at(index: number): TextEntry | null
+  /** Every entry, in the order the line declared them. */
+  toArray(): Array<TextEntry>
+  /** The entry a path reaches, or `null`. */
+  getEntryByPath(path: string | FieldPath): TextEntry | null
+  /** The entry a path reaches, raising absence. */
+  entryByPath(path: string | FieldPath): TextEntry
+  toString(): string
+}
+export type JsTextEntries = TextEntries
+
+/** One key and value a line declared, with whatever it nested. */
+export declare class TextEntry {
+  get key(): Buffer
+  get value(): Buffer
+  get entries(): TextEntries | null
+  toString(): string
+}
+export type JsTextEntry = TextEntry
+
+/** One decoded text row, typed the way its columns are. */
+export declare class TextLine {
+  /**
+   * The physical line number within the object, from zero.
+   *
+   * A `bigint`: a line count is 64 bits wide in the core and a JavaScript
+   * number cannot hold one without silently losing the top of it.
+   */
+  get index(): number
+  /** The object this line was read from. */
+  get url(): string | null
+  /**
+   * When the record was written, in nanoseconds UTC.
+   *
+   * The core counts in 128 bits so a reading past what 64 bits hold has
+   * somewhere to land; this boundary answers `null` for one that does not
+   * fit rather than wrapping it.
+   */
+  get timestamp(): number | null
+  /** What the line was classified as. */
+  get bodytype(): string | null
+  /**
+   * The line, with whatever was read off its front removed.
+   *
+   * Copied across this boundary, as every byte value here is.
+   */
+  get body(): Buffer
+  /** Which way the line moved. */
+  get direction(): string | null
+  /** How many bytes of this record went over the retained limit. */
+  get droppedByteSize(): number | null
+  /**
+   * The row header's named captures, in the order the expression declares
+   * them.
+   */
+  get captures(): Array<Buffer | null>
+  /** The key/value tree this line carries. */
+  get entries(): TextEntries | null
+  /** The entry a path reaches, or `null`. */
+  getEntryByPath(path: string | FieldPath): TextEntry | null
+  /** The entry a path reaches, raising absence. */
+  entryByPath(path: string | FieldPath): TextEntry
+  /** Set the value a path reaches, creating what is not there. */
+  setEntryByPath(path: string | FieldPath, value: Buffer): void
+  /** Remove the entry a path reaches. */
+  removeEntryByPath(path: string | FieldPath): TextEntry | null
+  toString(): string
+}
+export type JsTextLine = TextLine
+
+/**
+ * A lazy iterator over decoded lines.
+ *
+ * Lines are pulled one at a time, never collected: a read larger than memory
+ * iterates exactly as a reader would. A failing read raises once and stops.
+ *
+ * This type implements JavaScript's iterable iterator protocol.
+ * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
+ */
+export declare class TextLineIterator {
+
+}
+export type JsTextLineIterator = TextLineIterator
+
 /** Flat settings for physical-line or framed `text/plain` records. */
 export declare class TextOptions {
   /** Build default plain-text record settings. */
@@ -3940,6 +4066,33 @@ export declare class TextOptions {
   get autotype(): boolean
   /** Enable or disable regex-syntax capture autotyping. */
   set autotype(autotype: boolean)
+  /**
+   * The columns a text read answers, built without reading anything.
+   *
+   * Every column is settled here - the fixed ones, the row header's
+   * captures, and every lifted entry path - so a caller has the schema
+   * before there is a resource to read.
+   */
+  sourceField(): Field
+  /**
+   * The emitted name of each column, keyed by its default name.
+   *
+   * Renaming decides what a column is called and never whether one exists:
+   * a key naming no column is refused. Lifting an entry into a column of
+   * its own is `liftNames`.
+   */
+  get renameColumns(): Record<string, string>
+  /** Replace the emitted-name overrides. */
+  set renameColumns(renames: Record<string, string> | undefined | null)
+  /**
+   * The entry paths lifted into columns of their own.
+   *
+   * `null` lifts nothing beyond the row header's own captures; an empty
+   * array says the same thing explicitly.
+   */
+  get liftNames(): Array<string> | null
+  /** Replace the lifted entry paths, resolving each exactly once. */
+  set liftNames(paths: Array<string> | undefined | null)
   /** Return the timezone for offset-free autotyped timestamps. */
   get timezone(): JsTimezone | null
   /** Set or clear the autotyping timezone. */

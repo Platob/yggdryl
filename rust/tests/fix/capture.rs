@@ -71,7 +71,6 @@ fn handle() -> Buffer {
 fn text() -> RecordOptions {
     let mut options = TextOptions::new();
     options.parse_mimetype = true;
-    options.parse_msgtype = true;
     options.parse_direction = true;
     options.into()
 }

@@ -1666,6 +1666,112 @@ pub const NULL_PARTITION: &str = "null";
   pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
   pub fn set_transform(&mut self, transform: Function) -> Result<()>
 
+### yggdryl::field_path  [rust\src\field_path.rs]
+pub enum FieldSegment
+  pub fn field(name: impl Into<SmolStr>) -> Self
+  pub const fn index(position: i64) -> Self
+  pub fn key(value: Scalar) -> Result<Self>
+  pub fn as_name(&self) -> Option<&str>
+  pub const fn as_index(&self) -> Option<i64>
+pub struct FieldPath(Arc<[FieldSegment]>);
+  pub fn root() -> Self
+  pub fn new(segments: impl IntoIterator<Item = FieldSegment>) -> Self
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn segments(&self) -> &[FieldSegment]
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn is_root(&self) -> bool
+  pub fn first(&self) -> Option<&FieldSegment>
+  pub fn last(&self) -> Option<&FieldSegment>
+  pub fn parent(&self) -> Option<Self>
+  pub fn join(&self, segment: FieldSegment) -> Self
+  pub fn as_name(&self) -> Option<&str>
+  pub fn stable_hash(&self) -> u64
+
+### yggdryl::media::text::bytes  [rust\src\media\text\bytes.rs]
+pub struct TextBytes
+  pub const fn new() -> Self
+  pub fn from_page(page: &Arc<Vec<u8>>, start: usize, end: usize) -> Result<Self>
+  pub fn from_whole_page(page: Arc<Vec<u8>>) -> Result<Self>
+  pub fn from_bytes(bytes: impl AsRef<[u8]>) -> Result<Self>
+  pub fn as_bytes(&self) -> &[u8]
+  pub const fn len(&self) -> usize
+  pub const fn is_empty(&self) -> bool
+  pub const fn page(&self) -> Option<&Arc<Vec<u8>>>
+  pub const fn start(&self) -> u32
+  pub const fn end(&self) -> u32
+  pub fn slice(&self, start: usize, end: usize) -> Result<Self>
+  pub fn as_str(&self) -> Option<&str>
+  pub fn into_bytes(self) -> Vec<u8>
+
+### yggdryl::media::text::entry  [rust\src\media\text\entry.rs]
+pub struct TextEntry
+  pub const fn new(key: TextBytes, value: TextBytes) -> Self
+  pub fn with_entries(self, entries: TextEntries) -> Self
+  pub const fn key(&self) -> &TextBytes
+  pub const fn value(&self) -> &TextBytes
+  pub fn set_value(&mut self, value: TextBytes)
+  pub const fn entries(&self) -> Option<&TextEntries>
+  pub const fn entries_mut(&mut self) -> Option<&mut TextEntries>
+  pub fn set_entries(&mut self, entries: Option<TextEntries>)
+pub struct TextEntries
+  pub const fn new() -> Self
+  pub fn with_capacity(capacity: usize) -> Self
+  pub fn as_slice(&self) -> &[TextEntry]
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn push(&mut self, entry: TextEntry)
+  pub fn iter(&self) -> std::slice::Iter<'_, TextEntry>
+  pub fn get_entry_by_path(&self, path: &FieldPath) -> Option<&TextEntry>
+  pub fn entry_by_path(&self, path: &FieldPath) -> Result<&TextEntry>
+  pub fn get_entry_by_path_mut(&mut self, path: &FieldPath) -> Option<&mut TextEntry>
+  pub fn set_entry_by_path(&mut self, path: &FieldPath, value: TextBytes) -> Result<()>
+  pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry>
+
+### yggdryl::media::text::line  [rust\src\media\text\line.rs]
+pub struct TextLine
+  pub fn new(index: u64, body: TextBytes) -> Self
+  pub const fn index(&self) -> u64
+  pub const fn set_index(&mut self, index: u64)
+  pub fn url(&self) -> Option<&Url>
+  pub fn set_url(&mut self, url: Option<Arc<Url>>)
+  pub fn with_url(self, url: Arc<Url>) -> Self
+  pub const fn timestamp(&self) -> Option<i128>
+  pub const fn set_timestamp(&mut self, timestamp: Option<i128>)
+  pub const fn with_timestamp(self, timestamp: i128) -> Self
+  pub const fn bodytype(&self) -> Option<&MimeType>
+  pub fn set_bodytype(&mut self, bodytype: Option<MimeType>)
+  pub fn with_bodytype(self, bodytype: MimeType) -> Self
+  pub const fn body(&self) -> &TextBytes
+  pub fn set_body(&mut self, body: TextBytes)
+  pub const fn direction(&self) -> Option<&'static str>
+  pub const fn set_direction(&mut self, direction: Option<&'static str>)
+  pub const fn dropped_byte_size(&self) -> Option<u64>
+  pub const fn set_dropped_byte_size(&mut self, size: Option<u64>)
+  pub fn captures(&self) -> &[Option<TextBytes>]
+  pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>)
+  pub fn with_captures(self, captures: Vec<Option<TextBytes>>) -> Self
+  pub const fn entries(&self) -> Option<&TextEntries>
+  pub const fn entries_mut(&mut self) -> Option<&mut TextEntries>
+  pub fn set_entries(&mut self, entries: Option<TextEntries>)
+  pub fn with_entries(self, entries: TextEntries) -> Self
+  pub fn get_entry_by_path(&self, path: &FieldPath) -> Option<&TextEntry>
+  pub fn entry_by_path(&self, path: &FieldPath) -> Result<&TextEntry>
+  pub fn get_entry_by_path_mut(&mut self, path: &FieldPath) -> Option<&mut TextEntry>
+  pub fn set_entry_by_path(&mut self, path: &FieldPath, value: TextBytes) -> Result<()>
+  pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry>
+
+### yggdryl::media::text::arrow  [rust\src\media\text\arrow.rs]
+pub struct TextLines
+  impl Iterator for TextLines { type Item = Result<TextLine>; }
+  pub fn read_text_lines(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Result<TextLines>
+
+### yggdryl::media::text::batch  [rust\src\media\text\batch.rs]
+  pub fn into_arrow_batch(lines: impl IntoIterator<Item = TextLine>, options: &TextOptions) -> Result<arrow_array::RecordBatch>
+  pub fn into_arrow_reader<I>(lines: I, options: &TextOptions) -> Result<BatchReader> where I: IntoIterator<Item = Result<TextLine>>, I::IntoIter: Send + 'static,
+  pub fn from_arrow_batch(batch: &arrow_array::RecordBatch, options: &TextOptions) -> Result<Vec<TextLine>>
+  pub fn from_arrow_reader(batches: BatchReader, options: &TextOptions) -> Result<impl Iterator<Item = Result<TextLine>> + Send + 'static>
+
 ### yggdryl::media::text::handle  [rust\src\media\text\handle.rs]
 pub struct Text<H: IOBase>
   pub fn new(handle: H) -> Self
@@ -1678,6 +1784,7 @@ pub struct Text<H: IOBase>
   pub fn into_handle(self) -> H
   pub const fn into_text(self) -> Self
   pub fn into_text_with(self, options: TextOptions) -> Self
+  pub fn read_text_lines(&self) -> Result<super::TextLines>
 
 ### yggdryl::types::url  [rust\src\types\url\mod.rs]
 pub use fields::{UrlField, UrlScalar, UrlType};
@@ -1728,6 +1835,13 @@ pub struct TextOptions
   pub fn set_timezone(&mut self, timezone: Option<Timezone>)
   pub fn with_timezone(self, timezone: Timezone) -> Self
   pub fn capture_names(&self) -> impl ExactSizeIterator<Item = &str>
+  pub rename_columns: BTreeMap<SmolStr, SmolStr>
+  pub fn lift_names(&self) -> Option<&[FieldPath]>
+  pub fn set_lift_names<I, S>(&mut self, paths: Option<I>) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub fn set_lift_paths(&mut self, paths: Option<Vec<FieldPath>>)
+  pub fn try_with_lift_names<I, S>(self, paths: I) -> Result<Self> where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub const fn rename_columns(&self) -> &BTreeMap<SmolStr, SmolStr>
+  pub fn with_renamed_column(self, from: impl Into<SmolStr>, to: impl Into<SmolStr>) -> Self
   pub fn stable_hash(&self) -> u64
 
 ### yggdryl::media::text::sep  [rust\src\media\text\sep.rs]

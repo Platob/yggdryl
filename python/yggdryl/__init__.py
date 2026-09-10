@@ -22,12 +22,22 @@ from ._native import (
 )
 from .expression import Bound, Bounds, BoundStatement, Expression, Statement
 from .holder import IOBase, IOCursor
-from .media import MediaType, MimeType, RecordOptions, TextOptions
+from .media import (
+    MediaType,
+    MimeType,
+    RecordOptions,
+    TextEntries,
+    TextEntry,
+    TextLine,
+    TextLines,
+    TextOptions,
+)
 from .types import (
     ArrowCastPlan,
     AsciiEnum,
     DataType,
     Field,
+    FieldPath,
     ProtocolField,
     PythonMetadata,
     Scalar,
@@ -48,6 +58,7 @@ __all__ = [
     "DataType",
     "Expression",
     "Field",
+    "FieldPath",
     "IOBase",
     "IOCursor",
     "MediaType",
@@ -58,6 +69,10 @@ __all__ = [
     "RecordOptions",
     "Scalar",
     "Statement",
+    "TextEntries",
+    "TextEntry",
+    "TextLine",
+    "TextLines",
     "TextOptions",
     "Timezone",
     "Version",

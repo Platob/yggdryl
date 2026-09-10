@@ -1593,6 +1593,24 @@ impl JsIOBase {
         Ok(JsBatchReader::from_core(reader, options.name()))
     }
 
+    /// Decode this resource into typed text lines.
+    ///
+    /// The one decode entry point for plain text: every record method routes
+    /// through the same iterator, so a caller reading lines and a caller
+    /// reading batches read one decode. Lines are pulled one at a time and
+    /// never collected.
+    #[napi(ts_return_type = "TextLineIterator")]
+    pub fn read_text_lines(
+        &self,
+        options: Option<&crate::media::text::JsTextOptions>,
+    ) -> Result<crate::text_line::JsTextLineIterator> {
+        let defaulted = crate::media::text::JsTextOptions::new();
+        let options = options.map_or(&defaulted, |options| options);
+        let lines = yggdryl::media::text::read_text_lines(&self.inner, &options.inner)
+            .map_err(napi_error)?;
+        Ok(crate::text_line::JsTextLineIterator::from_core(lines))
+    }
+
     /// Replace this resource's rows with every batch `batches` yields.
     ///
     /// This is the native-reader publication hook. The incoming stream is cast

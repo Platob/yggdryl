@@ -524,6 +524,47 @@ pub(crate) fn document_behind_prefix(line: &[u8]) -> Option<(MimeType, usize)> {
     Some((shape, leading + open))
 }
 
+/// One key and value a line declared, as ranges into that line.
+///
+/// Ranges rather than slices, because the text reader turns them into ranges of
+/// the page the line already lives in: nothing here copies a byte.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PairSpan {
+    pub(crate) key: std::ops::Range<usize>,
+    pub(crate) value: std::ops::Range<usize>,
+    /// Whether the value is itself a run of pairs, so descending into it
+    /// answers something. This is the mixed form the classifier recognizes:
+    /// a numeric envelope whose payload states its own fields.
+    pub(crate) nested: bool,
+}
+
+/// Every pair the line declares, wherever it sits.
+///
+/// Deliberately not the walk [`inspect`] runs. That one starts at the located
+/// frame and stops at the checksum, because classification is decided by what
+/// the frame holds; a pair a transport wrote in front of the frame, or a
+/// trailer after it, is not part of that decision and is still part of what the
+/// line said. This walk reads them all, at the cost of one more pass over bytes
+/// the reader already holds.
+///
+/// An empty value is a pair: `a=` states that `a` was written and carries
+/// nothing, which is a different fact from `a` being absent.
+pub(crate) fn entry_spans(line: &[u8]) -> impl Iterator<Item = PairSpan> + '_ {
+    pairs(line).map(move |(start, _, equals)| {
+        let key_at = start + usize::from(line.get(start) == Some(&b'#'));
+        let mut value_end = equals + 1;
+        while value_end < line.len() && !is_field_end(line, value_end) {
+            value_end += 1;
+        }
+        let value = equals + 1..value_end;
+        PairSpan {
+            nested: memchr::memchr(b'=', &line[value.clone()]).is_some(),
+            key: key_at..equals,
+            value,
+        }
+    })
+}
+
 /// Whether the line holds any pair at all, marked or not.
 fn has_any_pair(line: &[u8]) -> bool {
     pairs(line).any(|(_, key, _)| matches!(key, LineKey::Name(_)))

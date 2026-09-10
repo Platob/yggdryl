@@ -133,6 +133,7 @@ nav:
     - Core:
       - DataType: types/datatype.md
       - Field: types/field.md
+      - Paths: types/paths.md
       - Scalar: types/scalar.md
       - Cast: types/cast.md
     - Families:
