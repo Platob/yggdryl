@@ -77,11 +77,36 @@ type BridgeRow<'registry, 'body> = (
     Vec<(Cow<'body, [u8]>, &'body [u8])>,
 );
 
+/// One segment of a packed occurrence's value.
+///
+/// A member pair, or the close a bridge writes where an occurrence it packed
+/// inside this one ends: that occurrence's own trailing separator meets the
+/// separator of the occurrence around it, and the empty segment between the
+/// two is the close.
+#[derive(Clone, Copy)]
+enum Segment<'value> {
+    Pair(&'value [u8], &'value [u8]),
+    Close,
+}
+
+/// What the twin judgment made of one `#` key.
+enum Hashed<'body> {
+    /// A second spelling of a bare pair stating the same bytes: one pair.
+    Duplicate,
+    /// The row's sole spelling: the key without its mark.
+    Bare(&'body [u8]),
+    /// Beside a bare twin stating something else: the key as it arrived.
+    Verbatim,
+}
+
 /// What separates the members packed inside one bridge group occurrence.
 ///
 /// ULLINK writes EOT then ETX. A bridge relaying into a FIX session writes the
 /// protocol's own SOH instead, which is unambiguous inside an occurrence
-/// because no FIX value may contain one.
+/// because no FIX value may contain one. Every packed value ends with one,
+/// so an occurrence packed inside another closes with two in a row - its own
+/// trailing one, then the one between it and the next member - and the empty
+/// segment between them is where the bridge says the inner occurrence ends.
 const MEMBER_SEPARATORS: [&[u8]; 4] = [
     b"\x04\x03",
     b"\x01",
@@ -566,6 +591,7 @@ impl FixCodec {
         // The data values that are bridge rows, read after the frame's own
         // pairs so the frame's statements come first.
         let mut nested: Vec<&[u8]> = Vec::new();
+        let mut hashed = false;
         let mut at = 0;
         while at < body.len() {
             let end = memchr::memchr(separator, &body[at..]).map_or(body.len(), |found| at + found);
@@ -573,6 +599,7 @@ impl FixCodec {
                 at = end + 1;
                 continue;
             };
+            hashed |= key.first() == Some(&b'#');
             let mut next = end + 1;
             let mut value = value;
             if let Some(tag) = data_tag(key) {
@@ -603,6 +630,20 @@ impl FixCodec {
             }
             at = next;
         }
+        // A bridge marks the name keys it writes into a frame exactly as it
+        // marks a row's, so they are judged by the row's rules: a frame that
+        // marked nothing pays nothing.
+        if hashed {
+            let arrived = pairs;
+            let bare = self.bare_spellings(&arrived);
+            pairs = arrived
+                .iter()
+                .filter_map(|&(key, value)| {
+                    self.hashed_key(key, value, &arrived, &bare)
+                        .map(|(key, _)| (key, value))
+                })
+                .collect();
+        }
         self.build(&pairs, &nested, extras)
     }
 
@@ -611,15 +652,21 @@ impl FixCodec {
     /// A `SOH` or pipe delimiter preserves spaces inside a value. A row with
     /// neither delimiter uses spaces between pairs.
     ///
-    /// A key opening with `#` names a group: `#NOPARTYIDS=1` is the counter
-    /// and `#NOPARTYIDS[0]=…` is one occurrence whose *value* is a run of
-    /// member pairs. The `#` is dropped only where it is the row's sole
-    /// spelling of that key: `ORDERID=123|#ORDERID=345` states two keys, and
-    /// collapsing them would merge two values under one name, so there the
-    /// `#` key stays verbatim, whichever of the two arrived first. The twin
-    /// is matched under the FIX name fold - the identity every key resolves
-    /// by - and a bare pair whose value is a stated absence is no twin,
-    /// because a key that said nothing was sent is not a key that was sent.
+    /// A key opening with `#` is a bridge's own spelling of a name:
+    /// `#SYMBOL=TTF` is the field, `#NOPARTYIDS=1` a counter and
+    /// `#NOPARTYIDS[0]=…` one occurrence whose *value* is a run of member
+    /// pairs. The mark is judged against the row's bare spellings, under the
+    /// FIX name fold every key resolves by, and a bare pair whose value is a
+    /// stated absence is no twin, because a key that said nothing was sent
+    /// is not a key that was sent:
+    ///
+    /// | the row states | reads as |
+    /// | --- | --- |
+    /// | `#ORDERID=123` alone | `OrderID` 123: the mark drops |
+    /// | `ORDERID=123\|#ORDERID=123` | `OrderID` 123 once: the marked pair is a second spelling of the same bytes and is dropped, row and entries alike |
+    /// | `ORDERID=123\|#ORDERID=345` | `OrderID` 123 beside `#ORDERID` 345: two keys, so the marked one stays verbatim - its own child, its own entry - whichever arrived first |
+    /// | `NOPARTYIDS=2\|…\|#NOPARTYIDS=6\|#NOPARTYIDS[0]=…` | the bare group is the dictionary's; every marked key of that group stays verbatim and whole, occurrence and count alike, because a group is one thing however many occurrences it states |
+    ///
     /// Residue that will not split stays as one unknown key, verbatim: never
     /// dropped, never fatal.
     ///
@@ -666,15 +713,9 @@ impl FixCodec {
         }
         // Each `#` key is judged against the row's bare spellings, gathered
         // once: a bridge row is mostly `#` keys, so the probed list stays
-        // short, and a row with no `#` at all gathers nothing. A twin that
-        // itself opens with `#` - a `##` key's bare - is not in it, so that
-        // one probe falls back to the whole row.
-        let bare_keys: Vec<&[u8]> = if hashed {
-            arrived
-                .iter()
-                .filter(|(key, value)| key.first() != Some(&b'#') && !self.is_absent(value))
-                .map(|(key, _)| *key)
-                .collect()
+        // short, and a row with no `#` at all gathers nothing.
+        let bare = if hashed {
+            self.bare_spellings(&arrived)
         } else {
             Vec::new()
         };
@@ -682,30 +723,19 @@ impl FixCodec {
         let msgtype = msgtype_of(&arrived);
         let message = msgtype
             .as_deref()
-            .and_then(|code| self.registry.get_msgtype(code, self.branch.as_ref()));
+            .and_then(|code| self.declared_message(code));
         for &(key, value) in &arrived {
-            let key = match key.strip_prefix(b"#") {
-                Some(bare) => {
-                    let bare = line::trim_ascii(bare);
-                    let twinned = if bare.first() == Some(&b'#') {
-                        arrived.iter().any(|(held, held_value)| {
-                            folds_twin(held, bare) && !self.is_absent(held_value)
-                        })
-                    } else {
-                        bare_keys.iter().any(|held| folds_twin(held, bare))
-                    };
-                    if twinned {
-                        // Verbatim means whole: the twinned `#` key is its
-                        // own key and the packed value is its value, so no
-                        // group rendering rewrites either - a group name
-                        // opening with `#` resolves in no dictionary anyway.
-                        resolved.push((Cow::Borrowed(key), value));
-                        continue;
-                    }
-                    bare
-                }
-                None => key,
+            let Some((key, whole)) = self.hashed_key(key, value, &arrived, &bare) else {
+                continue;
             };
+            if whole {
+                // Verbatim means whole: the twinned `#` key is its own key
+                // and the packed value is its value, so no group rendering
+                // rewrites either - a group name opening with `#` resolves
+                // in no dictionary anyway.
+                resolved.push((Cow::Borrowed(key), value));
+                continue;
+            }
             match group_index(key) {
                 Some((group, occurrence)) if memchr::memchr(b'=', value).is_some() => {
                     let declared = self.group_members(group, message);
@@ -714,8 +744,16 @@ impl FixCodec {
                     path.extend_from_slice(b"[");
                     path.extend_from_slice(occurrence.to_string().as_bytes());
                     path.extend_from_slice(b"]");
-                    let pairs = members(value, declared);
-                    self.render_members(&path, &pairs, message, &mut resolved);
+                    let segments = members(value, declared);
+                    // The bridge closed what it packed inside this occurrence
+                    // where it wrote a close anywhere but at the run's own
+                    // end; a run carrying none is bounded by the dictionary.
+                    let explicit = segments
+                        .iter()
+                        .rev()
+                        .skip(1)
+                        .any(|segment| matches!(segment, Segment::Close));
+                    self.render_members(&path, &segments, message, explicit, &mut resolved);
                 }
                 _ => resolved.push((Cow::Borrowed(key), value)),
             }
@@ -723,28 +761,87 @@ impl FixCodec {
         (message, resolved)
     }
 
-    /// One occurrence's member pairs rendered under its path, sub-groups
+    /// The row's bare spellings: every pair not marked `#` whose value is
+    /// not a stated absence.
+    fn bare_spellings<'body>(
+        &self,
+        arrived: &[(&'body [u8], &'body [u8])],
+    ) -> Vec<(&'body [u8], &'body [u8])> {
+        arrived
+            .iter()
+            .copied()
+            .filter(|(key, value)| key.first() != Some(&b'#') && !self.is_absent(value))
+            .collect()
+    }
+
+    /// The key one arriving pair builds under, its `#` judged, and whether it
+    /// is kept whole; `None` for a marked pair that only restates a bare one.
+    ///
+    /// A twin that itself opens with `#` - a `##` key's bare - is not among
+    /// the bare spellings, so that one probe falls back to the whole row.
+    fn hashed_key<'body>(
+        &self,
+        key: &'body [u8],
+        value: &'body [u8],
+        arrived: &[(&'body [u8], &'body [u8])],
+        bare: &[(&'body [u8], &'body [u8])],
+    ) -> Option<(&'body [u8], bool)> {
+        let Some(stripped) = key.strip_prefix(b"#") else {
+            return Some((key, false));
+        };
+        let stripped = line::trim_ascii(stripped);
+        let judged = if stripped.first() == Some(&b'#') {
+            let row: Vec<(&[u8], &[u8])> = arrived
+                .iter()
+                .copied()
+                .filter(|(_, held)| !self.is_absent(held))
+                .collect();
+            judge_hashed(stripped, value, &row)
+        } else {
+            judge_hashed(stripped, value, bare)
+        };
+        match judged {
+            Hashed::Duplicate => None,
+            Hashed::Bare(stripped) => Some((stripped, false)),
+            Hashed::Verbatim => Some((key, true)),
+        }
+    }
+
+    /// One occurrence's member segments rendered under its path, sub-groups
     /// and all.
     ///
     /// A bridge packs a group nested inside an occurrence at the same level
-    /// as the occurrence's own members: `NOPARTYSUBIDS=1`, then
-    /// `NOPARTYSUBIDS[0]=PARTYSUBID=a`, then `PARTYSUBIDTYPE=b`, then the
-    /// party's own `PARTYID=c`. The sub-occurrence's key carries its first
-    /// member packed into its value, and the pairs after it belong to it
-    /// while the dictionary declares them as its members - so `PARTYSUBIDTYPE`
-    /// rides under the sub-occurrence and `PARTYID` comes back up to the
-    /// party. Rendered as `NOPARTYIDS[0].NOPARTYSUBIDS[0].PARTYSUBID`, the key
-    /// the builder nests by, at any depth a bridge packs.
+    /// as the occurrence's own members, behind the same separator:
+    /// `NOPARTYSUBIDS=1`, then `NOPARTYSUBIDS[0]=PARTYSUBID=a`, then
+    /// `PARTYSUBIDTYPE=b`, then the party's own `PARTYID=c`. The
+    /// sub-occurrence's key carries its first member packed into its value,
+    /// and where the pairs after it stop belonging to it is
+    /// [`Self::extent`]'s answer: the close the bridge wrote where it wrote
+    /// closes, the dictionary's declaration where it did not - so
+    /// `PARTYSUBIDTYPE` rides under the sub-occurrence and `PARTYID` comes
+    /// back up to the party. Rendered as
+    /// `NOPARTYIDS[0].NOPARTYSUBIDS[0].PARTYSUBID`, the key the builder nests
+    /// by, at any depth a bridge packs.
+    ///
+    /// `explicit` is decided once for the whole packed value, because a
+    /// bridge closes every occurrence it packs or none of them, and a nested
+    /// slice of a closed run may hold no close of its own.
     fn render_members<'registry, 'value>(
         &'registry self,
         path: &[u8],
-        pairs: &[(&'value [u8], &'value [u8])],
+        segments: &[Segment<'value>],
         message: Option<&'registry super::MsgType>,
+        explicit: bool,
         out: &mut Vec<(Cow<'value, [u8]>, &'value [u8])>,
     ) {
         let mut at = 0;
-        while at < pairs.len() {
-            let (member, held) = pairs[at];
+        while at < segments.len() {
+            let Segment::Pair(member, held) = segments[at] else {
+                // The run's own trailing separator, or a close of something
+                // this level never opened: nothing to end.
+                at += 1;
+                continue;
+            };
             at += 1;
             let rendered = |member: &[u8]| {
                 let mut key = Vec::with_capacity(path.len() + member.len() + 1);
@@ -761,20 +858,89 @@ impl FixCodec {
                     sub_path.extend_from_slice(index.to_string().as_bytes());
                     sub_path.extend_from_slice(b"]");
                     // What the sub-occurrence packed into its own value,
-                    // then every following pair the sub-group declares.
+                    // then every following segment up to where it ends.
+                    let end = self.extent(segments, at, sub_declared, message, explicit);
                     let mut nested = members(held, sub_declared);
-                    while at < pairs.len()
-                        && group_index(pairs[at].0).is_none()
-                        && declares(sub_declared, pairs[at].0)
-                    {
-                        nested.push(pairs[at]);
+                    nested.extend_from_slice(&segments[at..end]);
+                    self.render_members(&sub_path, &nested, message, explicit, out);
+                    at = end;
+                    // The close that ended it is spent with it.
+                    if explicit && matches!(segments.get(at), Some(Segment::Close)) {
                         at += 1;
                     }
-                    self.render_members(&sub_path, &nested, message, out);
                 }
                 _ => out.push((Cow::Owned(rendered(member)), held)),
             }
         }
+    }
+
+    /// Where the occurrence opened just before `start` ends: the index of
+    /// the first segment past it.
+    ///
+    /// Explicit, the bridge closed every occurrence it packed inside the run,
+    /// so this one reaches the close that balances the ones opened inside it.
+    /// Implicit, it reaches as far as the dictionary declares - a member the
+    /// group declares, or an occurrence of a group it declares, skipped whole
+    /// by the same rule - and ends at the first segment it does not.
+    fn extent(
+        &self,
+        segments: &[Segment<'_>],
+        start: usize,
+        declared: &[Field],
+        message: Option<&super::MsgType>,
+        explicit: bool,
+    ) -> usize {
+        let mut at = start;
+        let mut depth = 0_usize;
+        while let Some(segment) = segments.get(at) {
+            match *segment {
+                Segment::Close => {
+                    if !explicit || depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                }
+                Segment::Pair(key, held) => {
+                    let opens = memchr::memchr(b'=', held).is_some();
+                    match group_index(key) {
+                        Some(_) if opens && explicit => depth += 1,
+                        Some((sub, _)) if opens => {
+                            if !self.declares_group(declared, sub, message) {
+                                break;
+                            }
+                            let sub_declared = self.group_members(sub, message);
+                            at = self.extent(segments, at + 1, sub_declared, message, false);
+                            continue;
+                        }
+                        _ if !explicit && !declares(declared, key) => break,
+                        _ => {}
+                    }
+                }
+            }
+            at += 1;
+        }
+        at
+    }
+
+    /// Whether the level whose members are `declared` declares the group
+    /// `sub` addresses: the group itself, or the counter that heads it.
+    fn declares_group(
+        &self,
+        declared: &[Field],
+        sub: &[u8],
+        message: Option<&super::MsgType>,
+    ) -> bool {
+        let Some(group) = self.group_definition(sub, message) else {
+            return false;
+        };
+        let counter = group.as_fix().counter().ok().flatten();
+        declared.iter().any(|field| {
+            crate::types::folds_equal(field.name(), group.name())
+                || counter.is_some_and(|counter| {
+                    field.as_fix().tag().ok().flatten() == Some(counter)
+                        || field.as_fix().counter().ok().flatten() == Some(counter)
+                })
+        })
     }
 
     /// Parses one FIXML row: every element's attributes, in document order.
@@ -955,7 +1121,7 @@ impl FixCodec {
 
         let message = msgtype
             .as_deref()
-            .and_then(|code| self.registry.get_msgtype(code, self.branch.as_ref()));
+            .and_then(|code| self.declared_message(code));
         let mut builder = Builder::new(
             &self.registry,
             message,
@@ -1014,7 +1180,7 @@ impl FixCodec {
                 .collect();
             let declared = msgtype_of(&held)
                 .as_deref()
-                .and_then(|code| self.registry.get_msgtype(code, self.branch.as_ref()));
+                .and_then(|code| self.declared_message(code));
             self.nest(builder, declared, &held, branch);
             return;
         }
@@ -1045,6 +1211,26 @@ impl FixCodec {
         builder.end_nested();
     }
 
+    /// The message definition a row's type names, under the tier every key
+    /// resolves by: this codec's dialect, then the standard one.
+    ///
+    /// A dialect declares its own vocabulary and rarely a message of its own,
+    /// and the row a bridge writes calls itself by FIX's name - so a pinned
+    /// dialect that answered nothing would leave every group the message
+    /// declares, `NoLegs` and `NoSides` among them, without the context that
+    /// says which group a shared counter heads.
+    fn declared_message(&self, code: &str) -> Option<&super::MsgType> {
+        self.registry
+            .get_msgtype(code, self.branch.as_ref())
+            .or_else(|| {
+                self.branch
+                    .as_ref()
+                    .is_some_and(|held| !held.is_standard())
+                    .then(|| self.registry.get_msgtype(code, Some(&FixBranch::STANDARD)))
+                    .flatten()
+            })
+    }
+
     /// The direct members the addressed repeating group declares.
     ///
     /// Bridge keys are rendered names even when their bytes are digits. Only
@@ -1055,8 +1241,26 @@ impl FixCodec {
         group: &[u8],
         message: Option<&'registry super::MsgType>,
     ) -> &'registry [Field] {
-        let Ok(group) = std::str::from_utf8(group) else {
+        let Some(field) = self.group_definition(group, message) else {
             return &[];
+        };
+        let item = match field.dtype() {
+            DataType::List(item) | DataType::LargeList(item) => item,
+            _ => return &[],
+        };
+        item.fields()
+    }
+
+    /// The repeating group a bridge key addresses, as the dictionary declares
+    /// it: by the group's own name, else by the counter's, under the message
+    /// where that counter is shared.
+    fn group_definition<'registry>(
+        &'registry self,
+        group: &[u8],
+        message: Option<&'registry super::MsgType>,
+    ) -> Option<&'registry Field> {
+        let Ok(group) = std::str::from_utf8(group) else {
+            return None;
         };
         let found = self
             .registry
@@ -1088,14 +1292,7 @@ impl FixCodec {
                     None => self.registry.get_group_by_counter(id),
                 }
             });
-        let Some(field) = found else {
-            return &[];
-        };
-        let item = match field.dtype() {
-            DataType::List(item) | DataType::LargeList(item) => item,
-            _ => return &[],
-        };
-        item.fields()
+        found.filter(|field| field.dtype().is_nested())
     }
 
     /// The version an arriving row is written in, when the caller pinned none.
@@ -1289,19 +1486,29 @@ fn group_index(key: &[u8]) -> Option<(&[u8], usize)> {
     Some((&key[..open], index.parse().ok()?))
 }
 
-/// The member pairs packed inside one occurrence's value.
+/// The segments packed inside one occurrence's value: its member pairs, and
+/// the closes of the occurrences packed inside it.
 ///
-/// ULLINK separates them with EOT then ETX, and sometimes omits the separator.
-/// An explicit spelling is authoritative. With neither spelling present, only
-/// direct members declared by the addressed group can begin another pair.
-fn members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<(&'value [u8], &'value [u8])> {
+/// ULLINK separates members with EOT then ETX, and sometimes omits the
+/// separator. An explicit spelling is authoritative. With neither spelling
+/// present, only direct members declared by the addressed group can begin
+/// another pair. An empty segment - two separators in a row - is a close,
+/// kept for the renderer to end a nested occurrence on; a segment that is
+/// neither a pair nor empty is residue and stays out.
+fn members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<Segment<'value>> {
     split_members(value, declared)
         .into_iter()
-        .filter_map(split_pair)
+        .filter_map(|part| {
+            if line::trim_ascii(part).is_empty() {
+                return Some(Segment::Close);
+            }
+            split_pair(part).map(|(key, value)| Segment::Pair(key, value))
+        })
         .collect()
 }
 
-/// One occurrence's value split on the bridge's member separator.
+/// One occurrence's value split on the bridge's member separator, empty
+/// segments included.
 ///
 /// The first explicit spelling the run actually carries wins, and only that
 /// one splits it. With neither present, declared member names are boundaries;
@@ -1387,6 +1594,39 @@ fn folded_name_prefix(value: &[u8], name: &str) -> Option<usize> {
 /// One ASCII separator ignored by the FIX name fold.
 const fn name_separator(byte: u8) -> bool {
     matches!(byte, b'_' | b'-' | b' ')
+}
+
+/// Judges one `#` key, stripped of its mark, against `twins` - the bare
+/// spellings it may restate, absences already left out.
+///
+/// The twin is judged on the stem - the group a `NAME[0]` key addresses, or
+/// the whole key - so a bare group claims every marked occurrence of it,
+/// however many the two state. A twin spelled exactly as the key and stating
+/// the same bytes makes the marked pair a duplicate; the bytes are compared
+/// as they are, because a value is a value and `abc` is not `ABC`.
+fn judge_hashed<'body>(
+    stripped: &'body [u8],
+    value: &[u8],
+    twins: &[(&[u8], &[u8])],
+) -> Hashed<'body> {
+    let stem = stem_of(stripped);
+    let mut twinned = false;
+    for &(held, held_value) in twins {
+        if folds_twin(held, stripped) && held_value == value {
+            return Hashed::Duplicate;
+        }
+        twinned |= folds_twin(stem_of(held), stem);
+    }
+    if twinned {
+        Hashed::Verbatim
+    } else {
+        Hashed::Bare(stripped)
+    }
+}
+
+/// The group an indexed key addresses, or the key itself.
+fn stem_of(key: &[u8]) -> &[u8] {
+    group_index(key).map_or(key, |(group, _)| group)
 }
 
 /// Whether two key spellings name one field under the FIX name fold.

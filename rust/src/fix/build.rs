@@ -15,6 +15,7 @@
 //! | `Parties[0].PartyID` | which group, which occurrence, which member |
 //! | `NoPartyIDs[0].PartyID` | a wire counter resolving the same group |
 //! | `VenueOwnThing` | an unknown name, kept |
+//! | `#NoPartyIDs[0]` | a marked spelling a reader kept whole beside its bare twin: one child under its own name, its packed value its value |
 //! | `""`, `"   "` | dropped |
 //!
 //! # What it refuses to lose
@@ -79,7 +80,19 @@ impl<'key> Key<'key> {
     /// The key states group, occurrence and member itself, so no message
     /// grammar is needed to build real nesting from it. Inferring a group
     /// from bare repetition alone is a different problem and needs one.
+    ///
+    /// A key still carrying its `#` was kept whole by the reader because the
+    /// row spelled the same name bare, and the bare spelling took the
+    /// structure: `#NOPARTYIDS[0]` is one flat child under its own name, so
+    /// its occurrences never write over the count `#NOPARTYIDS` stated
+    /// beside them.
     fn parse(text: &'key str) -> Self {
+        if text.starts_with('#') {
+            return Self {
+                text,
+                located: Located::Flat,
+            };
+        }
         let located = match text.split_once('[') {
             Some((head, rest)) => match rest.split_once(']') {
                 Some((index, tail)) => index

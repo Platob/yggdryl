@@ -606,6 +606,71 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
     let single = reader.one_line(b"MSGTYPE=D|#ORDERID=345", false).unwrap();
     assert_eq!(single.by_tag(37).unwrap().as_str(), Some("345"));
     assert!(single.by_name("#orderid").is_err());
+
+    // A marked pair restating the bare one's bytes is a second spelling of
+    // one pair, and one pair is what remains: row and entries alike, on
+    // whichever side it arrived, however the bare key was spelled, and with
+    // whatever space the row put around the values.
+    for (row, bare) in [
+        (b"MSGTYPE=D|ORDERID=123|#ORDERID=123".as_slice(), "ORDERID"),
+        (b"MSGTYPE=D|#ORDERID=123|ORDERID=123".as_slice(), "ORDERID"),
+        (b"MSGTYPE=D|OrderId=123|#ORDERID=123".as_slice(), "OrderId"),
+        (
+            b"MSGTYPE=D|ORDERID=123 |#ORDERID= 123".as_slice(),
+            "ORDERID",
+        ),
+    ] {
+        let message = reader.one_line(row, false).unwrap();
+        let spelled = String::from_utf8_lossy(row);
+        assert_eq!(
+            message.by_tag(37).unwrap().as_str(),
+            Some("123"),
+            "{spelled}"
+        );
+        assert!(message.by_name("#orderid").is_err(), "{spelled}");
+        let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
+        assert_eq!(keys, ["MSGTYPE", bare], "{spelled}");
+        assert_eq!(
+            message.into_bytes(b'|'),
+            format!("MSGTYPE=D|{bare}=123|").as_bytes(),
+            "{spelled}"
+        );
+    }
+    // A value is a value: two spellings of the bytes are two values.
+    let cased = reader
+        .one_line(b"MSGTYPE=D|ORDERID=abc|#ORDERID=ABC", false)
+        .unwrap();
+    assert_eq!(cased.by_tag(37).unwrap().as_str(), Some("abc"));
+    assert_eq!(cased.by_name("#orderid").unwrap().as_str(), Some("ABC"));
+
+    // A bridge marks the name keys it writes into a numeric frame exactly as
+    // it marks a row's, and they are judged by the same rules: alone the
+    // mark drops, beside a twin of other bytes it stays, restating a twin it
+    // goes.
+    let framed = reader
+        .one_line(
+            b"sending >> 8=FIX.4.2|35=UL|#SYMBOL=TTF|#SIDE=1|10=044|",
+            false,
+        )
+        .unwrap();
+    assert_eq!(framed.by_tag(55).unwrap().as_str(), Some("TTF"));
+    assert_eq!(framed.by_tag(54).unwrap().as_str(), Some("1"));
+    let keys: Vec<&str> = framed.entries().iter().map(FixEntry::key).collect();
+    assert_eq!(keys, ["8", "35", "SYMBOL", "SIDE", "10"]);
+    let twinned = reader
+        .one_line(b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=345|10=0|", false)
+        .unwrap();
+    assert_eq!(twinned.by_tag(37).unwrap().as_str(), Some("123"));
+    assert_eq!(twinned.by_name("#orderid").unwrap().as_str(), Some("345"));
+    let restated = reader
+        .one_line(b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=123|10=0|", false)
+        .unwrap();
+    assert_eq!(restated.by_tag(37).unwrap().as_str(), Some("123"));
+    assert!(restated.by_name("#orderid").is_err());
+    assert_eq!(
+        restated.into_bytes(b'|'),
+        b"8=FIX.4.2|35=UL|ORDERID=123|10=0|"
+    );
 }
 
 #[test]
@@ -654,6 +719,169 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
         !keys.iter().any(|key| key.starts_with("#NOPARTYIDS[0].")),
         "{keys:?}"
     );
+
+    // A group is one thing however many occurrences it states, so a bare
+    // group claims every marked key of it: the count and the occurrences the
+    // bare spelling never numbered stay whole beside it, each its own child
+    // under its own name, and none of them lands in the dictionary's group.
+    for row in [
+        b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=BARE\x04\x03PARTYROLE=1\
+|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=B\x04\x03PARTYROLE=3"
+            .as_slice(),
+        b"MSGTYPE=D|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=B\x04\x03PARTYROLE=3\
+|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=BARE\x04\x03PARTYROLE=1"
+            .as_slice(),
+    ] {
+        let message = reader.one_line(row, false).unwrap();
+        let spelled = String::from_utf8_lossy(row);
+        assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1), "{spelled}");
+        let parties = message.by_name("parties").unwrap().as_sequence().unwrap().to_vec();
+        assert_eq!(parties.len(), 1, "{spelled}: {parties:?}");
+        assert_eq!(
+            message.by_path("Parties.0.PartyID").unwrap().as_str(),
+            Some("BARE"),
+            "{spelled}"
+        );
+        let child = |name: &str| {
+            let at = message.as_field().index_of(name).expect(name);
+            message.as_value().as_sequence().expect("a row")[at].clone()
+        };
+        assert_eq!(child("#nopartyids").as_str(), Some("2"), "{spelled}");
+        // The row types the packed text with the bridge's control bytes
+        // gone, as it types any value; the entry keeps the bytes as they
+        // arrived.
+        for (name, key, id, role) in [
+            ("#nopartyids[0]", "#NOPARTYIDS[0]", "A", "1"),
+            ("#nopartyids[1]", "#NOPARTYIDS[1]", "B", "3"),
+        ] {
+            let held = child(name);
+            let text = held.as_str().expect(name);
+            assert!(
+                text.starts_with(&format!("PARTYID={id}"))
+                    && text.ends_with(&format!("PARTYROLE={role}")),
+                "{spelled}: {text}"
+            );
+            let entry = message
+                .entries()
+                .iter()
+                .find(|entry| entry.key() == key)
+                .unwrap_or_else(|| panic!("{spelled}: {key}"));
+            assert_eq!(
+                entry.value(),
+                format!("PARTYID={id}\x04\x03PARTYROLE={role}"),
+                "{spelled}"
+            );
+            assert!(entry.children().is_empty(), "{spelled}");
+        }
+        let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
+        assert!(keys.contains(&"#NOPARTYIDS"), "{spelled}: {keys:?}");
+        assert!(
+            !message
+                .entries()
+                .iter()
+                .flat_map(|entry| entry.children().iter().chain(std::iter::once(entry)))
+                .any(|entry| entry.key().starts_with("NOPARTYIDS[1]")
+                    || entry.key().starts_with("#NOPARTYIDS[0].")),
+            "{spelled}: {keys:?}"
+        );
+        // The row and the group agree, so there is no miscount to report.
+        assert_eq!(message.anomalies().count(), 0, "{spelled}");
+    }
+}
+
+#[test]
+fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary() {
+    let reader = reader();
+    // Every packed value ends with the separator, so where the bridge packs
+    // an occurrence inside another it writes two in a row: the empty
+    // segment between them closes the inner one. A run carrying a close is
+    // bounded by its closes alone, so the venue's own `VENUE_SEQ` packed
+    // inside the sub-identifier stays inside it and `PARTYID` after the
+    // close is the party's.
+    let closed: &[u8] = b"MSGTYPE=D|NOPARTYIDS=2\
+|NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03\
+|NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03";
+    let message = reader.one_line(closed, false).unwrap();
+    assert_eq!(
+        message
+            .by_path("Parties.0.PtysSubGrp.0.PartySubID")
+            .unwrap(),
+        &Scalar::from("a")
+    );
+    assert_eq!(
+        message.by_path("Parties.0.PartyID").unwrap(),
+        &Scalar::from("X")
+    );
+    assert_eq!(
+        message.by_path("Parties.1.PartyID").unwrap(),
+        &Scalar::from("Y")
+    );
+    let members = |path: &str| -> Vec<String> {
+        let group = message.as_field().get_field_by_path(path).expect(path);
+        let DataType::List(item) = group.dtype() else {
+            panic!("{path}: a list, got {}", group.dtype());
+        };
+        item.fields()
+            .iter()
+            .map(|field| field.name().to_owned())
+            .collect()
+    };
+    assert!(
+        members("parties.ptyssubgrp").contains(&"venueseq".to_owned()),
+        "{:?}",
+        members("parties.ptyssubgrp")
+    );
+    assert!(
+        !members("parties").contains(&"venueseq".to_owned()),
+        "{:?}",
+        members("parties")
+    );
+    fn keys(entries: &[FixEntry], out: &mut Vec<String>) {
+        for entry in entries {
+            out.push(entry.key().to_owned());
+            keys(entry.children(), out);
+        }
+    }
+    let mut arrived = Vec::new();
+    keys(message.entries(), &mut arrived);
+    assert!(
+        arrived.contains(&"NOPARTYIDS[0].NOPARTYSUBIDS[0].VENUE_SEQ".to_owned()),
+        "{arrived:?}"
+    );
+
+    // A run carrying no close is bounded by what the dictionary declares:
+    // the pairs after the sub-occurrence belong to it while its group
+    // declares them, and the first it does not - the venue's own key here -
+    // comes back up to the party, as does everything after it.
+    let open: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1\
+|NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03";
+    let message = reader.one_line(open, false).unwrap();
+    assert_eq!(
+        message
+            .by_path("Parties.0.PtysSubGrp.0.PartySubID")
+            .unwrap(),
+        &Scalar::from("a")
+    );
+    assert_eq!(
+        message
+            .by_path("Parties.0.PtysSubGrp.0.PartySubIDType")
+            .unwrap()
+            .as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        message.by_path("Parties.0.PartyID").unwrap(),
+        &Scalar::from("X")
+    );
+    let party = message
+        .as_field()
+        .get_field_by_path("parties")
+        .expect("parties");
+    let DataType::List(item) = party.dtype() else {
+        panic!("a list");
+    };
+    let names: Vec<&str> = item.fields().iter().map(yggdryl::Field::name).collect();
+    assert!(names.contains(&"venueseq"), "{names:?}");
 }
 
 #[test]

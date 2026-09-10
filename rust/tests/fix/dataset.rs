@@ -1046,23 +1046,112 @@ fn a_trade_capture_frame_nests_every_group_its_payload_packs() {
         .expect("the hedge group field");
     assert_eq!(packed_members(hedge)[0], "hedgecurrency");
 
+    // The row calls itself a trade capture report. The dialect declares no
+    // message of that name, so the standard one answers, and its grammar is
+    // what places `NoLegs` under `TrdInstrmtLegGrp` and `NoSides` under
+    // `TrdCapRptSideGrp` - two counters half the dictionary shares, which no
+    // registry-wide lookup could place. Each count keeps its own column and
+    // the group it heads sits beside it.
+    assert_eq!(message.by_tag(555).unwrap().as_i64(), Some(1));
+    assert_eq!(message.by_tag(552).unwrap().as_i64(), Some(1));
+
     // A group packed inside an occurrence nests inside it rather than beside
     // it, at every depth the payload packs one: the leg carries its own
     // allocations, and the side its parties, and a party its sub-identifiers.
-    let legs = root.get_field_by_path("nolegs").expect("the leg group");
+    let legs = root
+        .get_field_by_path("trdinstrmtleggrp")
+        .expect("the leg group");
     let allocations = packed_group(legs, "legpreallocgrp");
     assert!(
         packed_members(allocations).contains(&"legallocaccount"),
         "{:?}",
         packed_members(allocations)
     );
-    let sides = root.get_field_by_path("nosides").expect("the side group");
+    // Where an inner occurrence ends the bridge writes two separators in a
+    // row, and that close is what bounds it: the venue's own
+    // `TR_LEGCALCULATEDALLOCQTY` packed before the close is the
+    // allocation's, and the leg's `OPTIONSTRATEGY` after it is the leg's.
+    assert!(
+        packed_members(allocations).contains(&"trlegcalculatedallocqty"),
+        "{:?}",
+        packed_members(allocations)
+    );
+    assert!(
+        packed_members(legs).contains(&"optionstrategy")
+            && !packed_members(legs).contains(&"trlegcalculatedallocqty"),
+        "{:?}",
+        packed_members(legs)
+    );
+    assert_eq!(
+        message
+            .by_path("TrdInstrmtLegGrp.0.LegPreAllocGrp.0.LegAllocQty")
+            .unwrap()
+            .as_f64(),
+        Some(600.0)
+    );
+    let sides = root
+        .get_field_by_path("trdcaprptsidegrp")
+        .expect("the side group");
     let parties = packed_group(sides, "parties");
     let subs = packed_group(parties, "ptyssubgrp");
     assert!(
         packed_members(subs).contains(&"partysubid"),
         "{:?}",
         packed_members(subs)
+    );
+    // Seven parties, each holding its own members and its own
+    // sub-identifiers, and nothing of theirs on the side: a party packed
+    // after one carrying sub-identifiers is still a party of its own.
+    let party = |index: usize, member: &str| {
+        message
+            .by_path(&format!("TrdCapRptSideGrp.0.Parties.{index}.{member}"))
+            .unwrap_or_else(|error| panic!("party {index} {member}: {error}"))
+            .clone()
+    };
+    assert_eq!(
+        message
+            .by_path("TrdCapRptSideGrp.0.Parties")
+            .unwrap()
+            .as_sequence()
+            .map(<[Scalar]>::len),
+        Some(7)
+    );
+    for (index, id, role) in [
+        (0, "trader1", 11),
+        (1, "trader1", 12),
+        (2, "CITP", 1),
+        (3, "PICT", 3),
+        (5, "DEFAULT", 72),
+        (6, "trader1", 122),
+    ] {
+        assert_eq!(party(index, "PartyID").as_str(), Some(id), "party {index}");
+        assert_eq!(
+            party(index, "PartyRole").as_i64(),
+            Some(role),
+            "party {index}"
+        );
+    }
+    assert_eq!(party(4, "PartyID").as_str(), Some("DGVG"));
+    for (index, sub) in [(1, "TRADER ONE"), (2, "EXAMPLEBK"), (3, "EXAMPLECO")] {
+        assert_eq!(
+            party(index, "PtysSubGrp.0.PartySubID").as_str(),
+            Some(sub),
+            "party {index}"
+        );
+    }
+    assert_eq!(
+        party(5, "PtysSubGrp").as_sequence().map(<[Scalar]>::len),
+        Some(2)
+    );
+    assert_eq!(
+        party(5, "PtysSubGrp.1.PartySubID").as_str(),
+        Some("5493000EXAMPLE00000H")
+    );
+    assert!(
+        !packed_members(sides).contains(&"partyid")
+            && !packed_members(sides).contains(&"ptyssubgrp"),
+        "{:?}",
+        packed_members(sides)
     );
 
     // The bridge counted the control bytes it wrote, so the length it stated
