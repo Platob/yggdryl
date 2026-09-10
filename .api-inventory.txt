@@ -720,14 +720,11 @@ pub struct FixMsg
 
 ### yggdryl::fix::entry  [rust\src\fix\entry.rs]
 pub struct FixEntry
-  pub fn new(tag: i32, key: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self
-  pub fn with_branch(mut self, branch: &FixBranch) -> Self
+  pub const fn new(tag: i32, key: TextBytes, value: TextBytes) -> Self
   pub const fn tag(&self) -> i32
-  pub const fn branch(&self) -> i32
   pub fn children(&self) -> &[FixEntry]
-  pub fn key(&self) -> &str
-  pub fn value(&self) -> &str
-  pub fn id(&self) -> Option<FixId>
+  pub const fn key(&self) -> &TextBytes
+  pub const fn value(&self) -> &TextBytes
   impl Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord for FixEntry
 
 ### yggdryl::fix::anomaly  [rust\src\fix\anomaly.rs]
@@ -1764,6 +1761,7 @@ pub struct TextEntry
 pub struct TextEntries
   pub const fn new() -> Self
   pub fn with_capacity(capacity: usize) -> Self
+  pub fn from_bytes(body: &TextBytes) -> Option<Self>
   pub fn as_slice(&self) -> &[TextEntry]
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool

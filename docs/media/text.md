@@ -252,6 +252,14 @@ path that allocates, so it is built only when a column reads an entry or a
 caller asks: a read whose columns never touch one never pays for it, and the
 benchmark reports both.
 
+`TextEntries::from_bytes` is that walk, and it takes a `TextBytes` rather than
+a slice because every key and value it answers is a range of the page those
+bytes already point into. It is how a reader holding one field's value - a FIX
+data field carrying a whole row - reads that value's own pairs through the same
+walk the line was read by, rather than writing a second one. `None` where the
+bytes state no pair at all, which is the absence `TextLine::entries` carries for
+a line nothing asked a tree of.
+
 An entry is addressed by [`FieldPath`](../types/paths.md), the crate's one path
 grammar: `.name` for a child, `[0]` and `[-1]` for a position, `['key']` for a
 key, and a quoted name for one carrying a dot. `get_entry_by_path` answers
@@ -267,13 +275,22 @@ page. Resolve a path once and reuse it; the column plan already does.
 ### Where a pair ends
 
 A frame decides, and a frame is a run of pairs the line named a separator for -
-a `SOH` raw or escaped, or a pipe. Inside one the pairs are that frame's
-segments cut at their first `=`, and a value ends only at that separator, so
-`8=FIX.4.4|18=G L|48=ABBN SW|10=0|` carries `G L` and `ABBN SW` whole, and
-`58=` is a pair carrying nothing rather than no pair at all. A key inside a
-frame is a key however the writer spelled it - `NoAllocs[0].79` and
-`#INSTRUMENT[DESCRIPTION]` are names - though it is still a name and not prose,
-so a log's remark after the frame states no field.
+a `SOH` raw or escaped, or a pipe. Named means used: a byte a line merely holds
+inside a value separated nothing, so the candidate that wins is the earliest one
+with a field after it, or the one the line closed on as a wire message does.
+`MSGTYPE=P Report Ack|SYMBOL=AAPL|` therefore reads on its pipe and keeps
+`P Report Ack` whole, while in `8=FIX.4.4 35=D 58=a|b 10=0` the pipe stands
+inside a value and separates nothing, so nothing was named and the loose rule
+below reads the line.
+
+Inside a frame the pairs are that frame's segments cut at their first `=`, and a
+value ends only at that separator, so `8=FIX.4.4|18=G L|48=ABBN SW|10=0|`
+carries `G L` and `ABBN SW` whole, and `58=` is a pair carrying nothing rather
+than no pair at all. A key inside a frame is a key however the writer spelled
+it - `NoAllocs[0].79`, `#INSTRUMENT[DESCRIPTION]`, `Msg Type` and a second `#`
+on a key already marked are all names, the space among them because the FIX name
+fold ignores it exactly as it ignores `_` - though it is still a name and not
+prose, so a log's remark carrying bytes no name carries states no field.
 
 Everywhere else - a sentence, a transport's prefix in front of a frame, a bare
 run of attributes, a line that ran its fields together with spaces - a value

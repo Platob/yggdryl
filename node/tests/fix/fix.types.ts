@@ -255,7 +255,7 @@ const pinnedBatchByteSize: number = pinned.batchByteSize
 const fromText: FixMsg = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
 const fromBytes: FixMessages = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
 const fromLines: FixMessages = reader.parseLines([Buffer.from('8=FIX.4.4|35=D|10=0|'), '8=FIX.4.4|35=D|10=0|'])
-const fromFrame: FixMsg = reader.parseFixLine(Buffer.from('8=FIX.4.4'), 1)
+const fromFrame: FixMsg = reader.parseFixLine(Buffer.from('8=FIX.4.4'))
 const fromBridge: FixMsg = reader.parseUllinkLine(Buffer.from('#SYMBOL=TTF'))
 const fromFixml: FixMsg = reader.parseFixmlLine(Buffer.from("<Order ClOrdID='A'/>"))
 const fromPairs: FixMsg = reader.parsePairs([['55', 'AAPL']])
@@ -333,7 +333,7 @@ const lift: Array<[string, Scalar]> = fromText.lift()
 const party: Array<Scalar | null> | null = fromText.party('1')
 const regulatory: Scalar | null = fromText.trdRegTimestamp('1')
 const anomalies: string[] = fromText.anomalies()
-const arrivals: Array<[number, number, string, string]> = fromText.arrivals()
+const arrivals: Array<[number, string, string]> = fromText.arrivals()
 const wire: Buffer = fromText.intoBytes(124)
 
 void branchName

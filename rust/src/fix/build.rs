@@ -35,6 +35,7 @@ use super::memo::{Lookup, Memo};
 use super::{
     FixBranch, FixId, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name,
 };
+use crate::media::text::TextBytes;
 use crate::types::State;
 use crate::types::ascii::AsciiFamily;
 use crate::{DataType, Field, Result, Scalar, Version};
@@ -197,6 +198,87 @@ impl Slot {
     }
 }
 
+/// One pair the build folds in: what fills the row, and what the line said.
+///
+/// The two are the same pair almost everywhere, and differ where a reading
+/// unpacked one: a bridge packs a whole occurrence into one value, and the
+/// members read out of it fill `NOPARTYIDS[0].PARTYID` and its siblings while
+/// the arrival record keeps the single pair the bridge wrote. Every range here
+/// belongs to the one page the line was read into, so a pair costs two
+/// reference counts and no byte.
+#[derive(Clone)]
+pub(super) struct FixPair {
+    key: TextBytes,
+    value: TextBytes,
+    arrival: PairArrival,
+}
+
+/// What one pair records.
+#[derive(Clone)]
+pub(super) enum PairArrival {
+    /// The line wrote this pair: it records itself, under the tag its key
+    /// named.
+    Own,
+    /// The line wrote `key=value` and this pair is the first member read out
+    /// of it: the packed pair is the record, and its key names no field.
+    Packed(TextBytes, TextBytes),
+    /// Another member of a packed pair recorded beside it: nothing to record.
+    Read,
+}
+
+impl FixPair {
+    /// One pair the line wrote.
+    pub(super) const fn own(key: TextBytes, value: TextBytes) -> Self {
+        Self {
+            key,
+            value,
+            arrival: PairArrival::Own,
+        }
+    }
+
+    /// One pair a reading built beside an arrival already recorded.
+    pub(super) const fn read(key: TextBytes, value: TextBytes) -> Self {
+        Self {
+            key,
+            value,
+            arrival: PairArrival::Read,
+        }
+    }
+
+    /// Makes this pair the one that records `packed`, the pair a line wrote
+    /// and this one reads.
+    pub(super) fn reads(&mut self, packed: Self) {
+        self.arrival = PairArrival::Packed(packed.key, packed.value);
+    }
+
+    /// The key the row fills under.
+    pub(super) fn key(&self) -> &[u8] {
+        self.key.as_bytes()
+    }
+
+    /// The value, exactly as the line holds it.
+    pub(super) fn value(&self) -> &[u8] {
+        self.value.as_bytes()
+    }
+
+    /// What this pair records, where it records one.
+    fn arrived(&self) -> Option<Arrived> {
+        match &self.arrival {
+            PairArrival::Own => Some(Arrived {
+                key: self.key.clone(),
+                value: self.value.clone(),
+                named: true,
+            }),
+            PairArrival::Packed(key, value) => Some(Arrived {
+                key: key.clone(),
+                value: value.clone(),
+                named: false,
+            }),
+            PairArrival::Read => None,
+        }
+    }
+}
+
 /// What a row states beside its payload, applied when its message is built.
 ///
 /// A dialect, a version, a clock and fills, all the caller speaking per row.
@@ -349,6 +431,25 @@ pub(super) struct Builder<'registry> {
     /// The type and the version the line's own frame stated, kept while a row
     /// nested inside one of its data fields is read against its own.
     framed: (Option<&'registry super::MsgType>, Option<Version>),
+    /// What the pair being folded in records as the arrival, absent while the
+    /// build is folding in a reading of a pair recorded beside it.
+    ///
+    /// Carried on the builder rather than threaded through every push, because
+    /// the entry is written where the key finished resolving - five call sites
+    /// down - and what it writes is the same two ranges whichever of them got
+    /// there.
+    arrival: Option<Arrived>,
+}
+
+/// The pair one fold records, as the line wrote it.
+#[derive(Clone)]
+struct Arrived {
+    key: TextBytes,
+    value: TextBytes,
+    /// Whether the key names the field the fold is filling. A packed
+    /// occurrence's key names an occurrence and no field, exactly as an
+    /// indexed counter's does, so its entry carries no tag.
+    named: bool,
 }
 
 /// One repeating group a numeric frame has opened and not yet closed.
@@ -393,15 +494,17 @@ impl<'registry> Builder<'registry> {
             outer: None,
             open: Vec::new(),
             framed: (None, None),
+            arrival: None,
         }
     }
 
     /// Numeric counters open schema-scoped groups; indexed/name keys retain
     /// their explicit addressing. Only received pairs advance or allocate rows.
-    pub(super) fn push_pairs(&mut self, pairs: &[(&[u8], &[u8])], absent: impl Fn(&[u8]) -> bool) {
+    pub(super) fn push_pairs(&mut self, pairs: &[FixPair], absent: impl Fn(&[u8]) -> bool) {
         let mut cursor = 0;
-        while let Some((key, value)) = pairs.get(cursor) {
+        while let Some(pair) = pairs.get(cursor) {
             cursor += 1;
+            let (key, value) = (pair.key(), pair.value());
             if absent(value) || value.is_empty() {
                 continue;
             }
@@ -413,6 +516,7 @@ impl<'registry> Builder<'registry> {
                     let id = self.registry.identity_of(field)?;
                     Some((tag, self.numeric_plan(id)?))
                 });
+            self.arrival = pair.arrived();
             self.push(key, value);
             if let Some((tag, plan)) = group {
                 let value = self.read_numeric_group(tag, plan, pairs, &mut cursor, &absent);
@@ -467,18 +571,19 @@ impl<'registry> Builder<'registry> {
         &mut self,
         counter: i32,
         plan: &'registry GroupPlan,
-        pairs: &[(&[u8], &[u8])],
+        pairs: &[FixPair],
         cursor: &mut usize,
         absent: &impl Fn(&[u8]) -> bool,
     ) -> Scalar {
         let mut rows = Vec::new();
         let mut current = None;
-        while let Some((key, raw)) = pairs.get(*cursor) {
+        while let Some(pair) = pairs.get(*cursor) {
+            let raw = pair.value();
             if absent(raw) || raw.is_empty() {
                 *cursor += 1;
                 continue;
             }
-            let Ok(key) = std::str::from_utf8(key) else {
+            let Ok(key) = std::str::from_utf8(pair.key()) else {
                 break;
             };
             let Some(tag) = super::field::parse_tag(key) else {
@@ -495,7 +600,8 @@ impl<'registry> Builder<'registry> {
             let values = current.get_or_insert_with(|| vec![Scalar::Null; plan.columns_len()]);
             let text = String::from_utf8_lossy(raw);
             values[column] = self.typed(plan.column(column), Some(plan.column(column)), raw, &text);
-            self.record_under(counter, key, &text, tag);
+            self.arrival = pair.arrived();
+            self.record_under(counter, tag);
             *cursor += 1;
             if let Some((column, nested)) = plan.nested(tag) {
                 values[column] = self.read_numeric_group(tag, nested, pairs, cursor, absent);
@@ -581,13 +687,13 @@ impl<'registry> Builder<'registry> {
         match located.located {
             Located::Flat => self.push_flat(located.text, &value_text, value),
             Located::Repeated { name, occurrence } => {
-                self.push_repeated(name, occurrence, located.text, &value_text, value);
+                self.push_repeated(name, occurrence, &value_text, value);
             }
             Located::Grouped {
                 group,
                 occurrence,
                 member,
-            } => self.push_grouped(group, occurrence, member, located.text, &value_text, value),
+            } => self.push_grouped(group, occurrence, member, &value_text, value),
         }
     }
 
@@ -859,7 +965,7 @@ impl<'registry> Builder<'registry> {
                         if self.shadowed(found.name()) {
                             return;
                         }
-                        self.record(key, text, tag);
+                        self.record(tag);
                         let members = declared_members(found);
                         let name = SmolStr::new(found.name());
                         let slot = self.slot_for(stated(found), tag, true);
@@ -890,7 +996,7 @@ impl<'registry> Builder<'registry> {
             return;
         }
         let value = self.typed(&field, source, raw, text);
-        self.record(key, text, tag);
+        self.record(tag);
         self.slot_for(field, tag, source.is_some())
             .values
             .push(value);
@@ -967,7 +1073,7 @@ impl<'registry> Builder<'registry> {
             member.push_str("].");
         }
         member.push_str(key);
-        self.push_grouped(top_name.as_str(), top_occurrence, &member, key, text, raw);
+        self.push_grouped(top_name.as_str(), top_occurrence, &member, text, raw);
         // A member that is itself a counter opens its group inside the
         // occurrence, and what follows fills that group first.
         if let Some(nested) = self.by_counter(tag) {
@@ -983,7 +1089,7 @@ impl<'registry> Builder<'registry> {
     }
 
     /// One occurrence of a repeated flat field, placed by index.
-    fn push_repeated(&mut self, name: &str, occurrence: usize, key: &str, text: &str, raw: &[u8]) {
+    fn push_repeated(&mut self, name: &str, occurrence: usize, text: &str, raw: &[u8]) {
         // An indexed counter is the group stated per occurrence: the group
         // slot holds what each index said, and no scalar column is built
         // beside it.
@@ -992,7 +1098,7 @@ impl<'registry> Builder<'registry> {
             if self.shadowed(field.name()) {
                 return;
             }
-            self.record_under(tag, key, text, 0);
+            self.record_under(tag, 0);
             let slot = self.slot_for(field, tag, true);
             slot.group = true;
             while slot.values.len() <= occurrence {
@@ -1006,7 +1112,7 @@ impl<'registry> Builder<'registry> {
             return;
         }
         let value = self.typed(&field, source, raw, text);
-        self.record(key, text, tag);
+        self.record(tag);
         let slot = self.slot_for(field, tag, source.is_some());
         // Indices may be partial or out of order, so occurrences are built by
         // index and a gap is null.
@@ -1062,7 +1168,6 @@ impl<'registry> Builder<'registry> {
         group: &str,
         occurrence: usize,
         member: &str,
-        key: &str,
         text: &str,
         raw: &[u8],
     ) {
@@ -1136,7 +1241,7 @@ impl<'registry> Builder<'registry> {
         };
         // Recorded after the path resolves, so the entry can ride under the
         // counter pair that heads it - when that pair actually arrived.
-        self.record_under(parent_tag, key, text, leaf_tag);
+        self.record_under(parent_tag, leaf_tag);
         let (top_field, top_tag, top_known, _) = levels.remove(0);
         let mut slot = self.slot_for(top_field, top_tag, top_known);
         slot.group = true;
@@ -1204,15 +1309,9 @@ impl<'registry> Builder<'registry> {
     /// stated structure keeps it, and the latest arrival of the counter is
     /// the one that takes the member - which is what nests each occurrence
     /// under its own heading.
-    fn record_under(&mut self, counter_tag: i32, key: &str, value: &str, tag: i32) {
-        if self.outer.is_some() {
+    fn record_under(&mut self, counter_tag: i32, tag: i32) {
+        let Some((tag, mut entry)) = self.arrived(tag) else {
             return;
-        }
-        let entry = FixEntry::new(tag, key, value);
-        let mut entry = if tag == 0 {
-            entry
-        } else {
-            entry.with_branch(self.branch)
         };
         self.recorded.push(tag);
         // The walk finds a counter only where one was recorded, so a record
@@ -1229,21 +1328,32 @@ impl<'registry> Builder<'registry> {
     }
 
     /// Records what arrived, whatever the row made of it.
-    fn record(&mut self, key: &str, value: &str, tag: i32) {
-        if self.outer.is_some() {
+    fn record(&mut self, tag: i32) {
+        let Some((tag, entry)) = self.arrived(tag) else {
             return;
-        }
-        // A key that named no field resolved in no dialect, so it keeps the
-        // standard digest the constructor set; anything the dictionary
-        // answered carries the branch that answered it.
-        let entry = FixEntry::new(tag, key, value);
-        let entry = if tag == 0 {
-            entry
-        } else {
-            entry.with_branch(self.branch)
         };
         self.recorded.push(tag);
         self.entries.push(entry);
+    }
+
+    /// The entry the pair being folded in records, and the tag it carries.
+    ///
+    /// Absent while a row nested inside one of the line's data fields is being
+    /// read - that row is a reading of a value the line already recorded - and
+    /// absent for every member unpacked out of a packed occurrence after the
+    /// first, which recorded the pair the bridge actually wrote. A key that
+    /// named an occurrence rather than a field carries no tag, exactly as an
+    /// unresolved key does.
+    fn arrived(&self, tag: i32) -> Option<(i32, FixEntry)> {
+        if self.outer.is_some() {
+            return None;
+        }
+        let arrived = self.arrival.as_ref()?;
+        let tag = if arrived.named { tag } else { 0 };
+        Some((
+            tag,
+            FixEntry::new(tag, arrived.key.clone(), arrived.value.clone()),
+        ))
     }
 
     /// Closes the build into a root field, its value, and the entries.

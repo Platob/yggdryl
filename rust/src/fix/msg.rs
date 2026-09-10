@@ -183,15 +183,25 @@ fn emit_bytes(entries: &[FixEntry], separator: u8, bytes: &mut Vec<u8>) {
 /// The same walk as text, refusing a control byte at every depth.
 fn emit_text(entries: &[FixEntry], separator: char, text: &mut String) -> Result<()> {
     for entry in entries {
-        if entry.value().chars().any(char::is_control) {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new(entry.key()),
-                reason: "expected a printable value, got a control byte".into(),
-            });
+        let key = entry.key();
+        let refused = |reason: &'static str| Error::InvalidRecord {
+            path: SmolStr::new(key.as_str().unwrap_or_default()),
+            reason: reason.into(),
+        };
+        // Bytes that are not text have no rendering: a `data` field carrying
+        // them re-emits exactly through `into_bytes` and not at all through
+        // this one.
+        let (Some(key), Some(value)) = (key.as_str(), entry.value().as_str()) else {
+            return Err(refused(
+                "expected a printable value, got bytes that are not text",
+            ));
+        };
+        if value.chars().any(char::is_control) {
+            return Err(refused("expected a printable value, got a control byte"));
         }
-        text.push_str(entry.key());
+        text.push_str(key);
         text.push('=');
-        text.push_str(entry.value());
+        text.push_str(value);
         text.push(separator);
         emit_text(entry.children(), separator, text)?;
     }

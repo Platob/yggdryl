@@ -62,13 +62,12 @@ fn read_cfb<T>(
 /// The native record nests a group's members under the counter that heads
 /// them; a binding is a view, so it flattens rather than inventing a second
 /// shape. Order is the wire's.
-fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(i32, i32, String, String)>) {
+fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(i32, String, String)>) {
     for entry in entries {
         out.push((
             entry.tag(),
-            entry.branch(),
-            entry.key().to_owned(),
-            entry.value().to_owned(),
+            entry.key().as_str().unwrap_or_default().to_owned(),
+            entry.value().as_str().unwrap_or_default().to_owned(),
         ));
         flatten_entries(entry.children(), out);
     }
@@ -1727,9 +1726,9 @@ impl PyFixMsg {
     ///
     /// Flattened pre-order: a group's members follow the counter pair that
     /// heads them, so a caller reading the sequence reads the wire. The
-    /// dialect crosses as its digest, which `FixRegistry.branch_by_digest`
-    /// resolves.
-    fn entries(&self) -> Vec<(i32, i32, String, String)> {
+    /// dialect is the message's own, answered by :attr:`branch`: it is one
+    /// value for every pair a message carries, so no pair repeats it.
+    fn entries(&self) -> Vec<(i32, String, String)> {
         let mut held = Vec::new();
         flatten_entries(self.inner.entries(), &mut held);
         held
@@ -1978,14 +1977,9 @@ impl PyFixCodec {
         ))
     }
 
-    /// One numeric frame, split on the separator stated or inferred.
-    #[pyo3(signature = (body, separator=None))]
-    fn parse_fix_line(&self, body: &[u8], separator: Option<u8>) -> PyResult<PyFixMsg> {
-        let codec = match separator {
-            Some(held) => self.inner.clone().with_separator(held),
-            None => self.inner.clone(),
-        };
-        codec
+    /// One numeric frame, read by the pairs it states.
+    fn parse_fix_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
+        self.inner
             .parse_fix_line(body)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)

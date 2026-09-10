@@ -774,7 +774,7 @@ view, including `branch`, `id`, `tag`, `tags`, `aliases`, `description`,
 | --- | --- |
 | tag key | a `number`, coerced once and checked exactly |
 | branch digests | `branchByDigest` / `getBranchByDigest` take the number an arrival entry carries and answer the branch's name; only a declared branch resolves |
-| `FixMsg.arrivals()` | `[tag, bid, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
+| `FixMsg.arrivals()` | `[tag, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them; the dialect is the message's own `branch`, not each pair's |
 | name or path key | a `string`; omitted branches use the core's deterministic best match; a colon-bearing string is a name |
 | branch, identifier | `string`, parsed by the core `FixBranch` and `FixId` |
 | `fieldByName`, `fieldByPath` | accept an optional branch restriction; canonical names precede aliases, standard precedes named branches within a tier |

@@ -2038,13 +2038,33 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
         .expect("its occurrences")
         .to_vec();
     assert_eq!(occurrences.len(), 1);
+    // The row is what resolved both spellings; the arrival record keeps the
+    // occurrence the bridge wrote, under the counter that heads it, because a
+    // member key rendered out of a packed value names no range of the line.
     let held = message
         .entries()
         .iter()
         .find(|entry| entry.tag() == 11020)
         .expect("the counter pair");
-    let member_tags: Vec<i32> = held.children().iter().map(yggdryl::FixEntry::tag).collect();
-    assert_eq!(member_tags, [11021, 11024], "the group's own HedgeCurrency");
+    let occurrence = held.children();
+    assert_eq!(occurrence.len(), 1);
+    assert_eq!(
+        occurrence[0].key().as_str(),
+        Some("NOHEDGEGROUPS[0]"),
+        "the pair the bridge wrote",
+    );
+    assert_eq!(
+        occurrence[0].value().as_str(),
+        Some("HEDGESETTLDATE=20260818\u{4}\u{3}HEDGECURRENCY=XAU\u{4}\u{3}"),
+    );
+    assert_eq!(
+        message
+            .by_path("hedgegroups.0.hedgecurrency")
+            .expect("the group's own currency")
+            .as_str(),
+        Some("XAU"),
+        "the group's own HedgeCurrency, read out of that pair",
+    );
 }
 
 #[test]

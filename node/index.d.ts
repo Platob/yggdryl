@@ -1201,7 +1201,7 @@ export declare class FixCodec {
   /** One captured line, whatever it is wrapped in: its messages. */
   parseLine(row: Buffer): FixMessages
   /** One numeric frame, split on the separator stated or inferred. */
-  parseFixLine(body: Buffer, separator?: number | undefined | null): FixMsg
+  parseFixLine(body: Buffer): FixMsg
   /** One bridge frame, whose keys are names rather than tags. */
   parseUllinkLine(body: Buffer): FixMsg
   /** One FIXML row, whose fields are XML attributes. */
@@ -1560,9 +1560,10 @@ export declare class FixMsg {
    *
    * Flattened pre-order: a group's members follow the counter pair that
    * heads them, so a caller reading the array reads the wire. The dialect
-   * crosses as its digest, which `FixRegistry.branchByDigest` resolves.
+   * is the message's own, answered by `branch`: it is one value for every
+   * pair a message carries, so no pair repeats it.
    */
-  arrivals(): Array<[number, number, string, string]>
+  arrivals(): Array<[number, string, string]>
   /**
    * This message as the fixed row a table holds.
    *

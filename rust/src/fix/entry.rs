@@ -3,7 +3,7 @@
 //! A [`FixMsg`](crate::FixMsg) carries two facts about one message and this
 //! is the second of them. The row is the *interpretation*: values typed,
 //! codes translated, names canonical, groups nested, header ordered. The
-//! entries are what *arrived*, as the reader read it: raw text, arrival
+//! entries are what *arrived*, as the reader read it: raw bytes, arrival
 //! order, untranslated, including pairs no dictionary explained - and
 //! without the pairs the reader reads as never sent, a stated absence and a
 //! bridge's marked restatement of a bare pair, which the capture edges list.
@@ -13,12 +13,21 @@
 //! re-emission is impossible from the row alone - which is exactly what makes
 //! the round trip work. This is the one place the FIX briefs admit two facts
 //! about one thing, and it is deliberate.
+//!
+//! # An arrival is a range of the line
+//!
+//! A key and a value are [`TextBytes`] - counted ranges of the one page the
+//! line was read into - so a message read from a line copies none of the bytes
+//! its entries name, however wide the line or however long a data field's
+//! value. The consequence is a rule about what an entry may say: a key that
+//! appears nowhere in the line is not an arrival. A packed occurrence is
+//! recorded as the pair the bridge wrote, and unpacking it into
+//! `NOPARTYIDS[0].PARTYID` and its siblings builds fields, which is a reading
+//! of that arrival and not a second one.
 
-use smol_str::SmolStr;
+use crate::media::text::TextBytes;
 
-use super::{FixBranch, FixId};
-
-/// A branch digest as an entry stores it.
+/// A branch digest as a row stores it.
 ///
 /// The XXH32 is a `u32` and the column is an `i32`, which is the same four
 /// bytes read as signed: the digest's exact width, and the widest signed
@@ -35,63 +44,40 @@ pub(super) const fn unsigned(branch: i32) -> u32 {
     branch as u32
 }
 
-/// The standard branch's digest, which is zero.
-fn standard_digest() -> i32 {
-    signed(FixBranch::STANDARD.digest())
-}
-
 /// One key/value pair as it arrived, beside the field it named.
 ///
 /// Every part is present. `tag` is `0` when the key named no field, which is
 /// safe rather than a hack: the specification numbers tags from `1`, so no
 /// field can carry it, and a key that literally parses to `0` names no field
 /// either way, so the sentinel and the parse agree.
+///
+/// The tag is the whole of what FIX adds here. A key, a value and what nested
+/// under them are what the line said, and the text reader already says them;
+/// the branch a pair resolved in is what a *dictionary* decided about the
+/// message, one value for all of its fields, so
+/// [`FixMsg::branch`](super::FixMsg::branch) is where it is asked for.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FixEntry {
     tag: i32,
-    branch: i32,
-    key: SmolStr,
-    value: SmolStr,
-    // Last, so the four scalar members keep their positions in every
-    // positional read. `Vec` rather than a boxed slice: it already provides
-    // the sizing indirection, and an empty one allocates nothing - which is
-    // every entry on a wire that never nests.
+    key: TextBytes,
+    value: TextBytes,
+    // Last, so the three members a row reads positionally keep their places.
+    // `Vec` rather than a boxed slice: it already provides the sizing
+    // indirection, and an empty one allocates nothing - which is every entry
+    // on a wire that never nests.
     children: Vec<FixEntry>,
 }
 
 impl FixEntry {
-    /// Records one arriving pair, in the standard branch until told otherwise.
-    pub fn new(tag: i32, key: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self {
+    /// Records one arriving pair, as the ranges of the line that carried it.
+    #[must_use]
+    pub const fn new(tag: i32, key: TextBytes, value: TextBytes) -> Self {
         Self {
             tag,
-            branch: standard_digest(),
-            key: key.into(),
-            value: value.into(),
+            key,
+            value,
             children: Vec::new(),
         }
-    }
-
-    /// Records the dialect this pair resolved in, as that dialect's digest.
-    ///
-    /// Set for every entry, the standard branch included: the value is fixed
-    /// width, so omitting it saves nothing and only forces every reader to
-    /// branch on an absence.
-    #[must_use]
-    pub fn with_branch(mut self, branch: &FixBranch) -> Self {
-        self.branch = signed(branch.digest());
-        self
-    }
-
-    /// Records the dialect as the signed digest a row already holds.
-    ///
-    /// The row's `branch` column is this value exactly, so an entry read
-    /// back out of a row copies it rather than resolving the branch it
-    /// names, which a capture written against a dictionary this reader lacks
-    /// could not do.
-    #[must_use]
-    pub(super) const fn with_branch_digest(mut self, branch: i32) -> Self {
-        self.branch = branch;
-        self
     }
 
     /// Records what arrived under this entry, in the order it arrived.
@@ -110,33 +96,6 @@ impl FixEntry {
     #[must_use]
     pub const fn tag(&self) -> i32 {
         self.tag
-    }
-
-    /// Returns the digest of the dialect this pair resolved in.
-    ///
-    /// The same value [`FixId::branch`] answers, so an entry and a field
-    /// identity say branch identity the same way. `0` is the standard
-    /// branch and is never absent: the column carries no validity bitmap and
-    /// a reader never branches on a null.
-    ///
-    /// Held as the digest rather than the name because an entry is a *row*.
-    /// A name is readable in a debug line and nothing else: it is variable
-    /// width in a fixed-width column, and joining a capture to a dialect
-    /// manifest by it means string comparison. The digest is four bytes, and
-    /// [`FixRegistry::branch_by_digest`](crate::FixRegistry::branch_by_digest)
-    /// resolves it back to the whole declaration - which is what makes the
-    /// capture self-describing rather than merely legible.
-    ///
-    /// Signed 32-bit: the digest is an XXH32 of the branch's folded name, so
-    /// four bytes is its exact width, and signed storage is the bit-preserving
-    /// view of it that every exchange format this crate writes can hold -
-    /// Avro has no unsigned integer, and a wider column would store two bytes
-    /// of sign extension per entry to say nothing. A digest above `i32::MAX`
-    /// therefore reads negative, which is the same reading
-    /// [`FixBranch::digest`] answers unsigned.
-    #[must_use]
-    pub const fn branch(&self) -> i32 {
-        self.branch
     }
 
     /// Returns the entries that arrived under this one, in arrival order.
@@ -179,48 +138,43 @@ impl FixEntry {
         Some(child)
     }
 
-    /// Returns the key exactly as it arrived.
+    /// Returns the key exactly as it arrived, as a range of the line.
     ///
-    /// `"54"` for a tag-keyed pair, `Side` for a named one, `VenueOwnThing`
-    /// for one no dictionary explains. This is where a venue's own casing
+    /// `54` for a tag-keyed pair, `Side` for a named one, `VenueOwnThing` for
+    /// one no dictionary explains, `#ORDERID` where a bridge marked a
+    /// restatement the row kept whole. This is where a venue's own casing
     /// survives, because the row holds the canonical spelling instead.
     #[must_use]
-    pub fn key(&self) -> &str {
-        self.key.as_str()
+    pub const fn key(&self) -> &TextBytes {
+        &self.key
     }
 
     /// Returns the value exactly as it arrived, untranslated.
     #[must_use]
-    pub fn value(&self) -> &str {
-        self.value.as_str()
+    pub const fn value(&self) -> &TextBytes {
+        &self.value
     }
 
-    /// The key as the shared text this entry holds.
+    /// The key as a row column holds it: text, and lossily where the wire was
+    /// not UTF-8.
     ///
-    /// A row materializing the arrival record puts every key into a value of
-    /// its own, and sharing the text this entry already owns costs a count
-    /// where a fresh copy costs an allocation per entry per row.
-    pub(super) fn key_shared(&self) -> SmolStr {
-        self.key.clone()
+    /// A row materializes the arrival record into a `Utf8` column, which is
+    /// the one place the bytes are read as text at all. The entry itself keeps
+    /// the bytes, so re-emission stays exact whatever the column had to spell.
+    pub(super) fn key_text(&self) -> smol_str::SmolStr {
+        text_of(&self.key)
     }
 
-    /// The value as the shared text this entry holds.
-    pub(super) fn value_shared(&self) -> SmolStr {
-        self.value.clone()
+    /// The value as a row column holds it.
+    pub(super) fn value_text(&self) -> smol_str::SmolStr {
+        text_of(&self.value)
     }
+}
 
-    /// Builds the identity this entry names, absent when its key named none.
-    ///
-    /// The two columns are the two halves of the identifier, in the same
-    /// signed reading, so this copies them rather than converting them.
-    /// Admissibility was decided when the pair resolved - only an admitted
-    /// branch ever reaches an entry - so there is nothing left to check and
-    /// nothing to re-derive.
-    #[must_use]
-    pub fn id(&self) -> Option<FixId> {
-        if self.tag == 0 {
-            return None;
-        }
-        Some(FixId::new(self.tag, self.branch))
+/// One range of a line as the text a column holds.
+fn text_of(bytes: &TextBytes) -> smol_str::SmolStr {
+    match bytes.as_str() {
+        Some(text) => smol_str::SmolStr::new(text),
+        None => smol_str::SmolStr::new(String::from_utf8_lossy(bytes.as_bytes())),
     }
 }

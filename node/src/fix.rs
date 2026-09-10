@@ -838,16 +838,14 @@ impl Generator for JsFixFieldIterator {
 /// them; a binding is a view, so it flattens rather than inventing a second
 /// shape. Order is the wire's.
 ///
-/// A branch digest is an XXH32 held signed, and every `i32` is an exact
-/// `f64`, so the number JavaScript reads is the digest rather than a rounding
-/// of it.
-fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(f64, f64, String, String)>) {
+/// A tag is an `i32` and every `i32` is an exact `f64`, so the number
+/// JavaScript reads is the tag rather than a rounding of it.
+fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(f64, String, String)>) {
     for entry in entries {
         out.push((
             f64::from(entry.tag()),
-            f64::from(entry.branch()),
-            entry.key().to_owned(),
-            entry.value().to_owned(),
+            entry.key().as_str().unwrap_or_default().to_owned(),
+            entry.value().as_str().unwrap_or_default().to_owned(),
         ));
         flatten_entries(entry.children(), out);
     }
@@ -1195,9 +1193,10 @@ impl JsFixMsg {
     ///
     /// Flattened pre-order: a group's members follow the counter pair that
     /// heads them, so a caller reading the array reads the wire. The dialect
-    /// crosses as its digest, which `FixRegistry.branchByDigest` resolves.
-    #[napi(ts_return_type = "Array<[number, number, string, string]>")]
-    pub fn arrivals(&self) -> Vec<(f64, f64, String, String)> {
+    /// is the message's own, answered by `branch`: it is one value for every
+    /// pair a message carries, so no pair repeats it.
+    #[napi(ts_return_type = "Array<[number, string, string]>")]
+    pub fn arrivals(&self) -> Vec<(f64, String, String)> {
         let mut held = Vec::new();
         flatten_entries(self.inner.entries(), &mut held);
         held
@@ -1705,17 +1704,10 @@ impl JsFixCodec {
         ))
     }
 
-    /// One numeric frame, split on the separator stated or inferred.
+    /// One numeric frame, read by the pairs it states.
     #[napi]
-    pub fn parse_fix_line(&self, body: Buffer, separator: Option<f64>) -> Result<JsFixMsg> {
-        let codec = match separator {
-            Some(held) => self
-                .inner
-                .clone()
-                .with_separator(separator_byte(Some(held))?),
-            None => self.inner.clone(),
-        };
-        codec
+    pub fn parse_fix_line(&self, body: Buffer) -> Result<JsFixMsg> {
+        self.inner
             .parse_fix_line(&body)
             .map(JsFixMsg::from_core)
             .map_err(napi_error)

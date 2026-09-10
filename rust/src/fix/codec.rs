@@ -55,27 +55,22 @@
 //! and the stream continues, because one corrupt line must not end a run over
 //! ten million.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use quick_xml::events::Event;
 use smol_str::SmolStr;
 
+use crate::media::text::{TextBytes, TextEntries, TextEntry};
 use crate::mime_type::line;
 use crate::{DataType, Error, Field, Result, Scalar, Version};
 
-use super::build::{Builder, RowExtras, root_name};
+use super::build::{Builder, FixPair, RowExtras, root_name};
 use super::memo::Memo;
 use super::{FixBranch, FixMessages, FixMsg, FixRegistry};
 
-/// One bridge row split into its pairs, beside the message type it declared.
-///
-/// Every key is borrowed from the row except a packed occurrence's, which is
-/// rendered under the path the builder nests by and so has to be built.
-type BridgeRow<'registry, 'body> = (
-    Option<&'registry super::MsgType>,
-    Vec<(Cow<'body, [u8]>, &'body [u8])>,
-);
+/// One bridge row read into the pairs a build folds in, beside the message
+/// type it declared.
+type BridgeRow<'registry> = (Option<&'registry super::MsgType>, Vec<FixPair>);
 
 /// The tier one bridge row's groups are split under: the dialect the row is
 /// read under and the message its type names there.
@@ -95,20 +90,23 @@ struct RowTier<'registry> {
 /// inside this one ends: that occurrence's own trailing separator meets the
 /// separator of the occurrence around it, and the empty segment between the
 /// two is the close.
-#[derive(Clone, Copy)]
-enum Segment<'value> {
-    Pair(&'value [u8], &'value [u8]),
+///
+/// Both halves are ranges of the line's own page, so unpacking an occurrence
+/// costs the segment list and no byte of what it names.
+#[derive(Clone)]
+enum Segment {
+    Pair(TextBytes, TextBytes),
     Close,
 }
 
 /// What the twin judgment made of one `#` key.
-enum Hashed<'body> {
+enum Hashed {
     /// A second spelling of a bare pair stating the same bytes: one pair.
     Duplicate,
-    /// The row's sole spelling: the key without its mark.
-    Bare(&'body [u8]),
+    /// The row's sole spelling: the key the line wrote after its mark.
+    Bare,
     /// Beside a bare twin of its key or of its stem, stating other bytes
-    /// or numbering other occurrences: the key as it arrived.
+    /// or numbering other occurrences: the key as it arrived, mark and all.
     Verbatim,
 }
 
@@ -184,44 +182,109 @@ fn document(value: &[u8]) -> bool {
     line::trim_ascii(value).first() == Some(&b'<')
 }
 
-/// Where a data field's value ends, when it is read by length rather than
-/// split: the byte after the value and the index the next pair starts at.
+/// Where a data field's value ends, when it is read to a length rather than
+/// left where the frame cut it.
 ///
-/// The length the pair before it stated is honoured when the byte after the
-/// span is the separator and a numeric tag follows, which is what a frame
-/// looks like after a data field and what a row inside one never does. A
-/// stated length that does not fit reads the value to the trailer instead -
-/// for `XmlData` only, because a bridge writes it last and a log that printed
-/// each control byte as a glyph carries more bytes than the bridge counted;
-/// any other data field keeps its split segment, as it always did.
-fn data_span(
-    previous: Option<&(&[u8], &[u8])>,
-    body: &[u8],
-    value_start: usize,
-    separator: u8,
+/// Which tags carry a length is the FIX dictionary's fact and no scanner's, so
+/// the widening is done here, over the entries the line already answered: the
+/// value opens one byte past its key, runs the stated number of bytes, and
+/// whatever the widened span swallowed was a reading of the value's own text
+/// rather than a field of the frame.
+///
+/// The stated length is honoured where it lands on a boundary the frame itself
+/// states - the span ends the frame, or the next field after it is keyed by a
+/// tag - which is what a frame looks like after a data field and what a row
+/// written inside one never does. A stated length that lands nowhere reads the
+/// value to the trailer instead, for `XmlData` only, because a bridge writes it
+/// last and a log that printed each control byte as a glyph carries more bytes
+/// than the bridge counted; any other data field keeps the span the frame cut.
+fn data_end(
+    entry: &TextEntry,
+    stated: Option<&Arrived>,
+    entries: &[TextEntry],
+    after: usize,
     xml: bool,
-) -> Option<(usize, usize)> {
-    let stated = previous
-        .and_then(|(_, value)| std::str::from_utf8(value).ok())
+) -> Option<usize> {
+    let opens = entry.key().end() as usize + 1;
+    let bound = entries
+        .last()
+        .map_or(opens, |held| held.value().end() as usize);
+    let stated = stated
+        .and_then(|held| std::str::from_utf8(held.value()).ok())
         .and_then(|text| text.parse::<usize>().ok());
-    if let Some(span) = stated.and_then(|length| value_start.checked_add(length)) {
-        if span == body.len() {
-            return Some((span, span));
-        }
-        if span < body.len() && body[span] == separator {
-            let next = &body[span + 1..];
-            let key_end = memchr::memchr(b'=', next).unwrap_or(next.len());
-            if key_end > 0 && next[..key_end].iter().all(u8::is_ascii_digit) {
-                return Some((span, span + 1));
+    if let Some(span) = stated.and_then(|length| opens.checked_add(length)) {
+        let next = entries[after..]
+            .iter()
+            .find(|held| held.key().start() as usize >= span);
+        match next {
+            None if span <= bound => return Some(span),
+            Some(held) if held.key().as_bytes().iter().all(u8::is_ascii_digit) => {
+                return Some(span);
             }
+            _ => {}
         }
     }
     if !xml {
         return None;
     }
-    let trailer = [separator, b'1', b'0', b'='];
-    let found = memchr::memmem::rfind(&body[value_start..], &trailer)? + value_start;
-    Some((found, found + 1))
+    // The trailer is the checksum the frame closes with, and the value ends
+    // where the separator in front of it begins - whichever spelling the log
+    // wrote that separator in.
+    let checksum = entries[after..]
+        .iter()
+        .rev()
+        .find(|held| held.key().as_bytes() == b"10")?;
+    let at = checksum.key().start() as usize;
+    let page = checksum.key().page()?;
+    let width = line::SOH_MARKERS
+        .iter()
+        .find(|marker| page[..at].ends_with(marker))
+        .map_or(1, |marker| marker.len());
+    at.checked_sub(width).filter(|end| *end >= opens)
+}
+
+/// One pair as the line wrote it, before any mark is judged.
+///
+/// The key range never holds the `#` a bridge marked it with - the scanner
+/// strips it so that every reader lifting a bridge key asks for the name the
+/// bridge gave the field - and `marked` is that fact kept beside it. What the
+/// mark *means* is judged here, which is where the dictionary is.
+struct Arrived {
+    key: TextBytes,
+    value: TextBytes,
+    marked: bool,
+}
+
+impl Arrived {
+    fn key(&self) -> &[u8] {
+        self.key.as_bytes()
+    }
+
+    fn value(&self) -> &[u8] {
+        self.value.as_bytes()
+    }
+
+    /// The key as the line wrote it, the mark included.
+    ///
+    /// A range one byte wider, never a copy: the `#` stands immediately in
+    /// front of the key the scanner handed over, because that is what stripping
+    /// it means.
+    fn written(&self) -> TextBytes {
+        if !self.marked {
+            return self.key.clone();
+        }
+        self.key
+            .page()
+            .and_then(|page| {
+                TextBytes::from_page(
+                    page,
+                    (self.key.start() as usize).checked_sub(1)?,
+                    self.key.end() as usize,
+                )
+                .ok()
+            })
+            .unwrap_or_else(|| self.key.clone())
+    }
 }
 
 /// The separator FIX itself writes between two pairs.
@@ -353,7 +416,8 @@ impl FixCodec {
         &self.payload_column
     }
 
-    /// The byte a numeric frame is split on, where the caller pinned one.
+    /// The byte a re-emitted line separates its fields with, where the caller
+    /// pinned one.
     #[must_use]
     pub const fn separator(&self) -> Option<u8> {
         self.separator
@@ -387,7 +451,12 @@ impl FixCodec {
         self
     }
 
-    /// Pins the byte a numeric frame is split on, so none is inferred.
+    /// Pins the byte a re-emitted line separates its fields with.
+    ///
+    /// A write-side statement and nothing else: a line is read by the pairs it
+    /// already stated, and which byte separated them is the line's own answer
+    /// rather than a caller's. A capture whose frames are written back out
+    /// carries no such answer, so this is where a writer says what to spell.
     #[must_use]
     pub const fn with_separator(mut self, separator: u8) -> Self {
         self.separator = Some(separator);
@@ -509,12 +578,22 @@ impl FixCodec {
     /// dialect from its frame. A bulk UL configuration yields one message
     /// per selected MBean; the other dialects yield one message.
     ///
-    /// The prefix a process printed around the message is located and dropped
-    /// first, then one shallow look decides which reader owns
-    /// the body: a run of digits before the frame's first `=` is numeric FIX,
-    /// and anything else is a bridge row. The decision is made once and holds
-    /// for the whole body, so a `#` or a `<` inside a *value* is part of that
-    /// value.
+    /// # A message is the frame; the line is still the line
+    ///
+    /// The line states every pair it wrote, a transport's own prefix and
+    /// anything after the checksum included, because what a line said and what
+    /// one message said are two facts and only one of them is this reader's.
+    /// A message begins where the frame the line carries opens and ends at its
+    /// checksum: a log printing `ts=` and `thread=` in front of the frame it
+    /// quoted states neither field, and a message that swallowed them would
+    /// answer them by name and re-emit them. A line carrying two frames reads
+    /// as the first; the rest of the line is not part of that message.
+    ///
+    /// Which reader owns the frame is one shallow look at what the line
+    /// already answered: a frame whose first key is a run of digits is numeric
+    /// FIX, and anything else is a bridge row. The decision is made once and
+    /// holds for the whole body, so a `#` or a `<` inside a *value* is part of
+    /// that value.
     ///
     /// A FIXML row is the one that states no `key=value` frame at all, so the
     /// locator finds nothing to read; a row holding a tag is read as the
@@ -578,10 +657,21 @@ impl FixCodec {
                 reason: "expected a captured row, got no bytes".into(),
             });
         }
-        let start = line::payload_at(row).unwrap_or(row.len());
-        let body = &row[start..];
-        if numeric_frame(body) {
-            return self.fix_line_with(body, extras).map(FixMessages::one);
+        self.parse_page_with(&TextBytes::from_bytes(row)?, extras)
+    }
+
+    /// One line already held as a range of a page, read into its messages.
+    ///
+    /// Every key and value the messages record is a range of this page, so the
+    /// bytes are copied once - into the page, by whoever holds it - rather than
+    /// once per pair.
+    fn parse_page_with(&self, page: &TextBytes, extras: RowExtras<'_>) -> Result<FixMessages> {
+        let row = page.as_bytes();
+        let entries = TextEntries::from_bytes(page).unwrap_or_default();
+        let opens = line::payload_at(row).unwrap_or(row.len());
+        let framed = framed_entries(entries.as_slice(), page.start() as usize + opens);
+        if framed.first().is_some_and(tag_keyed) {
+            return self.frame_with(framed, extras).map(FixMessages::one);
         }
         // An XML document a transport wrote prose in front of opens before
         // any pair the locator could read as a bridge row, and is read as
@@ -589,6 +679,7 @@ impl FixCodec {
         if let Some((_, open)) = line::document_behind_prefix(row) {
             return self.fixml_with(&row[open..], extras).map(FixMessages::one);
         }
+        let body = &row[opens..];
         // A payload opening with `{` is a bridge configuration document, and
         // nothing else is: the locator points at a key, which starts with a
         // digit or a letter, and points at an object only where it found one.
@@ -603,112 +694,59 @@ impl FixCodec {
         if body.is_empty() && memchr::memchr(b'<', row).is_some() {
             return self.fixml_with(row, extras).map(FixMessages::one);
         }
-        self.ullink_with(body, extras).map(FixMessages::one)
+        self.bridge_with(framed, extras).map(FixMessages::one)
     }
 
     /// Parses one numeric FIX frame.
     ///
-    /// The separator is the one [`Self::with_separator`] pinned; with none
-    /// pinned a frame spelling its `SOH` as `\x01`, `^A` or `<SOH>` is
-    /// unescaped and split on the real byte, and any other frame is split on
-    /// whichever of `|`, `;` or `SOH` it actually uses.
+    /// The frame is read from the pairs the line already answered, so where a
+    /// value ends is the line's own reading of the separator it named - a
+    /// `SOH` raw or in any of the spellings a log escapes it with, or a pipe -
+    /// and this reader neither picks a separator nor splits on one. A data
+    /// field is the one exception, and it is FIX's: its value is read to the
+    /// length the `Len` field in front of it stated, so a value carrying the
+    /// frame's own separator survives whole.
     ///
-    /// A trailing empty segment is tolerated, because a wire message ends
-    /// with its separator; a segment with no `=` is dropped, as an empty key
-    /// is; duplicate tags stay in arrival order. Every key and value is a
-    /// slice of the input and none of it is validated as UTF-8.
+    /// Nothing after the checksum is part of the message; a pair the line
+    /// wrote in front of the frame belongs to the transport and not to it.
+    /// Duplicate tags stay in arrival order, and every key and value is a
+    /// range of the line, none of it validated as UTF-8.
     ///
     /// # Errors
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
     pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg> {
-        self.fix_line_with(body, RowExtras::NONE)
+        let page = TextBytes::from_bytes(body)?;
+        let entries = TextEntries::from_bytes(&page).unwrap_or_default();
+        self.frame_with(entries.as_slice(), RowExtras::NONE)
     }
 
-    /// [`Self::parse_fix_line`], with what the row stated beside its frame.
-    fn fix_line_with(&self, body: &[u8], extras: RowExtras<'_>) -> Result<FixMsg> {
-        if let Some(separator) = self.separator {
-            return self.split_fix_with(body, separator, extras);
-        }
-        match unescaped(body) {
-            Some(held) => self.split_fix_with(&held, SOH, extras),
-            None => self.split_fix_with(body, separator_of(body), extras),
-        }
-    }
-
-    /// One numeric frame split on one byte.
-    pub(super) fn split_fix_with(
-        &self,
-        body: &[u8],
-        separator: u8,
-        extras: RowExtras<'_>,
-    ) -> Result<FixMsg> {
-        let mut pairs: Vec<(&[u8], &[u8])> = Vec::new();
-        // The data values that are bridge rows, read after the frame's own
-        // pairs so the frame's statements come first.
-        let mut nested: Vec<&[u8]> = Vec::new();
-        let mut hashed = false;
-        let mut at = 0;
-        while at < body.len() {
-            let end = memchr::memchr(separator, &body[at..]).map_or(body.len(), |found| at + found);
-            let Some((key, value)) = split_pair(&body[at..end]) else {
-                at = end + 1;
-                continue;
-            };
-            hashed |= key.first() == Some(&b'#');
-            let mut next = end + 1;
-            let mut value = value;
-            if let Some(tag) = data_tag(key) {
-                // The value starts after the `=`, untrimmed: a data field's
-                // bytes are what they are, separators included.
-                let value_start = at + memchr::memchr(b'=', &body[at..end]).unwrap_or(0) + 1;
-                let xml = tag == XML_DATA_TAG;
-                if let Some((span, after)) =
-                    data_span(pairs.last(), body, value_start, separator, xml)
-                {
-                    value = &body[value_start..span];
-                    next = after;
-                }
-                // `XmlData` is the field a bridge writes a whole message
-                // into, and it writes one two ways: a row of its own pairs,
-                // and the FIXML the tag is named for. Both are read into the
-                // line rather than left as bytes nobody can address, so a
-                // frame carrying either answers by tag and by name like any
-                // other. Anything else in it is a value and stays one.
-                if xml && (bridge_row(value) || document(value)) {
-                    nested.push(value);
-                }
-            }
-            pairs.push((key, value));
-            if key == b"10" {
-                // Nothing after the checksum is part of the message.
-                break;
-            }
-            at = next;
-        }
-        // A bridge marks the name keys it writes into a frame exactly as it
-        // marks a row's, so they are judged by the row's rules: a frame that
-        // marked nothing pays nothing.
-        if hashed {
-            let arrived = pairs;
-            pairs = arrived
-                .iter()
-                .zip(self.judged_keys(&arrived))
-                .filter_map(|(&(_, value), judged)| judged.map(|(key, _)| (key, value)))
-                .collect();
-        }
+    /// One numeric frame, from the entries the line answered for it.
+    fn frame_with(&self, entries: &[TextEntry], extras: RowExtras<'_>) -> Result<FixMsg> {
+        let (arrived, nested) = frame_arrivals(entries);
+        let pairs: Vec<FixPair> = self
+            .judged_keys(&arrived)
+            .into_iter()
+            .zip(&arrived)
+            .filter_map(|(judged, held)| {
+                judged.map(|(key, _)| FixPair::own(key, held.value.clone()))
+            })
+            .collect();
         self.build(&pairs, &nested, extras)
     }
 
     /// Parses one bridge row of `NAME=VALUE` pairs.
     ///
-    /// A `SOH` or pipe delimiter preserves spaces inside a value. A row with
-    /// neither delimiter uses spaces between pairs.
+    /// Where a value ends is the line's own answer: a row that named a `SOH`
+    /// or a pipe between its fields keeps the spaces inside its values, and one
+    /// that named nothing is read the way a sentence is.
     ///
     /// A key opening with `#` is a bridge's own spelling of a name:
     /// `#SYMBOL=TTF` is the field, `#NOPARTYIDS=1` a counter and
     /// `#NOPARTYIDS[0]=…` one occurrence whose *value* is a run of member
-    /// pairs. The mark is judged against the row's bare spellings, under the
+    /// pairs - read into the fields it packs, while the arrival record keeps
+    /// the pair the bridge wrote, because a rendered member path names no
+    /// range of the line. The mark is judged against the row's bare spellings, under the
     /// FIX name fold every key resolves by, and a bare pair whose value is a
     /// stated absence is no twin, because a key that said nothing was sent
     /// is not a key that was sent:
@@ -730,21 +768,20 @@ impl FixCodec {
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
     pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg> {
-        self.ullink_with(body, RowExtras::NONE)
+        let page = TextBytes::from_bytes(body)?;
+        let entries = TextEntries::from_bytes(&page).unwrap_or_default();
+        self.bridge_with(entries.as_slice(), RowExtras::NONE)
     }
 
     /// [`Self::parse_ullink_line`], with what the row stated beside its row.
-    fn ullink_with(&self, body: &[u8], extras: RowExtras<'_>) -> Result<FixMsg> {
-        let (_, resolved) = self.ullink_pairs(body, self.tier(extras.branch));
-        let pairs: Vec<(&[u8], &[u8])> = resolved
-            .iter()
-            .map(|(key, value)| (key.as_ref(), *value))
-            .collect();
+    fn bridge_with(&self, entries: &[TextEntry], extras: RowExtras<'_>) -> Result<FixMsg> {
+        let arrived = arrivals(entries);
+        let (_, pairs) = self.bridge_pairs(&arrived, self.tier(extras.branch));
         self.build(&pairs, &[], extras)
     }
 
     /// One bridge row as the pairs the builder takes: `#` twins judged, and
-    /// each packed occurrence rendered as the member keys it holds.
+    /// each packed occurrence read into the member keys it holds.
     ///
     /// Shared by the bridge-row reader and the frame reader, which meets a
     /// bridge row inside a data field and reads it by exactly these rules.
@@ -754,63 +791,56 @@ impl FixCodec {
     /// row's own type declares, and a caller reading the row into a frame
     /// needs the same answer to resolve the row's own spellings. `branch` is
     /// the dialect the row is read under, which is what declares them.
-    fn ullink_pairs<'registry, 'body>(
+    ///
+    /// A packed occurrence is unpacked into the members that fill the row, and
+    /// the pair the bridge wrote is what the arrival record keeps: a key like
+    /// `NOPARTYIDS[0].PARTYID` appears nowhere in the line, so it names a
+    /// reading and never an arrival.
+    fn bridge_pairs<'registry>(
         &'registry self,
-        body: &'body [u8],
+        arrived: &[Arrived],
         branch: Option<&'registry FixBranch>,
-    ) -> BridgeRow<'registry, 'body> {
-        let separator = line::ullink_separator(body);
-        // The whole row is split before any `#` is judged, because the bare
-        // twin that keeps one may arrive on either side of it. The segments
-        // are slices of the body, so this pass allocates only the list.
-        let mut arrived: Vec<(&[u8], &[u8])> = Vec::new();
-        let mut hashed = false;
-        for pair in split(body, separator).filter_map(split_pair) {
-            hashed |= pair.0.first() == Some(&b'#');
-            arrived.push(pair);
-        }
+    ) -> BridgeRow<'registry> {
         // Every `#` key is judged before the row's type is read, so a type
         // the bridge marked names the message exactly as a bare one does,
         // and one kept verbatim beside a bare type does not. A row with no
         // `#` at all judges nothing.
-        let kept: Vec<(&[u8], &[u8], bool)> = if hashed {
-            arrived
-                .iter()
-                .zip(self.judged_keys(&arrived))
-                .filter_map(|(&(_, value), judged)| judged.map(|(key, whole)| (key, value, whole)))
-                .collect()
-        } else {
-            arrived
-                .iter()
-                .map(|&(key, value)| (key, value, false))
-                .collect()
-        };
-        let mut resolved: Vec<(Cow<'_, [u8]>, &[u8])> = Vec::with_capacity(kept.len());
-        let msgtype = msgtype_of(kept.iter().map(|&(key, value, _)| (key, value)));
+        let kept: Vec<(TextBytes, &Arrived, bool)> = self
+            .judged_keys(arrived)
+            .into_iter()
+            .zip(arrived)
+            .filter_map(|(judged, held)| judged.map(|(key, whole)| (key, held, whole)))
+            .collect();
+        let mut resolved: Vec<FixPair> = Vec::with_capacity(kept.len());
+        let msgtype = msgtype_of(
+            kept.iter()
+                .map(|(key, held, _)| (key.as_bytes(), held.value())),
+        );
         let tier = RowTier {
             branch,
             message: msgtype
                 .as_deref()
                 .and_then(|code| self.declared_message(code, branch)),
         };
-        for &(key, value, whole) in &kept {
-            if whole {
+        for (key, held, whole) in &kept {
+            let packed = FixPair::own(key.clone(), held.value.clone());
+            if *whole {
                 // Verbatim means whole: the twinned `#` key is its own key
                 // and the packed value is its value, so no group rendering
                 // rewrites either - a group name opening with `#` resolves
                 // in no dictionary anyway.
-                resolved.push((Cow::Borrowed(key), value));
+                resolved.push(packed);
                 continue;
             }
-            match group_index(key) {
-                Some((group, occurrence)) if memchr::memchr(b'=', value).is_some() => {
+            match group_index(key.as_bytes()) {
+                Some((group, occurrence)) if memchr::memchr(b'=', held.value()).is_some() => {
                     let declared = self.group_members(group, tier);
                     let mut path = Vec::with_capacity(group.len() + 8);
                     path.extend_from_slice(group);
                     path.extend_from_slice(b"[");
                     path.extend_from_slice(occurrence.to_string().as_bytes());
                     path.extend_from_slice(b"]");
-                    let segments = members(value, declared);
+                    let segments = members(&held.value, declared);
                     // The bridge closed what it packed inside this occurrence
                     // where it wrote a close anywhere but at the run's own
                     // end; a run carrying none is bounded by the dictionary.
@@ -819,9 +849,16 @@ impl FixCodec {
                         .rev()
                         .skip(1)
                         .any(|segment| matches!(segment, Segment::Close));
+                    let opened = resolved.len();
                     self.render_members(&path, &segments, tier, explicit, 0, &mut resolved);
+                    // The first member read out of the occurrence carries the
+                    // record of the pair the bridge actually wrote; the rest
+                    // are that same arrival, read further.
+                    if let Some(first) = resolved.get_mut(opened) {
+                        first.reads(packed);
+                    }
                 }
-                _ => resolved.push((Cow::Borrowed(key), value)),
+                _ => resolved.push(packed),
             }
         }
         (tier.message, resolved)
@@ -833,60 +870,74 @@ impl FixCodec {
     ///
     /// Each `#` key is judged against the row's bare spellings, gathered
     /// once: a bridge row is mostly `#` keys, so the probed list stays short.
-    /// Then a marked group goes only whole. Its count and its occurrences are
+    /// A row with no `#` at all judges nothing. Then a marked group goes only
+    /// whole. Its count and its occurrences are
     /// judged pair by pair, and a count restating the bare one beside
     /// occurrences the bare group never numbered would leave those
     /// occurrences without their count - so where any marked key of a group
     /// stays verbatim, every marked key of that group does.
-    fn judged_keys<'body>(
-        &self,
-        arrived: &[(&'body [u8], &'body [u8])],
-    ) -> Vec<Option<(&'body [u8], bool)>> {
+    fn judged_keys(&self, arrived: &[Arrived]) -> Vec<Option<(TextBytes, bool)>> {
+        // A row that marked nothing judges nothing. The twin probe is one pass
+        // over the row's bare spellings per marked key, so a wide frame that
+        // marked none would otherwise pay a quadratic walk to learn that.
+        if !arrived.iter().any(|held| held.marked) {
+            return arrived
+                .iter()
+                .map(|held| Some((held.key.clone(), false)))
+                .collect();
+        }
         let bare = self.bare_spellings(arrived);
-        let mut judged: Vec<Option<(&'body [u8], bool)>> = arrived
+        let mut judged: Vec<Option<(TextBytes, bool)>> = arrived
             .iter()
-            .map(|&(key, value)| self.hashed_key(key, value, arrived, &bare))
+            .map(|held| self.hashed_key(held, arrived, &bare))
             .collect();
-        let marked = |key: &'body [u8]| key.strip_prefix(b"#").map(line::trim_ascii);
+        fn marked(held: &Arrived) -> Option<&[u8]> {
+            held.marked.then(|| line::trim_ascii(held.key()))
+        }
         // The stems of the marked groups kept verbatim: a stem some marked
         // key of the row indexes, and some marked key of which was kept.
         let whole: Vec<&[u8]> = arrived
             .iter()
             .zip(&judged)
             .filter(|(_, judged)| matches!(judged, Some((_, true))))
-            .filter_map(|(&(key, _), _)| marked(key).map(stem_of))
+            .filter_map(|(held, _)| marked(held).map(stem_of))
             .filter(|stem| {
-                arrived.iter().any(|&(key, _)| {
-                    marked(key).is_some_and(|stripped| {
+                arrived.iter().any(|held| {
+                    marked(held).is_some_and(|stripped| {
                         group_index(stripped).is_some() && folds_twin(stem_of(stripped), stem)
                     })
                 })
             })
             .collect();
-        if !whole.is_empty() {
-            for (&(key, _), judged) in arrived.iter().zip(&mut judged) {
-                if judged.is_none()
-                    && marked(key).is_some_and(|stripped| {
+        if whole.is_empty() {
+            return judged;
+        }
+        let promoted: Vec<Option<TextBytes>> = arrived
+            .iter()
+            .zip(&judged)
+            .map(|(held, judged)| {
+                let restated = judged.is_none()
+                    && marked(held).is_some_and(|stripped| {
                         whole.iter().any(|stem| folds_twin(stem, stem_of(stripped)))
-                    })
-                {
-                    *judged = Some((key, true));
-                }
+                    });
+                restated.then(|| held.written())
+            })
+            .collect();
+        for (key, judged) in promoted.into_iter().zip(&mut judged) {
+            if let Some(key) = key {
+                *judged = Some((key, true));
             }
         }
         judged
     }
 
-    /// The row's bare spellings: every pair not marked `#` whose value is
-    /// not a stated absence.
-    fn bare_spellings<'body>(
-        &self,
-        arrived: &[(&'body [u8], &'body [u8])],
-    ) -> Vec<(&'body [u8], &'body [u8])> {
+    /// The row's bare spellings: every pair the line did not mark whose value
+    /// is not a stated absence.
+    fn bare_spellings<'row>(&self, arrived: &'row [Arrived]) -> Vec<(&'row [u8], &'row [u8])> {
         arrived
             .iter()
-            .copied()
-            .filter(|(key, value)| key.first() != Some(&b'#') && !self.is_absent(value))
+            .filter(|held| !held.marked && !self.is_absent(held.value()))
+            .map(|held| (held.key(), held.value()))
             .collect()
     }
 
@@ -894,32 +945,36 @@ impl FixCodec {
     /// is kept whole; `None` for a marked pair that only restates a bare one.
     ///
     /// A twin that itself opens with `#` - a `##` key's bare - is not among
-    /// the bare spellings, so that one probe falls back to the whole row.
-    fn hashed_key<'body>(
+    /// the bare spellings, so that one probe falls back to the whole row, read
+    /// under the keys the line wrote rather than the ones it was stripped to.
+    fn hashed_key(
         &self,
-        key: &'body [u8],
-        value: &'body [u8],
-        arrived: &[(&'body [u8], &'body [u8])],
-        bare: &[(&'body [u8], &'body [u8])],
-    ) -> Option<(&'body [u8], bool)> {
-        let Some(stripped) = key.strip_prefix(b"#") else {
-            return Some((key, false));
-        };
-        let stripped = line::trim_ascii(stripped);
+        held: &Arrived,
+        arrived: &[Arrived],
+        bare: &[(&[u8], &[u8])],
+    ) -> Option<(TextBytes, bool)> {
+        if !held.marked {
+            return Some((held.key.clone(), false));
+        }
+        let stripped = line::trim_ascii(held.key());
         let judged = if stripped.first() == Some(&b'#') {
-            let row: Vec<(&[u8], &[u8])> = arrived
+            let written: Vec<(TextBytes, TextBytes)> = arrived
                 .iter()
-                .copied()
-                .filter(|(_, held)| !self.is_absent(held))
+                .filter(|held| !self.is_absent(held.value()))
+                .map(|held| (held.written(), held.value.clone()))
                 .collect();
-            judge_hashed(stripped, value, &row)
+            let row: Vec<(&[u8], &[u8])> = written
+                .iter()
+                .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
+                .collect();
+            judge_hashed(stripped, held.value(), &row)
         } else {
-            judge_hashed(stripped, value, bare)
+            judge_hashed(stripped, held.value(), bare)
         };
         match judged {
             Hashed::Duplicate => None,
-            Hashed::Bare(stripped) => Some((stripped, false)),
-            Hashed::Verbatim => Some((key, true)),
+            Hashed::Bare => Some((held.key.clone(), false)),
+            Hashed::Verbatim => Some((held.written(), true)),
         }
     }
 
@@ -945,18 +1000,18 @@ impl FixCodec {
     /// many occurrences this one is packed inside, held to
     /// [`PACKED_DEPTH`]: past it an opener is one more member, so a run of
     /// openers nothing closed ends in a wide row rather than in the stack.
-    fn render_members<'registry, 'value>(
+    fn render_members<'registry>(
         &'registry self,
         path: &[u8],
-        segments: &[Segment<'value>],
+        segments: &[Segment],
         tier: RowTier<'registry>,
         explicit: bool,
         depth: usize,
-        out: &mut Vec<(Cow<'value, [u8]>, &'value [u8])>,
+        out: &mut Vec<FixPair>,
     ) {
         let mut at = 0;
         while at < segments.len() {
-            let Segment::Pair(member, held) = segments[at] else {
+            let Segment::Pair(member, held) = &segments[at] else {
                 // The run's own trailing separator, or a close of something
                 // this level never opened: nothing to end.
                 at += 1;
@@ -970,9 +1025,9 @@ impl FixCodec {
                 key.extend_from_slice(member);
                 key
             };
-            match group_index(member) {
+            match group_index(member.as_bytes()) {
                 Some((sub, index))
-                    if depth < PACKED_DEPTH && memchr::memchr(b'=', held).is_some() =>
+                    if depth < PACKED_DEPTH && memchr::memchr(b'=', held.as_bytes()).is_some() =>
                 {
                     let sub_declared = self.group_members(sub, tier);
                     let mut sub_path = rendered(sub);
@@ -991,7 +1046,14 @@ impl FixCodec {
                         at += 1;
                     }
                 }
-                _ => out.push((Cow::Owned(rendered(member)), held)),
+                // The rendered path is the key the builder nests by and no
+                // range of the line names it, which is why it fills a field
+                // and records nothing: the pair it was read out of is the
+                // arrival, and the caller pins that on the first of these.
+                _ => match TextBytes::from_bytes(rendered(member.as_bytes())) {
+                    Ok(key) => out.push(FixPair::read(key, held.clone())),
+                    Err(_) => continue,
+                },
             }
         }
     }
@@ -1011,7 +1073,7 @@ impl FixCodec {
     /// packed value's own, and what follows it lands there too.
     fn extent(
         &self,
-        segments: &[Segment<'_>],
+        segments: &[Segment],
         start: usize,
         declared: &[Field],
         tier: RowTier<'_>,
@@ -1020,7 +1082,7 @@ impl FixCodec {
         let mut at = start;
         let mut depth = 0_usize;
         while let Some(segment) = segments.get(at) {
-            match *segment {
+            match segment {
                 Segment::Close => {
                     if !explicit || depth == 0 {
                         break;
@@ -1028,8 +1090,8 @@ impl FixCodec {
                     depth -= 1;
                 }
                 Segment::Pair(key, held) => {
-                    let opens = memchr::memchr(b'=', held).is_some();
-                    match group_index(key) {
+                    let opens = memchr::memchr(b'=', held.as_bytes()).is_some();
+                    match group_index(key.as_bytes()) {
                         Some(_) if opens && explicit => depth += 1,
                         Some((sub, _)) if opens => {
                             if !self.declares_group(declared, sub, tier) {
@@ -1039,7 +1101,7 @@ impl FixCodec {
                             at = self.extent(segments, at + 1, sub_declared, tier, false);
                             continue;
                         }
-                        _ if !explicit && !declares(declared, key) => break,
+                        _ if !explicit && !declares(declared, key.as_bytes()) => break,
                         _ => {}
                     }
                 }
@@ -1087,11 +1149,11 @@ impl FixCodec {
 
     /// [`Self::parse_fixml_line`], with what the row stated beside its document.
     fn fixml_with(&self, body: &[u8], extras: RowExtras<'_>) -> Result<FixMsg> {
-        let owned = fixml_pairs(body)?;
-        let pairs: Vec<(&[u8], &[u8])> = owned
-            .iter()
-            .map(|(key, value)| (key.as_slice(), value.as_slice()))
-            .collect();
+        let pairs = own_pairs(
+            fixml_pairs(body)?
+                .iter()
+                .map(|(key, value)| (key.as_slice(), value.as_slice())),
+        )?;
         self.build(&pairs, &[], extras)
     }
 
@@ -1111,7 +1173,6 @@ impl FixCodec {
     /// | the payload column, [`Self::with_payload_column`] | the bytes read |
     /// | `pluginid` | the plugin that logged the line: a fill of the crate's own [`pluginid`](super::PLUGINID_TAG) like any column named after a field, and the dialect the row is read under where its text is the name or an alias of a branch the dictionary declares |
     /// | `beginstring` | the version |
-    /// | `sep` | the separator, which also means the payload is a FIX frame |
     /// | `timestamp` | the row's own clock, which stamps the message |
     ///
     /// `direction` is a parameter here too, and the one this reader does not
@@ -1247,17 +1308,25 @@ impl FixCodec {
     where
         I: IntoIterator<Item = (&'a [u8], &'a [u8])>,
     {
-        let held: Vec<(&[u8], &[u8])> = pairs.into_iter().collect();
-        self.build(&held, &[], RowExtras::NONE)
+        self.build(&own_pairs(pairs)?, &[], RowExtras::NONE)
     }
 
     /// The build a reader outside this module funnels into.
+    ///
+    /// The pairs are bytes a reader holds rather than ranges of a line - a
+    /// configuration document's fields, or no pairs at all - so they are
+    /// copied into one page here, which is what a message owning its own
+    /// arrival record costs when nothing owned it already.
+    ///
+    /// # Errors
+    ///
+    /// Returns the builder's refusal.
     pub(super) fn build_pairs_with(
         &self,
         pairs: &[(&[u8], &[u8])],
         extras: RowExtras<'_>,
     ) -> Result<FixMsg> {
-        self.build(pairs, &[], extras)
+        self.build(&own_pairs(pairs.iter().copied())?, &[], extras)
     }
 
     /// The one build every reader funnels into.
@@ -1269,8 +1338,8 @@ impl FixCodec {
     /// reason.
     fn build(
         &self,
-        pairs: &[(&[u8], &[u8])],
-        nested: &[&[u8]],
+        pairs: &[FixPair],
+        nested: &[TextBytes],
         extras: RowExtras<'_>,
     ) -> Result<FixMsg> {
         // The row's own dialect where its `pluginid` named one, else the
@@ -1284,7 +1353,7 @@ impl FixCodec {
         let branch = tier.unwrap_or(FixBranch::standard());
         let pinned = extras.version.or(self.version);
         let version = pinned.or_else(|| self.infer_version(pairs, branch));
-        let msgtype = msgtype_of(pairs.iter().copied());
+        let msgtype = msgtype_of(pairs.iter().map(|pair| (pair.key(), pair.value())));
 
         let message = msgtype
             .as_deref()
@@ -1335,29 +1404,33 @@ impl FixCodec {
     fn push_nested<'registry>(
         &'registry self,
         builder: &mut Builder<'registry>,
-        row: &[u8],
+        row: &TextBytes,
         tier: Option<&'registry FixBranch>,
         pinned: Option<Version>,
     ) {
-        if document(row) {
-            let Ok(owned) = fixml_pairs(row) else {
+        if document(row.as_bytes()) {
+            let Ok(owned) = fixml_pairs(row.as_bytes()) else {
                 return;
             };
-            let held: Vec<(&[u8], &[u8])> = owned
-                .iter()
-                .map(|(key, value)| (key.as_slice(), value.as_slice()))
-                .collect();
-            let declared = msgtype_of(held.iter().copied())
+            let Ok(held) = own_pairs(
+                owned
+                    .iter()
+                    .map(|(key, value)| (key.as_slice(), value.as_slice())),
+            ) else {
+                return;
+            };
+            let declared = msgtype_of(held.iter().map(|pair| (pair.key(), pair.value())))
                 .as_deref()
                 .and_then(|code| self.declared_message(code, tier));
             self.nest(builder, declared, &held, tier, pinned);
             return;
         }
-        let (declared, resolved) = self.ullink_pairs(row, tier);
-        let held: Vec<(&[u8], &[u8])> = resolved
-            .iter()
-            .map(|(key, value)| (key.as_ref(), *value))
-            .collect();
+        // The value's own entries, read in their own scope: what a bridge
+        // wrote inside a data field is judged against that row's spellings
+        // and not against the frame's.
+        let entries = TextEntries::from_bytes(row).unwrap_or_default();
+        let arrived = arrivals(entries.as_slice());
+        let (declared, held) = self.bridge_pairs(&arrived, tier);
         self.nest(builder, declared, &held, tier, pinned);
     }
 
@@ -1366,18 +1439,18 @@ impl FixCodec {
         &'registry self,
         builder: &mut Builder<'registry>,
         declared: Option<&'registry super::MsgType>,
-        pairs: &[(&[u8], &[u8])],
+        pairs: &[FixPair],
         tier: Option<&FixBranch>,
         pinned: Option<Version>,
     ) {
         let dated =
             pinned.or_else(|| self.infer_version(pairs, tier.unwrap_or(FixBranch::standard())));
         builder.begin_nested(declared, dated);
-        for (key, value) in pairs {
-            if self.is_absent(value) {
+        for pair in pairs {
+            if self.is_absent(pair.value()) {
                 continue;
             }
-            builder.push(key, value);
+            builder.push(pair.key(), pair.value());
         }
         builder.end_nested();
     }
@@ -1464,7 +1537,7 @@ impl FixCodec {
     /// the application version. `BeginString(8)` follows, and `FIXT.1.1`
     /// falls through rather than being taken literally. Then the branch's own
     /// default, then the dictionary's real newest - never a sentinel.
-    fn infer_version(&self, pairs: &[(&[u8], &[u8])], branch: &FixBranch) -> Option<Version> {
+    fn infer_version(&self, pairs: &[FixPair], branch: &FixBranch) -> Option<Version> {
         if let Some(value) = value_of(pairs, b"1128") {
             if let Some(version) = appl_ver_id(&String::from_utf8_lossy(value), &self.registry) {
                 return Some(version);
@@ -1509,11 +1582,11 @@ fn appl_ver_id(value: &str, registry: &FixRegistry) -> Option<Version> {
 }
 
 /// The value one tag carries, without building anything.
-fn value_of<'a>(pairs: &[(&'a [u8], &'a [u8])], key: &[u8]) -> Option<&'a [u8]> {
+fn value_of<'a>(pairs: &'a [FixPair], key: &[u8]) -> Option<&'a [u8]> {
     pairs
         .iter()
-        .find(|(held, _)| *held == key)
-        .map(|(_, value)| *value)
+        .find(|pair| pair.key() == key)
+        .map(FixPair::value)
 }
 
 /// The message type a row declares, by `35=` or by `MSGTYPE=`.
@@ -1568,65 +1641,148 @@ fn fixml_pairs(body: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
     Ok(owned)
 }
 
-/// Whether the frame's own first key is all ASCII digits.
-fn numeric_frame(body: &[u8]) -> bool {
-    let end = memchr::memchr(b'=', body).unwrap_or(0);
-    end > 0 && body[..end].iter().all(u8::is_ascii_digit)
+/// The entries one message is read from: everything from where the frame the
+/// line carries opens.
+///
+/// The line keeps every pair it saw, a transport's own prefix included, because
+/// what a line said and what one message said are two facts. A message is
+/// bounded by the frame: a log line printing `ts=…` and `thread=…` in front of
+/// the frame it quoted states neither field, and a message that swallowed them
+/// would answer them by name and re-emit them.
+fn framed_entries(entries: &[TextEntry], opens: usize) -> &[TextEntry] {
+    let at = entries
+        .iter()
+        .position(|entry| entry.key().start() as usize >= opens)
+        .unwrap_or(entries.len());
+    &entries[at..]
 }
 
-/// One body with a printed SOH spelling rewritten to the byte it stands for.
+/// Whether one entry's key is a tag rather than a name, which is what says a
+/// frame is numeric FIX rather than a bridge row.
 ///
-/// A capture that cannot print `0x01` writes `^A`, `\x01`, `<SOH>` or `{SOH}`
-/// instead. It is the same frame; only the separator was escaped on the way
-/// into the log, so it is unescaped once here rather than taught to every
-/// splitter. `None` where nothing was escaped, so the ordinary path allocates
-/// nothing.
-fn unescaped(body: &[u8]) -> Option<Vec<u8>> {
-    if memchr::memchr(SOH, body).is_some() {
-        return None;
+/// A key the line marked is a bridge's own spelling and never a tag, even
+/// where the bytes after the mark are digits: `#453=1` is a bridge naming the
+/// group by its counter, not a frame stating tag 453.
+fn tag_keyed(entry: &TextEntry) -> bool {
+    !entry.marked() && entry.key().as_bytes().iter().all(u8::is_ascii_digit)
+}
+
+/// One entry as the pair it arrived as.
+fn arrival(entry: &TextEntry) -> Arrived {
+    Arrived {
+        key: entry.key().clone(),
+        value: entry.value().clone(),
+        marked: entry.marked(),
     }
-    let marker = line::SOH_MARKERS
+}
+
+/// Every entry as the pair it arrived as.
+fn arrivals(entries: &[TextEntry]) -> Vec<Arrived> {
+    entries.iter().map(arrival).collect()
+}
+
+/// One frame's arriving pairs, its data fields read to the length their `Len`
+/// field stated, beside the rows those data fields carried.
+///
+/// The widening is where FIX and the scanner part, and it parts exactly here:
+/// the scanner cut the value at the frame's separator because that is all a
+/// frame states, and a data field says how long its value is instead. What the
+/// widened span swallowed was never a field of the frame, so it goes.
+fn frame_arrivals(entries: &[TextEntry]) -> (Vec<Arrived>, Vec<TextBytes>) {
+    let mut arrived: Vec<Arrived> = Vec::with_capacity(entries.len());
+    // The data values that are bridge rows, read after the frame's own pairs
+    // so the frame's statements come first.
+    let mut nested: Vec<TextBytes> = Vec::new();
+    let mut at = 0;
+    while let Some(entry) = entries.get(at) {
+        at += 1;
+        let mut held = arrival(entry);
+        if let Some(tag) = data_tag(held.key()) {
+            let xml = tag == XML_DATA_TAG;
+            if let Some(end) = data_end(entry, arrived.last(), entries, at, xml) {
+                if let Some(widened) = entry.key().page().and_then(|page| {
+                    TextBytes::from_page(page, entry.key().end() as usize + 1, end).ok()
+                }) {
+                    held.value = widened;
+                    while entries
+                        .get(at)
+                        .is_some_and(|swallowed| (swallowed.key().start() as usize) < end)
+                    {
+                        at += 1;
+                    }
+                }
+            }
+            // `XmlData` is the field a bridge writes a whole message into,
+            // and it writes one two ways: a row of its own pairs, and the
+            // FIXML the tag is named for. Both are read into the line rather
+            // than left as bytes nobody can address, so a frame carrying
+            // either answers by tag and by name like any other. Anything else
+            // in it is a value and stays one.
+            if xml && (bridge_row(held.value()) || document(held.value())) {
+                nested.push(held.value.clone());
+            }
+        }
+        // A key the bridge marked is the bridge's own, whatever it spells: a
+        // frame ends at the checksum it wrote, not at a restatement of one.
+        let checksum = !held.marked && held.key() == b"10";
+        arrived.push(held);
+        if checksum {
+            // Nothing after the checksum is part of the message.
+            break;
+        }
+    }
+    (arrived, nested)
+}
+
+/// Pairs a caller holds as loose bytes, copied into one page.
+///
+/// The door for input that never was a line: pairs handed in by a caller, and
+/// the attributes a FIXML document escaped, which are not slices of the
+/// document that carried them. A message owns the bytes its entries name, so
+/// they are copied once into one page here rather than once per half of every
+/// pair.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidRecord`] when the pairs are wider than one page can
+/// address.
+fn own_pairs<'a>(pairs: impl IntoIterator<Item = (&'a [u8], &'a [u8])>) -> Result<Vec<FixPair>> {
+    let mut page = Vec::new();
+    let mut spans = Vec::new();
+    for (key, value) in pairs {
+        let opens = page.len();
+        page.extend_from_slice(key);
+        let split = page.len();
+        page.extend_from_slice(value);
+        spans.push((opens, split, page.len()));
+    }
+    let page = TextBytes::from_whole_page(std::sync::Arc::new(page))?;
+    spans
         .into_iter()
-        .filter_map(|held| memchr::memmem::find(body, held).map(|at| (at, held)))
-        .min_by_key(|(at, _)| *at)
-        .map(|(_, held)| held)?;
-    let mut held = Vec::with_capacity(body.len());
-    let mut start = 0;
-    while let Some(at) = memchr::memmem::find(&body[start..], marker) {
-        held.extend_from_slice(&body[start..start + at]);
-        held.push(SOH);
-        start += at + marker.len();
+        .map(|(opens, split, ends)| {
+            Ok(FixPair::own(
+                page.slice(opens, split)?,
+                page.slice(split, ends)?,
+            ))
+        })
+        .collect()
+}
+
+/// One range narrowed to what it holds without ASCII whitespace at its ends.
+fn trimmed(bytes: &TextBytes, start: usize, end: usize) -> TextBytes {
+    let held = bytes.as_bytes();
+    let mut start = start;
+    let mut end = end;
+    while start < end && held[start].is_ascii_whitespace() {
+        start += 1;
     }
-    held.extend_from_slice(&body[start..]);
-    Some(held)
-}
-
-/// The separator a numeric frame uses: SOH when the body holds one, else `|`.
-fn separator_of(body: &[u8]) -> u8 {
-    if memchr::memchr(SOH, body).is_some() {
-        SOH
-    } else {
-        b'|'
+    while end > start && held[end - 1].is_ascii_whitespace() {
+        end -= 1;
     }
+    bytes.slice(start, end).unwrap_or_default()
 }
 
-/// One body split on its separator, empty segments included.
-fn split(body: &[u8], separator: u8) -> impl Iterator<Item = &[u8]> {
-    body.split(move |byte| *byte == separator)
-}
-
-/// One segment split at its **first** `=` only.
-///
-/// `Text=a;b` is one value with a semicolon, not two fields.
-fn split_pair(segment: &[u8]) -> Option<(&[u8], &[u8])> {
-    let at = memchr::memchr(b'=', segment)?;
-    let key = line::trim_ascii(&segment[..at]);
-    if key.is_empty() {
-        return None;
-    }
-    Some((key, line::trim_ascii(&segment[at + 1..])))
-}
-
+/// Whether a group declares a member spelled `key`, by name or by tag.
 /// Whether a group declares a member spelled `key`, by name or by tag.
 fn declares(declared: &[Field], key: &[u8]) -> bool {
     let Ok(key) = std::str::from_utf8(key) else {
@@ -1658,16 +1814,32 @@ fn group_index(key: &[u8]) -> Option<(&[u8], usize)> {
 /// between them - is a close, kept for the renderer to end a nested
 /// occurrence on; a segment that is neither a pair nor empty is residue and
 /// stays out.
-fn members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<Segment<'value>> {
+fn members(value: &TextBytes, declared: &[Field]) -> Vec<Segment> {
     split_members(value, declared)
         .into_iter()
         .filter_map(|part| {
             if part.is_empty() {
                 return Some(Segment::Close);
             }
-            split_pair(part).map(|(key, value)| Segment::Pair(key, value))
+            member_pair(&part).map(|(key, value)| Segment::Pair(key, value))
         })
         .collect()
+}
+
+/// One packed member split at its **first** `=`, both halves trimmed.
+///
+/// A member's own reading, never a line's: what separates two members is the
+/// bridge's vocabulary and nothing a line ever named, so the pair scanner has
+/// no answer here and this is the one place FIX cuts a value of its own.
+/// `Text=a;b` is one value with a semicolon, not two fields.
+fn member_pair(segment: &TextBytes) -> Option<(TextBytes, TextBytes)> {
+    let held = segment.as_bytes();
+    let at = memchr::memchr(b'=', held)?;
+    let key = trimmed(segment, 0, at);
+    if key.is_empty() {
+        return None;
+    }
+    Some((key, trimmed(segment, at + 1, held.len())))
 }
 
 /// One occurrence's value split on the bridge's member separator, empty
@@ -1675,21 +1847,23 @@ fn members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<Segment<'valu
 ///
 /// The first explicit spelling the run actually carries wins, and only that
 /// one splits it. With neither present, declared member names are boundaries;
-/// an unresolved run remains one segment.
-fn split_members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<&'value [u8]> {
+/// an unresolved run remains one segment. Every part is a range of the value,
+/// so a wide occurrence costs the list and no byte.
+fn split_members(value: &TextBytes, declared: &[Field]) -> Vec<TextBytes> {
+    let held = value.as_bytes();
     let Some(separator) = MEMBER_SEPARATORS
         .into_iter()
-        .find(|held| memchr::memmem::find(value, held).is_some())
+        .find(|marker| memchr::memmem::find(held, marker).is_some())
     else {
         return split_on_declared_members(value, declared);
     };
     let mut parts = Vec::new();
     let mut start = 0;
-    while let Some(at) = memchr::memmem::find(&value[start..], separator) {
-        parts.push(&value[start..start + at]);
+    while let Some(at) = memchr::memmem::find(&held[start..], separator) {
+        parts.push(value.slice(start, start + at).unwrap_or_default());
         start += at + separator.len();
     }
-    parts.push(&value[start..]);
+    parts.push(value.slice(start, held.len()).unwrap_or_default());
     parts
 }
 
@@ -1699,23 +1873,24 @@ fn split_members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<&'value
 /// spelling followed by `=` starts the next pair. Matching uses the FIX name
 /// fold, and the longest declared match at one byte wins. Bytes that match no
 /// declared member remain verbatim in the surrounding pair.
-fn split_on_declared_members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<&'value [u8]> {
-    let Some(first_equals) = memchr::memchr(b'=', value) else {
-        return vec![value];
+fn split_on_declared_members(value: &TextBytes, declared: &[Field]) -> Vec<TextBytes> {
+    let held = value.as_bytes();
+    let Some(first_equals) = memchr::memchr(b'=', held) else {
+        return vec![value.clone()];
     };
     let mut parts = Vec::new();
     let mut start = 0;
     let mut at = first_equals + 1;
-    while at < value.len() {
-        let Some(prefix_len) = declared_member_prefix(&value[at..], declared) else {
+    while at < held.len() {
+        let Some(prefix_len) = declared_member_prefix(&held[at..], declared) else {
             at += 1;
             continue;
         };
-        parts.push(&value[start..at]);
+        parts.push(value.slice(start, at).unwrap_or_default());
         start = at;
         at += prefix_len;
     }
-    parts.push(&value[start..]);
+    parts.push(value.slice(start, held.len()).unwrap_or_default());
     parts
 }
 
@@ -1769,15 +1944,12 @@ const fn name_separator(byte: u8) -> bool {
 /// pair a duplicate; the bytes are compared trimmed of the space the row put
 /// around them and never folded, because a value is a value and `abc` is
 /// not `ABC`.
-fn judge_hashed<'body>(
-    stripped: &'body [u8],
-    value: &[u8],
-    twins: &[(&[u8], &[u8])],
-) -> Hashed<'body> {
+fn judge_hashed(stripped: &[u8], value: &[u8], twins: &[(&[u8], &[u8])]) -> Hashed {
     let stem = stem_of(stripped);
+    let value = line::trim_ascii(value);
     let mut twinned = false;
     for &(held, held_value) in twins {
-        if folds_twin(held, stripped) && held_value == value {
+        if folds_twin(held, stripped) && line::trim_ascii(held_value) == value {
             return Hashed::Duplicate;
         }
         twinned |= folds_twin(stem_of(held), stem);
@@ -1785,7 +1957,7 @@ fn judge_hashed<'body>(
     if twinned {
         Hashed::Verbatim
     } else {
-        Hashed::Bare(stripped)
+        Hashed::Bare
     }
 }
 

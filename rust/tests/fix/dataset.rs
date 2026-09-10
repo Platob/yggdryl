@@ -24,8 +24,8 @@ use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::types::State;
 use yggdryl::{
-    DataType, FixBranch, FixCodec, FixDedup, FixEntry, FixMsg, FixRegistry, IOMedia, MimeType,
-    Scalar, Timezone, Url,
+    DataType, FixBranch, FixCodec, FixDedup, FixMsg, FixRegistry, IOMedia, MimeType, Scalar,
+    Timezone, Url,
 };
 
 /// The capture, exactly as the bridge wrote it.
@@ -507,11 +507,19 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             .position(|held| body(&text_names, held).contains(&format!("|{key}")))
             .unwrap_or_else(|| panic!("a bridge row spelling {key}"))
     };
+    // What the line spelled, minus the punctuation a log closed it with: a row
+    // a transport wrapped in parentheses states the session name and not the
+    // paren, so one column holds one spelling of one value however the line
+    // that carried it was decorated.
     let spelled = |row: usize, key: &str| {
         body(&text_names, &text[row])
             .split('|')
             .find_map(|pair| pair.strip_prefix(key))
-            .map(str::to_owned)
+            .map(|value| {
+                value
+                    .trim_end_matches([' ', '\t', ']', ')', '}', ',', ';'])
+                    .to_owned()
+            })
             .expect(key)
     };
     let bridged = stating("ULFROMSESSIONNAME=");
@@ -720,24 +728,31 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
         nested.get_by_tag(802).is_none() && nested.get_by_path("PtysSubGrp").is_none(),
         "no sub-identifier counter or group at the row level"
     );
-    // The arrival record nests three deep: the party under its counter, the
-    // sub-identifier under the sub-counter under the party.
+    // The row nests three deep; the arrival record nests as the bridge wrote
+    // it, which is one occurrence under the counter that heads it. Everything
+    // above - the sub-counter, the sub-identifier, the party's own members -
+    // is this reader's reading of the value that occurrence packed, and no
+    // range of the line spells any of their keys.
     let parties = nested
         .entries()
         .iter()
         .find(|entry| entry.tag() == 453)
         .expect("the party counter");
-    let sub = parties
+    let keys: Vec<&str> = parties
         .children()
         .iter()
-        .find(|entry| entry.tag() == 802)
-        .expect("the sub-counter under the parties");
+        .map(|entry| entry.key().as_str().unwrap_or_default())
+        .collect();
     assert!(
-        sub.children().iter().any(|entry| entry.tag() == 523),
-        "{sub:?}"
+        keys.iter().all(|key| key.starts_with("NOPARTYIDS[")),
+        "{keys:?}"
     );
-    let tags: Vec<i32> = parties.children().iter().map(FixEntry::tag).collect();
-    assert!(tags.contains(&448) && tags.contains(&452), "{tags:?}");
+    let packed = parties.children()[0]
+        .value()
+        .as_str()
+        .expect("the packed value");
+    assert!(packed.contains("NOPARTYSUBIDS"), "{packed}");
+    assert!(packed.contains("PARTYID="), "{packed}");
 
     // A line the bridge prints twice in a row digests once, so deduplication
     // drops the republication and keeps the count honest.

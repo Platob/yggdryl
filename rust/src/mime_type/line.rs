@@ -246,18 +246,6 @@ fn frame(line: &[u8], (start, numeric): (usize, bool)) -> LineFrame {
 /// recognized once rather than in each place that reads a frame.
 pub(crate) const SOH_MARKERS: [&[u8]; 4] = [b"^A", b"\\x01", b"<SOH>", b"{SOH}"];
 
-/// The delimiter of a named bridge frame, preserving spaces inside delimited values.
-///
-/// The FIX codec's own reading, and the only caller left: it knows the two
-/// bytes a bridge writes raw and nothing else, where what a line named as its
-/// separator is [`LineSeparator::for_line`]'s answer and covers the escaped
-/// spellings too.
-pub(crate) fn ullink_separator(line: &[u8]) -> u8 {
-    // The outer delimiter precedes any separators packed inside an indexed
-    // group's value. A later inner SOH must not override an earlier pipe.
-    memchr::memchr2(0x01, b'|', line).map_or(b' ', |position| line[position])
-}
-
 impl LineSeparator {
     /// What separates two fields of the frame opening at `start`.
     ///
@@ -277,9 +265,45 @@ impl LineSeparator {
             Self::Whitespace,
         ]
         .into_iter()
-        .filter_map(|separator| Some((separator.find(tail, 0)?.0, separator)))
+        .filter_map(|separator| Some((separator.separates(tail)?, separator)))
         .min_by_key(|(position, _)| *position)
         .map_or(Self::Whitespace, |(_, separator)| separator)
+    }
+
+    /// Where this separator first stands, when the line used it to separate
+    /// two fields rather than merely holding it inside one.
+    ///
+    /// A byte a line holds is not a byte a line separated with, and position
+    /// alone cannot tell the two apart: `MSGTYPE=P Report Ack|SYMBOL=AAPL`
+    /// holds a space before its first pipe and separates nothing with it,
+    /// while `8=FIX.4.4 35=D 58=a|b 10=0` holds a pipe inside a value and
+    /// separates nothing with that, so it named nothing at all. What separates
+    /// two fields has a field
+    /// after it, read as [`segment_span`] reads every other segment of a
+    /// frame - or closes the line, which is how a wire message ends - so the
+    /// two lines answer the pipe and the space respectively and each keeps the
+    /// value the other would have cut.
+    fn separates(self, line: &[u8]) -> Option<usize> {
+        let mut at = 0;
+        let mut first = None;
+        loop {
+            let (end, next) = self.segment(line, at);
+            if end >= line.len() {
+                return None;
+            }
+            first.get_or_insert(end);
+            if next >= line.len() {
+                // A wire message ends with its separator, so the line closing
+                // on one is that line naming it as plainly as a field after
+                // one would.
+                return first;
+            }
+            let (stop, _) = self.segment(line, next);
+            if segment_span(line, next, stop).is_some() {
+                return first;
+            }
+            at = next;
+        }
     }
 
     /// Whether the line named this separator, rather than being read under
@@ -708,9 +732,9 @@ fn loose_span(line: &[u8], start: usize, equals: usize) -> PairSpan {
 /// follows it, so both ends are the frame's own separator rather than a byte
 /// guessed at. Two bounds keep a segment that states no field from becoming
 /// one. The key is a name or a tag, indexed and dotted where the writer
-/// indexed and dotted it - `NoAllocs[0].79`, `#INSTRUMENT[DESCRIPTION]` - but
-/// never prose: the tail of `10=0<SOH> trailing note=x` is a sentence a log
-/// wrote after the frame, not a field keyed `trailing note`. And the value
+/// indexed and dotted it - `NoAllocs[0].79`, `#INSTRUMENT[DESCRIPTION]`,
+/// `Msg Type` - but never a sentence: the tail of `10=0<SOH> sent >> seq=7`
+/// states the note's `seq` and no field keyed `sent >> seq`. And the value
 /// gives back the punctuation a transport closed the line with, the `)` on a
 /// bridge row a log wrapped in parentheses, so one column holds one spelling
 /// of one value however the line that carried it was decorated.
@@ -740,14 +764,26 @@ fn segment_span(line: &[u8], start: usize, end: usize) -> Option<PairSpan> {
 /// Whether what a segment put in front of its `=` is a key.
 ///
 /// A frame widens which bytes a key may hold - a bridge indexes and qualifies
-/// its keys, and `[`, `]` and `.` are part of the name it wrote - never
-/// whether a key is a name at all.
+/// its keys, a renderer spells one `Msg Type`, and `[`, `]`, `.` and a space
+/// are part of the name each wrote - never whether a key is a name at all. A
+/// space is in that list because the FIX name fold ignores it exactly as it
+/// ignores `_` and `-`, so a frame stating `Msg Type=D` stated `MsgType`; a
+/// sentence still states no field, because a sentence holds bytes no name
+/// holds.
+///
+/// A second mark is part of the key. A bridge marks a key to say it restates
+/// one it already wrote, and marks a restatement of a marked key again: the
+/// walk strips the one mark it reads, so `##ORDERID` arrives here as
+/// `#ORDERID` and is the key `##ORDERID` the frame wrote. What two marks mean
+/// belongs to whoever holds the dictionary; that the frame stated a field here
+/// is this walk's answer.
 fn is_segment_key(key: &[u8]) -> bool {
-    key.first()
+    let name = key.strip_prefix(b"#").unwrap_or(key);
+    name.first()
         .is_some_and(|first| is_name_start(*first) || first.is_ascii_digit())
-        && key
+        && name
             .iter()
-            .all(|byte| is_name_continue(*byte) || matches!(byte, b'[' | b']'))
+            .all(|byte| is_name_continue(*byte) || matches!(byte, b'[' | b']' | b' '))
 }
 
 /// Every pair the line declares, wherever it sits.
@@ -788,9 +824,9 @@ fn is_segment_key(key: &[u8]) -> bool {
 ///
 /// A frame's segment states one field or it states prose - a log's own remark
 /// after the frame it quoted - and prose here is read the way prose is read
-/// anywhere: `10=0<SOH> trailing note=x` states the frame's `10` and the
-/// note's `note`, and no field keyed `trailing note`. Only the frame's own
-/// walk stops where the frame does; nothing the line said is dropped.
+/// anywhere: `10=0<SOH> sent >> seq=7` states the frame's `10` and the note's
+/// `seq`, and no field keyed `sent >> seq`. Only the frame's own walk stops
+/// where the frame does; nothing the line said is dropped.
 ///
 /// An empty value is a pair inside a frame and is not one outside it. `58=`
 /// standing between two separators says the line wrote the field and gave it
@@ -1257,13 +1293,54 @@ mod tests {
 
     #[test]
     fn a_segment_that_states_no_field_is_prose_and_reads_as_prose() {
-        // A key is a name or a tag, indexed where the writer indexed it. The
-        // frame widens which bytes a key may hold, never whether a key is a
-        // name - so a log's remark after the frame states no field keyed
-        // `trailing note`, and the pair it does state is still read.
+        // A key is a name or a tag, indexed where the writer indexed it and
+        // spaced where a renderer spaced it - the fold that reads `Msg Type`
+        // as `MsgType` ignores a space exactly as it ignores `_`. The frame
+        // widens which bytes a key may hold, never whether a key is a name, so
+        // a log's remark carrying bytes no name carries states no field, and
+        // the pair it does state is still read.
         assert_eq!(
-            read(b"8=FIX.4.4\x0135=D\x0158=hello world\x0110=0\x01 trailing note=x"),
-            ["8=FIX.4.4", "35=D", "58=hello world", "10=0", "note=x"]
+            read(b"8=FIX.4.4\x0135=D\x0158=hello world\x0110=0\x01 sent >> seq=7"),
+            ["8=FIX.4.4", "35=D", "58=hello world", "10=0", "seq=7"]
+        );
+        assert_eq!(
+            read(b"8=FIX.4.4\x01Msg Type=D\x0110=0\x01"),
+            ["8=FIX.4.4", "Msg Type=D", "10=0"]
+        );
+    }
+
+    #[test]
+    fn a_frame_separates_on_a_byte_it_used_and_not_on_one_it_merely_holds() {
+        // Position alone cannot tell a separator from a byte inside a value:
+        // both of these hold a space before their first pipe, or a pipe before
+        // their first space, and each is a frame on the other one's candidate.
+        // What separates two fields has a field after it.
+        assert_eq!(
+            read(b"MSGTYPE=P Report Ack|SYMBOL=AAPL|"),
+            ["MSGTYPE=P Report Ack", "SYMBOL=AAPL"],
+            "the space stands inside a value and separates nothing"
+        );
+        assert_eq!(
+            read(b"8=FIX.4.4 35=D 58=a|b 10=0"),
+            ["8=FIX.4.4", "35=D", "58=a", "10=0"],
+            "the pipe stands inside a value, and a space names no frame, so \
+             the loose rule reads the line"
+        );
+        // A wire message ends with its separator, so a line closing on one
+        // named it as plainly as a field after one would.
+        assert_eq!(read(b"35=U|"), ["35=U"]);
+        assert_eq!(classify(b"35=U|"), (MimeType::FIX, Some(&b"U"[..])));
+    }
+
+    #[test]
+    fn a_key_a_bridge_marked_twice_keeps_the_mark_it_wrote() {
+        // The walk strips the one mark it reads, so a second is part of the
+        // key the frame wrote: what two marks mean belongs to whoever holds
+        // the dictionary, and that the frame stated a field here is this
+        // walk's answer.
+        assert_eq!(
+            read(b"MSGTYPE=D|#ORDERID=123|##ORDERID=345"),
+            ["MSGTYPE=D", "#ORDERID=123", "##ORDERID=345"]
         );
     }
 

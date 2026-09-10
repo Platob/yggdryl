@@ -947,9 +947,12 @@ fn an_identifier_is_two_halves_and_renders_without_inventing_branch_text() {
     assert_eq!(vendor.tag(), 5001);
     assert_eq!(vendor.branch(), cme.digest_signed());
     assert_eq!(vendor.branch_digest(), cme.digest());
+    // An entry keeps the tag and the message the branch, so an identity is
+    // still the two columns a capture carries - assembled from the two owners
+    // rather than copied onto every pair.
     assert_eq!(
-        FixEntry::new(5001, "5001", "x").with_branch(&cme).id(),
-        Some(vendor)
+        FixId::from_parts(&cme, entry(5001, "5001", "x").tag()).unwrap(),
+        vendor
     );
     assert_eq!(vendor.to_string(), format!("5001:#{:08x}", cme.digest()));
     for text in ["35:", "5001:cme", "0:", "39999:cme"] {
@@ -3327,7 +3330,7 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
         .iter()
         .find(|held| held.tag() == 99)
         .expect("the pair still arrived");
-    assert_eq!(entry.value(), "N/A");
+    assert_eq!(entry.value().as_str(), Some("N/A"));
 
     // A value the list does not name is read as the price it is.
     let message = super::FixCodec::new(registry)
@@ -4918,26 +4921,26 @@ fn every_committed_replacement_is_the_document_the_rust_writer_renders() {
 }
 
 #[test]
-fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
+fn an_entry_is_a_range_of_its_line_and_the_message_holds_the_branch() {
     // The measured footprint, so the report states the tree's number rather
-    // than an estimate. Four members: `i32`, `i64`, and two `SmolStr`.
+    // than an estimate: a tag, two counted ranges of the one page the line was
+    // read into, and the children vector.
     //
     // The shape this replaced, laid out by the same rules, is declared beside
-    // it so the saving is measured rather than reasoned about: a name is a
-    // whole `SmolStr` where a digest is four bytes that pack beside the tag.
+    // it so the saving is measured rather than reasoned about: two owned
+    // copies of bytes the line already held, and a per-pair copy of a branch
+    // that is one value for every pair of one message.
     struct Was {
         _tag: i32,
-        _branch: Option<SmolStr>,
+        _branch: i32,
         _key: SmolStr,
         _value: SmolStr,
+        _children: Vec<Was>,
     }
-    assert_eq!(std::mem::size_of::<Was>(), 80, "the branch-name entry");
-    // 80 with the branch as a name, and 80 again with it as an XXH32 beside
-    // the tag and a children vector added: the digest paid for the recursion.
-    // An entry that never nests allocates nothing for that vector.
+    assert_eq!(std::mem::size_of::<Was>(), 80, "the copying entry");
     assert_eq!(
         std::mem::size_of::<FixEntry>(),
-        80,
+        64,
         "one entry, as this tree lays it out",
     );
 
@@ -4957,42 +4960,54 @@ fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
     // column never meets a row it cannot explain.
     assert_eq!(registry.get_branch_by_digest(0), Some(&FixBranch::STANDARD),);
     // A digest no branch carries names none rather than panicking. The
-    // argument is the entry's own signed reading, so this is an ordinary
+    // argument is the signed reading a row holds, so this is an ordinary
     // absence rather than a range refusal: every `i32` is a legal digest.
     assert!(registry.get_branch_by_digest(-1).is_none());
     let refused = registry.branch_by_digest(-1).unwrap_err();
     assert!(refused.is_absent(), "{refused}");
 
-    // Every entry states a dialect, the standard one included, and a standard
-    // row states 0 rather than nothing.
     let codec = super::FixCodec::new(Arc::clone(&registry)).with_branch(&cme);
-    let msg = codec
-        .parse_fix_line(b"55=AAPL|5055=XYZ|VenueOwnThing=?|")
-        .expect("a readable frame");
+    let line = b"55=AAPL|5055=XYZ|VenueOwnThing=?|";
+    let msg = codec.parse_fix_line(line).expect("a readable frame");
     let entries = msg.entries();
     assert!(!entries.is_empty());
-    let venue = entries.iter().find(|held| held.tag() == 5_055).unwrap();
-    assert_eq!(venue.branch(), cme.digest() as i32);
-    assert_eq!(
-        registry.branch_by_digest(venue.branch()).unwrap(),
-        &cme,
-        "the digest resolves to the dialect that answered the pair",
-    );
-    // A key that named no field at all resolved in no dialect, which is 0.
-    let unknown = entries
-        .iter()
-        .find(|held| held.tag() == 0)
-        .expect("the key no dictionary explained");
-    assert_eq!(unknown.branch(), FixBranch::STANDARD.digest() as i32);
-    assert_eq!(unknown.branch(), 0);
-    assert_eq!(unknown.id(), None, "no tag is no identity");
 
-    // The identity an entry names is the two columns it stores.
-    assert_eq!(venue.id().unwrap(), FixId::from_parts(&cme, 5_055).unwrap());
+    // The dialect is the message's, once, and it is what resolves a pair's
+    // identity - there is no second copy of it per pair to disagree with.
+    assert_eq!(msg.branch(), &cme);
+    assert_eq!(
+        registry
+            .branch_by_digest(msg.branch().digest_signed())
+            .unwrap(),
+        &cme,
+        "the digest resolves to the dialect the message was read under",
+    );
+    let venue = entries.iter().find(|held| held.tag() == 5_055).unwrap();
+    assert_eq!(
+        FixId::from_parts(msg.branch(), venue.tag()).unwrap(),
+        FixId::from_parts(&cme, 5_055).unwrap(),
+        "an entry names its field with the tag it kept and the branch its message holds",
+    );
+    // A key that named no field names no identity, whatever the message
+    // resolved in.
+    assert!(entries.iter().any(|held| held.tag() == 0));
+
+    // Every key and value is a range of the line, never a copy of it: the
+    // bytes are the same bytes, at the offsets the line wrote them.
+    for entry in entries {
+        for held in [entry.key(), entry.value()] {
+            let at = held.start() as usize;
+            assert_eq!(
+                &line[at..held.end() as usize],
+                held.as_bytes(),
+                "an entry names the line at its own offsets",
+            );
+        }
+    }
 }
 
 #[test]
-fn the_entry_column_states_a_non_null_branch() {
+fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
     let root = super::fix_schema(&FixRegistry::new(), "row").unwrap();
     for column in [super::ENTRIES_COLUMN, super::UNMAPPED_COLUMN] {
         let held = root
@@ -5004,8 +5019,10 @@ fn the_entry_column_states_a_non_null_branch() {
             panic!("a list, got {}", held.dtype());
         };
         // Exactly three fixentry levels on every root-to-leaf path, each with
-        // the same five members, the fifth a non-null nofixentries that is a
-        // deeper list twice and the binary leaf at the bottom.
+        // the same four members - what the line said and what FIX added, and
+        // nothing the message already answers - the fourth a non-null
+        // nofixentries that is a deeper list twice and the binary leaf at the
+        // bottom.
         let mut held = item;
         for level in 1..=3 {
             assert_eq!(held.name(), "fixentry", "{column} level {level}");
@@ -5014,16 +5031,15 @@ fn the_entry_column_states_a_non_null_branch() {
             let names: Vec<&str> = members.iter().map(Field::name).collect();
             assert_eq!(
                 names,
-                ["tag", "branch", "key", "value", "nofixentries"],
+                ["tag", "key", "value", "nofixentries"],
                 "{column} level {level}",
             );
-            let branch = &members[1];
-            assert_eq!(branch.dtype(), &DataType::Int32, "{column} level {level}");
-            assert!(
-                !branch.is_nullable(),
-                "{column} branch carries no validity bitmap"
+            assert_eq!(
+                members[0].dtype(),
+                &DataType::Int32,
+                "{column} level {level}"
             );
-            let tail = &members[4];
+            let tail = &members[3];
             assert!(!tail.is_nullable(), "{column} level {level} tail");
             match tail.dtype() {
                 DataType::List(deeper) if level < 3 => held = deeper,
@@ -5034,16 +5050,26 @@ fn the_entry_column_states_a_non_null_branch() {
     }
 }
 
+/// One entry a fixture states by hand, its key and value copied into a page of
+/// their own - which is what a message nothing read from a line has to do.
+fn entry(tag: i32, key: &str, value: &str) -> FixEntry {
+    FixEntry::new(
+        tag,
+        crate::media::text::TextBytes::from_bytes(key).expect("a key"),
+        crate::media::text::TextBytes::from_bytes(value).expect("a value"),
+    )
+}
+
 /// A chain of entries `depth` long, each child the sole passenger of the one
 /// above, ending in a leaf pair carrying `value`.
 fn nested_entries(depth: usize, value: &str) -> Vec<FixEntry> {
-    let mut held = FixEntry::new(523, "523", value);
+    let mut held = entry(523, "523", value);
     for level in (1..depth).rev() {
-        let mut parent = FixEntry::new(453, "453", level.to_string());
+        let mut parent = entry(453, "453", &level.to_string());
         parent.push(held);
         held = parent;
     }
-    vec![FixEntry::new(35, "35", "D"), held]
+    vec![entry(35, "35", "D"), held]
 }
 
 #[test]
@@ -5081,15 +5107,15 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
         .as_sequence()
         .expect("the arrival column");
     let level1 = entries[1].as_sequence().expect("the counter entry");
-    let level2 = level1[4].as_sequence().expect("one child list")[0]
+    let level2 = level1[3].as_sequence().expect("one child list")[0]
         .as_sequence()
         .expect("the level-2 entry")
         .to_vec();
-    let level3 = level2[4].as_sequence().expect("one child list")[0]
+    let level3 = level2[3].as_sequence().expect("one child list")[0]
         .as_sequence()
         .expect("the level-3 entry")
         .to_vec();
-    let leaf = level3[4].as_bytes().expect("the binary leaf");
+    let leaf = level3[3].as_bytes().expect("the binary leaf");
     assert!(!leaf.is_empty(), "two levels folded into it");
 
     // The leaf recovers exactly the folded entries through the one JSON
@@ -5099,17 +5125,17 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
     assert_eq!(folded.len(), 1);
     let level4 = folded[0].as_sequence().expect("the level-4 entry").to_vec();
     assert_eq!(level4[0].as_i64(), Some(453));
-    let level5 = level4[4].as_sequence().expect("its children")[0]
+    let level5 = level4[3].as_sequence().expect("its children")[0]
         .as_sequence()
         .expect("the level-5 entry")
         .to_vec();
     assert_eq!(level5[0].as_i64(), Some(523));
-    assert_eq!(level5[3].as_str(), Some("x"));
+    assert_eq!(level5[2].as_str(), Some("x"));
 
     // A flat sibling's child list is empty: nothing arrived under it and
     // nothing was folded for it.
     let flat = entries[0].as_sequence().expect("the msgtype entry");
-    assert_eq!(flat[4].as_sequence().map(<[Scalar]>::len), Some(0));
+    assert_eq!(flat[3].as_sequence().map(<[Scalar]>::len), Some(0));
 
     // Wire emission walks the whole tree pre-order, so what comes back is
     // what went in.
@@ -5136,9 +5162,9 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
         root.clone(),
         Scalar::from_sequence([Scalar::from("D")]),
         vec![
-            FixEntry::new(35, "35", "D"),
-            FixEntry::new(453, "453", "1"),
-            FixEntry::new(523, "523", "x"),
+            entry(35, "35", "D"),
+            entry(453, "453", "1"),
+            entry(523, "523", "x"),
         ],
     )
     .unwrap();

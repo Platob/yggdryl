@@ -1639,7 +1639,7 @@ mod values {
     /// Every pair a body declares, rendered as the line wrote it.
     fn read(body: &[u8]) -> Vec<String> {
         let body = TextBytes::from_bytes(body).expect("a body");
-        crate::media::text::entry::read_entries(&body)
+        crate::media::text::TextEntries::from_bytes(&body)
             .as_ref()
             .map(TextEntries::as_slice)
             .unwrap_or_default()
@@ -1650,7 +1650,7 @@ mod values {
 
     fn tree(body: &[u8]) -> TextEntries {
         let body = TextBytes::from_bytes(body).expect("a body");
-        crate::media::text::entry::read_entries(&body).expect("the line states pairs")
+        crate::media::text::TextEntries::from_bytes(&body).expect("the line states pairs")
     }
 
     #[test]
@@ -1706,7 +1706,7 @@ mod values {
     fn a_value_a_frame_bounded_is_still_a_range_of_the_page_it_came_from() {
         let page = page(b"8=FIX.4.4|58=a value with spaces|10=0|");
         let body = TextBytes::from_whole_page(Arc::clone(&page)).expect("the whole page");
-        let entries = crate::media::text::entry::read_entries(&body).expect("pairs");
+        let entries = crate::media::text::TextEntries::from_bytes(&body).expect("pairs");
         let held = entries.as_slice()[1].value();
         assert_eq!(held.as_str(), Some("a value with spaces"));
         assert!(

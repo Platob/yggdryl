@@ -575,7 +575,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
             let entry = entry.as_sequence().expect("an entry");
             (
                 entry[0].as_i64().map_or(0, |tag| tag as i32),
-                entry[2].as_str().unwrap_or_default().to_owned(),
+                entry[1].as_str().unwrap_or_default().to_owned(),
             )
         })
         .collect();

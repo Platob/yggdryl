@@ -15,7 +15,7 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | Batches | closed by raw bytes against the codec's `batch_byte_size`, `DEFAULT_BATCH_BYTE_SIZE` (128 MiB) unless pinned: several small input batches accumulate into one, one larger than the target splits by rows in proportion, and a batch always holds at least one row |
 | Pins | on the codec, for the whole run: `with_payload_column`, `with_separator`, `with_branch`, `with_version`, `with_null_values`, `with_direction`, `with_batch_byte_size` |
 | Stages | a call, never a flag: `enrich_messages_arrow_reader`, `FixCodec::lifecycle`, `FixMsg::into_latest` and `FixDedup` compose over `messages` and `arrow_reader` |
-| Per row | `branch`, `beginstring`, `sep`, `direction` and `timestamp` are parameters read from the row; any other column named after a field fills it where the message did not state it |
+| Per row | `branch`, `beginstring`, `direction` and `timestamp` are parameters read from the row; any other column named after a field fills it where the message did not state it |
 | Errors | typed I/O, schema and parsing failures; a source batch of another schema than the first is a conflict; malformed bulk input reports its location and stops the stream |
 | Lazy | one source batch held at a time; configuration cursors consumed incrementally under the output batch bound |
 | Wire | `write_arrow_reader` rebuilds every line from `nofixentries` and never from the columns; a batch without that column is refused before a row is read |
@@ -172,7 +172,7 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 | Pin | Builder | Default | Says |
 | --- | --- | --- | --- |
 | `payload_column` | `with_payload_column` | `body` (`DEFAULT_PAYLOAD_COLUMN`) | which column carries the bytes |
-| `separator` | `with_separator` | `SOH` (`0x01`) | the separator a numeric frame is written with, and the one `write_arrow_reader` writes |
+| `separator` | `with_separator` | `SOH` (`0x01`) | the separator a re-emitted line is written with, which is what `write_arrow_reader` writes; reading takes none, because a line already said which byte separated its fields |
 | `branch` | `with_branch` | none | the dialect, so no row infers one |
 | `version` | `with_version` | none | the version values are translated at, never what a column is called; unpinned, each row answers for itself |
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
@@ -272,14 +272,13 @@ Messages to batches, with one stage between them: the lifecycle stamps four mess
 
 ## A column is the caller speaking per row
 
-One column carries the bytes; five more supply, per row, arguments the byte readers already take per call, and every other column is offered to the message by name.
+One column carries the bytes; four more supply, per row, arguments the byte readers already take per call, and every other column is offered to the message by name. A separator is not among them: which byte separated a frame's fields is what the line itself said, so no row states it.
 
 | Column | Supplies |
 | --- | --- |
 | the payload column, named by the codec | the bytes parsed |
 | `branch` | the dialect |
 | `beginstring` | the source version |
-| `sep` | the separator |
 | `direction` | the direction, stated |
 | `timestamp` | the row's own clock, which [stamps the message](capture.md#every-message-is-dated-and-versioned) ahead of any clock the frame carries |
 | any other column named after a field | that field, where the message did not state it |
@@ -288,7 +287,7 @@ A column is the caller speaking per row and a pin is the caller speaking per run
 
 A fill is named the way a key is: a column whose folded name resolves in the message's branch, then the standard one, then any dictionary the registry holds - so a `senderSessionId` capture reaches the crate's own `sendersessionid` - and last through the bridge's own spellings of standard fields, `seqNum` reaching `MsgSeqNum(34)`. It is row-only: never an entry, so it is not in `nofixentries`, not re-emitted by `write_arrow_reader` and not in `msghash`; a value the field cannot hold fills nothing rather than a null; and a column named by a tag's digits fills nothing, because a name is what reaches a field. Which columns fill is decided once, from the schema and the dictionary, rather than per row.
 
-`sep` and `direction` are still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. `beginstring` and `timestamp` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided, and its `timestamp` column holds what a `timestamp` column stated. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
+`direction` is still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. `beginstring` and `timestamp` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided, and its `timestamp` column holds what a `timestamp` column stated. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
 
 ### A bridge log names what it fills
 

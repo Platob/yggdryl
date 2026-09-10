@@ -34,7 +34,6 @@ pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 /// only a payload behaves exactly as the byte reader behaves - which is what
 /// makes this an entry point rather than a second contract.
 pub(super) const BEGINSTRING_COLUMN: &str = "beginstring";
-pub(super) const SEPARATOR_COLUMN: &str = "sep";
 /// The column a row states its own clock in, which stamps the message.
 pub(super) const CLOCK_COLUMN: &str = super::TIMESTAMP_NAME;
 /// The column a row states its direction in, read by the batch reader.
@@ -51,15 +50,9 @@ pub(super) const PLUGINID_COLUMN: &str = "pluginid";
 /// Whether a column is one the readers take as a parameter or the payload,
 /// rather than one that could fill a field by its name.
 pub(super) fn is_parameter(name: &str, payload: &str) -> bool {
-    [
-        payload,
-        BEGINSTRING_COLUMN,
-        SEPARATOR_COLUMN,
-        CLOCK_COLUMN,
-        DIRECTION_COLUMN,
-    ]
-    .iter()
-    .any(|held| crate::types::folds_equal(held, name))
+    [payload, BEGINSTRING_COLUMN, CLOCK_COLUMN, DIRECTION_COLUMN]
+        .iter()
+        .any(|held| crate::types::folds_equal(held, name))
 }
 
 /// The version a `beginstring` column states, as `BeginString` spells it.
@@ -80,18 +73,16 @@ pub(super) fn version_of(beginstring: &str) -> Option<Version> {
 /// The dialect and the version travel resolved - the branch the row's
 /// `pluginid` reached, the version its `beginstring` parsed to - because
 /// resolving them is the reader's boundary work and the build only reads
-/// under them. The separator is the text it holds; the clock and the fills
-/// are the values their columns carry. Absent is silence - a column that
-/// was not there, was null, held no text, or named nothing the dictionary
-/// declares - and silence is never an instruction and never an error.
+/// under them. The clock and the fills are the values their columns carry.
+/// Absent is silence - a column that was not there, was null, held no text, or
+/// named nothing the dictionary declares - and silence is never an instruction
+/// and never an error.
 #[derive(Clone, Copy, Default)]
 pub(super) struct RowParameters<'row> {
     /// The dialect the row is read under, where its `pluginid` named one.
     pub(super) branch: Option<&'row FixBranch>,
     /// The version the row is read at, where its `beginstring` stated one.
     pub(super) version: Option<Version>,
-    /// The separator, whose first byte splits the payload as a numeric frame.
-    pub(super) separator: Option<&'row str>,
     /// The row's own clock, which stamps the message.
     pub(super) clock: Option<&'row Scalar>,
     /// The row's other columns, resolved to the fields they fill.
@@ -215,7 +206,6 @@ pub(super) fn parse_record_with(
         version: column(BEGINSTRING_COLUMN)
             .and_then(Scalar::as_str)
             .and_then(version_of),
-        separator: column(SEPARATOR_COLUMN).and_then(Scalar::as_str),
         clock: column(CLOCK_COLUMN),
         fills: &fills,
     };
@@ -241,14 +231,6 @@ pub(super) fn parse_bytes(
     if bytes.is_empty() {
         return Ok(FixMessages::one(empty(reader, extras)));
     }
-    // A stated separator is read as a numeric frame with that separator; with
-    // none stated the reader picks its own dialect from the frame, which is
-    // what a record carrying only a payload has to do.
-    let built = match parameters.separator.and_then(|held| held.bytes().next()) {
-        Some(separator) => reader
-            .split_fix_with(bytes, separator, extras)
-            .map(FixMessages::one),
-        None => reader.parse_line_with(bytes, extras),
-    };
+    let built = reader.parse_line_with(bytes, extras);
     Ok(built.unwrap_or_else(|_| FixMessages::one(empty(reader, extras))))
 }

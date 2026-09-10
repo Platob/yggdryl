@@ -92,7 +92,7 @@ impl FixCodec {
     ///
     /// Each row is read cell by cell out of the arrays and parsed through the
     /// same funnel as a line: the payload as [`Self::parse_line`] reads it,
-    /// the `pluginid`, `beginstring`, `sep` and `timestamp` columns as
+    /// the `pluginid`, `beginstring` and `timestamp` columns as
     /// [`Self::parse_text_record`] reads them - `pluginid` both filling its
     /// own column and naming the dialect the row is read under - the
     /// `direction` column, which this reader alone reads, and every other
@@ -530,7 +530,6 @@ struct Columns {
     /// The column the frame is read from, proven there and readable.
     payload: usize,
     beginstring: Option<usize>,
-    separator: Option<usize>,
     direction: Option<usize>,
     /// The column stating the row's own clock, which stamps the message.
     clock: Option<usize>,
@@ -580,7 +579,6 @@ impl Columns {
         Ok(Self {
             payload: payload_at,
             beginstring: named(super::record::BEGINSTRING_COLUMN),
-            separator: named(super::record::SEPARATOR_COLUMN),
             direction: named(DIRECTION_COLUMN),
             clock: named(super::record::CLOCK_COLUMN),
             pluginid: named(super::record::PLUGINID_COLUMN).filter(|at| *at != payload_at),
@@ -632,7 +630,6 @@ impl Rows {
         let at = self.columns.payload;
         let payload = payload_bytes(&self.columns.dtypes[at], batch.column(at), row)?;
         let beginstring = stated(self.columns.beginstring)?;
-        let separator = stated(self.columns.separator)?;
         let clock = stated(self.columns.clock)?;
         // The direction a row states outranks any reading of its line.
         let direction = stated(self.columns.direction)?
@@ -680,7 +677,6 @@ impl Rows {
                 .as_ref()
                 .and_then(Scalar::as_str)
                 .and_then(version_of),
-            separator: separator.as_ref().and_then(Scalar::as_str),
             clock: clock.as_ref(),
             fills: &fills,
         };

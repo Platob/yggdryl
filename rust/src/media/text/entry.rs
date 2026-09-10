@@ -157,6 +157,43 @@ impl TextEntries {
         }
     }
 
+    /// Every pair one run of bytes declares, as ranges of the page it names.
+    ///
+    /// The one door onto the scanner, so a reader that holds a page - a whole
+    /// line, or one field's value inside it - asks the same walk the text read
+    /// asks and gets the same answer. Nothing is copied: `body` already points
+    /// into a page and each key and value is a range of it, so a tree costs one
+    /// vector per level and no byte of what it names.
+    ///
+    /// Where a value ends is the scanner's to say, and so is whether the line
+    /// marked a key; both travel into the entry unchanged. Nesting descends
+    /// only into a value that is itself pair-shaped - the mixed form, where a
+    /// numeric envelope carries a payload stating its own fields - and stops
+    /// eight levels down. A line is bounded input from outside, so the descent
+    /// is bounded here rather than by the stack.
+    ///
+    /// `None` where the bytes declare no pair at all, which is the same answer
+    /// [`TextLine::entries`](super::TextLine::entries) carries for a line
+    /// nothing asked a tree of: an absence, never an empty tree.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// use yggdryl::media::text::{TextBytes, TextEntries};
+    ///
+    /// let body = TextBytes::from_bytes("8=FIX.4.4|35=D|58=a, b|10=0|")?;
+    /// let entries = TextEntries::from_bytes(&body).expect("a framed line states pairs");
+    /// let read: Vec<_> = entries.iter().map(ToString::to_string).collect();
+    /// assert_eq!(read, ["8=FIX.4.4", "35=D", "58=a, b", "10=0"]);
+    /// // Every key and value is a range of the page `body` holds, never a copy.
+    /// assert_eq!(entries.as_slice()[2].value().as_bytes(), b"a, b");
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn from_bytes(body: &TextBytes) -> Option<Self> {
+        read_entries_at(body, 0)
+    }
+
     /// Borrow the entries in the order the line declared them.
     #[must_use]
     pub fn as_slice(&self) -> &[TextEntry] {
@@ -333,21 +370,7 @@ impl TextEntries {
     }
 }
 
-/// Read every pair one line declares into a tree.
-///
-/// The bytes are ranges of the page `body` already points into, so a tree costs
-/// one vector per level and copies nothing the line holds. Where a value ends
-/// is [`entry_spans`](crate::mime_type::line::entry_spans)' to say, and so is
-/// whether the line marked a key; both travel into the entry unchanged.
-///
-/// Nesting descends only into a value that is itself pair-shaped - the mixed
-/// form, where a numeric envelope carries a payload stating its own fields -
-/// and stops at [`MAX_ENTRY_DEPTH`]. A line is bounded input from outside, so
-/// the descent is bounded here rather than by the stack.
-pub(crate) fn read_entries(body: &TextBytes) -> Option<TextEntries> {
-    read_entries_at(body, 0)
-}
-
+/// One level of the walk [`TextEntries::from_bytes`] opens.
 fn read_entries_at(body: &TextBytes, depth: usize) -> Option<TextEntries> {
     if depth >= MAX_ENTRY_DEPTH {
         return None;
@@ -367,7 +390,14 @@ fn read_entries_at(body: &TextBytes, depth: usize) -> Option<TextEntries> {
                 entry.set_entries(Some(nested));
             }
         }
-        entries.get_or_insert_with(TextEntries::new).push(entry);
+        // Sized on the first push from the `=` signs the bytes hold, which is
+        // where the pairs are and so an upper bound on how many there are: one
+        // vector per level rather than one per doubling of it.
+        entries
+            .get_or_insert_with(|| {
+                TextEntries::with_capacity(memchr::memchr_iter(b'=', bytes).count())
+            })
+            .push(entry);
     }
     entries
 }

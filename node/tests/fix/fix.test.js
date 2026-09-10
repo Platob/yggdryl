@@ -1025,7 +1025,7 @@ test('a reader parses every frame shape the core reads', () => {
   assert.equal(reader.parseLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|')).next().value.byTag(55).toJSON(), 'AAPL')
   assert.equal(reader.parseLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')).next().value.byTag(55).toJSON(), 'AAPL')
   assert.equal(
-    reader.parseFixLine(Buffer.from('8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01'), 1).byTag(55).toJSON(),
+    reader.parseFixLine(Buffer.from('8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01')).byTag(55).toJSON(),
     'AAPL',
   )
   assert.equal(reader.parsePairs([['55', 'AAPL']]).byTag(55).toJSON(), 'AAPL')
@@ -1596,13 +1596,13 @@ test('a message says everything the core derives about it', () => {
   assert.ok(message.lift().length > 0)
   assert.equal(message.digest().length, 16)
   assert.equal(message.arrivals()[0][0], 8)
-  // Every arrival states its dialect as the branch digest, and a message read
-  // under no dialect is on the standard branch, whose digest is zero.
-  assert.ok(message.arrivals().every(([, bid]) => bid === 0))
+  // An arrival states the tag its key named; the dialect is the message's own,
+  // and a message read under none is on the standard branch.
+  assert.equal(message.branch, fix.STANDARD_BRANCH)
   assert.equal(message.intoBytes(124).toString().split('|')[0], '8=FIX.4.4')
 })
 
-test('a dialect crosses as its digest and the registry resolves it back', () => {
+test('a dialect crosses as its name and the registry resolves a digest back', () => {
   const root = scratch()
   const file = path.join(root, 'bloomberg.cfb')
   fs.writeFileSync(
@@ -1618,19 +1618,19 @@ test('a dialect crosses as its digest and the registry resolves it back', () => 
   )
   const [registry] = fix.FixRegistry.fromCfbFile(file, 'bloomberg')
 
-  // The dialect is declared by the file, so a capture read under it carries a
-  // digest the registry turns back into the branch. Without that table an
-  // outside reader would have to reproduce the hash to join the two.
+  // The dialect is declared by the file, and a capture read under it carries
+  // that dialect once, on the message. A pair does not repeat it: what a
+  // dictionary decided is one value for every field of one message.
   const reader = new fix.FixCodec(registry, { branch: 'bloomberg' })
   const message = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|')).next().value
-  const [, bid] = message.arrivals()[0]
-  assert.notEqual(bid, 0)
-  assert.equal(registry.branchByDigest(bid), 'bloomberg')
-  assert.equal(registry.getBranchByDigest(bid), 'bloomberg')
+  assert.equal(message.branch, 'bloomberg')
+  assert.ok(message.arrivals().every(([tag]) => Number.isInteger(tag)))
 
-  // Zero is the standard branch, which every registry holds through the
-  // crate's own fields; a value no declared branch digests to names nothing
-  // at all.
+  // The digest table stays what it is: a capture written by a reader that
+  // stores digests joins to a declaration through it, without reproducing the
+  // hash. Zero is the standard branch, which every registry holds through the
+  // crate's own fields; a value no declared branch digests to names nothing at
+  // all.
   assert.equal(registry.getBranchByDigest(0), fix.STANDARD_BRANCH)
   assert.equal(registry.getBranchByDigest(-1), null)
   assert.throws(() => registry.branchByDigest(-1))

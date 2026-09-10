@@ -493,10 +493,10 @@ const IDENTIFIER_SHAPE: &str = "a fix identifier is a decimal tag, a colon, and 
 ///
 /// Derived from `fix:branch` and `fix:tag` on every read and never stored,
 /// so changing this representation changes no shard. The two halves are the
-/// two `i32` columns a capture already carries - [`FixEntry::tag`] and
-/// [`FixEntry::branch`] - so an identifier is those columns and nothing
-/// beside them: eight bytes, `Copy`, its own compact hash key, and ordered
-/// tag-major then by branch.
+/// two facts a capture already carries - the tag an arrival entry keeps,
+/// [`FixEntry::tag`], and the branch its message holds, [`FixMsg::branch`] -
+/// so an identifier is those two and nothing beside them: eight bytes,
+/// `Copy`, its own compact hash key, and ordered tag-major then by branch.
 ///
 /// ```
 /// use yggdryl::{FixBranch, FixId};
@@ -626,9 +626,9 @@ impl FixId {
     /// Returns the branch digest read the way a capture stores it.
     ///
     /// The same four bytes and the same signed reading as
-    /// [`FixEntry::branch`] and [`FixBranch::digest_signed`], so an
-    /// identifier's half feeds [`FixRegistry::branch_by_digest`] and joins a
-    /// capture's column with nothing in between.
+    /// [`FixBranch::digest_signed`], so an identifier's half feeds
+    /// [`FixRegistry::branch_by_digest`] and joins a capture's column with
+    /// nothing in between.
     pub const fn branch(self) -> i32 {
         self.branch
     }

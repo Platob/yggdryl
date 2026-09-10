@@ -347,7 +347,7 @@ fn entries_folded_past_the_materialization_depth_read_back_whole() {
     let row = parsed.into_row(&schema).unwrap();
     // The row holds a folded leaf somewhere under the entries column.
     fn leaf(entry: &[Scalar]) -> bool {
-        match entry.get(4) {
+        match entry.get(3) {
             Some(tail) if tail.as_bytes().is_some_and(|bytes| !bytes.is_empty()) => true,
             Some(tail) => tail
                 .as_sequence()

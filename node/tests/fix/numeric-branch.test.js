@@ -59,7 +59,7 @@ test('pinned numeric fields and groups use their own branch and scalar types', (
       ['beta', 'Beta', 'utf8', '42', '7'],
     ]) {
       const codec = new fix.FixCodec(catalog, { branch })
-      const message = codec.parseFixLine(wire, 124)
+      const message = codec.parseFixLine(wire)
       assert.equal(message.branch, branch)
       assert.equal(message.byName(`No${name}Rows`).asJs(), 1)
       assert.equal(message.field.fieldByPath(`No${name}Rows`).dtype.toString(), 'int32')
@@ -75,7 +75,7 @@ test('pinned numeric fields and groups use their own branch and scalar types', (
 test('a pinned numeric row never borrows an unrelated branch counter', () => {
   const codec = new fix.FixCodec(registry(false), { branch: 'beta' })
   const wire = Buffer.from('6100=1|6101=42|55=AAPL|')
-  const message = codec.parseFixLine(wire, 124)
+  const message = codec.parseFixLine(wire)
   for (const name of ['NoAlphaOnlyRows', 'AlphaOnlyRows', 'AlphaOnlyID']) {
     assert.equal(message.getByName(name), null)
   }

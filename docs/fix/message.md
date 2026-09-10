@@ -310,7 +310,7 @@ A written child keeps its position, so every reader already holding the row addr
     reader = FixCodec(registry)
 
     line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|"
-    message = reader.parse_fix_line(line, separator=ord("|"))
+    message = reader.parse_fix_line(line)
     children = len(message)
     names = [name for name, _ in message]
 
@@ -342,7 +342,7 @@ A written child keeps its position, so every reader already holding the row addr
 
     # Only the row changed: the wire comes back byte for byte.
     assert message.into_bytes(ord("|")) == line
-    assert message.entries() == reader.parse_fix_line(line, separator=ord("|")).entries()
+    assert message.entries() == reader.parse_fix_line(line).entries()
     ```
 
 === "JavaScript"
@@ -356,7 +356,7 @@ A written child keeps its position, so every reader already holding the row addr
     const reader = new fix.FixCodec(registry)
 
     const line = '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|'
-    const message = reader.parseFixLine(Buffer.from(line), 124)
+    const message = reader.parseFixLine(Buffer.from(line))
     const children = message.size
     const names = [...message].map(([name]) => name)
 
@@ -434,7 +434,7 @@ A written child keeps its position, so every reader already holding the row addr
     schema = fix_schema(registry, "fix")
 
     line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|"
-    order = reader.parse_fix_line(line, separator=ord("|"))
+    order = reader.parse_fix_line(line)
     row = order.into_row(schema)
 
     held = FixMsg.from_row(schema, row, registry)
@@ -460,7 +460,7 @@ A written child keeps its position, so every reader already holding the row addr
     const schema = fix.schema(registry, 'fix')
 
     const line = '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|'
-    const order = reader.parseFixLine(Buffer.from(line), 124)
+    const order = reader.parseFixLine(Buffer.from(line))
     const row = order.intoRow(schema)
 
     const held = fix.FixMsg.fromRow(schema, row, registry)

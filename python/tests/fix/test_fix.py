@@ -1342,7 +1342,7 @@ def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> No
     framed = next(reader.parse_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|"))
     assert framed.by_tag(55).as_py() == "AAPL"
     assert next(reader.parse_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|")).by_tag(55).as_py() == "AAPL"
-    assert reader.parse_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
+    assert reader.parse_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01").by_tag(
         55
     ).as_py() == "AAPL"
     assert reader.parse_pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
@@ -2050,16 +2050,15 @@ def test_a_rows_pluginid_fills_its_field_and_names_the_dialect_it_is_read_under(
 
     # The dialect is the row's own: the branch's name and its alias in another
     # case each read the row under it, so the dialect's field resolves and the
-    # arrival entry carries the branch it resolved in. Any other plugin - one
-    # no branch is named after, a null, an empty string - keeps the codec's
-    # pin, then the standard branch, where the same key maps to nothing and is
-    # kept under its own spelling instead.
-    venue = FixBranch("venue").digest()
+    # message carries the branch it resolved in - one value for the message,
+    # never one per pair. Any other plugin - one no branch is named after, a
+    # null, an empty string - keeps the codec's pin, then the standard branch,
+    # where the same key maps to nothing and is kept under its own spelling
+    # instead.
     entries = parsed.column("nofixentries").to_pylist()
     unmapped = parsed.column("nounmappedfixentries").to_pylist()
     for row in (0, 1):
         assert {entry["tag"] for entry in entries[row]} == {35, 11, 5001}, row
-        assert {entry["branch"] for entry in entries[row]} == {venue}, row
         assert unmapped[row] == [], row
     for row in (2, 3, 4):
         assert {entry["tag"] for entry in entries[row]} == {35, 11, 0}, row

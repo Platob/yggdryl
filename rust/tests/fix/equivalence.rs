@@ -554,12 +554,9 @@ fn read() -> Pinned {
     pinned.lines("enrich", &committed_codec(), &enrichments(), true);
     pinned.lines("latest", &committed_codec(), &restatements(), false);
     // The absence convention is deliberately not byte-preserving, so the same
-    // marked and null-spelled lines are read once more with it turned off and
-    // the separator stated: a difference the convention would have swallowed
-    // shows here instead.
-    let verbatim = FixCodec::new(super::committed_registry())
-        .with_separator(b'|')
-        .with_null_values::<[&str; 0], _>([]);
+    // marked and null-spelled lines are read once more with it turned off: a
+    // difference the convention would have swallowed shows here instead.
+    let verbatim = FixCodec::new(super::committed_registry()).with_null_values::<[&str; 0], _>([]);
     pinned.lines("verbatim", &verbatim, &frames(), false);
     pinned
 }

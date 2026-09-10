@@ -1585,18 +1585,32 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
     line
 }
 
-/// What reading a message off a line costs today, by how many pairs the line
+/// What reading a message off a line costs, by how many pairs the line
 /// carries: four, sixteen and sixty-four.
 ///
 /// Three widths rather than one, because the interesting number is not the
-/// total but how it grows: 22 at four pairs, 37 at sixteen and 87 at
-/// sixty-four is fifteen allocations for twelve more pairs and fifty for
-/// forty-eight more. Two of those per pair are the owned key and value copies
-/// an entry makes today, which is exactly what a read over ranges of the
-/// line's own page would stop paying - so this table is what that claim will
-/// be read against, and a single width could not tell a per-pair cost from a
-/// per-message one.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 22), (16, 37), (64, 87)];
+/// total but how it grows: fifteen allocations for twelve more pairs and fifty
+/// for forty-eight more, which is the same growth these three widths measured
+/// before the entries became ranges of the line's own page - 22, 37 and 87.
+/// Every one of the five that were added is per *message*, and the per-pair
+/// cost did not move at all.
+///
+/// That is worth stating plainly, because the change was expected to save two
+/// allocations a pair and did not. It could not: this line's keys are four
+/// bytes and its values one or two, so both halves fitted `SmolStr`'s inline
+/// buffer and the copies the entry stopped making were never allocations here.
+/// What stopped is the copying itself, which these counts cannot see and
+/// `an_entry_is_a_range_of_its_line_and_the_message_holds_the_branch` asserts
+/// directly: every key and value is the line's own bytes at the line's own
+/// offsets, so a data field carrying three kilobytes now costs what a two-byte
+/// `Side` costs, where an owned copy charged for every byte of it.
+///
+/// The five are one page the line is copied into, and the lists the two-stage
+/// read holds - what the line said, and what the build folds in. The page is
+/// what a message owning its bytes costs when it is handed a borrowed slice
+/// and nothing owned one already; a caller holding a decoded line already has
+/// that page, and hands it over instead of paying for it.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 27), (16, 42), (64, 92)];
 
 #[test]
 fn a_fix_message_read_from_a_line_costs_what_its_pairs_cost() {
