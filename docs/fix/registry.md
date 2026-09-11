@@ -6,10 +6,10 @@
 
 | Category | Native definition | Identity |
 | --- | --- | --- |
-| `fields` | Tagged scalar `Field`; group counters are `int32` | Canonical tag and branch, plus folded name |
-| `messages` | Non-null Struct `Field` owned by an immutable `MsgType` singleton | Name and branch; `fix:msgtype` carries the complete wire code |
-| `components` | Named Struct `Field` | Name and branch |
-| `groups` | Named List or LargeList of a non-null Struct occurrence | Name and branch; `fix:counter` identifies a separate scalar field |
+| `fields` | Tagged scalar `Field`; group counters are `int32` | The tag and the folded name together; the id is derived from the pair on every read, never stored |
+| `messages` | Non-null Struct `Field` owned by an immutable `MsgType` singleton | Folded name; `fix:msgtype` carries the complete wire code |
+| `components` | Named Struct `Field` | Folded name |
+| `groups` | Named List or LargeList of a non-null Struct occurrence | Folded name; `fix:counter` identifies a separate scalar field |
 
 | Aspect | Rule |
 | --- | --- |
@@ -21,9 +21,10 @@
 | Planning | Message identity, contextual counter lookup, and group layouts are compiled before parsing rows |
 | Mutation | A refusal leaves every category and index unchanged; metadata edits refresh referenced occurrences atomically |
 | Identity spelling | A case-only replacement preserves the stored canonical name; an identity or referenced datatype change is refused |
-| Iteration | Scalar fields iterate tag-major; named categories and message singletons have deterministic native order |
+| Membership | `fix:branches` lists the dialects that contributed a field - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
+| Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
-| Snapshot | `into_json` / `from_json` preserve all four categories and branch declarations; stable hashes include that complete state |
+| Snapshot | `into_json` / `from_json` preserve all four categories - `{fields, components, groups, messages}` - with each field's membership inside its metadata; stable hashes include that complete state |
 | Crate fields | `new()` holds this crate's [twenty fields](capture.md#the-crates-own-columns), standard tags from 65000, before anything is inserted, so every registry - loaded, built or left empty - resolves `timestamp` and `sendersessionid`; a [store](store.md) never writes them and reads past a stored copy |
 
 ## Use
@@ -33,7 +34,7 @@
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixCategory, FixId, FixRegistry, FieldPath};
+    use yggdryl::{DataType, FixCategory, FixRegistry, FieldPath};
 
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     counter.as_fix_mut().set_tag(453)?;
@@ -50,7 +51,7 @@
     parties.as_fix_mut().set_component("Party")?;
     registry.create_definition(FixCategory::Groups, parties)?;
 
-    let mut group = registry.definition(FixCategory::Groups, "Parties", None)?.clone();
+    let mut group = registry.definition(FixCategory::Groups, "Parties")?.clone();
     group.as_fix_mut().set_group("Parties")?;
     let mut count = registry.field(453)?.clone();
     count.as_fix_mut().set_field_ref("NoPartyIDs")?;
@@ -59,10 +60,10 @@
     registry.create_definition(FixCategory::Messages, order)?;
 
     assert_eq!(registry.field(453)?.dtype(), &DataType::Int32);
-    assert_eq!(registry.field_by_path(&FieldPath::from_str("Order.Parties.PartyID")?, None)?.as_fix().tag()?, Some(448));
-    let message = registry.msgtype("D", None)?;
+    assert_eq!(registry.field_by_path(&FieldPath::from_str("Order.Parties.PartyID")?)?.as_fix().tag()?, Some(448));
+    let message = registry.msgtype("D")?;
     assert_eq!(message.name(), "Order");
-    assert_eq!(message.get_group_by_counter(FixId::from_str("453:")?).unwrap().name(), "Parties");
+    assert_eq!(message.get_group_by_counter(453).unwrap().name(), "Parties");
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 1);
     ```
 
@@ -99,7 +100,7 @@
     assert registry.field_by_path("Order.Parties.PartyID").fix.tag == 448
     message = registry.msgtype("D")
     assert message.name == "Order"
-    assert message.get_group_by_counter("453:").name == "Parties"
+    assert message.get_group_by_counter(453).name == "Parties"
     assert [field.name for field in registry.definitions("groups")] == ["Parties"]
     ```
 
@@ -136,7 +137,7 @@
     assert.equal(registry.fieldByPath('Order.Parties.PartyID').fix.tag, 448)
     const message = registry.msgtype('D')
     assert.equal(message.name, 'Order')
-    assert.equal(message.getGroupByCounter('453:').name, 'Parties')
+    assert.equal(message.getGroupByCounter(453).name, 'Parties')
     assert.deepEqual([...registry.definitions('groups')].map(field => field.name), ['Parties'])
     ```
 
@@ -146,44 +147,236 @@ The standard calls the repeating block `Parties` and its counter `NoPartyIDs`; O
 
 The generator preserves official group names, including `Grp` suffixes. It derives an occurrence name deterministically: `Parties` becomes `Party`, and `NestedParties2` becomes `NestedParty2`; these singular occurrence names are local naming choices. A collision with an existing field produces an explicit suffix, such as `RateSourceGrp`, `LegRateSourceGrp`, or an occurrence's `Component` suffix. Source display names remain metadata.
 
-## Tiers
+## One namespace
 
-Scalar lookups try canonical identifiers, alternate identifiers, folded names, and aliases; a tag query never searches names. An explicit branch pins the lookup, while omission uses the standard branch and then named branches in deterministic order.
+A field is its tag and its name, and a lookup asks for one of them: canonical before alternate for tags, canonical name before alias for names, the fold always - ASCII case and the `_`, `-` and space separators dropped - and nothing else. A tag query never searches names; no lookup takes a dialect, and none consults membership.
 
 | Lookup | Meaning |
 | --- | --- |
-| `field(55)` | Tagged scalar field |
-| `field_by_id(FixId)` | Exact canonical or alternate identifier |
-| `field_by_name(name, branch)` | Scalar name or alias |
-| `field_by_path(path, branch)` | Scalar first, then a named message/component/group head and nested members |
-| `definition(category, name, branch)` | One explicit category |
-| `group_by_counter(FixId)` | Globally unique group for that counter |
-| `MsgType::get_group_by_counter(FixId)` | Unique group within that message's structure |
+| `field(55)` | The canonical holder of the tag, then a field listing it as an alternate; a tag two fields hold under different names answers the first holder |
+| `field_by_id(FixId)` | Exact: the one field whose tag and folded name digest to that id |
+| `field_by_name(name)` | The canonical fold, then an alias fold |
+| `field_by_path(path)` | Scalar first, then a named message/component/group head and nested members |
+| `definition(category, name)` | One explicit category |
+| `group_by_counter(tag)` | Globally unique group for that counter tag |
+| `MsgType::get_group_by_counter(tag)` | Unique group within that message's structure |
 
 The `get_` forms return absence; failing twins return a typed, located error. One spelling addresses a member on both sides: a schema states one item type for a list, so `Parties[0].PartyID` answers the field every occurrence holds here and the value that occurrence carries in a message. A path through a group may still omit the occurrence - `Parties.PartyID` - because a schema has no positions to skip. A counter shared by multiple contexts is ambiguous globally, so parsing uses the selected message's compiled group index.
 
-Within a scalar lookup kind, omission of a branch tries standard canonical keys, named-branch canonical keys, standard alternates, then named-branch alternates. Names and aliases use separate indexes; a stored name is rechecked after hashing, so a digest collision never selects an unrelated field.
+Names and aliases use separate indexes; a stored name is rechecked after hashing, so a digest collision never selects an unrelated field. The id is the signed XXH32 of the tag's little-endian bytes followed by the folded name, so `MsgType`, `msgtype` and `Msg_Type` under tag 35 are one id; `FixId::of(tag, name)` refuses a negative tag and displays as its decimal digest. An id crosses every boundary as that integer - `FixKey::Id` in Rust, `field_by_id(int)` and `get_by_id(int)` in Python and JavaScript - and a bare integer anywhere else is a tag.
 
-### Branch declarations
+=== "Rust"
 
-`branch_named` tries canonical branch identity before aliases; an alias does not change the canonical branch stored on fields. Rust and Python expose complete branch values, while Node accepts branch text and exposes reverse digest lookup plus complete snapshot preservation.
+    ```rust
+    use yggdryl::{DataType, FixId, FixKey, FixRegistry};
 
-| Rust accessor | Answer |
-| --- | --- |
-| `branch_of(FixId)` | Borrowed declaration for an identifier's branch |
-| `branch_named(name)` | Canonical name first, then an alias |
-| `branches()` | Lazy branch declarations |
-| `get_branch_by_digest(i32)` / `branch_by_digest(i32)` | The branch named by a signed branch digest, as `FixBranch::digest_signed` answers it and `branches.json` publishes it |
-| `set_branch(FixBranch)` | Install or replace a declaration atomically |
+    let mut msgtype = DataType::Utf8.nullable_field("MsgType");
+    msgtype.as_fix_mut().set_tag(35)?;
+    let registry = FixRegistry::from_fields([msgtype])?;
+
+    let id = registry.field(35)?.as_fix().id()?.expect("a tagged field");
+    assert_eq!(id, FixId::of(35, "msg_type")?);
+    assert_eq!(id, FixId::of(35, "MSGTYPE")?);
+    assert_ne!(id, FixId::of(35, "MsgSeqNum")?);
+    assert_eq!(id.to_string(), id.digest().to_string());
+    assert!(FixId::of(-1, "MsgType").is_err());
+    assert_eq!(registry.field(FixKey::Id(id))?.name(), "MsgType");
+    assert_eq!(registry.field_by_id(id)?.name(), "MsgType");
+    assert!(registry.get_field(id.digest()).is_none(), "a bare integer is a tag");
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field
+    from yggdryl.fix import FixRegistry
+
+    msgtype = Field("MsgType", "utf8")
+    msgtype.fix.tag = 35
+    registry = FixRegistry.from_fields([msgtype])
+
+    held = registry.field(35).fix.id
+    assert isinstance(held, int)
+    spelled = Field("msg_type", "utf8")
+    spelled.fix.tag = 35
+    assert spelled.fix.id == held
+    assert registry.field_by_id(held).name == "MsgType"
+    assert registry.get_field(held) is None, "a bare integer is a tag"
+    assert Field("MsgType", "utf8").fix.id is None
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, fix } = require('yggdryl')
+
+    const msgtype = Field.from('MsgType: utf8')
+    msgtype.fix.tag = 35
+    const registry = fix.FixRegistry.fromFields([msgtype])
+
+    const held = registry.field(35).fix.id
+    assert.equal(typeof held, 'number')
+    const spelled = Field.from('msg_type: utf8')
+    spelled.fix.tag = 35
+    assert.equal(spelled.fix.id, held)
+    assert.equal(registry.fieldById(held).name, 'MsgType')
+    assert.equal(registry.getField(held), null, 'a bare integer is a tag')
+    assert.equal(Field.from('MsgType: utf8').fix.id, null)
+    ```
+
+### What one namespace means for a field that arrives
+
+The identity is the pair, so `add_field`, `add_fields` and `merge_with` decide by both halves; `insert` replaces only the same identity, and a held tag under another name goes beside the holder exactly as the third row says.
+
+| The registry holds | The arrival | What happens |
+| --- | --- | --- |
+| The same tag under the same folded name | The same field | Update: `merge_with` unions its tags, aliases, membership and the rest |
+| The same folded name under another tag | The same field spelled with another number | Merges into the holder, which gains the tag as an alternate - unless another field already answers that tag, in which case the tag is left out with a debug log - and the incoming name as an alias unless it is the canonical one; no second field |
+| The same tag under another name | A new field | Registered under its own id beside the holder, *and* the holder gains the arrival's name as an alias; the bare tag keeps answering the first holder, the newcomer is reached by its name or its id |
+| Neither | A new field | Inserted as it arrived |
+
+A name is what identifies a field to a reader, so a new name on a held tag is a new thing a dialect defined over a tag it reused; a tag is what identifies a field on the wire, so a held name on a new tag is the same thing spelled with another number. One of this crate's own tags is every dictionary's already and is skipped, counted as neither added nor merged. Two identities digesting to one id is a typed conflict on insert, and every id hit is rechecked against the tag and the fold before it counts.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, FixId, FixRegistry};
+
+    let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    symbol.as_fix_mut().set_tag(55)?;
+    let mut registry = FixRegistry::from_fields([symbol])?;
+
+    // The same folded name under another tag: one field, one more number.
+    let mut spelled = DataType::Utf8.nullable_field("symbol");
+    spelled.as_fix_mut().set_tag(9055)?;
+    spelled.as_fix_mut().set_branches(["blp"])?;
+    assert!(!registry.add_field(spelled)?, "merged");
+    let holder = registry.field_by_tag(9055)?;
+    assert_eq!(holder.name(), "Symbol");
+    assert_eq!(holder.as_fix().tags()?, [9055]);
+    assert_eq!(holder.as_fix().branches().collect::<Vec<_>>(), ["blp"]);
+
+    // The same tag under another name: a second field beside the holder.
+    let mut venue = DataType::Utf8.nullable_field("VenueSymbol");
+    venue.as_fix_mut().set_tag(55)?;
+    venue.as_fix_mut().set_branches(["xnas"])?;
+    assert!(registry.add_field(venue)?, "added");
+    assert_eq!(registry.field_by_tag(55)?.name(), "Symbol", "the bare tag answers the holder");
+    assert!(registry.field_by_tag(55)?.as_fix().aliases().any(|alias| alias == "VenueSymbol"));
+    assert!(!registry.field_by_tag(55)?.as_fix().has_branch("xnas"));
+    let newcomer = registry.field_by_id(FixId::of(55, "venue_symbol")?)?;
+    assert_eq!(newcomer.name(), "VenueSymbol");
+    assert_eq!(registry.field_by_name("VenueSymbol")?.name(), "VenueSymbol", "canonical before alias");
+    assert_eq!(registry.dialects(), ["blp", "xnas"]);
+
+    // Tag-major, the tag's holder first, then id.
+    let names: Vec<&str> = registry.iter().filter(|field| field.as_fix().tag().ok().flatten() < Some(65_000)).map(|field| field.name()).collect();
+    assert_eq!(names, ["Symbol", "VenueSymbol"]);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field
+    from yggdryl.fix import FixRegistry
+
+    symbol = Field("Symbol", "utf8")
+    symbol.fix.tag = 55
+    registry = FixRegistry.from_fields([symbol])
+
+    # The same folded name under another tag: one field, one more number.
+    spelled = Field("symbol", "utf8")
+    spelled.fix.tag = 9055
+    spelled.fix.branches = ["blp"]
+    assert registry.add_field(spelled) is False, "merged"
+    holder = registry.field_by_tag(9055)
+    assert holder.name == "Symbol"
+    assert holder.fix.tags == [9055]
+    assert holder.fix.branches == ["blp"]
+
+    # The same tag under another name: a second field beside the holder.
+    venue = Field("VenueSymbol", "utf8")
+    venue.fix.tag = 55
+    venue.fix.branches = ["xnas"]
+    assert registry.add_field(venue) is True, "added"
+    assert registry.field_by_tag(55).name == "Symbol", "the bare tag answers the holder"
+    assert "VenueSymbol" in registry.field_by_tag(55).fix.aliases
+    assert not registry.field_by_tag(55).fix.has_branch("xnas")
+    assert registry.field_by_id(venue.fix.id).name == "VenueSymbol"
+    assert registry.field_by_name("venue_symbol").name == "VenueSymbol", "canonical before alias"
+    assert registry.dialects() == ["blp", "xnas"]
+
+    # Tag-major, the tag's holder first, then id.
+    names = [field.name for field in registry if field.fix.tag < 65000]
+    assert names == ["Symbol", "VenueSymbol"]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, fix } = require('yggdryl')
+
+    const symbol = Field.from('Symbol: utf8')
+    symbol.fix.tag = 55
+    const registry = fix.FixRegistry.fromFields([symbol])
+
+    // The same folded name under another tag: one field, one more number.
+    const spelled = Field.from('symbol: utf8')
+    spelled.fix.tag = 9055
+    spelled.fix.branches = ['blp']
+    assert.equal(registry.addField(spelled), false, 'merged')
+    const holder = registry.fieldByTag(9055)
+    assert.equal(holder.name, 'Symbol')
+    assert.deepEqual(holder.fix.tags, [9055])
+    assert.deepEqual(holder.fix.branches, ['blp'])
+
+    // The same tag under another name: a second field beside the holder.
+    const venue = Field.from('VenueSymbol: utf8')
+    venue.fix.tag = 55
+    venue.fix.branches = ['xnas']
+    assert.equal(registry.addField(venue), true, 'added')
+    assert.equal(registry.fieldByTag(55).name, 'Symbol', 'the bare tag answers the holder')
+    assert.ok(registry.fieldByTag(55).fix.aliases.includes('VenueSymbol'))
+    assert.equal(registry.fieldByTag(55).fix.hasBranch('xnas'), false)
+    assert.equal(registry.fieldById(venue.fix.id).name, 'VenueSymbol')
+    assert.equal(registry.fieldByName('venue_symbol').name, 'VenueSymbol', 'canonical before alias')
+    assert.deepEqual(registry.dialects(), ['blp', 'xnas'])
+
+    // Tag-major, the tag's holder first, then id.
+    const names = [...registry].filter(field => field.fix.tag < 65000).map(field => field.name)
+    assert.deepEqual(names, ['Symbol', 'VenueSymbol'])
+    ```
+
+### Membership
+
+A dictionary is a membership, not a namespace: what it contributed is recorded on the field it contributed to, as `fix:branches` - a comma-separated list of dialect names, each held to the alias grammar (non-empty, no comma), folded to ASCII lowercase, deduplicated under the fold and kept sorted, so two registries built from the same dictionaries in any order hash alike. An empty list removes the key, which is what every field the specification alone defines states: the shipped `config/fix` carries none. Membership is provenance a caller filters on; resolution never consults it, and a message root the codec builds carries none.
+
+| Rust | Python | JavaScript | Answer |
+| --- | --- | --- | --- |
+| `FixField::branches()` | `field.fix.branches` | `field.fix.branches` | The dialects that contributed the field, sorted, lowercase; empty when absent |
+| `FixField::has_branch(name)` | `field.fix.has_branch(name)` | `field.fix.hasBranch(name)` | Whether one dialect is among them, ASCII case folded |
+| `FixFieldMut::set_branches([..])` | `field.fix.branches = [..]` | `field.fix.branches = [..]` | Replace the list; a name that is empty or carries a comma is refused |
+| `FixFieldMut::add_branch(name)` | `field.fix.add_branch(name)` | `field.fix.addBranch(name)` | Add one, idempotent under the fold |
+| `FixRegistry::dialects()` | `registry.dialects()` | `registry.dialects()` | The distinct names any field or named definition carries, sorted |
+
+`merge_with` on a field unions the two lists; `FixRegistry::merge_with`, `add_fields` and `add_cfb_file` carry that union onto whatever the registry already held, so a merged registry says which dictionaries spoke each field.
 
 ## Accessors
 
 | Rust | Python | JavaScript |
 | --- | --- | --- |
 | `definitions(category)` | `definitions(category)` | `definitions(category)` |
-| `definition(category, name, branch)` | `definition(category, name, branch=None)` | `definition(category, name, branch?)` |
-| `msgtype(spelling, branch)` | `msgtype(spelling, branch=None)` | `msgtype(spelling, branch?)` |
+| `definition(category, name)` | `definition(category, name)` | `definition(category, name)` |
+| `msgtype(spelling)` | `msgtype(spelling)` | `msgtype(spelling)` |
 | `msgtypes()` | `msgtypes()` | `msgtypes()` |
+| `field_by_id(FixId)` | `field_by_id(id: int)` | `fieldById(id: number)` |
+| `field_by_tag(i32)` | `field_by_tag(tag: int)` | `fieldByTag(tag: number)` |
+| `field_by_name(&str)` | `field_by_name(name)` | `fieldByName(name)` |
+| `field_by_path(&FieldPath)` | `field_by_path(path)` | `fieldByPath(path)` |
+| `group_by_counter(i32)` | `group_by_counter(tag: int)` | `groupByCounter(tag: number)` |
+| `dialects()` | `dialects()` | `dialects()` |
 | `iter()` | `iter(registry)` | `registry[Symbol.iterator]()` |
 | `len()` | `len(registry)` | `registry.size` |
 
@@ -193,12 +386,12 @@ The size and ordinary iteration count scalar fields only. Named iterators hold a
 
 | Operation | Contract |
 | --- | --- |
-| `create_definition` | Refuses an existing canonical name or field identifier |
+| `create_definition` | Refuses an existing canonical name or identity; a tag another field holds under another name is free, since the identity is the pair |
 | `insert_definition` | Inserts or replaces one complete definition; returns the replaced field |
 | `update_definition` | Replaces an existing definition in full; absence is an error and omitted metadata is removed |
 | `remove_definition` | Removes one definition; refuses live references; absence returns no field |
-| Scalar `insert` | Inserts or replaces a tagged scalar field |
-| Scalar `update` | Merges metadata for the existing identity using the native per-key rules |
+| Scalar `insert` | Replaces only the same identity; a held tag under another name is added beside the holder, which gains the arrival's name as an alias; a canonical name, alias or alternate tag another field holds is a conflict |
+| Scalar `update` | Merges metadata for the existing identity - same tag and folded name - using the native per-key rules |
 | Scalar `remove` | Returns no field when absent or still referenced |
 
 These mutations preserve stored canonical spelling for case-only input changes. Referenced metadata edits cascade through components, groups, and messages; datatype changes and occurrence-local metadata overrides are refused atomically. A named definition stating no tag takes the one derived from its name - XXH32 of the name into `[100000, 1100000)`, stepping past a slot already taken - so a document that states a tag keeps it, and an update keeps the tag the stored definition already has.
@@ -219,7 +412,7 @@ These mutations preserve stored canonical spelling for case-only input changes. 
     assert_eq!(registry.field(55)?.name(), "Symbol");
     let snapshot = registry.into_json()?;
     assert_eq!(FixRegistry::from_json(&snapshot)?, registry);
-    assert!(registry.remove_definition(FixCategory::Fields, "Symbol", None)?.is_some());
+    assert!(registry.remove_definition(FixCategory::Fields, "Symbol")?.is_some());
     ```
 
 === "Python"
@@ -269,7 +462,7 @@ These mutations preserve stored canonical spelling for case-only input changes. 
     assert.ok(registry.removeDefinition('fields', 'Symbol'))
     ```
 
-Python registries are mutable and unhashable; `stable_hash()` explicitly computes the native content hash. Python `copy.copy` and Node `clone()` create independently mutable registries, including every category and branch declaration.
+Python registries are mutable and unhashable; `stable_hash()` explicitly computes the native content hash. Python `copy.copy` and Node `clone()` create independently mutable registries, including every category and each field's membership.
 
 ## A field carries its code set
 
@@ -609,7 +802,8 @@ Scalar `update` merges the same identifier: incoming scalar metadata wins, alias
 
 | Metadata | Merge rule |
 | --- | --- |
-| `fix:tag`, `fix:branch` | Must agree |
+| `fix:tag` | Must agree; identity is not merged |
+| `fix:branches` | Union, folded, sorted: every dictionary that contributed either side |
 | `fix:tags` | Combine alternate tags under collision validation |
 | `fix:lineage` | Merge by pedigree, incoming entry winning a shared point |
 | `fix:codes` | Merge by wire value, incoming code winning a shared value |
@@ -621,19 +815,19 @@ Scalar `update` merges the same identifier: incoming scalar metadata wins, alias
 
 ## Folding a second source in
 
-Rust and Python expose `merge_with`, `add_fields`, and `add_cfb_file` as atomic native folds. `from_cfb_file` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and inline enum codes; the [CLI](cli.md) exposes ingestion and synchronization.
+Rust and Python expose `merge_with`, `add_fields`, and `add_cfb_file` as atomic native folds. `from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and inline enum codes, and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `fix:branches`; `None` stamps nothing. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the codec's `with_version` pin. The [CLI](cli.md) exposes ingestion and synchronization.
 
 A `vocabulary-tag`'s `alt` names its tag where it names only that tag. A dialect that spells one `alt` over two tags - `TRTN_FX_TradeCapture` declares `HedgeCurrency` for the currency a hedge settles in and again for the one it is quoted in - has given a name to neither, and a tag whose `alt` is another tag's own decimal has done the same to that tag's identity. Both fall back to their own decimal, the name a tag declaring no `alt` already takes, and keep the declared spelling as `display`, so every tag is left named and nothing the file said is lost. Contention is decided by the key a name is indexed under, which folds case and drops `_`, `-` and space, so `Hedge_Currency` contends with `HedgeCurrency`. Two tags sharing a spelling record each other's tag among their alternate tags and so stay reachable as a pair; three record nothing, because an alternate identifier names one field. A `normalization-binding` cannot spell a contended name back onto one of them, and a `map` naming one decodes neither. The spelling survives where the file made it unambiguous: a `tag-constraint` binds one tag, so the message root, the component and the group each carry it, and a reader resolving a key against the message it arrived in - a bridge row's `MSGTYPE`, and the repeating group the key sits in - reaches the tag the file meant.
 
-A CBlock's `normalization-binding` is read for the names it spells its tags with, and for nothing else. A `tag-normalization` whose mapping is one bare `$602` says its `tag-name` is another spelling of tag 602, so that spelling joins the field as an alias while the `vocabulary-tag` keeps the name. A conditional mapping, a `lookup`, and a mapping built from several expressions each name nothing: this layer holds no evaluator. Most of a real binding spells names a tag already answers to - resolution folds ASCII case - so the pass pays where a `vocabulary-tag` declared no `alt` and the tag is otherwise reachable only by its own number. No name is refused: one the vocabulary never declared, one another tag in the same branch already answers to, or one the core could not store drops on its own.
+A CBlock's `normalization-binding` is read for the names it spells its tags with, and for nothing else. A `tag-normalization` whose mapping is one bare `$602` says its `tag-name` is another spelling of tag 602, so that spelling joins the field as an alias while the `vocabulary-tag` keeps the name. A conditional mapping, a `lookup`, and a mapping built from several expressions each name nothing: this layer holds no evaluator. Most of a real binding spells names a tag already answers to - resolution folds ASCII case - so the pass pays where a `vocabulary-tag` declared no `alt` and the tag is otherwise reachable only by its own number. No name is refused: one the vocabulary never declared, one another tag already answers to, or one the core could not store drops on its own.
 
-`merge_with` combines another registry and its dialect declarations; `add_fields` folds a scalar field iterable; `add_cfb_file` parses a CBlock, folds its vocabulary, and records the declared numeric FIX version and source branch aliases. These operations report added/merged counts only after the entire staged fold succeeds.
+`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its named definitions folded member by member and each field's membership unioned; `add_fields` folds a scalar field iterable the same way; `add_cfb_file(location, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as a name, opening with a letter - on everything the file produced; a supplied name that is empty or carries a comma is refused. These operations report added/merged counts only after the entire staged fold succeeds.
 
 A CBlock is read for what it says. A real one is megabytes over hundreds of thousands of elements, so an element this reader cannot make sense of - a tag spelled in a way the core cannot store, a constraint naming a tag the file's own vocabulary never declared, a mapping to a type nothing listed, a `fix-version` the version grammar cannot read - is dropped and the rest of the file is still a dictionary. Each drop is a `log` record at warn level carrying the located sentence a refusal would have: the byte, what was expected, what arrived, and the element the file spells it in. Only a document that is not well-formed XML, or that stops with an element open, is refused across each binding as a native located error, because neither leaves anything to keep.
 
 ## Registering a message type
 
-`MsgType` has no public constructor and is not a generic datatype or scalar. It is one immutable registry-owned message Struct; lookup accepts an exact case-sensitive wire code or a folded name/alias, and ambiguous wire codes answer absence.
+`MsgType` has no public constructor and is not a generic datatype or scalar. It is one immutable registry-owned message Struct; lookup accepts an exact case-sensitive wire code, a folded name, or an alias tag 35's code set gives the code. Message codes live in one map under the rule fields follow: a definition re-declaring a code under the same folded name folds into the stored one, and under another name it is a second message reached by its name. The bare code answers the message named as tag 35's code set names the code, else the first in name order - facts of the catalog's content rather than of the order it was built in, so a dictionary folded, stored and loaded answers the same message. An alias spelling that two codes share names nothing.
 
 === "Rust"
 
@@ -646,7 +840,7 @@ A CBlock is read for what it says. A real one is megabytes over hundreds of thou
     let message = registry.register_msgtype("P Report Ack", Some("AllocationReportAck"), None)?;
     assert_eq!(message.as_str(), "P Report Ack");
     assert_eq!(message.as_field().as_fix().msgtype(), Some("P Report Ack"));
-    assert_eq!(registry.msgtype("allocationreportack", None)?.as_str(), "P Report Ack");
+    assert_eq!(registry.msgtype("allocationreportack")?.as_str(), "P Report Ack");
     ```
 
 === "Python"
@@ -739,7 +933,7 @@ Environment and default-folder resolution happen once, on the first global looku
 
 ### A bridge configuration is a document that names itself
 
-An ObjectName's `type=` property supplies its raw configuration type; otherwise the request operation supplies it. Bulk and wildcard documents expand lazily through `UlPlugins` and `FixMessages`; each selected configuration becomes one flat typed message, as described in [Capture](capture.md).
+An ObjectName's `type=` property supplies its raw configuration type; otherwise the request operation supplies it. Bulk and wildcard documents expand lazily through `UlPlugins` and `FixMessages`; each selected configuration becomes one flat typed message, as described in [Capture](capture.md). The bridge's attributes are a dictionary of their own - `with_ulbridge_fields` registers them, every one a member of `ULBRIDGE_DIALECT` (`ulbridge`) with tags from 20001 - and what FIX publishes keeps FIX's tags: `SenderCompID`, `TargetCompID` and `BeginString` are 49, 56 and 8. Every registry already holds the crate's `state` and `version`, so the document's `State` and `Version` attributes are the fields `PluginState` (20019) and `PluginVersion` (20021): the row holds them under those names, and the arrival entry keeps the document's spelling.
 
 ### A direction is the verb in front of the payload
 
@@ -749,12 +943,13 @@ An ObjectName's `type=` property supplies its raw configuration type; otherwise 
 
 - A scalar without `fix:tag`, a nested tagged field, or a nullable message root is refused.
 - A group needs a valid `int32` counter and non-null Struct occurrence; the list's own nullability is independent.
-- A named definition carries the tag derived from its name; its category, name and branch identify it, and a stated tag outside `[100000, 1100000)` is refused.
-- A derived tag is admissible on any branch: it names a definition this crate derived rather than a tag anyone published, and the branch digest keeps two derivations of one name apart.
+- A named definition carries the tag derived from its name; its category and folded name identify it, and a stated tag outside `[100000, 1100000)` is refused.
+- A derived tag names a definition this crate derived rather than a tag anyone published; a definition keeps the tag it already has through an update, and one arriving on a tag another definition holds derives afresh.
 - Missing, cyclic, contradictory, or over-depth references fail at intake with location; the nesting limit is 64.
 - Removing a referenced definition fails atomically; delete dependents before their sources.
 - A field-reference occurrence may vary name and nullability, but may not introduce independent metadata overrides.
-- A colon-bearing scalar string lookup is a name; parse a `FixId` explicitly or use the binding's identifier method.
+- A string lookup is a name or a dotted path, colon included; an id is an integer spelled only through `FixKey::Id` in Rust and `field_by_id` / `get_by_id` in the bindings, and a bare integer anywhere else is a tag.
+- `fix:branches` is never an argument: no lookup, definition or message-type accessor takes a dialect, and the only filter on membership is the one a caller writes over `branches()`.
 - Generic scalar iteration and size exclude named definitions. Use the explicit category iterators to walk the catalog.
 
 ## Commands
@@ -764,6 +959,8 @@ An ObjectName's `type=` property supplies its raw configuration type; otherwise 
     ```bash
     cargo test -p yggdryl --test fix
     cargo test -p yggdryl --lib fix::tests::
+    cargo test -p yggdryl --lib -- fix::tests::the_fold_table_holds_through_add_field_and_through_merge_with fix::tests::one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one fix::tests::three_spellings_of_one_name_under_one_tag_are_one_identity fix::tests::name_indexes_fold_ascii_and_membership_never_resolves
+    cargo test -p yggdryl --test fix -- merge:: cfb::a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_standard_field
     cargo test -p yggdryl --lib -- fix::tests::a_replacement_document_round_trips_canonically_and_in_order fix::tests::the_replacement_writer_refuses_what_the_document_cannot_state fix::tests::a_merge_lets_the_incoming_replacements_win_whole fix::tests::every_committed_replacement_is_the_document_the_rust_writer_renders
     cargo test -p yggdryl --test fix latest::the_dictionary_carries_the_rules_the_engine_reads
     ```

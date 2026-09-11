@@ -11,8 +11,8 @@
 | Writes | `set`, `set_many`, `with_value` and `remove` [change the row](#written-into-the-row) and never the entries; a key resolves as a lookup does, a value types through the registry's field, and a refusal leaves the message unchanged. `set_many` and `with_value` are Rust-only; Python and JavaScript expose `set` and `remove` |
 | Validates | the row through `Field::scalar`, so a `Scalar::Record` input becomes that sequence |
 | Borrows | `registry()`, `as_field()`, `as_value()` |
-| Branch | derived, not declared: the root field's own `fix:branch`, resolved once at construction |
-| Bare key tier | this message's branch, then the standard branch, and no further |
+| Identity | a field is its tag and its name; a message speaks no dialect and carries no membership, so a bare tag or name resolves in the registry's [one namespace](#one-namespace) |
+| Bare key | a tag answers the canonical holder, then an alternate; a name the canonical fold, then an alias fold; an id (`FixKey::Id`, `get_by_id`) is exact |
 | Resolves through | the linked [registry](registry.md), never a private copy of its rules |
 | Serialization | inherited: `into_json` renders the schema, [`into_json_scalar`](../text/json.md) the value, `from_json_scalar_with_field` reads it back typed, ordered and canonicalized against the same root |
 | Restated | `into_latest` re-expresses the row at the [registry's newest version](#restated-at-the-dictionarys-newest-version) from the dictionary alone; the entries never change |
@@ -68,13 +68,12 @@
     assert_eq!(msg.get(55), msg.get_by_tag(55));
     assert!(msg.value("Parties.PartyID").is_err(), "a group member needs its index");
 
-    // The message's branch is the root's own, and an identifier is exact.
-    assert_eq!(msg.branch(), &yggdryl::FixBranch::STANDARD);
-    assert_eq!(
-        msg.by_id(yggdryl::FixId::standard(38))?,
-        &Scalar::from(100_i64)
-    );
-    assert!(msg.get_by_id(yggdryl::FixId::from_str("5001:cme")?).is_none());
+    // An identifier is the tag and the name together, under the one fold, and exact.
+    let id = registry.field_by_tag(38)?.as_fix().id()?.expect("a tagged field");
+    assert_eq!(id, yggdryl::FixId::of(38, "order_qty")?);
+    assert_eq!(msg.by_id(id)?, &Scalar::from(100_i64));
+    assert!(msg.get_by_id(yggdryl::FixId::of(38, "Quantity")?).is_none(), "another name is another field");
+    assert!(msg.get_by_id(yggdryl::FixId::of(5001, "OrderQty")?).is_none(), "another tag is another field");
 
     // Schema and value serialize through the paths every field and value share.
     let schema = root.clone().into_json()?;
@@ -91,7 +90,7 @@
     import pytest
 
     from yggdryl import DataType, Field, types
-    from yggdryl.fix import STANDARD_BRANCH, FixMsg, FixRegistry
+    from yggdryl.fix import FixMsg, FixRegistry
 
     symbol = Field("Symbol", "utf8", nullable=False)
     symbol.fix.tag = 55
@@ -139,10 +138,17 @@
         message.by_path("Parties.PartyID")  # a group member needs its index
     assert [name for name, _ in message] == ["OrderQty", "Symbol", "NoPartyIDs", "Parties", "9999"]
 
-    # The message's branch is the root's own, and an identifier is exact.
-    assert message.branch == STANDARD_BRANCH
-    assert message.by_id("38:").as_py() == 100
-    assert message.get_by_id("5001:cme") is None
+    # An identifier is the tag and the name together, under the one fold, and exact.
+    folded = Field("order_qty", "int64")
+    folded.fix.tag = 38
+    assert folded.fix.id == qty.fix.id
+    assert message.by_id(qty.fix.id).as_py() == 100
+    renamed = Field("Quantity", "int64")
+    renamed.fix.tag = 38
+    assert message.get_by_id(renamed.fix.id) is None, "another name is another field"
+    retagged = Field("OrderQty", "int64")
+    retagged.fix.tag = 5001
+    assert message.get_by_id(retagged.fix.id) is None, "another tag is another field"
 
     # The schema serializes through the path every field already has, and the
     # value the message holds names the same row.
@@ -204,10 +210,17 @@
       ['OrderQty', 'Symbol', 'NoPartyIDs', 'Parties', '9999'],
     )
 
-    // The message's branch is the root's own, and an identifier is exact.
-    assert.equal(message.branch, fix.STANDARD_BRANCH)
-    assert.equal(message.byId('38:').asJs(), 100)
-    assert.equal(message.getById('5001:cme'), null)
+    // An identifier is the tag and the name together, under the one fold, and exact.
+    const folded = Field.from('order_qty: int64')
+    folded.fix.tag = 38
+    assert.equal(folded.fix.id, qty.fix.id)
+    assert.equal(message.byId(qty.fix.id).asJs(), 100)
+    const renamed = Field.from('Quantity: int64')
+    renamed.fix.tag = 38
+    assert.equal(message.getById(renamed.fix.id), null, 'another name is another field')
+    const retagged = Field.from('OrderQty: int64')
+    retagged.fix.tag = 5001
+    assert.equal(message.getById(retagged.fix.id), null, 'another tag is another field')
 
     // Schema and value serialize through the paths every field and value share.
     const document = message.toJSON()
@@ -216,23 +229,25 @@
     assert.ok(new fix.FixMsg(root, message.value, registry).equals(message))
     ```
 
-## Resolution tier
+## One namespace
 
-A bare tag or name resolves in two steps and no further:
+A message speaks no dialect of its own: the registry is one namespace, and a bare tag or name resolves in it directly, the way the [registry](registry.md) resolves it.
 
-1. this message's own branch, when the tag is in `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)`, or
-   the message is already standard;
-2. the standard branch.
+| key | answers |
+| --- | --- |
+| a tag | the canonical holder of the tag, then a field holding it as an alternate |
+| a name | the canonical fold, then an alias fold - `ticker` reaches `Symbol` through its alias |
+| an id | exactly one field: `FixId::of(tag, name)`, the signed XXH32 of the tag's bytes and the folded name, so `OrderQty`, `order_qty` and `orderqty` under 38 are one id and `Quantity` under 38 is another |
 
-`get_by_tag(5001)` finds the venue's own field, and `get_by_tag(35)` still finds `MsgType`.
+`get_by_tag(5001)` finds a venue's own field and `get_by_tag(35)` finds `MsgType` from the same message, because both live in the one namespace. Which dictionaries a field belongs to is the field's own `fix:branches`, a membership a reader may ask about and nothing here resolves through; a message root the codec builds carries none.
 
 ## Accessors
 
 | accessor | resolution |
 | --- | --- |
-| `get_by_tag` / `by_tag` | the tag through the tier to its canonical name, then the root child of that name; falls back to a root child named by the tag's decimal text |
-| `get_by_id` / `by_id` | takes a `FixId` by value, names a dictionary exactly and does not tier, so a foreign branch misses |
-| `get_by_name` / `by_name` | folds through the same tier to the registry's canonical spelling, then matches a root child exactly |
+| `get_by_tag` / `by_tag` | the root child carrying the tag, else the tag through the registry to its canonical name and the root child of that name, else a root child named by the tag's decimal text |
+| `get_by_id` / `by_id` | takes a `FixId` (an `int` in Python, a `number` in JavaScript) and names one field exactly: the child under that field's name, and a miss for any other tag or name |
+| `get_by_name` / `by_name` | folds through the registry to the canonical spelling, then matches a root child exactly |
 | `get_by_path` / `by_path` | the whole string as a name, then segment by segment: into a Struct child by name, into a List entry by a decimal index |
 | `get` / `value` | takes a `FixKey` and redirects |
 
@@ -243,7 +258,7 @@ A message is read once and then written to: enrichment fills what it implied, th
 | Key | Reaches |
 | --- | --- |
 | a tag the dictionary knows | the child carrying it, replaced where it stands; else appended under the dictionary's field - its canonical name, its datatype, its `fix:tag` - so a written child is indistinguishable from a stated one |
-| a name the dictionary knows | the same field, through the [tier](#resolution-tier) every lookup resolves by |
+| a name the dictionary knows | the same field, through the [one namespace](#one-namespace) every lookup resolves in |
 | a name it does not know | the child spelled that way, exactly or under the fold every name resolves by, keeping that child's own field; nothing reached is refused, and the message stands |
 | a tag it does not know | the child named by its decimal, else a nullable `utf8` child appended under it - what the builder does with an unknown tag |
 | a `Null` value | a stated null: the child stays, nullable, holding nothing |
@@ -391,7 +406,7 @@ A written child keeps its position, so every reader already holding the row addr
 
 ## A row is a message again
 
-`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The branch is the schema's own `fix:branch`. The entries are rebuilt from the `nofixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the line the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `Utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds.
+`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The entries are rebuilt from the `nofixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the line the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `Utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds.
 
 === "Rust"
 
@@ -650,10 +665,10 @@ A value written into a target is re-typed for the target's field through the cod
 
 ## Edges
 
-- A root whose `fix:branch` is malformed -> typed error at construction, never a silent miss later.
 - `get_by_tag(9999)`, an unknown tag -> the root child named `9999` exactly, never `09999`; the miss allocates nothing.
-- A bare tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` on a non-standard message -> only the standard branch is tried.
-- `by_id` on a foreign branch -> a miss, because an identifier never tiers.
+- A tag two fields hold under different names (`OrderQty` and `Quantity`, both 38) -> `by_id` tells them apart, each id reaching its own child; a bare tag reaches one child, the one named by the registry's first holder where the row itself does not carry the tag.
+- `by_id` with another name or another tag than the field's -> a miss, because an identifier names the pair exactly and never folds a tag onto a name it does not carry.
+- `FixId::of(-1, ..)` -> refused, because no FIX field has a negative tag; a message root the codec builds carries no `fix:branches`, because a message is not a dictionary member.
 - `by_path("Parties.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the occurrence (`Parties[0].PartyID`), which is the spelling the registry takes too.
 - `set` with a name nothing reaches -> a typed absence naming the key, and the message unchanged; with a value the field refuses -> the value contract's refusal, and the message unchanged; `set_many` refuses all of its writes on the first refusal.
 - `set` with a `Null` -> a stated null, the child kept and made nullable; `remove` -> the child gone and its value answered, `None` for a key that reaches nothing.

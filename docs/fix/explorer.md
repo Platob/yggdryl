@@ -19,21 +19,24 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixCategory, FixRegistry};
+    use yggdryl::{DataType, FixCategory, FixId, FixRegistry, TIMESTAMP_TAG_NAME};
     use yggdryl::holder::local::Folder;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
     assert_eq!(registry.len(), 6_261);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
-    let parties = registry.definition(FixCategory::Groups, "parties", None)?;
+    let parties = registry.definition(FixCategory::Groups, "parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert_eq!(parties.as_fix().component(), Some("party"));
-    assert_eq!(registry.msgtype("D", None)?.as_str(), "D");
-    // The crate's own columns are standard fields from tag 65000, held by every registry.
-    let timestamp = registry.field_by_id("65003:".parse()?)?;
+    assert_eq!(registry.msgtype("D")?.as_str(), "D");
+    // The crate's own columns are fields from tag 65000, held by every registry;
+    // an identity is the tag and the name together.
+    let (tag, name) = TIMESTAMP_TAG_NAME;
+    let timestamp = registry.field_by_id(FixId::of(tag, name)?)?;
     assert_eq!(timestamp.name(), "timestamp");
     assert_eq!(timestamp.display(), Some("Timestamp"));
+    assert_eq!(timestamp.as_fix().id()?, Some(FixId::of(65_003, "Timestamp")?));
     ```
 
 === "Python"
@@ -49,10 +52,12 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
     assert parties.fix.counter == 453
     assert parties.fix.component == "party"
     assert registry.msgtype("D").value == "D"
-    # The crate's own columns are standard fields from tag 65000, held by every registry.
-    timestamp = registry.field_by_id("65003:")
+    # The crate's own columns are fields from tag 65000, held by every registry;
+    # an identity is the tag and the name together, an int derived on every read.
+    timestamp = registry.field_by_tag(65_003)
     assert timestamp.name == "timestamp"
     assert timestamp.display == "Timestamp"
+    assert registry.field_by_id(timestamp.fix.id) == timestamp
     ```
 
 === "JavaScript"
@@ -69,10 +74,12 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
     assert.equal(parties.fix.counter, 453)
     assert.equal(parties.fix.component, 'party')
     assert.equal(registry.msgtype('D').asStr(), 'D')
-    // The crate's own columns are standard fields from tag 65000, held by every registry.
-    const timestamp = registry.fieldById('65003:')
+    // The crate's own columns are fields from tag 65000, held by every registry;
+    // an identity is the tag and the name together, a number derived on every read.
+    const timestamp = registry.fieldByTag(65_003)
     assert.equal(timestamp.name, 'timestamp')
     assert.equal(timestamp.display, 'Timestamp')
+    assert.ok(registry.fieldById(timestamp.fix.id).equals(timestamp))
     ```
 
 ## What the registry holds
@@ -104,7 +111,7 @@ This section displays the pinned source documents and needs JavaScript.
 ## Edges
 
 - Results show at most sixty definitions initially; **Show more** adds the next sixty.
-- Search is case-insensitive text filtering. Exact registry resolution and branch precedence remain native API behavior.
+- Search is case-insensitive text filtering. Exact registry resolution - a tag's canonical holder before an alternate, a canonical name before an alias, an id exact - remains native API behavior.
 - Stored references are displayed without expanding them in the browser. Native sample schemas show the codec's resolved result.
 - Input and emitted sample bytes are displayed with visible escapes. **Copy displayed text** copies that representation.
 - Every typed value, digest, facet and anomaly shown for a sample comes from the generated native result.

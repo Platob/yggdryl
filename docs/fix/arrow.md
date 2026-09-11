@@ -13,9 +13,9 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | one output row per emitted message; bulk and wildcard bodies expand, with carried source columns repeated; a line the reader refuses is a row holding an empty message, so a row in is a row out |
 | Batches | closed by raw bytes against the codec's `batch_byte_size`, `DEFAULT_BATCH_BYTE_SIZE` (128 MiB) unless pinned: several small input batches accumulate into one, one larger than the target splits by rows in proportion, and a batch always holds at least one row |
-| Pins | on the codec, for the whole run: `with_payload_column`, `with_capture_names`, `with_separator`, `with_branch`, `with_version`, `with_null_values`, `with_direction`, `with_batch_byte_size` |
+| Pins | on the codec, for the whole run: `with_payload_column`, `with_capture_names`, `with_separator`, `with_version`, `with_null_values`, `with_direction`, `with_batch_byte_size`; no dialect pin, because the registry is one namespace |
 | Stages | a call, never a flag: `enrich_messages_arrow_reader`, `FixCodec::lifecycle`, `FixMsg::into_latest` and `FixDedup` compose over `messages` and `arrow_reader` |
-| Per row | `branch`, `beginstring`, `direction` and `timestamp` are parameters read from the row; any other column named after a field fills it where the message did not state it |
+| Per row | `beginstring`, `direction` and `timestamp` are parameters read from the row; any other column named after a field - `pluginid` among them - fills it where the message did not state it |
 | Errors | typed I/O, schema and parsing failures; a source batch of another schema than the first is a conflict; malformed bulk input reports its location and stops the stream |
 | Lazy | one source batch held at a time; configuration cursors consumed incrementally under the output batch bound |
 | Wire | `write_arrow_reader` rebuilds every line from `nofixentries` and never from the columns; a batch without that column is refused before a row is read |
@@ -173,14 +173,13 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 | --- | --- | --- | --- |
 | `payload_column` | `with_payload_column` | `body` (`DEFAULT_PAYLOAD_COLUMN`) | which column carries the frames: `utf8`, as the [text reader emits its rows](../media/text.md#row-schema), and `binary` accepted too on intake, for a capture another producer landed as bytes |
 | `separator` | `with_separator` | `SOH` (`0x01`) | the separator a re-emitted line is written with, which is what `write_arrow_reader` writes; reading takes none, because a line already said which byte separated its fields |
-| `branch` | `with_branch` | none | the dialect, so no row infers one |
-| `version` | `with_version` | none | the version values are translated at, never what a column is called; unpinned, each row answers for itself |
+| `version` | `with_version` | none | the version values are translated at, never what a column is called; unpinned, each row answers for itself: `ApplVerID(1128)`, then `BeginString(8)`, then the dictionary's newest |
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
 | `direction` | `with_direction` | `SENT` | the direction a line that states none of its own took - no verb in front of its payload, and no [document saying which half it is](registry.md#a-direction-is-the-verb-in-front-of-the-payload) |
 | `batch_byte_size` | `with_batch_byte_size` | `DEFAULT_BATCH_BYTE_SIZE`, 128 MiB | the raw bytes one output batch targets |
 | `capture_names` | `with_capture_names` | none | what a run's row-header captures are called, in the order a line answers them, so [`parse_text_line`](capture.md#a-reader-is-the-whole-parse-surface) reads a capture by position rather than by name |
 
-What happens to a message on its way into a row is a stage, and a stage is a call over the stream rather than a flag on the reader: [`enrich_messages_arrow_reader`](#filled-where-it-sits) fills batches, `lifecycle` [stamps](lifecycle.md#in-a-batch-read) a stream, `into_latest` [restates](message.md#restated-at-the-dictionarys-newest-version) a message and `FixDedup` drops an adjacent republication - each composed as `arrow_reader(schema, stage(messages(reader)))`, so the order stages run in is the order they are written in and nothing runs unasked. Python spells the pins as keywords on `FixCodec(registry, *, branch, version, separator, payload_column, capture_names, null_values, direction, batch_byte_size)`, JavaScript as the options object of `new fix.FixCodec(registry, { ... })` in camelCase; `separator` is the byte's integer value, and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
+What happens to a message on its way into a row is a stage, and a stage is a call over the stream rather than a flag on the reader: [`enrich_messages_arrow_reader`](#filled-where-it-sits) fills batches, `lifecycle` [stamps](lifecycle.md#in-a-batch-read) a stream, `into_latest` [restates](message.md#restated-at-the-dictionarys-newest-version) a message and `FixDedup` drops an adjacent republication - each composed as `arrow_reader(schema, stage(messages(reader)))`, so the order stages run in is the order they are written in and nothing runs unasked. Python spells the pins as keywords on `FixCodec(registry, *, version, separator, payload_column, capture_names, null_values, direction, batch_byte_size)`, JavaScript as the options object of `new fix.FixCodec(registry, { ... })` in camelCase; `separator` is the byte's integer value, and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
 
 Messages to batches, with one stage between them: the lifecycle stamps four messages of one order's life, and every row carries the chain.
 
@@ -273,12 +272,11 @@ Messages to batches, with one stage between them: the lifecycle stamps four mess
 
 ## A column is the caller speaking per row
 
-One column carries the frames; four more supply, per row, arguments the byte readers already take per call, and every other column is offered to the message by name. A separator is not among them: which byte separated a frame's fields is what the line itself said, so no row states it.
+One column carries the frames; three more supply, per row, arguments the byte readers already take per call, and every other column is offered to the message by name. A separator is not among them: which byte separated a frame's fields is what the line itself said, so no row states it.
 
 | Column | Supplies |
 | --- | --- |
 | the payload column, named by the codec | the frame parsed |
-| `branch` | the dialect |
 | `beginstring` | the source version |
 | `direction` | the direction, stated |
 | `timestamp` | the row's own clock, which [stamps the message](capture.md#every-message-is-dated-and-versioned) ahead of any clock the frame carries |
@@ -286,7 +284,7 @@ One column carries the frames; four more supply, per row, arguments the byte rea
 
 A column is the caller speaking per row and a pin is the caller speaking per run, so a column outranks the pin and both outrank what the frame infers: a row whose `beginstring` says `FIX.4.2` is read at 4.2 whatever the codec was pinned to, and its values translate through the code spellings 4.2 declares. A column absent, null or empty is silence, never an instruction and never an error.
 
-A fill is named the way a key is: a column whose folded name resolves in the message's branch, then the standard one, then any dictionary the registry holds - so a `senderSessionId` capture reaches the crate's own `sendersessionid` - and last through the bridge's own spellings of standard fields, `seqNum` reaching `MsgSeqNum(34)`. It is row-only: never an entry, so it is not in `nofixentries`, not re-emitted by `write_arrow_reader` and not in `msghash`; a value the field cannot hold fills nothing rather than a null; and a column named by a tag's digits fills nothing, because a name is what reaches a field. Which columns fill is decided once, from the schema and the dictionary, rather than per row.
+A fill is named the way a key is: a column whose folded name resolves in the registry's one namespace - the canonical fold, then an alias fold, so a `senderSessionId` capture reaches the crate's own `sendersessionid` and a `pluginid` column the crate's `pluginid` - and last through the bridge's own spellings of standard fields, `seqNum` reaching `MsgSeqNum(34)`. It is row-only: never an entry, so it is not in `nofixentries`, not re-emitted by `write_arrow_reader` and not in `msghash`; a value the field cannot hold fills nothing rather than a null; and a column named by a tag's digits fills nothing, because a name is what reaches a field. Which columns fill is decided once, from the schema and the dictionary, rather than per row.
 
 `direction` is still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. `beginstring` and `timestamp` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided, and its `timestamp` column holds what a `timestamp` column stated. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
 
@@ -305,12 +303,12 @@ A fill is named the way a key is: a column whose folded name resolves in the mes
 | `senderSessionId` | utf8, nullable | the session instance the bridge handled the line on; folds onto `sendersessionid` (65007), so it fills that column rather than leading the row, and never over a reading the message stated |
 | `msgCtxId` | utf8, nullable | fills `msgctxid` (65008) |
 | `seqNum` | int64, nullable | fills `msgseqnum` (34) where the frame did not carry it; carried in front too, since no FIX column is named `seqnum` |
-| `pluginid` | utf8 | fills `pluginid` (65009), the plugin that logged the line; where its text names a dialect the dictionary declares, it is also the branch the row is read under |
+| `pluginid` | utf8 | fills `pluginid` (65009), the plugin that logged the line, and selects nothing |
 | `level` | utf8 | the capture's own column |
 
 The session uid, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
 
-The plugin is read twice over, from one cell: it fills the crate's own `pluginid` column by name, like any capture named after a field, and where its text is the name or an alias of a dialect the dictionary declares it is the branch the row is read under, outranking the codec's own pin. A plugin no branch is named after leaves that pin standing. The two session names are only ever what the line itself spells, through the `ULFROMSESSIONNAME` and `ULTOSESSIONNAME` aliases they answer to.
+The plugin is a fill and nothing more: it lands in the crate's own `pluginid` column by name, like any capture named after a field, and selects no dictionary and no version - the registry is one namespace, and which dictionaries a field belongs to is the field's own `fix:branches`, which no read consults. The two session names are only ever what the line itself spells, through the `ULFROMSESSIONNAME` and `ULTOSESSIONNAME` aliases they answer to.
 
 === "Rust"
 
@@ -712,7 +710,7 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
 
 ## Performance
 
-`fix/pipeline`, the whole path a desk takes over a bridge's own log: `rust/tests/fix/ulbridge.log`, a second of a ULBridge's capture beside every shape a bridge writes - a Jolokia exchange whose answer is a configuration document, FIXML behind a verb, frames spelled with `^A` and `<SOH>`, a `35=UL` frame packing a group inside a group, bridge rows of a hundred named keys, a statistics line, an empty body - repeated 64 times: 7,232 lines, 7,296 rows (7,232 messages; the empty body is a row and not a message), 11.0 MB. Every stage runs over the same corpus on its own, so a figure is per line of a real capture rather than of one shape. Release build, one Windows 11 machine, AMD Ryzen 5 150, 6 cores, 24 GiB; rustc 1.96.1 release (thin LTO, one codegen unit); the codec pinned to the bridge's dialect. The noise floor on this machine, one binary measured twice, is 0.1% on `text_read` and about 2% on the two codec stages.
+`fix/pipeline`, the whole path a desk takes over a bridge's own log: `rust/tests/fix/ulbridge.log`, a second of a ULBridge's capture beside every shape a bridge writes - a Jolokia exchange whose answer is a configuration document, FIXML behind a verb, frames spelled with `^A` and `<SOH>`, a `35=UL` frame packing a group inside a group, bridge rows of a hundred named keys, a statistics line, an empty body - repeated 64 times: 7,232 lines, 7,296 rows (7,232 messages; the empty body is a row and not a message), 11.0 MB. Every stage runs over the same corpus on its own, so a figure is per line of a real capture rather than of one shape. Release build, one Windows 11 machine, AMD Ryzen 5 150, 6 cores, 24 GiB; rustc 1.96.1 release (thin LTO, one codegen unit); the registry holding the bridge's own fields beside the standard ones. The noise floor on this machine, one binary measured twice, is 0.1% on `text_read` and about 2% on the two codec stages.
 
 | stage | estimate | throughput | per line, row or message |
 | --- | --- | --- | --- |
