@@ -34,15 +34,15 @@ pub enum Structured {
     Jsonl,
     /// One TOML document.
     Toml,
-    /// One or more YAML documents.
-    Yaml,
     /// One XML document.
     Xml,
+    /// One or more YAML documents.
+    Yaml,
 }
 
 impl Structured {
     /// Every format in canonical order.
-    pub const ALL: [Self; 5] = [Self::Json, Self::Jsonl, Self::Toml, Self::Yaml, Self::Xml];
+    pub const ALL: [Self; 5] = [Self::Json, Self::Jsonl, Self::Toml, Self::Xml, Self::Yaml];
 
     /// Name the format a [`Format`] value describes.
     pub const fn from_format(format: Format) -> Self {
