@@ -1,4 +1,4 @@
-//! Byte-first JSON, YAML, and TOML adapters for JavaScript values.
+//! Byte-first JSON, YAML, TOML, and XML adapters for JavaScript values.
 
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Write};
@@ -20,7 +20,7 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use yggdryl::ArrowCastOptions;
-use yggdryl::text::{self, json, toml, yaml};
+use yggdryl::text::{self, json, toml, xml, yaml};
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 use yggdryl::types::decimal::{Decimal, Decimal32, Decimal64};
 use yggdryl::types::integer::Integer;
@@ -947,8 +947,8 @@ fn loading_from(
 
 /// Decode one JSON value without generic format parsing or dispatch.
 ///
-/// No placeholder parameters: `{{ }}` substitution is a YAML and TOML
-/// feature, and the core refuses it for JSON by name.
+/// No placeholder parameters: `{{ }}` substitution belongs to YAML, TOML and
+/// XML, and the core refuses it for JSON by name.
 #[napi(js_name = "jsonLoadsNative", skip_typescript)]
 pub fn json_loads_native(
     input: Either<Buffer, String>,
@@ -1031,6 +1031,36 @@ pub fn toml_loads_native(
     let value = match &input {
         Either::A(bytes) => text::from_bytes_with(bytes.as_ref(), Format::Toml, &loading),
         Either::B(value) => text::from_utf8_with(value, Format::Toml, &loading),
+    }
+    .map_err(napi_error)?;
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_scalar.unwrap_or(false),
+    )
+}
+
+/// Decode one XML document without generic format parsing or dispatch.
+#[napi(js_name = "xmlLoadsNative", skip_typescript)]
+pub fn xml_loads_native(
+    input: Either<Buffer, String>,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
+    environment: Option<bool>,
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let loading = loading_from(
+        limits,
+        field.as_ref(),
+        placeholders,
+        environment.unwrap_or(false),
+    )?;
+    let value = match &input {
+        Either::A(bytes) => text::from_bytes_with(bytes.as_ref(), Format::Xml, &loading),
+        Either::B(value) => text::from_utf8_with(value, Format::Xml, &loading),
     }
     .map_err(napi_error)?;
     decoded_value_for_field(
@@ -1240,6 +1270,32 @@ pub fn toml_dumps_native(
         .map_err(napi_error)
 }
 
+/// Encode one JavaScript value directly to XML bytes.
+#[napi(js_name = "xmlDumpsNative", skip_typescript)]
+pub fn xml_dumps_native(
+    env: Env,
+    value: Unknown<'_>,
+    max_depth: Option<u32>,
+    indent: String,
+    native_wrapper_prototypes: Array<'_>,
+    native_intrinsics: Array<'_>,
+) -> Result<Buffer> {
+    let formatting = checked_formatting(&indent)?;
+    let max_depth = checked_depth(max_depth)?;
+    let value = encode_js_value(
+        env,
+        value,
+        max_depth,
+        &native_wrapper_prototypes,
+        &native_intrinsics,
+    )?;
+    xml::validate_for_write_with_limits(&value, limits_with_depth(max_depth))
+        .map_err(napi_error)?;
+    xml::into_bytes_with_formatting(&value, formatting)
+        .map(Buffer::from)
+        .map_err(napi_error)
+}
+
 /// Encode JavaScript values directly as JSON Lines.
 #[napi(js_name = "jsonLinesDumpAllNative", skip_typescript)]
 pub fn json_lines_dump_all_native(
@@ -1288,8 +1344,8 @@ pub fn yaml_dump_all_native(
 
 /// Decode one JSON value from a path through the native reader boundary.
 ///
-/// No placeholder parameters: `{{ }}` substitution is a YAML and TOML
-/// feature, and the core refuses it for JSON by name.
+/// No placeholder parameters: `{{ }}` substitution belongs to YAML, TOML and
+/// XML, and the core refuses it for JSON by name.
 #[napi(js_name = "jsonLoadPathNative", skip_typescript)]
 pub fn json_load_path_native(
     path: String,
@@ -1365,6 +1421,37 @@ pub fn toml_load_path_native(
     let value = text::from_reader_with(
         open_path(&path, limits.max_input_bytes())?,
         Format::Toml,
+        &loading,
+    )
+    .map_err(napi_error)?;
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_scalar.unwrap_or(false),
+    )
+}
+
+/// Decode one XML document from a path through the native reader boundary.
+#[napi(js_name = "xmlLoadPathNative", skip_typescript)]
+pub fn xml_load_path_native(
+    path: String,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
+    environment: Option<bool>,
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let loading = loading_from(
+        limits,
+        field.as_ref(),
+        placeholders,
+        environment.unwrap_or(false),
+    )?;
+    let value = text::from_reader_with(
+        open_path(&path, limits.max_input_bytes())?,
+        Format::Xml,
         &loading,
     )
     .map_err(napi_error)?;
@@ -1499,6 +1586,33 @@ pub fn toml_dump_path_native(
         .map_err(napi_error)?;
     let mut writer = create_path(&path)?;
     toml::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
+    writer.flush().map_err(napi_error)
+}
+
+/// Encode one JavaScript value directly to an XML file writer.
+#[napi(js_name = "xmlDumpPathNative", skip_typescript)]
+pub fn xml_dump_path_native(
+    env: Env,
+    value: Unknown<'_>,
+    path: String,
+    max_depth: Option<u32>,
+    indent: String,
+    native_wrapper_prototypes: Array<'_>,
+    native_intrinsics: Array<'_>,
+) -> Result<()> {
+    let formatting = checked_formatting(&indent)?;
+    let max_depth = checked_depth(max_depth)?;
+    let value = encode_js_value(
+        env,
+        value,
+        max_depth,
+        &native_wrapper_prototypes,
+        &native_intrinsics,
+    )?;
+    xml::validate_for_write_with_limits(&value, limits_with_depth(max_depth))
+        .map_err(napi_error)?;
+    let mut writer = create_path(&path)?;
+    xml::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
     writer.flush().map_err(napi_error)
 }
 

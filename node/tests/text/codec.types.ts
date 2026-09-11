@@ -5,12 +5,15 @@ import {
   codec,
   json,
   toml,
+  xml,
   yaml,
   type CodecOptions,
   type CodecTimeUnit,
   type SingleDocumentCodec,
+  type TemplateCodecOptions,
   type TimezoneInput,
   type TomlCodecFormat,
+  type XmlCodecFormat,
 } from '../..'
 import { Buffer } from 'node:buffer'
 import { Int32, vectorFromArray, tableFromArrays } from 'apache-arrow'
@@ -139,9 +142,20 @@ const tomlFormat: TomlCodecFormat = 'toml'
 const tomlFacade: SingleDocumentCodec = toml
 const tomlBytes: Buffer = toml.dumps(new Order(), { format: tomlFormat })
 const tomlOrder: Order = toml.loads<Order>(tomlBytes)
+const xmlFormat: XmlCodecFormat = 'xml'
+const xmlFacade: SingleDocumentCodec<TemplateCodecOptions> = xml
+const xmlBytes: Buffer = xml.dumps({ root: new Order() }, { format: xmlFormat })
+const xmlDocument: { root: Order } = xml.loads<{ root: Order }>(xmlBytes)
+const xmlFilled: { root: Order } = xml.loads<{ root: Order }>(xmlBytes, {
+  placeholders: { ID: 1 },
+  environment: false,
+})
 const order: Order = yaml.loads<Order>(bytes, options)
 const inferred: Order = codec.from<Order>('order.yml', options)
 const inferredToml: Order = codec.from<Order>('order.toml', { format: 'toml' })
+const inferredXml: { root: Order } = codec.from<{ root: Order }>('order.xml', {
+  format: 'xml',
+})
 const rows: AsyncIterable<Order> = json.loadAllStream<Order>(
   (async function* () {
     yield bytes
@@ -173,6 +187,13 @@ const loadedFromStream: Promise<Order> = json.load<Order>(
 )
 const loadedTomlFromStream: Promise<Order> = toml.load<Order>(
   Readable.from(['id = 1\n']),
+)
+const loadedXmlFromStream: Promise<{ root: Order }> = xml.load<{ root: Order }>(
+  Readable.from(['<root><id>1</id></root>']),
+)
+const xmlWrite: Promise<void> = xml.dump(
+  { root: order },
+  new Writable({ write(_chunk, _encoding, done) { done() } }),
 )
 const loadedTomlFromWebStream: Promise<Order> = toml.load<Order>(
   new ReadableStream<Uint8Array>({
@@ -224,6 +245,12 @@ const sharedOrder: Order = yaml.loads<Order>(new SharedArrayBuffer(2))
 toml.loadsAll(tomlBytes)
 // @ts-expect-error no TOML multi-document encode API
 toml.dumpAll([order])
+
+// XML is one root element, so it is single-document for the same reason.
+// @ts-expect-error no XML multi-document decode API
+xml.loadsAll(xmlBytes)
+// @ts-expect-error no XML multi-document encode API
+xml.dumpAll([order])
 
 void order
 void inferred
@@ -290,3 +317,9 @@ void dataViewOrder
 void sharedOrder
 void tomlFacade
 void tomlOrder
+void xmlFacade
+void xmlDocument
+void xmlFilled
+void inferredXml
+void loadedXmlFromStream
+void xmlWrite

@@ -1,6 +1,6 @@
 'use strict'
 
-// Jinja-style `{{ }}` placeholders: a YAML and TOML feature only. JSON is a
+// Jinja-style `{{ }}` placeholders: a YAML, TOML and XML feature. JSON is a
 // data interchange format, and both the JS boundary and the core refuse the
 // pair for it by name - see the dedicated test at the bottom.
 
@@ -11,24 +11,29 @@ const path = require('node:path')
 const test = require('node:test')
 const { pathToFileURL } = require('node:url')
 
-const { json, toml, yaml } = require('yggdryl')
+const { json, toml, xml, yaml } = require('yggdryl')
 
 // The same document, written the way each format spells it. YAML *requires*
 // the quotes: a bare `{{ X }}` is a flow mapping.
 const DOCUMENTS = [
-  [yaml, (scalar) => `value: ${JSON.stringify(scalar)}\n`],
-  [toml, (scalar) => `value = ${JSON.stringify(scalar)}\n`],
+  [yaml, (scalar) => `value: ${JSON.stringify(scalar)}\n`, (value) => value],
+  [toml, (scalar) => `value = ${JSON.stringify(scalar)}\n`, (value) => value],
+  // XML keys a document by its root element, so the value is one level in.
+  [xml, (scalar) => `<root><value>${scalar}</value></root>`, (value) => value.root],
 ]
 
 function resolved(scalar, options) {
-  return DOCUMENTS.map(([codec, document]) => codec.loads(document(scalar), options).value)
+  return DOCUMENTS.map(
+    ([codec, document, root]) => root(codec.loads(document(scalar), options)).value,
+  )
 }
 
 test('a whole-scalar placeholder adopts the resolved value type', () => {
   const placeholders = { PORT: 8080, DEBUG: true, HOSTS: ['a', 'b'], NOTHING: null }
-  assert.deepEqual(resolved('{{ PORT }}', { placeholders }), [8080, 8080])
-  assert.deepEqual(resolved('{{ DEBUG }}', { placeholders }), [true, true])
+  assert.deepEqual(resolved('{{ PORT }}', { placeholders }), [8080, 8080, 8080])
+  assert.deepEqual(resolved('{{ DEBUG }}', { placeholders }), [true, true, true])
   assert.deepEqual(resolved('{{ HOSTS }}', { placeholders }), [
+    ['a', 'b'],
     ['a', 'b'],
     ['a', 'b'],
   ])
@@ -39,8 +44,13 @@ test('an embedded placeholder is textual and stays a string', () => {
   assert.deepEqual(resolved('{{ ROOT }}/app', { placeholders }), [
     '/var/log/app',
     '/var/log/app',
+    '/var/log/app',
   ])
-  assert.deepEqual(resolved('h:{{ PORT }}/x', { placeholders }), ['h:8080/x', 'h:8080/x'])
+  assert.deepEqual(resolved('h:{{ PORT }}/x', { placeholders }), [
+    'h:8080/x',
+    'h:8080/x',
+    'h:8080/x',
+  ])
   // A container has no text form inside a larger string.
   assert.throws(
     () => yaml.loads('a: "x{{ HOSTS }}"\n', { placeholders: { HOSTS: ['a'] } }),
@@ -56,13 +66,18 @@ test('a missing variable names itself rather than resolving to nothing', () => {
 })
 
 test('a default makes a variable optional and carries its own type', () => {
-  assert.deepEqual(resolved('{{ PORT | default(8080) }}', { placeholders: {} }), [8080, 8080])
+  assert.deepEqual(resolved('{{ PORT | default(8080) }}', { placeholders: {} }), [
+    8080,
+    8080,
+    8080,
+  ])
   assert.deepEqual(resolved('{{ R | default("/tmp") }}', { placeholders: {} }), [
+    '/tmp',
     '/tmp',
     '/tmp',
   ])
   // A supplied value wins over the default.
-  assert.deepEqual(resolved('{{ P | default(1) }}', { placeholders: { P: 2 } }), [2, 2])
+  assert.deepEqual(resolved('{{ P | default(1) }}', { placeholders: { P: 2 } }), [2, 2, 2])
   // `default` is the only filter there is.
   assert.throws(
     () => yaml.loads('a: "{{ R | upper }}"\n', { placeholders: { R: 'x' } }),
@@ -72,6 +87,7 @@ test('a default makes a variable optional and carries its own type', () => {
 
 test('a doubled opener is a literal one', () => {
   assert.deepEqual(resolved('{{{{ NAME }}', { placeholders: {} }), [
+    '{{ NAME }}',
     '{{ NAME }}',
     '{{ NAME }}',
   ])
@@ -92,11 +108,12 @@ test('substitution is off unless asked for, and the environment is its own switc
     assert.deepEqual(resolved(scalar, { environment: true }), [
       'from-environment',
       'from-environment',
+      'from-environment',
     ])
     // The supplied mapping wins.
     assert.deepEqual(
       resolved(scalar, { placeholders: { [name]: 'from-mapping' }, environment: true }),
-      ['from-mapping', 'from-mapping'],
+      ['from-mapping', 'from-mapping', 'from-mapping'],
     )
   } finally {
     delete process.env[name]
@@ -123,19 +140,19 @@ test('a document without placeholders parses identically either way', (t) => {
 test('JSON refuses placeholders by name at the call site', async () => {
   assert.throws(
     () => json.loads('{"a": "{{ NAME }}"}', { placeholders: { NAME: 'app' } }),
-    /yaml\/toml feature/,
+    /yaml\/toml\/xml feature/,
   )
-  assert.throws(() => json.loads('{"a": 1}', { environment: true }), /yaml\/toml feature/)
+  assert.throws(() => json.loads('{"a": 1}', { environment: true }), /yaml\/toml\/xml feature/)
   // The multi-document spellings refuse the same way, the streaming one as a
   // clean TypeError on the first pull - even over an empty stream.
   assert.throws(
     () => json.loadsAll('{"a": 1}\n', { placeholders: { NAME: 'app' } }),
-    /yaml\/toml feature/,
+    /yaml\/toml\/xml feature/,
   )
   async function* empty() {}
   await assert.rejects(
     json.loadAllStream(empty(), { placeholders: { NAME: 'app' } }).next(),
-    /yaml\/toml feature/,
+    /yaml\/toml\/xml feature/,
   )
   // And a plain JSON load reads braces as the text they are.
   assert.equal(json.loads('{"a": "{{ NAME }}"}').a, '{{ NAME }}')

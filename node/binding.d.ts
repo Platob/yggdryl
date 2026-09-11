@@ -172,7 +172,9 @@ export type ObjectMap<K extends PropertyKey, V> = { [P in K]: V }
 export type JsonLinesCodecFormat =
   'json_lines' | 'json-lines' | 'jsonl' | 'ndjson'
 export type TomlCodecFormat = 'toml'
-export type SingleCodecFormat = 'json' | 'yaml' | 'yml' | TomlCodecFormat
+export type XmlCodecFormat = 'xml'
+export type SingleCodecFormat =
+  'json' | 'yaml' | 'yml' | TomlCodecFormat | XmlCodecFormat
 export type CodecFormat = SingleCodecFormat | JsonLinesCodecFormat
 export type JsonLinesPath = `${string}.jsonl` | `${string}.ndjson`
 export type CodecContent =
@@ -1787,7 +1789,7 @@ export interface BufferedOptions {
 }
 
 /**
- * The options of a format with `{{ }}` placeholder support: YAML and TOML.
+ * The options of a format with `{{ }}` placeholder support: YAML, TOML, XML.
  *
  * JSON is a data interchange format and refuses the pair by name, which is
  * why its methods take plain {@link CodecOptions}.
@@ -2053,6 +2055,15 @@ export interface ParquetFileStatistics {
 export declare const json: StructuredCodec
 /** Byte-first single-document TOML codec using only natural TOML shapes. */
 export declare const toml: SingleDocumentCodec<TemplateCodecOptions>
+/**
+ * Byte-first single-document XML codec over one root element.
+ *
+ * A decoded document is a one-entry record keyed by that element's name; an
+ * attribute keys behind `@`, an element's own character data keys `#text`, a
+ * repeated element is an array, and an empty element is `null`. Every leaf is
+ * character data until a `field` types it.
+ */
+export declare const xml: SingleDocumentCodec<TemplateCodecOptions>
 /** Byte-first YAML codec with tagged class comments and multi-document support. */
 export declare const yaml: StructuredCodec<TemplateCodecOptions>
 

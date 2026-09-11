@@ -1,4 +1,4 @@
-//! Native Node.js views over Yggdryl schema, URI, JSON, YAML, and TOML values.
+//! Native Node.js views over Yggdryl schema, URI, JSON, YAML, TOML, and XML values.
 
 // JavaScript owns its arguments and observes Rust failures as exceptions.
 // These signatures intentionally model the Node-API boundary.
@@ -71,7 +71,8 @@ pub use text::codec::{
     codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
     json_lines_dump_path_native, json_lines_load_path_native, json_lines_loads_native,
     json_load_path_native, json_loads_native, toml_dump_path_native, toml_dumps_native,
-    toml_load_path_native, toml_loads_native, yaml_dump_all_native, yaml_dump_all_path_native,
+    toml_load_path_native, toml_loads_native, xml_dump_path_native, xml_dumps_native,
+    xml_load_path_native, xml_loads_native, yaml_dump_all_native, yaml_dump_all_path_native,
     yaml_dump_path_native, yaml_dumps_native, yaml_load_all_path_native, yaml_load_path_native,
     yaml_loads_all_native, yaml_loads_native,
 };

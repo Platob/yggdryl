@@ -249,7 +249,7 @@ impl JsMimeType {
     /// Yggdryl structured-text format represented by this MIME value.
     #[napi(
         getter,
-        ts_return_type = "'json' | 'json_lines' | 'yaml' | 'toml' | null"
+        ts_return_type = "'json' | 'json_lines' | 'yaml' | 'toml' | 'xml' | null"
     )]
     pub fn format(&self) -> Option<String> {
         self.inner.format().map(|format| format.as_str().to_owned())
