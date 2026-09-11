@@ -41,9 +41,7 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
-use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, FieldType, I256, Result, TimeUnit, Timezone,
-};
+use crate::{DataType, DataTypeId, DataTypeKind, Error, I256, Result, TimeUnit, Timezone};
 
 use super::ascii::AsciiFamily;
 use super::boolean::Boolean;
@@ -71,8 +69,6 @@ pub trait ScalarValue:
 {
     /// The family enum containing this representation.
     type Family: ScalarFamily;
-    /// The zero-sized marker naming this representation's datatype.
-    type Type: FieldType;
 
     /// The exact representation identifier.
     const ID: DataTypeId;

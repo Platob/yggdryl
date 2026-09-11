@@ -336,13 +336,41 @@ impl<H: Hasher> std::fmt::Write for HasherWriter<'_, H> {
     }
 }
 
-impl<K: crate::types::FieldType> crate::TypedScalar<K> {
+impl crate::FieldScalar<'_> {
     /// Return this value's digest under `algorithm`.
     ///
-    /// The datatype marker is validation, not content: the digest is the
-    /// value's, so a `TypedScalar` and the `Scalar` inside it answer the same.
+    /// The field is proof, not content: the digest is the value's, so a
+    /// `FieldScalar` and the `Scalar` inside it answer the same.
     pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest {
         self.value().digest(algorithm)
+    }
+}
+
+impl crate::FieldRecord<'_> {
+    /// Return this row's digest under `algorithm`.
+    ///
+    /// The row digests as the ordered sequence it canonicalizes to, so it
+    /// answers what [`crate::FieldRecord::into_scalar`] followed by
+    /// [`Scalar::digest`] answers, without building the sequence.
+    pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest {
+        let mut digester = algorithm.digester();
+        write_row_bytes(&mut digester, self.iter().map(crate::FieldScalar::value));
+        digester.as_digest()
+    }
+}
+
+/// Feed a row's cells framed as the sequence a canonical row is.
+///
+/// A typed row holds its cells beside their fields rather than in a sequence,
+/// and this is the sequence branch of [`Scalar::write_bytes`] read over those
+/// cells, so a row digests the same whether or not the sequence was built.
+pub(crate) fn write_row_bytes<'a>(
+    sink: &mut impl Hasher,
+    cells: impl ExactSizeIterator<Item = &'a Scalar>,
+) {
+    write_sequence_header(sink, cells.len());
+    for cell in cells {
+        cell.feed(sink, 1);
     }
 }
 

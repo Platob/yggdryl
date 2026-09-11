@@ -29,7 +29,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | Branch | ASCII letter first, then letters, digits, `-`, `.`, `_`; at most `FixBranch::MAX_LENGTH` (23) bytes; case folded once on parse |
 | Standard branch | Empty name, digest zero, `Version::default()`, empty sender and target component IDs; an absent key means it, and setting it removes the key |
 | Named branch | Any non-empty spelling, `std` and `standard` included; `FixBranch::from_parts` fills name, digest and `Version`, and the registry stores that value |
-| Identity | `FixId` is the tag and the branch's cached XXH32 digest, two `i32` halves - `tag()` and `branch()`, the same pair and the same signed reading an arrival entry stores; `Copy`, eight bytes, ordered tag-major then by branch |
+| Identity | `FixId` is the tag and the branch's cached XXH32 digest, two `i32` halves - `tag()` and `branch()`, the tag an arrival entry keeps beside the branch its message holds; `Copy`, eight bytes, ordered tag-major then by branch |
 | Spelling | Parsed as `tag:branch`; displayed `35:` for the standard branch and `5001:#7f3a1c02` for another; a field keeps its branch text, so `field.fix.id` reads `5001:cme` |
 | Derived | The identifier is computed on every read from `fix:branch` and `fix:tag`, never stored; `None` without a tag |
 | User tag range | A non-standard branch may claim only `FixId::USER_TAG_MIN..FixId::USER_TAG_MAX`, currently `[5000, 40000)`; the standard branch holds every non-negative tag |
@@ -312,7 +312,7 @@ names are folded; `display` keeps the specification's spelling.
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{DataType, FixCategory, FixRegistry};
+    use yggdryl::{DataType, FixCategory, FixRegistry, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
@@ -320,7 +320,7 @@ names are folded; `display` keeps the specification's spelling.
     let parties = registry.definition(FixCategory::Groups, "Parties", None)?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert!(!registry.definition(FixCategory::Components, "Party", None)?.fields().is_empty());
-    assert_eq!(registry.field_by_path("Parties.PartyID", None)?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?, None)?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("PartyID", None)?.as_fix().tag()?, Some(448));
     ```
 
@@ -363,7 +363,7 @@ names are folded; `display` keeps the specification's spelling.
 - A tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` on a named branch, canonical or alternate -> refused naming `fix:branch` and both bounds, from a setter, a read, an insert, or a shard load.
 - `FixBranch::from_str("standard")` -> an ordinary named branch whose `is_standard()` is `false`; only the empty name is the standard branch.
 - `FixId::from_parts` takes the branch by reference and `set_id` takes the branch and the tag, so neither clones a branch.
-- `get_field_by_path` traverses a declared group without an occurrence index; a message value uses an index, for example `Parties.0.PartyID`.
+- `get_field_by_path` traverses a declared group with or without an occurrence: a schema states one item type, so `Parties[0].PartyID` and `Parties.PartyID` reach the same field, and the first is the spelling a message value takes.
 - A shared count tag can describe different group layouts. A message singleton selects its own group context; an ambiguous registry-wide counter lookup fails.
 
 ## Commands

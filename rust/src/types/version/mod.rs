@@ -19,7 +19,7 @@ pub(crate) mod casts;
 mod fields;
 mod value;
 
-pub use fields::{VersionField, VersionScalar, VersionType};
+pub use fields::{VersionField, VersionType};
 pub use value::Version;
 
 /// The Arrow extension name preserving [`crate::DataType::Version`] over

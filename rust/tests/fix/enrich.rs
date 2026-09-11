@@ -425,5 +425,5 @@ fn a_value_that_would_not_type_is_filled_in_place_and_the_wire_is_untouched() {
         .iter()
         .find(|entry| entry.tag() == 201)
         .expect("the pair still arrived");
-    assert_eq!(entry.value(), "abc");
+    assert_eq!(entry.value().as_str(), Some("abc"));
 }

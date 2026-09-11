@@ -18,7 +18,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 | --- | --- | --- |
 | Core | [DataType](datatype.md) | The owned logical type: parsing, canonical display, Arrow projection, defaults |
 | Core | [Field](field.md) | Name, datatype, nullability, metadata: the struct root, merge, and diffs |
-| Core | [Scalar](scalar.md) | The value every layer speaks, the shared enums, and `TypedScalar` |
+| Core | [Scalar](scalar.md) | The value every layer speaks, the shared enums, and `FieldScalar` |
 | Core | [Cast](cast.md) | The field as cast target, over Scalar rows, Arrow arrays, and record batches |
 | Families | [Numeric & temporal](numeric.md) | Boolean, integer, floating, decimal, and the temporal vocabulary |
 | Families | [Text & bytes](text.md) | The utf8 and binary widths, the version value, plus regex-capture schema inference |
@@ -33,7 +33,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 
 - `cargo bench --bench types -- value` -> three groups carry that name; scope with a function prefix.
 - `Field::validate` and Scalar row validation against a struct root -> Rust only; the bindings validate at every entry point.
-- `TypedScalar` and the `wkb` reader -> Rust only; a geospatial value crosses a binding as plain WKB bytes.
+- `FieldScalar` and the `wkb` reader -> Rust only; a geospatial value crosses a binding as plain WKB bytes.
 - A Python benchmark `--iterations` must be positive; Node benches read `YGGDRYL_BENCH_ITERATIONS`, default 100000.
 
 ## Commands

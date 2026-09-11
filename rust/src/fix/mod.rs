@@ -70,8 +70,9 @@
 //! mappings - is not here and needs an evaluator; "transcoding" names both
 //! and only the lineage-driven half lives in this module.
 //!
-//! Names fold ASCII case once, on the way in, so a query spelled in any case
-//! finds the field and the answer is always the canonical spelling. A tag
+//! Names fold once, on the way in - ASCII case, and the `_`, `-` and space
+//! separators - so a query spelled in any case or with any separator finds
+//! the field and the answer is always the canonical spelling. A tag
 //! query never consults names and a name query never consults tags, and an
 //! alias can never take a name away from a field that claims it canonically.
 //! An explicit branch pins one dictionary. When omitted, resolution tries the
@@ -140,6 +141,7 @@ mod anomaly;
 #[cfg(feature = "arrow")]
 mod batch;
 mod build;
+mod catalog;
 mod cfb;
 mod codec;
 mod codes;
@@ -161,10 +163,6 @@ mod memo;
 mod messages;
 mod msg;
 mod msgtype;
-// Reading one generic record is not the Arrow surface, so it is not gated
-// with it: a schema-only build keeps `FixCodec::parse_text_record`.
-mod catalog;
-mod record;
 mod registry;
 mod replacements;
 mod schema;
@@ -174,6 +172,7 @@ mod tests;
 mod ulbridge;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
+pub use codec::DEFAULT_PAYLOAD_COLUMN;
 pub use codec::{DEFAULT_NULL_VALUES, FixCodec, SOH};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
@@ -181,10 +180,9 @@ pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
     CRATE_TAG_MAX, CRATE_TAG_MIN, DEFAULT_PARTITION_SECONDS, ID_TAG, INSTID_TAG, ISINCODE_TAG,
     MICCODE_TAG, MSGCTXID_TAG, MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG, PARENTCLORDID_TAG,
-    PARENTORDERID_TAG, PERSISTENTID_TAG, SENDERPLUGINID_TAG, SENDERSESSIONID_TAG,
-    SENDERSESSIONNAME_TAG, STATE_TAG, SYMBOLTICKER_TAG, TARGETPLUGINID_TAG, TARGETSESSIONID_TAG,
-    TARGETSESSIONNAME_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG, UNIXPARTITION_TAG, VERSION_TAG,
-    fix_crate_fields, is_crate_tag,
+    PARENTORDERID_TAG, PERSISTENTID_TAG, PLUGINID_TAG, PREVPLUGINID_TAG, SENDERSESSIONID_TAG,
+    SENDERSESSIONNAME_TAG, STATE_TAG, SYMBOLTICKER_TAG, TARGETSESSIONID_TAG, TARGETSESSIONNAME_TAG,
+    TIMESTAMP_NAME, TIMESTAMP_TAG, UNIXPARTITION_TAG, VERSION_TAG, fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use document::{Numbers, Words};
@@ -196,7 +194,6 @@ pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
-pub use record::DEFAULT_PAYLOAD_COLUMN;
 pub use registry::{FixFieldIter, FixRegistry};
 pub use replacements::{
     FixFill, FixFillEntry, FixFillSource, FixFillValue, FixFills, FixReplacement,
@@ -214,6 +211,24 @@ pub use schema::{
 
 /// The absent branch occupies four zero bytes in every standard identifier.
 const STANDARD_BRANCH_DIGEST: u32 = 0;
+
+/// A branch digest as everything outside this crate holds it.
+///
+/// The XXH32 is a `u32` and every carrier of it is an `i32`, which is the
+/// same four bytes read as signed: the digest's exact width, and the widest
+/// signed integer every exchange format this crate writes can hold, Avro
+/// having no unsigned one. A digest above `i32::MAX` therefore reads
+/// negative, and reads back as itself.
+#[allow(clippy::cast_possible_wrap)]
+pub(super) const fn signed(digest: u32) -> i32 {
+    digest as i32
+}
+
+/// The same four bytes read back as the digest they are.
+#[allow(clippy::cast_sign_loss)]
+pub(super) const fn unsigned(branch: i32) -> u32 {
+    branch as u32
+}
 
 /// The dictionary one FIX field belongs to.
 ///
@@ -267,6 +282,16 @@ impl FixBranch {
     /// registry probes off the heap. Raising it would allocate branch names on
     /// the hot lookup path.
     pub const MAX_LENGTH: usize = 23;
+
+    /// [`Self::STANDARD`] with an address.
+    ///
+    /// A `const` is a value made afresh at every use, and a read under the
+    /// standard branch borrows it exactly as it borrows a registered one -
+    /// for as long as the message builds - so the one copy every unpinned
+    /// read shares lives here.
+    pub(super) const fn standard() -> &'static Self {
+        &STANDARD_BRANCH
+    }
 
     /// Parses and validates a branch, folding ASCII case.
     ///
@@ -376,15 +401,16 @@ impl FixBranch {
         self.name.is_empty()
     }
 
-    /// The same identity an arrival entry stores, read signed.
+    /// The same identity, read signed.
     ///
-    /// Four bytes either way: this is the reading an entry's `branch` column
-    /// carries and the one [`FixRegistry::branch_by_digest`] takes, so a
-    /// capture's column joins to a declaration with nothing in between. A
-    /// digest above `i32::MAX` reads negative here and is the same digest.
+    /// Four bytes either way: this is the reading the store's branch manifest
+    /// publishes and the one [`FixRegistry::branch_by_digest`] takes, so a
+    /// reader holding a digest joins to a declaration with nothing in
+    /// between. A digest above `i32::MAX` reads negative here and is the same
+    /// digest.
     #[must_use]
     pub const fn digest_signed(&self) -> i32 {
-        entry::signed(self.digest())
+        signed(self.digest())
     }
 
     /// The cached XXH32 identity of the canonical spelling.
@@ -397,6 +423,9 @@ impl FixBranch {
         self.digest == other.digest && self.name == other.name
     }
 }
+
+/// The standard branch every unpinned read borrows; see [`FixBranch::standard`].
+static STANDARD_BRANCH: FixBranch = FixBranch::STANDARD;
 
 impl FromStr for FixBranch {
     type Err = Error;
@@ -480,10 +509,10 @@ const IDENTIFIER_SHAPE: &str = "a fix identifier is a decimal tag, a colon, and 
 ///
 /// Derived from `fix:branch` and `fix:tag` on every read and never stored,
 /// so changing this representation changes no shard. The two halves are the
-/// two `i32` columns a capture already carries - [`FixEntry::tag`] and
-/// [`FixEntry::branch`] - so an identifier is those columns and nothing
-/// beside them: eight bytes, `Copy`, its own compact hash key, and ordered
-/// tag-major then by branch.
+/// two facts a capture already carries - the tag an arrival entry keeps,
+/// [`FixEntry::tag`], and the branch its message holds, [`FixMsg::branch`] -
+/// so an identifier is those two and nothing beside them: eight bytes,
+/// `Copy`, its own compact hash key, and ordered tag-major then by branch.
 ///
 /// ```
 /// use yggdryl::{FixBranch, FixId};
@@ -541,7 +570,7 @@ impl FixId {
 
     /// The identifier of `tag` in the standard branch.
     pub const fn standard(tag: i32) -> Self {
-        Self::new(tag, entry::signed(STANDARD_BRANCH_DIGEST))
+        Self::new(tag, signed(STANDARD_BRANCH_DIGEST))
     }
 
     /// Builds an identifier from a branch and tag.
@@ -613,9 +642,9 @@ impl FixId {
     /// Returns the branch digest read the way a capture stores it.
     ///
     /// The same four bytes and the same signed reading as
-    /// [`FixEntry::branch`] and [`FixBranch::digest_signed`], so an
-    /// identifier's half feeds [`FixRegistry::branch_by_digest`] and joins a
-    /// capture's column with nothing in between.
+    /// [`FixBranch::digest_signed`], so an identifier's half feeds
+    /// [`FixRegistry::branch_by_digest`] and joins a capture's column with
+    /// nothing in between.
     pub const fn branch(self) -> i32 {
         self.branch
     }
@@ -625,7 +654,7 @@ impl FixId {
     /// [`Self::branch`] read unsigned, which is [`FixBranch::digest`]'s own
     /// reading of the same four bytes.
     pub const fn branch_digest(self) -> u32 {
-        entry::unsigned(self.branch)
+        unsigned(self.branch)
     }
 
     /// Returns whether this identifier is in the standard branch.

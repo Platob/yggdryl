@@ -28,8 +28,8 @@ from collections.abc import Callable
 
 import pyarrow as pa
 
-from yggdryl import DataType, Field, MimeType, types
-from yggdryl.fix import STANDARD_BRANCH, FixCodec, FixMsg, FixRegistry, UlPlugin, fix_schema
+from yggdryl import DataType, Field, MimeType, TextLine, types
+from yggdryl.fix import STANDARD_BRANCH, ULBRIDGE_BRANCH, FixBranch, FixCodec, FixMsg, FixRegistry, UlPlugin, fix_schema
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
@@ -186,7 +186,7 @@ def _message_get_by_name() -> object:
 
 
 def _message_get_by_path() -> object:
-    return MESSAGE.get_by_path("Parties.0.PartyID")
+    return MESSAGE.get_by_path("Parties[0].PartyID")
 
 
 def _message_branch() -> object:
@@ -237,7 +237,7 @@ BRIDGE_REGISTRY.with_ulbridge_fields()
 BRIDGE_CODEC = FixCodec(BRIDGE_REGISTRY, branch="ulbridge")
 NUMERIC_GROUP = b"8=FIX.4.4|35=D|453=1|448=BROKER|447=D|452=1|10=0|"
 assert CODEC.parse_fix_line(NUMERIC_GROUP).by_tag(453).as_py() == 1
-assert CODEC.parse_fix_line(NUMERIC_GROUP).by_path("Parties.0.PartyID").as_py() == "BROKER"
+assert CODEC.parse_fix_line(NUMERIC_GROUP).by_path("Parties[0].PartyID").as_py() == "BROKER"
 assert FixRegistry.from_json(CATALOG_JSON) == CATALOG
 assert pickle.loads(CATALOG_PICKLE) == CATALOG
 
@@ -252,13 +252,38 @@ PARSED_BATCH = CODEC.parse_text_arrow_reader(CAPTURE).read_all()
 assert PARSED_BATCH.num_rows == len(LINES)
 assert len(list(CODEC.parse_lines(LINES))) == len(LINES)
 
+# The record door with a dialect each row names for itself: every other row
+# spells an alias of the codec's own branch, the rest a plugin no branch is
+# named after, which keeps the pin. The alias is declared on a copy of the
+# bridge dictionary so the cases above keep their setup. A plugin's dialect
+# resolves off the codec's memo after the first row spelling it, so this is
+# what a row costs read under a dialect it names for itself.
+PLUGIN_REGISTRY = copy.copy(BRIDGE_REGISTRY)
+_DECLARED = PLUGIN_REGISTRY.branch_named(ULBRIDGE_BRANCH)
+assert _DECLARED is not None
+PLUGIN_REGISTRY.set_branch(
+    FixBranch(_DECLARED.name, version=_DECLARED.version, aliases=[*_DECLARED.aliases, "ulb"])
+)
+PLUGIN_CODEC = FixCodec(PLUGIN_REGISTRY, branch=ULBRIDGE_BRANCH, capture_names=["pluginid"])
+PLUGIN_LINES = [
+    TextLine(index, line, ["ULB" if index % 2 == 0 else "OMS_X1_TradeCapture"])
+    for index, line in enumerate(LINES)
+]
+assert len(list(PLUGIN_CODEC.parse_text_lines(PLUGIN_LINES))) == len(LINES)
+
 
 def _parse_lines_drain() -> int:
     return sum(1 for _ in CODEC.parse_lines(LINES))
 
 
-def _parse_text_records_drain() -> int:
-    return sum(1 for _ in CODEC.parse_text_records({"body": line} for line in LINES))
+def _parse_text_lines_drain() -> int:
+    return sum(
+        1 for _ in CODEC.parse_text_lines(TextLine(index, line) for index, line in enumerate(LINES))
+    )
+
+
+def _parse_text_lines_pluginid_drain() -> int:
+    return sum(1 for _ in PLUGIN_CODEC.parse_text_lines(PLUGIN_LINES))
 
 
 def _parse_text_arrow_reader() -> int:
@@ -307,8 +332,26 @@ def _category_mutation(operation: str) -> FixRegistry:
         component.fix.description = "Reviewed"
         if operation == "update":
             registry.update_definition("components", component)
+        elif operation == "add":
+            registry.add_definition("components", component)
         else:
             registry.insert_definition("components", component)
+    return registry
+
+
+# The lenient field verb, both answers: a name folding to a stored one merges
+# into it, a name nothing answers to arrives.
+FOLDING_FIELD = Field("party_id", "utf8")
+FOLDING_FIELD.fix.tag = 9001
+ARRIVING_FIELD = Field("Symbol", "utf8")
+ARRIVING_FIELD.fix.tag = 55
+assert copy.copy(CATALOG).add_field(FOLDING_FIELD) is False
+assert copy.copy(CATALOG).add_field(ARRIVING_FIELD) is True
+
+
+def _add_field(field: Field) -> FixRegistry:
+    registry = copy.copy(CATALOG)
+    registry.add_field(field)
     return registry
 
 
@@ -386,8 +429,10 @@ def main() -> None:
         _measure("catalog pickle decode", lambda: pickle.loads(CATALOG_PICKLE), args.iterations)
         _measure("catalog stable hash", CATALOG.stable_hash, args.iterations)
         _measure("catalog copy baseline", lambda: copy.copy(CATALOG), args.iterations)
-        for operation in ("create", "insert", "update", "remove"):
+        for operation in ("create", "insert", "update", "add", "remove"):
             _measure(f"catalog {operation} including copy", lambda operation=operation: _category_mutation(operation), args.iterations)
+        _measure("catalog add_field merging including copy", lambda: _add_field(FOLDING_FIELD), args.iterations)
+        _measure("catalog add_field arriving including copy", lambda: _add_field(ARRIVING_FIELD), args.iterations)
         _measure("register bridge vocabulary", _register_bridge_vocabulary, args.iterations)
         singleton = CATALOG.msgtype("D")
         _measure("singleton stable hash", singleton.stable_hash, args.iterations)
@@ -399,7 +444,12 @@ def main() -> None:
         _measure("message from_row", _message_from_row, args.iterations)
         streams = max(1, args.iterations // 50)
         _measure(f"parse_lines drain/{len(LINES)}", _parse_lines_drain, streams)
-        _measure(f"parse_text_records drain/{len(LINES)}", _parse_text_records_drain, streams)
+        _measure(f"parse_text_lines drain/{len(LINES)}", _parse_text_lines_drain, streams)
+        _measure(
+            f"parse_text_lines pluginid drain/{len(LINES)}",
+            _parse_text_lines_pluginid_drain,
+            streams,
+        )
         _measure(f"parse_text_arrow_reader/{len(LINES)}", _parse_text_arrow_reader, streams)
         _measure(f"enrich_messages_arrow_reader/{len(LINES)}", _enrich_messages_arrow_reader, streams)
         _measure(f"messages drain/{len(LINES)}", _messages_drain, streams)
@@ -413,7 +463,7 @@ def main() -> None:
             _measure(f"UlPlugins drain/{count}", lambda body=body: list(UlPlugin.from_json_bytes(body)), args.iterations)
             _measure(f"FixMessages first/{count}", lambda body=body: next(BRIDGE_CODEC.parse_line(body)), args.iterations)
             _measure(f"FixMessages drain/{count}", lambda body=body: list(BRIDGE_CODEC.parse_line(body)), args.iterations)
-            _measure(f"record messages drain/{count}", lambda body=body: list(BRIDGE_CODEC.parse_text_record({"body": body})), args.iterations)
+            _measure(f"line messages drain/{count}", lambda body=body: list(BRIDGE_CODEC.parse_text_line(TextLine(0, body))), args.iterations)
             first = next(UlPlugin.from_json_bytes(body))
             _measure(f"UlPlugin hash/{count}", first.stable_hash, args.iterations)
         loads = max(1, args.iterations // 100)

@@ -14,8 +14,4 @@ pub(crate) use dtypes::{
     validate_union_fields,
 };
 pub use fields::*;
-pub use scalars::{
-    Children, DictionaryScalar, FixedSizeListScalar, LargeListScalar, LargeListViewScalar,
-    ListScalar, ListViewScalar, MapScalar, Mapping, Nested, NestedValue, Record,
-    RunEndEncodedScalar, Sequence, StructScalar, UnionScalar, VariantScalar,
-};
+pub use scalars::{Children, Mapping, Nested, NestedValue, Record, Sequence};

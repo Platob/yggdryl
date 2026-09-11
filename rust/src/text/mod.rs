@@ -28,7 +28,7 @@ pub mod xml;
 pub mod yaml;
 
 pub use crate::types::floating::scalars::{Float16, Float32, Float64};
-pub use crate::types::{Children, Scalar, TypedScalar};
+pub use crate::types::{Children, Scalar};
 pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Xml, Yaml};
 pub(crate) use display::ERROR_TEXT_LIMIT;
 pub(crate) use display::{

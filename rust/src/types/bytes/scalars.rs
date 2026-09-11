@@ -7,7 +7,6 @@ use std::sync::{Arc, OnceLock};
 use serde::{Deserialize, Serialize};
 
 use crate::types::Scalar;
-use crate::types::typed::define_scalar_type;
 use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValue};
 
 /// Borrowing access shared by every opaque-byte representation.
@@ -159,10 +158,9 @@ impl Hash for Bytes {
 const _: () = assert!(std::mem::size_of::<Bytes>() == 24);
 
 macro_rules! bytes_value {
-    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $dtype:ident) => {
+    ($leaf:ident, $variant:ident, $id:ident, $dtype:ident) => {
         impl ScalarValue for $leaf {
             type Family = Bytes;
-            type Type = $marker;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Bytes;
@@ -206,25 +204,12 @@ macro_rules! bytes_value {
     };
 }
 
-bytes_value!(Binary, super::BinaryType, Binary, Binary, Binary);
-bytes_value!(
-    LargeBinary,
-    super::LargeBinaryType,
-    LargeBinary,
-    LargeBinary,
-    LargeBinary
-);
-bytes_value!(
-    BinaryView,
-    super::BinaryViewType,
-    BinaryView,
-    BinaryView,
-    BinaryView
-);
+bytes_value!(Binary, Binary, Binary, Binary);
+bytes_value!(LargeBinary, LargeBinary, LargeBinary, LargeBinary);
+bytes_value!(BinaryView, BinaryView, BinaryView, BinaryView);
 
 impl ScalarValue for FixedSizeBinary {
     type Family = Bytes;
-    type Type = super::FixedSizeBinaryType;
 
     const ID: DataTypeId = DataTypeId::FixedSizeBinary;
     const KIND: DataTypeKind = DataTypeKind::Bytes;
@@ -336,30 +321,6 @@ impl From<Arc<[u8]>> for Scalar {
         Self::Bytes(Bytes::Binary(Binary::new(value)))
     }
 }
-
-define_scalar_type!(
-    BinaryScalar,
-    super::BinaryType,
-    "binary",
-    crate::DataType::Binary
-);
-define_scalar_type!(
-    FixedSizeBinaryScalar,
-    super::FixedSizeBinaryType,
-    "fixed_size_binary"
-);
-define_scalar_type!(
-    LargeBinaryScalar,
-    super::LargeBinaryType,
-    "large_binary",
-    crate::DataType::LargeBinary
-);
-define_scalar_type!(
-    BinaryViewScalar,
-    super::BinaryViewType,
-    "binary_view",
-    crate::DataType::BinaryView
-);
 
 /// The byte payload a value spells, shared rather than copied.
 ///

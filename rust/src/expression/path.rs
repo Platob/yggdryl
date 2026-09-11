@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::TypedScalar;
+use super::Literal;
 use crate::{Error, Result, Scalar};
 
 /// What a parse failure names itself as.
@@ -51,7 +51,7 @@ pub enum FieldSegment {
     /// `['k']` - one map entry by key, the key read once through the map's own
     /// key type. A struct child may also be reached this way when the key is
     /// text, which is the spelling JSON tooling already uses.
-    Key(TypedScalar),
+    Key(Literal),
 }
 
 impl FieldSegment {
@@ -87,7 +87,7 @@ impl FieldSegment {
                 reason: format_smolstr!("expected a text map key, got {}", value.kind()),
             });
         }
-        Ok(Self::Key(TypedScalar::from_value(value)?))
+        Ok(Self::Key(Literal::infer(value)?))
     }
 
     /// The name this segment addresses a child by, where it addresses one.
@@ -443,7 +443,7 @@ fn write_identifier(formatter: &mut fmt::Formatter<'_>, name: &str) -> fmt::Resu
 ///
 /// Total by construction: [`FieldSegment::key`] admits only the kinds this
 /// writes, so rendering a path is always the exact inverse of parsing one.
-fn write_key(formatter: &mut fmt::Formatter<'_>, key: &TypedScalar) -> fmt::Result {
+fn write_key(formatter: &mut fmt::Formatter<'_>, key: &Literal) -> fmt::Result {
     if let Some(text) = key.value().as_str() {
         formatter.write_char('\'')?;
         for character in text.chars() {
@@ -677,8 +677,8 @@ impl<'a> Parser<'a> {
 }
 
 /// Pair one text key with the datatype it is read at.
-fn text_key(value: String) -> Result<TypedScalar> {
-    TypedScalar::from_value(Scalar::from(value))
+fn text_key(value: String) -> Result<Literal> {
+    Literal::infer(Scalar::from(value))
 }
 
 #[cfg(test)]

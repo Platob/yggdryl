@@ -311,10 +311,44 @@ impl PyTextLine {
     pub(crate) const fn from_core(inner: TextLine) -> Self {
         Self { inner }
     }
+
+    /// Borrow the line this wraps.
+    pub(crate) const fn as_core(&self) -> &TextLine {
+        &self.inner
+    }
 }
 
 #[pymethods]
 impl PyTextLine {
+    /// One line a caller holds itself, rather than one a text read answered.
+    ///
+    /// A capture is what a row header stated about the line, in the order the
+    /// header declares them, and `None` is a capture it declared and this line
+    /// did not match. The codec reads them by position, so the order is the
+    /// contract and `FixCodec(capture_names=...)` is what names it.
+    ///
+    /// The body is copied into a page this line owns, once: every key and
+    /// value a message read from it records is a range of that page.
+    #[new]
+    #[pyo3(signature = (index, body, captures=None))]
+    fn new(index: u64, body: &[u8], captures: Option<Vec<Option<String>>>) -> PyResult<Self> {
+        let page = TextBytes::from_bytes(body).map_err(value_error)?;
+        let mut line = TextLine::new(index, page);
+        if let Some(held) = captures {
+            let mut read = Vec::with_capacity(held.len());
+            for capture in held {
+                read.push(match capture {
+                    Some(text) => {
+                        Some(TextBytes::from_bytes(text.as_bytes()).map_err(value_error)?)
+                    }
+                    None => None,
+                });
+            }
+            line.set_captures(read);
+        }
+        Ok(Self::from_core(line))
+    }
+
     /// The physical line number within the object, from zero.
     #[getter]
     fn index(&self) -> u64 {

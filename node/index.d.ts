@@ -1157,8 +1157,11 @@ export declare class FixCodec {
    *
    * Every pin is the core's, spelled once here. `branch` and `version`
    * cross as text; `separator` is the byte a numeric frame splits on where
-   * the line does not say; `payloadColumn` names the record column a line
-   * is read from; `nullValues` are the spellings that mean nothing was
+   * the line does not say; `payloadColumn` names the batch column a line
+   * is read from; `captureNames` are what a run's row-header captures are
+   * called, in the order a line answers them, which is what lets
+   * `parseTextLine` read a capture by position rather than by name;
+   * `nullValues` are the spellings that mean nothing was
    * sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
    * or `"unknown"`; `batchByteSize` is the raw bytes one Arrow batch
    * targets, the core's 128 MiB when unstated.
@@ -1200,8 +1203,8 @@ export declare class FixCodec {
   static inferMsgtypeText(body: string): string | null
   /** One captured line, whatever it is wrapped in: its messages. */
   parseLine(row: Buffer): FixMessages
-  /** One numeric frame, split on the separator stated or inferred. */
-  parseFixLine(body: Buffer, separator?: number | undefined | null): FixMsg
+  /** One numeric frame, read by the pairs it states. */
+  parseFixLine(body: Buffer): FixMsg
   /** One bridge frame, whose keys are names rather than tags. */
   parseUllinkLine(body: Buffer): FixMsg
   /** One FIXML row, whose fields are XML attributes. */
@@ -1214,20 +1217,30 @@ export declare class FixCodec {
   /** Pairs a caller already holds, in the order they arrived. */
   parsePairs(pairs: Array<[string, string]>): FixMsg
   /**
-   * One record a text reader answered: its messages.
+   * One line a text reader answered: its messages.
    *
-   * The payload column names the line, and the row's own columns -
-   * `branch`, `beginstring`, `sep`, `timestamp`, `direction`, `plugin` -
-   * are the parameters of the same name. The loader widens the record from
-   * whatever `Scalar.fromJs` reads.
+   * The line's body is the bytes read, its timestamp the clock that stamps
+   * the message, and its row-header captures state the rest - the plugin
+   * that logged it, the version, and every field a capture's name reaches.
+   * `withCaptureNames` is what decides which capture is which, once for
+   * the whole run, because a line answers its captures by position.
+   *
+   * A `pluginid` capture whose text is the name or an alias of a branch the
+   * dictionary declares is also the dialect the line is read under,
+   * outranking the codec's own pin; any other keeps the pin, then the
+   * standard branch.
+   *
+   * A `direction` capture is named so it cannot silently fill a field of
+   * that name, and is not otherwise read: only `parseTextArrowReader` has
+   * a column to put a direction in.
    */
-  parseTextRecord(record: unknown): FixMessages
+  parseTextLine(line: TextLine): FixMessages
   /**
    * A stream of Arrow batches of capture rows as batches of FIX rows.
    *
    * The schema is decided before the first row: the capture's own columns
-   * lead and the fixed FIX columns follow. Every row is parsed as
-   * `parseTextRecord` parses one, and batches close on the raw bytes of
+   * lead and the fixed FIX columns follow. Every row is parsed as the
+   * line door parses one, and batches close on the raw bytes of
    * the payload column against `batchByteSize`. The source is consumed.
    */
   parseTextArrowReader(source: JsBatchReader): JsBatchReader
@@ -1462,10 +1475,15 @@ export declare class FixMsg {
   getByName(name: string): JsScalar | null
   /** The value of the root child a name reaches. */
   byName(name: string): JsScalar
-  /** The value a dotted path reaches, or `null`. */
-  getByPath(path: string): JsScalar | null
-  /** The value a dotted path reaches. */
-  byPath(path: string): JsScalar
+  /** The value a path reaches, or `null`. */
+  getByPath(path: string | FieldPath): JsScalar | null
+  /**
+   * The value a path reaches.
+   *
+   * A position is spelled the way the one grammar spells it:
+   * `Parties[0].PartyID`.
+   */
+  byPath(path: string | FieldPath): JsScalar
   /**
    * The value a tag or a name reaches in the standard branch tier, or
    * `null`.
@@ -1552,9 +1570,10 @@ export declare class FixMsg {
    *
    * Flattened pre-order: a group's members follow the counter pair that
    * heads them, so a caller reading the array reads the wire. The dialect
-   * crosses as its digest, which `FixRegistry.branchByDigest` resolves.
+   * is the message's own, answered by `branch`: it is one value for every
+   * pair a message carries, so no pair repeats it.
    */
-  arrivals(): Array<[number, number, string, string]>
+  arrivals(): Array<[number, string, string]>
   /**
    * This message as the fixed row a table holds.
    *
@@ -1624,6 +1643,25 @@ export declare class FixRegistry {
   definition(category: string, name: string, branch?: string | undefined | null): JsField
   /** Definitions in native category order, retaining the registry while active. */
   definitions(category: string): FixDefinitionIterator
+  /**
+   * Fold a named definition into the one its name reaches.
+   *
+   * The lenient counterpart of `createDefinition`, which refuses a name it
+   * holds, and of `insertDefinition`, which replaces one wholesale.
+   * Answers `true` when the definition arrived and `false` when it merged;
+   * `"fields"` redirects to `addField`.
+   *
+   * A merge keeps the stored definition's identity, name and every member
+   * it declares, in its order, and appends the members it lacks - for a
+   * group, to the occurrence inside the list, and to the component when
+   * that occurrence is a component's. It is one level deep: a member both
+   * sides declare stays the stored one, so a member whose datatype - or
+   * whose restated reference - disagrees is refused. Every message and
+   * component referencing the definition sees the appended members.
+   *
+   * One mutation: a refusal leaves the dictionary exactly as it was.
+   */
+  addDefinition(category: string, field: JsField): boolean
   /** Insert or replace a complete native category definition atomically. */
   insertDefinition(category: string, field: JsField): JsField | null
   /** Create a definition, refusing an existing identity. */
@@ -1645,10 +1683,10 @@ export declare class FixRegistry {
    *
    * Every registry starts here: the twenty standard fields from tag 65000
    * that `fixCrateFields` lists - the digest, the clock and its partition,
-   * the session a message states, the bridge's message context, the
-   * plugin sessions a line moved between and the identities a lifecycle
-   * pass stamps - are what a row is typed by, so a dictionary loaded from
-   * a store, built from fields or left alone holds them alike.
+   * the session a message states, the bridge's message context, the plugin
+   * that logged a line and the session names it spells, and the identities
+   * a lifecycle pass stamps - are what a row is typed by, so a dictionary
+   * loaded from a store, built from fields or left alone holds them alike.
    */
   constructor()
   /**
@@ -1733,9 +1771,16 @@ export declare class FixRegistry {
   /** The field a canonical name or alias names, ASCII case folded. */
   fieldByName(name: string, branch?: string | undefined | null): JsField
   /** The field a dotted path reaches through a component or a group, or `null`. */
-  getFieldByPath(path: string, branch?: string | undefined | null): JsField | null
-  /** The field a dotted path reaches through a component or a group. */
-  fieldByPath(path: string, branch?: string | undefined | null): JsField
+  getFieldByPath(path: string | JsFieldPath, branch?: string | undefined | null): JsField | null
+  /**
+   * The field a path reaches through a component or a group.
+   *
+   * A position is spelled the way the one grammar spells it -
+   * `Parties[0].PartyID` - and a schema answers the item every occurrence
+   * of a group holds, so that spelling reaches the member here as well as
+   * in a message.
+   */
+  fieldByPath(path: string | FieldPath, branch?: string): JsField
   /** The field a tag or name reaches by deterministic best match, or `null`. */
   getField(key: number | string): JsField | null
   /** The field a tag or name reaches by deterministic best match. */
@@ -1747,6 +1792,24 @@ export declare class FixRegistry {
   get(key: number | string): JsField | null
   /** Whether a tag or name reaches a field by deterministic best match. */
   has(key: number | string): boolean
+  /**
+   * Fold one field in, adding it when absent and merging it when stored.
+   *
+   * The lenient counterpart of `insert`, which replaces, and of `update`,
+   * which refuses everything new. Answers `true` when the field arrived
+   * and `false` when it folded into a stored one: a canonical identity the
+   * dictionary holds merges, a name folding to a stored canonical name or
+   * alias in the same branch merges into that field - aliases and
+   * alternate tags become the union and the incoming canonical tag joins
+   * them unless another field in the branch answers it - a nested field is
+   * redirected to `addDefinition` under the category its shape names, and
+   * one of this crate's own tags is skipped as already held.
+   *
+   * One mutation: a refusal - no `fix:tag`, a key another field holds in
+   * the same branch, a datatype disagreeing with the stored field - leaves
+   * the dictionary exactly as it was.
+   */
+  addField(field: JsField): boolean
   /** Add a field, answering the one it replaced. */
   insert(field: JsField): JsField | null
   /**
@@ -1771,12 +1834,12 @@ export declare class FixRegistry {
   /**
    * The branch one digest names, or `null`.
    *
-   * An arrival entry carries its dialect as the digest `branch`, so this is
-   * the table that turns a capture's column back into the branch it was
-   * read under. The digest is one way, which is why the registry publishes
-   * the resolution rather than leaving a reader to reproduce the hash. A
-   * branch crosses as its name here, as it does everywhere else in this
-   * binding.
+   * A branch's digest is what the store's branch manifest publishes beside
+   * the declaration, so this is the table that turns one back into the
+   * dialect it names. The derivation is one way, which is why the registry
+   * publishes the resolution rather than leaving a reader to reproduce the
+   * hash. A branch crosses as its name here, as it does everywhere else in
+   * this binding.
    */
   getBranchByDigest(digest: number): string | null
   /**
@@ -3906,6 +3969,18 @@ export type JsTextEntry = TextEntry
 /** One decoded text row, typed the way its columns are. */
 export declare class TextLine {
   /**
+   * One line a caller holds itself, rather than one a text read answered.
+   *
+   * A capture is what a row header stated about the line, in the order the
+   * header declares them, and `null` is a capture it declared and this line
+   * did not match. The codec reads them by position, so the order is the
+   * contract and `FixCodec`'s `captureNames` is what names it.
+   *
+   * The body is copied into a page this line owns, once: every key and
+   * value a message read from it records is a range of that page.
+   */
+  constructor(index: number, body: Buffer, captures?: Array<string | null>)
+  /**
    * The physical line number within the object, from zero.
    *
    * A `bigint`: a line count is 64 bits wide in the core and a JavaScript
@@ -4953,8 +5028,13 @@ export interface FixCodecOptions {
   version?: string
   /** The byte a numeric frame splits on where the line does not say. */
   separator?: number
-  /** The record column a line is read from; `body` when unstated. */
+  /** The batch column a line is read from; `body` when unstated. */
   payloadColumn?: string
+  /**
+   * What a run's row-header captures are called, in the order a line
+   * answers them.
+   */
+  captureNames?: Array<string>
   /** The spellings that mean "nothing was sent". */
   nullValues?: Array<string>
   /**
@@ -4972,11 +5052,12 @@ export interface FixCodecOptions {
  *
  * The digest, the version read at, the ticker, the clock and its partition,
  * the parent identifiers, the session the message states, the bridge's
- * message context, the plugins and plugin sessions a line moved between, the
- * ISIN, MIC and order state a row derives, and the instrument, message and
- * order-chain identities a lifecycle pass stamps. Every registry already
- * holds them, so this is the listing a schema or a document walks rather than
- * something a caller registers.
+ * message context, the plugin that logged the line and the one it came
+ * through before that, the two session names the line spells, the ISIN, MIC
+ * and order state a row derives, and the instrument, message and order-chain
+ * identities a lifecycle pass stamps. Every registry already holds them, so
+ * this is the listing a schema or a document walks rather than something a
+ * caller registers.
  */
 export declare function fixCrateFields(): Array<JsField>
 
@@ -5002,8 +5083,8 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
  * A bridge's own row header spells the session instance it handled a line on
  * as `senderSessionId` for that reason, so the value reaches the FIX column
  * rather than leading the row - and never over a reading the message stated
- * itself. Its `plugin` capture fills the session the line's direction names:
- * the sender's for a line it sent, the target's for one it received.
+ * itself. Its `pluginid` capture reaches the crate's own column of that name
+ * the same way, and is what a row's dialect is read from.
  */
 export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsField
 

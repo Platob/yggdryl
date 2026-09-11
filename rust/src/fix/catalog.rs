@@ -1,13 +1,15 @@
 //! Named FIX definitions beside the scalar wire-field indexes.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, format_smolstr};
 
 use super::group_plan::GroupPlan;
 use super::registry::name_digest;
+use super::store::{DefinitionKey, compact, reference};
 use super::{FixBranch, FixId, FixRegistry, MsgType};
+use crate::types::folds_equal;
 use crate::{DataType, Error, Field, FixCategory, Result};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -309,6 +311,151 @@ fn invalid(field: &Field, expected: impl std::fmt::Display) -> Error {
     }
 }
 
+/// The refusal a nested datatype meets where a scalar field was expected.
+pub(super) fn not_scalar(field: &Field) -> Error {
+    invalid(field, "a scalar datatype")
+}
+
+/// The datatype one category's definitions have, held to once here for the
+/// validation and the fold alike.
+fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
+    match category {
+        FixCategory::Fields if field.dtype().is_nested() => Err(not_scalar(field)),
+        FixCategory::Messages | FixCategory::Components
+            if !matches!(field.dtype(), DataType::Struct(_)) =>
+        {
+            Err(invalid(field, "a Struct datatype"))
+        }
+        FixCategory::Groups if definition_category(field) != Some(FixCategory::Groups) => {
+            Err(invalid(field, "a List of non-null Struct occurrences"))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// The category a nested field's shape names, for a caller handing the
+/// registry a definition without saying which it is.
+///
+/// A repeating group is the one shape a List has in FIX - occurrences of a
+/// non-null Struct - and a message is a Struct that says which wire code it
+/// answers to; every other Struct is a component. A nested datatype that is
+/// none of these is no definition at all, and answers nothing.
+pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
+    match field.dtype() {
+        DataType::List(item) | DataType::LargeList(item)
+            if !item.is_nullable() && matches!(item.dtype(), DataType::Struct(_)) =>
+        {
+            Some(FixCategory::Groups)
+        }
+        DataType::Struct(_) if field.as_fix().msgtype().is_some() => Some(FixCategory::Messages),
+        DataType::Struct(_) => Some(FixCategory::Components),
+        _ => None,
+    }
+}
+
+/// The occurrence a group's list holds.
+fn occurrence_of(group: &Field) -> Result<&Field> {
+    match group.dtype() {
+        DataType::List(item) | DataType::LargeList(item) => Ok(item),
+        _ => Err(invalid(group, "a List of non-null Struct occurrences")),
+    }
+}
+
+/// What a child is, for a refusal that names both sides: a reference by its
+/// target and the datatype that target has, an inline child by its own.
+fn describe(field: &Field, resolved: Option<&DataType>) -> SmolStr {
+    match (reference(field), resolved) {
+        (Some((category, name)), Some(dtype)) => {
+            format_smolstr!("a reference to {category} {name:?}, the datatype {dtype}")
+        }
+        (Some((category, name)), None) => format_smolstr!("a reference to {category} {name:?}"),
+        (None, _) => format_smolstr!("the datatype {}", field.dtype()),
+    }
+}
+
+/// The incoming document's metadata laid over the stored one's, on the
+/// stored identity.
+///
+/// Name, nullability and tag are the stored definition's, and the fold has
+/// the precedence a scalar [`FixRegistry::update`] has: the generic keys
+/// through the metadata merge every protocol shares, the `fix:` keys through
+/// the rule each one has - which is also what holds the two sides to one
+/// message code, one counter, one component. The datatype is left for the
+/// caller, who merges the children.
+fn merge_root(stored: &Field, incoming: &Field) -> Result<Field> {
+    let mut merged = incoming.clone();
+    merged.set_name(stored.name());
+    merged.set_nullable(stored.is_nullable());
+    merged.set_metadata(
+        incoming
+            .as_metadata()
+            .merge_with(stored.as_metadata())?
+            .iter(),
+    )?;
+    // A definition's tag is the registry's derivation for its name, not a
+    // statement the incoming side gets to make; the occurrence inside a
+    // group has none, and an incoming one carrying it is stating nothing.
+    match stored.as_fix().tag()? {
+        Some(tag) => merged.as_fix_mut().set_tag(tag)?,
+        None => {
+            merged.remove_metadata(super::field::TAG_KEY);
+        }
+    }
+    merged.as_fix_mut().merge_with(&stored.as_fix())?;
+    Ok(merged)
+}
+
+/// The compact documents a fold writes over, in the shape the resolver reads.
+///
+/// A merge is settled on documents rather than on resolved trees, because a
+/// reference's expansion is the target's business, and the map is what
+/// [`FixRegistry::resolve_catalog`] derives the catalog from - so the fold's
+/// output is the store's input. The index beside it finds a document by the
+/// folded name the catalog keys it under, and every hit is rechecked against
+/// the key, exactly as the catalog rechecks its own.
+struct Documents {
+    raw: BTreeMap<DefinitionKey, Field>,
+    keys: HashMap<(FixCategory, u64), Vec<DefinitionKey>>,
+}
+
+impl Documents {
+    fn from_registry(registry: &FixRegistry) -> Result<Self> {
+        let mut documents = Self {
+            raw: BTreeMap::new(),
+            keys: HashMap::new(),
+        };
+        for (key, document) in registry.compact_catalog()? {
+            documents.put(key, document);
+        }
+        Ok(documents)
+    }
+
+    /// The document one folded name reaches in one branch, with its key.
+    fn get(
+        &self,
+        category: FixCategory,
+        branch: &FixBranch,
+        name: &str,
+    ) -> Option<(&DefinitionKey, &Field)> {
+        self.keys
+            .get(&Catalog::key(category, branch, name))?
+            .iter()
+            .find(|key| key.1.has_identity(branch) && folds_equal(&key.2, name))
+            .and_then(|key| self.raw.get_key_value(key))
+    }
+
+    fn put(&mut self, key: DefinitionKey, document: Field) {
+        let held = self
+            .keys
+            .entry(Catalog::key(key.0, &key.1, &key.2))
+            .or_default();
+        if !held.contains(&key) {
+            held.push(key.clone());
+        }
+        self.raw.insert(key, document);
+    }
+}
+
 pub(super) fn validate_name(field: &Field) -> Result<()> {
     let name = field.name();
     if name.is_empty()
@@ -388,6 +535,34 @@ impl FixRegistry {
             found?
         }?;
         self.catalog.entries[position].field.message()
+    }
+
+    /// The message `spelling` names under `branch`, by the tier a key
+    /// resolves by: the branch's own declaration, else - for a branch that
+    /// is not the standard one and declares the code not at all - the
+    /// standard one's. An omitted or standard branch reads as an omitted
+    /// one does, the standard namespace first.
+    ///
+    /// Ambiguity is an answer, not an absence: a code the branch declares
+    /// twice names nothing, in that branch or in the one below it. The
+    /// codec reads a row against this and the anomaly reader compares the
+    /// row against the same, so one grammar is what both mean.
+    pub(super) fn known_msgtype(
+        &self,
+        spelling: &str,
+        branch: Option<&FixBranch>,
+    ) -> Option<&MsgType> {
+        let Some(branch) = branch.filter(|held| !held.is_standard()) else {
+            return self.get_msgtype(spelling, None);
+        };
+        let declared = self
+            .get_branch_by_digest(branch.digest_signed())
+            .filter(|held| held.has_identity(branch))
+            .and_then(|_| self.catalog.message_position(branch, spelling));
+        match declared {
+            Some(position) => self.catalog.entries[position?].field.message(),
+            None => self.get_msgtype(spelling, Some(&FixBranch::STANDARD)),
+        }
     }
 
     /// Borrows a unique registry-owned message type, raising absence or ambiguity.
@@ -629,6 +804,293 @@ impl FixRegistry {
         Ok(prior)
     }
 
+    /// Adds a named definition, folding it into the one its name reaches.
+    ///
+    /// The lenient counterpart of [`Self::create_definition`], which refuses
+    /// an existing name, and of [`Self::insert_definition`], which replaces
+    /// one wholesale: a definition the dictionary lacks arrives as
+    /// `insert_definition` would add it and answers `true`; one it holds is
+    /// merged and answers `false`. [`FixCategory::Fields`] redirects to
+    /// [`Self::add_field`], whose rules a scalar follows.
+    ///
+    /// A merge keeps the stored definition's identity, name, tag and every
+    /// member it already declares, in its order. An incoming member whose
+    /// folded name no stored member carries is appended - for a group, to
+    /// the occurrence Struct inside the List, whose counter and component
+    /// markers stay; when that occurrence is a component's, the members
+    /// belong to the component and are appended there. A member both sides
+    /// declare is the stored one, one level deep: its own children are not
+    /// merged and its datatype never changes, so an incoming member that
+    /// disagrees in datatype with the stored one of its name - or restates a
+    /// different reference - is refused. A reference and an inline member
+    /// agree when the reference's target has the inline datatype: `PartyID`
+    /// stated inline as `utf8` restates a reference to the `utf8` field
+    /// `PartyID`, and the stored form is what stays. Metadata folds as
+    /// [`Self::add_field`] folds it: the incoming side wins a shared key, the
+    /// identity keys excepted, and the `fix:` keys follow
+    /// [`FixFieldMut::merge_with`](crate::FixFieldMut::merge_with), which
+    /// holds both sides to one message code, counter and component.
+    ///
+    /// The merge is settled on the documents a store writes, references
+    /// folded to their markers, and the catalog is resolved from them again:
+    /// every message and component referencing the definition sees the
+    /// appended members without holding a copy of anything.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, FixCategory, FixRegistry};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut party_id = DataType::Utf8.nullable_field("PartyID");
+    /// party_id.as_fix_mut().set_tag(448)?;
+    /// let mut registry = FixRegistry::from_fields([party_id.clone()])?;
+    /// party_id.as_fix_mut().set_field_ref("PartyID")?;
+    /// let party = DataType::from_fields([party_id])?.required_field("Party");
+    /// registry.create_definition(FixCategory::Components, party)?;
+    /// // A message restates the component through a reference to it.
+    /// let mut party = registry.definition(FixCategory::Components, "Party", None)?.clone();
+    /// party.as_fix_mut().set_component("Party")?;
+    /// let mut order = DataType::from_fields([party])?.required_field("Order");
+    /// order.as_fix_mut().set_msgtype("D")?;
+    /// registry.create_definition(FixCategory::Messages, order)?;
+    ///
+    /// // Extending the component is one call, and the message sees the member.
+    /// let mut extended = registry.definition(FixCategory::Components, "Party", None)?.clone();
+    /// let note = DataType::Utf8.nullable_field("PartyNote");
+    /// let members = extended.fields().iter().cloned().chain([note]);
+    /// extended.set_dtype(DataType::from_fields(members)?)?;
+    /// assert!(!registry.add_definition(FixCategory::Components, extended)?, "merged");
+    /// let member = yggdryl::FieldPath::from_str("Order.Party.PartyNote")?;
+    /// assert_eq!(registry.field_by_path(&member, None)?.dtype(), &DataType::Utf8);
+    /// assert_eq!(registry.definition(FixCategory::Components, "Party", None)?.field_len(), 2);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::insert_definition`] returns for a definition that
+    /// arrives; for a merge, [`Error::InvalidRecord`] naming the member whose
+    /// datatype or reference disagrees with the stored one, the conflict
+    /// [`FixFieldMut::merge_with`](crate::FixFieldMut::merge_with) raises for
+    /// a second message code, counter or component, and whatever resolving
+    /// or validating the merged catalog raises. One staged mutation: a refusal
+    /// leaves the registry untouched.
+    pub fn add_definition(&mut self, category: FixCategory, field: Field) -> Result<bool> {
+        if category == FixCategory::Fields {
+            return self.add_field(field);
+        }
+        let mut staged = self.clone();
+        let added = staged.fold_definition(category, field)?;
+        *self = staged;
+        Ok(added)
+    }
+
+    /// The fold of one named definition, without the staging.
+    ///
+    /// [`Self::add_definition`] is this plus the copy that makes it one
+    /// mutation, and a fold already holding a staged dictionary calls this so
+    /// the copy is paid once.
+    pub(super) fn fold_definition(&mut self, category: FixCategory, field: Field) -> Result<bool> {
+        validate_name(&field)?;
+        check_shape(category, &field)?;
+        let branch = field.as_fix().branch()?;
+        self.check_branch(&branch)?;
+        if self
+            .get_definition(category, field.name(), Some(&branch))
+            .is_none()
+        {
+            self.insert_definition(category, field)?;
+            return Ok(true);
+        }
+        let mut documents = Documents::from_registry(self)?;
+        self.fold_document(&mut documents, category, &branch, &field)?;
+        self.resolve_catalog(documents.raw)?;
+        self.validate_catalog()?;
+        Ok(false)
+    }
+
+    /// Folds one incoming definition over the documents.
+    ///
+    /// A document nothing stored answers to is added as the store would read
+    /// it; one a stored document answers to, by folded name in its branch, is
+    /// merged into that document under the stored key.
+    fn fold_document(
+        &self,
+        documents: &mut Documents,
+        category: FixCategory,
+        branch: &FixBranch,
+        incoming: &Field,
+    ) -> Result<()> {
+        let incoming = compact(incoming.clone(), true)?;
+        let Some((key, stored)) = documents.get(category, branch, incoming.name()) else {
+            let key = (category, branch.clone(), incoming.name().to_owned());
+            documents.put(key, incoming);
+            return Ok(());
+        };
+        let (key, stored) = (key.clone(), stored.clone());
+        let merged = self.merge_documents(documents, category, &stored, &incoming)?;
+        documents.put(key, merged);
+        Ok(())
+    }
+
+    /// One level of `incoming` folded into `stored`, both compact.
+    fn merge_documents(
+        &self,
+        documents: &mut Documents,
+        category: FixCategory,
+        stored: &Field,
+        incoming: &Field,
+    ) -> Result<Field> {
+        let mut merged = merge_root(stored, incoming)?;
+        let dtype = if category == FixCategory::Groups {
+            let (held, item) = (occurrence_of(stored)?, occurrence_of(incoming)?);
+            let occurrence = match (reference(held), reference(item)) {
+                // The stored occurrence is a component's, so what the incoming
+                // one adds belongs to that component: its members are folded
+                // there - only its members, since the occurrence's own root
+                // is the group's business and is merged above - and the
+                // group, with every other reference, reads them back from
+                // there once the documents resolve.
+                (Some((FixCategory::Components, name)), None) => {
+                    let branch = held.as_fix().branch()?;
+                    let Some((key, component)) =
+                        documents.get(FixCategory::Components, &branch, name)
+                    else {
+                        return Err(Error::absent(FixCategory::Components.as_str(), name));
+                    };
+                    let (key, mut component) = (key.clone(), component.clone());
+                    let members = self.merge_children(
+                        documents,
+                        component.name(),
+                        component.fields(),
+                        item.fields(),
+                    )?;
+                    component.set_dtype(DataType::from_fields(members)?)?;
+                    documents.put(key, component);
+                    held.clone()
+                }
+                (None, None) => {
+                    let mut occurrence = merge_root(held, item)?;
+                    let members = self.merge_children(
+                        documents,
+                        stored.name(),
+                        held.fields(),
+                        item.fields(),
+                    )?;
+                    occurrence.set_dtype(DataType::from_fields(members)?)?;
+                    occurrence
+                }
+                _ => {
+                    self.agree(documents, stored.name(), held, item)?;
+                    held.clone()
+                }
+            };
+            if matches!(stored.dtype(), DataType::LargeList(_)) {
+                DataType::large_list(occurrence)
+            } else {
+                DataType::list(occurrence)
+            }
+        } else {
+            DataType::from_fields(self.merge_children(
+                documents,
+                stored.name(),
+                stored.fields(),
+                incoming.fields(),
+            )?)?
+        };
+        merged.set_dtype(dtype)?;
+        Ok(merged)
+    }
+
+    /// The stored children, then every incoming child no stored one answers
+    /// to.
+    ///
+    /// Order is the stored definition's, because a message's members are read
+    /// positionally by everything that walks it; what arrives is appended in
+    /// the order it was declared.
+    fn merge_children(
+        &self,
+        documents: &Documents,
+        owner: &str,
+        stored: &[Field],
+        incoming: &[Field],
+    ) -> Result<Vec<Field>> {
+        let mut merged: Vec<Field> = stored.to_vec();
+        for child in incoming {
+            match merged
+                .iter()
+                .find(|held| folds_equal(held.name(), child.name()))
+            {
+                Some(held) => self.agree(documents, owner, held, child)?,
+                None => merged.push(child.clone()),
+            }
+        }
+        Ok(merged)
+    }
+
+    /// Whether an incoming child restates the stored one its name folds onto.
+    ///
+    /// Two references agree on the target they name, never on the expansion
+    /// either side happens to hold, because two registries expand one
+    /// component differently exactly when one of them extended it. Two
+    /// inline children agree on their datatype. A reference on one side and
+    /// an inline child on the other agree when the target's datatype is the
+    /// inline one - a dictionary built in memory states `PartyID` inline
+    /// where a loaded one references it, and both describe tag 448 - and the
+    /// stored side is what is kept, whichever form it has. One level and
+    /// nothing else: a child both sides declare is the stored one, so what
+    /// its own children say is not this merge's to read.
+    fn agree(&self, documents: &Documents, owner: &str, held: &Field, child: &Field) -> Result<()> {
+        // Resolved only where one side is a reference and the other is not:
+        // two references agree or disagree on what they name, and resolving
+        // them would ask for a target that may be arriving in this very fold.
+        let (mut held_target, mut child_target) = (None, None);
+        let same = match (reference(held), reference(child)) {
+            (Some((category, name)), Some((other, spelling))) => {
+                category == other && folds_equal(name, spelling)
+            }
+            (None, None) => held.dtype() == child.dtype(),
+            (Some(_), None) => {
+                held_target = Some(self.referenced_dtype(documents, held)?);
+                held_target.as_ref() == Some(child.dtype())
+            }
+            (None, Some(_)) => {
+                child_target = Some(self.referenced_dtype(documents, child)?);
+                child_target.as_ref() == Some(held.dtype())
+            }
+        };
+        if same {
+            return Ok(());
+        }
+        Err(Error::InvalidRecord {
+            path: format_smolstr!("{owner}.{}", held.name()),
+            reason: crate::text::expected_got(
+                format_args!("{} stored for it", describe(held, held_target.as_ref())),
+                describe(child, child_target.as_ref()),
+            ),
+        })
+    }
+
+    /// The datatype the reference `field` carries resolves to, in the compact
+    /// shape the documents hold: a field's from this registry, a named
+    /// definition's from the documents being folded, so a definition
+    /// extended earlier in the same fold answers extended.
+    fn referenced_dtype(&self, documents: &Documents, field: &Field) -> Result<DataType> {
+        let (category, name) = reference(field)
+            .ok_or_else(|| Error::absent("a field, component, or group reference", field.name()))?;
+        let branch = field.as_fix().branch()?;
+        if category == FixCategory::Fields {
+            return Ok(self
+                .definition(category, name, Some(&branch))?
+                .dtype()
+                .clone());
+        }
+        documents
+            .get(category, &branch, name)
+            .map(|(_, document)| document.dtype().clone())
+            .ok_or_else(|| Error::absent(category.as_str(), name))
+    }
+
     /// Removes a definition only when every remaining reference stays valid.
     pub fn remove_definition(
         &mut self,
@@ -755,47 +1217,33 @@ impl FixRegistry {
                 }
             }
         }
-        match category {
-            FixCategory::Fields if field.dtype().is_nested() => {
-                return Err(invalid(field, "a scalar datatype"));
+        check_shape(category, field)?;
+        if category == FixCategory::Groups {
+            let tag = field
+                .as_fix()
+                .counter()?
+                .ok_or_else(|| Error::absent("fix:counter", field.name()))?;
+            let branch = field.as_fix().branch()?;
+            let id = FixId::from_parts(&branch, tag)?;
+            let counter = self.field_by_id(id)?;
+            if counter.dtype() != &DataType::Int32 {
+                return Err(invalid(counter, "an int32 repeating-group counter"));
             }
-            FixCategory::Messages | FixCategory::Components
-                if !matches!(field.dtype(), DataType::Struct(_)) =>
-            {
-                return Err(invalid(field, "a Struct datatype"));
-            }
-            FixCategory::Groups => {
-                if !matches!(field.dtype(), DataType::List(item) | DataType::LargeList(item) if !item.is_nullable() && matches!(item.dtype(), DataType::Struct(_)))
-                {
-                    return Err(invalid(field, "a List of non-null Struct occurrences"));
-                }
-                let tag = field
-                    .as_fix()
-                    .counter()?
-                    .ok_or_else(|| Error::absent("fix:counter", field.name()))?;
-                let branch = field.as_fix().branch()?;
-                let id = FixId::from_parts(&branch, tag)?;
-                let counter = self.field_by_id(id)?;
-                if counter.dtype() != &DataType::Int32 {
-                    return Err(invalid(counter, "an int32 repeating-group counter"));
-                }
-                if let Some(component) = field.as_fix().component() {
-                    if let DataType::List(item) | DataType::LargeList(item) = field.dtype() {
-                        if !item
-                            .as_fix()
-                            .component()
-                            .is_some_and(|name| crate::types::folds_equal(name, component))
-                        {
-                            return Err(Error::conflict(
-                                "the group's component reference on its item",
-                                "a different or absent item reference",
-                                field.name(),
-                            ));
-                        }
+            if let Some(component) = field.as_fix().component() {
+                if let DataType::List(item) | DataType::LargeList(item) = field.dtype() {
+                    if !item
+                        .as_fix()
+                        .component()
+                        .is_some_and(|name| folds_equal(name, component))
+                    {
+                        return Err(Error::conflict(
+                            "the group's component reference on its item",
+                            "a different or absent item reference",
+                            field.name(),
+                        ));
                     }
                 }
             }
-            _ => {}
         }
         self.validate_references(field, 0)
     }
@@ -920,35 +1368,41 @@ impl FixRegistry {
         Ok(())
     }
 
+    /// Folds every named definition of `other` into this catalog, the way
+    /// [`Self::add_definition`] folds one.
+    ///
+    /// Settled on documents and resolved once at the end, so a definition
+    /// that arrives referencing another that arrives beside it resolves
+    /// whatever order the categories are walked in, and one that merges is
+    /// seen extended by everything referencing it. The fields were folded
+    /// before this, so a field reference resolves against the union.
     pub(super) fn merge_catalog(&mut self, other: &Self) -> Result<()> {
-        // The source has been validated against its own fields. Resolve its
-        // references against the merged fields before combining the catalogs;
-        // retained target references must still reject structural replacements.
-        let stored = std::mem::replace(&mut self.catalog, other.catalog.clone());
-        let refreshed = self.refresh_references();
-        let incoming = std::mem::replace(&mut self.catalog, stored);
-        refreshed?;
+        let mut documents = Documents::from_registry(self)?;
+        // What arrives new is put before anything merges, so a member that
+        // references it on one side and states it inline on the other is
+        // compared against it whatever category it belongs to.
+        let mut folding = Vec::new();
         for category in [
             FixCategory::Components,
             FixCategory::Groups,
             FixCategory::Messages,
         ] {
-            for field in incoming.iter(category) {
+            for field in other.catalog.iter(category) {
                 let branch = field.as_fix().branch()?;
                 self.check_branch(&branch)?;
-                let mut field = field.clone();
-                if let Some(stored) = self.get_definition(category, field.name(), Some(&branch)) {
-                    if stored.name().eq_ignore_ascii_case(field.name()) {
-                        field.set_name(stored.name());
-                    }
+                if documents.get(category, &branch, field.name()).is_none() {
+                    self.fold_document(&mut documents, category, &branch, field)?;
+                } else {
+                    folding.push((category, branch.clone(), field));
                 }
-                self.catalog.insert(category, branch.clone(), field)?;
                 self.ensure_branch(branch);
             }
         }
-        self.validate_catalog()?;
-        self.refresh_msgtype_aliases();
-        Ok(())
+        for (category, branch, field) in folding {
+            self.fold_document(&mut documents, category, &branch, field)?;
+        }
+        self.resolve_catalog(documents.raw)?;
+        self.validate_catalog()
     }
 
     pub(super) fn has_branch_definitions(&self, branch: &FixBranch) -> bool {

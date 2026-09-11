@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use crate::types::Scalar;
-use crate::types::typed::define_scalar_type;
-use crate::{AnyType, DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValue};
+use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValue};
 
 /// Borrowing access shared by every nested value shape.
 pub trait NestedValue: crate::ScalarValue {
@@ -204,7 +203,6 @@ macro_rules! nested_value {
     ($leaf:ident, $variant:ident, $id:ident) => {
         impl ScalarValue for $leaf {
             type Family = Nested;
-            type Type = AnyType;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Nested;
@@ -343,32 +341,3 @@ impl Index<&str> for Scalar {
         self.get_key_str(key).expect("mapping key is not present")
     }
 }
-
-define_scalar_type!(ListScalar, super::ListType, "list");
-define_scalar_type!(ListViewScalar, super::ListViewType, "list_view");
-define_scalar_type!(
-    FixedSizeListScalar,
-    super::FixedSizeListType,
-    "fixed_size_list"
-);
-define_scalar_type!(LargeListScalar, super::LargeListType, "large_list");
-define_scalar_type!(
-    LargeListViewScalar,
-    super::LargeListViewType,
-    "large_list_view"
-);
-define_scalar_type!(StructScalar, super::StructType, "struct");
-define_scalar_type!(UnionScalar, super::UnionType, "union");
-define_scalar_type!(DictionaryScalar, super::DictionaryTypeMarker, "dictionary");
-define_scalar_type!(MapScalar, super::MapTypeMarker, "map");
-define_scalar_type!(
-    VariantScalar,
-    super::VariantType,
-    "variant",
-    crate::DataType::Variant
-);
-define_scalar_type!(
-    RunEndEncodedScalar,
-    super::RunEndEncodedTypeMarker,
-    "run_end_encoded"
-);

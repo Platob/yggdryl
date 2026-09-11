@@ -5,7 +5,6 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::types::Scalar;
-use crate::types::typed::define_scalar_type;
 use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValue};
 
 /// The one null value.
@@ -93,7 +92,6 @@ impl ScalarFamily for Null {
 
 impl ScalarValue for Null {
     type Family = Self;
-    type Type = super::NullType;
 
     const ID: DataTypeId = DataTypeId::Null;
     const KIND: DataTypeKind = DataTypeKind::Null;
@@ -144,7 +142,6 @@ impl ScalarFamily for Boolean {
 
 impl ScalarValue for Boolean {
     type Family = Self;
-    type Type = super::BooleanType;
 
     const ID: DataTypeId = DataTypeId::Boolean;
     const KIND: DataTypeKind = DataTypeKind::Boolean;
@@ -169,14 +166,6 @@ impl ScalarValue for Boolean {
         <Self as ScalarFamily>::from_scalar(value)
     }
 }
-
-define_scalar_type!(NullScalar, super::NullType, "null", crate::DataType::Null);
-define_scalar_type!(
-    BooleanScalar,
-    super::BooleanType,
-    "boolean",
-    crate::DataType::Boolean
-);
 
 /// Read a boolean out of its canonical spelling.
 ///

@@ -5,9 +5,13 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use super::FixId;
 use super::group_plan::GroupPlan;
+use super::registry::name_digest;
+use super::{FixBranch, FixId};
 use crate::{DataType, Error, Field, Result};
+
+/// The seed the child index folds names under.
+const CHILD_DOMAIN: u64 = 0x4d53_475f_4348_4c44;
 
 /// A named FIX message schema and its exact wire code.
 ///
@@ -31,6 +35,11 @@ use crate::{DataType, Error, Field, Result};
 pub struct MsgType {
     field: Field,
     groups: HashMap<FixId, Option<GroupOccurrence>>,
+    /// The direct scalar children carrying a tag, by folded name: what a
+    /// key the dictionary does not name resolves against, answered by one
+    /// probe rather than by a walk of a wide message's three hundred
+    /// children for each of a bridge row's dozens of unknown keys.
+    children: HashMap<u64, usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -77,7 +86,43 @@ impl MsgType {
         validate_code(code)?;
         let mut groups = HashMap::new();
         Self::index_groups(&field, &mut Vec::new(), &mut groups, &mut HashMap::new())?;
-        Ok(Self { field, groups })
+        // Only a scalar child carrying a tag answers for a key: a nested
+        // level is addressed by its own located key and never by a leaf,
+        // and a child no tag identifies explains a key no better than the
+        // key explains itself. The first of two children folding to one
+        // name keeps the index, exactly as a walk would answer it first.
+        let mut children = HashMap::new();
+        for (index, child) in field.fields().iter().enumerate() {
+            if child.dtype().is_nested() || child.as_fix().tag().ok().flatten().is_none() {
+                continue;
+            }
+            children
+                .entry(name_digest(
+                    &FixBranch::STANDARD,
+                    child.name(),
+                    CHILD_DOMAIN,
+                ))
+                .or_insert(index);
+        }
+        Ok(Self {
+            field,
+            groups,
+            children,
+        })
+    }
+
+    /// The direct scalar child `key` names under the crate's name fold, and
+    /// the tag it carries.
+    ///
+    /// One probe of the index built when the message was registered,
+    /// rechecked against the child it lands on, so a collision is a miss.
+    pub(super) fn get_child_by_name(&self, key: &str) -> Option<(&Field, i32)> {
+        let digest = name_digest(&FixBranch::STANDARD, key, CHILD_DOMAIN);
+        let child = self.field.fields().get(*self.children.get(&digest)?)?;
+        if !crate::types::folds_equal(child.name(), key) {
+            return None;
+        }
+        Some((child, child.as_fix().tag().ok()??))
     }
 
     /// Borrows the complete native message schema without allocating.

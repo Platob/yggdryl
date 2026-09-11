@@ -76,12 +76,12 @@ pub use fix::{
     FixLineage, FixLineageEntry, FixMessages, FixMsg, FixParty, FixPedigree, FixRegistry,
     FixSpellings, ID_TAG, INSTID_TAG, ISINCODE_TAG, MBEAN_TAG, MICCODE_TAG, MSGCTXID_TAG,
     MSGDIRECTION_TAG, MSGHASH_TAG, OPERATION_TAG, PARENTCLORDID_TAG, PARENTORDERID_TAG,
-    PERSISTENTID_TAG, SENDERPLUGINID_TAG, SENDERSESSIONID_TAG, SENDERSESSIONNAME_TAG, SOH,
-    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG, STATUS_TAG, SYMBOLTICKER_TAG,
-    TARGETPLUGINID_TAG, TARGETSESSIONID_TAG, TARGETSESSIONNAME_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG,
-    ULBRIDGE_BRANCH, ULBRIDGE_ROWHEADER, ULBRIDGE_TAG_MIN, UNIXPARTITION_TAG, UlPlugin, UlPlugins,
-    VERSION_TAG, Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_lift, fix_lifts,
-    fix_schema, fix_schema_carrying, fix_schema_tags, fix_ulbridge_fields, is_crate_tag,
+    PERSISTENTID_TAG, PLUGINID_TAG, PREVPLUGINID_TAG, SENDERSESSIONID_TAG, SENDERSESSIONNAME_TAG,
+    SOH, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG, STATUS_TAG, SYMBOLTICKER_TAG,
+    TARGETSESSIONID_TAG, TARGETSESSIONNAME_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG, ULBRIDGE_BRANCH,
+    ULBRIDGE_ROWHEADER, ULBRIDGE_TAG_MIN, UNIXPARTITION_TAG, UlPlugin, UlPlugins, VERSION_TAG,
+    Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_lift, fix_lifts, fix_schema,
+    fix_schema_carrying, fix_schema_tags, fix_ulbridge_fields, is_crate_tag,
 };
 pub use i256::I256;
 #[cfg(feature = "arrow")]
@@ -126,16 +126,16 @@ pub use types::protocol::{
     SparkFieldMut, SqlField, SqlFieldMut, UrnField, UrnFieldMut,
 };
 pub use types::{
-    AnyType, AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRef,
-    FieldType, Floating, FloatingValue, GeospatialValue, Integer, IntegerValue, NestedValue,
-    OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar, ScalarFamily,
-    ScalarValue, TemporalFamily, TemporalValue, TextValue, TypedField, TypedFieldRef, TypedScalar,
-};
-pub use types::{
     AsciiEnum, AsciiType, BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
     GeospatialParameters, GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType,
-    TemporalType, TextType, UnionFields, UrlField, UrlScalar, UrlType, Version, VersionField,
-    VersionScalar, VersionType,
+    TemporalType, TextType, UnionFields, UrlField, UrlType, Version, VersionField, VersionType,
+};
+pub use types::{
+    AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRecord,
+    FieldRef, FieldScalar, FieldType, Floating, FloatingValue, GeospatialValue, Integer,
+    IntegerValue, NestedValue, OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty,
+    Scalar, ScalarFamily, ScalarValue, TemporalFamily, TemporalValue, TextValue, TypedField,
+    TypedFieldRef,
 };
 pub use union_mode::UnionMode;
 pub use uri::{

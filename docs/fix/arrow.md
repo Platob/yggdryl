@@ -13,9 +13,9 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | one output row per emitted message; bulk and wildcard bodies expand, with carried source columns repeated; a line the reader refuses is a row holding an empty message, so a row in is a row out |
 | Batches | closed by raw bytes against the codec's `batch_byte_size`, `DEFAULT_BATCH_BYTE_SIZE` (128 MiB) unless pinned: several small input batches accumulate into one, one larger than the target splits by rows in proportion, and a batch always holds at least one row |
-| Pins | on the codec, for the whole run: `with_payload_column`, `with_separator`, `with_branch`, `with_version`, `with_null_values`, `with_direction`, `with_batch_byte_size` |
+| Pins | on the codec, for the whole run: `with_payload_column`, `with_capture_names`, `with_separator`, `with_branch`, `with_version`, `with_null_values`, `with_direction`, `with_batch_byte_size` |
 | Stages | a call, never a flag: `enrich_messages_arrow_reader`, `FixCodec::lifecycle`, `FixMsg::into_latest` and `FixDedup` compose over `messages` and `arrow_reader` |
-| Per row | `branch`, `beginstring`, `sep`, `direction` and `timestamp` are parameters read from the row; any other column named after a field fills it where the message did not state it |
+| Per row | `branch`, `beginstring`, `direction` and `timestamp` are parameters read from the row; any other column named after a field fills it where the message did not state it |
 | Errors | typed I/O, schema and parsing failures; a source batch of another schema than the first is a conflict; malformed bulk input reports its location and stops the stream |
 | Lazy | one source batch held at a time; configuration cursors consumed incrementally under the output batch bound |
 | Wire | `write_arrow_reader` rebuilds every line from `nofixentries` and never from the columns; a batch without that column is refused before a row is read |
@@ -172,14 +172,15 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 | Pin | Builder | Default | Says |
 | --- | --- | --- | --- |
 | `payload_column` | `with_payload_column` | `body` (`DEFAULT_PAYLOAD_COLUMN`) | which column carries the bytes |
-| `separator` | `with_separator` | `SOH` (`0x01`) | the separator a numeric frame is written with, and the one `write_arrow_reader` writes |
+| `separator` | `with_separator` | `SOH` (`0x01`) | the separator a re-emitted line is written with, which is what `write_arrow_reader` writes; reading takes none, because a line already said which byte separated its fields |
 | `branch` | `with_branch` | none | the dialect, so no row infers one |
 | `version` | `with_version` | none | the version values are translated at, never what a column is called; unpinned, each row answers for itself |
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
 | `direction` | `with_direction` | `SENT` | the direction a line that states none of its own took - no verb in front of its payload, and no [document saying which half it is](registry.md#a-direction-is-the-verb-in-front-of-the-payload) |
 | `batch_byte_size` | `with_batch_byte_size` | `DEFAULT_BATCH_BYTE_SIZE`, 128 MiB | the raw bytes one output batch targets |
+| `capture_names` | `with_capture_names` | none | what a run's row-header captures are called, in the order a line answers them, so [`parse_text_line`](capture.md#a-reader-is-the-whole-parse-surface) reads a capture by position rather than by name |
 
-What happens to a message on its way into a row is a stage, and a stage is a call over the stream rather than a flag on the reader: [`enrich_messages_arrow_reader`](#filled-where-it-sits) fills batches, `lifecycle` [stamps](lifecycle.md#in-a-batch-read) a stream, `into_latest` [restates](message.md#restated-at-the-dictionarys-newest-version) a message and `FixDedup` drops an adjacent republication - each composed as `arrow_reader(schema, stage(messages(reader)))`, so the order stages run in is the order they are written in and nothing runs unasked. Python spells the pins as keywords on `FixCodec(registry, *, branch, version, separator, payload_column, null_values, direction, batch_byte_size)`, JavaScript as the options object of `new fix.FixCodec(registry, { ... })` in camelCase; `separator` is the byte's integer value, and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
+What happens to a message on its way into a row is a stage, and a stage is a call over the stream rather than a flag on the reader: [`enrich_messages_arrow_reader`](#filled-where-it-sits) fills batches, `lifecycle` [stamps](lifecycle.md#in-a-batch-read) a stream, `into_latest` [restates](message.md#restated-at-the-dictionarys-newest-version) a message and `FixDedup` drops an adjacent republication - each composed as `arrow_reader(schema, stage(messages(reader)))`, so the order stages run in is the order they are written in and nothing runs unasked. Python spells the pins as keywords on `FixCodec(registry, *, branch, version, separator, payload_column, capture_names, null_values, direction, batch_byte_size)`, JavaScript as the options object of `new fix.FixCodec(registry, { ... })` in camelCase; `separator` is the byte's integer value, and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
 
 Messages to batches, with one stage between them: the lifecycle stamps four messages of one order's life, and every row carries the chain.
 
@@ -272,14 +273,13 @@ Messages to batches, with one stage between them: the lifecycle stamps four mess
 
 ## A column is the caller speaking per row
 
-One column carries the bytes; five more supply, per row, arguments the byte readers already take per call, and every other column is offered to the message by name.
+One column carries the bytes; four more supply, per row, arguments the byte readers already take per call, and every other column is offered to the message by name. A separator is not among them: which byte separated a frame's fields is what the line itself said, so no row states it.
 
 | Column | Supplies |
 | --- | --- |
 | the payload column, named by the codec | the bytes parsed |
 | `branch` | the dialect |
 | `beginstring` | the source version |
-| `sep` | the separator |
 | `direction` | the direction, stated |
 | `timestamp` | the row's own clock, which [stamps the message](capture.md#every-message-is-dated-and-versioned) ahead of any clock the frame carries |
 | any other column named after a field | that field, where the message did not state it |
@@ -288,14 +288,14 @@ A column is the caller speaking per row and a pin is the caller speaking per run
 
 A fill is named the way a key is: a column whose folded name resolves in the message's branch, then the standard one, then any dictionary the registry holds - so a `senderSessionId` capture reaches the crate's own `sendersessionid` - and last through the bridge's own spellings of standard fields, `seqNum` reaching `MsgSeqNum(34)`. It is row-only: never an entry, so it is not in `nofixentries`, not re-emitted by `write_arrow_reader` and not in `msghash`; a value the field cannot hold fills nothing rather than a null; and a column named by a tag's digits fills nothing, because a name is what reaches a field. Which columns fill is decided once, from the schema and the dictionary, rather than per row.
 
-`branch`, `sep` and `direction` are still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. `beginstring` and `timestamp` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided, and its `timestamp` column holds what a `timestamp` column stated. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
+`direction` is still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. `beginstring` and `timestamp` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided, and its `timestamp` column holds what a `timestamp` column stated. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
 
 ### A bridge log names what it fills
 
 `yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text.md#row-schema) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level - with every capture named for what it fills. Rust names the constant; the regex is the same text, ending in one space, in any binding's `rowheader`.
 
 ```text
-^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<senderSessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) 
+^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<senderSessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) 
 ```
 
 | Capture | Typed as | In a batch read |
@@ -305,12 +305,12 @@ A fill is named the way a key is: a column whose folded name resolves in the mes
 | `senderSessionId` | utf8, nullable | the session instance the bridge handled the line on; folds onto `sendersessionid` (65007), so it fills that column rather than leading the row, and never over a reading the message stated |
 | `msgCtxId` | utf8, nullable | fills `msgctxid` (65008) |
 | `seqNum` | int64, nullable | fills `msgseqnum` (34) where the frame did not carry it; carried in front too, since no FIX column is named `seqnum` |
-| `plugin` | utf8 | carried in front, and a parameter: fills `sendersessionname` (65011) for a line the row says was sent and `targetsessionname` (65012) for one it received |
+| `pluginid` | utf8 | fills `pluginid` (65009), the plugin that logged the line; where its text names a dialect the dictionary declares, it is also the branch the row is read under |
 | `level` | utf8 | the capture's own column |
 
 The session uid, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
 
-The plugin is the one capture read as a parameter rather than as a fill by name: with the row's direction - stated in its `direction` column, else read off the line's verb, else the codec's `direction`, which is what a session's own log means by silence - it fills the plugin session the line moved from or to. A bridge row that spells `ULFROMSESSIONNAME` or `ULTOSESSIONNAME` itself keeps its own statement, because a fill never overrides a value the message stated.
+The plugin is read twice over, from one cell: it fills the crate's own `pluginid` column by name, like any capture named after a field, and where its text is the name or an alias of a dialect the dictionary declares it is the branch the row is read under, outranking the codec's own pin. A plugin no branch is named after leaves that pin standing. The two session names are only ever what the line itself spells, through the `ULFROMSESSIONNAME` and `ULTOSESSIONNAME` aliases they answer to.
 
 === "Rust"
 
@@ -321,14 +321,14 @@ The plugin is the one capture read as a parameter rather than as a fill by name:
     let options = TextOptions::new().try_with_rowheader(ULBRIDGE_ROWHEADER)?;
     let captures = options.source_field()?;
     let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-    assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "plugin", "level"]));
+    assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "pluginid", "level"]));
     // Typed from the pattern before a byte is read.
     assert_eq!(captures.field("seqNum")?.dtype(), &DataType::Int64);
     ```
 
 ## One row per message
 
-Ordinary frames produce one row each. Bulk configuration arrays emit every response, and wildcard responses emit every selected MBean, each repeating its source row's carried columns. Empty bulk and wildcard answers emit zero rows. Join a parsed capture by its carried source identifier rather than assuming row positions still align. `parse_text_record` is the same reading of one record, and answers the iterator when expansion is wanted.
+Ordinary frames produce one row each. Bulk configuration arrays emit every response, and wildcard responses emit every selected MBean, each repeating its source row's carried columns. Empty bulk and wildcard answers emit zero rows. Join a parsed capture by its carried source identifier rather than assuming row positions still align. `parse_text_line` is the same reading of one line, and answers the iterator when expansion is wanted.
 
 === "Rust"
 
@@ -679,7 +679,7 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
 - A fill is row-only: never an entry, never in `nofixentries`, never re-emitted by `write_arrow_reader`, never in `msghash`.
 - A batch's bytes are read once from the payload column's offsets and spread evenly over its rows, so a large batch splits into equal row counts; a bulk configuration row's whole charge rides on its first message.
 - A `batch_byte_size` of `0` or `1` is a batch a row: the target is where a batch closes, never a bound a row must fit under.
-- `parse_text_arrow_reader` on a source with no column named as the payload column, or one holding neither text nor bytes under it -> refused before a row is read, naming the column; `parse_text_record` refuses the same record the same way. A null payload is a row holding an empty message.
+- `parse_text_arrow_reader` on a source with no column named as the payload column, or one holding neither text nor bytes under it -> refused before a row is read, naming the column. `parse_text_line` has no column to name: a line's body is a typed field, so a line carrying no bytes is a row holding an empty message and nothing else is refusable.
 - `messages` on a source whose schema makes no root field -> one error item; a later batch of another schema -> a conflict item; a row that is not a FIX row -> an error item; each fuses the stream.
 - `arrow_reader` under a schema the message cannot fill whole -> the row's own refusal, at that row; an `Err` item in its stream - a line `parse_lines` refused - yields the completed prefix, then the error, and fuses the reader, so a capture wanting every line as a row reads through `parse_text_arrow_reader`.
 - `arrow_reader` over messages carrying no arrival record - built by hand, or read back from rows holding only lifted columns - charges each the leaves of its row, so `enrich_messages_arrow_reader` over a lifted-only projection is bounded by the same target.
@@ -716,20 +716,22 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
 
 | stage | estimate | throughput | per line, row or message |
 | --- | --- | --- | --- |
-| `text_read`, the row header framed, each line numbered, classified and read for its direction | 152 ms | 73 MB/s | 21.0 us |
-| `parse_text_arrow_reader`, the whole path into fixed rows | 1.80 s | 6.1 MB/s | 246 us |
-| `parse_lines`, the codec alone over the framed bodies | 714 ms | 15.5 MB/s | 98.8 us |
+| `text_read`, the row header framed, each line numbered, classified and read for its direction | 160 ms | 68.6 MB/s | 22.2 us |
+| `parse_text_arrow_reader`, the whole path into fixed rows | 1.82 s | 6.1 MB/s | 249 us |
+| `parse_lines`, the codec alone over the framed bodies | 859 ms | 12.8 MB/s | 119 us |
 
-The text stage is under a tenth of the whole and the codec two fifths; the rest is the row landing in Arrow. What a message costs after it is built, each pass over fresh clones of the 7,232 messages, so every number is the pass over a message the stream just built:
+The text stage is under a tenth of the whole and the codec just under a half; the rest is the row landing in Arrow.
+
+These three are slower than they were before a frame decided where a value ends and an entry became a range of its line, measured on one container against the commit those changes began from: `text_read` by 16%, `parse_text_arrow_reader` by 9%, `parse_lines` by 30%. `text_read` runs no FIX code at all, so its share is the scanner's: `LineSeparator::for_line` ranks four candidates by position where it used to stop at the first that answered, and ranking means asking each one where it first separated a field. That reading is the one [`inspect`, `classify` and `entry_spans` now share](../media/text.md), which is what stopped them being three answers to one question - and what it costs is stated here rather than left for a reader to discover. What a message costs after it is built, each pass over fresh clones of the 7,232 messages, so every number is the pass over a message the stream just built:
 
 | pass | estimate | per message |
 | --- | --- | --- |
-| `into_row`, the message read against the fixed schema | 242 ms | 33.4 us |
-| `arrow_reader`, the rows landed in batches | 573 ms | 79.2 us |
-| `enrich_messages`, the rules that fill what a message implies | 546 ms | 75.6 us |
-| `into_latest`, the row restated at the dictionary's newest version | 587 ms | 81.2 us |
-| `lifecycle`, the stamp that joins a message to its order's life | 184 ms | 25.4 us |
-| `digest`, the message's identity | 37.8 ms | 5.22 us |
+| `into_row`, the message read against the fixed schema | 220 ms | 30.5 us |
+| `arrow_reader`, the rows landed in batches | 458 ms | 63.3 us |
+| `enrich_messages`, the rules that fill what a message implies | 516 ms | 71.4 us |
+| `into_latest`, the row restated at the dictionary's newest version | 551 ms | 76.2 us |
+| `lifecycle`, the stamp that joins a message to its order's life | 166 ms | 22.9 us |
+| `digest`, the message's identity | 28.8 ms | 3.98 us |
 
 A row pays `into_row` and its share of the batch; it pays for enrichment, the restatement and the lifecycle only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call). Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection; the batch is the rows canonicalized and built into one `RecordBatch`, of which the arrival record is the one nested column. Enrichment is the rule table walked once, most of it lookups that answer nothing on a message that stated everything, and each answer a write into the row; the restatement is every child resolved against the dictionary once and the rules its fields carry read borrowed; the lifecycle is two digests, a chain lookup and one write of three stamps. The digest is a hash over the arrival record and nothing else.
 

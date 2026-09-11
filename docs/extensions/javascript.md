@@ -773,8 +773,8 @@ view, including `branch`, `id`, `tag`, `tags`, `aliases`, `description`,
 | Crossing | Rule |
 | --- | --- |
 | tag key | a `number`, coerced once and checked exactly |
-| branch digests | `branchByDigest` / `getBranchByDigest` take the number an arrival entry carries and answer the branch's name; only a declared branch resolves |
-| `FixMsg.arrivals()` | `[tag, bid, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
+| branch digests | `branchByDigest` / `getBranchByDigest` take the number a branch digests to, as the store's branch manifest publishes it, and answer the branch's name; only a declared branch resolves. Nothing in this binding answers that number yet - the Python view does, through `FixBranch.digest()` |
+| `FixMsg.arrivals()` | `[tag, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them; the dialect is the message's own `branch`, not each pair's |
 | name or path key | a `string`; omitted branches use the core's deterministic best match; a colon-bearing string is a name |
 | branch, identifier | `string`, parsed by the core `FixBranch` and `FixId` |
 | `fieldByName`, `fieldByPath` | accept an optional branch restriction; canonical names precede aliases, standard precedes named branches within a tier |
@@ -786,9 +786,9 @@ view, including `branch`, `id`, `tag`, `tags`, `aliases`, `description`,
 | `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive` is a read-only number |
 | iteration | registry branch-major then by tag, message in the root's declared order |
 | categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
-| CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily |
+| CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily; `addField` and `addDefinition` are the lenient twins, answering `true` when the field or definition arrived and `false` when it folded into a stored one |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; complete UTF-8 wire code |
-| `FixCodec` | pins cross in the options object - `branch`, `version`, `separator`, `payloadColumn`, `nullValues`, `direction`, `batchByteSize`; `parseLine`, `parseTextRecord`, `parseUlconfigLine` return lazy `FixMessages`, `parseLines`, `parseTextRecords`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
+| `FixCodec` | pins cross in the options object - `branch`, `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction`, `batchByteSize`; `parseLine`, `parseTextLine`, `parseUlconfigLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parseTextArrowReader`, `enrichMessagesArrowReader` and `arrowReader(schema, messages)` take and answer a native `BatchReader`, so `BatchReader.from` widens an Arrow JS table on the way in and `intoTable` drains the answer; `writeArrowReader(reader, sink)` writes lines into anything with `write(chunk: Uint8Array)` and answers their count |
 | `FixMsg` writes | `set(key, value)` and `remove(key)` change the row in place and never the entries; `FixMsg.fromRow(schema, row, registry)` reads a fixed row back, entries included |
 | output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |

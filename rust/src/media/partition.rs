@@ -78,10 +78,18 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
         return Ok(smol_str::SmolStr::new_static(NULL_PARTITION));
     }
     // The value is non-null here, so the typed pairing's own projection is the
-    // one-row array the formatter reads; a value the datatype cannot hold was
-    // already refused when the pairing was built.
-    let typed = crate::TypedScalar::from_value(value.clone())?;
-    let array = typed.into_arrow_array()?;
+    // one-row array the formatter reads. A leaf borrows the field the crate
+    // keeps for its datatype; a value with no shared field is paired under
+    // the field it infers for itself.
+    let inferred;
+    let field = match value.shared_field() {
+        Some(field) => field,
+        None => {
+            inferred = value.inferred_scalar_field()?;
+            &inferred
+        }
+    };
+    let array = crate::FieldScalar::new(field, value.clone())?.into_arrow_array()?;
     match ArrayFormatter::try_new(array.as_ref(), &partition_format()) {
         Ok(formatter) => Ok(smol_str::SmolStr::new(formatter.value(0).to_string())),
         // Arrow's formatter carries no timezone database, so a zoned instant

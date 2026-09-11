@@ -14,6 +14,7 @@
 //! both can answer.
 
 use super::OneMessage;
+use super::path as fpath;
 
 use std::sync::Arc;
 
@@ -188,13 +189,12 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     // and the header's
     // captures - and the fixed columns follow. A capture whose folded name a
     // fixed column takes is not carried in front, it fills that column: the
-    // reader's `msgtype`, and the header's `timestamp` and `msgCtxId`.
-    // `senderSessionId` names a fixed column too, so it is not carried either.
-    // `seqNum` and `plugin` are, since no fixed column is spelled so; `seqNum`
-    // fills `msgseqnum` besides and `plugin` the session the line's direction
-    // names.
+    // reader's `msgtype`, and the header's `timestamp`, `msgCtxId` and
+    // `pluginid`. `senderSessionId` names a fixed column too, so it is not
+    // carried either. `seqNum` is, since no fixed column is spelled so, and
+    // it fills `msgseqnum` besides.
     assert_eq!(
-        &names[..10],
+        &names[..9],
         [
             "url",
             "rownum",
@@ -204,13 +204,12 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
             "body",
             "threadId",
             "seqNum",
-            "plugin",
             "level"
         ],
         "{names:?}"
     );
     assert_eq!(
-        &names[10..13],
+        &names[9..12],
         ["beginstring", "bodylength", "msgtype"],
         "{names:?}"
     );
@@ -219,6 +218,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         "timestamp",
         "sendersessionid",
         "msgctxid",
+        "pluginid",
         "msgseqnum",
     ] {
         assert_eq!(
@@ -291,12 +291,8 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     );
 
     // The row header's captures survive the codec untouched: the thread that
-    // wrote the line, the plugin and the level, and the bracket's sequence
-    // number - null where the bracket held only the thread.
-    assert_eq!(
-        text_column(&read, "plugin")[HEARTBEAT_ROW].as_deref(),
-        Some("OMS_X1_TradeCapture")
-    );
+    // wrote the line and the level, and the bracket's sequence number - null
+    // where the bracket held only the thread.
     assert_eq!(
         text_column(&read, "level")[FILL_ROW].as_deref(),
         Some("INFO")
@@ -320,22 +316,31 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     assert_eq!(session[HEARTBEAT_ROW], None);
     assert_eq!(context[HEARTBEAT_ROW], None);
 
-    // The plugin that logged a line is the plugin session it moved from or
-    // to, by the direction the line took: the heartbeat was sent, the fill
-    // received, and the routed row - no verb - takes the default, sent.
-    let sender = tag_text(&read, yggdryl::SENDERSESSIONNAME_TAG);
-    let target = tag_text(&read, yggdryl::TARGETSESSIONNAME_TAG);
+    // The plugin that logged a line is a capture named after the crate's own
+    // column, so it lands there rather than in front - on every framed line,
+    // as the bracket spells it - and it is never anything else: the session
+    // names a line moved between are what the line itself spells, and no
+    // line here spells one, nor which plugin the message came through
+    // before.
+    let plugin = tag_text(&read, yggdryl::PLUGINID_TAG);
     assert_eq!(
-        sender[HEARTBEAT_ROW].as_deref(),
+        plugin[HEARTBEAT_ROW].as_deref(),
         Some("OMS_X1_TradeCapture")
     );
-    assert_eq!(target[HEARTBEAT_ROW], None);
-    assert_eq!(target[FILL_ROW].as_deref(), Some("Spot_FX_TradeCapture"));
-    assert_eq!(sender[FILL_ROW], None);
+    assert_eq!(plugin[FILL_ROW].as_deref(), Some("Spot_FX_TradeCapture"));
     assert_eq!(
-        sender[ROUTED_ROW].as_deref(),
+        plugin[ROUTED_ROW].as_deref(),
         Some("Broker_DarkPool_TradeCapture")
     );
+    assert_eq!(plugin[RESPONSE_ROW].as_deref(), Some("Jolokia"));
+    let sender = tag_text(&read, yggdryl::SENDERSESSIONNAME_TAG);
+    let target = tag_text(&read, yggdryl::TARGETSESSIONNAME_TAG);
+    let previous = tag_text(&read, yggdryl::PREVPLUGINID_TAG);
+    for row in 0..CAPTURE.len() {
+        assert_eq!(sender[row], None, "row {row} states no sender session name");
+        assert_eq!(target[row], None, "row {row} states no target session name");
+        assert_eq!(previous[row], None, "row {row} states no previous plugin");
+    }
 
     // The bracket's sequence number fills `MsgSeqNum` where the line stated
     // none - the routed row is keyed by name and carries no 34 - and never
@@ -541,13 +546,13 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
         ("NeedReload", Scalar::from(false)),
         ("State", Scalar::from("logged")),
     ] {
-        assert_eq!(message.by_path(path).unwrap(), &expected, "{path}");
+        assert_eq!(message.by_path(&fpath(path)).unwrap(), &expected, "{path}");
     }
     // A stated null is an absence, and an array is kept as the JSON it is.
-    assert!(message.get_by_path("BackupHost").is_none());
+    assert!(message.get_by_path(&fpath("BackupHost")).is_none());
     assert!(
         message
-            .by_path("ExtendedActions")
+            .by_path(&fpath("ExtendedActions"))
             .unwrap()
             .as_str()
             .is_some_and(|held| held.contains("send-test-request"))
@@ -571,7 +576,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
             let entry = entry.as_sequence().expect("an entry");
             (
                 entry[0].as_i64().map_or(0, |tag| tag as i32),
-                entry[2].as_str().unwrap_or_default().to_owned(),
+                entry[1].as_str().unwrap_or_default().to_owned(),
             )
         })
         .collect();
@@ -645,7 +650,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // The tags the batch answers and the line read cannot are fills from the
     // row's own columns: the sequence number the header stated for the routed
     // row, which carried none. A fill is never an entry - and neither are the
-    // session, the context or the clock - so the arrival record is still the
+    // context, the plugin or the clock - so the arrival record is still the
     // line alone.
     let routed = bodies[ROUTED_ROW].as_bytes().expect("a body");
     let alone = codec.one_line(routed, false).expect("the routed row");
@@ -666,7 +671,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     for filled in [
         34,
         yggdryl::MSGCTXID_TAG,
-        yggdryl::SENDERSESSIONNAME_TAG,
+        yggdryl::PLUGINID_TAG,
         yggdryl::TIMESTAMP_TAG,
     ] {
         assert!(

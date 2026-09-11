@@ -252,6 +252,14 @@ path that allocates, so it is built only when a column reads an entry or a
 caller asks: a read whose columns never touch one never pays for it, and the
 benchmark reports both.
 
+`TextEntries::from_bytes` is that walk, and it takes a `TextBytes` rather than
+a slice because every key and value it answers is a range of the page those
+bytes already point into. It is how a reader holding one field's value - a FIX
+data field carrying a whole row - reads that value's own pairs through the same
+walk the line was read by, rather than writing a second one. `None` where the
+bytes state no pair at all, which is the absence `TextLine::entries` carries for
+a line nothing asked a tree of.
+
 An entry is addressed by [`FieldPath`](../types/paths.md), the crate's one path
 grammar: `.name` for a child, `[0]` and `[-1]` for a position, `['key']` for a
 key, and a quoted name for one carrying a dot. `get_entry_by_path` answers
@@ -263,6 +271,57 @@ Lookup is a linear scan per level. That is correct rather than a compromise: a
 line carries tens of pairs, not thousands, an index would cost an allocation per
 line to save scanning a handful of entries, and the scan runs over ranges of one
 page. Resolve a path once and reuse it; the column plan already does.
+
+### Where a pair ends
+
+A frame decides, and a frame is a run of pairs the line named a separator for -
+a `SOH` raw or escaped, or a pipe. Named means used: a byte a line merely holds
+inside a value separated nothing, so the candidate that wins is the earliest one
+with a field after it, or the one the line closed on as a wire message does.
+`MSGTYPE=P Report Ack|SYMBOL=AAPL|` therefore reads on its pipe and keeps
+`P Report Ack` whole, while in `8=FIX.4.4 35=D 58=a|b 10=0` the pipe stands
+inside a value and separates nothing, so nothing was named and the loose rule
+below reads the line.
+
+Inside a frame the pairs are that frame's segments cut at their first `=`, and a
+value ends only at that separator, so `8=FIX.4.4|18=G L|48=ABBN SW|10=0|`
+carries `G L` and `ABBN SW` whole, and `58=` is a pair carrying nothing rather
+than no pair at all. A key inside a frame is a key however the writer spelled
+it - `NoAllocs[0].79`, `#INSTRUMENT[DESCRIPTION]`, `Msg Type` and a second `#`
+on a key already marked are all names, the space among them because the FIX name
+fold ignores it exactly as it ignores `_`. It is still a run of name bytes and
+stops at the first byte no name holds, so a log's remark reading `sent >> seq=7`
+after the frame states only `seq`. The space costs one thing and the cost is
+stated rather than dodged: a remark spelled in nothing but words is such a run,
+so `trailing note=x` after a frame is a field keyed `trailing note`. No rule
+available to a scanner separates it from `Msg Type` - the scanner holds no
+dictionary - and a reader that holds one answers nothing for it.
+
+Everywhere else - a sentence, a transport's prefix in front of a frame, a bare
+run of attributes, a line that ran its fields together with spaces - a value
+ends at the first byte that could end a field, because nothing said which byte
+separates two of them. `host=srv1, port=8080` is two pairs and not one; the
+same `58=quoting #A=1 and #B=2` that is one Text field inside a frame is three
+pairs where a transport wrote it as prose; and `Symbol[0]=AAPL` standing on its
+own states no pair at all, because what a frame widens is the key inside it and
+not the walk that finds a frame. A value that states pairs of its own is read
+as a tree under its entry either way, which is what `entries` has always meant:
+the frame says where the Text field ends, and the field's own text says what
+hangs beneath it.
+
+`marked` says the line wrote a `#` in front of the key. The key itself is
+stripped of it, so a path lifts the name the writer gave the field, and the mark
+rides beside the pair instead - two entries differing only in it are two values,
+and a bridge restating `#ORDERID=123` under an `ORDERID=123` it already sent is
+telling the reader something. What that means is a dialect's reading of the
+mark, not the text reader's. An entry a caller created, or one rebuilt from a
+lifted column, is unmarked.
+
+!!! note "Rust-only"
+    `marked` has no Python or Node getter yet. Both bindings already show the
+    mark - an entry renders as the line wrote it, `#` and all, and two entries
+    differing only in the mark compare unequal - so read it there off the
+    rendered pair until the getter lands with the rest of the FIX work.
 
 ### Lifting an entry into a column
 

@@ -34,7 +34,6 @@ impl ScalarFamily for Url {
 
 impl ScalarValue for Url {
     type Family = Self;
-    type Type = super::UrlType;
 
     const ID: DataTypeId = DataTypeId::Url;
     const KIND: DataTypeKind = DataTypeKind::Text;

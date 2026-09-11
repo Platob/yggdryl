@@ -32,6 +32,7 @@ from yggdryl import (
     PythonMetadata,
     RecordOptions,
     Statement,
+    TextLine,
     TextOptions,
     Timezone,
     Uri,
@@ -1272,7 +1273,7 @@ fix_message_lift: list[tuple[str, Scalar]] = fix_message.lift()
 fix_message_party: list[Scalar | None] | None = fix_message.party("1")
 fix_message_regulatory: Scalar | None = fix_message.trd_reg_timestamp("1")
 fix_message_anomalies: list[str] = fix_message.anomalies()
-fix_message_arrivals: list[tuple[int, int, str, str]] = fix_message.entries()
+fix_message_arrivals: list[tuple[int, str, str]] = fix_message.entries()
 fix_message_wire: bytes = fix_message.into_bytes(124)
 fix_message.set(38, 200)
 fix_message.set("OrderQty", None)
@@ -1313,10 +1314,10 @@ fix_read_messages: fix.FixMessages = fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0
 fix_read_text: fix.FixMsg = next(fix_read_messages)
 fix_read_bytes: fix.FixMsg = next(fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|"))
 fix_read_lines: fix.FixMessages = fix_reader.parse_lines([b"8=FIX.4.4|35=D|10=0|", bytearray()])
-fix_read_record: fix.FixMessages = fix_reader.parse_text_record({"body": b"35=D|"})
-fix_read_records: fix.FixMessages = fix_reader.parse_text_records([{"body": b"35=D|"}])
+fix_read_line: fix.FixMessages = fix_reader.parse_text_line(TextLine(0, b"35=D|"))
+fix_read_text_lines: fix.FixMessages = fix_reader.parse_text_lines([TextLine(0, b"35=D|")])
 fix_read_config: fix.FixMessages = fix_reader.parse_ulconfig_line(b'{"Name":"Router"}')
-fix_read_frame: fix.FixMsg = fix_reader.parse_fix_line(b"8=FIX.4.4", 1)
+fix_read_frame: fix.FixMsg = fix_reader.parse_fix_line(b"8=FIX.4.4")
 fix_read_bridge: fix.FixMsg = fix_reader.parse_ullink_line(b"#SYMBOL=TTF")
 fix_read_fixml: fix.FixMsg = fix_reader.parse_fixml_line(b"<Order ClOrdID='A'/>")
 fix_read_pairs: fix.FixMsg = fix_reader.parse_pairs([("55", "AAPL")])
@@ -1354,6 +1355,7 @@ fix_root.fix.msgtype = "D"
 fix_message_code: str | None = fix_root.fix.msgtype
 fix_catalog = fix.FixRegistry.from_fields([fix_counter])
 fix_catalog.create_definition("components", fix_component)
+fix_added_definition: bool = fix_catalog.add_definition("components", fix_component)
 fix_inserted_definition: Field | None = fix_catalog.insert_definition("groups", fix_group)
 fix_updated_definition: Field = fix_catalog.update_definition("groups", fix_group)
 fix_definition: Field = fix_catalog.definition("groups", "parties")
@@ -1398,6 +1400,7 @@ fix_cblock: list[Field] = fix.fix_cfb_fields("cblocks/bloomberg.cfb")
 fix_cblock_named: list[Field] = fix.fix_cfb_fields(
     Path("cblocks") / "bloomberg.cfb", "bloomberg"
 )
+fix_added_field: bool = fix_registry_from_fields.add_field(fix_field)
 fix_folded: tuple[int, int] = fix_registry_from_fields.add_fields(fix_cblock)
 fix_combined: tuple[int, int] = fix_registry_from_fields.merge_with(fix_registry_loaded)
 fix_ingested: tuple[int, int] = fix_registry_from_fields.add_cfb_file(

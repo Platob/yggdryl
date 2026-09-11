@@ -25,9 +25,9 @@ use std::fmt::{self, Write as _};
 use smol_str::SmolStr;
 
 use super::parser::{Direction, NullsOrder, Order, Projection, Statement};
-use super::{Comparison, Expression, Function, Operator, Safety};
+use super::{Comparison, Expression, Function, Literal, Operator, Safety};
 use crate::types::Nested;
-use crate::{DataType, Floating, Integer, Scalar, TypedScalar};
+use crate::{DataType, Floating, Integer, Scalar};
 
 /// Binding strength, low to high. Only the levels the grammar distinguishes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -350,7 +350,7 @@ pub(crate) fn is_reserved(name: &str) -> bool {
 }
 
 /// Write one literal in the spelling that re-parses to it.
-fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &TypedScalar) -> fmt::Result {
+pub(super) fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &Literal) -> fmt::Result {
     let dtype = held.dtype();
     let value = held.value();
     // Text is the one bare spelling that is not a word: it prints as the
@@ -493,7 +493,7 @@ fn write_constructor_item(formatter: &mut fmt::Formatter<'_>, value: &Scalar) ->
     }
     // A leaf inside a constructor is written under the datatype it carries,
     // and the enclosing cast restates it into the declared element type.
-    let inferred = TypedScalar::from_value(value.clone());
+    let inferred = Literal::infer(value.clone());
     match inferred {
         Ok(typed) => write_literal(formatter, &typed),
         Err(_) => formatter.write_str("null"),

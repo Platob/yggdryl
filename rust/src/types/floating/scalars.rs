@@ -11,7 +11,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
-use crate::types::typed::define_scalar_type;
 use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue};
 
 /// Operations shared by every IEEE floating-point representation.
@@ -22,25 +21,6 @@ pub trait FloatingValue: ScalarValue {
     /// Return this value widened to binary64.
     fn as_f64(&self) -> f64;
 }
-
-define_scalar_type!(
-    Float16Scalar,
-    super::Float16Type,
-    "float16",
-    crate::DataType::Float16
-);
-define_scalar_type!(
-    Float32Scalar,
-    super::Float32Type,
-    "float32",
-    crate::DataType::Float32
-);
-define_scalar_type!(
-    Float64Scalar,
-    super::Float64Type,
-    "float64",
-    crate::DataType::Float64
-);
 
 pub(crate) enum FloatWidth {
     Float16,
@@ -566,10 +546,9 @@ impl<'de> Deserialize<'de> for Float32 {
 }
 
 macro_rules! floating_value {
-    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $dtype:ident, $bits:literal) => {
+    ($leaf:ident, $variant:ident, $id:ident, $dtype:ident, $bits:literal) => {
         impl ScalarValue for $leaf {
             type Family = Floating;
-            type Type = $marker;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Floating;
@@ -611,30 +590,9 @@ macro_rules! floating_value {
     };
 }
 
-floating_value!(
-    Float16,
-    super::fields::Float16Type,
-    F16,
-    Float16,
-    Float16,
-    16
-);
-floating_value!(
-    Float32,
-    super::fields::Float32Type,
-    F32,
-    Float32,
-    Float32,
-    32
-);
-floating_value!(
-    Float64,
-    super::fields::Float64Type,
-    F64,
-    Float64,
-    Float64,
-    64
-);
+floating_value!(Float16, F16, Float16, Float16, 16);
+floating_value!(Float32, F32, Float32, Float32, 32);
+floating_value!(Float64, F64, Float64, Float64, 64);
 
 /// A copyable view over any exact floating-point width.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]

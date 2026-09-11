@@ -41,8 +41,10 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::display::{is_bare_identifier, is_reserved};
 use super::selector::Selector;
-use super::{Comparison, Expression, FieldSegment, Function, Operator, RECURSION_LIMIT, Safety};
-use crate::{DataType, Error, I256, Result, Scalar, TypedScalar};
+use super::{
+    Comparison, Expression, FieldSegment, Function, Literal, Operator, RECURSION_LIMIT, Safety,
+};
+use crate::{DataType, Error, I256, Result, Scalar};
 
 /// Which way one ordering key sorts.
 #[derive(
@@ -1334,14 +1336,14 @@ impl<'input> Parser<'input> {
                 self.cursor += 1;
                 let value = value_from_text(&dtype, &text, position)?;
                 Ok(Some(Expression::Literal(
-                    TypedScalar::from_parts(dtype, value)
+                    Literal::new(dtype, value)
                         .map_err(|error| parse_error(position, format_smolstr!("{error}")))?,
                 )))
             }
             Some(Token::Word(word)) if word.eq_ignore_ascii_case("null") => {
                 self.cursor += 1;
                 Ok(Some(Expression::Literal(
-                    TypedScalar::from_parts(dtype, Scalar::Null)
+                    Literal::new(dtype, Scalar::Null)
                         .map_err(|error| parse_error(position, format_smolstr!("{error}")))?,
                 )))
             }

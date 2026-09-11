@@ -1,13 +1,12 @@
 //! Registry lookups: fields by tag, name, alias, identifier and path; the
 //! code sets and lineages a field carries, read borrowed.
 
+use criterion::Criterion;
 use std::collections::HashMap;
 use std::hint::black_box;
-
-use criterion::Criterion;
 use yggdryl::{
-    DataType, Field, FixBranch, FixCategory, FixCode, FixCodeValue, FixCodec, FixId, FixKey,
-    FixLineageEntry, FixPedigree, FixRegistry, MimeType, Version,
+    DataType, Field, FieldPath, FixBranch, FixCategory, FixCode, FixCodeValue, FixCodec, FixId,
+    FixKey, FixLineageEntry, FixPedigree, FixRegistry, MimeType, Version,
 };
 
 use super::{BRANCH_FIELDS, LARGE_FIELDS, generated, mixed_categories, seed, two_branches, venue};
@@ -116,32 +115,34 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&registry).field(black_box(55)).unwrap());
     });
 
-    // A path at one, two and three segments.
-    for path in [
+    // A path at one, two and three segments, each resolved once outside the
+    // routine: a path is read where a caller states it, and what is measured
+    // here is the walk it drives, not the parse that made it.
+    let paths: Vec<FieldPath> = [
         "NoPartyIDs",
         "Parties.PartyID",
         "Parties.PtysSubGrp.PartySubID",
-    ] {
+    ]
+    .into_iter()
+    .map(|spelling| FieldPath::from_str(spelling).expect("a path"))
+    .collect();
+    for path in &paths {
         assert!(
             registry.get_field_by_path(path, Some(&standard)).is_some(),
             "{path}"
         );
     }
-    group.bench_function("path_1_segment", |bencher| {
-        bencher.iter(|| {
-            black_box(&registry).get_field_by_path(black_box("NoPartyIDs"), Some(&standard))
+    for (segments, path) in paths.iter().enumerate() {
+        group.bench_function(format!("path_{}_segments", segments + 1), |bencher| {
+            bencher
+                .iter(|| black_box(&registry).get_field_by_path(black_box(path), Some(&standard)));
         });
-    });
-    group.bench_function("path_2_segments", |bencher| {
-        bencher.iter(|| {
-            black_box(&registry).get_field_by_path(black_box("Parties.PartyID"), Some(&standard))
-        });
-    });
-    group.bench_function("path_3_segments", |bencher| {
-        bencher.iter(|| {
-            black_box(&registry)
-                .get_field_by_path(black_box("Parties.PtysSubGrp.PartySubID"), Some(&standard))
-        });
+    }
+
+    // What reading one costs, measured on its own so the walk above is not
+    // credited with it: a caller resolving per row pays this once a row.
+    group.bench_function("path_parse_2_segments", |bencher| {
+        bencher.iter(|| FieldPath::from_str(black_box("Parties.PartyID")).expect("a path"));
     });
 
     // The plain map the index structure has to beat: a tag map with no

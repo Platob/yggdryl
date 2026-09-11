@@ -9,7 +9,9 @@ use std::cell::Cell;
 use std::hash::Hash;
 use std::sync::Arc;
 
-use super::{Bound, Bounds, ColumnBounds, Expression, Residual, Safety, Selector, Statement};
+use super::{
+    Bound, Bounds, ColumnBounds, Expression, Literal, Residual, Safety, Selector, Statement,
+};
 use crate::{
     DataType, DataTypeId, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url, Version,
 };
@@ -930,7 +932,7 @@ fn a_struct_expression_produces_and_reprints_a_row_sequence() {
     let expected = Scalar::from_sequence([Scalar::from(1), Scalar::from("XNAS")]);
     assert_eq!(bound.eval(&rows()[0]).unwrap(), expected);
 
-    // Constant folding retains the datatype on TypedScalar rather than on the
+    // Constant folding retains the datatype on the Literal rather than on the
     // row. Display must use that schema to reconstruct the named expression.
     let printed = bound.expression().to_string();
     assert!(printed.contains("struct("), "{printed}");
@@ -1021,4 +1023,71 @@ fn cheapest_first_is_stable_when_costs_tie() {
         .bind(&schema)
         .unwrap();
     assert_eq!(bound.expression().to_string(), "s = 'a' and i = 1");
+}
+
+// ---------------------------------------------------------------------------
+// Literals
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_literal_holds_what_its_datatype_stores() {
+    let narrowed = Literal::new(DataType::Int32, 7_i64).unwrap();
+    assert_eq!(narrowed.dtype(), &DataType::Int32);
+    assert_eq!(narrowed.value(), &Scalar::from(7_i32));
+    assert!(!narrowed.is_null());
+    assert_eq!(narrowed.to_string(), "int32 '7'");
+    assert_eq!(
+        narrowed.clone().into_parts(),
+        (DataType::Int32, Scalar::from(7_i32))
+    );
+
+    let refused = Literal::new(DataType::Int8, 1_000_i64)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("int8"), "{refused}");
+    assert!(Literal::new(DataType::Int64, "seven").is_err());
+
+    let inferred = Literal::infer(Scalar::from("AAPL")).unwrap();
+    assert_eq!(inferred.dtype(), &DataType::Utf8);
+    assert_eq!(inferred.to_string(), "'AAPL'");
+    let mixed = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]);
+    assert!(Literal::infer(mixed.clone()).is_err());
+    // The expression constructor holds what it cannot type as the null it is.
+    assert_eq!(
+        Expression::literal(mixed).as_literal(),
+        Some(&Literal::null())
+    );
+
+    let null = Literal::new(DataType::Int64, Scalar::Null).unwrap();
+    assert!(null.is_null());
+    assert_eq!(null.to_string(), "int64 null");
+    assert_eq!(Literal::null().dtype(), &DataType::Null);
+}
+
+#[test]
+fn literals_order_by_datatype_then_value_and_serialize_as_both_halves() {
+    let first = Literal::new(DataType::Int32, 7).unwrap();
+    let later_value = Literal::new(DataType::Int32, 8).unwrap();
+    let later_type = Literal::new(DataType::Int64, 7).unwrap();
+    assert!(first < later_value);
+    assert!(first < later_type);
+    assert_eq!(first, first.clone());
+
+    let encoded = serde_json::to_vec(&first).unwrap();
+    assert_eq!(serde_json::from_slice::<Literal>(&encoded).unwrap(), first);
+    let expression = Expression::Literal(first.clone());
+    let encoded = serde_json::to_vec(&expression).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Expression>(&encoded).unwrap(),
+        expression
+    );
+
+    // A literal that never agreed is refused on the way in, not stored.
+    let contradiction = br#"{"dtype":{"type":"int64"},"value":{"type":"string","value":"seven"}}"#;
+    assert!(serde_json::from_slice::<Literal>(contradiction).is_err());
+    // A literal is read back through the value contract, so it holds what
+    // the datatype stores even when the text spelled it wider.
+    let widened = br#"{"dtype":{"type":"int32"},"value":{"type":"i64","value":7}}"#;
+    let literal = serde_json::from_slice::<Literal>(widened).unwrap();
+    assert_eq!(literal.value(), &Scalar::from(7_i32));
 }

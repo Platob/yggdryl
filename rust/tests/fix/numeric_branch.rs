@@ -1,5 +1,7 @@
 //! Numeric FIX keys and group plans share the capture's branch resolution.
 
+use super::path;
+
 use std::sync::Arc;
 
 use yggdryl::{DataType, Field, FixBranch, FixCategory, FixCodec, FixRegistry, Scalar};
@@ -103,7 +105,9 @@ fn numeric_scalars_and_groups_follow_the_pinned_branch() {
                 &Scalar::from(1_i32)
             );
             assert_eq!(
-                message.by_path(&format!("{name}Rows.0.{name}ID")).unwrap(),
+                message
+                    .by_path(&path(&format!("{name}Rows[0].{name}ID")))
+                    .unwrap(),
                 &member
             );
             assert_eq!(message.by_name(&format!("{name}Value")).unwrap(), &tail);

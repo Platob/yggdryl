@@ -9,4 +9,4 @@ mod scalars;
 
 pub(crate) use dtypes::{UUID_BYTES, UUID_EXTENSION_NAME, uuid_bytes, uuid_parse, uuid_text};
 pub use fields::*;
-pub use scalars::{Uuid, UuidScalar};
+pub use scalars::Uuid;

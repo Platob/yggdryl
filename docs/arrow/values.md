@@ -13,7 +13,7 @@ One Arrow-backed value across all four shapes Arrow spells a payload in.
 | Crossings | The one scalar/array boundary ([Scalars](scalars.md)); never JSON, never a second conversion |
 | Stream length | `row_size()` is `None` until drained; counting a stream is deciding to read it |
 | Media | Record encodings stream; JSON, JSON Lines, YAML, and TOML documents read as one batch |
-| `TypedScalar` | No bridge: it owns no `Field`, and this owns one ([Scalars](scalars.md)) |
+| `FieldScalar` | No bridge: it borrows one `Field` and holds one value, where this owns a `Field` and a whole array, batch or stream ([Scalars](scalars.md)) |
 | Bindings | Rust; Python `yggdryl.ArrowValue`; JavaScript none |
 
 ## Use

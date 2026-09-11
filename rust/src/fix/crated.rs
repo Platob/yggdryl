@@ -6,10 +6,11 @@
 //! the same across venues, its ISIN, the market it traded on, the state the
 //! order is in, and one timestamp a partition is cut on - and the facts a
 //! bridge's own log states about the line it wrote: the session and the
-//! message context it handled the message under, and the plugins and plugin
-//! sessions the message moved between. Each belongs in a column, so each is
-//! an ordinary field: they lift, column, serialize and resolve like every
-//! other field with no special case anywhere.
+//! message context it handled the message under, the plugin that logged the
+//! line and the one the message came through before it, and the sessions
+//! the message moved between. Each belongs in a column, so each is an
+//! ordinary field: they lift, column, serialize and resolve like every other
+//! field with no special case anywhere.
 //!
 //! # Why the standard branch, and why 65000
 //!
@@ -80,11 +81,12 @@ pub const SENDERSESSIONID_TAG: i32 = 65_007;
 /// The tag carrying the message context a bridge handled the message in.
 pub const MSGCTXID_TAG: i32 = 65_008;
 
-/// The tag carrying the plugin a message came from, as a bridge names it.
-pub const SENDERPLUGINID_TAG: i32 = 65_009;
+/// The tag carrying the plugin that logged the line, as a bridge names it.
+pub const PLUGINID_TAG: i32 = 65_009;
 
-/// The tag carrying the plugin a message went to, as a bridge names it.
-pub const TARGETPLUGINID_TAG: i32 = 65_010;
+/// The tag carrying the plugin the message came through before the one that
+/// logged it, as a bridge names it.
+pub const PREVPLUGINID_TAG: i32 = 65_010;
 
 /// The tag carrying the name of the session a message came from.
 pub const SENDERSESSIONNAME_TAG: i32 = 65_011;
@@ -363,37 +365,46 @@ fn build() -> Result<Vec<Field>> {
             "The message context a bridge handled the message in, as its own \
              log names it.",
         )?,
-        // The plugins a message moved between, as a bridge names them. FIX
-        // publishes the counterparties in `SenderCompID` and `TargetCompID`;
-        // the plugin that carried a message inside a bridge is a fact about
-        // the bridge, and one FIX never states.
+        // The plugins a message passed through inside a bridge, as the bridge
+        // names them. FIX publishes the counterparties in `SenderCompID` and
+        // `TargetCompID`; the plugin that logged a line, and the one the
+        // message came through before it, are facts about the bridge that
+        // FIX never states. Both are stated by a row's own column and never
+        // derived: `pluginid` is the bracket the bridge's row header writes
+        // in front of every line - and, where it spells a branch the
+        // dictionary declares, the dialect the row is read under
+        // ([`FixCodec::parse_text_line`](super::FixCodec::parse_text_line));
+        // `prevpluginid` is only ever a column of that name.
         crated(
-            "senderpluginid",
-            "SenderPluginId",
-            SENDERPLUGINID_TAG,
+            "pluginid",
+            "PluginId",
+            PLUGINID_TAG,
             DataType::Utf8,
-            "The plugin a message came from inside a bridge, as the bridge \
-             names it.",
+            "The plugin that logged the line inside a bridge, as the bridge \
+             names it: the row's own pluginid column, never derived.",
         )?,
         crated(
-            "targetpluginid",
-            "TargetPluginId",
-            TARGETPLUGINID_TAG,
+            "prevpluginid",
+            "PrevPluginId",
+            PREVPLUGINID_TAG,
             DataType::Utf8,
-            "The plugin a message went to inside a bridge, as the bridge \
-             names it.",
+            "The plugin the message came through before the one that logged \
+             it, as the bridge names it: the row's own prevpluginid column, \
+             never derived.",
         )?,
         // The sessions a message moved between, by name: what a bridge row
-        // spells as `ULFROMSESSIONNAME` and `ULTOSESSIONNAME`, and what the
-        // row header names in front of a line the session sent or received.
-        // The identifier is the pair above; this is what an operator calls it.
+        // spells as `ULFROMSESSIONNAME` and `ULTOSESSIONNAME`, and nothing
+        // derived - the plugin that logged a line is `pluginid` above, and a
+        // session name is filled only by what the message states or by a
+        // row column bearing its name. The identifier is `sendersessionid`
+        // and its target half; this is what an operator calls it.
         aliased(
             "sendersessionname",
             "SenderSessionName",
             SENDERSESSIONNAME_TAG,
             DataType::Utf8,
-            "The name of the session a message came from: the bridge row's own \
-             statement, else the session that logged the line it sent.",
+            "The name of the session a message came from, as the bridge row \
+             states it.",
             &["ULFromSessionName"],
         )?,
         aliased(
@@ -401,8 +412,8 @@ fn build() -> Result<Vec<Field>> {
             "TargetSessionName",
             TARGETSESSIONNAME_TAG,
             DataType::Utf8,
-            "The name of the session a message went to: the bridge row's own \
-             statement, else the session that logged the line it received.",
+            "The name of the session a message went to, as the bridge row \
+             states it.",
             &["ULToSessionName"],
         )?,
         // The instrument and the market, one spelling each: an ISIN as a
