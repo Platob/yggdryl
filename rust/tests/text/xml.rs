@@ -510,10 +510,19 @@ fn limits_bound_bytes_depth_nodes_and_documents() {
         "{error}"
     );
 
-    let error =
-        xml::from_utf8_with_limits("<row><a/><b/><c/></row>", Limits::new(64, 1 << 20, 2, 1))
-            .unwrap_err();
-    assert!(reason(&error).contains("node limit exceeded"), "{error}");
+    // Nodes are counted while the tree is built, so a document under the byte
+    // limit but far over the node limit stops at the element that exceeded it
+    // rather than after every one of them is held.
+    let many = format!("<r>{}</r>", "<a/>".repeat(5_000));
+    let refusal = xml::from_utf8_with_limits(&many, Limits::new(64, 1 << 20, 100, 1)).unwrap_err();
+    assert!(
+        reason(&refusal).contains("node limit exceeded"),
+        "{refusal}"
+    );
+    let Error::Codec { position, .. } = refusal else {
+        panic!("an XML refusal is a codec error");
+    };
+    assert!(position > 0 && position < many.len(), "{position}");
 
     let error = xml::from_utf8_with_limits("<row/>", Limits::new(64, 3, 1 << 20, 1)).unwrap_err();
     assert!(

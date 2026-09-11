@@ -114,6 +114,10 @@ pub(super) fn parse(input: &str, limits: Limits) -> Result<RawValue> {
         return Err(codec_error(0, "document limit exceeded"));
     }
     let depth_limit = limits.max_depth().min(MAX_PARSER_DEPTH);
+    // Nodes are counted while the tree is built, not only while it is decoded:
+    // the tree is what holds the memory, and an input under the byte limit can
+    // still be millions of empty elements.
+    let mut nodes = 0_usize;
     let mut reader = Reader::from_str(input);
     // Character data is kept exactly as written: what is inside an element is
     // the element's value, and the trimming other readers apply is a reading
@@ -134,10 +138,12 @@ pub(super) fn parse(input: &str, limits: Limits) -> Result<RawValue> {
             Event::Decl(declaration) => check_declaration(&declaration, position)?,
             Event::Start(start) => {
                 let element = open(&start, position, &stack, depth_limit, document.is_some())?;
+                count(&mut nodes, &element, limits, position)?;
                 stack.push(element);
             }
             Event::Empty(start) => {
                 let element = open(&start, position, &stack, depth_limit, document.is_some())?;
+                count(&mut nodes, &element, limits, position)?;
                 close(element, &mut stack, &mut document)?;
             }
             Event::End(_) => {
@@ -191,6 +197,19 @@ pub(super) fn parse(input: &str, limits: Limits) -> Result<RawValue> {
     }
     let (name, value) = document.ok_or_else(|| codec_error(0, "expected one XML root element"))?;
     Ok(RawValue::Mapping(vec![(RawValue::String(name), value)]))
+}
+
+/// Charge one element and its attributes against the node budget.
+///
+/// An element is the value it becomes plus the name it is keyed by, and an
+/// attribute is the same pair, which is what the decode pass counts too.
+fn count(nodes: &mut usize, element: &Element, limits: Limits, position: usize) -> Result<()> {
+    let cost = 2usize.saturating_add(element.attributes.len().saturating_mul(2));
+    *nodes = nodes.saturating_add(cost);
+    if *nodes > limits.max_nodes() {
+        return Err(codec_error(position, "decoded node limit exceeded"));
+    }
+    Ok(())
 }
 
 /// Start one element, bounding the nesting and the number of roots.
