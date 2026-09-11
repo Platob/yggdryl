@@ -30,8 +30,8 @@ use std::sync::Arc;
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::TextOptions;
-use yggdryl::{FixBranch, FixCodec, FixMsg, IOMedia, Scalar, Timezone, Url, fix_schema};
+use yggdryl::media::text::{TextBytes, TextLine, TextOptions};
+use yggdryl::{FixBranch, FixCodec, FixMsg, IOMedia, Timezone, Url, fix_schema};
 
 use super::seed;
 
@@ -160,8 +160,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .with_aliases(["ulb"])
         .expect("an alias");
     aliased.set_branch(alias).expect("the alias declares");
-    let plugin_codec = FixCodec::new(Arc::new(aliased)).with_branch(&branch);
-    let records: Vec<Scalar> = held
+    let plugin_codec = FixCodec::new(Arc::new(aliased))
+        .with_branch(&branch)
+        .with_capture_names(["pluginid"]);
+    let lines: Vec<TextLine> = held
         .iter()
         .enumerate()
         .map(|(index, body)| {
@@ -170,19 +172,21 @@ pub fn benchmarks(criterion: &mut Criterion) {
             } else {
                 "OMS_X1_TradeCapture"
             };
-            Scalar::from_record([
-                ("body", Scalar::from(body.clone())),
-                ("pluginid", Scalar::from(plugin)),
-            ])
-            .expect("a record")
+            TextLine::new(
+                index as u64,
+                TextBytes::from_bytes(body.as_slice()).expect("a page"),
+            )
+            .with_captures(vec![Some(
+                TextBytes::from_bytes(plugin.as_bytes()).expect("a page"),
+            )])
         })
         .collect();
-    group.bench_function("parse_text_records_pluginid", |bencher| {
+    group.bench_function("parse_text_lines_pluginid", |bencher| {
         bencher.iter_batched(
-            || records.clone(),
+            || lines.clone(),
             |held| {
                 black_box(&plugin_codec)
-                    .parse_text_records(held)
+                    .parse_text_lines(held)
                     .filter(Result::is_ok)
                     .count()
             },

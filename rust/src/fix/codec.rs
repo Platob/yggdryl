@@ -20,10 +20,10 @@
 //!
 //! # Three verbs, each an iterator, each with an Arrow twin
 //!
-//! `parse_*` turns what a capture holds into messages: one line
+//! `parse_*` turns what a capture holds into messages: one line of bytes
 //! ([`FixCodec::parse_line`]), a stream of them ([`FixCodec::parse_lines`]),
-//! one generic record or a stream of them ([`FixCodec::parse_text_record`],
-//! [`FixCodec::parse_text_records`]), and a stream of Arrow batches of
+//! one decoded line or a stream of them ([`FixCodec::parse_text_line`],
+//! [`FixCodec::parse_text_lines`]), and a stream of Arrow batches of
 //! capture rows ([`FixCodec::parse_text_arrow_reader`]). `enrich_*` fills
 //! what a message implies ([`FixCodec::enrich_message`],
 //! [`FixCodec::enrich_messages`], [`FixCodec::enrich_messages_arrow_reader`]).
@@ -55,16 +55,20 @@
 //! and the stream continues, because one corrupt line must not end a run over
 //! ten million.
 
+use std::borrow::Borrow;
 use std::sync::Arc;
 
 use quick_xml::events::Event;
 use smol_str::SmolStr;
 
-use crate::media::text::{TextBytes, TextEntries, TextEntry};
+use crate::media::text::{TextBytes, TextEntries, TextEntry, TextLine};
 use crate::mime_type::line;
 use crate::{DataType, Error, Field, Result, Scalar, Version};
 
-use super::build::{Builder, FixPair, RowExtras, root_name};
+use super::build::{
+    BEGINSTRING_COLUMN, Builder, CLOCK_COLUMN, DIRECTION_COLUMN, Fill, FixPair, PLUGINID_COLUMN,
+    RowExtras, root_name, version_of,
+};
 use super::memo::Memo;
 use super::{FixBranch, FixMessages, FixMsg, FixRegistry};
 
@@ -340,6 +344,55 @@ pub const SOH: u8 = 0x01;
 /// names and code spellings and would match spellings nobody wrote.
 pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
 
+/// The column a payload is read from when nothing names another.
+pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
+
+/// What one row-header capture states about the line it was read from.
+///
+/// Resolved once, when the codec is told what a run's captures are called,
+/// and read by position afterwards: a line answers its captures in the order
+/// the header declares them, so nothing looks a name up per row. A capture
+/// naming nothing this codec knows is [`Silent`](Self::Silent), and silence
+/// is never an instruction and never an error.
+#[derive(Clone)]
+enum CaptureRole {
+    /// The plugin that logged the line: the dialect it is read under, and the
+    /// fill of the crate's own field where the dictionary declares one.
+    Plugin(Option<(Field, i32)>),
+    /// The version the line is read at.
+    Version,
+    /// The clock that stamps the message.
+    Clock,
+    /// The direction the line moved.
+    Direction,
+    /// A capture whose name reaches a field, beside the field it fills.
+    Fill(Field, i32),
+    /// A capture this codec has no use for, which is most of them.
+    Silent,
+}
+
+impl CaptureRole {
+    /// What one capture name means to this codec, decided once.
+    fn of(name: &str, codec: &FixCodec) -> Self {
+        let is = |known: &str| crate::types::folds_equal(known, name);
+        if is(PLUGINID_COLUMN) {
+            return Self::Plugin(codec.fill_target(name));
+        }
+        if is(BEGINSTRING_COLUMN) {
+            return Self::Version;
+        }
+        if is(CLOCK_COLUMN) {
+            return Self::Clock;
+        }
+        if is(DIRECTION_COLUMN) {
+            return Self::Direction;
+        }
+        codec
+            .fill_target(name)
+            .map_or(Self::Silent, |(field, tag)| Self::Fill(field, tag))
+    }
+}
+
 /// One capture read row by row, holding what is constant across them.
 ///
 /// A capture is millions of lines and calling a singular reader per line
@@ -353,6 +406,11 @@ pub struct FixCodec {
     version: Option<Version>,
     separator: Option<u8>,
     payload_column: SmolStr,
+    /// What a run's row-header captures state, resolved in their order.
+    ///
+    /// Empty until a caller names them, because a codec that was told
+    /// nothing reads a line's typed fields and no captures at all.
+    captures: Arc<[CaptureRole]>,
     null_values: Vec<String>,
     /// The direction a line with no verb in front of its payload took.
     direction: Option<&'static str>,
@@ -409,7 +467,8 @@ impl FixCodec {
             branch: None,
             version: None,
             separator: None,
-            payload_column: SmolStr::new_static(super::record::DEFAULT_PAYLOAD_COLUMN),
+            payload_column: SmolStr::new_static(DEFAULT_PAYLOAD_COLUMN),
+            captures: Arc::from([]),
             null_values: DEFAULT_NULL_VALUES
                 .iter()
                 .map(|spelling| (*spelling).to_owned())
@@ -504,10 +563,59 @@ impl FixCodec {
         self
     }
 
-    /// Names the record column [`Self::parse_text_record`] reads the payload from.
+    /// Names the batch column [`Self::parse_text_arrow_reader`] reads the
+    /// payload from.
     #[must_use]
     pub fn with_payload_column(mut self, column: impl Into<SmolStr>) -> Self {
         self.payload_column = column.into();
+        self
+    }
+
+    /// Names what a run's row-header captures are called, resolving each once.
+    ///
+    /// A line carries its captures by position, in the order its header
+    /// declares them, so this is the boundary that decides what each position
+    /// means: the plugin that logged the line, the version, the clock, the
+    /// direction, a field a capture's name reaches, or nothing. Pass what
+    /// [`TextOptions::capture_names`] answers for the options the lines were
+    /// read under, and every line of the run is then read without one name
+    /// lookup.
+    ///
+    /// A capture is what the transport wrote around the line, never what the
+    /// line itself says: the body is the message, so a fact read out of it is
+    /// already a field this codec fills from its tag.
+    ///
+    /// [`TextOptions::capture_names`]: crate::media::text::TextOptions::capture_names
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::Arc;
+    /// # use yggdryl::media::text::{TextBytes, TextLine};
+    /// # use yggdryl::{FixBranch, FixCodec, FixRegistry};
+    /// let mut registry = FixRegistry::new();
+    /// registry.set_branch(FixBranch::from_str("venue")?.with_aliases(["vnu"])?)?;
+    /// let codec = FixCodec::new(Arc::new(registry)).with_capture_names(["pluginid"]);
+    ///
+    /// let line = TextLine::new(0, TextBytes::from_bytes(b"8=FIX.4.4|35=D|11=A|10=0|")?)
+    ///     .with_captures(vec![Some(TextBytes::from_bytes(b"VNU")?)]);
+    /// let message = codec.parse_text_line(&line)?.next().expect("one message")?;
+    /// // The alias named the dialect, and the capture filled its own field.
+    /// assert_eq!(message.branch().name(), "venue");
+    /// assert_eq!(message.by_tag(yggdryl::PLUGINID_TAG)?.as_str(), Some("VNU"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_capture_names<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let roles: Vec<CaptureRole> = names
+            .into_iter()
+            .map(|name| CaptureRole::of(name.as_ref(), &self))
+            .collect();
+        self.captures = Arc::from(roles);
         self
     }
 
@@ -686,6 +794,138 @@ impl FixCodec {
         lines
             .into_iter()
             .flat_map(move |line| FixMessages::from_result(codec.parse_line(line.as_ref())))
+    }
+
+    /// Parses one decoded line into the messages it carries.
+    ///
+    /// The door every capture should come through, and the only one that
+    /// copies nothing: the line already holds its bytes as a range of a page
+    /// it owns, so that page is handed over rather than made again, and every
+    /// key and value the messages record is a range of it. Where the line has
+    /// already been asked for its pairs, those are the pairs read - reading a
+    /// line and reading a message from it is one scan as well as one decode.
+    ///
+    /// What the line states for itself outranks this codec's own pins,
+    /// because a line is the more specific statement:
+    ///
+    /// | the line's | supplies |
+    /// | --- | --- |
+    /// | [`body`](TextLine::body) | the bytes read, as the range they already are |
+    /// | [`timestamp`](TextLine::timestamp) | the clock that stamps the message |
+    /// | [`direction`](TextLine::direction) | the direction, before the payload's own verb and this codec's pin |
+    /// | [`captures`](TextLine::captures) | the dialect, the version and every field a capture's name reaches, by the positions [`Self::with_capture_names`] resolved |
+    ///
+    /// A line that states none of them reads exactly as its bytes would,
+    /// which is what makes this an entry point and not a second contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns the builder's refusal, which a line's content cannot provoke.
+    pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages> {
+        // The row's own cells, held while the extras borrow them.
+        let stated: Vec<Option<&TextBytes>> = self
+            .captures
+            .iter()
+            .zip(line.captures())
+            .map(|(_, held)| held.as_ref())
+            .collect();
+        let text = |at: usize| {
+            stated
+                .get(at)
+                .copied()
+                .flatten()
+                .and_then(TextBytes::as_str)
+        };
+        let mut branch = None;
+        let mut version = None;
+        let mut stamped = None;
+        let mut cells: Vec<(Field, i32, Scalar)> = Vec::new();
+        for (at, role) in self.captures.iter().enumerate() {
+            match role {
+                CaptureRole::Plugin(target) => {
+                    let Some(plugin) = text(at) else { continue };
+                    branch = self.dialect_of(plugin);
+                    if let Some((field, tag)) = target {
+                        cells.push((field.clone(), *tag, Scalar::from(plugin)));
+                    }
+                }
+                CaptureRole::Version => version = text(at).and_then(version_of),
+                CaptureRole::Clock => stamped = text(at),
+                CaptureRole::Fill(field, tag) => {
+                    let Some(held) = text(at) else { continue };
+                    cells.push((field.clone(), *tag, Scalar::from(held)));
+                }
+                // A direction has no home on a message: it is a fact about
+                // the line, and only the batch reader has a column to put it
+                // in. The capture is named so it cannot silently become a
+                // fill on a field of that name.
+                CaptureRole::Direction | CaptureRole::Silent => {}
+            }
+        }
+        // The line's own clock where the read gave it one - a consumed capture
+        // or the object's own time - and the capture it was read from where it
+        // did not, which is a column the read emitted rather than consumed.
+        let clock = line
+            .timestamp()
+            .map(Scalar::from)
+            .or_else(|| stamped.map(Scalar::from));
+        let fills: Vec<Fill<'_>> = cells
+            .iter()
+            .map(|(field, tag, value)| Fill {
+                field,
+                tag: *tag,
+                value,
+            })
+            .collect();
+        let extras = RowExtras {
+            branch,
+            version,
+            clock: clock.as_ref(),
+            fills: &fills,
+        };
+        let page = line.body();
+        if page.is_empty() {
+            return Ok(FixMessages::one(self.empty_with(extras)));
+        }
+        Ok(self
+            .parse_page_with(page, extras)
+            .unwrap_or_else(|_| FixMessages::one(self.empty_with(extras))))
+    }
+
+    /// Parses a stream of decoded lines into a stream of messages, lazily.
+    ///
+    /// Each line is read as [`Self::parse_text_line`] reads it, and a line
+    /// nobody could read is a row holding an empty message rather than the end
+    /// of the run - one corrupt line must not end a capture of ten million.
+    pub fn parse_text_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
+    where
+        I: IntoIterator,
+        I::Item: Borrow<TextLine>,
+    {
+        let codec = self.clone();
+        lines
+            .into_iter()
+            .flat_map(move |line| FixMessages::from_result(codec.parse_text_line(line.borrow())))
+    }
+
+    /// One payload read under what its row stated, a row of nothing included.
+    ///
+    /// A row's content can never fail the batch it arrives in: a payload
+    /// nobody could read is a row holding an empty message, dated and
+    /// versioned by what the row itself said.
+    pub(super) fn parse_bytes_with(&self, extras: RowExtras<'_>, bytes: &[u8]) -> FixMessages {
+        if bytes.is_empty() {
+            return FixMessages::one(self.empty_with(extras));
+        }
+        self.parse_line_with(bytes, extras)
+            .unwrap_or_else(|_| FixMessages::one(self.empty_with(extras)))
+    }
+
+    /// A row nobody could read, which is still a row - dated and versioned as
+    /// every row is, by what the row itself stated.
+    fn empty_with(&self, extras: RowExtras<'_>) -> FixMsg {
+        self.build_pairs_with(&[], extras)
+            .expect("an empty message builds")
     }
 
     /// [`Self::parse_line`], with what the row stated beside its line.
@@ -1195,91 +1435,6 @@ impl FixCodec {
                 .map(|(key, value)| (key.as_slice(), value.as_slice())),
         )?;
         self.build(&pairs, &[], extras)
-    }
-
-    /// Parses one generic record: its payload column, under its own columns.
-    ///
-    /// The crate already has a generic record - a name-to-value map, one
-    /// `Scalar` variant - and every row-oriented reader in it produces one, so
-    /// taking that shape means this accepts a row from any of them with no
-    /// conversion at the boundary. The payload column is read by
-    /// [`Self::parse_line`]; every other named column is a fact this codec
-    /// already holds, stated per row, or a field the row fills by name -
-    /// a column named `prevpluginid` lands on the crate's own
-    /// [`prevpluginid`](super::PREVPLUGINID_TAG), and nothing else fills it.
-    ///
-    /// | column | supplies |
-    /// | --- | --- |
-    /// | the payload column, [`Self::with_payload_column`] | the bytes read |
-    /// | `pluginid` | the plugin that logged the line: a fill of the crate's own [`pluginid`](super::PLUGINID_TAG) like any column named after a field, and the dialect the row is read under where its text is the name or an alias of a branch the dictionary declares |
-    /// | `beginstring` | the version |
-    /// | `timestamp` | the row's own clock, which stamps the message |
-    ///
-    /// `direction` is a parameter here too, and the one this reader does not
-    /// read: only [`Self::parse_text_arrow_reader`] has a column to put it
-    /// in. It stays a parameter so a capture's own `direction` column cannot
-    /// silently become a fill on the field of that name.
-    ///
-    /// A row outranks this codec, because a column is the caller speaking per
-    /// row where the codec is the caller speaking per run: a `pluginid` the
-    /// dictionary declares a dialect for reads under that dialect, and any
-    /// other - a plugin no branch is named after, a null, an empty string, a
-    /// name longer than [`FixBranch::MAX_LENGTH`] - keeps
-    /// [`Self::with_branch`], then the standard one. A parameter column that
-    /// is absent, null or empty is silence, never an instruction and never an
-    /// error - so a record carrying only a payload reads exactly as the bytes
-    /// would, which is what makes this an entry point and not a second
-    /// contract. The payload column is the one column a record must have: a
-    /// null under it is a row holding an empty message, and a record without
-    /// it would parse nothing.
-    ///
-    /// ```
-    /// # fn main() -> yggdryl::Result<()> {
-    /// # use std::sync::Arc;
-    /// # use yggdryl::{FixBranch, FixCodec, FixRegistry, Scalar};
-    /// let mut registry = FixRegistry::new();
-    /// registry.set_branch(FixBranch::from_str("venue")?.with_aliases(["vnu"])?)?;
-    /// let codec = FixCodec::new(Arc::new(registry));
-    /// let record = Scalar::from_record([
-    ///     ("body", Scalar::from("8=FIX.4.4|35=D|11=A|10=0|")),
-    ///     ("pluginid", Scalar::from("VNU")),
-    /// ])?;
-    /// let message = codec.parse_text_record(&record)?.next().expect("one message")?;
-    /// // The alias named the dialect, and the column filled its own field.
-    /// assert_eq!(message.branch().name(), "venue");
-    /// assert_eq!(message.by_tag(yggdryl::PLUGINID_TAG)?.as_str(), Some("VNU"));
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`] when the value is not a record at all, and
-    /// [`Error::InvalidRecord`] naming the payload column when the record has
-    /// no column of that name or holds neither text nor bytes under it.
-    pub fn parse_text_record(&self, record: &Scalar) -> Result<FixMessages> {
-        super::record::parse_record_with(self, record, &self.payload_column)
-    }
-
-    /// Parses a stream of generic records, one message per record, lazily.
-    ///
-    /// Nothing is collected: the iterator is the stream, so a capture of ten
-    /// million rows costs one message at a time. Each record is read exactly
-    /// as [`Self::parse_text_record`] reads it, so what a row states about
-    /// itself still outranks what this codec holds for the run - its
-    /// `pluginid` fills its column and picks its dialect, its `beginstring`
-    /// its version - at the cost of neither: the codec is cloned once into
-    /// the stream, and a row's dialect is resolved once per distinct plugin
-    /// name rather than once per row. A record that is not one is an `Err`
-    /// item and the stream continues.
-    pub fn parse_text_records<I>(&self, records: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
-    where
-        I: IntoIterator<Item = Scalar>,
-    {
-        let codec = self.clone();
-        records
-            .into_iter()
-            .flat_map(move |record| FixMessages::from_result(codec.parse_text_record(&record)))
     }
 
     /// Fills what one message implies but did not carry.

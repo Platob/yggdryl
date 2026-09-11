@@ -33,10 +33,11 @@ those attributes type against, which
 as an iterator and each with an Arrow-batch twin. :meth:`FixCodec.parse_line`
 turns one captured line into a lazy :class:`FixMessages` stream and
 :meth:`FixCodec.parse_lines` a whole iterable of lines, one line at a time;
-:meth:`FixCodec.parse_text_record` and :meth:`FixCodec.parse_text_records` read
-the records a text reader answers, the payload column beside the row's own
-``pluginid``, ``beginstring``, ``sep`` and ``timestamp`` parameters -
-``direction`` is a parameter of theirs too, and the one only
+:meth:`FixCodec.parse_text_line` and :meth:`FixCodec.parse_text_lines` read
+the lines a text reader answers, the line's own body and clock beside the
+row-header captures that state its ``pluginid`` and ``beginstring`` -
+``capture_names`` is what says which capture is which, once for the whole
+run, and a ``direction`` capture is the one only
 :meth:`FixCodec.parse_text_arrow_reader` has a column to put in. Every message
 it builds opens with ``beginstring`` - the wire's own, else the version the
 message was read at - and closes with the

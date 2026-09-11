@@ -28,7 +28,7 @@ from collections.abc import Callable
 
 import pyarrow as pa
 
-from yggdryl import DataType, Field, MimeType, types
+from yggdryl import DataType, Field, MimeType, TextLine, types
 from yggdryl.fix import STANDARD_BRANCH, ULBRIDGE_BRANCH, FixBranch, FixCodec, FixMsg, FixRegistry, UlPlugin, fix_schema
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -264,24 +264,26 @@ assert _DECLARED is not None
 PLUGIN_REGISTRY.set_branch(
     FixBranch(_DECLARED.name, version=_DECLARED.version, aliases=[*_DECLARED.aliases, "ulb"])
 )
-PLUGIN_CODEC = FixCodec(PLUGIN_REGISTRY, branch=ULBRIDGE_BRANCH)
-PLUGIN_RECORDS = [
-    {"body": line, "pluginid": "ULB" if index % 2 == 0 else "OMS_X1_TradeCapture"}
+PLUGIN_CODEC = FixCodec(PLUGIN_REGISTRY, branch=ULBRIDGE_BRANCH, capture_names=["pluginid"])
+PLUGIN_LINES = [
+    TextLine(index, line, ["ULB" if index % 2 == 0 else "OMS_X1_TradeCapture"])
     for index, line in enumerate(LINES)
 ]
-assert len(list(PLUGIN_CODEC.parse_text_records(PLUGIN_RECORDS))) == len(LINES)
+assert len(list(PLUGIN_CODEC.parse_text_lines(PLUGIN_LINES))) == len(LINES)
 
 
 def _parse_lines_drain() -> int:
     return sum(1 for _ in CODEC.parse_lines(LINES))
 
 
-def _parse_text_records_drain() -> int:
-    return sum(1 for _ in CODEC.parse_text_records({"body": line} for line in LINES))
+def _parse_text_lines_drain() -> int:
+    return sum(
+        1 for _ in CODEC.parse_text_lines(TextLine(index, line) for index, line in enumerate(LINES))
+    )
 
 
-def _parse_text_records_pluginid_drain() -> int:
-    return sum(1 for _ in PLUGIN_CODEC.parse_text_records(PLUGIN_RECORDS))
+def _parse_text_lines_pluginid_drain() -> int:
+    return sum(1 for _ in PLUGIN_CODEC.parse_text_lines(PLUGIN_LINES))
 
 
 def _parse_text_arrow_reader() -> int:
@@ -442,10 +444,10 @@ def main() -> None:
         _measure("message from_row", _message_from_row, args.iterations)
         streams = max(1, args.iterations // 50)
         _measure(f"parse_lines drain/{len(LINES)}", _parse_lines_drain, streams)
-        _measure(f"parse_text_records drain/{len(LINES)}", _parse_text_records_drain, streams)
+        _measure(f"parse_text_lines drain/{len(LINES)}", _parse_text_lines_drain, streams)
         _measure(
-            f"parse_text_records pluginid drain/{len(LINES)}",
-            _parse_text_records_pluginid_drain,
+            f"parse_text_lines pluginid drain/{len(LINES)}",
+            _parse_text_lines_pluginid_drain,
             streams,
         )
         _measure(f"parse_text_arrow_reader/{len(LINES)}", _parse_text_arrow_reader, streams)
@@ -461,7 +463,7 @@ def main() -> None:
             _measure(f"UlPlugins drain/{count}", lambda body=body: list(UlPlugin.from_json_bytes(body)), args.iterations)
             _measure(f"FixMessages first/{count}", lambda body=body: next(BRIDGE_CODEC.parse_line(body)), args.iterations)
             _measure(f"FixMessages drain/{count}", lambda body=body: list(BRIDGE_CODEC.parse_line(body)), args.iterations)
-            _measure(f"record messages drain/{count}", lambda body=body: list(BRIDGE_CODEC.parse_text_record({"body": body})), args.iterations)
+            _measure(f"line messages drain/{count}", lambda body=body: list(BRIDGE_CODEC.parse_text_line(TextLine(0, body))), args.iterations)
             first = next(UlPlugin.from_json_bytes(body))
             _measure(f"UlPlugin hash/{count}", first.stable_hash, args.iterations)
         loads = max(1, args.iterations // 100)

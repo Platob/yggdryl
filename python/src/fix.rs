@@ -34,6 +34,7 @@ use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::media::iceberg::folder_holder_from_value;
 use crate::text::codec::{PythonWriter, with_python_bytes};
+use crate::text_line::PyTextLine;
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
 use crate::uri::core_url_from_value;
@@ -1131,11 +1132,6 @@ fn line_bytes(item: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     )
 }
 
-/// One record, as the document the core reads it as.
-fn record_scalar(item: &Bound<'_, PyAny>) -> PyResult<Scalar> {
-    from_py(item).map(stated_document)
-}
-
 /// One message, refusing anything else where it is met.
 fn message_of(item: &Bound<'_, PyAny>) -> PyResult<CoreFixMsg> {
     Ok(item.extract::<PyRef<'_, PyFixMsg>>()?.inner.clone())
@@ -1851,8 +1847,11 @@ impl PyFixCodec {
     ///
     /// Every pin is the core's, spelled once here. `branch` and `version`
     /// cross as text; `separator` is the byte a numeric frame splits on where
-    /// the line does not say; `payload_column` names the record column a line
-    /// is read from; `null_values` are the spellings that mean nothing was
+    /// the line does not say; `payload_column` names the batch column a line
+    /// is read from; `capture_names` are what a run's row-header captures are
+    /// called, in the order a line answers them, which is what lets
+    /// `parse_text_line` read a capture by position rather than by name;
+    /// `null_values` are the spellings that mean nothing was
     /// sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
     /// or `"unknown"`; `batch_byte_size` is the raw bytes one Arrow batch
     /// targets, the core's 128 MiB when unstated.
@@ -1864,6 +1863,7 @@ impl PyFixCodec {
         version=None,
         separator=None,
         payload_column="body",
+        capture_names=None,
         null_values=None,
         direction="sent",
         batch_byte_size=None,
@@ -1875,6 +1875,7 @@ impl PyFixCodec {
         version: Option<&str>,
         separator: Option<u8>,
         payload_column: &str,
+        capture_names: Option<Vec<String>>,
         null_values: Option<Vec<String>>,
         direction: &str,
         batch_byte_size: Option<u64>,
@@ -1891,6 +1892,9 @@ impl PyFixCodec {
         }
         if let Some(held) = separator {
             inner = inner.with_separator(held);
+        }
+        if let Some(held) = capture_names {
+            inner = inner.with_capture_names(held);
         }
         if let Some(held) = null_values {
             inner = inner.with_null_values(held);
@@ -2030,34 +2034,38 @@ impl PyFixCodec {
             .map_err(value_error)
     }
 
-    /// One record a text reader answered: its messages.
+    /// One line a text reader answered: its messages.
     ///
-    /// The payload column names the line, and the row's own `pluginid`,
-    /// `beginstring`, `sep` and `timestamp` columns are the parameters of
-    /// the same name - the plugin that logged the line, the version, the
-    /// separator, the row's clock. A `pluginid` whose text is the name or an
-    /// alias of a branch the dictionary declares is also the dialect the row
-    /// is read under, outranking the codec's own pin; any other keeps the
-    /// pin, then the standard branch. Every other named column fills the
-    /// field its name reaches, `pluginid` included. A mapping states a record
-    /// as well as a native `Scalar` does.
+    /// The line's body is the bytes read, its timestamp the clock that stamps
+    /// the message, and its row-header captures state the rest - the plugin
+    /// that logged it, the version, and every field a capture's name reaches.
+    /// `with_capture_names` is what decides which capture is which, once for
+    /// the whole run, because a line answers its captures by position.
     ///
-    /// `direction` is a parameter here too, and the one this reader does not
-    /// read: only `parse_text_arrow_reader` has a column to put it in.
-    fn parse_text_record(&self, record: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
-        let record = record_scalar(record)?;
+    /// A `pluginid` capture whose text is the name or an alias of a branch the
+    /// dictionary declares is also the dialect the line is read under,
+    /// outranking the codec's own pin; any other keeps the pin, then the
+    /// standard branch.
+    ///
+    /// A `direction` capture is named so it cannot silently fill a field of
+    /// that name, and is not otherwise read: only `parse_text_arrow_reader`
+    /// has a column to put a direction in.
+    fn parse_text_line(&self, line: &PyTextLine) -> PyResult<PyFixMessages> {
         self.inner
-            .parse_text_record(&record)
+            .parse_text_line(line.as_core())
             .map(PyFixMessages::over)
             .map_err(value_error)
     }
 
-    /// A stream of records, lazily: each as `parse_text_record` reads it.
-    fn parse_text_records(&self, records: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
-        let pulled = Pulled::new(records, record_scalar)?;
+    /// A stream of lines, lazily: each as `parse_text_line` reads it.
+    fn parse_text_lines(&self, lines: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+        let pulled = Pulled::new(lines, |held| {
+            let held = held.cast::<PyTextLine>().map_err(PyErr::from)?;
+            Ok(held.borrow().as_core().clone())
+        })?;
         let failed = pulled.failed.clone();
         Ok(PyFixMessages::pulling(
-            self.inner.parse_text_records(pulled),
+            self.inner.parse_text_lines(pulled),
             failed,
         ))
     }
@@ -2068,7 +2076,7 @@ impl PyFixCodec {
     /// value exporting the Arrow C stream; the answer is a
     /// `pyarrow.RecordBatchReader` pulling one batch at a time. The schema is
     /// decided before the first row: the capture's own columns lead and the
-    /// fixed FIX columns follow. Every row is parsed as `parse_text_record`
+    /// fixed FIX columns follow. Every row is parsed as the line door
     /// parses one, and batches close on the raw bytes of the payload column
     /// against `batch_byte_size`.
     fn parse_text_arrow_reader<'py>(

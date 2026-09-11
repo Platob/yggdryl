@@ -106,8 +106,8 @@ The verb is `parse`, and no reader takes a flag: what happens to a message once 
 | --- | --- | --- |
 | `parse_line` | one captured line, the verb and prose around the frame included | `FixMessages`, a lazy fallible iterator: one message, or one per MBean of a bulk configuration |
 | `parse_lines` | any iterator of lines | a lazy iterator of `Result<FixMsg>`; a line that is not a row is an `Err` item and the stream continues |
-| `parse_text_record` | one [text record](../media/text.md#row-schema), its payload and [parameter columns](arrow.md#a-column-is-the-caller-speaking-per-row) | `FixMessages` |
-| `parse_text_records` | any iterator of records | a lazy iterator of `Result<FixMsg>` |
+| `parse_text_line` | one [decoded line](../media/text.md#row-schema), its body, clock and [row-header captures](arrow.md#a-column-is-the-caller-speaking-per-row) | `FixMessages` |
+| `parse_text_lines` | any iterator of lines | a lazy iterator of `Result<FixMsg>` |
 | `parse_text_arrow_reader` | a `BatchReader` of text records | a `BatchReader` of [fixed rows](arrow.md) |
 | `parse_ulconfig_line` | a bulk or wildcard configuration body | `FixMessages` |
 | `parse_fix_line`, `parse_fixml_line`, `parse_ullink_line`, `parse_pairs` | one body of that dialect, or pairs already split | one `FixMsg` |

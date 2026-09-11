@@ -373,7 +373,7 @@ fn build() -> Result<Vec<Field>> {
         // derived: `pluginid` is the bracket the bridge's row header writes
         // in front of every line - and, where it spells a branch the
         // dictionary declares, the dialect the row is read under
-        // ([`FixCodec::parse_text_record`](super::FixCodec::parse_text_record));
+        // ([`FixCodec::parse_text_line`](super::FixCodec::parse_text_line));
         // `prevpluginid` is only ever a column of that name.
         crated(
             "pluginid",

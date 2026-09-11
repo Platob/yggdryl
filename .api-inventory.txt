@@ -621,6 +621,7 @@ pub struct FixCodec
   pub const fn with_version(mut self, version: Version) -> Self
   pub const fn with_separator(mut self, separator: u8) -> Self
   pub fn with_payload_column(mut self, column: impl Into<SmolStr>) -> Self
+  pub fn with_capture_names<I, S>(mut self, names: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (what a run's row-header captures are called, resolved once and read by position)
   pub const fn with_direction(mut self, direction: Option<&'static str>) -> Self  (the direction an unmarked line takes; default `SENT`)
   pub const fn with_batch_byte_size(mut self, bytes: u64) -> Self
   pub fn with_null_values<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: Into<String>
@@ -632,14 +633,12 @@ pub struct FixCodec
   pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg>
   pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg>
   pub fn parse_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>
-  pub fn parse_text_record(&self, record: &Scalar) -> Result<FixMessages>
-  pub fn parse_text_records<I>(&self, records: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = Scalar>
+  pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing)
+  pub fn parse_text_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Borrow<TextLine>
   pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg>  (never fails; the `Result` is the shape every stage answers in)
   pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>
   pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>
   impl Clone for FixCodec
-
-### yggdryl::fix::record  [rust\src\fix\record.rs]
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 
 ### yggdryl::fix::batch  [rust\src\fix\batch.rs]  (arrow feature)

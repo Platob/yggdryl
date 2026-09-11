@@ -3330,6 +3330,12 @@ class TextLine:
 
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
+    def __init__(
+        self,
+        index: int,
+        body: bytes | bytearray | memoryview,
+        captures: Sequence[str | None] | None = None,
+    ) -> None: ...
     @property
     def index(self) -> int: ...
     @property
@@ -4747,8 +4753,8 @@ class FixCodec:
 
     Every entry point redirects to the core method of the same name. Parsing:
     ``parse_line`` takes a captured line whatever it is wrapped in,
-    ``parse_lines`` an iterable of them, ``parse_text_record`` a record a text
-    reader answered and ``parse_text_records`` an iterable of those,
+    ``parse_lines`` an iterable of them, ``parse_text_line`` a line a text
+    reader answered and ``parse_text_lines`` an iterable of those,
     ``parse_fix_line`` a numeric frame read by the pairs it states,
     ``parse_ullink_line`` a bridge frame whose keys are names,
     ``parse_fixml_line`` a FIXML row, ``parse_ulconfig_line`` a bridge
@@ -4773,6 +4779,7 @@ class FixCodec:
         version: str | None = None,
         separator: int | None = None,
         payload_column: str = "body",
+        capture_names: Sequence[str] | None = None,
         null_values: Sequence[str] | None = None,
         direction: str = "sent",
         batch_byte_size: int | None = None,
@@ -4806,8 +4813,8 @@ class FixCodec:
     def parse_fixml_line(self, body: bytes | bytearray | memoryview) -> FixMsg: ...
     def parse_ulconfig_line(self, body: bytes | bytearray | memoryview) -> FixMessages: ...
     def parse_pairs(self, pairs: Sequence[tuple[str, str]]) -> FixMsg: ...
-    def parse_text_record(self, record: object) -> FixMessages: ...
-    def parse_text_records(self, records: Iterable[object]) -> FixMessages: ...
+    def parse_text_line(self, line: TextLine) -> FixMessages: ...
+    def parse_text_lines(self, lines: Iterable[TextLine]) -> FixMessages: ...
     def parse_text_arrow_reader(self, source: FixArrowSource) -> pyarrow.RecordBatchReader: ...
     def enrich_message(self, message: FixMsg) -> FixMsg: ...
     def enrich_messages(self, messages: Iterable[FixMsg]) -> FixMessages: ...

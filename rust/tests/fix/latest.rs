@@ -7,6 +7,7 @@ use super::OneMessage;
 use std::sync::Arc;
 
 use yggdryl::fix::{FixCode, FixFill, FixFillSource, FixLineageEntry, FixPedigree, FixReplacement};
+use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::types::State;
 use yggdryl::{
     DataType, Field, FixCategory, FixCodec, FixMsg, FixRegistry, Scalar, VERSION_TAG, Version,
@@ -706,11 +707,11 @@ fn a_batch_read_lands_at_the_newest_version_when_asked() {
     let read = rows(false);
     assert_eq!(column(&read, VERSION_TAG), "4.2");
 
-    // The generic record door composes the same way.
-    let record = Scalar::from_record([("body", Scalar::from(REPORT.to_vec()))]).expect("a record");
+    // The line door composes the same way.
+    let line = TextLine::new(0, TextBytes::from_bytes(REPORT).expect("a page"));
     let message = codec
-        .parse_text_record(&record)
-        .expect("a readable record")
+        .parse_text_line(&line)
+        .expect("a readable line")
         .next()
         .expect("one message")
         .and_then(FixMsg::into_latest)

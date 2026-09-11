@@ -39,6 +39,7 @@ use yggdryl::{
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::iomedia::JsBatchReader;
 use crate::text::codec::JsScalar;
+use crate::text_line::JsTextLine;
 use crate::types::field::JsField;
 use crate::{exact_i32, exact_i64, napi_error, napi_type_error};
 
@@ -1566,8 +1567,11 @@ impl JsFixCodec {
     ///
     /// Every pin is the core's, spelled once here. `branch` and `version`
     /// cross as text; `separator` is the byte a numeric frame splits on where
-    /// the line does not say; `payloadColumn` names the record column a line
-    /// is read from; `nullValues` are the spellings that mean nothing was
+    /// the line does not say; `payloadColumn` names the batch column a line
+    /// is read from; `captureNames` are what a run's row-header captures are
+    /// called, in the order a line answers them, which is what lets
+    /// `parseTextLine` read a capture by position rather than by name;
+    /// `nullValues` are the spellings that mean nothing was
     /// sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
     /// or `"unknown"`; `batchByteSize` is the raw bytes one Arrow batch
     /// targets, the core's 128 MiB when unstated.
@@ -1590,6 +1594,9 @@ impl JsFixCodec {
         }
         if let Some(held) = options.payload_column {
             inner = inner.with_payload_column(held);
+        }
+        if let Some(held) = options.capture_names {
+            inner = inner.with_capture_names(held);
         }
         if let Some(held) = options.null_values {
             inner = inner.with_null_values(held);
@@ -1754,40 +1761,42 @@ impl JsFixCodec {
             .map_err(napi_error)
     }
 
-    /// One record a text reader answered: its messages.
+    /// One line a text reader answered: its messages.
     ///
-    /// The payload column names the line, and the row's own `pluginid`,
-    /// `beginstring`, `sep` and `timestamp` columns are the parameters of the
-    /// same name - the plugin that logged the line, the version, the
-    /// separator, the row's clock. A `pluginid` whose text is the name or an
-    /// alias of a branch the dictionary declares is also the dialect the row
-    /// is read under, outranking the codec's own pin; any other keeps the
-    /// pin, then the standard branch. Every other named column fills the
-    /// field its name reaches, `pluginid` included. The loader widens the
-    /// record from whatever `Scalar.fromJs` reads.
+    /// The line's body is the bytes read, its timestamp the clock that stamps
+    /// the message, and its row-header captures state the rest - the plugin
+    /// that logged it, the version, and every field a capture's name reaches.
+    /// `withCaptureNames` is what decides which capture is which, once for
+    /// the whole run, because a line answers its captures by position.
     ///
-    /// `direction` is a parameter here too, and the one this reader does not
-    /// read: only `parseTextArrowReader` has a column to put it in.
-    #[napi(ts_args_type = "record: unknown")]
-    pub fn parse_text_record(&self, record: &JsScalar) -> Result<JsFixMessages> {
+    /// A `pluginid` capture whose text is the name or an alias of a branch the
+    /// dictionary declares is also the dialect the line is read under,
+    /// outranking the codec's own pin; any other keeps the pin, then the
+    /// standard branch.
+    ///
+    /// A `direction` capture is named so it cannot silently fill a field of
+    /// that name, and is not otherwise read: only `parseTextArrowReader` has
+    /// a column to put a direction in.
+    #[napi(ts_args_type = "line: TextLine")]
+    pub fn parse_text_line(&self, line: &JsTextLine) -> Result<JsFixMessages> {
         self.inner
-            .parse_text_record(&record.inner)
+            .parse_text_line(line.as_core())
             .map(JsFixMessages::over)
             .map_err(napi_error)
     }
 
-    /// A stream of records, lazily: each as `parseTextRecord` reads it.
-    #[napi(js_name = "_parseTextRecordsNative", skip_typescript)]
-    pub fn parse_text_records_native(
+    /// A stream of lines, lazily: each as `parseTextLine` reads it.
+    #[napi(js_name = "_parseTextLinesNative", skip_typescript)]
+    pub fn parse_text_lines_native(
         &self,
         env: Env,
-        pull: Function<'_, (), Option<ClassInstance<'static, JsScalar>>>,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsTextLine>>>,
     ) -> Result<JsFixMessages> {
         let pulled = Pulled::new(env, pull)?;
         let failed = pulled.failed.clone();
-        let records = pulled.map(|record| record.inner.clone());
+        let lines = pulled.map(|line| line.as_core().clone());
         Ok(JsFixMessages::pulling(
-            self.inner.parse_text_records(records),
+            self.inner.parse_text_lines(lines),
             failed,
         ))
     }
@@ -1795,8 +1804,8 @@ impl JsFixCodec {
     /// A stream of Arrow batches of capture rows as batches of FIX rows.
     ///
     /// The schema is decided before the first row: the capture's own columns
-    /// lead and the fixed FIX columns follow. Every row is parsed as
-    /// `parseTextRecord` parses one, and batches close on the raw bytes of
+    /// lead and the fixed FIX columns follow. Every row is parsed as the
+    /// line door parses one, and batches close on the raw bytes of
     /// the payload column against `batchByteSize`. The source is consumed.
     #[napi]
     pub fn parse_text_arrow_reader(&self, source: &mut JsBatchReader) -> Result<JsBatchReader> {
@@ -1969,8 +1978,11 @@ pub struct FixCodecOptions {
     pub version: Option<String>,
     /// The byte a numeric frame splits on where the line does not say.
     pub separator: Option<f64>,
-    /// The record column a line is read from; `body` when unstated.
+    /// The batch column a line is read from; `body` when unstated.
     pub payload_column: Option<String>,
+    /// What a run's row-header captures are called, in the order a line
+    /// answers them.
+    pub capture_names: Option<Vec<String>>,
     /// The spellings that mean "nothing was sent".
     pub null_values: Option<Vec<String>>,
     /// What an unmarked line took: `sent`, `recv`, or `unknown`; `sent` when

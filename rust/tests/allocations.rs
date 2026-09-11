@@ -26,6 +26,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
+use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::types::{MsgDirection, UncheckedFieldScalar};
 use yggdryl::{
     DataType, DataTypeId, Field, FieldRecord, FieldScalar, FixBranch, FixCode, FixCodec, FixId,
@@ -1605,13 +1606,15 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// counts with three-kilobyte values cost exactly what two-byte values cost,
 /// which an owned copy could not have managed.
 ///
-/// The five are one page the line is copied into, and the lists the two-stage
-/// read holds - what the line said, and what the build folds in. The page is
-/// what a message owning its bytes costs when it is handed a borrowed slice,
-/// and every public reader here is handed one, so this is a cost this shape
-/// adds and every caller pays. Removing it means a door that takes the page a
-/// decoded line already holds, which is the entry point the next step lands
-/// and not something to claim before it exists.
+/// The five are the page the line is copied into - two allocations, the
+/// vector and the shared box around it - and the lists the two-stage read
+/// holds, what the line said and what the build folds in. The page is what a
+/// message owning its bytes costs when it is handed a borrowed slice, which
+/// is all this door can be handed.
+///
+/// A caller who decoded the line already owns that page, and
+/// [`FIX_TEXT_LINE_COSTS`] is the same three widths through the door that
+/// takes it: two fewer at each, which is the page and nothing else.
 const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 27), (16, 42), (64, 92)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
@@ -1769,6 +1772,49 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
                     codec
                         .parse_ullink_line(black_box(&line))
                         .expect("a readable row"),
+                );
+            },
+        );
+    }
+}
+
+/// What the same three lines cost through the door that takes a decoded line.
+///
+/// Two allocations fewer per message than [`FIX_LINE_COSTS`] at every width,
+/// and the two are the page. A caller holding a [`TextLine`] already owns the
+/// bytes as a range of a page it read them into, so the codec is handed that
+/// page instead of making a second one - which is what the byte door must do,
+/// because a bare slice is not a page and a message keeps ranges of one.
+///
+/// Two and not one because a page is an `Arc<Vec<u8>>`: the vector's own
+/// buffer, and the shared box around it that lets every key and value name a
+/// range of the same bytes without copying them.
+///
+/// The saving is per message and not per pair, which is exactly right: a page
+/// is one page however many pairs the line carries, so the slope is unchanged
+/// and only the constant moves. Three widths again, so that the claim is the
+/// constant and not a number that happens to be smaller.
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 25), (16, 40), (64, 90)];
+
+#[test]
+fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
+    let codec = FixCodec::new(Arc::new(fix_registry(64)));
+    for ((pairs, each), (widest, bytes)) in FIX_TEXT_LINE_COSTS.iter().zip(FIX_LINE_COSTS) {
+        assert_eq!(*pairs, widest, "the two pins measure the same widths");
+        assert_eq!(each + 2, bytes, "the page is the whole of the difference");
+        let held = fix_pairs_line(*pairs);
+        // The page is made outside the counted closure because that is what a
+        // caller reading text actually has: the decode already happened, and
+        // what is measured here is what reading a message from it adds.
+        let line = TextLine::new(0, TextBytes::from_bytes(&held).expect("a page"));
+        costs(
+            &format!("a {pairs}-pair decoded line read as a message"),
+            *each,
+            || {
+                black_box(
+                    codec
+                        .parse_text_line(black_box(&line))
+                        .expect("a readable line"),
                 );
             },
         );

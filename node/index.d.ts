@@ -1157,8 +1157,11 @@ export declare class FixCodec {
    *
    * Every pin is the core's, spelled once here. `branch` and `version`
    * cross as text; `separator` is the byte a numeric frame splits on where
-   * the line does not say; `payloadColumn` names the record column a line
-   * is read from; `nullValues` are the spellings that mean nothing was
+   * the line does not say; `payloadColumn` names the batch column a line
+   * is read from; `captureNames` are what a run's row-header captures are
+   * called, in the order a line answers them, which is what lets
+   * `parseTextLine` read a capture by position rather than by name;
+   * `nullValues` are the spellings that mean nothing was
    * sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
    * or `"unknown"`; `batchByteSize` is the raw bytes one Arrow batch
    * targets, the core's 128 MiB when unstated.
@@ -1214,28 +1217,30 @@ export declare class FixCodec {
   /** Pairs a caller already holds, in the order they arrived. */
   parsePairs(pairs: Array<[string, string]>): FixMsg
   /**
-   * One record a text reader answered: its messages.
+   * One line a text reader answered: its messages.
    *
-   * The payload column names the line, and the row's own `pluginid`,
-   * `beginstring`, `sep` and `timestamp` columns are the parameters of the
-   * same name - the plugin that logged the line, the version, the
-   * separator, the row's clock. A `pluginid` whose text is the name or an
-   * alias of a branch the dictionary declares is also the dialect the row
-   * is read under, outranking the codec's own pin; any other keeps the
-   * pin, then the standard branch. Every other named column fills the
-   * field its name reaches, `pluginid` included. The loader widens the
-   * record from whatever `Scalar.fromJs` reads.
+   * The line's body is the bytes read, its timestamp the clock that stamps
+   * the message, and its row-header captures state the rest - the plugin
+   * that logged it, the version, and every field a capture's name reaches.
+   * `withCaptureNames` is what decides which capture is which, once for
+   * the whole run, because a line answers its captures by position.
    *
-   * `direction` is a parameter here too, and the one this reader does not
-   * read: only `parseTextArrowReader` has a column to put it in.
+   * A `pluginid` capture whose text is the name or an alias of a branch the
+   * dictionary declares is also the dialect the line is read under,
+   * outranking the codec's own pin; any other keeps the pin, then the
+   * standard branch.
+   *
+   * A `direction` capture is named so it cannot silently fill a field of
+   * that name, and is not otherwise read: only `parseTextArrowReader` has
+   * a column to put a direction in.
    */
-  parseTextRecord(record: unknown): FixMessages
+  parseTextLine(line: TextLine): FixMessages
   /**
    * A stream of Arrow batches of capture rows as batches of FIX rows.
    *
    * The schema is decided before the first row: the capture's own columns
-   * lead and the fixed FIX columns follow. Every row is parsed as
-   * `parseTextRecord` parses one, and batches close on the raw bytes of
+   * lead and the fixed FIX columns follow. Every row is parsed as the
+   * line door parses one, and batches close on the raw bytes of
    * the payload column against `batchByteSize`. The source is consumed.
    */
   parseTextArrowReader(source: JsBatchReader): JsBatchReader
@@ -3952,6 +3957,18 @@ export type JsTextEntry = TextEntry
 /** One decoded text row, typed the way its columns are. */
 export declare class TextLine {
   /**
+   * One line a caller holds itself, rather than one a text read answered.
+   *
+   * A capture is what a row header stated about the line, in the order the
+   * header declares them, and `null` is a capture it declared and this line
+   * did not match. The codec reads them by position, so the order is the
+   * contract and `FixCodec`'s `captureNames` is what names it.
+   *
+   * The body is copied into a page this line owns, once: every key and
+   * value a message read from it records is a range of that page.
+   */
+  constructor(index: number, body: Buffer, captures?: Array<string | null>)
+  /**
    * The physical line number within the object, from zero.
    *
    * A `bigint`: a line count is 64 bits wide in the core and a JavaScript
@@ -4999,8 +5016,13 @@ export interface FixCodecOptions {
   version?: string
   /** The byte a numeric frame splits on where the line does not say. */
   separator?: number
-  /** The record column a line is read from; `body` when unstated. */
+  /** The batch column a line is read from; `body` when unstated. */
   payloadColumn?: string
+  /**
+   * What a run's row-header captures are called, in the order a line
+   * answers them.
+   */
+  captureNames?: Array<string>
   /** The spellings that mean "nothing was sent". */
   nullValues?: Array<string>
   /**

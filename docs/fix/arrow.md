@@ -327,7 +327,7 @@ The plugin is read twice over, from one cell: it fills the crate's own `pluginid
 
 ## One row per message
 
-Ordinary frames produce one row each. Bulk configuration arrays emit every response, and wildcard responses emit every selected MBean, each repeating its source row's carried columns. Empty bulk and wildcard answers emit zero rows. Join a parsed capture by its carried source identifier rather than assuming row positions still align. `parse_text_record` is the same reading of one record, and answers the iterator when expansion is wanted.
+Ordinary frames produce one row each. Bulk configuration arrays emit every response, and wildcard responses emit every selected MBean, each repeating its source row's carried columns. Empty bulk and wildcard answers emit zero rows. Join a parsed capture by its carried source identifier rather than assuming row positions still align. `parse_text_line` is the same reading of one line, and answers the iterator when expansion is wanted.
 
 === "Rust"
 
@@ -678,7 +678,7 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
 - A fill is row-only: never an entry, never in `nofixentries`, never re-emitted by `write_arrow_reader`, never in `msghash`.
 - A batch's bytes are read once from the payload column's offsets and spread evenly over its rows, so a large batch splits into equal row counts; a bulk configuration row's whole charge rides on its first message.
 - A `batch_byte_size` of `0` or `1` is a batch a row: the target is where a batch closes, never a bound a row must fit under.
-- `parse_text_arrow_reader` on a source with no column named as the payload column, or one holding neither text nor bytes under it -> refused before a row is read, naming the column; `parse_text_record` refuses the same record the same way. A null payload is a row holding an empty message.
+- `parse_text_arrow_reader` on a source with no column named as the payload column, or one holding neither text nor bytes under it -> refused before a row is read, naming the column. `parse_text_line` has no column to name: a line's body is a typed field, so a line carrying no bytes is a row holding an empty message and nothing else is refusable.
 - `messages` on a source whose schema makes no root field -> one error item; a later batch of another schema -> a conflict item; a row that is not a FIX row -> an error item; each fuses the stream.
 - `arrow_reader` under a schema the message cannot fill whole -> the row's own refusal, at that row; an `Err` item in its stream - a line `parse_lines` refused - yields the completed prefix, then the error, and fuses the reader, so a capture wanting every line as a row reads through `parse_text_arrow_reader`.
 - `arrow_reader` over messages carrying no arrival record - built by hand, or read back from rows holding only lifted columns - charges each the leaves of its row, so `enrich_messages_arrow_reader` over a lifted-only projection is bounded by the same target.

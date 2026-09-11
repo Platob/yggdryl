@@ -126,7 +126,6 @@ fn ulbridge_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
 
 trait OneMessage {
     fn one_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
-    fn one_record(&self, row: &yggdryl::Scalar, enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
     fn one_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
 }
 
@@ -160,10 +159,6 @@ fn one_message_filled(
 impl OneMessage for yggdryl::FixCodec {
     fn one_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
         one_message_filled(self, self.parse_line(row)?, enrich)
-    }
-
-    fn one_record(&self, row: &yggdryl::Scalar, enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        one_message_filled(self, self.parse_text_record(row)?, enrich)
     }
 
     fn one_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {

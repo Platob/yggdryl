@@ -15,7 +15,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { BatchReader, DataType, Field, Scalar, fields, fix } = require('yggdryl')
+const { BatchReader, DataType, Field, Scalar, TextLine, fields, fix } = require('yggdryl')
 
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 
@@ -154,28 +154,33 @@ test('an item that is not bytes is refused where it is met', () => {
   assert.throws(() => codec.parseLines(42), TypeError)
 })
 
-test('parseTextRecords pulls one record at a time', () => {
-  const codec = new fix.FixCodec(seed())
+test('parseTextLines pulls one line at a time', () => {
+  const codec = new fix.FixCodec(seed(), { captureNames: ['beginstring'] })
   let pulled = 0
-  function* records() {
+  function* lines() {
     for (const body of ['8=FIX.4.4|35=D|11=A|10=0|', '8=FIX.4.4|35=D|11=B|10=0|']) {
       pulled += 1
-      yield { body: Buffer.from(body) }
+      yield new TextLine(pulled - 1, Buffer.from(body))
     }
   }
-  const messages = codec.parseTextRecords(records())
+  const messages = codec.parseTextLines(lines())
   assert.equal(pulled, 0)
   assert.equal(messages.next().value.byTag(11).asJs(), 'A')
   assert.equal(pulled, 1)
   assert.equal(messages.next().value.byTag(11).asJs(), 'B')
   assert.equal(messages.next().done, true)
-  // A record speaks per row: `beginstring` reads the frame at 4.2, where tag
+  // A capture speaks per row: `beginstring` reads the frame at 4.2, where tag
   // 32 is `lastshares`, and the column is still the dictionary's own.
-  const [old] = codec.parseTextRecords([{ body: Buffer.from('8=FIX.4.4|35=8|32=100|10=0|'), beginstring: 'FIX.4.2' }])
+  const [old] = codec.parseTextLines([
+    new TextLine(0, Buffer.from('8=FIX.4.4|35=8|32=100|10=0|'), ['FIX.4.2']),
+  ])
   assert.notEqual(old.field.indexOf('lastqty'), null)
   assert.notEqual(old.getByName('lastshares'), null)
   // A bulk document is many messages, and the stream door yields each.
-  assert.equal([...new fix.FixCodec(configRegistry()).parseTextRecords([{ body: Buffer.from(BULK_CONFIG) }])].length, 2)
+  assert.equal(
+    [...new fix.FixCodec(configRegistry()).parseTextLines([new TextLine(0, Buffer.from(BULK_CONFIG))])].length,
+    2,
+  )
 })
 
 test("a row's pluginid names the dialect it is read under and fills its own column", () => {
@@ -187,17 +192,20 @@ test("a row's pluginid names the dialect it is read under and fills its own colu
     field.fix.id = id
     registry.insert(field)
   }
-  const codec = new fix.FixCodec(registry)
-  const pinned = new fix.FixCodec(registry, { branch: 'venue' })
-  const elsewhere = new fix.FixCodec(registry, { branch: 'elsewhere' })
+  const captureNames = ['pluginid', 'prevpluginid']
+  const codec = new fix.FixCodec(registry, { captureNames })
+  const pinned = new fix.FixCodec(registry, { branch: 'venue', captureNames })
+  const elsewhere = new fix.FixCodec(registry, { branch: 'elsewhere', captureNames })
   const body = Buffer.from('MSGTYPE=D|CLORDID=A|VENUETAG=dark')
+  // A line and the captures its header declared, in that order.
+  const lined = (plugin, previous = null, held = body) => new TextLine(0, held, [plugin, previous])
 
   // A `pluginid` naming a branch the dictionary declares is the dialect the
   // row is read under; any other - a plugin no branch is named after, a null,
   // an empty string - keeps the codec's pin, then the standard branch. The
-  // column fills the crate's own field either way, exactly as it was spelled.
+  // capture fills the crate's own field either way, exactly as it was spelled.
   for (const spelled of ['venue', 'VENUE', 'OMS_X1_TradeCapture', null, '']) {
-    const [message] = codec.parseTextRecord({ pluginid: spelled, body })
+    const [message] = codec.parseTextLine(lined(spelled))
     const named = spelled === 'venue' || spelled === 'VENUE'
     assert.equal(message.branch, named ? 'venue' : fix.STANDARD_BRANCH, `${spelled}`)
     // The dialect's own field resolves only where the row named the dialect;
@@ -208,19 +216,19 @@ test("a row's pluginid names the dialect it is read under and fills its own colu
     assert.equal(held === null ? null : held.asJs(), spelled, `${spelled}`)
   }
 
-  // A column speaks per row where a codec speaks per run: a row naming no
+  // A capture speaks per row where a codec speaks per run: a row naming no
   // dialect keeps the pin, and a row naming one outranks a pin naming another.
-  assert.equal([...pinned.parseTextRecord({ body })][0].byTag(5001).asJs(), 'dark')
-  assert.equal([...elsewhere.parseTextRecord({ pluginid: 'venue', body })][0].branch, 'venue')
-  assert.equal([...elsewhere.parseTextRecord({ pluginid: 'ULBridge', body })][0].branch, 'elsewhere')
+  assert.equal([...pinned.parseTextLine(lined(null))][0].byTag(5001).asJs(), 'dark')
+  assert.equal([...elsewhere.parseTextLine(lined('venue'))][0].branch, 'venue')
+  assert.equal([...elsewhere.parseTextLine(lined('ULBridge'))][0].branch, 'elsewhere')
 
-  // Nothing fills `prevpluginid` but a column of that name, and the two
+  // Nothing fills `prevpluginid` but a capture of that name, and the two
   // session names are only ever what the line itself spells, through the
   // aliases a bridge row writes them under.
-  const [carried] = codec.parseTextRecord({ pluginid: 'venue', prevpluginid: 'ULFilter', body })
+  const [carried] = codec.parseTextLine(lined('venue', 'ULFilter'))
   assert.equal(carried.getByName('prevpluginid').asJs(), 'ULFilter')
   const spoken = '|#SYMBOL=TTF|#ULFROMSESSIONNAME=OMS_X1_OrderOut|#ULTOSESSIONNAME=ULMSG_BROKER_BDG_DMZ_CLI|'
-  const [stated] = codec.parseTextRecord({ pluginid: 'venue', body: Buffer.from(spoken) })
+  const [stated] = codec.parseTextLine(lined('venue', null, Buffer.from(spoken)))
   assert.equal(stated.getByName('sendersessionname').asJs(), 'OMS_X1_OrderOut')
   assert.equal(stated.getByName('targetsessionname').asJs(), 'ULMSG_BROKER_BDG_DMZ_CLI')
   assert.equal(stated.getByName('prevpluginid'), null)
@@ -258,8 +266,9 @@ test('the codec answers the pins it was given', () => {
   assert.equal(new fix.FixCodec(registry, { direction: 'unknown' }).direction, 'unknown')
   assert.throws(() => new fix.FixCodec(registry, { direction: 'sideways' }), /sent, recv, unknown/)
   assert.throws(() => new fix.FixCodec(registry, { batchByteSize: 1.5 }))
-  // The payload column is where a record's line is read from.
-  const [read] = pinned.parseTextRecords([{ line: Buffer.from('8=FIX.4.2|35=D|11=A|10=0|') }])
+  // The payload column names a batch column; a line's body is its own, so
+  // the line door reads the same frame without naming anything.
+  const [read] = pinned.parseTextLines([new TextLine(0, Buffer.from('8=FIX.4.2|35=D|11=A|10=0|'))])
   assert.equal(read.byTag(11).asJs(), 'A')
 })
 

@@ -72,10 +72,9 @@ use std::sync::Arc;
 use yggdryl::fix::{ENTRIES_COLUMN, UNMAPPED_COLUMN};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::TextOptions;
+use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    Field, FixBranch, FixCodec, FixEntry, FixMsg, IOMedia, Scalar, Timezone, Url, fix_schema,
-    into_json_scalar,
+    Field, FixBranch, FixCodec, FixEntry, FixMsg, Timezone, Url, fix_schema, into_json_scalar,
 };
 
 /// The environment variable that turns the comparison into a write.
@@ -525,45 +524,42 @@ fn reading() -> RecordOptions {
     options.into()
 }
 
-/// The capture as the rows a text reader hands the codec, one record a row.
-fn capture_records() -> Vec<Scalar> {
+/// The capture as the lines a text reader hands the codec, one line a row.
+///
+/// The one decode entry point, which is the door the codec now takes: the
+/// same read the batch path is built from, handed over rather than made
+/// again.
+fn capture_lines() -> Vec<TextLine> {
     let source = Buffer::from_bytes(LOG.to_vec()).with_media_type(
         Url::from_str("file:///ulbridge.log")
             .expect("a URL")
             .media_type(),
     );
-    let mut records = Vec::new();
-    let mut names: Vec<String> = Vec::new();
-    for batch in source.read_arrow_reader(&reading()).expect("a reader") {
-        let batch = batch.expect("a batch");
-        if names.is_empty() {
-            names = batch
-                .schema()
-                .fields()
-                .iter()
-                .map(|field| field.name().clone())
-                .collect();
-        }
-        let held = yggdryl::arrow::batch_to_value(&batch).expect("the batch reads");
-        for row in held.as_sequence().expect("rows") {
-            let values = row.as_sequence().expect("a row");
-            records.push(
-                Scalar::from_record(names.iter().cloned().zip(values.iter().cloned()))
-                    .expect("a record"),
-            );
-        }
-    }
-    records
+    let RecordOptions::Text(options) = reading() else {
+        panic!("a text read")
+    };
+    read_text_lines(&source, &options)
+        .expect("a line reader")
+        .map(|line| line.expect("a line"))
+        .collect()
+}
+
+/// What the bridge's row header captures, in the order a line answers them.
+fn capture_names() -> Vec<String> {
+    let RecordOptions::Text(options) = reading() else {
+        panic!("a text read")
+    };
+    options.capture_names().map(ToOwned::to_owned).collect()
 }
 
 /// The bridge's own capture, read the way a dataset read reads it: framed by
-/// the text reader, then each row through the codec's record door.
+/// the text reader, then each line through the codec's line door.
 fn capture(pinned: &mut Pinned) {
-    let codec = bridge_codec();
+    let codec = bridge_codec().with_capture_names(capture_names());
     let schema = fix_schema(codec.registry(), "fix").expect("the fixed schema");
-    for (index, record) in capture_records().iter().enumerate() {
+    for (index, line) in capture_lines().iter().enumerate() {
         let at = format!("ulbridge[{index:03}]");
-        let held = match codec.parse_text_record(record) {
+        let held = match codec.parse_text_line(line) {
             Ok(held) => held,
             Err(refused) => {
                 pinned.push(format!("{at}.refused"), refused.to_string());

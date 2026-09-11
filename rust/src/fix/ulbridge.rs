@@ -95,7 +95,7 @@ const SESSIONINTERFACE_NAME: &str = "SessionInterface";
 /// plugin that logged the line, which fills the crate's own
 /// [`PluginId`](super::PLUGINID_TAG) and names the dialect the line is read
 /// under where the dictionary declares a branch by that name or alias, as
-/// [`FixCodec::parse_text_record`](super::FixCodec::parse_text_record)
+/// [`FixCodec::parse_text_line`](super::FixCodec::parse_text_line)
 /// says - the session names the line moved between are what the line itself
 /// spells, never the plugin; `senderSessionId` is the session instance the
 /// bridge handled the line on, and fills

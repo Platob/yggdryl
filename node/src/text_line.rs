@@ -261,10 +261,46 @@ impl JsTextLine {
     pub(crate) const fn from_core(inner: CoreTextLine) -> Self {
         Self { inner }
     }
+
+    /// Borrow the line this wraps.
+    pub(crate) const fn as_core(&self) -> &CoreTextLine {
+        &self.inner
+    }
 }
 
 #[napi]
 impl JsTextLine {
+    /// One line a caller holds itself, rather than one a text read answered.
+    ///
+    /// A capture is what a row header stated about the line, in the order the
+    /// header declares them, and `null` is a capture it declared and this line
+    /// did not match. The codec reads them by position, so the order is the
+    /// contract and `FixCodec`'s `captureNames` is what names it.
+    ///
+    /// The body is copied into a page this line owns, once: every key and
+    /// value a message read from it records is a range of that page.
+    #[napi(
+        constructor,
+        ts_args_type = "index: number, body: Buffer, captures?: Array<string | null>"
+    )]
+    pub fn new(index: i64, body: Buffer, captures: Option<Vec<Option<String>>>) -> Result<Self> {
+        let page = TextBytes::from_bytes(&body).map_err(crate::napi_error)?;
+        let mut line = CoreTextLine::new(index.unsigned_abs(), page);
+        if let Some(held) = captures {
+            let mut read = Vec::with_capacity(held.len());
+            for capture in held {
+                read.push(match capture {
+                    Some(text) => {
+                        Some(TextBytes::from_bytes(text.as_bytes()).map_err(crate::napi_error)?)
+                    }
+                    None => None,
+                });
+            }
+            line.set_captures(read);
+        }
+        Ok(Self::from_core(line))
+    }
+
     /// The physical line number within the object, from zero.
     ///
     /// A `bigint`: a line count is 64 bits wide in the core and a JavaScript

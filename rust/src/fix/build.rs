@@ -304,6 +304,41 @@ impl FixPair {
     }
 }
 
+/// The name a row states its own version under.
+///
+/// Read by both readers of a row and spelled once: the batch reader looks for
+/// a column of this name, the line reader for a row-header capture of it. A
+/// row states a fact about its line either way, and the two doors must not
+/// disagree about what it is called.
+pub(super) const BEGINSTRING_COLUMN: &str = "beginstring";
+/// The name a row states its own clock under, which stamps the message.
+pub(super) const CLOCK_COLUMN: &str = super::TIMESTAMP_NAME;
+/// The name a row states the direction its line moved under.
+pub(super) const DIRECTION_COLUMN: &str = "direction";
+/// The name a row states the plugin that logged its line under.
+///
+/// Read twice over, from one cell: as the fill of the crate's own
+/// [`pluginid`](super::PLUGINID_TAG) field, by name like any other, and as the
+/// dialect the row is read under, through [`FixCodec::dialect_of`]. It is
+/// deliberately no parameter: a parameter is consumed by the read, and this
+/// one is carried into the row it names.
+///
+/// [`FixCodec::dialect_of`]: super::codec::FixCodec::dialect_of
+pub(super) const PLUGINID_COLUMN: &str = "pluginid";
+
+/// The version a `beginstring` states, as `BeginString` spells it.
+///
+/// `FIX.4.2` and `4.2` are one version; `FIXT.1.1` is none, because the
+/// session layer says nothing about the application version, and neither
+/// is anything else that is not a version.
+pub(super) fn version_of(beginstring: &str) -> Option<Version> {
+    beginstring
+        .strip_prefix("FIX.")
+        .unwrap_or(beginstring)
+        .parse::<Version>()
+        .ok()
+}
+
 /// What a row states beside its payload, applied when its message is built.
 ///
 /// A dialect, a version, a clock and fills, all the caller speaking per row.

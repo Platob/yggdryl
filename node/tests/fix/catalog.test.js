@@ -5,7 +5,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
-const { DataType, Field, Scalar, fields, fix } = require('yggdryl')
+const { DataType, Field, Scalar, TextLine, fields, fix } = require('yggdryl')
 
 function tagged(name, tag, dtype = 'utf8') {
   const field = Field.from(`${name}: ${dtype}`)
@@ -284,7 +284,7 @@ test('bulk message streams preserve flat configuration rows and fuse', () => {
   assert.equal(cursor.next().done, true)
   assert.equal(cursor.next().done, true)
   assert.equal([...codec.parseUlconfigLine(body)].length, 4)
-  assert.equal([...codec.parseTextRecord({ url: 'capture.log', rownum: 17, body })].length, 4)
+  assert.equal([...codec.parseTextLine(new TextLine(17, body))].length, 4)
   const selected = fix.UlPlugin.fromFixmsg(values[0])
   assert.equal(selected.name, 'Item0')
   assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Item0')

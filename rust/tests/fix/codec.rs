@@ -5,6 +5,7 @@ use super::OneMessage;
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
+use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::types::State;
 use yggdryl::{DataType, FixBranch, FixCategory, FixCodec, FixEntry, FixRegistry, Scalar, Version};
 
@@ -2190,54 +2191,13 @@ fn read_line_picks_the_reader_the_row_shape_names() {
     assert_eq!(xml.by_name("clordid").unwrap().as_str(), Some("XML-1"));
 }
 
-/// A record is its payload column read under its own columns.
-#[test]
-fn read_record_takes_the_payload_column_and_the_columns_beside_it() {
-    let codec = codec();
-
-    // Only a payload: exactly what the byte reader does.
-    let bare = Scalar::from_record([(
-        "body",
-        Scalar::from(b"8=FIX.4.4|35=D|11=ORDER-1|10=0|".to_vec()),
-    )])
-    .expect("a record");
-    let message = codec.one_record(&bare, false).expect("a readable record");
-    assert_eq!(message.as_field().name(), "D");
-    assert_eq!(message.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
-
-    // The payload column is named, so a record spelling it another way is
-    // read by naming that spelling and not by guessing.
-    let renamed = Scalar::from_record([(
-        "payload",
-        Scalar::from(b"8=FIX.4.4|35=D|11=OTHER|10=0|".to_vec()),
-    )])
-    .expect("a record");
-    assert_eq!(
-        codec
-            .clone()
-            .with_payload_column("payload")
-            .one_record(&renamed, false)
-            .expect("a readable record")
-            .by_tag(11)
-            .unwrap()
-            .as_str(),
-        Some("OTHER"),
-    );
-
-    // A value that is not a record at all is the one refusal.
-    let refused = codec
-        .one_record(&Scalar::from("not a record"), false)
-        .unwrap_err();
-    assert!(refused.to_string().contains("record"), "{refused}");
-}
-
 /// The batch readers, each over the one shape it takes.
 ///
-/// A capture arrives as records - a text reader answers one per line, with
-/// the payload beside the `url` and `rownum` it came from - so the codec
-/// takes that shape at two widths: one record at a time, and a stream of
-/// Arrow batches. Both are the same read, which is what these pin: the
-/// message a stream answers is the message a record answers.
+/// A capture arrives as lines - a text reader answers one per line, with the
+/// body beside the `url` and `rownum` it came from - so the codec takes that
+/// shape at two widths: one line at a time, and a stream of Arrow batches.
+/// Both are the same read, which is what these pin: the message a stream
+/// answers is the message a line answers.
 #[test]
 fn every_batch_reader_answers_what_the_single_reader_answers() {
     let codec = codec();
@@ -2245,18 +2205,16 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
         b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec(),
         b"8=FIX.4.4|35=8|37=O-9|55=MSFT|10=0|".to_vec(),
     ];
-    let records: Vec<Scalar> = rows
+    let lines: Vec<TextLine> = rows
         .iter()
-        .map(|row| {
-            Scalar::from_record([("body", Scalar::from(row.clone()))]).expect("a capture row")
-        })
+        .map(|row| TextLine::new(0, TextBytes::from_bytes(row).expect("a capture page")))
         .collect();
 
-    // One record at a time, lazily: the iterator is the stream.
+    // One line at a time, lazily: the iterator is the stream.
     let read: Vec<_> = codec
-        .parse_text_records(records.clone())
+        .parse_text_lines(lines)
         .collect::<Result<Vec<_>, _>>()
-        .expect("readable records");
+        .expect("readable lines");
     assert_eq!(read.len(), 2);
     assert_eq!(read[0].as_field().name(), "D");
     assert_eq!(read[1].by_name("symbol").unwrap().as_str(), Some("MSFT"));

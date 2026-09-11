@@ -16,6 +16,7 @@ import {
   type UlPlugins,
   type FixValueInput,
   type LocationInput,
+  type TextLine,
 } from '../..'
 
 declare const field: Field
@@ -416,10 +417,11 @@ const configMessage: FixMsg = selected.intoFixmsg(reader)
 const recovered: UlPlugin = fix.UlPlugin.fromFixmsg(configMessage)
 const configHash: bigint = selected.stableHash()
 const bulk: FixMessages = reader.parseUlconfigLine(Buffer.from('{}'))
-const records: FixMessages = reader.parseTextRecord({ body: Buffer.from('35=D|') })
-const recordStream: FixMessages = reader.parseTextRecords([{ body: Buffer.from('35=D|') }])
+const decoded: TextLine = handle.readTextLines().next().value
+const records: FixMessages = reader.parseTextLine(decoded)
+const lineStream: FixMessages = reader.parseTextLines([decoded])
 const nextMessage: IteratorResult<FixMsg> = bulk.next()
-const allMessages: FixMsg[] = [...records, ...recordStream]
+const allMessages: FixMsg[] = [...records, ...lineStream]
 
 // @ts-expect-error the generic parse returns a cursor
 const single: FixMsg = reader.parseLine(Buffer.from('35=D|'))

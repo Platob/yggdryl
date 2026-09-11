@@ -32,6 +32,7 @@ from yggdryl import (
     PythonMetadata,
     RecordOptions,
     Statement,
+    TextLine,
     TextOptions,
     Timezone,
     Uri,
@@ -1313,8 +1314,8 @@ fix_read_messages: fix.FixMessages = fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0
 fix_read_text: fix.FixMsg = next(fix_read_messages)
 fix_read_bytes: fix.FixMsg = next(fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|"))
 fix_read_lines: fix.FixMessages = fix_reader.parse_lines([b"8=FIX.4.4|35=D|10=0|", bytearray()])
-fix_read_record: fix.FixMessages = fix_reader.parse_text_record({"body": b"35=D|"})
-fix_read_records: fix.FixMessages = fix_reader.parse_text_records([{"body": b"35=D|"}])
+fix_read_line: fix.FixMessages = fix_reader.parse_text_line(TextLine(0, b"35=D|"))
+fix_read_lines: fix.FixMessages = fix_reader.parse_text_lines([TextLine(0, b"35=D|")])
 fix_read_config: fix.FixMessages = fix_reader.parse_ulconfig_line(b'{"Name":"Router"}')
 fix_read_frame: fix.FixMsg = fix_reader.parse_fix_line(b"8=FIX.4.4")
 fix_read_bridge: fix.FixMsg = fix_reader.parse_ullink_line(b"#SYMBOL=TTF")

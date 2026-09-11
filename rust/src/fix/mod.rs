@@ -141,6 +141,7 @@ mod anomaly;
 #[cfg(feature = "arrow")]
 mod batch;
 mod build;
+mod catalog;
 mod cfb;
 mod codec;
 mod codes;
@@ -162,10 +163,6 @@ mod memo;
 mod messages;
 mod msg;
 mod msgtype;
-// Reading one generic record is not the Arrow surface, so it is not gated
-// with it: a schema-only build keeps `FixCodec::parse_text_record`.
-mod catalog;
-mod record;
 mod registry;
 mod replacements;
 mod schema;
@@ -175,6 +172,7 @@ mod tests;
 mod ulbridge;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
+pub use codec::DEFAULT_PAYLOAD_COLUMN;
 pub use codec::{DEFAULT_NULL_VALUES, FixCodec, SOH};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
@@ -196,7 +194,6 @@ pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
-pub use record::DEFAULT_PAYLOAD_COLUMN;
 pub use registry::{FixFieldIter, FixRegistry};
 pub use replacements::{
     FixFill, FixFillEntry, FixFillSource, FixFillValue, FixFills, FixReplacement,

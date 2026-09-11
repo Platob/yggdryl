@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::TextOptions;
+use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{FixCodec, FixRegistry, IOMedia, Scalar, Url};
 
 /// The committed dictionary, plus the bridge's own vocabulary.
@@ -75,37 +75,19 @@ fn text() -> RecordOptions {
     options.into()
 }
 
-/// Every row the capture holds, as the records a codec reads.
+/// Every line the capture holds, as the text reader decodes them.
 ///
-/// Rust's read surface is Arrow-native - `read_records` is a binding
-/// convenience - so a record is one row of a batch, which is the same value
-/// the batch path carries and therefore the honest comparison.
-fn rows_of(source: &Buffer) -> Vec<Scalar> {
-    let mut held = Vec::new();
-    for batch in source.read_arrow_reader(&text()).expect("a reader") {
-        let batch = batch.expect("a batch");
-        let names: Vec<String> = batch
-            .schema()
-            .fields()
-            .iter()
-            .map(|field| field.name().clone())
-            .collect();
-        let values = yggdryl::arrow::batch_to_value(&batch).expect("the batch reads");
-        for row in values.as_sequence().expect("rows") {
-            let row = row.as_sequence().expect("a row");
-            held.push(
-                Scalar::from_record(
-                    names
-                        .iter()
-                        .zip(row)
-                        .map(|(name, value)| (name.as_str(), value.clone()))
-                        .collect::<Vec<_>>(),
-                )
-                .expect("a record"),
-            );
-        }
-    }
-    held
+/// The one decode entry point, which is what the line door takes: the same
+/// lines the batch path is built from, handed over rather than made again,
+/// and therefore the honest comparison.
+fn lines_of(source: &Buffer) -> Vec<TextLine> {
+    let RecordOptions::Text(options) = text() else {
+        panic!("a text read")
+    };
+    read_text_lines(source, &options)
+        .expect("a line reader")
+        .map(|line| line.expect("a line"))
+        .collect()
 }
 
 /// One value as the reading it is, independent of how it is stored.
@@ -160,14 +142,14 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     let source = handle();
     let codec = FixCodec::new(Arc::clone(&registry));
 
-    // Row by row: the text reader answers records, and every record is read
-    // as the message its own payload spells - the dialect chosen per line,
-    // never per capture.
-    let records = rows_of(&source);
-    assert_eq!(records.len(), CAPTURE.len(), "a line in is a row out");
+    // Line by line: the text reader answers lines, and every line is read as
+    // the message its own body spells - the dialect chosen per line, never
+    // per capture.
+    let lines = lines_of(&source);
+    assert_eq!(lines.len(), CAPTURE.len(), "a line in is a line out");
 
     let one_at_a_time: Vec<_> = codec
-        .parse_text_records(records.clone())
+        .parse_text_lines(lines)
         .map(|held| held.and_then(|held| codec.enrich_message(held)))
         .map(|held| held.expect("a message"))
         .collect();
@@ -535,15 +517,13 @@ fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
         assert!(message.get_by_name("SessionInterfaces").is_none());
     }
 
-    let records: Vec<_> = [WILDCARD, WORKING]
-        .map(|body| {
-            Scalar::from_record([("body", Scalar::from(body.as_bytes().to_vec()))]).unwrap()
-        })
+    let lines: Vec<TextLine> = [WILDCARD, WORKING]
+        .map(|body| TextLine::new(0, TextBytes::from_bytes(body.as_bytes()).unwrap()))
         .into();
     let read = codec
-        .parse_text_records(records)
+        .parse_text_lines(lines)
         .collect::<yggdryl::Result<Vec<_>>>()
-        .expect("record iteration expands each configuration");
+        .expect("line iteration expands each configuration");
     assert_eq!(read.len(), 3);
     assert_eq!(read[0].as_value(), messages[0].as_value());
     assert_eq!(read[1].as_value(), messages[1].as_value());

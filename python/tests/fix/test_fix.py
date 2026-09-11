@@ -23,7 +23,7 @@ from typing import Any, Iterable
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url, refresh_logging
+from yggdryl import DataType, Field, IOBase, MimeType, Scalar, TextLine, Url, refresh_logging
 from yggdryl.fix import (
     FixBranch,
     FixMsg,
@@ -2064,10 +2064,11 @@ def test_a_rows_pluginid_fills_its_field_and_names_the_dialect_it_is_read_under(
         assert {entry["tag"] for entry in entries[row]} == {35, 11, 0}, row
         assert [entry["key"] for entry in unmapped[row]] == ["VENUETAG"], row
 
-    # One record read alone answers exactly what the batch did, and a fill is
+    # One line read alone answers exactly what the batch did, and a fill is
     # never an entry: neither plugin is one.
+    lined = FixCodec(seed, capture_names=["pluginid"])
     for row, spelled in enumerate(spellings):
-        message = next(codec.parse_text_record({"pluginid": spelled, "body": body}))
+        message = next(lined.parse_text_line(TextLine(0, body, [spelled])))
         assert message.branch == ("venue" if row < 2 else STANDARD_BRANCH), spelled
         held = message.get_by_name("pluginid")
         assert (held.as_py() if held is not None else None) == spelled, spelled
@@ -2076,17 +2077,17 @@ def test_a_rows_pluginid_fills_its_field_and_names_the_dialect_it_is_read_under(
             for tag, _, _ in message.entries()
         ), spelled
 
-    # A column speaks per row where the codec speaks per run: the pin stands
+    # A capture speaks per row where the codec speaks per run: the pin stands
     # for a row that names no dialect, and a row that names one outranks a pin
     # naming another.
-    pinned = FixCodec(seed, branch="venue")
+    pinned = FixCodec(seed, branch="venue", capture_names=["pluginid"])
     for spelled in ("OMS_X1_TradeCapture", None, ""):
-        message = next(pinned.parse_text_record({"pluginid": spelled, "body": body}))
+        message = next(pinned.parse_text_line(TextLine(0, body, [spelled])))
         assert message.branch == "venue", spelled
         assert message.by_tag(5001).as_py() == "dark", spelled
-    elsewhere = FixCodec(seed, branch="elsewhere")
-    assert next(elsewhere.parse_text_record({"pluginid": "vnu", "body": body})).branch == "venue"
-    assert next(elsewhere.parse_text_record({"pluginid": "ULBridge", "body": body})).branch == "elsewhere"
+    elsewhere = FixCodec(seed, branch="elsewhere", capture_names=["pluginid"])
+    assert next(elsewhere.parse_text_line(TextLine(0, body, ["vnu"]))).branch == "venue"
+    assert next(elsewhere.parse_text_line(TextLine(0, body, ["ULBridge"]))).branch == "elsewhere"
 
     # The two session names are only ever what the line itself spells, through
     # the aliases a bridge writes them under: neither the plugin that logged
