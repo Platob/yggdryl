@@ -1,6 +1,6 @@
 """Jinja-style `{{ }}` placeholders: a closed grammar, opt-in, and env-sealed.
 
-A YAML and TOML feature only: JSON is a data interchange format, so its
+A YAML, TOML and XML feature: JSON is a data interchange format, so its
 loader takes no `placeholders`/`environment` parameters at all - see
 `test_json_has_no_placeholder_surface`.
 """

@@ -69,7 +69,7 @@
       configuration the core clamped to: page_size, max_bytes, ttl, page_index, page_start
   media: AVRO_MAX_SCHEMA_DEPTH, Avro, DEFAULT_RECORD_BATCH_ROW_SIZE, Ipc, Media, MediaType, MimeType, NULL_PARTITION, Parquet, RecordOptions, Text, TextOptions, avro, iceberg, partition_text, with_partitions, without_partitions
   media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet and Avro under it; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
-  text: codec, json, toml, yaml
+  text: codec, json, toml, xml, yaml
   IOBase text decode: read_text_lines(*, options) answers a lazy TextLines iterator; every record method routes through the same decode
   field: pure Field builder for native/Arrow/dataclass shapes, with optional name
   types: AsciiField, BinaryField, BinaryViewField, BooleanField, Date32Field, Date64Field, Decimal32Field, Decimal64Field, Decimal128Field, Decimal256Field, DecimalField, DenseUnionField, DictionaryField, Duration32Field, Duration64Field, FixedAsciiField, FixedSizeBinaryField, FixedSizeListField, Float16Field, Float32Field, Float64Field, CfiField, CountryField, CurrencyField, GeographyField, GeometryField, UuidField, Int8Field, MicField, Int16Field, Int32Field, Int64Field, IntervalField, LargeBinaryField, LargeListField, LargeListViewField, LargeUtf8Field, ListField, ListViewField, MapField, NullField, RunEndEncodedField, StructField, Time32Field, Time64Field, TimeField, DateTime64Field, TypedDataType, TypedField, UInt8Field, UInt16Field, UInt32Field, UInt64Field, UnionField, VariantField, Version, VersionField, Utf8Field, Utf8ViewField, UrlField, ascii, binary, binary_view, boolean, cfi, country, currency, date32, date64, datetime64, decimal, decimal32, decimal64, decimal128, decimal256, dense_union, dictionary, duration32, duration64, field, fixed_ascii, fixed_size_binary, fixed_size_list, float16, float32, float64, geography, geometry, uuid, int8, int16, int32, int64, interval, large_binary, large_list, large_list_view, large_utf8, list, list_view, map, map_of, mic, null, run_end_encoded, struct, time, time32, time64, uint8, uint16, uint32, uint64, union, url, utf8, utf8_view, variant, version
@@ -404,5 +404,8 @@
     statics: loads, load, dumps, dump, loadStream, dumpStream, loadsAll, loadAll, dumpAll, loadAllStream, dumpAllStream
   toml
     statics: loads, load, dumps, dump, loadStream, dumpStream
+  xml
+    statics: loads, load, dumps, dump, loadStream, dumpStream
+    document: one root element, so a decoded document is a one-entry object keyed by its name; an attribute keys behind '@', an element's own character data keys '#text', a repeated element is an array, and an empty element is null; every leaf is text until `field` types it
   yaml
     statics: loads, load, dumps, dump, loadStream, dumpStream, loadsAll, loadAll, dumpAll, loadAllStream, dumpAllStream

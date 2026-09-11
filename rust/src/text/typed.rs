@@ -113,8 +113,8 @@ fn named(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Scalar>
 
 /// Substitute the one spelling a document has that a value does not.
 ///
-/// JSON, YAML and TOML have no byte literal, so a document spells a payload in
-/// base64; every other reading a document needs - a number, a boolean, a
+/// No structured text format has a byte literal, so a document spells a payload
+/// in base64; every other reading a document needs - a number, a boolean, a
 /// temporal, an ordered struct, a record keyed by name - is the value contract
 /// [`Field::scalar`] already owns, and is left to it. The walk only descends to
 /// find the byte leaves.

@@ -59,8 +59,8 @@ def loads(
 
     ``cls=Scalar`` returns the exact core value without natural-type lowering.
 
-    JSON is a data interchange format, so `{{ }}` placeholder substitution is
-    a YAML and TOML feature only - a configuration document that wants
+    JSON is a data interchange format, so `{{ }}` placeholder substitution
+    belongs to YAML, TOML and XML - a configuration document that wants
     templating is better written as one of those.
     """
 
