@@ -127,40 +127,27 @@ typed_array!(
     crate::types::text::Utf8ViewType,
     arrow_array::StringViewArray
 );
-// Variable ASCII stores as binary; a fixed width as fixed binary.
-typed_array!(crate::types::ascii::AsciiType, arrow_array::BinaryArray);
+// Every ASCII shape stores text, width or no width, code or no code: the
+// declared width bounds the value rather than striding the buffer.
+typed_array!(crate::types::ascii::AsciiType, arrow_array::StringArray);
 typed_array!(
     crate::types::ascii::FixedAsciiType,
-    arrow_array::FixedSizeBinaryArray
+    arrow_array::StringArray
 );
-// A registered code stores as the fixed binary its standard fixes.
-typed_array!(
-    crate::types::ascii::CountryType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::ascii::CurrencyType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::ascii::MicType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::ascii::CfiType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::ascii::IsinType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::ascii::SideType,
-    arrow_array::FixedSizeBinaryArray
-);
+typed_array!(crate::types::ascii::CountryType, arrow_array::StringArray);
+typed_array!(crate::types::ascii::CurrencyType, arrow_array::StringArray);
+typed_array!(crate::types::ascii::MicType, arrow_array::StringArray);
+typed_array!(crate::types::ascii::CfiType, arrow_array::StringArray);
+typed_array!(crate::types::ascii::IsinType, arrow_array::StringArray);
+typed_array!(crate::types::ascii::SideType, arrow_array::StringArray);
 typed_array!(
     crate::types::ascii::MsgDirectionType,
-    arrow_array::FixedSizeBinaryArray
+    arrow_array::StringArray
+);
+typed_array!(crate::types::ascii::StateType, arrow_array::StringArray);
+typed_array!(
+    crate::types::ascii::TimeInForceType,
+    arrow_array::StringArray
 );
 // A UUID stores as the fixed binary of its sixteen bytes.
 typed_array!(

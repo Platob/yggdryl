@@ -200,18 +200,15 @@ fn an_ascii_partition_column_is_spelled_as_text_in_the_path() {
             .column_by_name("ccy")
             .unwrap()
             .as_any()
-            .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
+            .downcast_ref::<arrow_array::StringArray>()
             .unwrap()
             .clone();
         for row in 0..batch.num_rows() {
-            found.push(ccy.value(row).to_vec());
+            found.push(ccy.value(row).to_owned());
         }
     }
     found.sort_unstable();
-    assert_eq!(
-        found,
-        vec![b"EUR\0".to_vec(), b"USD\0".to_vec(), b"USD\0".to_vec()]
-    );
+    assert_eq!(found, vec!["EUR", "USD", "USD"]);
 
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -254,27 +251,23 @@ fn a_code_partition_column_keeps_its_identity_through_the_path() {
     let mut found = Vec::new();
     for batch in handle.read_arrow_reader(&options(Some(field))).unwrap() {
         let batch = batch.unwrap();
-        // ISO 4217 is exactly three bytes, so the restored storage holds
-        // no padding at all, and the column reads back a currency.
+        // The restored storage is the text it holds, and the column reads
+        // back a currency rather than three anonymous characters.
         let restored = crate::Field::from_arrow(batch.schema().field(0)).unwrap();
         assert_eq!(restored.dtype(), &DataType::Currency);
         let ccy = batch
             .column_by_name("ccy")
             .unwrap()
             .as_any()
-            .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
+            .downcast_ref::<arrow_array::StringArray>()
             .unwrap()
             .clone();
-        assert_eq!(ccy.value_length(), 3);
         for row in 0..batch.num_rows() {
-            found.push(ccy.value(row).to_vec());
+            found.push(ccy.value(row).to_owned());
         }
     }
     found.sort_unstable();
-    assert_eq!(
-        found,
-        vec![b"EUR".to_vec(), b"USD".to_vec(), b"USD".to_vec()]
-    );
+    assert_eq!(found, vec!["EUR", "USD", "USD"]);
 
     let _ = std::fs::remove_dir_all(&root);
 }

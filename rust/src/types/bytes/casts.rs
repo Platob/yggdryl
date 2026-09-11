@@ -80,6 +80,20 @@ pub(crate) fn variable_binary_source(
     }
 }
 
+/// Return whether an Arrow layout holds bytes rather than text.
+///
+/// The ASCII family reads any of them as padded storage, so this is the one
+/// listing of what "a byte source" means at that boundary.
+pub(crate) fn is_byte_storage(dtype: &ArrowDataType) -> bool {
+    matches!(
+        dtype,
+        ArrowDataType::Binary
+            | ArrowDataType::LargeBinary
+            | ArrowDataType::BinaryView
+            | ArrowDataType::FixedSizeBinary(_)
+    )
+}
+
 pub(crate) fn projected_byte_len(
     array: &dyn Array,
     source_type: &DataType,
@@ -99,19 +113,26 @@ pub(crate) fn projected_byte_len(
         return Ok(0);
     }
     let bytes = match source_type {
-        // Variable ASCII stores its own bytes, so it is Arrow's `Binary`.
-        DataType::Binary | DataType::Ascii => downcast::<BinaryArray>(array)?.value(index).len(),
+        DataType::Binary => downcast::<BinaryArray>(array)?.value(index).len(),
         DataType::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index).len(),
         DataType::BinaryView => downcast::<BinaryViewArray>(array)?.value(index).len(),
-        DataType::FixedSizeBinary(_)
+        DataType::FixedSizeBinary(_) | DataType::Uuid => {
+            downcast::<FixedSizeBinaryArray>(array)?.value(index).len()
+        }
+        // Every ASCII shape stores `Utf8`, so its projected length is the
+        // length of the text it holds and not of a padded slot.
+        DataType::Utf8
+        | DataType::Ascii
         | DataType::FixedAscii(_)
         | DataType::Country
         | DataType::Currency
         | DataType::Mic
         | DataType::Cfi
         | DataType::Isin
-        | DataType::Uuid => downcast::<FixedSizeBinaryArray>(array)?.value(index).len(),
-        DataType::Utf8 => downcast::<StringArray>(array)?.value(index).len(),
+        | DataType::Side
+        | DataType::MsgDirection
+        | DataType::State
+        | DataType::TimeInForce => downcast::<StringArray>(array)?.value(index).len(),
         DataType::LargeUtf8 => downcast::<LargeStringArray>(array)?.value(index).len(),
         DataType::Utf8View => downcast::<StringViewArray>(array)?.value(index).len(),
         DataType::Dictionary(dictionary) => {

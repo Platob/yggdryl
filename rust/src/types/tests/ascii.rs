@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use arrow_array::{Array, FixedSizeBinaryArray};
+use arrow_array::{Array, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
 use super::super::DataType;
@@ -14,11 +14,11 @@ fn hash_of(value: &DataType) -> u64 {
     hasher.finish()
 }
 
-fn stored(array: &dyn Array) -> &FixedSizeBinaryArray {
+fn stored(array: &dyn Array) -> &StringArray {
     array
         .as_any()
-        .downcast_ref::<FixedSizeBinaryArray>()
-        .expect("fixed-width ASCII storage")
+        .downcast_ref::<StringArray>()
+        .expect("ASCII text storage")
 }
 
 #[test]
@@ -269,7 +269,7 @@ fn ordering_and_hashing_are_consistent_for_every_width() {
 }
 
 #[test]
-fn the_default_is_the_empty_string_stored_as_all_nul() {
+fn the_default_is_the_empty_string_stored_as_the_empty_string() {
     for dtype in [
         DataType::FixedAscii(2),
         DataType::FixedAscii(3),
@@ -283,14 +283,16 @@ fn the_default_is_the_empty_string_stored_as_all_nul() {
         assert!(dtype.is_default_value(&Scalar::from("")).unwrap());
         assert!(!dtype.is_default_value(&Scalar::from("USD")).unwrap());
 
-        let width = dtype.ascii_width().unwrap();
         let field = dtype.required_field("ccy");
         assert_eq!(field.default_value().unwrap(), exact_empty);
         let array = field.default_arrow_array().unwrap();
-        assert_eq!(array.data_type(), &ArrowDataType::FixedSizeBinary(width));
+        // The storage is the value: an empty default is an empty string and
+        // not a slot of NUL, whatever the declared width.
+        assert_eq!(array.data_type(), &ArrowDataType::Utf8);
         let stored = stored(array.as_ref());
         assert_eq!(stored.len(), 1);
-        assert!(stored.value(0).iter().all(|byte| *byte == 0));
+        assert_eq!(stored.value(0), "");
+        assert_eq!(stored.value_data().len(), 0);
     }
 }
 
@@ -358,28 +360,32 @@ fn values_validate_and_canonicalize_under_the_one_ascii_rule() {
 }
 
 #[test]
-fn arrow_storage_is_padded_and_reads_back_trimmed() {
+fn arrow_storage_is_the_text_and_pads_nothing() {
     let field = DataType::FixedAscii(8).nullable_field("code");
     let array = crate::arrow::scalar_array(&field, &Scalar::from("ABC")).unwrap();
-    assert_eq!(array.data_type(), &ArrowDataType::FixedSizeBinary(8));
-    assert_eq!(stored(array.as_ref()).value(0), b"ABC\0\0\0\0\0");
+    assert_eq!(array.data_type(), &ArrowDataType::Utf8);
+    assert_eq!(stored(array.as_ref()).value(0), "ABC");
     assert_eq!(
         crate::arrow::scalar_value(&field, array.as_ref()).unwrap(),
         field.dtype().scalar(Scalar::from("ABC")).unwrap()
     );
 
     // Padded bytes, a null, and the empty string, through the array boundary.
+    // A byte value is padded storage, so it arrives trimmed of its NUL; the
+    // column itself stores no padding at all.
     let values = Scalar::from_sequence([
         Scalar::from(b"XY\0\0\0\0\0\0".to_vec()),
         Scalar::Null,
         Scalar::from(""),
     ]);
     let array = crate::arrow::array_from_value(&field, &values).unwrap();
-    let fixed = stored(array.as_ref());
-    assert_eq!(fixed.len(), 3);
-    assert_eq!(fixed.value(0), b"XY\0\0\0\0\0\0");
-    assert!(fixed.is_null(1));
-    assert_eq!(fixed.value(2), &[0; 8]);
+    let text = stored(array.as_ref());
+    assert_eq!(text.len(), 3);
+    assert_eq!(text.value(0), "XY");
+    assert!(text.is_null(1));
+    assert_eq!(text.value(2), "");
+    // Two characters of payload for three rows: no width was ever stored.
+    assert_eq!(text.value_data().len(), 2);
     let read = |index: usize| {
         crate::arrow::value::value_from_array(field.dtype(), array.as_ref(), index).unwrap()
     };

@@ -15,7 +15,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::{
     ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, URL_EXTENSION_NAME, UUID_EXTENSION_NAME,
     VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME, arrow_dtype_to_ffi, arrow_extension_parts,
-    code_for_extension, is_variant_storage,
+    ascii_document_width, code_for_extension, is_variant_storage,
 };
 use crate::types::{Field, FieldRef};
 use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
@@ -394,14 +394,14 @@ pub(crate) enum RecognizedExtension {
     /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
     /// document says whether it is a geometry or a geography.
     Geospatial(GeospatialParameters),
-    /// The `yggdryl.ascii` extension: `Binary` for the variable form, and
-    /// `FixedSizeBinary(n)` for the width the storage names.
+    /// The `yggdryl.ascii` extension over `Utf8`: the empty document is the
+    /// variable form, and `{"width":n}` is that width.
     Ascii(DataType),
-    /// A code's own `yggdryl.{country,currency,mic,cfi}` over the
-    /// `FixedSizeBinary` width that code fixes.
+    /// A code's own `yggdryl.{country,currency,mic,cfi}` over `Utf8`,
+    /// declaring the width that code fixes.
     ///
     /// It is separate from [`Self::Ascii`] because the identity is the point:
-    /// three bytes under `yggdryl.currency` are a currency and three bytes
+    /// three characters under `yggdryl.currency` are a currency and three
     /// under `yggdryl.ascii` are an `ascii(3)`, and neither imports as the
     /// other.
     Code(DataType),
@@ -436,10 +436,14 @@ impl RecognizedExtension {
 /// Recognizes the Arrow extension spellings the first-class datatypes ride:
 /// `geoarrow.wkb` over Binary storage, the canonical `arrow.parquet.variant`
 /// over its exact storage struct with an empty extension metadata document,
-/// `yggdryl.ascii` over `FixedSizeBinary(2 | 3 | 4 | 8 | 12 | 16)`, each
-/// registered code's own `yggdryl.{country,currency,mic,cfi}` over the width
-/// that code fixes, and the canonical `arrow.uuid` over
-/// `FixedSizeBinary(16)`, each with an empty or absent document.
+/// `yggdryl.ascii` over `Utf8` declaring a width or none, each registered
+/// code's own `yggdryl.{country,currency,mic,cfi}` over `Utf8` declaring the
+/// width that code fixes, and the canonical `arrow.uuid` over
+/// `FixedSizeBinary(16)` with an empty or absent document.
+///
+/// The ASCII storage says no width, so the document is the width's one owner:
+/// a code that declares a width other than its own, or none at all, is not
+/// that code.
 ///
 /// The answer is what the extension describes, which is the *values* of a
 /// dictionary-encoded column: [`encoded_values`] peels the encoding here and
@@ -483,16 +487,14 @@ pub(crate) fn recognized_arrow_extension(
         {
             Ok(Some(RecognizedExtension::Variant))
         }
-        // The storage shape alone tells the two ASCII datatypes apart: the
-        // variable form is Arrow's `Binary`, and a width is that width's
-        // `FixedSizeBinary`.
-        ASCII_EXTENSION_NAME if document.unwrap_or("").is_empty() => Ok(match storage {
-            ArrowDataType::Binary => Some(RecognizedExtension::Ascii(DataType::Ascii)),
-            ArrowDataType::FixedSizeBinary(width) => {
-                Some(RecognizedExtension::Ascii(DataType::ascii(*width)?))
-            }
-            _ => None,
-        }),
+        // Both ASCII datatypes are `Utf8`, so the document tells them apart:
+        // a stated width is that width, and no width is the variable form.
+        ASCII_EXTENSION_NAME if storage == &ArrowDataType::Utf8 => Ok(Some(
+            RecognizedExtension::Ascii(match ascii_document_width(document) {
+                Some(width) => DataType::ascii(width)?,
+                None => DataType::Ascii,
+            }),
+        )),
         UUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
                 .then_some(RecognizedExtension::Uuid))
@@ -503,12 +505,9 @@ pub(crate) fn recognized_arrow_extension(
         URL_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Url))
         }
-        code if document.unwrap_or("").is_empty() => Ok(match storage {
-            ArrowDataType::FixedSizeBinary(width) => {
-                code_for_extension(code, *width).map(RecognizedExtension::Code)
-            }
-            _ => None,
-        }),
+        code if storage == &ArrowDataType::Utf8 => Ok(ascii_document_width(document)
+            .and_then(|width| code_for_extension(code, width))
+            .map(RecognizedExtension::Code)),
         _ => Ok(None),
     }
 }
@@ -1026,22 +1025,22 @@ mod tests {
 
     #[test]
     fn an_ascii_field_projects_the_yggdryl_extension_and_reimports_itself() {
-        // The storage shape carries the whole identity: `Binary` is the
-        // variable form and every `FixedSizeBinary(n)` is that width, so no
-        // width is special and none is excluded.
-        for (dtype, storage) in [
-            (DataType::Ascii, ArrowDataType::Binary),
-            (DataType::FixedAscii(1), ArrowDataType::FixedSizeBinary(1)),
-            (DataType::FixedAscii(3), ArrowDataType::FixedSizeBinary(3)),
-            (DataType::FixedAscii(5), ArrowDataType::FixedSizeBinary(5)),
-            (DataType::FixedAscii(16), ArrowDataType::FixedSizeBinary(16)),
-            (DataType::FixedAscii(64), ArrowDataType::FixedSizeBinary(64)),
+        // The storage is `Utf8` for every shape, so the document carries the
+        // whole identity: a stated width is that width and no width is the
+        // variable form. No width is special and none is excluded.
+        for (dtype, document) in [
+            (DataType::Ascii, ""),
+            (DataType::FixedAscii(1), r#"{"width":1}"#),
+            (DataType::FixedAscii(3), r#"{"width":3}"#),
+            (DataType::FixedAscii(5), r#"{"width":5}"#),
+            (DataType::FixedAscii(16), r#"{"width":16}"#),
+            (DataType::FixedAscii(64), r#"{"width":64}"#),
         ] {
             let field = Field::new("ccy", dtype, false);
             let arrow = field.clone().into_arrow().unwrap();
-            assert_eq!(arrow.data_type(), &storage);
+            assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
             assert_eq!(arrow.extension_type_name(), Some("yggdryl.ascii"));
-            assert_eq!(arrow.extension_type_metadata(), Some(""));
+            assert_eq!(arrow.extension_type_metadata(), Some(document));
 
             let imported = Field::from_arrow(&arrow).unwrap();
             assert_eq!(imported, field);
@@ -1050,9 +1049,53 @@ mod tests {
     }
 
     #[test]
-    fn an_ascii_extension_over_other_storage_or_a_document_keeps_todays_import() {
-        // The extension names a value rule over one of two storage shapes.
-        // Any other storage is not that rule, so the name stays metadata.
+    fn a_code_projects_its_own_name_over_text_and_declares_its_width() {
+        for (dtype, name, width) in [
+            (DataType::Country, "yggdryl.country", 2),
+            (DataType::Currency, "yggdryl.currency", 3),
+            (DataType::Mic, "yggdryl.mic", 4),
+            (DataType::Cfi, "yggdryl.cfi", 6),
+            (DataType::Isin, "yggdryl.isin", 12),
+            (DataType::Side, "yggdryl.side", 4),
+            (DataType::MsgDirection, "yggdryl.msgdirection", 4),
+            (DataType::State, "yggdryl.state", 10),
+            (DataType::TimeInForce, "yggdryl.timeinforce", 8),
+        ] {
+            let field = Field::new("code", dtype.clone(), false);
+            let arrow = field.clone().into_arrow().unwrap();
+            assert_eq!(arrow.data_type(), &ArrowDataType::Utf8, "{dtype}");
+            assert_eq!(arrow.extension_type_name(), Some(name));
+            assert_eq!(
+                arrow.extension_type_metadata(),
+                Some(format!(r#"{{"width":{width}}}"#).as_str())
+            );
+            assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
+        }
+
+        // The identity is the pair, so a code declaring a width that is not
+        // its own is not that code, and neither is one declaring none.
+        for document in [r#"{"width":4}"#, ""] {
+            let mismatched =
+                ArrowField::new("ccy", ArrowDataType::Utf8, true).with_metadata(HashMap::from([
+                    (
+                        EXTENSION_TYPE_NAME_KEY.to_owned(),
+                        "yggdryl.currency".to_owned(),
+                    ),
+                    (EXTENSION_TYPE_METADATA_KEY.to_owned(), document.to_owned()),
+                ]));
+            let imported = Field::from_arrow(&mismatched).unwrap();
+            assert_eq!(imported.dtype(), &DataType::Utf8, "{document:?}");
+            assert_eq!(
+                imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
+                Some("yggdryl.currency")
+            );
+        }
+    }
+
+    #[test]
+    fn an_ascii_extension_over_other_storage_or_an_unreadable_document_keeps_todays_import() {
+        // The extension names a value rule over `Utf8`. Any other storage is
+        // not that rule, so the name stays metadata.
         let large = ArrowField::new("ccy", ArrowDataType::LargeBinary, true).with_metadata(
             HashMap::from([(
                 EXTENSION_TYPE_NAME_KEY.to_owned(),
@@ -1066,16 +1109,19 @@ mod tests {
             Some("yggdryl.ascii")
         );
 
-        let documented = ArrowField::new("ccy", ArrowDataType::FixedSizeBinary(4), true)
-            .with_metadata(HashMap::from([
-                (
-                    EXTENSION_TYPE_NAME_KEY.to_owned(),
-                    "yggdryl.ascii".to_owned(),
-                ),
-                (EXTENSION_TYPE_METADATA_KEY.to_owned(), "{}".to_owned()),
-            ]));
-        let imported = Field::from_arrow(&documented).unwrap();
-        assert_eq!(imported.dtype(), &DataType::FixedSizeBinary(4));
-        assert_eq!(imported.into_arrow().unwrap(), documented);
+        // A document that states no readable width states no width, so the
+        // field is the variable form rather than a guess at a width.
+        for document in ["{}", r#"{"width":0}"#, r#"{"width":"four"}"#, "shredded"] {
+            let documented =
+                ArrowField::new("ccy", ArrowDataType::Utf8, true).with_metadata(HashMap::from([
+                    (
+                        EXTENSION_TYPE_NAME_KEY.to_owned(),
+                        "yggdryl.ascii".to_owned(),
+                    ),
+                    (EXTENSION_TYPE_METADATA_KEY.to_owned(), document.to_owned()),
+                ]));
+            let imported = Field::from_arrow(&documented).unwrap();
+            assert_eq!(imported.dtype(), &DataType::Ascii, "{document:?}");
+        }
     }
 }

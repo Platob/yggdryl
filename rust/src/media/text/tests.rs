@@ -899,7 +899,7 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
 
     let batches = collect(&source, options);
     assert_eq!(
-        codes(&batches, "direction"),
+        texts(&batches, "direction"),
         [Some("SENT"), Some("RECV"), None, None, None]
     );
     assert_eq!(
@@ -928,26 +928,6 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
         bodies(&batches)[4],
         b"no level printed by this plugin".to_vec()
     );
-}
-
-/// One packed-ASCII column, read back with its padding gone.
-fn codes<'a>(batches: &'a [arrow_array::RecordBatch], name: &str) -> Vec<Option<&'a str>> {
-    batches
-        .iter()
-        .flat_map(|batch| {
-            let index = batch.schema().index_of(name).unwrap();
-            batch
-                .column(index)
-                .as_any()
-                .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
-                .unwrap()
-                .iter()
-                .map(|value| {
-                    value.map(|bytes| std::str::from_utf8(bytes).unwrap().trim_end_matches(' '))
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect()
 }
 
 /// One text column.

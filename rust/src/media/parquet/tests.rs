@@ -1396,23 +1396,22 @@ mod geospatial {
         let media = written(
             "ascii.parquet",
             vec![declared.clone().into_arrow().unwrap()],
-            vec![Arc::new(
-                arrow_array::FixedSizeBinaryArray::try_from_sparse_iter_with_size(
-                    [Some(b"USD\0".as_slice()), None].into_iter(),
-                    4,
-                )
-                .unwrap(),
-            )],
+            vec![Arc::new(arrow_array::StringArray::from(vec![
+                Some("USD"),
+                None,
+            ]))],
         );
 
         // Our writer embeds the Arrow schema, so the width comes back as
-        // the first-class datatype rather than its fixed-binary storage.
+        // the first-class datatype rather than the `Utf8` it is stored over:
+        // Parquet keeps a BYTE_ARRAY/String column either way, which is what
+        // makes the file readable by anything that has never heard of the
+        // extension.
         let schema = media.read_arrow_schema().unwrap();
         let field = crate::Field::from_arrow(schema.field_with_name("ccy").unwrap()).unwrap();
         assert_eq!(field, declared);
 
-        // The stored padding reads back as the trimmed text under a text
-        // target: the identity survived the file, so the cast plan trims.
+        // The stored text reads back as itself under a text target.
         let options = media.record_options().unwrap();
         let stored = media
             .read_arrow_reader(&options)

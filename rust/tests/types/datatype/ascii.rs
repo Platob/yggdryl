@@ -1,8 +1,8 @@
-//! An ASCII width crosses the exchange formats as its trimmed text.
+//! An ASCII width crosses the exchange formats as the text it stores.
 
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, Int64Array, RecordBatch, StringArray};
+use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
 use yggdryl::arrow::batch_reader;
 use yggdryl::expression::Literal;
 use yggdryl::holder::Buffer;
@@ -14,15 +14,10 @@ fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new("row", DataType::from_fields(fields).unwrap(), false)
 }
 
-/// Four-byte storage: the padded codes the writer would have stored.
-fn currencies(codes: &[&[u8; 4]]) -> ArrayRef {
-    Arc::new(
-        FixedSizeBinaryArray::try_from_sparse_iter_with_size(
-            codes.iter().map(|code| Some(code.as_slice())),
-            4,
-        )
-        .unwrap(),
-    )
+/// The codes the writer would have stored: text, at any length the width
+/// admits, because the storage holds the value and not a padded slot.
+fn currencies(codes: &[&str]) -> ArrayRef {
+    Arc::new(StringArray::from(codes.to_vec()))
 }
 
 #[test]
@@ -34,13 +29,14 @@ fn a_filter_over_an_ascii_column_binds_and_evaluates() {
     let batch = RecordBatch::try_new(
         schema.clone().into_arrow_schema().unwrap(),
         vec![
-            currencies(&[b"USD\0", b"EUR\0", b"USD\0"]),
+            currencies(&["USD", "EUR", "USD"]),
             Arc::new(Int64Array::from(vec![1, 2, 3])),
         ],
     )
     .unwrap();
 
-    // The column meets the literal at utf8, and the cast trims the padding.
+    // The column meets the literal at utf8, which is the storage it already
+    // has, so binding costs a comparison and no conversion.
     let bound = "ccy = 'USD'"
         .parse::<Expression>()
         .unwrap()
@@ -70,15 +66,12 @@ fn two_ascii_columns_compare_at_both_tiers() {
     ]);
     let batch = RecordBatch::try_new(
         schema.clone().into_arrow_schema().unwrap(),
-        vec![
-            currencies(&[b"USD\0", b"EUR\0"]),
-            currencies(&[b"USD\0", b"USD\0"]),
-        ],
+        vec![currencies(&["USD", "EUR"]), currencies(&["USD", "USD"])],
     )
     .unwrap();
 
     // Two ASCII operands meet at their own width, so the row tier compares
-    // the trimmed text the same way the column tier compares storage.
+    // the same text the column tier compares.
     let equal = "a = b"
         .parse::<Expression>()
         .unwrap()
@@ -122,7 +115,7 @@ fn string_functions_read_an_ascii_column_as_text() {
     let schema = root([DataType::FixedAscii(4).required_field("ccy")]);
     let batch = RecordBatch::try_new(
         schema.clone().into_arrow_schema().unwrap(),
-        vec![currencies(&[b"USD\0", b"EUR\0"])],
+        vec![currencies(&["USD", "EUR"])],
     )
     .unwrap();
     let usd = Scalar::from_sequence([Scalar::from("USD")]);
@@ -267,7 +260,7 @@ fn an_ascii_column_round_trips_through_avro_as_text() {
     let schema = root([DataType::FixedAscii(4).required_field("ccy")]);
     let batch = RecordBatch::try_new(
         schema.into_arrow_schema().unwrap(),
-        vec![currencies(&[b"USD\0", b"EU\0\0"])],
+        vec![currencies(&["USD", "EU"])],
     )
     .unwrap();
     let mut handle =
@@ -277,8 +270,8 @@ fn an_ascii_column_round_trips_through_avro_as_text() {
         .overwrite_arrow_reader(batch_reader(batch.schema(), [batch]), &options)
         .unwrap();
 
-    // Avro has no fixed-width text, so the column is a string and every
-    // reader sees the trimmed code rather than the padded storage.
+    // Avro has no ASCII identity to carry, so the column lands as the string
+    // it is stored as and every reader sees the code.
     let stored = handle.read_arrow_field(&options).unwrap();
     assert_eq!(stored.fields()[0].dtype(), &DataType::Utf8);
     let read: Vec<RecordBatch> = handle

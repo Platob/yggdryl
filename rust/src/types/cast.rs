@@ -37,8 +37,8 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::types::ascii::casts::{ingest_ascii_array, ingest_code_array, render_ascii_text};
-use crate::types::bytes::casts::bridges_through_binary;
+use crate::types::ascii::casts::{ingest_ascii_array, ingest_code_array};
+use crate::types::bytes::casts::{bridges_through_binary, is_byte_storage};
 use crate::types::cast::text::{holds_text, ingest_text_values};
 use crate::types::decimal::casts::holds_decimal;
 use crate::types::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
@@ -303,20 +303,17 @@ enum ArrayCastKind {
     GeospatialIngest,
     /// A recognized geospatial source rendering as WKT text.
     GeospatialWkt,
-    /// Values entering an ASCII width: every exposed value is validated
-    /// under the width's rule and padded into the fixed storage. A fixed
-    /// binary of the target width is the same array once validated; any
+    /// Values entering an ASCII datatype: every exposed value is validated
+    /// under the width's rule and stored as the text it is. A `Utf8` source
+    /// is the same array once validated, because the storage is the same
+    /// `Utf8`; a byte source is padded storage and is rebuilt trimmed; any
     /// other source first renders as Utf8 through Arrow's kernel.
     AsciiIngest,
-    /// A recognized ASCII source rendering as trimmed text.
-    AsciiText,
     /// Values entering a registered code: the same rule as [`Self::AsciiIngest`]
     /// at the width the code fixes, which is a constant, so the validation
-    /// and the padding run monomorphized per code rather than reading a
-    /// width out of the datatype on every row.
+    /// runs monomorphized per code rather than reading a width out of the
+    /// datatype on every row.
     CodeIngest,
-    /// A recognized code source rendering as trimmed text, at its own width.
-    CodeText,
     /// Values entering a UUID: every exposed value is validated under the one
     /// UUID rule and stored as its sixteen bytes.
     UuidIngest,
@@ -613,19 +610,18 @@ impl ArrayCastPlan {
                     });
                 }
             }
-            // An ASCII width takes fixed binary directly and everything the
-            // kernel renders as text through one Utf8 temporary; the width
-            // rule is checked per value either way.
+            // An ASCII datatype takes a byte column directly and everything
+            // the kernel renders as text through one Utf8 temporary; the
+            // width rule is checked per value either way, and a source that
+            // is already `Utf8` keeps its buffers.
             (DataType::Ascii | DataType::FixedAscii(_), source) => {
-                if matches!(source, ArrowDataType::FixedSizeBinary(_))
-                    || can_cast_types(source, &ArrowDataType::Utf8)
-                {
+                if is_byte_storage(source) || can_cast_types(source, &ArrowDataType::Utf8) {
                     ArrayCastKind::AsciiIngest
                 } else {
                     return Err(Error::Unsupported {
                         kind: dtype.name(),
                         reason: format!(
-                            "expected a fixed binary or a column Arrow renders as utf8 to cast \
+                            "expected a binary or a column Arrow renders as utf8 to cast \
                              into {}, got {source:?}",
                             dtype.name()
                         ),
@@ -642,15 +638,13 @@ impl ArrayCastPlan {
                 | DataType::Isin,
                 source,
             ) => {
-                if matches!(source, ArrowDataType::FixedSizeBinary(_))
-                    || can_cast_types(source, &ArrowDataType::Utf8)
-                {
+                if is_byte_storage(source) || can_cast_types(source, &ArrowDataType::Utf8) {
                     ArrayCastKind::CodeIngest
                 } else {
                     return Err(Error::Unsupported {
                         kind: dtype.name(),
                         reason: format!(
-                            "expected a fixed binary or a column Arrow renders as utf8 to cast \
+                            "expected a binary or a column Arrow renders as utf8 to cast \
                              into {}, got {source:?}",
                             dtype.name()
                         ),
@@ -661,18 +655,6 @@ impl ArrayCastPlan {
                 if matches!(source_extension, Some(RecognizedExtension::Geospatial(_))) =>
             {
                 ArrayCastKind::GeospatialWkt
-            }
-            (
-                DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
-                ArrowDataType::Binary | ArrowDataType::FixedSizeBinary(_),
-            ) if matches!(source_extension, Some(RecognizedExtension::Ascii(_))) => {
-                ArrayCastKind::AsciiText
-            }
-            (
-                DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
-                ArrowDataType::FixedSizeBinary(_),
-            ) if matches!(source_extension, Some(RecognizedExtension::Code(_))) => {
-                ArrayCastKind::CodeText
             }
             // A UUID takes its sixteen bytes directly and every text spelling
             // through one Utf8 temporary; the one UUID rule runs per value
@@ -1086,14 +1068,9 @@ impl ArrayCastPlan {
             ArrayCastKind::GeospatialWkt => {
                 render_wkt_array(&array, &self.expected, &self.field, exposure, budget)?
             }
-            ArrayCastKind::AsciiIngest => ingest_ascii_array(
-                &array,
-                &self.expected,
-                self.safe(),
-                &self.field,
-                exposure,
-                budget,
-            )?,
+            ArrayCastKind::AsciiIngest => {
+                ingest_ascii_array(&array, self.safe(), &self.field, exposure, budget)?
+            }
             ArrayCastKind::UuidIngest => ingest_uuid_array(
                 &array,
                 &self.expected,
@@ -1110,9 +1087,6 @@ impl ArrayCastPlan {
             }
             ArrayCastKind::UrlIngest => {
                 crate::types::url::casts::ingest_url_array(&array, &self.field, exposure, budget)?
-            }
-            ArrayCastKind::AsciiText => {
-                render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
             }
             // One match per array selects the code's width; every row after
             // it runs against a constant.
@@ -1154,12 +1128,6 @@ impl ArrayCastPlan {
                 )?,
                 other => return Err(code_refusal(other).into()),
             },
-            // Rendering reads bytes out and never pads, so a code shares the
-            // width's one implementation: the storage says the width, and
-            // the recognizer already agreed it is the code's own.
-            ArrayCastKind::CodeText => {
-                render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
-            }
             ArrayCastKind::TemporalText => {
                 render_temporal_text(&array, self.safe(), &self.field, exposure, budget)?
             }

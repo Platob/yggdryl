@@ -9,19 +9,27 @@
 //!
 //! The value contract is the ASCII contract, unchanged and stated once in
 //! [`the ASCII family`]: a value is ASCII text - every byte at most `0x7F` - of
-//! at most the width in bytes, with no NUL byte; storage pads with trailing
-//! `\0` to exactly the width, and every string rendering trims the padding.
+//! at most the width in bytes, with no NUL byte. Storage is Arrow `Utf8` and
+//! holds exactly that text: ASCII is a subset of UTF-8, so the bytes a code
+//! column writes are the bytes any UTF-8 reader expects, and there is no
+//! padding to add on write or trim on read.
 //! [`DataType::ascii_width`] answers for a code exactly as it does for a
 //! width, so [`DataType::ascii_packed`] and [`super::AsciiEnum`] work over a
 //! code with nothing added: an enum member is still the integer its value
-//! packs into.
+//! packs into, because that padding is the integer's, not the column's.
+//!
+//! The width is a *bound* rather than a storage stride, so the storage no
+//! longer states it and the Arrow extension metadata document does:
+//! [`ascii_width_document`] writes `{"width":n}` and [`ascii_document_width`]
+//! reads it back. A column that states no width is [`DataType::Ascii`], the
+//! variable form.
 //!
 //! What a code adds over the width that would hold it is identity and a
 //! constant. The identity crosses Arrow as its own extension name, so a
-//! currency column reads back a currency and not three anonymous bytes. The
-//! constant is the width: it is known at compile time for each code, so the
-//! ingest and render paths here are monomorphized per width rather than
-//! reading a length out of the datatype on every row.
+//! currency column reads back a currency and not three anonymous characters.
+//! The constant is the width: it is known at compile time for each code, so
+//! the ingest paths here are monomorphized per width rather than reading a
+//! length out of the datatype on every row.
 //!
 //! The widths are the ones the standards fix: two bytes for ISO 3166-1's
 //! country code, three for ISO 4217's currency, four for ISO 10383's market
@@ -332,11 +340,12 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
     }
 }
 
-/// The code one Arrow extension name and storage width import as.
+/// The code one Arrow extension name and declared width import as.
 ///
-/// A name over the wrong width is not this code: the pair has to agree, so a
-/// `yggdryl.currency` over four bytes stays the fixed binary it is rather
-/// than silently becoming a currency.
+/// The width is the one the extension metadata document states, because the
+/// `Utf8` storage states none. A name over the wrong width is not this code:
+/// the pair has to agree, so a `yggdryl.currency` declaring four bytes stays
+/// the text it is rather than silently becoming a currency.
 pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
     let dtype = match name {
         COUNTRY_EXTENSION_NAME => DataType::Country,
@@ -348,9 +357,6 @@ pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
         DIRECTION_EXTENSION_NAME => DataType::MsgDirection,
         STATE_EXTENSION_NAME => DataType::State,
         TIMEINFORCE_EXTENSION_NAME => DataType::TimeInForce,
-        // The name this datatype was first published under, so a column
-        // written before the rename still reads as what it is.
-        "yggdryl.direction" => DataType::MsgDirection,
         _ => return None,
     };
     (dtype.ascii_width() == Some(width)).then_some(dtype)
@@ -408,11 +414,52 @@ pub(crate) fn code_refusal(dtype: &DataType) -> Error {
     }
 }
 
-/// The Arrow extension name of the three ASCII widths.
+/// The Arrow extension name of both ASCII shapes.
 ///
-/// The storage is `FixedSizeBinary(4 | 8 | 16)` and the extension metadata
-/// is the empty string: the storage width says the width.
+/// The storage is `Utf8` for either, so the extension metadata document is
+/// what tells them apart: `{"width":n}` is that width, and the empty document
+/// is the variable form.
 pub(crate) const ASCII_EXTENSION_NAME: &str = "yggdryl.ascii";
+
+/// Refuses an ASCII width the family does not have.
+///
+/// The storage no longer carries the width, so nothing downstream refuses a
+/// zero: the one rule [`DataType::ascii`] states is restated here, at the
+/// Arrow boundary, so a width that cannot hold a value never reaches a column
+/// or a document.
+///
+/// # Errors
+///
+/// Returns an error naming the width when it is less than one byte.
+pub(crate) fn validate_ascii_width(width: i32) -> Result<()> {
+    DataType::ascii(width).map(drop)
+}
+
+/// The extension metadata document one declared ASCII width publishes.
+///
+/// The storage is `Utf8` and says nothing about a width, so this document is
+/// where the width lives. [`ascii_document_width`] is its only reader.
+pub(crate) fn ascii_width_document(width: i32) -> String {
+    format!("{{\"width\":{width}}}")
+}
+
+/// The width one extension metadata document states, `None` when it states
+/// none.
+///
+/// The document is the width's single owner, so it is read strictly: an
+/// absent or empty document is no width, and anything else has to be a JSON
+/// object whose `width` is a positive integer. A document this cannot read is
+/// not a width rather than a guess at one, and the caller leaves the field as
+/// the storage it is.
+pub(crate) fn ascii_document_width(document: Option<&str>) -> Option<i32> {
+    let text = document.unwrap_or("").trim();
+    if text.is_empty() {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    let width = value.as_object()?.get("width")?.as_i64()?;
+    i32::try_from(width).ok().filter(|width| *width >= 1)
+}
 
 impl DataType {
     /// Creates the fixed ASCII width of exactly `width` bytes.
@@ -608,16 +655,37 @@ pub(crate) fn ascii_free_text(bytes: &[u8]) -> Result<&str> {
 
 /// [`ascii_text`] over the width the caller already holds, if there is one.
 ///
-/// The one body every shape runs: a fixed width passes its length, a
-/// A registered code passes its constant - which lets the length check
-/// fold at each code's call site - and the variable shape passes `None`.
+/// The one body every *byte* source runs: a fixed width passes its length, a
+/// registered code passes its constant - which lets the length check fold at
+/// each code's call site - and the variable shape passes `None`.
+///
+/// Trailing NUL is trimmed here because a byte source may be padded storage -
+/// a `FixedSizeBinary` column is padded by construction - and the padding is
+/// that storage's, never part of the value. The value rule itself is
+/// [`ascii_value_text`], which trims nothing.
 #[inline]
 pub(crate) fn ascii_text_sized(width: Option<usize>, bytes: &[u8]) -> Result<&str> {
     let end = bytes
         .iter()
         .rposition(|byte| *byte != 0)
         .map_or(0, |last| last + 1);
-    let text = &bytes[..end];
+    ascii_value_text(width, &bytes[..end])
+}
+
+/// The ASCII value rule over bytes that are the value, with nothing to trim.
+///
+/// ASCII text - every byte at most `0x7F` - of at most `width` bytes, with no
+/// NUL byte anywhere. The `Utf8` storage holds the value and no padding, so
+/// this is what a stored cell is checked against: a NUL is a refusal rather
+/// than a pad byte, which is what lets a column that passes keep its buffers
+/// instead of being rebuilt trimmed.
+///
+/// # Errors
+///
+/// Returns an error naming the width when the bytes hold a NUL, a non-ASCII
+/// byte, or more than `width` bytes.
+#[inline]
+pub(crate) fn ascii_value_text(width: Option<usize>, text: &[u8]) -> Result<&str> {
     if let Some(position) = text.iter().position(|byte| *byte == 0) {
         return Err(ascii_refusal(
             width,
@@ -640,16 +708,18 @@ pub(crate) fn ascii_text_sized(width: Option<usize>, bytes: &[u8]) -> Result<&st
     std::str::from_utf8(text).map_err(|error| ascii_refusal(width, format_smolstr!("{error}")))
 }
 
-/// Pads `text` with trailing NUL into one storage slot.
+/// The value rule at one code's constant width, over unpadded bytes.
 ///
-/// The slot is one value of the fixed-width storage; `text` has already
-/// passed [`ascii_text`] for that width, so it fits. It is the payload the
-/// width stores, so a value answers with it whether or not an Arrow array is
-/// being built around it.
-pub(crate) fn ascii_padded(slot: &mut [u8], text: &str) {
-    let length = text.len().min(slot.len());
-    slot[..length].copy_from_slice(&text.as_bytes()[..length]);
-    slot[length..].fill(0);
+/// [`code_text`] for a stored cell: the same constant folding, and nothing
+/// trimmed because `Utf8` storage pads nothing.
+///
+/// # Errors
+///
+/// Returns an error naming the width when the bytes are not ASCII text that
+/// fits it.
+#[inline]
+pub(crate) fn code_value_text<const WIDTH: usize>(text: &[u8]) -> Result<&str> {
+    ascii_value_text(Some(WIDTH), text)
 }
 
 /// The bytes an ASCII value carries, in either accepted spelling.

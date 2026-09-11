@@ -33,6 +33,15 @@ fn ascii_markers_cover_the_widths_and_the_codes() {
     let ccy = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), false).unwrap();
     assert_eq!(ccy.dtype(), &DataType::FixedAscii(4));
     assert!(FixedAsciiField::try_new("ccy", DataType::Ascii, false).is_err());
+    // The storage says no width, so the declaration is where a width that
+    // cannot hold a value is refused - at the Arrow boundary too, not only
+    // in the constructor.
+    assert!(DataType::ascii(0).is_err());
+    assert!(
+        Field::new("ccy", DataType::FixedAscii(0), false)
+            .into_arrow()
+            .is_err()
+    );
     assert!(AsciiField::try_new("note", DataType::FixedAscii(4), true).is_err());
 
     // The code/width boundary is the one the markers exist for: a currency
@@ -95,16 +104,30 @@ fn cast_column(batch: RecordBatch, target: Field) -> yggdryl::arrow::Result<Arra
 }
 
 #[test]
-fn text_entering_an_ascii_width_is_validated_and_padded() {
+fn text_entering_an_ascii_width_is_validated_and_kept() {
     let field = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), true).unwrap();
     let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some("EU"), None]));
 
     let cast = field
-        .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
+        .cast_arrow_array(
+            Arc::clone(&source),
+            ArrowCastOptions::new().with_safe(false),
+        )
         .unwrap();
-    assert_eq!(cast.value(0), b"USD\0");
-    assert_eq!(cast.value(1), b"EU\0\0");
+    assert_eq!(cast.value(0), "USD");
+    assert_eq!(cast.value(1), "EU");
     assert!(cast.is_null(2));
+
+    // The target storage is the source storage, so the cast validated the
+    // column and handed back the very array it was given.
+    let same = field
+        .as_field()
+        .cast_arrow_array(
+            Arc::clone(&source),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
+    assert!(Arc::ptr_eq(&same, &source));
 }
 
 #[test]
@@ -128,17 +151,20 @@ fn a_value_breaking_the_width_rule_is_refused_naming_the_row_and_the_width() {
 }
 
 #[test]
-fn a_plain_fixed_binary_of_the_width_is_validated_and_reused() {
+fn a_plain_fixed_binary_is_read_as_the_padded_storage_it_is() {
     let field = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), false).unwrap();
     let source = fixed(4, &[Some(b"USD\0"), Some(b"EUR\0")]);
     let cast = field
-        .as_field()
         .cast_arrow_array(
             Arc::clone(&source),
             ArrowCastOptions::new().with_safe(false),
         )
         .unwrap();
-    assert!(Arc::ptr_eq(&cast, &source));
+    // A fixed slot pads by construction, so it is read through the width's
+    // rule and stored as the text it holds.
+    assert_eq!(cast.value(0), "USD");
+    assert_eq!(cast.value(1), "EUR");
+    assert_eq!(cast.value_data().len(), 6);
 
     // The same storage carrying a non-ASCII byte is refused by row.
     let broken = fixed(4, &[Some(b"USD\0"), Some(b"US\xC3\xA9")]);
@@ -152,15 +178,18 @@ fn a_plain_fixed_binary_of_the_width_is_validated_and_reused() {
 }
 
 #[test]
-fn an_ascii_column_renders_as_trimmed_text() {
+fn an_ascii_column_renders_as_the_text_it_holds() {
     let source = root([DataType::FixedAscii(4).nullable_field("ccy")]);
-    let stored = fixed(4, &[Some(b"USD\0"), Some(b"EU\0\0"), None]);
+    let stored: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some("EU"), None]));
 
     let text = cast_column(
         batch_of(&source, Arc::clone(&stored)),
         DataType::Utf8.nullable_field("ccy"),
     )
     .unwrap();
+    // The identity changes and the storage does not, so rendering an ASCII
+    // column as text is the column itself.
+    assert!(Arc::ptr_eq(&text, &stored));
     let text = text.as_any().downcast_ref::<StringArray>().unwrap();
     assert_eq!(text.value(0), "USD");
     assert_eq!(text.value(1), "EU");
@@ -177,39 +206,40 @@ fn an_ascii_column_renders_as_trimmed_text() {
 }
 
 #[test]
-fn ascii_widths_re_pad_between_each_other() {
+fn ascii_widths_rebound_between_each_other_without_restoring_a_stride() {
     let narrow = root([DataType::FixedAscii(4).nullable_field("ccy")]);
+    let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), None]));
     let widened = cast_column(
-        batch_of(&narrow, fixed(4, &[Some(b"USD\0"), None])),
+        batch_of(&narrow, Arc::clone(&source)),
         DataType::FixedAscii(8).nullable_field("ccy"),
     )
     .unwrap();
-    let widened = widened
-        .as_any()
-        .downcast_ref::<FixedSizeBinaryArray>()
-        .unwrap();
-    assert_eq!(widened.value(0), b"USD\0\0\0\0\0");
+    // Widening changes the bound and not the bytes, so the column is the one
+    // that arrived: a wider width is not a wider slot.
+    assert!(Arc::ptr_eq(&widened, &source));
+    let widened = widened.as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(widened.value(0), "USD");
     assert!(widened.is_null(1));
 
     // Narrowing keeps what fits and refuses what does not, by row and width.
     let wide = root([DataType::FixedAscii(8).nullable_field("ccy")]);
     let narrowed = cast_column(
-        batch_of(&wide, fixed(8, &[Some(b"USD\0\0\0\0\0")])),
+        batch_of(&wide, Arc::new(StringArray::from(vec![Some("USD")]))),
         DataType::FixedAscii(4).nullable_field("ccy"),
     )
     .unwrap();
     assert_eq!(
         narrowed
             .as_any()
-            .downcast_ref::<FixedSizeBinaryArray>()
+            .downcast_ref::<StringArray>()
             .unwrap()
             .value(0),
-        b"USD\0"
+        "USD"
     );
     let refused = cast_column(
         batch_of(
             &wide,
-            fixed(8, &[Some(b"USD\0\0\0\0\0"), Some(b"EUROS\0\0\0")]),
+            Arc::new(StringArray::from(vec![Some("USD"), Some("EUROS")])),
         ),
         DataType::FixedAscii(4).nullable_field("ccy"),
     )
@@ -221,31 +251,35 @@ fn ascii_widths_re_pad_between_each_other() {
 }
 
 #[test]
-fn an_ascii_column_keeps_its_padding_into_a_binary_target() {
+fn an_ascii_column_spells_its_own_bytes_into_a_binary_target() {
     let source = root([DataType::FixedAscii(4).nullable_field("ccy")]);
-    let stored = fixed(4, &[Some(b"USD\0")]);
+    let stored: ArrayRef = Arc::new(StringArray::from(vec![Some("USD")]));
 
     let bytes = cast_column(
         batch_of(&source, Arc::clone(&stored)),
         DataType::Binary.nullable_field("ccy"),
     )
     .unwrap();
+    // The storage holds the value, so the bytes a binary target reads are
+    // the value's and carry no padding to strip.
     assert_eq!(
         bytes
             .as_any()
             .downcast_ref::<BinaryArray>()
             .unwrap()
             .value(0),
-        b"USD\0"
+        b"USD"
     );
 
-    // The fixed binary of the same width is the storage itself.
-    let same = cast_column(
-        batch_of(&source, Arc::clone(&stored)),
-        DataType::FixedSizeBinary(4).nullable_field("ccy"),
-    )
-    .unwrap();
-    assert!(Arc::ptr_eq(&same, &stored));
+    // Padding into a fixed slot is that slot's own rule, and a value shorter
+    // than the slot does not satisfy it.
+    assert!(
+        cast_column(
+            batch_of(&source, stored),
+            DataType::FixedSizeBinary(4).nullable_field("ccy"),
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -258,14 +292,14 @@ fn a_dictionary_of_text_enters_an_ascii_width() {
     let cast = field
         .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
         .unwrap();
-    assert_eq!(cast.value(0), b"USD\0");
-    assert_eq!(cast.value(1), b"EUR\0");
+    assert_eq!(cast.value(0), "USD");
+    assert_eq!(cast.value(1), "EUR");
     assert!(cast.is_null(2));
-    assert_eq!(cast.value(3), b"USD\0");
+    assert_eq!(cast.value(3), "USD");
 }
 
 #[test]
-fn a_required_ascii_field_fills_nulls_with_the_all_nul_default() {
+fn a_required_ascii_field_fills_nulls_with_the_empty_default() {
     let field = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), false).unwrap();
     let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), None]));
 
@@ -273,8 +307,8 @@ fn a_required_ascii_field_fills_nulls_with_the_all_nul_default() {
         .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
         .unwrap();
     assert_eq!(cast.null_count(), 0);
-    assert_eq!(cast.value(0), b"USD\0");
-    assert_eq!(cast.value(1), b"\0\0\0\0");
+    assert_eq!(cast.value(0), "USD");
+    assert_eq!(cast.value(1), "");
 }
 
 #[test]
@@ -312,7 +346,7 @@ fn a_hidden_struct_child_is_neither_validated_nor_copied() {
     let ccy = position
         .column(0)
         .as_any()
-        .downcast_ref::<FixedSizeBinaryArray>()
+        .downcast_ref::<StringArray>()
         .unwrap();
-    assert_eq!(ccy.value(0), b"USD\0");
+    assert_eq!(ccy.value(0), "USD");
 }

@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
+use arrow_array::{Array, ArrayRef, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::types::{AsciiFamily, CfiField, CountryField, CurrencyField, MicField};
@@ -130,44 +130,43 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
 }
 
 #[test]
-fn a_cast_into_a_code_pads_and_reading_it_back_trims() {
+fn a_cast_into_a_code_stores_the_text_and_reads_it_back_whole() {
     let venue = Field::new("venue", DataType::Mic, false);
-    let padded = venue
+    let source = text(&["XPAR", "XLON"]);
+    let stored = venue
         .cast_arrow_array(
-            text(&["XPAR", "XLON"]),
+            Arc::clone(&source),
             ArrowCastOptions::new().with_safe(false),
         )
         .unwrap();
-    let bytes = padded
-        .as_any()
-        .downcast_ref::<FixedSizeBinaryArray>()
-        .unwrap();
-    assert_eq!(bytes.value_length(), 4);
-    assert_eq!(bytes.value(0), b"XPAR");
+    // The code's storage is the text's storage, so the cast validated the
+    // column and kept it.
+    assert!(Arc::ptr_eq(&stored, &source));
+    let chars = stored.as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(chars.value(0), "XPAR");
 
-    // A shorter value pads; the column read under `utf8` trims it back.
+    // A value shorter than the width is stored as what it is: the width
+    // bounds the value, it does not pad it.
     let short = venue
         .cast_arrow_array(text(&["BX"]), ArrowCastOptions::new().with_safe(false))
         .unwrap();
-    let short = short
-        .as_any()
-        .downcast_ref::<FixedSizeBinaryArray>()
-        .unwrap();
-    assert_eq!(short.value(0), b"BX\0\0");
+    let short = short.as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(short.value(0), "BX");
+    assert_eq!(short.value_data().len(), 2);
 
     let row = root([venue.clone()]);
-    let batch = RecordBatch::try_new(row.into_arrow_schema().unwrap(), vec![padded]).unwrap();
+    let batch = RecordBatch::try_new(row.into_arrow_schema().unwrap(), vec![stored]).unwrap();
     let as_text = root([DataType::Utf8.required_field("venue")]);
-    let trimmed = as_text
+    let plain = as_text
         .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
         .unwrap();
-    let trimmed = trimmed
+    let plain = plain
         .column(0)
         .as_any()
         .downcast_ref::<StringArray>()
         .unwrap();
-    assert_eq!(trimmed.value(0), "XPAR");
-    assert_eq!(trimmed.value(1), "XLON");
+    assert_eq!(plain.value(0), "XPAR");
+    assert_eq!(plain.value(1), "XLON");
 
     // The refusal names the code's own width, not the next ASCII one up.
     let refused = venue
@@ -320,23 +319,26 @@ fn a_direction_is_the_verb_in_front_of_the_payload_and_nothing_else() {
 }
 
 #[test]
-fn every_code_stores_the_width_its_standard_fixes() {
+fn every_code_stores_text_and_declares_the_width_its_standard_fixes() {
     for (name, dtype, width) in DataType::CODES {
         let field = Field::new("code", dtype.clone(), false);
         let arrow = field.clone().into_arrow().unwrap();
 
-        assert_eq!(
-            arrow.data_type(),
-            &ArrowDataType::FixedSizeBinary(*width),
-            "{name}"
-        );
+        // The storage is text for every code, so a reader that has never
+        // heard of the extension still reads the values; the width it is
+        // bound by rides the extension metadata document instead.
+        assert_eq!(arrow.data_type(), &ArrowDataType::Utf8, "{name}");
         assert_eq!(
             arrow.metadata()["ARROW:extension:name"],
             format!("yggdryl.{name}"),
             "{name}"
         );
-        assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "", "{name}");
-        // The identity round-trips: the same bytes come back the same code.
+        assert_eq!(
+            arrow.metadata()["ARROW:extension:metadata"],
+            format!(r#"{{"width":{width}}}"#),
+            "{name}"
+        );
+        // The identity round-trips: the same text comes back the same code.
         assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
     }
 }
@@ -346,54 +348,61 @@ fn a_code_and_the_width_that_holds_it_are_not_the_same_column() {
     let currency = Field::new("ccy", DataType::Currency, false);
     let ascii24 = Field::new("ccy", DataType::FixedAscii(3), false);
 
-    // Identical storage, different identity, so neither imports as the other.
+    // Identical storage and an identical declared width, different identity,
+    // so neither imports as the other.
     let currency_arrow = currency.clone().into_arrow().unwrap();
     let ascii_arrow = ascii24.clone().into_arrow().unwrap();
     assert_eq!(currency_arrow.data_type(), ascii_arrow.data_type());
+    assert_eq!(
+        currency_arrow.metadata()["ARROW:extension:metadata"],
+        ascii_arrow.metadata()["ARROW:extension:metadata"]
+    );
     assert_ne!(currency_arrow.metadata(), ascii_arrow.metadata());
     assert_eq!(Field::from_arrow(&currency_arrow).unwrap(), currency);
     assert_eq!(Field::from_arrow(&ascii_arrow).unwrap(), ascii24);
 
-    // The same three bytes under no extension at all stay a fixed binary.
-    let plain = arrow_schema::Field::new("ccy", ArrowDataType::FixedSizeBinary(3), false);
-    assert_eq!(
-        Field::from_arrow(&plain).unwrap().dtype(),
-        &DataType::FixedSizeBinary(3)
-    );
+    // The same text under no extension at all stays text.
+    let plain = arrow_schema::Field::new("ccy", ArrowDataType::Utf8, false);
+    assert_eq!(Field::from_arrow(&plain).unwrap().dtype(), &DataType::Utf8);
 
     // A code's own name over the wrong width is not that code either.
-    let mismatched = arrow_schema::Field::new("ccy", ArrowDataType::FixedSizeBinary(4), false)
-        .with_metadata(
-            [
-                (
-                    "ARROW:extension:name".to_owned(),
-                    "yggdryl.currency".to_owned(),
-                ),
-                ("ARROW:extension:metadata".to_owned(), String::new()),
-            ]
-            .into_iter()
-            .collect(),
-        );
+    let mismatched = arrow_schema::Field::new("ccy", ArrowDataType::Utf8, false).with_metadata(
+        [
+            (
+                "ARROW:extension:name".to_owned(),
+                "yggdryl.currency".to_owned(),
+            ),
+            (
+                "ARROW:extension:metadata".to_owned(),
+                r#"{"width":4}"#.to_owned(),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    );
     assert_eq!(
         Field::from_arrow(&mismatched).unwrap().dtype(),
-        &DataType::FixedSizeBinary(4)
+        &DataType::Utf8
     );
 }
 
 #[test]
-fn a_cfi_stores_six_bytes_rather_than_padding_into_eight() {
+fn a_cfi_is_bound_at_six_characters_and_is_not_the_width_that_holds_it() {
     let cfi = Field::new("classification", DataType::Cfi, false);
     let stored = scalar_array(&cfi, &Scalar::from("ESVUFR")).unwrap();
-    let bytes = stored
-        .as_any()
-        .downcast_ref::<FixedSizeBinaryArray>()
-        .unwrap();
+    let chars = stored.as_any().downcast_ref::<StringArray>().unwrap();
 
-    assert_eq!(bytes.value_length(), 6);
-    assert_eq!(bytes.value(0), b"ESVUFR");
+    assert_eq!(chars.value(0), "ESVUFR");
     assert_eq!(
         scalar_value(&cfi, stored.as_ref()).unwrap(),
         DataType::Cfi.scalar(Scalar::from("ESVUFR")).unwrap()
+    );
+    // Six characters is what the standard fixes, and what the declaration
+    // publishes even though no storage stride states it.
+    assert_eq!(DataType::Cfi.ascii_width(), Some(6));
+    assert_eq!(
+        cfi.into_arrow().unwrap().metadata()["ARROW:extension:metadata"],
+        r#"{"width":6}"#
     );
     // A width of six bytes is spellable and is still not a CFI code.
     assert_eq!(DataType::ascii(6).unwrap(), DataType::FixedAscii(6));

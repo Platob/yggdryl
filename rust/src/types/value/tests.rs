@@ -238,16 +238,16 @@ mod readings {
             DataType::Binary.scalar("hi").unwrap(),
             Scalar::from(b"hi".to_vec())
         );
-        // An ASCII value at a declared width spells that width, padded, which
-        // is the payload the fixed column stores.
+        // An ASCII value spells the bytes of its text: its own column stores
+        // `Utf8` and pads nothing, so there is no width in the payload.
         let code = dtype("ascii(4)").scalar("US").unwrap();
         assert_eq!(
-            DataType::FixedSizeBinary(4)
-                .scalar(code)
-                .unwrap()
-                .as_bytes(),
-            Some(b"US\0\0".as_slice())
+            DataType::Binary.scalar(code.clone()).unwrap().as_bytes(),
+            Some(b"US".as_slice())
         );
+        // Padding into a fixed slot is that slot's, so the fixed target is
+        // what refuses a value shorter than its width.
+        assert!(DataType::FixedSizeBinary(4).scalar(code).is_err());
         let uuid = DataType::Uuid
             .scalar("00000000-0000-0000-0000-000000000001")
             .unwrap();

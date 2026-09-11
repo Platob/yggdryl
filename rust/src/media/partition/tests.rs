@@ -60,7 +60,7 @@ fn restored_columns_take_the_type_the_schema_declares() {
 }
 
 #[test]
-fn an_ascii_partition_column_is_restored_padded_with_its_identity() {
+fn an_ascii_partition_column_is_restored_as_text_with_its_identity() {
     let declared = DataType::from_fields([
         DataType::Int64.required_field("price"),
         DataType::FixedAscii(4).required_field("ccy"),
@@ -75,15 +75,15 @@ fn an_ascii_partition_column_is_restored_padded_with_its_identity() {
     )
     .unwrap();
 
-    // The path spells the trimmed text; the column holds the padded storage
-    // and keeps the extension identity the declaration carries.
+    // The path spells the text and so does the column: the storage is the
+    // value, and it keeps the extension identity the declaration carries.
     let ccy = restored
         .column_by_name("ccy")
         .unwrap()
         .as_any()
-        .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
+        .downcast_ref::<arrow_array::StringArray>()
         .expect("the ASCII storage, as the schema declares");
-    assert_eq!(ccy.value(0), b"USD\0");
+    assert_eq!(ccy.value(0), "USD");
     let field = Field::from_arrow(restored.schema().field(1)).unwrap();
     assert_eq!(field.dtype(), &DataType::FixedAscii(4));
     assert!(field.is_partition());

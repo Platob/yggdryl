@@ -20,9 +20,10 @@ fn a_fix_declared_row_projects_to_the_arrow_types_the_names_resolved() {
         arrow,
         [
             // `Currency` and `Exchange` resolve to datatypes of their own,
-            // each storing the width its standard fixes.
-            ("ccy", &ArrowDataType::FixedSizeBinary(3)),
-            ("venue", &ArrowDataType::FixedSizeBinary(4)),
+            // each storing the text it is bounded to rather than a width of
+            // padded bytes.
+            ("ccy", &ArrowDataType::Utf8),
+            ("venue", &ArrowDataType::Utf8),
             // The float family is FIX `float`, which states no scale.
             ("px", &ArrowDataType::Float64),
             ("qty", &ArrowDataType::Float64),

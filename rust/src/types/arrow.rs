@@ -18,8 +18,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, Field, Result};
 
 use super::ascii::{
-    ASCII_EXTENSION_NAME, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH,
-    MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_extension_name,
+    ASCII_EXTENSION_NAME, ascii_width_document, code_extension_name, validate_ascii_width,
 };
 use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
@@ -401,20 +400,23 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
-            R::Ascii => Self::Binary,
+            // Every ASCII shape is `Utf8`: the values are ASCII, which is
+            // UTF-8, and a declared width is a bound the extension metadata
+            // document carries rather than a storage stride.
+            R::Ascii
+            | R::Country
+            | R::Currency
+            | R::Mic
+            | R::Cfi
+            | R::Isin
+            | R::Side
+            | R::MsgDirection
+            | R::State
+            | R::TimeInForce => Self::Utf8,
             R::FixedAscii(width) => {
-                validate_non_negative("FixedAscii", "width", *width)?;
-                Self::FixedSizeBinary(*width)
+                validate_ascii_width(*width)?;
+                Self::Utf8
             }
-            R::Country => Self::FixedSizeBinary(COUNTRY_WIDTH as i32),
-            R::Currency => Self::FixedSizeBinary(CURRENCY_WIDTH as i32),
-            R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
-            R::Cfi => Self::FixedSizeBinary(CFI_WIDTH as i32),
-            R::Isin => Self::FixedSizeBinary(ISIN_WIDTH as i32),
-            R::Side => Self::FixedSizeBinary(SIDE_WIDTH as i32),
-            R::MsgDirection => Self::FixedSizeBinary(DIRECTION_WIDTH as i32),
-            R::State => Self::FixedSizeBinary(STATE_WIDTH as i32),
-            R::TimeInForce => Self::FixedSizeBinary(TIMEINFORCE_WIDTH as i32),
             R::Uuid => Self::FixedSizeBinary(16),
             R::Version | R::Url => Self::Utf8,
             R::List(field) => Self::List(field.as_ref().clone().into_arrow_ref()?),
@@ -543,20 +545,20 @@ impl TryFrom<DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
-            R::Ascii => Self::Binary,
+            R::Ascii
+            | R::Country
+            | R::Currency
+            | R::Mic
+            | R::Cfi
+            | R::Isin
+            | R::Side
+            | R::MsgDirection
+            | R::State
+            | R::TimeInForce => Self::Utf8,
             R::FixedAscii(width) => {
-                validate_non_negative("FixedAscii", "width", width)?;
-                Self::FixedSizeBinary(width)
+                validate_ascii_width(width)?;
+                Self::Utf8
             }
-            R::Country => Self::FixedSizeBinary(COUNTRY_WIDTH as i32),
-            R::Currency => Self::FixedSizeBinary(CURRENCY_WIDTH as i32),
-            R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
-            R::Cfi => Self::FixedSizeBinary(CFI_WIDTH as i32),
-            R::Isin => Self::FixedSizeBinary(ISIN_WIDTH as i32),
-            R::Side => Self::FixedSizeBinary(SIDE_WIDTH as i32),
-            R::MsgDirection => Self::FixedSizeBinary(DIRECTION_WIDTH as i32),
-            R::State => Self::FixedSizeBinary(STATE_WIDTH as i32),
-            R::TimeInForce => Self::FixedSizeBinary(TIMEINFORCE_WIDTH as i32),
             R::Uuid => Self::FixedSizeBinary(16),
             R::Version | R::Url => Self::Utf8,
             R::List(field) => Self::List(into_arrow_field(field)?),
@@ -713,8 +715,9 @@ fn check_arrow_import_depth(depth: usize) -> Result<()> {
 /// The Arrow extension name and metadata an extension-typed datatype
 /// projects, `None` for every other datatype.
 ///
-/// An ASCII width projects an empty document: the storage width says the
-/// width, so there is nothing else to carry.
+/// Every ASCII shape projects `Utf8` storage, so the document is what carries
+/// the width: `{"width":n}` for a declared width and for each code's own, and
+/// the empty document for the variable form, which has none.
 ///
 /// A dictionary projects what its values would. Arrow's `Dictionary` holds a
 /// bare datatype for its values rather than a field, so a dictionary-encoded
@@ -727,14 +730,18 @@ pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, S
         DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
             Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))
         }
-        DataType::Ascii | DataType::FixedAscii(_) => Some((ASCII_EXTENSION_NAME, String::new())),
+        DataType::Ascii => Some((ASCII_EXTENSION_NAME, String::new())),
+        DataType::FixedAscii(width) => Some((ASCII_EXTENSION_NAME, ascii_width_document(*width))),
         DataType::Uuid => Some((UUID_EXTENSION_NAME, String::new())),
         DataType::Version => Some((VERSION_EXTENSION_NAME, String::new())),
         DataType::Url => Some((URL_EXTENSION_NAME, String::new())),
-        // A code carries its own name, so the identity survives Arrow: three
-        // bytes under `yggdryl.currency` read back a currency, and the same
-        // three bytes under `yggdryl.ascii` read back the width.
-        code => code_extension_name(code).map(|name| (name, String::new())),
+        // A code carries its own name, so the identity survives Arrow: text
+        // under `yggdryl.currency` reads back a currency, and the same text
+        // under `yggdryl.ascii` reads back the width.
+        code => code_extension_name(code).map(|name| {
+            let width = code.ascii_width().unwrap_or_default();
+            (name, ascii_width_document(width))
+        }),
     }
 }
 

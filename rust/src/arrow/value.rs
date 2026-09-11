@@ -10,7 +10,7 @@ use crate::types::budget::{
 use crate::types::{
     AsciiFamily, Bytes, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, Decimal,
     ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, Temporal, Text, ascii_bytes,
-    ascii_free_text, ascii_padded, ascii_text, code_cell_text, uuid_bytes, uuid_parse,
+    ascii_free_text, ascii_text, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::types::{
@@ -443,78 +443,47 @@ pub(crate) fn value_from_array(
             crate::Url::from_str(downcast::<StringArray>(array)?.value(index))
                 .map_err(crate::arrow::Error::from)?,
         )),
-        // Fixed storage reads back trimmed: the padding is the layout, not
-        // the text. Variable storage holds the bytes it was given.
-        DataType::FixedAscii(width) => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::FixedAscii(crate::types::FixedAscii::new(
-                ascii_text(fixed.value_length(), fixed.value(index))?,
-                *width,
-            )?))
-        }
-        DataType::Ascii => {
-            let bytes = downcast::<BinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Ascii(crate::types::Ascii::new(
-                ascii_free_text(bytes.value(index))?,
-            )?))
-        }
+        // Every ASCII shape stores `Utf8` and holds the value itself, so a
+        // cell reads back as the text it is; the width still bounds it, and a
+        // stored value that outgrows it is a refusal rather than a truncation.
+        DataType::FixedAscii(width) => Scalar::Ascii(AsciiFamily::FixedAscii(
+            crate::types::FixedAscii::new(ascii_cell_text(array, index)?, *width)?,
+        )),
+        DataType::Ascii => Scalar::Ascii(AsciiFamily::Ascii(crate::types::Ascii::new(
+            ascii_cell_text(array, index)?,
+        )?)),
         // A code reads back the same way, at the width its own type fixes.
-        DataType::Country => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Country(crate::types::Country::new(
-                code_cell_text(dtype, fixed.value(index))?,
-            )?))
-        }
-        DataType::Currency => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Currency(crate::types::Currency::new(
-                code_cell_text(dtype, fixed.value(index))?,
-            )?))
-        }
-        DataType::Mic => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(code_cell_text(
-                dtype,
-                fixed.value(index),
-            )?)?))
-        }
-        DataType::Cfi => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(code_cell_text(
-                dtype,
-                fixed.value(index),
-            )?)?))
-        }
-        DataType::Isin => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Isin(crate::types::Isin::new(code_cell_text(
-                dtype,
-                fixed.value(index),
-            )?)?))
-        }
-        DataType::Side => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(code_cell_text(
-                dtype,
-                fixed.value(index),
-            )?)?))
-        }
+        DataType::Country => Scalar::Ascii(AsciiFamily::Country(crate::types::Country::new(
+            code_cell_text(dtype, ascii_cell_text(array, index)?.as_bytes())?,
+        )?)),
+        DataType::Currency => Scalar::Ascii(AsciiFamily::Currency(crate::types::Currency::new(
+            code_cell_text(dtype, ascii_cell_text(array, index)?.as_bytes())?,
+        )?)),
+        DataType::Mic => Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(code_cell_text(
+            dtype,
+            ascii_cell_text(array, index)?.as_bytes(),
+        )?)?)),
+        DataType::Cfi => Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(code_cell_text(
+            dtype,
+            ascii_cell_text(array, index)?.as_bytes(),
+        )?)?)),
+        DataType::Isin => Scalar::Ascii(AsciiFamily::Isin(crate::types::Isin::new(
+            code_cell_text(dtype, ascii_cell_text(array, index)?.as_bytes())?,
+        )?)),
+        DataType::Side => Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(
+            code_cell_text(dtype, ascii_cell_text(array, index)?.as_bytes())?,
+        )?)),
         DataType::MsgDirection => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
             Scalar::Ascii(AsciiFamily::MsgDirection(crate::types::MsgDirection::new(
-                code_cell_text(dtype, fixed.value(index))?,
+                code_cell_text(dtype, ascii_cell_text(array, index)?.as_bytes())?,
             )?))
         }
-        DataType::State => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::State(crate::types::State::new(
-                code_cell_text(dtype, fixed.value(index))?,
-            )?))
-        }
+        DataType::State => Scalar::Ascii(AsciiFamily::State(crate::types::State::new(
+            code_cell_text(dtype, ascii_cell_text(array, index)?.as_bytes())?,
+        )?)),
         DataType::TimeInForce => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
             Scalar::Ascii(AsciiFamily::TimeInForce(crate::types::TimeInForce::new(
-                code_cell_text(dtype, fixed.value(index))?,
+                code_cell_text(dtype, ascii_cell_text(array, index)?.as_bytes())?,
             )?))
         }
         DataType::LargeBinary => {
@@ -1418,77 +1387,57 @@ fn uuid_array(values: &[&Scalar]) -> Result<ArrayRef> {
     )?))
 }
 
-/// Build the padded fixed-width storage of a registered code column.
+/// The text one ASCII cell holds.
 ///
-/// The same rule as [`ascii_array`] with the width a constant: the slot is a
-/// compile-time length, so the per-row padding is a fixed-size copy.
-fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Result<ArrayRef> {
-    let mut bytes = vec![0_u8; values.len() * WIDTH];
-    let mut validity = Vec::with_capacity(values.len());
-    for (index, value) in values.iter().enumerate() {
-        match ascii_bytes(value) {
-            Some(raw) => {
-                let text = code_cell_text(dtype, raw)?;
-                ascii_padded(&mut bytes[index * WIDTH..][..WIDTH], text);
-                validity.push(true);
-            }
-            None if matches!(value, Scalar::Null) => validity.push(false),
-            None => return Err(invalid_value_kind("ASCII text", value)),
-        }
-    }
-    Ok(Arc::new(FixedSizeBinaryArray::try_new(
-        WIDTH as i32,
-        Buffer::from(bytes),
-        nulls(validity),
-    )?))
+/// Every shape in the family stores `Utf8`, so there is one downcast rather
+/// than one per width, and no padding to trim off what it answers.
+fn ascii_cell_text(array: &dyn Array, index: usize) -> Result<&str> {
+    Ok(downcast::<StringArray>(array)?.value(index))
 }
 
-/// Build the variable-width storage of an ASCII column.
+/// Build the `Utf8` storage of a registered code column.
+///
+/// The same rule as [`ascii_array`] with the width a constant, so the length
+/// check folds and no row reads a width out of the datatype.
+fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Result<ArrayRef> {
+    ascii_text_array(values, |raw| code_cell_text(dtype, raw))
+}
+
+/// Build the `Utf8` storage of a variable ASCII column.
 ///
 /// Every present value passes the one ASCII rule with no width to fit, so the
-/// array holds exactly the bytes the value is - there is nothing to pad.
+/// array holds exactly the text the value is.
 fn ascii_bytes_array(values: &[&Scalar]) -> Result<ArrayRef> {
+    ascii_text_array(values, ascii_free_text)
+}
+
+/// Build the `Utf8` storage of an ASCII column of one declared width.
+///
+/// Every present value passes the one ASCII rule for `width` and is stored as
+/// the text it is: the width bounds the value, it does not pad it.
+fn ascii_array(width: i32, values: &[&Scalar]) -> Result<ArrayRef> {
+    let _ =
+        usize::try_from(width).map_err(|_| invalid_value("an ASCII width within usize", width))?;
+    ascii_text_array(values, |raw| ascii_text(width, raw))
+}
+
+/// The one body every ASCII shape builds through: each present value read as
+/// validated text, collected into the `Utf8` storage they all share.
+fn ascii_text_array<'a>(
+    values: &'a [&Scalar],
+    cell: impl Fn(&'a [u8]) -> crate::Result<&'a str>,
+) -> Result<ArrayRef> {
     let text = values
         .iter()
         .map(|value| -> Result<Option<&str>> {
             match ascii_bytes(value) {
-                Some(raw) => Ok(Some(ascii_free_text(raw)?)),
+                Some(raw) => Ok(Some(cell(raw)?)),
                 None if matches!(value, Scalar::Null) => Ok(None),
                 None => Err(invalid_value_kind("ASCII text", value)),
             }
         })
         .collect::<Result<Vec<_>>>()?;
-    Ok(Arc::new(BinaryArray::from_iter(
-        text.iter().map(|value| value.map(str::as_bytes)),
-    )))
-}
-
-/// Build the padded fixed-width storage of an ASCII column.
-///
-/// Every present value passes the one ASCII rule for `width` and is padded
-/// with trailing NUL into its slot, so the array is exactly what the field
-/// reads back trimmed.
-fn ascii_array(width: i32, values: &[&Scalar]) -> Result<ArrayRef> {
-    let slot =
-        usize::try_from(width).map_err(|_| invalid_value("an ASCII width within usize", width))?;
-    let mut bytes = vec![0_u8; values.len() * slot];
-    let mut validity = Vec::with_capacity(values.len());
-    for (index, value) in values.iter().enumerate() {
-        match ascii_bytes(value) {
-            Some(raw) => {
-                let text = ascii_text(width, raw)?;
-                ascii_padded(&mut bytes[index * slot..][..slot], text);
-                validity.push(true);
-            }
-            None if matches!(value, Scalar::Null) => validity.push(false),
-            None => return Err(invalid_value_kind("ASCII text", value)),
-        }
-    }
-    Ok(Arc::new(FixedSizeBinaryArray::try_new(
-        width,
-        Buffer::from(bytes),
-        nulls(validity),
-    )?))
+    Ok(Arc::new(text.into_iter().collect::<StringArray>()))
 }
 
 /// Read the WKB a geospatial column stores, in either value spelling.

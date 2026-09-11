@@ -183,7 +183,10 @@ fn ascii_ffi_schemas_carry_the_extension_identity() {
         Field::from_parts("ccy", DataType::FixedAscii(4), false, [("owner", "core")]).unwrap();
 
     let schema = currency.clone().into_arrow_ffi().unwrap();
-    assert_eq!(schema.format(), "w:4");
+    // `u` is Arrow's C format for Utf8: the width rides the extension
+    // metadata document, so the C schema is a plain string column to anything
+    // that does not read it.
+    assert_eq!(schema.format(), "u");
     let metadata = schema.metadata().unwrap();
     assert_eq!(
         metadata.get("ARROW:extension:name"),
@@ -191,7 +194,7 @@ fn ascii_ffi_schemas_carry_the_extension_identity() {
     );
     assert_eq!(
         metadata.get("ARROW:extension:metadata"),
-        Some(&String::new())
+        Some(&r#"{"width":4}"#.to_owned())
     );
     assert_eq!(metadata.get("owner"), Some(&"core".to_owned()));
 
@@ -201,10 +204,14 @@ fn ascii_ffi_schemas_carry_the_extension_identity() {
 
     // A bare datatype carries the identity too.
     let schema = DataType::FixedAscii(16).into_arrow_ffi().unwrap();
-    assert_eq!(schema.format(), "w:16");
+    assert_eq!(schema.format(), "u");
     assert_eq!(
         schema.metadata().unwrap().get("ARROW:extension:name"),
         Some(&"yggdryl.ascii".to_owned())
+    );
+    assert_eq!(
+        schema.metadata().unwrap().get("ARROW:extension:metadata"),
+        Some(&r#"{"width":16}"#.to_owned())
     );
     let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
     assert_eq!(imported.dtype(), &DataType::FixedAscii(16));
