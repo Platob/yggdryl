@@ -73,9 +73,7 @@ use yggdryl::fix::{ENTRIES_COLUMN, UNMAPPED_COLUMN};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::{
-    Field, FixBranch, FixCodec, FixEntry, FixMsg, Timezone, Url, fix_schema, into_json_scalar,
-};
+use yggdryl::{Field, FixCodec, FixEntry, FixMsg, Timezone, Url, fix_schema, into_json_scalar};
 
 /// The environment variable that turns the comparison into a write.
 const WRITE: &str = "YGGDRYL_FIX_EQUIVALENCE_WRITE";
@@ -283,11 +281,10 @@ fn committed_codec() -> FixCodec {
     FixCodec::new(super::committed_registry())
 }
 
-/// The bridge's own dialect, pinned for the whole run, exactly as the dataset
-/// and pipeline suites pin it.
+/// The bridge's dictionary, exactly as the dataset and pipeline suites hold
+/// it: its fields resolve in the one namespace, so nothing is pinned.
 fn bridge_codec() -> FixCodec {
     FixCodec::new(super::ulbridge_registry())
-        .with_branch(&FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).expect("the bridge's branch"))
 }
 
 fn owned(lines: &[&str]) -> Vec<Vec<u8>> {

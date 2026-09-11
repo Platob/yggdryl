@@ -715,7 +715,7 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   )
   assert.deepEqual([...table.getChild('rownum')], [10n, 11n, 12n])
   assert.deepEqual(
-    [...table.getChild('body')].map((body) => Buffer.from(body).toString()),
+    [...table.getChild('body')],
     ['first', 'second', 'plain'],
   )
   assert.deepEqual([...table.getChild('level')], ['INFO', 'WARN', null])
@@ -723,7 +723,7 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
 
   const records = [...new IOBase(target).readRecords(options)]
   assert.deepEqual(
-    records.map((row) => Buffer.from(row.body).toString()),
+    records.map((row) => row.body),
     ['first', 'second', 'plain'],
   )
   assert.deepEqual(
@@ -881,12 +881,12 @@ test('retained text options parse the real execution row', () => {
   assert.equal(row.module, 'ModuleFailFastFilterChecker')
   assert.equal(row.level, 'DEBUG')
   assert.equal(
-    Buffer.from(row.body).toString(),
+    row.body,
     'Execution report (execId: 20260828180000369318, from session:',
   )
 })
 
-test('generic record writes encode only the binary text body', (t) => {
+test('generic record writes encode only the text body', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-text-write-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const target = new IOBase(path.join(root, 'out.txt'))
@@ -894,28 +894,26 @@ test('generic record writes encode only the binary text body', (t) => {
 
   target.overwriteRecords(
     (function* records() {
-      yield { body: Buffer.from('one') }
-      yield { body: Buffer.from('two') }
+      yield { body: 'one' }
+      yield { body: 'two' }
     })(),
     options,
   )
-  target.appendRecords([{ body: Buffer.from('three') }], options)
+  target.appendRecords([{ body: 'three' }], options)
   assert.equal(target.readBytes().toString(), 'one\ntwo\nthree\n')
   assert.deepEqual(
-    [...target.readRecords(options)].map((row) =>
-      Buffer.from(row.body).toString(),
-    ),
+    [...target.readRecords(options)].map((row) => row.body),
     ['one', 'two', 'three'],
   )
 
   const crlf = new TextOptions()
   crlf.linesep = '\\r\\n'
   const pinned = new IOBase(path.join(root, 'crlf.txt'))
-  pinned.overwriteRecords([{ body: Buffer.from('first') }], crlf)
+  pinned.overwriteRecords([{ body: 'first' }], crlf)
   assert.equal(pinned.readBytes().toString(), 'first\r\n')
 
   assert.throws(
-    () => target.appendRecords([{ body: Buffer.from('bad\nline') }], options),
+    () => target.appendRecords([{ body: 'bad\nline' }], options),
     /without its record terminator/,
   )
 })
@@ -940,7 +938,7 @@ test('text folders decode coded leaves through the same record path', (t) => {
     [1n, 1n],
   )
   assert.deepEqual(
-    rows.map((row) => Buffer.from(row.body).toString()),
+    rows.map((row) => row.body),
     ['from a', 'from b'],
   )
   assert.deepEqual(

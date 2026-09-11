@@ -7,12 +7,11 @@
 //! view class [`crate::types::field::PyProtocolField`], which is what `field.fix`
 //! already answers.
 //!
-//! A branch *key* and an identifier cross as `str` and are parsed once here
-//! through [`branch_from_py`] and [`id_from_py`], so the grammar, the folding
-//! and the standard-tag rule all stay the core's. A bare tag or name uses the
-//! core's deterministic best match, and a colon-bearing string is a name, never
-//! an identifier. [`PyFixBranch`] is what a branch *declaration* is: a key
-//! names a dictionary, a declaration also carries its dialect and its session.
+//! An identifier crosses as the `int` the core derives from a tag and a name,
+//! read once here through [`id_from_py`]; a bare `int` anywhere else is a
+//! tag, and a `str` is a name or a path, so one integer never has two
+//! readings. A dictionary's contribution is membership on the field -
+//! `field.fix.branches` - and never a key a lookup takes.
 
 use std::sync::{Arc, Mutex};
 
@@ -22,7 +21,7 @@ use pyo3::types::{PyBool, PyBytes, PyInt, PyIterator};
 
 use yggdryl::types::MsgDirection;
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixBranch as CoreFixBranch,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField,
     FixCategory as CoreFixCategory, FixCodec as CoreFixCodec, FixField as CoreFixField,
     FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
     FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar,
@@ -95,32 +94,20 @@ impl FromPyObject<'_, '_> for FixTag {
     }
 }
 
-/// Read one branch, or report the native parse failure as a `ValueError`.
+/// Read one identifier: the `int` a field's `fix.id` answered.
 ///
-/// A branch crosses as text and becomes a `FixBranch` here, once, so no second
-/// class exists in Python and the grammar - a leading ASCII letter, no `:` or
-/// `,`, at most 23 bytes, ASCII case folded - stays the core's.
-pub(crate) fn branch_from_py(text: &str) -> PyResult<CoreFixBranch> {
-    CoreFixBranch::from_str(text).map_err(value_error)
-}
-
-/// Read one identifier, or report the native parse failure as a `ValueError`.
-///
-/// The text is `tag:branch`, and `FixId::from_str` is what parses it - the
-/// standard-tag rule included, so `35:cme` is refused here exactly as it is in
-/// Rust.
-pub(crate) fn id_from_py(text: &str) -> PyResult<CoreFixId> {
-    CoreFixId::from_str(text).map_err(value_error)
-}
-
-/// Retain the branch spelling beside the identifier for a field write.
-pub(crate) fn id_parts_from_py(text: &str) -> PyResult<(CoreFixBranch, CoreFixId)> {
-    let id = id_from_py(text)?;
-    let branch = text
-        .split_once(':')
-        .map(|(_, branch)| branch)
-        .ok_or_else(|| PyValueError::new_err("a FIX identifier requires tag:branch"))?;
-    Ok((branch_from_py(branch)?, id))
+/// An identifier is the integer the core derives from a tag and a name, so
+/// it crosses as that integer and nothing is parsed; `bool` is refused the
+/// way a tag refuses it, and a value outside `i32` is the `OverflowError`
+/// the extraction reports. Nothing is checked beyond that: whether a field
+/// stands behind the integer is the registry's answer.
+fn id_from_py(value: &Bound<'_, PyAny>) -> PyResult<CoreFixId> {
+    if value.is_instance_of::<PyBool>() {
+        return Err(PyTypeError::new_err(
+            "a FIX identifier must be an integer, not bool",
+        ));
+    }
+    value.extract::<i32>().map(CoreFixId::from_digest)
 }
 
 /// One lookup key, read once at the boundary.
@@ -231,7 +218,7 @@ impl PyFixRegistry {
     /// Every registry starts here: the twenty standard fields from tag 65000
     /// that `fix_crate_fields` lists are what a row is typed by, so a
     /// dictionary loaded from a store, built from fields or left alone holds
-    /// them alike, on the standard branch every one of them resolves through.
+    /// them alike.
     #[new]
     fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -258,7 +245,7 @@ impl PyFixRegistry {
     /// `location` is an `IOBase` handle or anything that names a folder: a
     /// string, a path-like, a `Url`. A folder that is not there loads as a new
     /// registry - the crate's own fields and nothing else - and is not
-    /// created; a stored copy of the crate's branch is read past, because the
+    /// created; a stored copy of a crate field is read past, because the
     /// crate's own definition is the one that types a row. A shard that does
     /// not parse, and a root still holding the retired `records/` layout, are
     /// a `ValueError` naming the URL.
@@ -273,23 +260,23 @@ impl PyFixRegistry {
     /// Read an Ullink `CBlock` into the vocabulary and roots it declares.
     ///
     /// Answers the dictionary its `vocabulary` states and the message roots
-    /// its `grammar-binding`s describe. `branch` names the dialect its
-    /// user-range tags belong to; the standard tags always land in the
-    /// standard branch, because a dialect redefines its own tags and never
-    /// FIX's.
+    /// its `grammar-binding`s describe. `dialect` names the dictionary, and
+    /// every field, group, component and message root the file produces is
+    /// stamped with it in `fix:branches` - standard tags included, because
+    /// membership means the dictionary speaks the field; with none supplied
+    /// nothing is stamped.
     ///
     /// A file this cannot be read from is a `ValueError` carrying the native
     /// sentence whole: the byte the reader stopped at, what was expected, what
     /// arrived, and the element the file spells it in.
     #[staticmethod]
-    #[pyo3(signature = (location, branch=None))]
+    #[pyo3(signature = (location, dialect=None))]
     fn from_cfb_file(
         location: &Bound<'_, PyAny>,
-        branch: Option<&str>,
+        dialect: Option<&str>,
     ) -> PyResult<(Self, Vec<PyField>)> {
-        let dialect = branch.map(branch_from_py).transpose()?;
         let (registry, roots) = read_cfb(location, |handle| {
-            CoreFixRegistry::from_cfb_file(handle, dialect.as_ref())
+            CoreFixRegistry::from_cfb_file(handle, dialect)
         })?;
         Ok((
             Self::from_arc(Arc::new(registry)),
@@ -301,17 +288,18 @@ impl PyFixRegistry {
     ///
     /// The lenient counterpart of `insert`, which replaces, and of `update`,
     /// which refuses everything new. Answers `True` when the field arrived
-    /// and `False` when it folded into a stored one: a canonical identity the
-    /// dictionary holds merges, a name folding to a stored canonical name or
-    /// alias in the same branch merges into that field - aliases and
-    /// alternate tags become the union and the incoming canonical tag joins
-    /// them unless another field in the branch answers it - a nested field is
-    /// redirected to `add_definition` under the category its shape names, and
-    /// one of this crate's own tags is skipped as already held.
+    /// and `False` when it folded into a stored one: the same tag under the
+    /// same folded name merges, a name folding to a stored canonical name or
+    /// alias under another tag merges into that field - aliases, alternate
+    /// tags and membership become the union, and the incoming tag joins the
+    /// alternates unless another field answers it - the same tag under
+    /// another name is added beside the holder, which gains the name as an
+    /// alias, a nested field is redirected to `add_definition` under the
+    /// category its shape names, and one of this crate's own tags is skipped
+    /// as already held.
     ///
-    /// One mutation: a refusal - no `fix:tag`, a key another field holds in
-    /// the same branch, a datatype disagreeing with the stored field - leaves
-    /// the dictionary exactly as it was.
+    /// One mutation: a refusal - no `fix:tag`, a datatype disagreeing with
+    /// the stored field - leaves the dictionary exactly as it was.
     fn add_field(&mut self, field: &Bound<'_, PyAny>) -> PyResult<bool> {
         let field = core_field_from_value(field)?;
         self.inner_mut()?.add_field(field).map_err(value_error)
@@ -325,9 +313,8 @@ impl PyFixRegistry {
     /// that order.
     ///
     /// One mutation: the whole fold is staged and only then adopted, so a
-    /// refusal - a field with no `fix:tag`, a key another field holds in the
-    /// same branch, a name or datatype disagreeing with the stored
-    /// definition - leaves the dictionary exactly as it was.
+    /// refusal - a field with no `fix:tag`, a datatype disagreeing with the
+    /// stored definition - leaves the dictionary exactly as it was.
     fn add_fields(&mut self, fields: &Bound<'_, PyAny>) -> PyResult<(usize, usize)> {
         // Coerced whole before anything is written, so a value Python cannot
         // read as a field refuses the fold rather than half of it.
@@ -341,9 +328,8 @@ impl PyFixRegistry {
     /// Fold another dictionary into this one.
     ///
     /// The one place two dictionaries combine: every field folds the way
-    /// `add_fields` folds one, and every dialect folds beside them - one this
-    /// dictionary does not hold arrives whole, one it holds takes the incoming
-    /// record while keeping every spelling it already answered to.
+    /// `add_fields` folds one, its membership unioned onto the field it
+    /// merges into, and every definition folds beside them.
     ///
     /// Answers the count added and the count merged, over the fields. One
     /// mutation: a refusal anywhere leaves the dictionary exactly as it was.
@@ -355,33 +341,24 @@ impl PyFixRegistry {
     /// Read one Ullink `CBlock` into this dictionary, whole.
     ///
     /// The one call an ingest takes: the file's vocabulary folds in the way
-    /// `add_fields` folds any source, and the dialect the root element
-    /// declares - its FIX version and its session `CompID` pair - is recorded
-    /// beside it, which reading the fields alone would lose.
+    /// `add_fields` folds any source, every field it produces stamped with
+    /// the dialect in `fix:branches` and that membership unioned onto
+    /// whatever it merges into.
     ///
-    /// `branch` names the dialect, and the file names it when the caller does
-    /// not. The location's own stem also becomes an alias whenever it is not
-    /// already the name, and `aliases` names any others; a branch this
-    /// dictionary already holds keeps the spellings it already answered to.
+    /// `dialect` names the dictionary, and the location's own stem stands in
+    /// when the caller does not; a name that is empty or carries a comma is
+    /// a `ValueError`.
     ///
-    /// Answers the count added and the count merged. One mutation: the branch
-    /// record and the fields are adopted together, so a refusal leaves the
-    /// dictionary exactly as it was.
-    #[pyo3(signature = (location, branch=None, aliases=None))]
+    /// Answers the count added and the count merged. One mutation: a refusal
+    /// leaves the dictionary exactly as it was.
+    #[pyo3(signature = (location, dialect=None))]
     fn add_cfb_file(
         &mut self,
         location: &Bound<'_, PyAny>,
-        branch: Option<&str>,
-        aliases: Option<Vec<String>>,
+        dialect: Option<&str>,
     ) -> PyResult<(usize, usize)> {
-        // Naming none and naming an empty list are the same statement, so
-        // both arrive as the empty slice rather than as two shapes.
-        let owned = aliases.unwrap_or_default();
-        let held: Vec<&str> = owned.iter().map(String::as_str).collect();
         let registry = self.inner_mut()?;
-        read_cfb(location, |handle| {
-            registry.add_cfb_file(handle, branch, Some(&held))
-        })
+        read_cfb(location, |handle| registry.add_cfb_file(handle, dialect))
     }
 
     /// Add `ULBridge`'s own fields, so a bridge configuration document types.
@@ -416,28 +393,19 @@ impl PyFixRegistry {
         PyMsgType::from_field_pointer(&self.inner, held)
     }
 
-    #[pyo3(signature = (category, name, branch=None))]
-    fn get_definition(
-        &self,
-        category: &str,
-        name: &str,
-        branch: Option<&str>,
-    ) -> PyResult<Option<PyField>> {
+    fn get_definition(&self, category: &str, name: &str) -> PyResult<Option<PyField>> {
         let category = CoreFixCategory::from_str(category).map_err(value_error)?;
-        let branch = branch.map(branch_from_py).transpose()?;
         Ok(self
             .inner
-            .get_definition(category, name, branch.as_ref())
+            .get_definition(category, name)
             .cloned()
             .map(PyField::from_inner))
     }
 
-    #[pyo3(signature = (category, name, branch=None))]
-    fn definition(&self, category: &str, name: &str, branch: Option<&str>) -> PyResult<PyField> {
+    fn definition(&self, category: &str, name: &str) -> PyResult<PyField> {
         let category = CoreFixCategory::from_str(category).map_err(value_error)?;
-        let branch = branch.map(branch_from_py).transpose()?;
         self.inner
-            .definition(category, name, branch.as_ref())
+            .definition(category, name)
             .cloned()
             .map(PyField::from_inner)
             .map_err(|error| absent(&error))
@@ -505,36 +473,25 @@ impl PyFixRegistry {
             .map_err(value_error)
     }
 
-    #[pyo3(signature = (category, name, branch=None))]
-    fn remove_definition(
-        &mut self,
-        category: &str,
-        name: &str,
-        branch: Option<&str>,
-    ) -> PyResult<Option<PyField>> {
+    fn remove_definition(&mut self, category: &str, name: &str) -> PyResult<Option<PyField>> {
         let category = CoreFixCategory::from_str(category).map_err(value_error)?;
-        let branch = branch.map(branch_from_py).transpose()?;
         self.inner_mut()?
-            .remove_definition(category, name, branch.as_ref())
+            .remove_definition(category, name)
             .map(|field| field.map(PyField::from_inner))
             .map_err(value_error)
     }
 
-    #[pyo3(signature = (spelling, branch=None))]
-    fn get_msgtype(&self, spelling: &str, branch: Option<&str>) -> PyResult<Option<PyMsgType>> {
-        let branch = branch.map(branch_from_py).transpose()?;
+    fn get_msgtype(&self, spelling: &str) -> PyResult<Option<PyMsgType>> {
         self.inner
-            .get_msgtype(spelling, branch.as_ref())
+            .get_msgtype(spelling)
             .map(|message| PyMsgType::from_field_pointer(&self.inner, message.as_field()))
             .transpose()
     }
 
-    #[pyo3(signature = (spelling, branch=None))]
-    fn msgtype(&self, spelling: &str, branch: Option<&str>) -> PyResult<PyMsgType> {
-        let branch = branch.map(branch_from_py).transpose()?;
+    fn msgtype(&self, spelling: &str) -> PyResult<PyMsgType> {
         let message = self
             .inner
-            .msgtype(spelling, branch.as_ref())
+            .msgtype(spelling)
             .map_err(|error| absent(&error))?;
         PyMsgType::from_field_pointer(&self.inner, message.as_field())
     }
@@ -546,17 +503,18 @@ impl PyFixRegistry {
         }
     }
 
-    fn get_group_by_counter(&self, id: &str) -> PyResult<Option<PyField>> {
-        Ok(self
-            .inner
-            .get_group_by_counter(id_from_py(id)?)
+    /// The group definition one counter tag heads, or `None`.
+    fn get_group_by_counter(&self, tag: FixTag) -> Option<PyField> {
+        self.inner
+            .get_group_by_counter(tag.0)
             .cloned()
-            .map(PyField::from_inner))
+            .map(PyField::from_inner)
     }
 
-    fn group_by_counter(&self, id: &str) -> PyResult<PyField> {
+    /// The group definition one counter tag heads.
+    fn group_by_counter(&self, tag: FixTag) -> PyResult<PyField> {
         self.inner
-            .group_by_counter(id_from_py(id)?)
+            .group_by_counter(tag.0)
             .cloned()
             .map(PyField::from_inner)
             .map_err(|error| absent(&error))
@@ -592,19 +550,20 @@ impl PyFixRegistry {
         self.__copy__()
     }
 
-    /// Write every populated shard under `<location>/<tree>/<branch>`,
-    /// removing the shards, branch folders and trees no field populates any
+    /// Write every populated field shard and named definition under
+    /// `location`, removing the files no field or definition populates any
     /// more.
     fn write_into(&self, location: &Bound<'_, PyAny>) -> PyResult<()> {
         let mut holder = folder_holder_from_value(location)?;
         self.inner.write_into(&mut holder).map_err(value_error)
     }
 
-    /// The field a canonical or alternate identifier names, or `None`.
+    /// The field one identifier names exactly, or `None`.
     ///
-    /// `id` is the `tag:branch` text; a malformed one is a `ValueError`
-    /// carrying the native parse failure, never a miss.
-    fn get_field_by_id(&self, id: &str) -> PyResult<Option<PyField>> {
+    /// `id` is the `int` a field's `fix.id` answers - the identity of its
+    /// tag under its name - so this is exact: no alias, alternate tag or
+    /// fold is consulted.
+    fn get_field_by_id(&self, id: &Bound<'_, PyAny>) -> PyResult<Option<PyField>> {
         let id = id_from_py(id)?;
         Ok(self
             .inner
@@ -613,8 +572,8 @@ impl PyFixRegistry {
             .map(PyField::from_inner))
     }
 
-    /// The field a canonical or alternate identifier names.
-    fn field_by_id(&self, id: &str) -> PyResult<PyField> {
+    /// The field one identifier names exactly.
+    fn field_by_id(&self, id: &Bound<'_, PyAny>) -> PyResult<PyField> {
         let id = id_from_py(id)?;
         self.inner
             .field_by_id(id)
@@ -624,8 +583,8 @@ impl PyFixRegistry {
 
     /// The field a canonical or alternate tag names, or `None`.
     ///
-    /// The standard dictionary wins, then named dictionaries in canonical
-    /// name order.
+    /// The canonical holder of the tag answers first, then a field holding
+    /// it as an alternate.
     fn get_field_by_tag(&self, tag: FixTag) -> Option<PyField> {
         self.inner
             .get_field_by_tag(tag.0)
@@ -641,42 +600,31 @@ impl PyFixRegistry {
             .map_err(|error| absent(&error))
     }
 
-    /// The field a canonical name or alias names, ASCII case folded.
+    /// The field a canonical name or alias names, ASCII case folded, or
+    /// `None`.
     ///
-    /// Supplying `branch` restricts the lookup. Otherwise the core infers the
-    /// best match: canonical before alias, standard before named branches.
-    #[pyo3(signature = (name, branch=None))]
-    fn get_field_by_name(&self, name: &str, branch: Option<&str>) -> PyResult<Option<PyField>> {
-        let branch = branch.map(branch_from_py).transpose()?;
-        Ok(self
-            .inner
-            .get_field_by_name(name, branch.as_ref())
+    /// The canonical name answers before an alias, under the one fold.
+    fn get_field_by_name(&self, name: &str) -> Option<PyField> {
+        self.inner
+            .get_field_by_name(name)
             .cloned()
-            .map(PyField::from_inner))
+            .map(PyField::from_inner)
     }
 
     /// The field a canonical name or alias names, raising absence.
-    #[pyo3(signature = (name, branch=None))]
-    fn field_by_name(&self, name: &str, branch: Option<&str>) -> PyResult<PyField> {
-        let branch = branch.map(branch_from_py).transpose()?;
+    fn field_by_name(&self, name: &str) -> PyResult<PyField> {
         self.inner
-            .field_by_name(name, branch.as_ref())
+            .field_by_name(name)
             .map(|field| PyField::from_inner(field.clone()))
             .map_err(|error| absent(&error))
     }
 
     /// The field a path reaches through a component or a group.
-    #[pyo3(signature = (path, branch=None))]
-    fn get_field_by_path(
-        &self,
-        path: &Bound<'_, PyAny>,
-        branch: Option<&str>,
-    ) -> PyResult<Option<PyField>> {
+    fn get_field_by_path(&self, path: &Bound<'_, PyAny>) -> PyResult<Option<PyField>> {
         let path = core_path_from_value(path)?;
-        let branch = branch.map(branch_from_py).transpose()?;
         Ok(self
             .inner
-            .get_field_by_path(&path, branch.as_ref())
+            .get_field_by_path(&path)
             .cloned()
             .map(PyField::from_inner))
     }
@@ -687,12 +635,10 @@ impl PyFixRegistry {
     /// ``Parties[0].PartyID`` - and a schema answers the item every
     /// occurrence of a group holds, so that spelling reaches the member here
     /// as well as in a message.
-    #[pyo3(signature = (path, branch=None))]
-    fn field_by_path(&self, path: &Bound<'_, PyAny>, branch: Option<&str>) -> PyResult<PyField> {
+    fn field_by_path(&self, path: &Bound<'_, PyAny>) -> PyResult<PyField> {
         let path = core_path_from_value(path)?;
-        let branch = branch.map(branch_from_py).transpose()?;
         self.inner
-            .field_by_path(&path, branch.as_ref())
+            .field_by_path(&path)
             .map(|field| PyField::from_inner(field.clone()))
             .map_err(|error| absent(&error))
     }
@@ -726,15 +672,14 @@ impl PyFixRegistry {
             .map(PyField::from_inner))
     }
 
-    /// Merge a definition into the stored field with the same canonical
-    /// identifier.
+    /// Merge a definition into the stored field with the same identity: the
+    /// same tag under the same folded name.
     fn update(&mut self, field: &Bound<'_, PyAny>) -> PyResult<()> {
         let field = core_field_from_value(field)?;
         self.inner_mut()?.update(field).map_err(value_error)
     }
 
-    /// Remove the field a tag or a name reaches in the standard branch,
-    /// answering it.
+    /// Remove the field a tag or a name reaches, answering it.
     fn remove(&mut self, key: &Bound<'_, PyAny>) -> PyResult<Option<PyField>> {
         let key = FixKeyArg::from_py(key)?;
         Ok(self
@@ -743,82 +688,19 @@ impl PyFixRegistry {
             .map(PyField::from_inner))
     }
 
-    /// The branch an identifier belongs to, or `None`.
+    /// Every dictionary name any field or definition carries in
+    /// `fix:branches`, distinct and sorted.
     ///
-    /// The identifier carries the branch's identity, so this is what a
-    /// `tag:branch` string resolves to without a second lookup.
-    fn branch_of(&self, id: &str) -> PyResult<Option<PyFixBranch>> {
-        let id = id_from_py(id)?;
-        Ok(self
-            .inner
-            .branch_of(id)
-            .cloned()
-            .map(PyFixBranch::from_core))
+    /// Membership is provenance a caller filters on; no lookup consults it.
+    fn dialects(&self) -> Vec<String> {
+        self.inner.dialects()
     }
 
-    /// The branch one digest resolves to, or `None`.
+    /// Remove the field one identifier names exactly, answering it.
     ///
-    /// A branch's digest is what the store's branch manifest publishes beside
-    /// the declaration, so this is the table that turns one back into the
-    /// dialect it names. The derivation is one way, which is why the registry
-    /// publishes the resolution rather than leaving a reader to reproduce the
-    /// hash.
-    fn get_branch_by_digest(&self, digest: i32) -> Option<PyFixBranch> {
-        self.inner
-            .get_branch_by_digest(digest)
-            .cloned()
-            .map(PyFixBranch::from_core)
-    }
-
-    /// The branch one digest resolves to.
-    ///
-    /// # Errors
-    ///
-    /// Raises `ValueError` naming the digest when no branch carries it.
-    fn branch_by_digest(&self, digest: i32) -> PyResult<PyFixBranch> {
-        self.inner
-            .branch_by_digest(digest)
-            .cloned()
-            .map(PyFixBranch::from_core)
-            .map_err(value_error)
-    }
-
-    /// The branch declared under one canonical name, or `None`.
-    fn branch_named(&self, name: &str) -> Option<PyFixBranch> {
-        self.inner
-            .branch_named(name)
-            .cloned()
-            .map(PyFixBranch::from_core)
-    }
-
-    /// Every branch this registry declares.
-    fn branches(&self) -> Vec<PyFixBranch> {
-        self.inner
-            .branches()
-            .cloned()
-            .map(PyFixBranch::from_core)
-            .collect()
-    }
-
-    /// Install or replace one complete branch declaration.
-    ///
-    /// The standard branch declares no dialect and no session, and two
-    /// different names may not claim one identity - both are refused here
-    /// rather than stored and discovered later.
-    fn set_branch(&mut self, branch: &Bound<'_, PyAny>) -> PyResult<()> {
-        let branch = branch_value_from_py(branch)?;
-        self.inner_mut()?
-            .set_branch(branch.as_inner().clone())
-            .map_err(value_error)
-    }
-
-    /// Remove the field a canonical or alternate identifier names, answering
-    /// it.
-    ///
-    /// The generic `remove` reaches the standard branch only, because a
-    /// colon-bearing string there is a name; this is how a vendor field
-    /// leaves the dictionary.
-    fn remove_by_id(&mut self, id: &str) -> PyResult<Option<PyField>> {
+    /// The generic `remove` reads an `int` as a tag; this is how a field
+    /// sharing its tag with another leaves the dictionary on its own.
+    fn remove_by_id(&mut self, id: &Bound<'_, PyAny>) -> PyResult<Option<PyField>> {
         let id = id_from_py(id)?;
         Ok(self.inner_mut()?.remove(id).map(PyField::from_inner))
     }
@@ -857,7 +739,7 @@ impl PyFixRegistry {
 
     /// The fields in ascending canonical-identifier order, lazily.
     ///
-    /// The order is the core's: tag-major, then by branch digest. The iterator holds
+    /// The order is the core's: tag-major, then by identifier. The iterator holds
     /// the registry's `Arc` and the identifier it stopped at, so nothing is
     /// collected crossing the boundary and the dictionary is never cloned to
     /// walk it. Holding it is therefore sharing it: a mutation refuses while a
@@ -894,7 +776,7 @@ impl PyFixRegistry {
 ///
 /// Answered by `iter(registry)`. It advances with the core's own cursor - the
 /// registry plus the last `FixId` it answered - so taking one field from a
-/// dictionary of thousands costs one lookup, and a walk crosses every branch
+/// dictionary of thousands costs one lookup, and a walk crosses every field
 /// in the one order the core iterates.
 #[pyclass(name = "FixFieldIterator", module = "yggdryl._native")]
 pub(crate) struct PyFixFieldIterator {
@@ -974,12 +856,12 @@ impl PyMsgType {
     fn field(&self) -> PyField {
         PyField::from_inner_with_read_only(self.inner().as_field().clone(), true)
     }
-    fn get_group_by_counter(&self, id: &str) -> PyResult<Option<PyField>> {
-        Ok(self
-            .inner()
-            .get_group_by_counter(id_from_py(id)?)
+    /// The group this message declares under one counter tag, or `None`.
+    fn get_group_by_counter(&self, tag: FixTag) -> Option<PyField> {
+        self.inner()
+            .get_group_by_counter(tag.0)
             .cloned()
-            .map(PyField::from_inner))
+            .map(PyField::from_inner)
     }
     fn stable_hash(&self) -> u64 {
         self.inner().stable_hash()
@@ -1469,27 +1351,17 @@ impl PyFixMsg {
         PyScalar::from_inner(self.inner.as_value().clone())
     }
 
-    /// The dictionary this message is spelled in.
-    ///
-    /// Derived from the root field's own `fix:branch` at construction, never
-    /// declared, so nothing can disagree with it; empty when the root states
-    /// none.
-    #[getter]
-    fn branch(&self) -> String {
-        self.inner.branch().name().to_owned()
-    }
-
     /// The value of the root child an identifier names, or `None`.
     ///
-    /// An identifier is exact and does not tier: a dictionary this message
-    /// does not speak simply misses.
-    fn get_by_id(&self, id: &str) -> PyResult<Option<PyScalar>> {
+    /// `id` is the `int` a field's `fix.id` answers; the lookup is exact, so
+    /// a field this message's dictionary does not hold simply misses.
+    fn get_by_id(&self, id: &Bound<'_, PyAny>) -> PyResult<Option<PyScalar>> {
         let id = id_from_py(id)?;
         Ok(Self::answered(self.inner.get_by_id(id)))
     }
 
     /// The value of the root child an identifier names.
-    fn by_id(&self, id: &str) -> PyResult<PyScalar> {
+    fn by_id(&self, id: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         let id = id_from_py(id)?;
         self.inner
             .by_id(id)
@@ -1499,8 +1371,8 @@ impl PyFixMsg {
 
     /// The value of the root child a tag names, or `None`.
     ///
-    /// The tag resolves in this message's own branch first, then in the
-    /// standard one.
+    /// The canonical holder of the tag answers first, then a field holding
+    /// it as an alternate.
     fn get_by_tag(&self, tag: FixTag) -> Option<PyScalar> {
         Self::answered(self.inner.get_by_tag(tag.0))
     }
@@ -1515,8 +1387,7 @@ impl PyFixMsg {
 
     /// The value of the root child a name reaches, or `None`.
     ///
-    /// The name folds through this message's own branch first, then the
-    /// standard one.
+    /// The canonical name answers before an alias, under the one fold.
     fn get_by_name(&self, name: &str) -> Option<PyScalar> {
         Self::answered(self.inner.get_by_name(name))
     }
@@ -1547,8 +1418,7 @@ impl PyFixMsg {
             .map_err(|error| absent(&error))
     }
 
-    /// The value a tag or a name reaches in the standard branch tier, or
-    /// `default`.
+    /// The value a tag or a name reaches, or `default`.
     #[pyo3(signature = (key, default=None, /))]
     fn get(
         &self,
@@ -1574,9 +1444,8 @@ impl PyFixMsg {
 
     /// Writes one value into the row, typed by the field the key resolves to.
     ///
-    /// `key` is a tag or a name, resolved as a lookup resolves one - through
-    /// the dictionary in this message's own branch, then the standard one -
-    /// and a name the dictionary does not know still reaches a child spelled
+    /// `key` is a tag or a name, resolved as a lookup resolves one through
+    /// the dictionary, and a name the dictionary does not know still reaches a child spelled
     /// that way. A known field types the value through the core's value
     /// contract; `None` is stored as a stated null. An existing child is
     /// replaced where it stands and an absent one appended; a bare tag no
@@ -1696,8 +1565,8 @@ impl PyFixMsg {
     }
 
     /// Which tag answered a facet, so a fallback is visible.
-    fn lift_source(&self, facet: &str) -> Option<String> {
-        self.inner.lift_source(facet).map(|id| id.to_string())
+    fn lift_source(&self, facet: &str) -> Option<i32> {
+        self.inner.lift_source(facet)
     }
 
     /// Every facet this message answers, in the table's own order.
@@ -1738,9 +1607,7 @@ impl PyFixMsg {
     /// What arrived, in arrival order, untranslated.
     ///
     /// Flattened pre-order: a group's members follow the counter pair that
-    /// heads them, so a caller reading the sequence reads the wire. The
-    /// dialect is the message's own, answered by :attr:`branch`: it is one
-    /// value for every pair a message carries, so no pair repeats it.
+    /// heads them, so a caller reading the sequence reads the wire.
     fn entries(&self) -> Vec<(i32, String, String)> {
         let mut held = Vec::new();
         flatten_entries(self.inner.entries(), &mut held);
@@ -1861,8 +1728,8 @@ impl PyFixCodec {
 
     /// Open a codec over one dictionary, or over the process default.
     ///
-    /// Every pin is the core's, spelled once here. `branch` and `version`
-    /// cross as text; `separator` is the byte a numeric frame splits on where
+    /// Every pin is the core's, spelled once here. `version` crosses as
+    /// text; `separator` is the byte a numeric frame splits on where
     /// the line does not say; `payload_column` names the batch column a line
     /// is read from; `capture_names` are what a run's row-header captures are
     /// called, in the order a line answers them, which is what lets
@@ -1875,7 +1742,6 @@ impl PyFixCodec {
     #[pyo3(signature = (
         registry=None,
         *,
-        branch=None,
         version=None,
         separator=None,
         payload_column="body",
@@ -1887,7 +1753,6 @@ impl PyFixCodec {
     #[allow(clippy::too_many_arguments)]
     fn new(
         registry: Option<PyRef<'_, PyFixRegistry>>,
-        branch: Option<&str>,
         version: Option<&str>,
         separator: Option<u8>,
         payload_column: &str,
@@ -1900,9 +1765,6 @@ impl PyFixCodec {
         let mut inner = CoreFixCodec::new(Arc::clone(&registry))
             .with_payload_column(payload_column)
             .with_direction(direction_from_py(direction)?);
-        if let Some(held) = branch {
-            inner = inner.with_branch(&branch_from_py(held)?);
-        }
         if let Some(held) = version {
             inner = inner.with_version(version_from_py(held)?);
         }
@@ -1925,13 +1787,6 @@ impl PyFixCodec {
     #[getter]
     fn registry(&self) -> PyFixRegistry {
         PyFixRegistry::from_arc(Arc::clone(&self.registry))
-    }
-
-    /// The dialect every line is read in, or `None` where each line implies
-    /// its own.
-    #[getter]
-    fn branch(&self) -> Option<&str> {
-        self.inner.branch().map(CoreFixBranch::name)
     }
 
     /// The version values are read at, or `None` where each line states its
@@ -2058,10 +1913,8 @@ impl PyFixCodec {
     /// `with_capture_names` is what decides which capture is which, once for
     /// the whole run, because a line answers its captures by position.
     ///
-    /// A `pluginid` capture whose text is the name or an alias of a branch the
-    /// dictionary declares is also the dialect the line is read under,
-    /// outranking the codec's own pin; any other keeps the pin, then the
-    /// standard branch.
+    /// A `pluginid` capture fills the crate's `pluginid` field and selects
+    /// nothing: the dictionary is one namespace.
     ///
     /// A `direction` capture is named so it cannot silently fill a field of
     /// that name, and is not otherwise read: only `parse_text_arrow_reader`
@@ -2424,8 +2277,6 @@ fn stated_attributes(value: Scalar) -> PyResult<Scalar> {
 /// Pickle carries the attributes, `ObjectName`, and shared source envelope.
 type UlPluginPickle = (Py<PyAny>, (String, Option<String>, String));
 
-type BranchPickle = (Py<PyAny>, (String, String, Vec<String>));
-
 /// One plugin a bridge configuration document answers for.
 ///
 /// A Jolokia read answers one `MBean`'s attributes or a map of them keyed by
@@ -2666,9 +2517,9 @@ impl PyUlPlugin {
 ///
 /// What a bridge configuration document states about a session interface -
 /// the venue it talks to, the host and port, the sequence numbers, the state -
-/// on the `ulbridge` branch rather than FIX's, because the specification
-/// publishes none of it. Registering them is a caller's choice, which is what
-/// `FixRegistry.with_ulbridge_fields` is for.
+/// each carrying `ULBRIDGE_DIALECT` in `fix:branches`, because the
+/// specification publishes none of it. Registering them is a caller's choice,
+/// which is what `FixRegistry.with_ulbridge_fields` is for.
 #[pyfunction]
 #[pyo3(name = "fix_ulbridge_fields")]
 pub(crate) fn fix_ulbridge_fields() -> PyResult<Vec<PyField>> {
@@ -2680,24 +2531,24 @@ pub(crate) fn fix_ulbridge_fields() -> PyResult<Vec<PyField>> {
 /// The vocabulary one Ullink `CBlock` declares, in declaration order.
 ///
 /// The dictionary half of `FixRegistry.from_cfb_file`, answered on its own: every
-/// field carries the `fix:tag` and `fix:branch` that key it and whatever code
-/// set the file's maps decode for it, which is what `FixRegistry.add_fields`
-/// needs to fold one counterparty's file into a dictionary that exists. The
-/// message roots and the branch record are what the registry form answers
-/// instead.
+/// field carries the `fix:tag` that keys it, the dialect in `fix:branches`,
+/// and whatever code set the file's maps decode for it, which is what
+/// `FixRegistry.add_fields` needs to fold one counterparty's file into a
+/// dictionary that exists. The message roots are what the registry form
+/// answers instead.
 ///
-/// `branch` names the dialect, and the file names it when the caller does
-/// not: a `CBlock` states a version and a session but no name for the pair, so
-/// with none supplied the location's own stem stands in. A stem that is not a
-/// branch is a `ValueError` rather than a guess.
+/// `dialect` names the dictionary, and the file names it when the caller does
+/// not: with none supplied the location's own stem stands in. A stem or a
+/// dialect that is empty or carries a comma is a `ValueError` rather than a
+/// guess.
 #[pyfunction]
-#[pyo3(name = "fix_cfb_fields", signature = (location, branch=None))]
+#[pyo3(name = "fix_cfb_fields", signature = (location, dialect=None))]
 pub(crate) fn fix_cfb_fields(
     location: &Bound<'_, PyAny>,
-    branch: Option<&str>,
+    dialect: Option<&str>,
 ) -> PyResult<Vec<PyField>> {
     read_cfb(location, |handle| {
-        CoreFixField::from_cfb_file(handle, branch)
+        CoreFixField::from_cfb_file(handle, dialect)
     })
     .map(|held| held.into_iter().map(PyField::from_inner).collect())
 }
@@ -2756,206 +2607,4 @@ pub(crate) fn fix_global_registry() -> PyResult<PyFixRegistry> {
 #[pyo3(name = "install_global_registry")]
 pub(crate) fn fix_install_global_registry(registry: &PyFixRegistry) -> PyResult<()> {
     CoreFixRegistry::install_global((*registry.inner).clone()).map_err(value_error)
-}
-
-/// One FIX dictionary declaration: a name, a dialect, and a session.
-///
-/// A branch crosses as `str` wherever it is a *key* - `field.fix.branch`, a
-/// `tag:branch` identifier, a lookup - because a key is a name. This class is
-/// what a *declaration* is, because a declaration also carries the dialect's
-/// default FIX version and the session `CompID`s that select it.
-#[pyclass(
-    name = "FixBranch",
-    module = "yggdryl._native",
-    skip_from_py_object,
-    frozen
-)]
-#[derive(Clone)]
-pub(crate) struct PyFixBranch {
-    inner: CoreFixBranch,
-}
-
-impl PyFixBranch {
-    pub(crate) const fn from_core(inner: CoreFixBranch) -> Self {
-        Self { inner }
-    }
-
-    pub(crate) const fn as_inner(&self) -> &CoreFixBranch {
-        &self.inner
-    }
-}
-
-#[pymethods]
-impl PyFixBranch {
-    /// Declare a branch, validating and folding its name once.
-    ///
-    /// An empty name is the standard branch, which declares no dialect; the
-    /// version is the dialect's own default, spelled the way the
-    /// specification spells it.
-    #[new]
-    #[pyo3(signature = (name = "", *, version = None, aliases = None))]
-    fn new(name: &str, version: Option<&str>, aliases: Option<Vec<String>>) -> PyResult<Self> {
-        let version = match version {
-            Some(text) => text.parse::<yggdryl::Version>().map_err(value_error)?,
-            None => yggdryl::Version::default(),
-        };
-        let branch = CoreFixBranch::from_parts(name, version).map_err(value_error)?;
-        match aliases {
-            Some(aliases) => branch.with_aliases(aliases).map(Self::from_core),
-            None => Ok(Self::from_core(branch)),
-        }
-        .map_err(value_error)
-    }
-
-    /// Parse a branch name, with no dialect.
-    #[staticmethod]
-    fn from_str(value: &str) -> PyResult<Self> {
-        branch_from_py(value).map(Self::from_core)
-    }
-
-    /// Accept a branch, or the name of one.
-    #[staticmethod]
-    fn from_value(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        branch_value_from_py(value)
-    }
-
-    /// The FIX specification's own dictionary, and what an absent branch means.
-    #[classattr]
-    #[pyo3(name = "STANDARD")]
-    fn standard() -> Self {
-        Self::from_core(CoreFixBranch::STANDARD)
-    }
-
-    /// The longest a branch name may be, in bytes.
-    #[classattr]
-    #[pyo3(name = "MAX_LENGTH")]
-    const MAX_LENGTH: usize = CoreFixBranch::MAX_LENGTH;
-
-    /// The canonical lowercase name.
-    #[getter]
-    fn name(&self) -> &str {
-        self.inner.name()
-    }
-
-    /// The dialect's default FIX version.
-    #[getter]
-    fn version(&self) -> String {
-        self.inner.version().to_string()
-    }
-
-    /// The other spellings this dictionary answers to, folded, as declared.
-    ///
-    /// A lookup spelling and nothing more: the canonical name is what a field
-    /// stores and what every identifier packs, so an alias moves no field.
-    #[getter]
-    fn aliases(&self) -> Vec<&str> {
-        self.inner.aliases().iter().map(AsRef::as_ref).collect()
-    }
-
-    /// Whether `name` is one of this dictionary's aliases, ASCII case folded.
-    ///
-    /// The canonical name is not an alias of itself, so this answers `False`
-    /// for it.
-    fn has_alias(&self, name: &str) -> bool {
-        self.inner.has_alias(name)
-    }
-
-    /// Whether this is the FIX specification's own dictionary.
-    fn is_standard(&self) -> bool {
-        self.inner.is_standard()
-    }
-
-    /// The identity every identifier of this branch carries.
-    ///
-    /// The signed reading of the XXH32, which is exactly what an arrival
-    /// entry's `branch` carries and what `FixRegistry.branch_by_digest`
-    /// takes, so a capture's column joins to a declaration without a
-    /// conversion in between. A digest above `i32::MAX` therefore reads
-    /// negative; it is the same four bytes either way.
-    fn digest(&self) -> i32 {
-        self.inner.digest_signed()
-    }
-
-    /// The deterministic cross-language hash of the whole declaration.
-    ///
-    /// Equality is the whole declaration, so the hash is too; `digest` is the
-    /// narrower answer, the name identity an identifier carries.
-    fn stable_hash(&self) -> u64 {
-        Scalar::from_sequence([
-            Scalar::from(self.inner.name()),
-            Scalar::from(self.inner.version().to_string()),
-        ])
-        .stable_hash()
-    }
-
-    fn __str__(&self) -> &str {
-        self.inner.name()
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "FixBranch({:?}, version={:?}, aliases={:?})",
-            self.inner.name(),
-            self.inner.version().to_string(),
-            self.aliases(),
-        )
-    }
-
-    fn __hash__(&self) -> isize {
-        crate::python_hash(self.stable_hash())
-    }
-
-    fn __richcmp__(
-        &self,
-        other: &Bound<'_, PyAny>,
-        operation: pyo3::class::basic::CompareOp,
-    ) -> PyResult<Py<PyAny>> {
-        let py = other.py();
-        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
-            return Ok(py.NotImplemented());
-        };
-        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
-            .into_pyobject(py)?
-            .to_owned()
-            .into_any()
-            .unbind())
-    }
-
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<BranchPickle> {
-        Ok((
-            py.get_type::<Self>().getattr("_from_parts")?.unbind(),
-            (
-                self.inner.name().to_owned(),
-                self.inner.version().to_string(),
-                self.aliases().into_iter().map(str::to_owned).collect(),
-            ),
-        ))
-    }
-
-    /// Rebuild the exact declaration pickle and repr carry.
-    #[staticmethod]
-    fn _from_parts(name: &str, version: &str, aliases: Vec<String>) -> PyResult<Self> {
-        Self::new(name, Some(version), Some(aliases))
-    }
-
-    fn __copy__(&self) -> Self {
-        self.clone()
-    }
-
-    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        self.clone()
-    }
-}
-
-/// Read a branch declaration, or the name of one.
-pub(crate) fn branch_value_from_py(value: &Bound<'_, PyAny>) -> PyResult<PyFixBranch> {
-    if let Ok(branch) = value.extract::<PyRef<'_, PyFixBranch>>() {
-        return Ok(branch.clone());
-    }
-    if let Ok(text) = value.extract::<&str>() {
-        return branch_from_py(text).map(PyFixBranch::from_core);
-    }
-    Err(PyTypeError::new_err(
-        "expected a yggdryl.fix.FixBranch or a branch name",
-    ))
 }

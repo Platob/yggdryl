@@ -4,17 +4,15 @@
 //! individual documents; their native Null-typed reference occurrences resolve
 //! once at this boundary into shared, typed Field subtrees.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 
 use smol_str::format_smolstr;
 
-use super::registry::canonical_id;
-use super::{FixBranch, FixRegistry};
+use super::FixRegistry;
 use crate::holder::Holder;
 use crate::text::Formatting;
-use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, Url, Version};
+use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, Url};
 
-const BRANCHES: &str = "branches.json";
 const SHARD_WIDTH: i32 = 100;
 const LOAD_ORDER: [FixCategory; 4] = [
     FixCategory::Fields,
@@ -40,10 +38,6 @@ fn shard_index(entry: &Holder) -> Option<i32> {
         return None;
     }
     stem.parse().ok()
-}
-
-fn branch_of(entry: &Holder) -> Result<FixBranch> {
-    FixBranch::from_str(entry.url().and_then(Url::file_name).unwrap_or_default())
 }
 
 fn located(error: Error, entry: &Holder) -> Error {
@@ -97,12 +91,12 @@ fn located(error: Error, entry: &Holder) -> Error {
     }
 }
 
-/// What one named definition is keyed by: its category, its branch, and its
-/// canonical spelling.
-pub(super) type DefinitionKey = (FixCategory, FixBranch, String);
+/// What one named definition is keyed by: its category and its canonical
+/// spelling.
+pub(super) type DefinitionKey = (FixCategory, String);
 
-pub(super) fn definition_key(category: FixCategory, field: &Field) -> Result<DefinitionKey> {
-    Ok((category, field.as_fix().branch()?, field.name().to_owned()))
+pub(super) fn definition_key(category: FixCategory, field: &Field) -> DefinitionKey {
+    (category, field.name().to_owned())
 }
 
 /// The definition a field restates, when it carries a reference marker.
@@ -130,19 +124,14 @@ impl Resolver<'_> {
         }
         if self.active.len() >= 64 || self.active.contains(key) {
             return Err(Error::InvalidRecord {
-                path: key.2.as_str().into(),
+                path: key.1.as_str().into(),
                 reason: "expected an acyclic FIX reference graph nested at most 64 levels".into(),
             });
         }
         let field = self
             .raw
             .get(key)
-            .ok_or_else(|| {
-                Error::absent(
-                    key.0.as_str(),
-                    format_args!("{} in branch {}", key.2, key.1),
-                )
-            })?
+            .ok_or_else(|| Error::absent(key.0.as_str(), key.1.as_str()))?
             .clone();
         self.active.push(key.clone());
         let resolved = self.children(field, depth)?;
@@ -184,26 +173,18 @@ impl Resolver<'_> {
                 reason: "stored FIX references require the Null placeholder datatype".into(),
             });
         }
-        let branch = field.as_fix().branch()?;
         let (mut resolved, height) = if category == FixCategory::Fields {
-            (
-                self.fields
-                    .definition(category, name, Some(&branch))?
-                    .clone(),
-                0,
-            )
+            (self.fields.definition(category, name)?.clone(), 0)
         } else {
-            let exact = (category, branch.clone(), name.to_owned());
+            let exact = (category, name.to_owned());
             let key = self
                 .raw
                 .get_key_value(&exact)
                 .map(|(key, _)| key)
                 .or_else(|| {
-                    self.raw.keys().find(|key| {
-                        key.0 == category
-                            && key.1.has_identity(&branch)
-                            && crate::types::folds_equal(&key.2, name)
-                    })
+                    self.raw
+                        .keys()
+                        .find(|key| key.0 == category && crate::types::folds_equal(&key.1, name))
                 })
                 .cloned()
                 .ok_or_else(|| Error::absent(category.as_str(), name))?;
@@ -267,12 +248,8 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
     if !root {
         if let Some((category, name)) = reference(&field) {
             let name = name.to_owned();
-            let branch = field.as_fix().branch()?;
             let mut placeholder = DataType::Null.nullable_field(field.name());
             placeholder.set_nullable(field.is_nullable());
-            if !branch.is_standard() {
-                placeholder.as_fix_mut().set_branch(&branch)?;
-            }
             match category {
                 FixCategory::Fields => placeholder.as_fix_mut().set_field_ref(&name)?,
                 FixCategory::Groups => placeholder.as_fix_mut().set_group(&name)?,
@@ -310,25 +287,27 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
 /// Whether a field is one the crate defines rather than a store.
 ///
 /// Both halves of every store ask this: a writer to leave them out, a reader
-/// to read past a copy an older writer left in. The branch is part of the
-/// test because a venue may hold its own tag in the same numeric block.
+/// to read past a copy an older writer left in.
 fn is_crate_field(field: &Field) -> bool {
-    let held = field.as_fix();
-    held.branch().is_ok_and(|branch| branch.is_standard())
-        && held.tag().ok().flatten().is_some_and(super::is_crate_tag)
+    field
+        .as_fix()
+        .tag()
+        .ok()
+        .flatten()
+        .is_some_and(super::is_crate_tag)
 }
 
 impl FixRegistry {
     /// Reads a complete registry snapshot from JSON.
     ///
     /// `fields`, `messages`, `components`, and `groups` are arrays of native
-    /// Field documents. `branches` uses the folder store's branch records.
-    /// References resolve through the same bounded graph loader as the store.
+    /// Field documents. References resolve through the same bounded graph
+    /// loader as the store.
     pub fn from_json(input: &str) -> Result<Self> {
         Self::from_snapshot(&crate::from_json_scalar(input)?)
     }
 
-    /// Renders all categories and branch declarations as canonical JSON.
+    /// Renders all categories as canonical JSON.
     ///
     /// Referenced occurrences keep their native Null placeholders; loading
     /// reconstructs the same resolved catalog. No filesystem I/O is performed.
@@ -341,7 +320,7 @@ impl FixRegistry {
     /// registry.create_definition(FixCategory::Messages, message)?;
     /// let restored = FixRegistry::from_json(&registry.into_json()?)?;
     /// assert_eq!(restored, registry);
-    /// assert_eq!(restored.msgtype("D", None)?.name(), "Order");
+    /// assert_eq!(restored.msgtype("D")?.name(), "Order");
     /// # Ok::<(), yggdryl::Error>(())
     /// ```
     pub fn into_json(&self) -> Result<String> {
@@ -350,7 +329,7 @@ impl FixRegistry {
 
     fn snapshot(&self) -> Result<Scalar> {
         self.validate_catalog()?;
-        let mut document = Vec::with_capacity(FixCategory::ALL.len() + 1);
+        let mut document = Vec::with_capacity(FixCategory::ALL.len());
         for category in FixCategory::ALL {
             let fields = if category == FixCategory::Fields {
                 // The crate's own fields are not a store's to state: every
@@ -372,14 +351,6 @@ impl FixRegistry {
             };
             document.push((category.as_str(), Scalar::from_sequence(fields)));
         }
-        document.push((
-            "branches",
-            Scalar::from_sequence(
-                self.branch_values()
-                    .map(branch_into_value)
-                    .collect::<Result<Vec<_>>>()?,
-            ),
-        ));
         Scalar::from_record(document)
     }
 
@@ -389,14 +360,13 @@ impl FixRegistry {
             reason: crate::text::expected_got("a JSON registry object", document.kind()),
         })?;
         for key in record.keys() {
-            if key != "branches"
-                && !FixCategory::ALL
-                    .iter()
-                    .any(|category| category.as_str() == key)
+            if !FixCategory::ALL
+                .iter()
+                .any(|category| category.as_str() == key)
             {
                 return Err(Error::InvalidRecord {
                     path: key.clone(),
-                    reason: "expected fields, messages, components, groups, or branches".into(),
+                    reason: "expected fields, messages, components, or groups".into(),
                 });
             }
         }
@@ -421,7 +391,7 @@ impl FixRegistry {
                     }
                     registry.create_definition(category, field)?;
                 } else {
-                    let key = definition_key(category, &field)?;
+                    let key = definition_key(category, &field);
                     if raw.insert(key, field).is_some() {
                         return Err(Error::conflict(
                             "one FIX definition",
@@ -433,10 +403,6 @@ impl FixRegistry {
             }
         }
         registry.load_definitions(raw, None)?;
-        let branches = record
-            .get("branches")
-            .ok_or_else(|| Error::absent("a branches array", "branches"))?;
-        registry.load_branch_document(branches, false)?;
         registry.validate_catalog()?;
         registry.refresh_msgtype_aliases();
         Ok(registry)
@@ -455,7 +421,7 @@ impl FixRegistry {
             .all()
             .map(|entry| {
                 let field = compact(entry.field.as_field().clone(), true)?;
-                Ok((definition_key(entry.category, &field)?, field))
+                Ok((definition_key(entry.category, &field), field))
             })
             .collect()
     }
@@ -488,8 +454,8 @@ impl FixRegistry {
         for key in keys {
             let (field, _) = resolved
                 .get(&key)
-                .ok_or_else(|| Error::absent(key.0.as_str(), key.2.as_str()))?;
-            catalog.insert(key.0, key.1, field.clone())?;
+                .ok_or_else(|| Error::absent(key.0.as_str(), key.1.as_str()))?;
+            catalog.insert(key.0, field.clone())?;
         }
         self.catalog = catalog;
         self.refresh_msgtype_aliases();
@@ -499,8 +465,9 @@ impl FixRegistry {
     /// Loads fields, messages, components, and groups.
     ///
     /// Scalar shards are arrays; named definitions are single native Field
-    /// documents. References resolve once, with missing names, cycles and
-    /// disagreeing folder identities rejected before a registry is returned.
+    /// documents. References resolve once, with missing names and cycles
+    /// rejected before a registry is returned. A folder inside a category
+    /// is not a store's layout and is passed over.
     pub fn from_handle(handle: &dyn IOBase) -> Result<Self> {
         let mut registry = Self::new();
         let mut raw = BTreeMap::new();
@@ -508,29 +475,12 @@ impl FixRegistry {
             let root = handle.child_by_path(category.as_str())?;
             for entry in root.ls(false, false) {
                 let entry = entry?;
-                if entry.is_container() {
-                    let branch = branch_of(&entry).map_err(|error| located(error, &entry))?;
-                    for child in entry.ls(false, false) {
-                        let child = child?;
-                        registry
-                            .load_entry(&child, category, &branch, &mut raw)
-                            .map_err(|error| located(error, &child))?;
-                    }
-                } else {
-                    registry
-                        .load_entry(&entry, category, &FixBranch::STANDARD, &mut raw)
-                        .map_err(|error| located(error, &entry))?;
-                }
+                registry
+                    .load_entry(&entry, category, &mut raw)
+                    .map_err(|error| located(error, &entry))?;
             }
         }
         registry.load_definitions(raw, Some(handle))?;
-        let manifest = handle.child_by_path(BRANCHES)?;
-        let bytes = manifest.read_all_bytes()?;
-        if !bytes.is_empty() {
-            registry
-                .load_branch_manifest(&bytes)
-                .map_err(|error| located(error, &manifest))?;
-        }
         registry.validate_catalog()?;
         registry.refresh_msgtype_aliases();
         Ok(registry)
@@ -553,11 +503,7 @@ impl FixRegistry {
                 let Some(root) = root else {
                     return Err(error);
                 };
-                let path = if key.1.is_standard() {
-                    format!("{}/{}.json", key.0, key.2)
-                } else {
-                    format!("{}/{}/{}.json", key.0, key.1, key.2)
-                };
+                let path = format!("{}/{}.json", key.0, key.1);
                 return Err(located(error, &root.child_by_path(&path)?));
             }
         }
@@ -566,9 +512,7 @@ impl FixRegistry {
             for key in keys.iter().filter(|key| key.0 == category) {
                 let (field, _) = resolved
                     .get(key)
-                    .ok_or_else(|| Error::absent(category.as_str(), key.2.as_str()))?;
-                let branch = field.as_fix().branch()?;
-                self.check_branch(&branch)?;
+                    .ok_or_else(|| Error::absent(category.as_str(), key.1.as_str()))?;
                 // A document written before named definitions carried a tag
                 // states none, so one is derived here exactly as
                 // `insert_definition` derives it. A document that states one
@@ -578,8 +522,7 @@ impl FixRegistry {
                     let tag = self.derived_definition_tag(field.name())?;
                     field.as_fix_mut().set_tag(tag)?;
                 }
-                self.catalog.insert(category, branch.clone(), field)?;
-                self.ensure_branch(branch);
+                self.catalog.insert(category, field)?;
             }
         }
         Ok(())
@@ -589,7 +532,6 @@ impl FixRegistry {
         &mut self,
         entry: &Holder,
         category: FixCategory,
-        branch: &FixBranch,
         raw: &mut BTreeMap<DefinitionKey, Field>,
     ) -> Result<()> {
         if entry.is_container() || entry.url().and_then(Url::extension) != Some("json") {
@@ -606,15 +548,15 @@ impl FixRegistry {
             })?;
             for value in fields {
                 let field = Field::from_value(value.clone())?;
-                let id = canonical_id(&field)?;
+                let (tag, _) = super::registry::canonical_identity(&field)?;
                 // The crate's own tags are never a store's to define: every
                 // registry holds the crate's definition from construction, and
                 // a copy an older store wrote is read past rather than allowed
                 // to replace it.
-                if branch.is_standard() && super::is_crate_tag(id.tag()) {
+                if super::is_crate_tag(tag) {
                     continue;
                 }
-                if shard_of(id.tag()) != shard {
+                if shard_of(tag) != shard {
                     return Err(Error::InvalidRecord {
                         path: field.name().into(),
                         reason: crate::text::expected_got(
@@ -623,23 +565,21 @@ impl FixRegistry {
                                 shard * SHARD_WIDTH,
                                 shard * SHARD_WIDTH + SHARD_WIDTH - 1
                             ),
-                            format_args!("tag {}", id.tag()),
+                            format_args!("tag {tag}"),
                         ),
                     });
                 }
-                Self::check_folder(&field, branch)?;
                 self.create_definition(FixCategory::Fields, field)?;
             }
         } else {
             let field = Field::from_json_bytes(&entry.read_all_bytes()?)?;
-            Self::check_folder(&field, branch)?;
             if entry.url().and_then(Url::stem) != Some(field.name()) {
                 return Err(Error::InvalidRecord {
                     path: field.name().into(),
                     reason: "expected the definition name to equal its filename stem".into(),
                 });
             }
-            let key = definition_key(category, &field)?;
+            let key = definition_key(category, &field);
             if raw.insert(key, field).is_some() {
                 return Err(Error::conflict(
                     "one FIX definition",
@@ -647,20 +587,6 @@ impl FixRegistry {
                     category.as_str(),
                 ));
             }
-        }
-        Ok(())
-    }
-
-    fn check_folder(field: &Field, branch: &FixBranch) -> Result<()> {
-        let declared = field.as_fix().branch()?;
-        if !declared.has_identity(branch) {
-            return Err(Error::InvalidRecord {
-                path: field.name().into(),
-                reason: crate::text::expected_got(
-                    format_args!("the branch {:?} its folder names", branch.name()),
-                    format_args!("{:?}", declared.name()),
-                ),
-            });
         }
         Ok(())
     }
@@ -673,44 +599,26 @@ impl FixRegistry {
     pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()> {
         self.validate_catalog()?;
         let mut documents: BTreeMap<String, Scalar> = BTreeMap::new();
-        let mut shards: BTreeMap<(FixBranch, i32), Vec<Field>> = BTreeMap::new();
+        let mut shards: BTreeMap<i32, Vec<Field>> = BTreeMap::new();
         for field in self {
-            let id = canonical_id(field)?;
-            let branch = field.as_fix().branch()?;
+            let (tag, _) = super::registry::canonical_identity(field)?;
             // The crate's own fields are the crate's rather than the store's:
             // every registry holds them from construction, so a store that
             // wrote them would only hand them back to a reader that already
             // had them.
-            if branch.is_standard() && super::is_crate_tag(id.tag()) {
+            if super::is_crate_tag(tag) {
                 continue;
             }
-            shards
-                .entry((branch, shard_of(id.tag())))
-                .or_default()
-                .push(field.clone());
+            shards.entry(shard_of(tag)).or_default().push(field.clone());
         }
-        for ((branch, shard), fields) in shards {
-            let path = if branch.is_standard() {
-                format!("fields/{shard}.json")
-            } else {
-                format!("fields/{branch}/{shard}.json")
-            };
+        for (shard, fields) in shards {
             documents.insert(
-                path,
+                format!("fields/{shard}.json"),
                 Scalar::from_sequence(fields.into_iter().map(Field::into_value)),
             );
         }
         for entry in self.catalog.all() {
-            let path = if entry.branch.is_standard() {
-                format!("{}/{}.json", entry.category, entry.field.name())
-            } else {
-                format!(
-                    "{}/{}/{}.json",
-                    entry.category,
-                    entry.branch,
-                    entry.field.name()
-                )
-            };
+            let path = format!("{}/{}.json", entry.category, entry.field.name());
             documents.insert(
                 path,
                 compact(entry.field.as_field().clone(), true)?.into_value(),
@@ -736,193 +644,17 @@ impl FixRegistry {
                     .unwrap_or_default()
                     .to_owned();
                 if entry.is_container() {
-                    let prefix = format!("{category}/{name}/");
-                    if !documents.keys().any(|path| path.starts_with(&prefix)) {
-                        entry.remove(true)?;
-                        continue;
-                    }
-                    for child in entry.ls(false, false) {
-                        let mut child = child?;
-                        if child.url().and_then(Url::extension) == Some("json") {
-                            let path = format!(
-                                "{prefix}{}",
-                                child.url().and_then(Url::file_name).unwrap_or_default()
-                            );
-                            if !documents.contains_key(&path) {
-                                child.remove(false)?;
-                            }
-                        }
-                    }
-                } else if entry.url().and_then(Url::extension) == Some("json")
+                    // A folder inside a category is not a store's layout,
+                    // and a store leaves alone what it did not write.
+                    continue;
+                }
+                if entry.url().and_then(Url::extension) == Some("json")
                     && !documents.contains_key(&format!("{category}/{name}"))
                 {
                     entry.remove(false)?;
                 }
             }
         }
-        self.write_branch_manifest(root)
-    }
-    fn load_branch_manifest(&mut self, bytes: &[u8]) -> Result<()> {
-        let document = crate::from_json_scalar(bytes)?;
-        self.load_branch_document(&document, true)
-    }
-
-    fn load_branch_document(&mut self, document: &Scalar, require_definitions: bool) -> Result<()> {
-        let Some(entries) = document.as_sequence() else {
-            return Err(Error::InvalidRecord {
-                path: BRANCHES.into(),
-                reason: crate::text::expected_got(
-                    "an array of FIX branch records",
-                    document.kind(),
-                ),
-            });
-        };
-        let mut seen = BTreeSet::new();
-        for value in entries {
-            let branch = branch_from_value(value)?;
-            if !seen.insert(branch.name().to_owned()) {
-                return Err(Error::InvalidRecord {
-                    path: branch.name().into(),
-                    reason: "the branch manifest declares each branch once".into(),
-                });
-            }
-            if require_definitions && !self.has_branch_definitions(&branch) {
-                return Err(Error::InvalidRecord {
-                    path: branch.name().into(),
-                    reason: "the branch manifest names a branch no field belongs to".into(),
-                });
-            }
-            self.set_branch(branch)?;
-        }
         Ok(())
     }
-
-    fn write_branch_manifest(&self, root: &mut dyn IOBase) -> Result<()> {
-        let mut branches: Vec<&FixBranch> = self
-            .branch_values()
-            .filter(|branch| !branch.is_standard())
-            .collect();
-        branches.sort_by_key(|branch| branch.name());
-        let mut values = Vec::with_capacity(branches.len());
-        for branch in branches {
-            if !self.has_branch_definitions(branch) {
-                return Err(Error::InvalidRecord {
-                    path: branch.name().into(),
-                    reason: "a branch record must belong to at least one FIX field".into(),
-                });
-            }
-            values.push(branch_into_value(branch)?);
-        }
-        let mut manifest = root.child_by_path(BRANCHES)?;
-        if values.is_empty() {
-            manifest.remove(false)?;
-            return Ok(());
-        }
-        let document = Scalar::from_sequence(values);
-        let bytes =
-            crate::text::json::into_bytes_with_formatting(&document, Formatting::indented(2))?;
-        manifest.write_all_bytes(&bytes)
-    }
-}
-
-fn branch_into_value(branch: &FixBranch) -> Result<Scalar> {
-    let mut record = vec![
-        ("name", Scalar::from(branch.name())),
-        // The published join key, not a cache: the folded-name derivation is
-        // a one-way XXH32, so an external reader holding a branch digest and
-        // wanting the declaration behind it could not reproduce this
-        // otherwise. Signed, because that is the widest integer every exchange
-        // format this crate writes can hold.
-        ("branch", Scalar::from(super::signed(branch.digest()))),
-        ("version", Scalar::from(branch.version())),
-    ];
-    // Written only when there are any, so a dictionary that declares no
-    // second spelling writes the record it always wrote.
-    if !branch.aliases().is_empty() {
-        record.push((
-            "aliases",
-            Scalar::from_sequence(
-                branch
-                    .aliases()
-                    .iter()
-                    .map(|alias| Scalar::from(alias.as_str()))
-                    .collect::<Vec<_>>(),
-            ),
-        ));
-    }
-    Scalar::from_record(record)
-}
-
-fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
-    let Some(record) = value.as_record() else {
-        return Err(Error::InvalidRecord {
-            path: BRANCHES.into(),
-            reason: crate::text::expected_got("a FIX branch record", value.kind()),
-        });
-    };
-    const KEYS: [&str; 4] = ["name", "branch", "version", "aliases"];
-    if let Some(key) = record.keys().find(|key| !KEYS.contains(&key.as_str())) {
-        return Err(Error::InvalidRecord {
-            path: key.clone(),
-            reason: "an unknown FIX branch manifest property".into(),
-        });
-    }
-    let name = record
-        .get("name")
-        .and_then(Scalar::as_str)
-        .ok_or_else(|| Error::InvalidRecord {
-            path: "name".into(),
-            reason: "a branch record requires a UTF-8 name".into(),
-        })?;
-    let version = record
-        .get("version")
-        .map(|value| {
-            value
-                .as_str()
-                .ok_or_else(|| Error::InvalidRecord {
-                    path: "version".into(),
-                    reason: "a branch version must be text".into(),
-                })?
-                .parse::<Version>()
-        })
-        .transpose()?
-        .unwrap_or_default();
-    let mut branch = FixBranch::from_parts(name, version)?;
-    // Absent is no aliases rather than a defect: a manifest written before a
-    // dictionary named a second spelling declares none, which is the truth.
-    if let Some(aliases) = record.get("aliases") {
-        let Some(entries) = aliases.as_sequence() else {
-            return Err(Error::InvalidRecord {
-                path: "aliases".into(),
-                reason: crate::text::expected_got("an array of branch names", aliases.kind()),
-            });
-        };
-        let mut held = Vec::with_capacity(entries.len());
-        for value in entries {
-            held.push(value.as_str().ok_or_else(|| Error::InvalidRecord {
-                path: "aliases".into(),
-                reason: "a branch alias must be text".into(),
-            })?);
-        }
-        branch = branch.with_aliases(held)?;
-    }
-    if let Some(declared) = record.get("branch") {
-        let declared = declared
-            .as_i64()
-            .and_then(|value| i32::try_from(value).ok())
-            .ok_or_else(|| Error::InvalidRecord {
-                path: "branch".into(),
-                reason: "a branch digest must fit an int32".into(),
-            })?;
-        if super::unsigned(declared) != branch.digest() {
-            return Err(Error::InvalidRecord {
-                path: branch.name().into(),
-                reason: crate::text::expected_got(
-                    format_args!("the derived digest {}", super::signed(branch.digest())),
-                    format_args!("declared digest {declared}"),
-                ),
-            });
-        }
-    }
-    Ok(branch)
 }

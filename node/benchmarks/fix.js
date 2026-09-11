@@ -3,7 +3,7 @@
 // Boundary cost of the FIX dictionary, against the native numbers.
 //
 // Every case here is one crossing over a registry the core resolves: what is
-// measured is the coercion of the key - a tag, a branch, an identifier - the
+// measured is the coercion of the key - a tag, a name, an identifier - the
 // wrapper the answer is put in, and - for the two loads - the shard read the
 // boundary only names. The generated registries are written to a temporary
 // folder and removed on the way out, so the only tracked input is the seed
@@ -16,7 +16,7 @@ const { performance } = require('node:perf_hooks')
 
 const arrow = require('apache-arrow')
 
-const { BatchReader, Field, MimeType, Scalar, fields, fix } = require('yggdryl')
+const { BatchReader, Field, MimeType, Scalar, TextLine, fields, fix } = require('yggdryl')
 
 const iterations = Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '5000', 10)
 if (!Number.isSafeInteger(iterations) || iterations <= 0) {
@@ -55,7 +55,7 @@ function benchmarkLoad(name, operation) {
 
 const SEED = path.join(__dirname, '..', '..', 'config', 'fix')
 const WIDE_FIELDS = 200
-const VENDOR_BRANCH = 'cme'
+const VENDOR_DIALECT = 'cme'
 const VENDOR_FIELDS = 200
 const FIXML_LINE = Buffer.from(
   '8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|',
@@ -77,32 +77,40 @@ const generated = path.join(workspace, 'generated')
 
 const registry = fix.FixRegistry.fromHandle(SEED)
 
-// The seed beside a vendor dictionary, for the cross-branch rows.
-const twoBranches = (() => {
-  const all = []
+// The seed beside a vendor dictionary's fields, each stamped with the
+// dialect that contributed it, for the rows over a registry two
+// dictionaries fed.
+const twoDialects = (() => {
+  const held = registry.clone()
   for (let offset = 0; offset < VENDOR_FIELDS; offset += 1) {
     const field = Field.from(`Venue${offset}: utf8`)
-    field.fix.id = `${5000 + offset}:${VENDOR_BRANCH}`
+    field.fix.tag = 5000 + offset
+    field.fix.branches = [VENDOR_DIALECT]
     field.fix.aliases = [`VenueAlias${offset}`]
-    all.push(field)
+    held.insert(field)
   }
-  const vendor = fix.FixRegistry.fromFields(all).toJSON()
-  const document = registry.toJSON()
-  document.fields.push(...vendor.fields)
-  document.branches.push(...vendor.branches.filter(branch => branch.name !== ''))
-  return fix.FixRegistry.fromJson(JSON.stringify(document))
+  return held
+})()
+const VENUE_ID = twoDialects.fieldByTag(5001).fix.id
+const SYMBOL_ID = registry.fieldByTag(55).fix.id
+// An identifier no field stands behind: derived for a tag the seed lacks.
+const MISSING_ID = (() => {
+  const stray = Field.from('Stray: utf8')
+  stray.fix.tag = 9999
+  return stray.fix.id
 })()
 
-// A field carrying a vendor identity, for the two identity-property rows.
+// A field carrying a vendor membership, for the identity-property rows.
 const tagged = Field.from('TradeID: utf8')
-tagged.fix.id = `5001:${VENDOR_BRANCH}`
+tagged.fix.tag = 5001
+tagged.fix.branches = [VENDOR_DIALECT]
 
 const order = fields.struct(
   'NewOrderSingle',
   [
     registry.fieldByTag(55),
     registry.fieldByTag(38),
-    registry.fieldByName('NoPartyIDs', fix.STANDARD_BRANCH),
+    registry.fieldByName('NoPartyIDs'),
     registry.definition('groups', 'Parties'),
   ],
   { nullable: false },
@@ -151,7 +159,7 @@ const singleton = catalog.msgtype('D')
 const codec = new fix.FixCodec(catalog)
 const ulregistry = new fix.FixRegistry()
 ulregistry.withUlbridgeFields()
-const ulcodec = new fix.FixCodec(ulregistry, { branch: 'ulbridge' })
+const ulcodec = new fix.FixCodec(ulregistry)
 
 function drain(values) {
   let count = 0
@@ -171,25 +179,26 @@ const capture = new arrow.Table({ body: arrow.vectorFromArray(LINES, new arrow.B
 const parsed = seedCodec.parseLine(Buffer.from(LINES[0])).next().value
 const parsedRow = parsed.intoRow(fixedSchema)
 const parsedIpc = seedCodec.parseTextArrowReader(capture).intoIpc()
-// The record door with a dialect each row names for itself: every other row
-// spells the branch a vendor field declared, the rest a plugin no branch is
-// named after, which keeps the codec's pin. A plugin's dialect resolves off
-// the codec's memo after the first row spelling it, so this is what a row
-// costs read under a dialect it names for itself.
+// The line door, each line as a text reader answers it.
+const TEXT_LINES = LINES.map((body, index) => new TextLine(index, Buffer.from(body)))
+// The same door with a `pluginid` capture on every line: the capture fills
+// the crate's own column and selects nothing, so this is what a line costs
+// with one more capture to place beside a venue field the one namespace
+// holds.
 const pluginRegistry = (() => {
   const held = registry.clone()
   const venue = Field.from('VenueTag: utf8')
-  venue.fix.id = `5001:${VENDOR_BRANCH}`
+  venue.fix.tag = 5001
+  venue.fix.branches = [VENDOR_DIALECT]
   held.insert(venue)
   return held
 })()
-const pluginCodec = new fix.FixCodec(pluginRegistry)
-const PLUGIN_RECORDS = LINES.map((body, index) => ({
-  body,
-  pluginid: index % 2 === 0 ? VENDOR_BRANCH : 'OMS_X1_TradeCapture',
-}))
-if (drain(pluginCodec.parseTextRecords(PLUGIN_RECORDS)) !== LINES.length) {
-  throw new Error('pluginid record cardinality mismatch')
+const pluginCodec = new fix.FixCodec(pluginRegistry, { captureNames: ['pluginid'] })
+const PLUGIN_LINES = LINES.map((body, index) =>
+  new TextLine(index, Buffer.from(body), [index % 2 === 0 ? VENDOR_DIALECT : 'OMS_X1_TradeCapture']),
+)
+if (drain(pluginCodec.parseTextLines(PLUGIN_LINES)) !== LINES.length) {
+  throw new Error('pluginid line cardinality mismatch')
 }
 if (drain(seedCodec.parseLines(LINES)) !== LINES.length) throw new Error('line cardinality mismatch')
 const sink = { write() {} }
@@ -208,40 +217,33 @@ function wildcard(size) {
 try {
   benchmark('fix/tag_hit', () => registry.getFieldByTag(55))
   benchmark('fix/alternate_tag_hit', () => registry.getFieldByTag(20))
-  benchmark('fix/id_hit', () => registry.getFieldById('55:'))
-  benchmark('fix/name_hit', () => registry.getFieldByName('Symbol', fix.STANDARD_BRANCH))
-  benchmark('fix/folded_name_hit', () => registry.getFieldByName('symbol', fix.STANDARD_BRANCH))
-  benchmark('fix/alias_hit', () => registry.getFieldByName('ticker', fix.STANDARD_BRANCH))
+  benchmark('fix/id_hit', () => registry.getFieldById(SYMBOL_ID))
+  benchmark('fix/name_hit', () => registry.getFieldByName('Symbol'))
+  benchmark('fix/folded_name_hit', () => registry.getFieldByName('symbol'))
+  benchmark('fix/alias_hit', () => registry.getFieldByName('ticker'))
   benchmark('fix/tag_miss', () => registry.getFieldByTag(9999))
-  benchmark('fix/name_miss', () => registry.getFieldByName('Nope', fix.STANDARD_BRANCH))
-  benchmark('fix/id_miss', () => registry.getFieldById('5001:cme'))
+  benchmark('fix/name_miss', () => registry.getFieldByName('Nope'))
+  benchmark('fix/id_miss', () => registry.getFieldById(MISSING_ID))
   benchmark('fix/generic_tag_hit', () => registry.getField(55))
   benchmark('fix/generic_name_hit', () => registry.getField('Symbol'))
-  benchmark('fix/field_by_path_one_segment', () =>
-    registry.fieldByPath('NoPartyIDs', fix.STANDARD_BRANCH),
-  )
-  benchmark('fix/field_by_path_two_segments', () =>
-    registry.fieldByPath('Parties.PartyID', fix.STANDARD_BRANCH),
-  )
-  benchmark('fix/vendor_id_hit_two_branches', () => twoBranches.getFieldById('5001:cme'))
-  benchmark('fix/vendor_name_hit_two_branches', () =>
-    twoBranches.getFieldByName('Venue1', VENDOR_BRANCH),
-  )
-  benchmark('fix/vendor_alias_hit_two_branches', () =>
-    twoBranches.getFieldByName('venuealias1', VENDOR_BRANCH),
-  )
-  benchmark('fix/vendor_tag_hit_inferred', () => twoBranches.getFieldByTag(5001))
-  benchmark('fix/standard_tag_hit_two_branches', () => twoBranches.getFieldByTag(55))
+  benchmark('fix/field_by_path_one_segment', () => registry.fieldByPath('NoPartyIDs'))
+  benchmark('fix/field_by_path_two_segments', () => registry.fieldByPath('Parties.PartyID'))
+  benchmark('fix/vendor_id_hit_two_dialects', () => twoDialects.getFieldById(VENUE_ID))
+  benchmark('fix/vendor_name_hit_two_dialects', () => twoDialects.getFieldByName('Venue1'))
+  benchmark('fix/vendor_alias_hit_two_dialects', () => twoDialects.getFieldByName('venuealias1'))
+  benchmark('fix/vendor_tag_hit_two_dialects', () => twoDialects.getFieldByTag(5001))
+  benchmark('fix/standard_tag_hit_two_dialects', () => twoDialects.getFieldByTag(55))
+  benchmark('fix/dialects_two_dialects', () => twoDialects.dialects())
   // A removal that finds nothing: the coercion and the probe, with no field
   // wrapped and no dictionary changed, so the loop stays repeatable.
-  benchmark('fix/remove_by_id_miss', () => twoBranches.removeById('9999:cme'))
-  benchmark('fix/field_branch', () => tagged.fix.branch)
+  benchmark('fix/remove_by_id_miss', () => twoDialects.removeById(MISSING_ID))
+  benchmark('fix/field_branches', () => tagged.fix.branches)
+  benchmark('fix/field_has_branch', () => tagged.fix.hasBranch(VENDOR_DIALECT))
   benchmark('fix/field_id', () => tagged.fix.id)
   benchmark('fix/message_get_by_tag', () => message.getByTag(55))
-  benchmark('fix/message_get_by_id', () => message.getById('55:'))
+  benchmark('fix/message_get_by_id', () => message.getById(SYMBOL_ID))
   benchmark('fix/message_get_by_name', () => message.getByName('ticker'))
   benchmark('fix/message_get_by_path', () => message.getByPath('Parties.0.PartyID'))
-  benchmark('fix/message_branch', () => message.branch)
   benchmark('fix/message_into_latest', () => message.intoLatest())
   benchmark('fix/infer_fixml_protocol', () => MimeType.inferBytes(FIXML_LINE))
   benchmark('fix/infer_ullink_msgtype', () => fix.FixCodec.inferMsgtypeText(ULLINK_LINE))
@@ -265,7 +267,7 @@ try {
   benchmark('fix/singleton_field', () => singleton.asField())
   benchmark('fix/singleton_hash', () => singleton.stableHash())
   benchmark('fix/singleton_compare', () => singleton.compare(singleton))
-  benchmark('fix/group_lookup', () => catalog.groupByCounter('453:'))
+  benchmark('fix/group_lookup', () => catalog.groupByCounter(453))
   benchmark('fix/catalog_hash', () => catalog.stableHash())
   benchmark('fix/catalog_snapshot_write', () => catalog.intoJson())
   benchmark('fix/catalog_snapshot_read', () => fix.FixRegistry.fromJson(snapshot))
@@ -307,11 +309,11 @@ try {
   benchmark('fix/message_from_row', () => fix.FixMsg.fromRow(fixedSchema, parsedRow, registry))
   const streams = Math.max(1, Math.round(iterations / 50))
   benchmarkStreams(`fix/parse_lines_drain/${LINES.length}`, streams, () => drain(seedCodec.parseLines(LINES)))
-  benchmarkStreams(`fix/parse_text_records_drain/${LINES.length}`, streams, () =>
-    drain(seedCodec.parseTextRecords(LINES.map((body) => ({ body })))),
+  benchmarkStreams(`fix/parse_text_lines_drain/${LINES.length}`, streams, () =>
+    drain(seedCodec.parseTextLines(TEXT_LINES)),
   )
-  benchmarkStreams(`fix/parse_text_records_pluginid_drain/${LINES.length}`, streams, () =>
-    drain(pluginCodec.parseTextRecords(PLUGIN_RECORDS)),
+  benchmarkStreams(`fix/parse_text_lines_pluginid_drain/${LINES.length}`, streams, () =>
+    drain(pluginCodec.parseTextLines(PLUGIN_LINES)),
   )
   benchmarkStreams(`fix/parse_text_arrow_reader/${LINES.length}`, streams, () =>
     seedCodec.parseTextArrowReader(capture).intoTable().numRows,
@@ -336,7 +338,7 @@ try {
     benchmark(`fix/ulconfigs_drain/${size}`, () => drain(fix.UlPlugin.fromJsonBytes(body)))
     benchmark(`fix/messages_first/${size}`, () => ulcodec.parseLine(body).next().value)
     benchmark(`fix/messages_drain/${size}`, () => drain(ulcodec.parseLine(body)))
-    benchmark(`fix/records_drain/${size}`, () => drain(ulcodec.parseTextRecord({ url: 'capture.log', body })))
+    benchmark(`fix/text_line_drain/${size}`, () => drain(ulcodec.parseTextLine(new TextLine(0, body))))
     benchmark(`fix/ulconfig_hash/${size}`, () => selected.stableHash())
   }
   benchmark('fix/register_ulbridge_fields', () => new fix.FixRegistry().withUlbridgeFields())

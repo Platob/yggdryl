@@ -1,4 +1,4 @@
-//! The fields this crate invents, on the standard branch above every published tag.
+//! The fields this crate invents, above every published tag.
 //!
 //! A capture states things about a message that no dictionary publishes: what
 //! its bytes hash to, which way its line moved, which version it was read at,
@@ -12,14 +12,16 @@
 //! ordinary field: they lift, column, serialize and resolve like every other
 //! field with no special case anywhere.
 //!
-//! # Why the standard branch, and why 65000
+//! # Why 65000, and why each is a tag and a name
 //!
 //! Their tags sit above every tag FIX publishes and above the user-defined
 //! ranges venues share, so they collide with nothing a dictionary declares
-//! and need no branch of their own: `timestamp` is one identity in every
+//! and belong to no dialect: `timestamp` is one identity in every
 //! dictionary, a bridge row spelling `SESSIONID` lands on the crate's own
 //! column, and a name every registry carries is never an unknown key.
-//! [`is_crate_tag`] is the whole test.
+//! [`is_crate_tag`] is the whole test. A field is its tag and its name, so
+//! each is declared as both - `PLUGINID_TAG_NAME` is `(65_009, "pluginid")` -
+//! and a caller reads the half it needs.
 //!
 //! # And why one of them is not here
 //!
@@ -37,7 +39,7 @@
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! One mechanism, sixteen fields.
+//! One mechanism, twenty fields.
 
 use std::sync::LazyLock;
 
@@ -54,69 +56,75 @@ pub const CRATE_TAG_MIN: i32 = 65_000;
 /// to grow without ever reaching the one above it.
 pub const CRATE_TAG_MAX: i32 = 65_100;
 
-/// The tag carrying a message's value digest.
-pub const MSGHASH_TAG: i32 = 65_000;
+/// The tag and name carrying a message's value digest.
+pub const MSGHASH_TAG_NAME: (i32, &str) = (65_000, "msghash");
 
-/// The tag carrying the FIX version a message was read at.
-pub const VERSION_TAG: i32 = 65_001;
+/// The tag and name carrying the FIX version a message was read at.
+pub const VERSION_TAG_NAME: (i32, &str) = (65_001, "version");
 
-/// The tag carrying one instrument symbol that is the same across venues.
-pub const SYMBOLTICKER_TAG: i32 = 65_002;
+/// The tag and name carrying one instrument symbol that is the same across
+/// venues.
+pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_002, "symbolticker");
 
-/// The tag carrying the timestamp a capture is ordered by.
-pub const TIMESTAMP_TAG: i32 = 65_003;
+/// The tag and name carrying the timestamp a capture is ordered by; the name
+/// is also what its partition names.
+pub const TIMESTAMP_TAG_NAME: (i32, &str) = (65_003, "timestamp");
 
-/// The tag carrying the partition that timestamp falls in.
-pub const UNIXPARTITION_TAG: i32 = 65_004;
+/// The tag and name carrying the partition that timestamp falls in.
+pub const UNIXPARTITION_TAG_NAME: (i32, &str) = (65_004, "unixpartition");
 
-/// The tag carrying the client order identifier this one descends from.
-pub const PARENTCLORDID_TAG: i32 = 65_005;
+/// The tag and name carrying the client order identifier this one descends
+/// from.
+pub const PARENTCLORDID_TAG_NAME: (i32, &str) = (65_005, "parentclordid");
 
-/// The tag carrying the venue order identifier this one descends from.
-pub const PARENTORDERID_TAG: i32 = 65_006;
+/// The tag and name carrying the venue order identifier this one descends
+/// from.
+pub const PARENTORDERID_TAG_NAME: (i32, &str) = (65_006, "parentorderid");
 
-/// The tag carrying the session a message came from, as the message states it.
-pub const SENDERSESSIONID_TAG: i32 = 65_007;
+/// The tag and name carrying the session a message came from, as the message
+/// states it.
+pub const SENDERSESSIONID_TAG_NAME: (i32, &str) = (65_007, "sendersessionid");
 
-/// The tag carrying the message context a bridge handled the message in.
-pub const MSGCTXID_TAG: i32 = 65_008;
+/// The tag and name carrying the message context a bridge handled the
+/// message in.
+pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_008, "msgctxid");
 
-/// The tag carrying the plugin that logged the line, as a bridge names it.
-pub const PLUGINID_TAG: i32 = 65_009;
+/// The tag and name carrying the plugin that logged the line, as a bridge
+/// names it.
+pub const PLUGINID_TAG_NAME: (i32, &str) = (65_009, "pluginid");
 
-/// The tag carrying the plugin the message came through before the one that
-/// logged it, as a bridge names it.
-pub const PREVPLUGINID_TAG: i32 = 65_010;
+/// The tag and name carrying the plugin the message came through before the
+/// one that logged it, as a bridge names it.
+pub const PREVPLUGINID_TAG_NAME: (i32, &str) = (65_010, "prevpluginid");
 
-/// The tag carrying the name of the session a message came from.
-pub const SENDERSESSIONNAME_TAG: i32 = 65_011;
+/// The tag and name carrying the name of the session a message came from.
+pub const SENDERSESSIONNAME_TAG_NAME: (i32, &str) = (65_011, "sendersessionname");
 
-/// The tag carrying the name of the session a message went to.
-pub const TARGETSESSIONNAME_TAG: i32 = 65_012;
+/// The tag and name carrying the name of the session a message went to.
+pub const TARGETSESSIONNAME_TAG_NAME: (i32, &str) = (65_012, "targetsessionname");
 
-/// The tag carrying the instrument's ISIN.
-pub const ISINCODE_TAG: i32 = 65_013;
+/// The tag and name carrying the instrument's ISIN.
+pub const ISINCODE_TAG_NAME: (i32, &str) = (65_013, "isincode");
 
-/// The tag carrying the market the message names, as an ISO 10383 MIC.
-pub const MICCODE_TAG: i32 = 65_014;
+/// The tag and name carrying the market the message names, as an ISO 10383
+/// MIC.
+pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
 
-/// The tag carrying the state the order is in.
-pub const STATE_TAG: i32 = 65_015;
+/// The tag and name carrying the state the order is in.
+pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
 
-/// The tag carrying the instrument's own identity.
-pub const INSTID_TAG: i32 = 65_016;
+/// The tag and name carrying the instrument's own identity.
+pub const INSTID_TAG_NAME: (i32, &str) = (65_016, "instid");
 
-/// The tag carrying the message's own time-coupled identity.
-pub const ID_TAG: i32 = 65_017;
+/// The tag and name carrying the message's own time-coupled identity.
+pub const ID_TAG_NAME: (i32, &str) = (65_017, "id");
 
-/// The tag carrying the order chain's identity.
-pub const PERSISTENTID_TAG: i32 = 65_018;
+/// The tag and name carrying the order chain's identity.
+pub const PERSISTENTID_TAG_NAME: (i32, &str) = (65_018, "persistentid");
 
-/// The tag carrying the session a message went to, as the message states it.
-pub const TARGETSESSIONID_TAG: i32 = 65_019;
-
-/// The column the timestamp takes, which is also what its partition names.
-pub const TIMESTAMP_NAME: &str = "timestamp";
+/// The tag and name carrying the session a message went to, as the message
+/// states it.
+pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 
 /// Whether a tag is one of this crate's own.
 #[must_use]
@@ -124,11 +132,11 @@ pub const fn is_crate_tag(tag: i32) -> bool {
     tag >= CRATE_TAG_MIN && tag < CRATE_TAG_MAX
 }
 
-/// FIX's own tag for which way a message moved.
+/// FIX's own tag and name for which way a message moved.
 ///
 /// Published, not invented: the specification has spelled this `MsgDirection`
 /// since 4.4, and a field it already declares is never given a second tag.
-pub const MSGDIRECTION_TAG: i32 = 385;
+pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 
 /// The algorithm a message digest is taken with.
 const DIGEST_ALGORITHM: DigestAlgorithm = DigestAlgorithm::Xxh128;
@@ -152,7 +160,7 @@ static TIMESTAMP_FIELD: LazyLock<Option<Field>> = LazyLock::new(|| {
     let held = FIELDS
         .as_deref()?
         .iter()
-        .find(|field| field.as_fix().tag().ok().flatten() == Some(TIMESTAMP_TAG))?;
+        .find(|field| field.as_fix().tag().ok().flatten() == Some(TIMESTAMP_TAG_NAME.0))?;
     let mut field = held.clone();
     field.set_nullable(false);
     Some(field)
@@ -170,7 +178,7 @@ static VERSION_FIELD: LazyLock<Option<Field>> = LazyLock::new(|| {
     let held = FIELDS
         .as_deref()?
         .iter()
-        .find(|field| field.as_fix().tag().ok().flatten() == Some(VERSION_TAG))?;
+        .find(|field| field.as_fix().tag().ok().flatten() == Some(VERSION_TAG_NAME.0))?;
     let mut field = held.clone();
     field.set_nullable(false);
     Some(field)
@@ -181,14 +189,14 @@ pub(super) fn version_field() -> Option<&'static Field> {
     VERSION_FIELD.as_ref()
 }
 
-/// One field of the crate's own, with its folded identity and FIX-style display.
+/// One field of the crate's own, from its tag and name, with a FIX-style
+/// display.
 ///
 /// Display and description use generic field metadata rather than the `fix:`
 /// scheme because every catalog the crate writes to understands them.
 fn crated(
-    name: &str,
+    (tag, name): (i32, &str),
     display: &str,
-    tag: i32,
     dtype: DataType,
     description: &str,
 ) -> Result<Field> {
@@ -201,14 +209,13 @@ fn crated(
 
 /// One field a bridge spells under its own names, which resolve to it.
 fn aliased(
-    name: &str,
+    identity: (i32, &str),
     display: &str,
-    tag: i32,
     dtype: DataType,
     description: &str,
     aliases: &[&str],
 ) -> Result<Field> {
-    let mut field = crated(name, display, tag, dtype, description)?;
+    let mut field = crated(identity, display, dtype, description)?;
     field.as_fix_mut().set_aliases(aliases.iter().copied())?;
     Ok(field)
 }
@@ -227,9 +234,8 @@ fn build() -> Result<Vec<Field>> {
     // numeric order agree on every machine: a little-endian digest sorts
     // differently than it compares, and someone eventually sorts it.
     let mut msghash = crated(
-        "msghash",
+        MSGHASH_TAG_NAME,
         "MsgHash",
-        MSGHASH_TAG,
         DataType::fixed_size_binary(DIGEST_WIDTH)?,
         "The xxh128 digest of what the message said, over the arrival \
              record with the envelope tags left out.",
@@ -248,9 +254,8 @@ fn build() -> Result<Vec<Field>> {
     // epoch. An integer rather than a rendered date: a partition value is
     // compared and ranged over, and a string would sort lexically.
     let mut unixpartition = crated(
-        "unixpartition",
+        UNIXPARTITION_TAG_NAME,
         "UnixPartition",
-        UNIXPARTITION_TAG,
         DataType::Int64,
         "The partition the market timestamp falls in, as whole seconds \
              since the epoch floored to the partition width.",
@@ -265,7 +270,7 @@ fn build() -> Result<Vec<Field>> {
     // the metadata write validates it exactly as the setter's would.
     let sources = crate::metadata::render_source_list(
         crate::metadata::PARTITION_SOURCES_KEY,
-        [TIMESTAMP_NAME.to_owned()],
+        [TIMESTAMP_TAG_NAME.1.to_owned()],
     )?;
     unixpartition
         .as_partition_mut()
@@ -289,18 +294,16 @@ fn build() -> Result<Vec<Field>> {
         // its `BeginString` claims: a venue that mislabels its session still
         // produces rows, and the column says which dictionary answered them.
         crated(
-            "version",
+            VERSION_TAG_NAME,
             "Version",
-            VERSION_TAG,
             DataType::Utf8,
             "The FIX version the message was read at, which is not always \
              the one its BeginString claims.",
         )?,
         // One symbol for one instrument, whatever the venue called it.
         crated(
-            "symbolticker",
+            SYMBOLTICKER_TAG_NAME,
             "SymbolTicker",
-            SYMBOLTICKER_TAG,
             DataType::Utf8,
             "One instrument symbol that is the same across venues, qualified \
              by its scheme and its exchange where the message states them.",
@@ -308,9 +311,8 @@ fn build() -> Result<Vec<Field>> {
         // The timestamp a capture is ordered by, in UTC because a capture
         // spans venues and a local time cannot be compared across them.
         crated(
-            TIMESTAMP_NAME,
+            TIMESTAMP_TAG_NAME,
             "Timestamp",
-            TIMESTAMP_TAG,
             DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
@@ -326,17 +328,15 @@ fn build() -> Result<Vec<Field>> {
         // cannot roll its children up to it cannot answer for the order it
         // actually took.
         crated(
-            "parentclordid",
+            PARENTCLORDID_TAG_NAME,
             "ParentClOrdID",
-            PARENTCLORDID_TAG,
             DataType::Utf8,
             "The client order identifier this order descends from, which no \
              standard tag names.",
         )?,
         crated(
-            "parentorderid",
+            PARENTORDERID_TAG_NAME,
             "ParentOrderID",
-            PARENTORDERID_TAG,
             DataType::Utf8,
             "The venue order identifier this order descends from, which no \
              standard tag names.",
@@ -347,9 +347,8 @@ fn build() -> Result<Vec<Field>> {
         // spells none, the session instance the bridge's own row header
         // brackets fills it, never over a reading the message stated itself.
         aliased(
-            "sendersessionid",
+            SENDERSESSIONID_TAG_NAME,
             "SenderSessionId",
-            SENDERSESSIONID_TAG,
             DataType::Utf8,
             "The session a message came from: the message's own statement, \
              else the session instance its bridge handled the line on.",
@@ -358,9 +357,8 @@ fn build() -> Result<Vec<Field>> {
         // The message context a bridge handled the line in, from the bracket
         // its row header writes after the clock.
         crated(
-            "msgctxid",
+            MSGCTXID_TAG_NAME,
             "MsgCtxId",
-            MSGCTXID_TAG,
             DataType::Utf8,
             "The message context a bridge handled the message in, as its own \
              log names it.",
@@ -371,22 +369,19 @@ fn build() -> Result<Vec<Field>> {
         // message came through before it, are facts about the bridge that
         // FIX never states. Both are stated by a row's own column and never
         // derived: `pluginid` is the bracket the bridge's row header writes
-        // in front of every line - and, where it spells a branch the
-        // dictionary declares, the dialect the row is read under
+        // in front of every line
         // ([`FixCodec::parse_text_line`](super::FixCodec::parse_text_line));
         // `prevpluginid` is only ever a column of that name.
         crated(
-            "pluginid",
+            PLUGINID_TAG_NAME,
             "PluginId",
-            PLUGINID_TAG,
             DataType::Utf8,
             "The plugin that logged the line inside a bridge, as the bridge \
              names it: the row's own pluginid column, never derived.",
         )?,
         crated(
-            "prevpluginid",
+            PREVPLUGINID_TAG_NAME,
             "PrevPluginId",
-            PREVPLUGINID_TAG,
             DataType::Utf8,
             "The plugin the message came through before the one that logged \
              it, as the bridge names it: the row's own prevpluginid column, \
@@ -399,18 +394,16 @@ fn build() -> Result<Vec<Field>> {
         // row column bearing its name. The identifier is `sendersessionid`
         // and its target half; this is what an operator calls it.
         aliased(
-            "sendersessionname",
+            SENDERSESSIONNAME_TAG_NAME,
             "SenderSessionName",
-            SENDERSESSIONNAME_TAG,
             DataType::Utf8,
             "The name of the session a message came from, as the bridge row \
              states it.",
             &["ULFromSessionName"],
         )?,
         aliased(
-            "targetsessionname",
+            TARGETSESSIONNAME_TAG_NAME,
             "TargetSessionName",
-            TARGETSESSIONNAME_TAG,
             DataType::Utf8,
             "The name of the session a message went to, as the bridge row \
              states it.",
@@ -420,26 +413,23 @@ fn build() -> Result<Vec<Field>> {
         // bridge row states it or as `SecurityID` with an ISIN source, and
         // the market as the MIC the message names first.
         crated(
-            "isincode",
+            ISINCODE_TAG_NAME,
             "ISINCode",
-            ISINCODE_TAG,
             DataType::Isin,
             "The instrument's ISIN: the message's own, else SecurityID or a \
              SecurityAltID whose source is ISIN.",
         )?,
         crated(
-            "miccode",
+            MICCODE_TAG_NAME,
             "MICCode",
-            MICCODE_TAG,
             DataType::Mic,
             "The market the message names, as an ISO 10383 MIC: the message's \
              own, else SecurityExchange, ExDestination or LastMkt.",
         )?,
         // The state the order is in, whatever code set or word stated it.
         crated(
-            "state",
+            STATE_TAG_NAME,
             "State",
-            STATE_TAG,
             DataType::State,
             "The state the order is in: OrdStatus, else ExecType, read as one \
              lifecycle vocabulary.",
@@ -449,25 +439,22 @@ fn build() -> Result<Vec<Field>> {
         // two time-coupled ones open with the impact instant so they sort by
         // the market's own clock.
         crated(
-            "instid",
+            INSTID_TAG_NAME,
             "InstId",
-            INSTID_TAG,
             DataType::fixed_size_binary(DIGEST_WIDTH)?,
             "The instrument's own identity: the xxh128 digest of its market, \
              its classification, its ISIN - else its symbol - and its currency.",
         )?,
         crated(
-            "id",
+            ID_TAG_NAME,
             "Id",
-            ID_TAG,
             DataType::fixed_size_binary(DIGEST_WIDTH)?,
             "The message's own identity: the instant closest to the market \
              impact in microseconds, then the xxh3 digest of what it said.",
         )?,
         crated(
-            "persistentid",
+            PERSISTENTID_TAG_NAME,
             "PersistentId",
-            PERSISTENTID_TAG,
             DataType::fixed_size_binary(DIGEST_WIDTH)?,
             "The order chain's identity: the instant it was created, then the \
              xxh3 digest of its instrument and first identifier, carried by \
@@ -476,9 +463,8 @@ fn build() -> Result<Vec<Field>> {
         // The target side of the session pair, which the block's next free tag
         // takes rather than displacing a tag already published.
         crated(
-            "targetsessionid",
+            TARGETSESSIONID_TAG_NAME,
             "TargetSessionId",
-            TARGETSESSIONID_TAG,
             DataType::Utf8,
             "The session a message went to, as the message states it.",
         )?,
@@ -504,10 +490,12 @@ fn partition_transform() -> String {
 /// let held = yggdryl::fix_crate_fields()?;
 /// assert_eq!(held[0].name(), "msghash");
 /// assert_eq!(held[0].display(), Some("MsgHash"));
-/// // On the standard branch, above every tag FIX or a venue publishes.
+/// // Above every tag FIX or a venue publishes, and its tag and name are
+/// // its identity.
+/// let (tag, name) = yggdryl::MSGHASH_TAG_NAME;
 /// let mine = held[0].as_fix().id()?.expect("an identity");
-/// assert_eq!(mine, yggdryl::FixId::standard(yggdryl::MSGHASH_TAG));
-/// assert!(yggdryl::is_crate_tag(yggdryl::STATE_TAG));
+/// assert_eq!(mine, yggdryl::FixId::of(tag, name)?);
+/// assert!(yggdryl::is_crate_tag(yggdryl::STATE_TAG_NAME.0));
 /// assert!(!yggdryl::is_crate_tag(35));
 /// # Ok(())
 /// # }
@@ -526,8 +514,8 @@ pub fn fix_crate_fields() -> Result<&'static [Field]> {
         })
 }
 
-/// FIX's own tag for a message's type.
-pub const MSGTYPE_TAG: i32 = 35;
+/// FIX's own tag and name for a message's type.
+pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
 
 impl super::FixRegistry {
     /// Registers a message code and returns its registry-owned Struct definition.
@@ -546,8 +534,8 @@ impl super::FixRegistry {
     /// assert_eq!(message.as_str(), "P Report Ack");
     /// assert!(matches!(message.as_field().dtype(), DataType::Struct(_)));
     /// assert!(std::ptr::eq(
-    ///     registry.msgtype("P Report Ack", None)?,
-    ///     registry.msgtype("AllocationReportAck", None)?,
+    ///     registry.msgtype("P Report Ack")?,
+    ///     registry.msgtype("AllocationReportAck")?,
     /// ));
     /// # Ok(())
     /// # }
@@ -558,7 +546,7 @@ impl super::FixRegistry {
         name: Option<&str>,
         description: Option<&str>,
     ) -> Result<&super::MsgType> {
-        let field = self.field_by_tag(MSGTYPE_TAG)?;
+        let field = self.field_by_tag(MSGTYPE_TAG_NAME.0)?;
         let view = field.as_fix();
         let mut codes: Vec<super::FixCode> = view
             .codes()
@@ -613,8 +601,7 @@ impl super::FixRegistry {
         let mut field = field.clone();
         field.as_fix_mut().set_codes(&codes)?;
         next.update(field)?;
-        let branch = super::FixBranch::STANDARD;
-        if next.get_msgtype(&value, Some(&branch)).is_none() {
+        if next.get_msgtype(&value).is_none() {
             let normalized = crate::types::normalized(codes[at].name());
             let canonical = if !normalized.is_empty()
                 && !matches!(normalized.as_str(), "." | "..")
@@ -637,8 +624,8 @@ impl super::FixRegistry {
             next.create_definition(crate::FixCategory::Messages, message)?;
         }
         // Resolution also rejects a code shared by several contextual definitions.
-        next.msgtype(&value, Some(&branch))?;
+        next.msgtype(&value)?;
         *self = next;
-        self.msgtype(&value, Some(&branch))
+        self.msgtype(&value)
     }
 }

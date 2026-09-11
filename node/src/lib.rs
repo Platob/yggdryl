@@ -47,8 +47,7 @@ pub use fix::{
     FixCodecOptions, JsFixCodec, JsFixDefinitionIterator, JsFixFieldIterator, JsFixMessages,
     JsFixMsg, JsFixMsgEntries, JsFixRegistry, JsMsgType, JsMsgTypeIterator, JsUlPlugin,
     JsUlPlugins, fix_crate_fields, fix_global_registry, fix_install_global_registry, fix_schema,
-    fix_schema_carrying, fix_schema_tags, fix_standard_branch_native, fix_ulbridge_fields,
-    fix_user_tag_max_native, fix_user_tag_min_native,
+    fix_schema_carrying, fix_schema_tags, fix_ulbridge_fields,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};

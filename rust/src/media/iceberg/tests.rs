@@ -5616,7 +5616,7 @@ mod concurrency_and_compaction {
 }
 
 mod line_projection {
-    use arrow_array::{BinaryArray, Int64Array, StringArray};
+    use arrow_array::{Int64Array, StringArray};
 
     use super::*;
     use crate::IOMedia;
@@ -5683,7 +5683,7 @@ mod line_projection {
             .column_by_name("body")
             .unwrap()
             .as_any()
-            .downcast_ref::<BinaryArray>()
+            .downcast_ref::<StringArray>()
             .unwrap();
         assert_eq!(ids.values(), &[7, 42]);
         assert_eq!(
@@ -5692,7 +5692,7 @@ mod line_projection {
         );
         assert_eq!(
             bodies.iter().collect::<Vec<_>>(),
-            [Some(&b"first"[..]), Some(&b"second"[..])]
+            [Some("first"), Some("second")]
         );
         assert_eq!(
             table

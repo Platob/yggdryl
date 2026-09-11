@@ -199,7 +199,7 @@ fn component_value(field: &Field, values: &mut std::vec::IntoIter<Scalar>, root:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FixCategory, FixId, FixRegistry, MsgType};
+    use crate::{FixCategory, FixRegistry, MsgType};
 
     fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
         let mut field = dtype.required_field(name);
@@ -272,25 +272,17 @@ mod tests {
             .required_field("Report");
         field.as_fix_mut().set_msgtype("R").unwrap();
         let message = MsgType::from_field(field).unwrap();
-        let outer = message
-            .get_group_plan_by_counter(FixId::standard(453))
-            .unwrap();
-        let nested = message
-            .get_group_plan_by_counter(FixId::standard(802))
-            .unwrap();
+        let outer = message.get_group_plan_by_counter(453).unwrap();
+        let nested = message.get_group_plan_by_counter(802).unwrap();
         assert!(std::ptr::eq(outer.nested(802).unwrap().1, nested));
         assert!(std::ptr::eq(
             outer,
-            message
-                .get_group_plan_by_counter(FixId::standard(453))
-                .unwrap(),
+            message.get_group_plan_by_counter(453).unwrap(),
         ));
         let cloned = message.clone();
         assert!(std::ptr::eq(
             outer,
-            cloned
-                .get_group_plan_by_counter(FixId::standard(453))
-                .unwrap(),
+            cloned.get_group_plan_by_counter(453).unwrap(),
         ));
     }
 
@@ -302,14 +294,10 @@ mod tests {
             .insert_definition(FixCategory::Groups, parties())
             .unwrap();
         let snapshot = registry.clone();
-        let original = snapshot
-            .get_group_plan_by_counter(FixId::standard(453))
-            .unwrap();
+        let original = snapshot.get_group_plan_by_counter(453).unwrap();
         assert!(std::ptr::eq(
             original,
-            registry
-                .get_group_plan_by_counter(FixId::standard(453))
-                .unwrap()
+            registry.get_group_plan_by_counter(453).unwrap()
         ));
         let item = DataType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
             .unwrap()
@@ -319,9 +307,7 @@ mod tests {
         registry
             .update_definition(FixCategory::Groups, replacement)
             .unwrap();
-        let current = registry
-            .get_group_plan_by_counter(FixId::standard(453))
-            .unwrap();
+        let current = registry.get_group_plan_by_counter(453).unwrap();
         assert!(!std::ptr::eq(original, current));
         assert_eq!(original.delimiter(), Some(448));
         assert_eq!(current.delimiter(), Some(452));

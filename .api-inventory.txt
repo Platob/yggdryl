@@ -466,17 +466,18 @@ pub fn field(&self, schema: &Field) -> Result<Field>
 
 ### yggdryl::fix::cfb  [rust\src\fix\cfb.rs]
 impl FixRegistry
-  pub fn from_cfb_file(handle: &dyn IOBase, branch: Option<&FixBranch>) -> Result<(Self, Vec<Field>)>
+  pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<(Self, Vec<Field>)>  (every field, group, component and message root the file produces is stamped a member of `dialect` in `fix:branches`; the root element's version and session are read past)
 impl FixField<'_>
-  pub fn from_cfb_file(handle: &dyn IOBase, branch: Option<&str>) -> Result<Vec<Field>>
+  pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<Vec<Field>>  (the handle's URL stem stands in for an absent dialect)
 
 ### yggdryl::fix::field  [rust\src\fix\field.rs]
 impl<'field> FixField<'field>
-  pub fn branch(&self) -> Result<FixBranch>
-  pub fn id(&self) -> Result<Option<FixId>>
+  pub fn branches(&self) -> FixSpellings<'field>  (the dialects that contributed this field, folded and sorted; empty for a field the specification alone defines)
+  pub fn has_branch(&self, dialect: &str) -> bool
+  pub fn id(&self) -> Result<Option<FixId>>  (derived from `fix:tag` and the field's name, never stored)
   pub fn tag(&self) -> Result<Option<i32>>
   pub fn tags(&self) -> Result<Vec<i32>>
-  pub fn aliases(&self) -> FixAliases<'field>
+  pub fn aliases(&self) -> FixSpellings<'field>
   pub fn description(&self) -> Option<&'field str>
   pub fn component(&self) -> Option<&'field str>
   pub fn field_ref(&self) -> Option<&'field str>
@@ -485,9 +486,9 @@ impl<'field> FixField<'field>
   pub fn counter(&self) -> Result<Option<i32>>
   pub fn replacements(&self) -> FixReplacements<'field>
   impl FixFieldMut<'_>
-  pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()>
-  pub fn set_id(&mut self, branch: &FixBranch, tag: i32) -> Result<()>
-  pub fn set_tag(&mut self, tag: i32) -> Result<()>
+  pub fn set_branches<I, S>(&mut self, dialects: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,  (each non-empty and comma-free, lowercased, deduplicated under the fold, sorted)
+  pub fn add_branch(&mut self, dialect: &str) -> Result<()>
+  pub fn set_tag(&mut self, tag: i32) -> Result<()>  (any non-negative tag)
   pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>
   pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
   pub fn set_description(&mut self, value: impl Into<String>) -> Result<()>
@@ -503,8 +504,8 @@ impl<'field> FixField<'field>
   pub fn remove_counter(&mut self) -> Result<Option<i32>>
   pub fn set_replacements(&mut self, entries: &[FixReplacement]) -> Result<()>
   pub fn remove_replacements(&mut self) -> Result<Option<Vec<FixReplacement>>>
-  pub struct FixAliases<'field>
-  impl<'field> Iterator for FixAliases<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
+  pub struct FixSpellings<'field>  (aliases and dialect memberships alike)
+  impl<'field> Iterator for FixSpellings<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
 
 ### yggdryl::fix::document  [rust\src\fix\document.rs]
 pub struct Words<'doc>  (re-exported at the crate root)
@@ -570,32 +571,15 @@ impl FixRegistry
   pub fn install_global(registry: Self) -> Result<()>
 
 ### yggdryl::fix  [rust\src\fix\mod.rs]
-pub struct FixBranch(SmolStr)  (re-exported at the crate root beside FixAliases, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry)
-  pub const STANDARD: Self
-  pub const MAX_LENGTH: usize
-  pub fn from_str(value: &str) -> Result<Self>
-  pub fn as_str(&self) -> &str
-  pub fn is_standard(&self) -> bool
-  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default for FixBranch
-  impl FromStr for FixBranch  (Err = Error)
-  impl AsRef<str> for FixBranch
-  impl fmt::Display for FixBranch
-  pub struct FixId  (a tag i32 beside a branch digest i32, eight bytes)
-  pub const USER_TAG_MIN: i32
-  pub const USER_TAG_MAX: i32
+pub struct FixId(i32)  (re-exported at the crate root beside FixFieldIter, FixKey, FixMsg, FixRegistry; the signed XXH32 of a field's tag and its folded name, derived on every read and never stored)
   pub const DEFINITION_TAG_MIN: i32  (the block a named definition's derived tag is taken from)
   pub const DEFINITION_TAG_MAX: i32
   pub const fn is_definition_tag(tag: i32) -> bool
-  pub const fn standard(tag: i32) -> Self
-  pub fn from_parts(branch: &FixBranch, tag: i32) -> Result<Self>
-  pub fn from_str(text: &str) -> Result<Self>
-  pub const fn tag(self) -> i32
-  pub const fn branch(self) -> i32  (the digest signed, as an entry stores it)
-  pub const fn branch_digest(self) -> u32
-  pub const fn is_standard(self) -> bool
-  impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId  (Ord is tag-major, then the signed branch digest)
-  impl FromStr for FixId  (Err = Error)
-  impl fmt::Display for FixId  ("<tag>:" in the standard branch, else "<tag>:#<digest hex>")
+  pub fn of(tag: i32, name: &str) -> Result<Self>  (refuses a negative tag; `MsgType`, `msgtype` and `Msg_Type` under one tag are one id)
+  pub const fn digest(self) -> i32
+  pub const fn from_digest(digest: i32) -> Self
+  impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId
+  impl fmt::Display for FixId  (the digest in decimal)
   pub enum FixKey<'a>  (Tag(i32) | Id(FixId) | Name(&'a str))
   impl From<i32> for FixKey<'_>
   impl From<FixId> for FixKey<'_>
@@ -611,14 +595,12 @@ pub struct FixCodec
   pub fn new(registry: Arc<FixRegistry>) -> Self
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn version(&self) -> Option<Version>
-  pub const fn branch(&self) -> Option<&FixBranch>
   pub const fn direction(&self) -> Option<&'static str>
   pub const fn batch_byte_size(&self) -> u64
   pub fn payload_column(&self) -> &str
   pub const fn separator(&self) -> Option<u8>
   pub fn null_values(&self) -> &[String]
-  pub fn with_branch(mut self, branch: &FixBranch) -> Self
-  pub const fn with_version(mut self, version: Version) -> Self
+  pub const fn with_version(mut self, version: Version) -> Self  (unpinned, a row reads at `ApplVerID`, else `BeginString`, else the dictionary's newest)
   pub const fn with_separator(mut self, separator: u8) -> Self
   pub fn with_payload_column(mut self, column: impl Into<SmolStr>) -> Self
   pub fn with_capture_names<I, S>(mut self, names: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (what a run's row-header captures are called, resolved once and read by position)
@@ -657,29 +639,28 @@ pub struct FixMessages
 ### yggdryl::fix::crated  [rust\src\fix\crated.rs]
 pub const CRATE_TAG_MIN: i32 = 65_000;
 pub const CRATE_TAG_MAX: i32 = 65_100;
-pub const MSGHASH_TAG: i32 = 65_000;
-pub const VERSION_TAG: i32 = 65_001;
-pub const SYMBOLTICKER_TAG: i32 = 65_002;
-pub const TIMESTAMP_TAG: i32 = 65_003;
-pub const UNIXPARTITION_TAG: i32 = 65_004;
-pub const PARENTCLORDID_TAG: i32 = 65_005;
-pub const PARENTORDERID_TAG: i32 = 65_006;
-pub const SENDERSESSIONID_TAG: i32 = 65_007;
-pub const MSGCTXID_TAG: i32 = 65_008;
-pub const PLUGINID_TAG: i32 = 65_009;  (`pluginid`, display `PluginId`: the plugin that logged the line, stated by a row's own `pluginid` column and never derived; the column also names the dialect the row is read under where it spells a registered branch's name or alias)
-pub const PREVPLUGINID_TAG: i32 = 65_010;  (`prevpluginid`, display `PrevPluginId`: the plugin the message came through before the one that logged it, stated only by a row's own `prevpluginid` column)
-pub const SENDERSESSIONNAME_TAG: i32 = 65_011;  (filled only by what the message states - `ULFromSessionName` - or a column bearing its name)
-pub const TARGETSESSIONNAME_TAG: i32 = 65_012;  (likewise, `ULToSessionName`)
-pub const ISINCODE_TAG: i32 = 65_013;
-pub const MICCODE_TAG: i32 = 65_014;
-pub const STATE_TAG: i32 = 65_015;
-pub const INSTID_TAG: i32 = 65_016;
-pub const ID_TAG: i32 = 65_017;
-pub const PERSISTENTID_TAG: i32 = 65_018;
-pub const TARGETSESSIONID_TAG: i32 = 65_019;
-pub const TIMESTAMP_NAME: &str = "timestamp";
-pub const MSGDIRECTION_TAG: i32 = 385;
-pub const MSGTYPE_TAG: i32 = 35;
+pub const MSGHASH_TAG_NAME: (i32, &str) = (65_000, "msghash");  (every crate field is declared once as its tag beside its name, the pair being its identity)
+pub const VERSION_TAG_NAME: (i32, &str) = (65_001, "version");
+pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_002, "symbolticker");
+pub const TIMESTAMP_TAG_NAME: (i32, &str) = (65_003, "timestamp");  (the name is also what its partition names)
+pub const UNIXPARTITION_TAG_NAME: (i32, &str) = (65_004, "unixpartition");
+pub const PARENTCLORDID_TAG_NAME: (i32, &str) = (65_005, "parentclordid");
+pub const PARENTORDERID_TAG_NAME: (i32, &str) = (65_006, "parentorderid");
+pub const SENDERSESSIONID_TAG_NAME: (i32, &str) = (65_007, "sendersessionid");
+pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_008, "msgctxid");
+pub const PLUGINID_TAG_NAME: (i32, &str) = (65_009, "pluginid");  (display `PluginId`: the plugin that logged the line, stated by a row's own `pluginid` column and never derived; the column fills this field and selects nothing)
+pub const PREVPLUGINID_TAG_NAME: (i32, &str) = (65_010, "prevpluginid");  (display `PrevPluginId`: the plugin the message came through before the one that logged it, stated only by a row's own `prevpluginid` column)
+pub const SENDERSESSIONNAME_TAG_NAME: (i32, &str) = (65_011, "sendersessionname");  (filled only by what the message states - `ULFromSessionName` - or a column bearing its name)
+pub const TARGETSESSIONNAME_TAG_NAME: (i32, &str) = (65_012, "targetsessionname");  (likewise, `ULToSessionName`)
+pub const ISINCODE_TAG_NAME: (i32, &str) = (65_013, "isincode");
+pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
+pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
+pub const INSTID_TAG_NAME: (i32, &str) = (65_016, "instid");
+pub const ID_TAG_NAME: (i32, &str) = (65_017, "id");
+pub const PERSISTENTID_TAG_NAME: (i32, &str) = (65_018, "persistentid");
+pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
+pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
+pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
 pub const fn is_crate_tag(tag: i32) -> bool
 pub fn fix_crate_fields() -> Result<&'static [Field]>
@@ -697,10 +678,9 @@ pub struct FixMsg
   pub fn into_text(&self, separator: char) -> Result<String>
   pub fn version(&self) -> Option<Version>
   pub const fn registry(&self) -> &Arc<FixRegistry>
-  pub const fn branch(&self) -> &FixBranch
   pub const fn as_field(&self) -> &Field
   pub const fn as_value(&self) -> &Scalar
-  pub fn get_by_id(&self, id: FixId) -> Option<&Scalar>
+  pub fn get_by_id(&self, id: FixId) -> Option<&Scalar>  (the child the identified field's name reaches)
   pub fn by_id(&self, id: FixId) -> Result<&Scalar>
   pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar>
   pub fn by_tag(&self, tag: i32) -> Result<&Scalar>
@@ -716,6 +696,24 @@ pub struct FixMsg
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Scalar>  (row only; the value the reached child held)
   pub fn into_latest(self) -> Result<Self>  (the row restated at the registry's newest version; entries untouched, idempotent)
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg
+
+### yggdryl::fix::lift  [rust\src\fix\lift.rs]
+pub struct FixLift  (one facet and the ordered tags it is read from; re-exported at the crate root beside FixParty, fix_lift and fix_lifts)
+  pub const fn facet(&self) -> &'static str
+  pub fn tags(&self) -> impl Iterator<Item = i32> + '_
+pub fn fix_lift(facet: &str) -> Option<&'static FixLift>
+pub fn fix_lifts() -> impl Iterator<Item = &'static FixLift>
+pub struct FixParty<'msg>
+  pub const fn id(&self) -> Option<&'msg Scalar>
+  pub const fn source(&self) -> Option<&'msg Scalar>
+  pub const fn role(&self) -> Option<&'msg Scalar>
+  pub const fn qualifier(&self) -> Option<&'msg Scalar>
+impl FixMsg
+  pub fn lifted(&self, facet: &str) -> Option<&Scalar>
+  pub fn lift_source(&self, facet: &str) -> Option<i32>  (the tag the facet was read from, derivations included)
+  pub fn lift(&self) -> impl Iterator<Item = (&'static str, &Scalar)>
+  pub fn party(&self, role: &str) -> Option<FixParty<'_>>
+  pub fn trd_reg_timestamp(&self, kind: &str) -> Option<&Scalar>
 
 ### yggdryl::fix::entry  [rust\src\fix\entry.rs]
 pub struct FixEntry
@@ -773,26 +771,26 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
   pub const fn as_field(&self) -> &Field
   pub fn name(&self) -> &str
   pub fn as_str(&self) -> &str
-  pub fn get_group_by_counter(&self, id: FixId) -> Option<&Field>
+  pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field>
   impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, AsRef<Field> for MsgType
 
 ### yggdryl::fix::catalog  [rust\src\fix\catalog.rs]
 impl FixRegistry
-  pub fn get_msgtype(&self, spelling: &str, branch: Option<&FixBranch>) -> Option<&MsgType>
-  pub fn msgtype(&self, spelling: &str, branch: Option<&FixBranch>) -> Result<&MsgType>
+  pub fn get_msgtype(&self, spelling: &str) -> Option<&MsgType>  (one code namespace: the code's first holder answers a bare code)
+  pub fn msgtype(&self, spelling: &str) -> Result<&MsgType>
   pub fn msgtypes(&self) -> impl Iterator<Item = &MsgType>
   pub fn msgtype_at(&self, index: usize) -> Option<&MsgType>
-  pub fn get_definition(&self, category: FixCategory, name: &str, branch: Option<&FixBranch>) -> Option<&Field>
-  pub fn definition(&self, category: FixCategory, name: &str, branch: Option<&FixBranch>) -> Result<&Field>
+  pub fn get_definition(&self, category: FixCategory, name: &str) -> Option<&Field>
+  pub fn definition(&self, category: FixCategory, name: &str) -> Result<&Field>
   pub fn definitions(&self, category: FixCategory) -> impl Iterator<Item = &Field>
   pub fn definition_at(&self, category: FixCategory, index: usize) -> Option<&Field>
   pub fn insert_definition(&mut self, category: FixCategory, field: Field) -> Result<Option<Field>>
   pub fn create_definition(&mut self, category: FixCategory, field: Field) -> Result<()>
   pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field>
   pub fn add_definition(&mut self, category: FixCategory, field: Field) -> Result<bool>  (true = arrived; an existing name merges one level deep: stored members kept in order, new ones appended, references re-resolved)
-  pub fn remove_definition(&mut self, category: FixCategory, name: &str, branch: Option<&FixBranch>) -> Result<Option<Field>>
-  pub fn get_group_by_counter(&self, id: FixId) -> Option<&Field>
-  pub fn group_by_counter(&self, id: FixId) -> Result<&Field>
+  pub fn remove_definition(&mut self, category: FixCategory, name: &str) -> Result<Option<Field>>
+  pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field>
+  pub fn group_by_counter(&self, tag: i32) -> Result<&Field>
 
 ### yggdryl::fix::registry  [rust\src\fix\registry.rs]
 pub struct FixRegistry
@@ -801,28 +799,24 @@ pub struct FixRegistry
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
   pub fn get_field_by_id(&self, id: FixId) -> Option<&Field>
   pub fn field_by_id(&self, id: FixId) -> Result<&Field>
-  pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>
+  pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>  (the tag's canonical holder, then an alternate; two fields may hold one tag under two names, and the first holder answers)
   pub fn field_by_tag(&self, tag: i32) -> Result<&Field>
-  pub fn get_field_by_name(&self, name: &str, branch: Option<&FixBranch>) -> Option<&Field>
-  pub fn field_by_name(&self, name: &str, branch: Option<&FixBranch>) -> Result<&Field>
-  pub fn get_field_by_path(&self, path: &FieldPath, branch: Option<&FixBranch>) -> Option<&Field>  (a schema has no positions, so an indexed segment answers the item every occurrence holds)
-  pub fn field_by_path(&self, path: &FieldPath, branch: Option<&FixBranch>) -> Result<&Field>
+  pub fn get_field_by_name(&self, name: &str) -> Option<&Field>  (the canonical fold, then an alias fold)
+  pub fn field_by_name(&self, name: &str) -> Result<&Field>
+  pub fn get_field_by_path(&self, path: &FieldPath) -> Option<&Field>  (a schema has no positions, so an indexed segment answers the item every occurrence holds)
+  pub fn field_by_path(&self, path: &FieldPath) -> Result<&Field>
   pub fn get_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field>
   pub fn field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field>
   pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool
-  pub fn insert(&mut self, field: Field) -> Result<Option<Field>>
+  pub fn insert(&mut self, field: Field) -> Result<Option<Field>>  (replaces the same identity only; a held tag under another name adds the arrival beside the holder, which gains the arrival's name as an alias)
   pub fn update(&mut self, field: Field) -> Result<()>
-  pub fn add_field(&mut self, field: Field) -> Result<bool>  (true = arrived; a stored identity or a folded stored name/alias in the branch merges, a nested field redirects to add_definition)
+  pub fn add_field(&mut self, field: Field) -> Result<bool>  (true = arrived; a stored identity or a folded stored name/alias merges, a held tag under another name adds beside the holder, a nested field redirects to add_definition)
   pub fn add_fields<I>(&mut self, fields: I) -> Result<(usize, usize)> where I: IntoIterator<Item = Field>,  (added, merged) under add_field's rules, one staged mutation
-  pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)>  (branches, fields and definitions folded under add_field/add_definition's rules, one staged mutation)
+  pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)>  (fields and definitions folded under add_field/add_definition's rules, memberships unioned, one staged mutation)
+  pub fn add_cfb_file(&mut self, handle: &dyn IOBase, dialect: Option<&str>) -> Result<(usize, usize)>  (the dialect or the handle's URL stem, merged under add_field's rules)
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field>
-  pub fn branch_of(&self, id: FixId) -> Option<&FixBranch>
-  pub fn get_branch_by_digest(&self, digest: i32) -> Option<&FixBranch>
-  pub fn branch_by_digest(&self, digest: i32) -> Result<&FixBranch>
-  pub fn branch_named(&self, name: &str) -> Option<&FixBranch>
-  pub fn branches(&self) -> impl Iterator<Item = &FixBranch>
-  pub fn set_branch(&mut self, branch: FixBranch) -> Result<()>
-  pub fn next_field_after(&self, after: Option<FixId>) -> Option<&Field>
+  pub fn dialects(&self) -> Vec<String>  (every membership any field or definition names, sorted, each once)
+  pub fn next_field_after(&self, after: Option<FixId>) -> Option<&Field>  (tag-major, then id)
   pub fn iter(&self) -> FixFieldIter<'_>
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
@@ -856,12 +850,12 @@ impl FixRegistry
   pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>
 
 ### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
-pub const ULBRIDGE_BRANCH: &str = "ulbridge";
+pub const ULBRIDGE_DIALECT: &str = "ulbridge";  (the membership every field here carries in `fix:branches`)
 pub const ULBRIDGE_TAG_MIN: i32 = 20_001;
-pub const MBEAN_TAG: i32 = 20_001;
-pub const OPERATION_TAG: i32 = 20_002;
-pub const STATUS_TAG: i32 = 20_003;
-pub const ERROR_TAG: i32 = 20_004;
+pub const MBEAN_TAG_NAME: (i32, &str) = (20_001, "MBean");
+pub const OPERATION_TAG_NAME: (i32, &str) = (20_002, "Operation");
+pub const STATUS_TAG_NAME: (i32, &str) = (20_003, "Status");
+pub const ERROR_TAG_NAME: (i32, &str) = (20_004, "Error");
 pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
 impl FixRegistry
   pub fn with_ulbridge_fields(mut self) -> Result<Self>
@@ -1750,8 +1744,10 @@ pub struct TextEntry
   pub const fn new(key: TextBytes, value: TextBytes) -> Self
   pub fn with_entries(self, entries: TextEntries) -> Self
   pub const fn with_marked(self, marked: bool) -> Self
-  pub const fn key(&self) -> &TextBytes
-  pub const fn value(&self) -> &TextBytes
+  pub fn key(&self) -> Cow<'_, str>
+  pub fn value(&self) -> Cow<'_, str>
+  pub const fn key_bytes(&self) -> &TextBytes
+  pub const fn value_bytes(&self) -> &TextBytes
   pub fn set_value(&mut self, value: TextBytes)
   pub const fn marked(&self) -> bool
   pub const fn entries(&self) -> Option<&TextEntries>
@@ -1761,6 +1757,7 @@ pub struct TextEntries
   pub const fn new() -> Self
   pub fn with_capacity(capacity: usize) -> Self
   pub fn from_bytes(body: &TextBytes) -> Option<Self>
+  pub fn from_bytes_direct(body: &TextBytes) -> Option<Self>
   pub fn as_slice(&self) -> &[TextEntry]
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
@@ -1774,7 +1771,7 @@ pub struct TextEntries
 
 ### yggdryl::media::text::line  [rust\src\media\text\line.rs]
 pub struct TextLine
-  pub fn new(index: u64, body: TextBytes) -> Self
+  pub fn from_bytes(index: u64, body: TextBytes) -> Result<Self>
   pub const fn index(&self) -> u64
   pub const fn set_index(&mut self, index: u64)
   pub fn url(&self) -> Option<&Url>
@@ -1786,15 +1783,18 @@ pub struct TextLine
   pub const fn bodytype(&self) -> Option<&MimeType>
   pub fn set_bodytype(&mut self, bodytype: Option<MimeType>)
   pub fn with_bodytype(self, bodytype: MimeType) -> Self
-  pub const fn body(&self) -> &TextBytes
-  pub fn set_body(&mut self, body: TextBytes)
+  pub fn body(&self) -> &str
+  pub const fn body_bytes(&self) -> &TextBytes
+  pub fn set_body(&mut self, body: TextBytes) -> Result<()>
+  pub const fn decoded_byte_size(&self) -> u64
   pub const fn direction(&self) -> Option<&'static str>
   pub const fn set_direction(&mut self, direction: Option<&'static str>)
   pub const fn dropped_byte_size(&self) -> Option<u64>
   pub const fn set_dropped_byte_size(&mut self, size: Option<u64>)
   pub fn captures(&self) -> &[Option<TextBytes>]
-  pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>)
-  pub fn with_captures(self, captures: Vec<Option<TextBytes>>) -> Self
+  pub fn capture(&self, index: usize) -> Option<&str>
+  pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()>
+  pub fn with_captures(self, captures: Vec<Option<TextBytes>>) -> Result<Self>
   pub const fn entries(&self) -> Option<&TextEntries>
   pub const fn entries_mut(&mut self) -> Option<&mut TextEntries>
   pub fn set_entries(&mut self, entries: Option<TextEntries>)

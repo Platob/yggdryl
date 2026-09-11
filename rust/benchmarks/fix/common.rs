@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, Field, FixBranch, FixRegistry};
+use yggdryl::{DataType, Field, FixRegistry};
 
 /// Large-dictionary size: reportable in release, quick to smoke-test in debug.
 pub(crate) const LARGE_FIELDS: usize = crate::bench_profile::corpus(400, 50);
 
-/// Second-branch size used by resolution and storage measurements.
-pub(crate) const BRANCH_FIELDS: usize = crate::bench_profile::corpus(100, 20);
+/// Second-dictionary size used by resolution and storage measurements.
+pub(crate) const DIALECT_FIELDS: usize = crate::bench_profile::corpus(100, 20);
 
 /// The tracked seed dictionary, relative to the crate manifest.
 pub(crate) fn seed_root() -> PathBuf {
@@ -17,22 +17,23 @@ pub(crate) fn seed_root() -> PathBuf {
         .join("fix")
 }
 
-/// The venue dictionary the branched measurements resolve against.
-pub(crate) fn venue() -> FixBranch {
-    FixBranch::from_str("cme").expect("a valid branch")
+/// The dialect the venue dictionary's fields are stamped members of.
+pub(crate) fn venue() -> &'static str {
+    "cme"
 }
 
-/// `count` generated fields in the venue branch, tags from 5000 up.
+/// `count` generated fields carrying the venue membership, tags from 5000 up.
 fn vendored(count: usize) -> Vec<Field> {
     let venue = venue();
     (0..count)
         .map(|index| {
             let mut field = DataType::Int64.nullable_field(format!("Vendor{index:05}"));
             let tag = i32::try_from(5_000 + index).expect("a small tag");
+            field.as_fix_mut().set_tag(tag).expect("a generated tag");
             field
                 .as_fix_mut()
-                .set_id(&venue, tag)
-                .expect("a generated identity");
+                .set_branches([venue])
+                .expect("a generated membership");
             field
                 .as_fix_mut()
                 .set_aliases([format!("VendorAlias{index:05}")])
@@ -42,8 +43,9 @@ fn vendored(count: usize) -> Vec<Field> {
         .collect()
 }
 
-/// The tracked seed beside a venue dictionary of `count` fields.
-pub(crate) fn two_branches(count: usize) -> FixRegistry {
+/// The tracked seed beside a venue dictionary of `count` fields, in the one
+/// namespace, each venue field a stamped member of [`venue`].
+pub(crate) fn two_dialects(count: usize) -> FixRegistry {
     let mut registry = seed();
     registry
         .add_fields(vendored(count))

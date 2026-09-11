@@ -1,7 +1,7 @@
 """Boundary cost of the FIX dictionary, against the native numbers.
 
 Every case here is one crossing over a registry the core resolves: what is
-measured is the coercion of the key - a tag, a branch, an identifier - the
+measured is the coercion of the key - a tag, a name, an identifier - the
 wrapper the answer is put in, and - for the two loads - the shard read the
 boundary only names. Run after installing the release wheel with::
 
@@ -29,7 +29,7 @@ from collections.abc import Callable
 import pyarrow as pa
 
 from yggdryl import DataType, Field, MimeType, TextLine, types
-from yggdryl.fix import STANDARD_BRANCH, ULBRIDGE_BRANCH, FixBranch, FixCodec, FixMsg, FixRegistry, UlPlugin, fix_schema
+from yggdryl.fix import FixCodec, FixMsg, FixRegistry, UlPlugin, fix_schema
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
@@ -41,7 +41,7 @@ ORDER = Field(
         [
             SEED_REGISTRY.field_by_tag(55),
             SEED_REGISTRY.field_by_tag(38),
-            SEED_REGISTRY.field_by_name("NoPartyIDs", STANDARD_BRANCH),
+            SEED_REGISTRY.field_by_name("NoPartyIDs"),
             SEED_REGISTRY.definition("groups", "Parties"),
         ]
     ),
@@ -60,29 +60,37 @@ MESSAGE = FixMsg(
     SEED_REGISTRY,
 )
 WIDE_FIELDS = 200
-VENDOR_BRANCH = "cme"
+VENDOR_DIALECT = "cme"
 VENDOR_FIELDS = 200
 FIXML_LINE = b"8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|"
 ULLINK_LINE = "ACCOUNT=A1|MSGTYPE=D|SYMBOL=AAPL"
 
 
 def _vendor_registry() -> FixRegistry:
-    """The seed beside a vendor dictionary, for the cross-branch rows."""
+    """The seed beside a vendor dictionary's fields, stamped as the vendor's."""
     registry = copy.copy(SEED_REGISTRY)
     fields = []
     for offset in range(VENDOR_FIELDS):
         tag = 5000 + offset
         field = Field(f"Venue{offset}", "utf8")
-        field.fix.id = f"{tag}:{VENDOR_BRANCH}"
+        field.fix.tag = tag
+        field.fix.branches = [VENDOR_DIALECT]
         field.fix.aliases = [f"VenueAlias{offset}"]
         fields.append(field)
     registry.add_fields(fields)
     return registry
 
 
-TWO_BRANCHES = _vendor_registry()
+TWO_DIALECTS = _vendor_registry()
 TAGGED = Field("TradeID", "utf8")
-TAGGED.fix.id = f"5001:{VENDOR_BRANCH}"
+TAGGED.fix.tag = 5001
+TAGGED.fix.branches = [VENDOR_DIALECT]
+SYMBOL_ID = SEED_REGISTRY.field_by_tag(55).fix.id
+assert SYMBOL_ID is not None
+VENDOR_ID = TWO_DIALECTS.field_by_tag(5001).fix.id
+assert VENDOR_ID is not None
+ABSENT_ID = TAGGED.fix.id
+assert ABSENT_ID is not None and SEED_REGISTRY.get_field_by_id(ABSENT_ID) is None
 
 
 def _generated(root: pathlib.Path) -> pathlib.Path:
@@ -106,19 +114,19 @@ def _alternate_tag_hit() -> object:
 
 
 def _id_hit() -> object:
-    return SEED_REGISTRY.get_field_by_id("55:")
+    return SEED_REGISTRY.get_field_by_id(SYMBOL_ID)
 
 
 def _name_hit() -> object:
-    return SEED_REGISTRY.get_field_by_name("Symbol", STANDARD_BRANCH)
+    return SEED_REGISTRY.get_field_by_name("Symbol")
 
 
 def _folded_name_hit() -> object:
-    return SEED_REGISTRY.get_field_by_name("symbol", STANDARD_BRANCH)
+    return SEED_REGISTRY.get_field_by_name("symbol")
 
 
 def _alias_hit() -> object:
-    return SEED_REGISTRY.get_field_by_name("ticker", STANDARD_BRANCH)
+    return SEED_REGISTRY.get_field_by_name("ticker")
 
 
 def _tag_miss() -> object:
@@ -126,11 +134,11 @@ def _tag_miss() -> object:
 
 
 def _name_miss() -> object:
-    return SEED_REGISTRY.get_field_by_name("Nope", STANDARD_BRANCH)
+    return SEED_REGISTRY.get_field_by_name("Nope")
 
 
 def _id_miss() -> object:
-    return SEED_REGISTRY.get_field_by_id("5001:cme")
+    return SEED_REGISTRY.get_field_by_id(ABSENT_ID)
 
 
 def _generic_tag_hit() -> object:
@@ -138,39 +146,47 @@ def _generic_tag_hit() -> object:
 
 
 def _path_one_segment() -> object:
-    return SEED_REGISTRY.field_by_path("NoPartyIDs", STANDARD_BRANCH)
+    return SEED_REGISTRY.field_by_path("NoPartyIDs")
 
 
 def _path_two_segments() -> object:
-    return SEED_REGISTRY.field_by_path("Parties.PartyID", STANDARD_BRANCH)
+    return SEED_REGISTRY.field_by_path("Parties.PartyID")
 
 
 def _vendor_id_hit() -> object:
-    return TWO_BRANCHES.get_field_by_id("5001:cme")
+    return TWO_DIALECTS.get_field_by_id(VENDOR_ID)
 
 
 def _vendor_name_hit() -> object:
-    return TWO_BRANCHES.get_field_by_name("Venue1", VENDOR_BRANCH)
+    return TWO_DIALECTS.get_field_by_name("Venue1")
 
 
 def _vendor_alias_hit() -> object:
-    return TWO_BRANCHES.get_field_by_name("venuealias1", VENDOR_BRANCH)
+    return TWO_DIALECTS.get_field_by_name("venuealias1")
 
 
-def _vendor_tag_hit_inferred() -> object:
-    return TWO_BRANCHES.get_field_by_tag(5001)
+def _vendor_tag_hit() -> object:
+    return TWO_DIALECTS.get_field_by_tag(5001)
 
 
-def _standard_hit_over_two_branches() -> object:
-    return TWO_BRANCHES.get_field_by_tag(55)
+def _standard_hit_over_two_dialects() -> object:
+    return TWO_DIALECTS.get_field_by_tag(55)
 
 
-def _field_branch() -> object:
-    return TAGGED.fix.branch
+def _field_branches() -> object:
+    return TAGGED.fix.branches
+
+
+def _field_has_branch() -> object:
+    return TAGGED.fix.has_branch(VENDOR_DIALECT)
 
 
 def _field_id() -> object:
     return TAGGED.fix.id
+
+
+def _registry_dialects() -> object:
+    return TWO_DIALECTS.dialects()
 
 
 def _message_get_by_tag() -> object:
@@ -178,7 +194,7 @@ def _message_get_by_tag() -> object:
 
 
 def _message_get_by_id() -> object:
-    return MESSAGE.get_by_id("55:")
+    return MESSAGE.get_by_id(SYMBOL_ID)
 
 
 def _message_get_by_name() -> object:
@@ -187,10 +203,6 @@ def _message_get_by_name() -> object:
 
 def _message_get_by_path() -> object:
     return MESSAGE.get_by_path("Parties[0].PartyID")
-
-
-def _message_branch() -> object:
-    return MESSAGE.branch
 
 
 def _message_into_latest() -> object:
@@ -234,7 +246,7 @@ CATALOG_PICKLE = pickle.dumps(CATALOG)
 CODEC = FixCodec(SEED_REGISTRY)
 BRIDGE_REGISTRY = copy.copy(SEED_REGISTRY)
 BRIDGE_REGISTRY.with_ulbridge_fields()
-BRIDGE_CODEC = FixCodec(BRIDGE_REGISTRY, branch="ulbridge")
+BRIDGE_CODEC = FixCodec(BRIDGE_REGISTRY)
 NUMERIC_GROUP = b"8=FIX.4.4|35=D|453=1|448=BROKER|447=D|452=1|10=0|"
 assert CODEC.parse_fix_line(NUMERIC_GROUP).by_tag(453).as_py() == 1
 assert CODEC.parse_fix_line(NUMERIC_GROUP).by_path("Parties[0].PartyID").as_py() == "BROKER"
@@ -252,19 +264,10 @@ PARSED_BATCH = CODEC.parse_text_arrow_reader(CAPTURE).read_all()
 assert PARSED_BATCH.num_rows == len(LINES)
 assert len(list(CODEC.parse_lines(LINES))) == len(LINES)
 
-# The record door with a dialect each row names for itself: every other row
-# spells an alias of the codec's own branch, the rest a plugin no branch is
-# named after, which keeps the pin. The alias is declared on a copy of the
-# bridge dictionary so the cases above keep their setup. A plugin's dialect
-# resolves off the codec's memo after the first row spelling it, so this is
-# what a row costs read under a dialect it names for itself.
-PLUGIN_REGISTRY = copy.copy(BRIDGE_REGISTRY)
-_DECLARED = PLUGIN_REGISTRY.branch_named(ULBRIDGE_BRANCH)
-assert _DECLARED is not None
-PLUGIN_REGISTRY.set_branch(
-    FixBranch(_DECLARED.name, version=_DECLARED.version, aliases=[*_DECLARED.aliases, "ulb"])
-)
-PLUGIN_CODEC = FixCodec(PLUGIN_REGISTRY, branch=ULBRIDGE_BRANCH, capture_names=["pluginid"])
+# The record door with a `pluginid` capture on every row: the capture fills
+# the crate's `pluginid` field and selects nothing, so this is what a row
+# costs with one more fill beside the parse.
+PLUGIN_CODEC = FixCodec(BRIDGE_REGISTRY, capture_names=["pluginid"])
 PLUGIN_LINES = [
     TextLine(index, line, ["ULB" if index % 2 == 0 else "OMS_X1_TradeCapture"])
     for index, line in enumerate(LINES)
@@ -397,22 +400,23 @@ def main() -> None:
         _measure("generic tag hit", _generic_tag_hit, args.iterations)
         _measure("field_by_path, one segment", _path_one_segment, args.iterations)
         _measure("field_by_path, two segments", _path_two_segments, args.iterations)
-        _measure("vendor id hit, two branches", _vendor_id_hit, args.iterations)
-        _measure("vendor name hit, two branches", _vendor_name_hit, args.iterations)
-        _measure("vendor alias hit, two branches", _vendor_alias_hit, args.iterations)
-        _measure("inferred vendor tag hit", _vendor_tag_hit_inferred, args.iterations)
+        _measure("vendor id hit, two dialects", _vendor_id_hit, args.iterations)
+        _measure("vendor name hit, two dialects", _vendor_name_hit, args.iterations)
+        _measure("vendor alias hit, two dialects", _vendor_alias_hit, args.iterations)
+        _measure("vendor tag hit", _vendor_tag_hit, args.iterations)
         _measure(
-            "standard tag hit, two branches",
-            _standard_hit_over_two_branches,
+            "standard tag hit, two dialects",
+            _standard_hit_over_two_dialects,
             args.iterations,
         )
-        _measure("field.fix.branch", _field_branch, args.iterations)
+        _measure("field.fix.branches", _field_branches, args.iterations)
+        _measure("field.fix.has_branch", _field_has_branch, args.iterations)
         _measure("field.fix.id", _field_id, args.iterations)
+        _measure("registry dialects", _registry_dialects, args.iterations)
         _measure("message get_by_tag", _message_get_by_tag, args.iterations)
         _measure("message get_by_id", _message_get_by_id, args.iterations)
         _measure("message get_by_name", _message_get_by_name, args.iterations)
         _measure("message get_by_path", _message_get_by_path, args.iterations)
-        _measure("message branch", _message_branch, args.iterations)
         _measure("message into_latest", _message_into_latest, args.iterations)
         _measure("infer FIXML protocol", _infer_fixml_protocol, args.iterations)
         _measure("infer Ullink MsgType", _infer_ullink_msgtype, args.iterations)

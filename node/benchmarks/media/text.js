@@ -71,7 +71,7 @@ function countRecords(handle) {
   handle.intoText(options)
   let count = 0
   for (const row of handle.readRecords()) {
-    assert.ok(row.body instanceof Uint8Array)
+    assert.equal(typeof row.body, 'string')
     count += 1
   }
   return count

@@ -8,14 +8,13 @@ use smol_str::{SmolStr, format_smolstr};
 use super::group_plan::GroupPlan;
 use super::registry::name_digest;
 use super::store::{DefinitionKey, compact, reference};
-use super::{FixBranch, FixId, FixRegistry, MsgType};
+use super::{FixId, FixRegistry, MsgType};
 use crate::types::folds_equal;
 use crate::{DataType, Error, Field, FixCategory, Result};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Definition {
     pub category: FixCategory,
-    pub branch: FixBranch,
     pub field: DefinitionField,
 }
 
@@ -85,9 +84,15 @@ pub(super) struct Catalog {
     entries: Vec<Definition>,
     names: HashMap<(FixCategory, u64), usize>,
     order: Vec<usize>,
-    counters: HashMap<FixId, Option<usize>>,
-    message_codes: HashMap<u32, HashMap<SmolStr, Option<usize>>>,
+    /// Each counter tag, and the one group it opens - `None` where two
+    /// groups claim one counter, which names nothing.
+    counters: HashMap<i32, Option<usize>>,
+    /// Each wire code, and the message a bare code answers: the one named
+    /// as tag 35's code set names the code, else the first in name order.
+    message_codes: HashMap<SmolStr, usize>,
     message_aliases: HashMap<u64, MessageAlias>,
+    /// Each wire code, and the name tag 35's code set gives it.
+    code_names: HashMap<SmolStr, SmolStr>,
 }
 
 impl PartialEq for Catalog {
@@ -98,15 +103,14 @@ impl PartialEq for Catalog {
 impl Eq for Catalog {}
 
 impl Catalog {
-    fn key(category: FixCategory, branch: &FixBranch, name: &str) -> (FixCategory, u64) {
-        (category, name_digest(branch, name, 0x4341_5441_4c4f_4753))
+    fn key(category: FixCategory, name: &str) -> (FixCategory, u64) {
+        (category, name_digest(name, 0x4341_5441_4c4f_4753))
     }
 
-    fn position(&self, category: FixCategory, branch: &FixBranch, name: &str) -> Option<usize> {
-        let position = *self.names.get(&Self::key(category, branch, name))?;
+    fn position(&self, category: FixCategory, name: &str) -> Option<usize> {
+        let position = *self.names.get(&Self::key(category, name))?;
         let entry = self.entries.get(position)?;
-        (entry.branch.has_identity(branch) && crate::types::folds_equal(entry.field.name(), name))
-            .then_some(position)
+        crate::types::folds_equal(entry.field.name(), name).then_some(position)
     }
 
     pub fn iter(&self, category: FixCategory) -> impl Iterator<Item = &Field> {
@@ -138,64 +142,93 @@ impl Catalog {
             .enumerate()
             .filter(|(_, entry)| entry.category == FixCategory::Groups)
         {
-            if let Some(id) = entry
-                .field
-                .as_fix()
-                .counter()
-                .ok()
-                .flatten()
-                .and_then(|tag| FixId::from_parts(&entry.branch, tag).ok())
-            {
+            if let Some(tag) = entry.field.as_fix().counter().ok().flatten() {
                 self.counters
-                    .entry(id)
+                    .entry(tag)
                     .and_modify(|held| *held = None)
                     .or_insert(Some(position));
             }
         }
     }
 
+    /// The message a bare code answers, where two declare it under two
+    /// names.
+    ///
+    /// The one named as tag 35's code set names the code, because that is
+    /// what the specification calls the message and what a reader of `35=D`
+    /// means; where no message is so named, or no code set names the code,
+    /// the first in name order. Both are facts of the catalog's content and
+    /// not of the order it was built in, so a dictionary folded, stored and
+    /// loaded answers the same message. A second message on the code is
+    /// reached by its own name.
     fn index_messages(&mut self) {
-        self.message_codes.clear();
+        let mut codes: HashMap<SmolStr, usize> = HashMap::new();
         for (position, entry) in self.entries.iter().enumerate() {
-            if let Some(message) = entry.field.message() {
-                self.message_codes
-                    .entry(entry.branch.digest())
-                    .or_default()
-                    .entry(SmolStr::new(message.as_str()))
-                    .and_modify(|held| *held = None)
-                    .or_insert(Some(position));
+            let Some(message) = entry.field.message() else {
+                continue;
+            };
+            let code = message.as_str();
+            let names_code = |name: &str| {
+                self.code_names
+                    .get(code)
+                    .is_some_and(|named| crate::types::folds_equal(named, name))
+            };
+            match codes.entry(SmolStr::new(code)) {
+                std::collections::hash_map::Entry::Vacant(slot) => {
+                    slot.insert(position);
+                }
+                std::collections::hash_map::Entry::Occupied(mut slot) => {
+                    let held = self.entries[*slot.get()].field.name();
+                    let arriving = entry.field.name();
+                    let takes = if names_code(held) {
+                        false
+                    } else if names_code(arriving) {
+                        true
+                    } else {
+                        arriving < held
+                    };
+                    if takes {
+                        slot.insert(position);
+                    }
+                }
             }
         }
+        self.message_codes = codes;
     }
 
-    fn message_position(&self, branch: &FixBranch, spelling: &str) -> Option<Option<usize>> {
-        let codes = self.message_codes.get(&branch.digest())?;
-        if let Some(position) = codes.get(spelling) {
+    /// The message one spelling names: an exact wire code, a folded name,
+    /// or tag 35's own alias for a code.
+    fn message_position(&self, spelling: &str) -> Option<usize> {
+        if let Some(position) = self.message_codes.get(spelling) {
             return Some(*position);
         }
-        if let Some(position) = self.position(FixCategory::Messages, branch, spelling) {
-            return Some(Some(position));
+        if let Some(position) = self.position(FixCategory::Messages, spelling) {
+            return Some(position);
         }
-        let alias = self.message_aliases.get(&name_digest(
-            &FixBranch::STANDARD,
-            spelling,
-            0x4d53_475f_414c_4941,
-        ))?;
+        let alias = self
+            .message_aliases
+            .get(&name_digest(spelling, 0x4d53_475f_414c_4941))?;
         if !crate::types::folds_equal(&alias.spelling, spelling) {
             return None;
         }
         let code = alias.code.as_ref()?;
-        codes.get(code).copied()
+        self.message_codes.get(code).copied()
     }
 
     fn index_message_aliases(&mut self, field: Option<&Field>) {
         self.message_aliases.clear();
+        self.code_names.clear();
         let Some(field) = field else {
+            // The code set decides which message a bare code answers, so
+            // its going re-decides them.
+            self.index_messages();
             return;
         };
         for code in field.as_fix().codes().filter_map(Result::ok) {
+            self.code_names
+                .insert(SmolStr::new(code.value()), SmolStr::new(code.name()));
             for spelling in std::iter::once(code.name()).chain(code.aliases()) {
-                let digest = name_digest(&FixBranch::STANDARD, spelling, 0x4d53_475f_414c_4941);
+                let digest = name_digest(spelling, 0x4d53_475f_414c_4941);
                 self.message_aliases
                     .entry(digest)
                     .and_modify(|held| {
@@ -211,28 +244,23 @@ impl Catalog {
                     });
             }
         }
+        self.index_messages();
     }
 
     pub fn all(&self) -> impl Iterator<Item = &Definition> {
         self.order.iter().map(|position| &self.entries[*position])
     }
 
-    pub fn insert(
-        &mut self,
-        category: FixCategory,
-        branch: FixBranch,
-        field: Field,
-    ) -> Result<Option<Field>> {
+    pub fn insert(&mut self, category: FixCategory, field: Field) -> Result<Option<Field>> {
         if category == FixCategory::Groups {
-            let tag = field
+            field
                 .as_fix()
                 .counter()?
                 .ok_or_else(|| Error::absent("fix:counter", field.name()))?;
-            FixId::from_parts(&branch, tag)?;
         }
-        let key = Self::key(category, &branch, field.name());
+        let key = Self::key(category, field.name());
         if let Some(position) = self.names.get(&key).copied() {
-            if self.position(category, &branch, field.name()) != Some(position) {
+            if self.position(category, field.name()) != Some(position) {
                 return Err(Error::conflict(
                     "FIX definition name",
                     "FIX name digest collision",
@@ -258,21 +286,13 @@ impl Catalog {
         }
         let position = self.entries.len();
         let field = DefinitionField::from_field(category, field)?;
-        self.entries.push(Definition {
-            category,
-            branch,
-            field,
-        });
+        self.entries.push(Definition { category, field });
         self.names.insert(key, position);
         self.order.push(position);
         self.order.sort_by(|left, right| {
             let left = &self.entries[*left];
             let right = &self.entries[*right];
-            (left.category, left.branch.name(), left.field.name()).cmp(&(
-                right.category,
-                right.branch.name(),
-                right.field.name(),
-            ))
+            (left.category, left.field.name()).cmp(&(right.category, right.field.name()))
         });
         if category == FixCategory::Groups {
             self.index_counters();
@@ -293,10 +313,8 @@ impl Catalog {
             }
         }
         for (position, entry) in self.entries.iter().enumerate() {
-            self.names.insert(
-                Self::key(entry.category, &entry.branch, entry.field.name()),
-                position,
-            );
+            self.names
+                .insert(Self::key(entry.category, entry.field.name()), position);
         }
         self.index_counters();
         self.index_messages();
@@ -430,25 +448,17 @@ impl Documents {
         Ok(documents)
     }
 
-    /// The document one folded name reaches in one branch, with its key.
-    fn get(
-        &self,
-        category: FixCategory,
-        branch: &FixBranch,
-        name: &str,
-    ) -> Option<(&DefinitionKey, &Field)> {
+    /// The document one folded name reaches, with its key.
+    fn get(&self, category: FixCategory, name: &str) -> Option<(&DefinitionKey, &Field)> {
         self.keys
-            .get(&Catalog::key(category, branch, name))?
+            .get(&Catalog::key(category, name))?
             .iter()
-            .find(|key| key.1.has_identity(branch) && folds_equal(&key.2, name))
+            .find(|key| folds_equal(&key.1, name))
             .and_then(|key| self.raw.get_key_value(key))
     }
 
     fn put(&mut self, key: DefinitionKey, document: Field) {
-        let held = self
-            .keys
-            .entry(Catalog::key(key.0, &key.1, &key.2))
-            .or_default();
+        let held = self.keys.entry(Catalog::key(key.0, &key.1)).or_default();
         if !held.contains(&key) {
             held.push(key.clone());
         }
@@ -514,68 +524,24 @@ fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
 }
 
 impl FixRegistry {
-    /// Borrows the unique message definition named by an exact wire code,
-    /// folded canonical name, or tag 35's enum alias, in that order.
+    /// Borrows the message definition named by an exact wire code, a folded
+    /// canonical name, or tag 35's enum alias, in that order.
     ///
-    /// An omitted branch tries the standard namespace first, then named
-    /// branches in canonical order. Ambiguous wire codes return no match.
-    pub fn get_msgtype(&self, spelling: &str, branch: Option<&FixBranch>) -> Option<&MsgType> {
-        let position = if let Some(branch) = branch {
-            self.get_branch_by_digest(branch.digest_signed())
-                .filter(|held| held.has_identity(branch))?;
-            self.catalog.message_position(branch, spelling)?
-        } else {
-            let mut found = None;
-            for branch in self.branch_values() {
-                if let Some(position) = self.catalog.message_position(branch, spelling) {
-                    found = Some(position);
-                    break;
-                }
-            }
-            found?
-        }?;
+    /// A code two messages declare under different names answers the one
+    /// named as tag 35's code set names the code, else the first in name
+    /// order; the other is reached by its name.
+    pub fn get_msgtype(&self, spelling: &str) -> Option<&MsgType> {
+        let position = self.catalog.message_position(spelling)?;
         self.catalog.entries[position].field.message()
     }
 
-    /// The message `spelling` names under `branch`, by the tier a key
-    /// resolves by: the branch's own declaration, else - for a branch that
-    /// is not the standard one and declares the code not at all - the
-    /// standard one's. An omitted or standard branch reads as an omitted
-    /// one does, the standard namespace first.
-    ///
-    /// Ambiguity is an answer, not an absence: a code the branch declares
-    /// twice names nothing, in that branch or in the one below it. The
-    /// codec reads a row against this and the anomaly reader compares the
-    /// row against the same, so one grammar is what both mean.
-    pub(super) fn known_msgtype(
-        &self,
-        spelling: &str,
-        branch: Option<&FixBranch>,
-    ) -> Option<&MsgType> {
-        let Some(branch) = branch.filter(|held| !held.is_standard()) else {
-            return self.get_msgtype(spelling, None);
-        };
-        let declared = self
-            .get_branch_by_digest(branch.digest_signed())
-            .filter(|held| held.has_identity(branch))
-            .and_then(|_| self.catalog.message_position(branch, spelling));
-        match declared {
-            Some(position) => self.catalog.entries[position?].field.message(),
-            None => self.get_msgtype(spelling, Some(&FixBranch::STANDARD)),
-        }
+    /// Borrows a registry-owned message type, raising absence.
+    pub fn msgtype(&self, spelling: &str) -> Result<&MsgType> {
+        self.get_msgtype(spelling)
+            .ok_or_else(|| Error::absent("one FIX message type", format_args!("{spelling:?}")))
     }
 
-    /// Borrows a unique registry-owned message type, raising absence or ambiguity.
-    pub fn msgtype(&self, spelling: &str, branch: Option<&FixBranch>) -> Result<&MsgType> {
-        self.get_msgtype(spelling, branch).ok_or_else(|| {
-            Error::absent(
-                "one unambiguous FIX message type",
-                format_args!("{spelling:?} in branch {:?}", branch.map(FixBranch::name)),
-            )
-        })
-    }
-
-    /// Iterates registered message singletons in branch/name order.
+    /// Iterates registered message singletons in name order.
     pub fn msgtypes(&self) -> impl Iterator<Item = &MsgType> {
         self.catalog
             .order
@@ -583,7 +549,7 @@ impl FixRegistry {
             .filter_map(|position| self.catalog.entries[*position].field.message())
     }
 
-    /// Borrows a message singleton by its stable branch/name iteration position.
+    /// Borrows a message singleton by its stable name iteration position.
     pub fn msgtype_at(&self, index: usize) -> Option<&MsgType> {
         let start = self.catalog.order.partition_point(|position| {
             self.catalog.entries[*position].category < FixCategory::Messages
@@ -597,57 +563,19 @@ impl FixRegistry {
         self.catalog.index_message_aliases(field.as_ref());
     }
 
-    /// Resolves one category's folded name within its branch namespace.
-    pub fn get_definition(
-        &self,
-        category: FixCategory,
-        name: &str,
-        branch: Option<&FixBranch>,
-    ) -> Option<&Field> {
+    /// Resolves one category's folded name.
+    pub fn get_definition(&self, category: FixCategory, name: &str) -> Option<&Field> {
         if category == FixCategory::Fields {
-            return self.get_field_by_name(name, branch);
+            return self.get_field_by_name(name);
         }
-        let position = if let Some(branch) = branch {
-            self.catalog.position(category, branch, name)
-        } else {
-            self.catalog
-                .position(category, &FixBranch::STANDARD, name)
-                .or_else(|| {
-                    self.branch_values()
-                        .find_map(|branch| self.catalog.position(category, branch, name))
-                })
-        }?;
+        let position = self.catalog.position(category, name)?;
         Some(self.catalog.entries[position].field.as_field())
     }
 
-    /// The repeating group `name` reaches under `branch`: that branch's own
-    /// definition, else the standard one - the tier a member resolves by,
-    /// so the codec and a restatement land an occurrence under one
-    /// definition.
-    pub(super) fn known_group(&self, name: &str, branch: &FixBranch) -> Option<&Field> {
-        self.get_definition(FixCategory::Groups, name, Some(branch))
-            .or_else(|| {
-                (!branch.is_standard())
-                    .then(|| {
-                        self.get_definition(FixCategory::Groups, name, Some(&FixBranch::STANDARD))
-                    })
-                    .flatten()
-            })
-    }
-
-    /// Resolves a category name, reporting absence with its category and branch.
-    pub fn definition(
-        &self,
-        category: FixCategory,
-        name: &str,
-        branch: Option<&FixBranch>,
-    ) -> Result<&Field> {
-        self.get_definition(category, name, branch).ok_or_else(|| {
-            Error::absent(
-                category.as_str(),
-                format_args!("{name:?} in branch {:?}", branch.map(FixBranch::name)),
-            )
-        })
+    /// Resolves a category name, reporting absence with its category.
+    pub fn definition(&self, category: FixCategory, name: &str) -> Result<&Field> {
+        self.get_definition(category, name)
+            .ok_or_else(|| Error::absent(category.as_str(), name))
     }
 
     /// Iterates one category deterministically without collecting definitions.
@@ -664,7 +592,7 @@ impl FixRegistry {
     /// Borrows one definition by its category's deterministic iteration position.
     ///
     /// Positions stay stable while the registry is unchanged. Field positions
-    /// follow tag order; named positions follow branch and canonical name order.
+    /// follow tag order; named positions follow canonical name order.
     pub fn definition_at(&self, category: FixCategory, index: usize) -> Option<&Field> {
         if category == FixCategory::Fields {
             return self.iter().nth(index);
@@ -684,8 +612,7 @@ impl FixRegistry {
         }
         if category == FixCategory::Groups {
             if let Some(name) = field.as_fix().component().map(str::to_owned) {
-                let branch = field.as_fix().branch()?;
-                let component = self.definition(FixCategory::Components, &name, Some(&branch))?;
+                let component = self.definition(FixCategory::Components, &name)?;
                 if let DataType::List(item) | DataType::LargeList(item) = field.dtype() {
                     // Against the canonical shape: the stored component holds
                     // no derived tag on its own occurrences, and an item a
@@ -713,12 +640,11 @@ impl FixRegistry {
         // the catalog arrives carrying its target's derived tag, which no
         // stored reference restates and no loaded one carries.
         field = canonical_occurrences(field, true)?;
-        let branch = field.as_fix().branch()?;
         // An update keeps the identity the definition already has: a derived
         // tag is stable for the definition, not for the registry it was
         // derived against.
         let held = self
-            .get_definition(category, field.name(), Some(&branch))
+            .get_definition(category, field.name())
             .and_then(|stored| stored.as_fix().tag().ok().flatten());
         let own = match field.as_fix().tag()? {
             // A tag outside the block is nobody's to hold. It is kept as
@@ -739,8 +665,7 @@ impl FixRegistry {
         };
         field.as_fix_mut().set_tag(tag)?;
         self.validate_definition(category, &field)?;
-        self.check_branch(&branch)?;
-        if let Some(stored) = self.get_definition(category, field.name(), Some(&branch)) {
+        if let Some(stored) = self.get_definition(category, field.name()) {
             if stored.name().eq_ignore_ascii_case(field.name()) {
                 field.set_name(stored.name());
             }
@@ -749,7 +674,7 @@ impl FixRegistry {
                 self.validate_catalog()?;
             }
             let mut staged = self.clone();
-            let prior = staged.catalog.insert(category, branch, field)?;
+            let prior = staged.catalog.insert(category, field)?;
             if refresh {
                 staged.refresh_references()?;
             }
@@ -757,30 +682,28 @@ impl FixRegistry {
             *self = staged;
             return Ok(prior);
         }
-        let prior = self.catalog.insert(category, branch.clone(), field)?;
-        self.ensure_branch(branch);
-        Ok(prior)
+        self.catalog.insert(category, field)
     }
 
     /// Creates a definition, refusing an existing name or wire identity atomically.
     pub fn create_definition(&mut self, category: FixCategory, field: Field) -> Result<()> {
-        let branch = field.as_fix().branch()?;
         let existing = if category == FixCategory::Fields {
             // Creation reserves canonical identities only. Another field's
             // alias may name this spelling until its canonical owner arrives.
+            // A tag another field holds under another name is free for this
+            // one: the identity is the pair.
             self.canonical_position_by_id(super::registry::canonical_id(&field)?)
                 .is_some()
-                || self
-                    .canonical_position_by_name(&branch, field.name())
-                    .is_some()
+                || self.canonical_position_by_name(field.name()).is_some()
         } else {
-            self.get_definition(category, field.name(), Some(&branch))
-                .is_some()
+            self.get_definition(category, field.name()).is_some()
         };
         if existing {
+            // Read through the template: "expected to create a free FIX
+            // definition name at ..., got an existing FIX definition".
             return Err(Error::conflict(
-                "absent FIX definition",
-                "existing FIX definition",
+                "free FIX definition name",
+                "FIX definition",
                 field.name(),
             ));
         }
@@ -790,8 +713,7 @@ impl FixRegistry {
 
     /// Replaces an existing definition and returns its previous value.
     pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field> {
-        let branch = field.as_fix().branch()?;
-        let stored = self.definition(category, field.name(), Some(&branch))?;
+        let stored = self.definition(category, field.name())?;
         if category == FixCategory::Fields && stored.as_fix().id()? != field.as_fix().id()? {
             return Err(Error::conflict(
                 "the existing FIX identity",
@@ -847,21 +769,21 @@ impl FixRegistry {
     /// let party = DataType::from_fields([party_id])?.required_field("Party");
     /// registry.create_definition(FixCategory::Components, party)?;
     /// // A message restates the component through a reference to it.
-    /// let mut party = registry.definition(FixCategory::Components, "Party", None)?.clone();
+    /// let mut party = registry.definition(FixCategory::Components, "Party")?.clone();
     /// party.as_fix_mut().set_component("Party")?;
     /// let mut order = DataType::from_fields([party])?.required_field("Order");
     /// order.as_fix_mut().set_msgtype("D")?;
     /// registry.create_definition(FixCategory::Messages, order)?;
     ///
     /// // Extending the component is one call, and the message sees the member.
-    /// let mut extended = registry.definition(FixCategory::Components, "Party", None)?.clone();
+    /// let mut extended = registry.definition(FixCategory::Components, "Party")?.clone();
     /// let note = DataType::Utf8.nullable_field("PartyNote");
     /// let members = extended.fields().iter().cloned().chain([note]);
     /// extended.set_dtype(DataType::from_fields(members)?)?;
     /// assert!(!registry.add_definition(FixCategory::Components, extended)?, "merged");
     /// let member = yggdryl::FieldPath::from_str("Order.Party.PartyNote")?;
-    /// assert_eq!(registry.field_by_path(&member, None)?.dtype(), &DataType::Utf8);
-    /// assert_eq!(registry.definition(FixCategory::Components, "Party", None)?.field_len(), 2);
+    /// assert_eq!(registry.field_by_path(&member)?.dtype(), &DataType::Utf8);
+    /// assert_eq!(registry.definition(FixCategory::Components, "Party")?.field_len(), 2);
     /// # Ok(())
     /// # }
     /// ```
@@ -893,17 +815,12 @@ impl FixRegistry {
     pub(super) fn fold_definition(&mut self, category: FixCategory, field: Field) -> Result<bool> {
         validate_name(&field)?;
         check_shape(category, &field)?;
-        let branch = field.as_fix().branch()?;
-        self.check_branch(&branch)?;
-        if self
-            .get_definition(category, field.name(), Some(&branch))
-            .is_none()
-        {
+        if self.get_definition(category, field.name()).is_none() {
             self.insert_definition(category, field)?;
             return Ok(true);
         }
         let mut documents = Documents::from_registry(self)?;
-        self.fold_document(&mut documents, category, &branch, &field)?;
+        self.fold_document(&mut documents, category, &field)?;
         self.resolve_catalog(documents.raw)?;
         self.validate_catalog()?;
         Ok(false)
@@ -912,18 +829,17 @@ impl FixRegistry {
     /// Folds one incoming definition over the documents.
     ///
     /// A document nothing stored answers to is added as the store would read
-    /// it; one a stored document answers to, by folded name in its branch, is
-    /// merged into that document under the stored key.
+    /// it; one a stored document answers to, by folded name, is merged into
+    /// that document under the stored key.
     fn fold_document(
         &self,
         documents: &mut Documents,
         category: FixCategory,
-        branch: &FixBranch,
         incoming: &Field,
     ) -> Result<()> {
         let incoming = compact(incoming.clone(), true)?;
-        let Some((key, stored)) = documents.get(category, branch, incoming.name()) else {
-            let key = (category, branch.clone(), incoming.name().to_owned());
+        let Some((key, stored)) = documents.get(category, incoming.name()) else {
+            let key = (category, incoming.name().to_owned());
             documents.put(key, incoming);
             return Ok(());
         };
@@ -952,9 +868,7 @@ impl FixRegistry {
                 // group, with every other reference, reads them back from
                 // there once the documents resolve.
                 (Some((FixCategory::Components, name)), None) => {
-                    let branch = held.as_fix().branch()?;
-                    let Some((key, component)) =
-                        documents.get(FixCategory::Components, &branch, name)
+                    let Some((key, component)) = documents.get(FixCategory::Components, name)
                     else {
                         return Err(Error::absent(FixCategory::Components.as_str(), name));
                     };
@@ -1078,15 +992,11 @@ impl FixRegistry {
     fn referenced_dtype(&self, documents: &Documents, field: &Field) -> Result<DataType> {
         let (category, name) = reference(field)
             .ok_or_else(|| Error::absent("a field, component, or group reference", field.name()))?;
-        let branch = field.as_fix().branch()?;
         if category == FixCategory::Fields {
-            return Ok(self
-                .definition(category, name, Some(&branch))?
-                .dtype()
-                .clone());
+            return Ok(self.definition(category, name)?.dtype().clone());
         }
         documents
-            .get(category, &branch, name)
+            .get(category, name)
             .map(|(_, document)| document.dtype().clone())
             .ok_or_else(|| Error::absent(category.as_str(), name))
     }
@@ -1096,12 +1006,10 @@ impl FixRegistry {
         &mut self,
         category: FixCategory,
         name: &str,
-        branch: Option<&FixBranch>,
     ) -> Result<Option<Field>> {
-        let Some(field) = self.get_definition(category, name, branch) else {
+        let Some(field) = self.get_definition(category, name) else {
             return Ok(None);
         };
-        let branch = field.as_fix().branch()?;
         let name = field.name().to_owned();
         let mut staged = self.clone();
         let removed = if category == FixCategory::Fields {
@@ -1110,44 +1018,43 @@ impl FixRegistry {
         } else {
             let position = staged
                 .catalog
-                .position(category, &branch, &name)
+                .position(category, &name)
                 .ok_or_else(|| Error::absent(category.as_str(), &name))?;
             Some(staged.catalog.remove(position))
         };
         staged.validate_catalog()?;
-        staged.retain_populated_branches();
         staged.refresh_msgtype_aliases();
         *self = staged;
         Ok(removed)
     }
 
-    /// The unique group using one counter; ambiguous contexts return no match.
-    pub fn get_group_by_counter(&self, id: FixId) -> Option<&Field> {
-        let position = self.catalog.counters.get(&id).copied().flatten()?;
+    /// The unique group one counter tag opens; two groups on one counter
+    /// name nothing.
+    pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field> {
+        let position = self.catalog.counters.get(&tag).copied().flatten()?;
         Some(self.catalog.entries[position].field.as_field())
     }
 
-    pub(super) fn get_group_plan_by_counter(&self, id: FixId) -> Option<&GroupPlan> {
-        let position = self.catalog.counters.get(&id).copied().flatten()?;
+    pub(super) fn get_group_plan_by_counter(&self, tag: i32) -> Option<&GroupPlan> {
+        let position = self.catalog.counters.get(&tag).copied().flatten()?;
         match &self.catalog.entries[position].field {
             DefinitionField::Group(_, plan) => Some(plan),
             _ => None,
         }
     }
 
-    /// The unique group using a counter, reporting absence or ambiguity.
-    pub fn group_by_counter(&self, id: FixId) -> Result<&Field> {
-        self.get_group_by_counter(id)
-            .ok_or_else(|| Error::absent("one unambiguous FIX group", id))
+    /// The unique group a counter tag opens, reporting absence or ambiguity.
+    pub fn group_by_counter(&self, tag: i32) -> Result<&Field> {
+        self.get_group_by_counter(tag)
+            .ok_or_else(|| Error::absent("one unambiguous FIX group", tag))
     }
 
     /// Whether anything in this registry already answers to `tag`.
     ///
-    /// A published tag can never reach the derived block - a dialect's own
-    /// tags stop at [`FixId::USER_TAG_MAX`] and this crate's at
-    /// [`crate::CRATE_TAG_MAX`] - so the only thing that can occupy a slot is
-    /// another derived definition. The scalar index is asked anyway, because
-    /// a dictionary read from a store is whatever that store held.
+    /// A published tag never reaches the derived block - the crate's own
+    /// stop at [`crate::CRATE_TAG_MAX`] - so the only thing that can occupy a
+    /// slot is another derived definition. The scalar index is asked anyway,
+    /// because a dictionary read from a store is whatever that store held.
     fn definition_tag_in_use(&self, tag: i32) -> bool {
         if self.get_field_by_tag(tag).is_some() {
             return true;
@@ -1223,9 +1130,7 @@ impl FixRegistry {
                 .as_fix()
                 .counter()?
                 .ok_or_else(|| Error::absent("fix:counter", field.name()))?;
-            let branch = field.as_fix().branch()?;
-            let id = FixId::from_parts(&branch, tag)?;
-            let counter = self.field_by_id(id)?;
+            let counter = self.field_by_tag(tag)?;
             if counter.dtype() != &DataType::Int32 {
                 return Err(invalid(counter, "an int32 repeating-group counter"));
             }
@@ -1268,8 +1173,7 @@ impl FixRegistry {
             .or_else(|| view.group().map(|name| (FixCategory::Groups, name)))
             .or_else(|| view.component().map(|name| (FixCategory::Components, name)));
         if let Some((category, name)) = reference {
-            let branch = view.branch()?;
-            let target = self.definition(category, name, Some(&branch))?;
+            let target = self.definition(category, name)?;
             let occurrence = if category == FixCategory::Components {
                 match field.dtype() {
                     DataType::List(item) | DataType::LargeList(item) => item.as_ref(),
@@ -1287,10 +1191,14 @@ impl FixRegistry {
                     ),
                 ));
             }
-            if category == FixCategory::Fields && view.id()? != target.as_fix().id()? {
+            // An occurrence is named by the message that holds it - a
+            // duplicate constraint or a contended spelling renames it - so
+            // its own identity is the message's business; the tag it carries
+            // is the target's, and that is what a reference restates.
+            if category == FixCategory::Fields && view.tag()? != target.as_fix().tag()? {
                 return Err(Error::conflict(
-                    "the referenced FIX field identity",
-                    "a different field identity",
+                    "the referenced FIX field's tag",
+                    "a different tag",
                     field.name(),
                 ));
             }
@@ -1388,32 +1296,17 @@ impl FixRegistry {
             FixCategory::Messages,
         ] {
             for field in other.catalog.iter(category) {
-                let branch = field.as_fix().branch()?;
-                self.check_branch(&branch)?;
-                if documents.get(category, &branch, field.name()).is_none() {
-                    self.fold_document(&mut documents, category, &branch, field)?;
+                if documents.get(category, field.name()).is_none() {
+                    self.fold_document(&mut documents, category, field)?;
                 } else {
-                    folding.push((category, branch.clone(), field));
+                    folding.push((category, field));
                 }
-                self.ensure_branch(branch);
             }
         }
-        for (category, branch, field) in folding {
-            self.fold_document(&mut documents, category, &branch, field)?;
+        for (category, field) in folding {
+            self.fold_document(&mut documents, category, field)?;
         }
         self.resolve_catalog(documents.raw)?;
         self.validate_catalog()
-    }
-
-    pub(super) fn has_branch_definitions(&self, branch: &FixBranch) -> bool {
-        self.iter().any(|field| {
-            field
-                .as_fix()
-                .branch()
-                .is_ok_and(|held| held.has_identity(branch))
-        }) || self
-            .catalog
-            .all()
-            .any(|entry| entry.branch.has_identity(branch))
     }
 }

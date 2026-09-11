@@ -11,8 +11,9 @@
  * sample frames without rebuilding the protocol's schemas.
  *
  * docs/assets/fix.json carries the native catalog, registry counts, fixed
- * capture columns, and recorded decoded/emitted sample results. Codes and
- * lineage stay inline in their owning native Field metadata.
+ * capture columns, and recorded decoded/emitted sample results. Codes,
+ * lineage and membership (`fix:branches`, the dictionaries that contributed
+ * a field) stay inline in their owning native Field metadata.
  *
  * The manifest is committed, so the same build runs on any machine: fixed corpus,
  * fixed key order, two-space JSON, LF, no timestamps and no paths. `--check`
@@ -196,7 +197,8 @@ function fieldRecords(registry) {
     const entries = lineage === null ? [] : lineage.entries
     const record = { t: tag, n: field.name, y: field.dtype.toString() }
     if (field.display !== null && field.display !== field.name) record.d = field.display
-    if (view.branch !== '') record.b = view.branch
+    const memberships = view.branches
+    if (memberships.length > 0) record.m = memberships
     if (field.description !== null) record.x = field.description
     const aliases = view.aliases
     if (aliases.length > 0) record.a = aliases
@@ -210,25 +212,30 @@ function fieldRecords(registry) {
       if (closed.until !== undefined) record.e = closed.until
     }
     records.push(record)
-
   }
-  records.sort((left, right) => left.t - right.t || (left.b ?? '').localeCompare(right.b ?? ''))
+  // The registry's own order: tag-major, the tag's holder first, then id.
   return records
 }
 
 /** What the dictionary is, counted once so the page states no arithmetic. */
-function counts(records, catalog, row) {
+function counts(records, catalog, row, dialects) {
   const versions = new Set()
-  const branches = new Map()
+  // Membership is provenance on the field: `fix:branches` lists every
+  // dictionary that contributed it, and a field the specification alone
+  // defines lists none. The shipped dictionary carries no membership at all.
+  const members = new Map(dialects.map((name) => [name, 0]))
   const dtypes = new Map()
   let enumFields = 0
   let codes = 0
   let lineage = 0
   let aliases = 0
   let alternates = 0
+  let memberships = 0
   for (const record of records) {
-    const branch = record.b ?? ''
-    branches.set(branch, (branches.get(branch) ?? 0) + 1)
+    if (record.m) {
+      memberships += 1
+      for (const name of record.m) members.set(name, (members.get(name) ?? 0) + 1)
+    }
     dtypes.set(record.y, (dtypes.get(record.y) ?? 0) + 1)
     if (record.c) {
       enumFields += 1
@@ -253,11 +260,12 @@ function counts(records, catalog, row) {
     messages: catalog.messages.length,
     components: catalog.components.length,
     columns: row.columns.length,
-    branches: branches.size,
+    memberships,
+    dialects: dialects.length,
     datatypes: dtypes.size,
     versions: versions.size,
     dtypes: [...dtypes.entries()].sort((left, right) => right[1] - left[1] || (left[0] < right[0] ? -1 : 1)),
-    branchSizes: [...branches.entries()].sort((left, right) => right[1] - left[1]),
+    dialectSizes: [...members.entries()].sort((left, right) => right[1] - left[1] || (left[0] < right[0] ? -1 : 1)),
     versionList: [...versions]
       .filter((held) => held !== '')
       .map((held) => Version.fromStr(held))
@@ -298,7 +306,10 @@ function frameCase(registry, reader, schema, key, label, line) {
   const row = held.intoRow(schema).toJSON()
 
   const columns = SHOWN.map((tag) => {
-    const at = schema.indexOf(String(tag))
+    // A capture column is named by the field the tag holds; the schema is
+    // indexed by that name, so the registry answers the tag first.
+    const named = registry.getFieldByTag(tag)
+    const at = named === null ? null : schema.indexOf(named.name)
     const value = at === null ? null : row[at]
     if (value === null || value === undefined) return null
     const field = schema.fieldAt(at)
@@ -326,7 +337,6 @@ function frameCase(registry, reader, schema, key, label, line) {
     mime: String(MimeType.inferBytes(bytes)),
     msgtype: msgtypeOf(bytes),
     direction: MimeType.inferBytesDirection(bytes),
-    branch: held.branch,
     size: held.size,
     columns,
     arrivals: held.arrivals().map(([tag, key_, value]) => [String(tag), key_, value]),
@@ -334,6 +344,7 @@ function frameCase(registry, reader, schema, key, label, line) {
       .arrivals()
       .filter(([tag]) => registry.getFieldByTag(tag) === null)
       .map(([, key_]) => key_),
+    // A lift source is the tag the facet was read from, or null.
     lift: held.lift().map(([facet, value]) => [facet, String(value.toJSON()), held.liftSource(facet)]),
     anomalies: held.anomalies(),
     digest: Buffer.from(held.digest()).toString('hex'),
@@ -360,8 +371,7 @@ function manifest() {
   const provenance = JSON.parse(fs.readFileSync(path.join(CONFIG, 'provenance.json'), 'utf8'))
   const records = fieldRecords(registry)
   const row = fixedRow(registry)
-  const kpi = counts(records, catalog, row)
-
+  const kpi = counts(records, catalog, row, registry.dialects())
 
   const index = {
     version: VERSION,

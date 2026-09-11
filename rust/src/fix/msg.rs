@@ -10,7 +10,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::anomaly::FixAnomalies;
 use super::build::stated;
 use super::entry::FixEntry;
-use super::{FixBranch, FixId, FixKey, FixRegistry};
+use super::{FixId, FixKey, FixRegistry};
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Version};
 
 /// A FIX message value, resolved against one registry.
@@ -23,14 +23,13 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Ver
 /// carries the dictionary it was resolved against and a later lookup cannot
 /// silently use a different one.
 ///
-/// A message has a branch, and it is derived rather than declared: it is
-/// the root field's own `fix:branch`, resolved once at construction, so
-/// nothing can disagree with it. A bare tag or name then resolves in a fixed
-/// two-step tier - this message's branch first, when the identifier that
-/// would name is legal at all, then the standard one - because a message
-/// transcribed against a venue dictionary names its own fields by the
-/// venue's spellings while still carrying `MsgType` and every other
-/// specification field.
+/// A message speaks no dialect of its own: the registry is one namespace,
+/// and a bare tag or name resolves in it directly - a message transcribed
+/// against a venue dictionary names its own fields by the venue's spellings
+/// while still carrying `MsgType` and every other specification field, and
+/// one namespace answers all of them. Which dictionaries a field belongs to
+/// is the field's own `fix:branches`, a membership a reader may ask about
+/// and nothing here resolves through.
 ///
 /// A value is reached by tag, by identifier, by name, or by path, each
 /// answering `Option<&Scalar>` with a failing twin; resolution goes through
@@ -91,15 +90,11 @@ pub struct FixMsg {
     /// schema and a value, in which case the emit falls back to the row and
     /// says so.
     entries: Vec<FixEntry>,
-    /// The root field's branch, enriched from the linked registry when that
-    /// dictionary declares a version or session defaults. Resolving it once
-    /// keeps every message lookup allocation-free.
-    branch: FixBranch,
     /// Each root child's tag beside its position, in tag order.
     ///
-    /// Resolved once for the same reason [`Self::branch`] is: reading a tag
-    /// out of a child's metadata is a formatted key and a map lookup, and
-    /// scanning the children per lookup pays it once per child. Every facet
+    /// Resolved once, because reading a tag out of a child's metadata is a
+    /// formatted key and a map lookup, and scanning the children per lookup
+    /// pays it once per child. Every facet
     /// a lift answers is a tag lookup, so a row of twenty facets over a
     /// message of twenty children was four hundred of them.
     ///
@@ -234,16 +229,13 @@ impl FixMsg {
     ///
     /// # Errors
     ///
-    /// Returns an error when the root's `fix:branch` is malformed, when
-    /// the root is not a Struct field, or when the value violates it, naming
-    /// the path of the first value that does not fit.
+    /// Returns an error when the root is not a Struct field, or when the
+    /// value violates it, naming the path of the first value that does not
+    /// fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
-        // The root's own dialect is read before its value is checked: a root
-        // that misstates its branch is refused as such, whatever it holds.
-        field.as_fix().branch()?;
         let value = field.canonicalize_value(value)?;
         let tags = tag_positions(&field);
-        Self::resolved(registry, field, value, Vec::new(), tags)
+        Ok(Self::resolved(registry, field, value, Vec::new(), tags))
     }
 
     /// Builds a message a reader already resolved, entries and all.
@@ -272,14 +264,7 @@ impl FixMsg {
     /// lands under, so the row is canonical by construction, and the builder
     /// resolved each child's tag on the way in - re-checking either would be
     /// a second reading of what `scalar` already answered.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the root's `fix:branch` is malformed.
-    pub(super) fn from_built(
-        registry: Arc<FixRegistry>,
-        built: super::build::Built,
-    ) -> Result<Self> {
+    pub(super) fn from_built(registry: Arc<FixRegistry>, built: super::build::Built) -> Self {
         let super::build::Built {
             field,
             value,
@@ -289,31 +274,25 @@ impl FixMsg {
         Self::resolved(registry, field, value, entries, tags)
     }
 
-    /// One message from parts already proven: the branch is read off the
-    /// root and enriched from the registry, and nothing else is derived yet.
+    /// One message from parts already proven: the group index is read off
+    /// the root, and nothing else is derived yet.
     fn resolved(
         registry: Arc<FixRegistry>,
         field: Field,
         value: Scalar,
         entries: Vec<FixEntry>,
         tags: Vec<(i32, usize)>,
-    ) -> Result<Self> {
-        let declared = field.as_fix().branch()?;
-        let branch = registry
-            .branch_named(declared.name())
-            .cloned()
-            .unwrap_or(declared);
+    ) -> Self {
         let groups = group_positions(&field);
-        Ok(Self {
+        Self {
             registry,
             entries,
-            branch,
             tags,
             named: OnceLock::new(),
             groups,
             field,
             value,
-        })
+        }
     }
 
     /// Returns what arrived and was read as sent, in arrival order,
@@ -346,7 +325,7 @@ impl FixMsg {
     /// Row only: the entries are what arrived and are not changed by what
     /// the row now says about it, so [`Self::into_bytes`] still re-emits the
     /// received line byte for byte. The key resolves as every lookup does -
-    /// this message's branch first, then the standard one - and a field the
+    /// through the registry's one namespace - and a field the
     /// dictionary knows types the value through [`Field::scalar`] under the
     /// dictionary's own field, so a written child is indistinguishable from
     /// a stated one and carries the same `fix:tag` a reader resolves it by.
@@ -582,9 +561,11 @@ impl FixMsg {
                     .registry
                     .get_field_by_id(id)
                     .ok_or_else(|| absent(key))?;
-                let at = self
-                    .index_of_name(known.name())
-                    .or_else(|| self.index_of_tag(id.tag()));
+                let at = self.index_of_name(known.name()).or_else(|| {
+                    self.registry
+                        .identity_of(known)
+                        .and_then(|(tag, _)| self.index_of_tag(tag))
+                });
                 Ok((at, stated(known)))
             }
             FixKey::Name(name) => match self.known_by_name(name) {
@@ -756,7 +737,7 @@ impl FixMsg {
     #[must_use]
     pub fn version(&self) -> Option<Version> {
         if let Some(held) = self
-            .get_by_tag(super::VERSION_TAG)
+            .get_by_tag(super::VERSION_TAG_NAME.0)
             .and_then(Scalar::as_str)
             .and_then(|held| held.parse().ok())
         {
@@ -835,11 +816,6 @@ impl FixMsg {
         &self.registry
     }
 
-    /// Returns the dictionary this message is spelled in.
-    pub const fn branch(&self) -> &FixBranch {
-        &self.branch
-    }
-
     /// Returns the root Struct field: the message's resolved schema.
     pub const fn as_field(&self) -> &Field {
         &self.field
@@ -852,8 +828,8 @@ impl FixMsg {
 
     /// Returns the value of the root child an identifier names.
     ///
-    /// An identifier is exact and does not tier: it names one dictionary, and
-    /// a dictionary this message does not speak simply misses.
+    /// An identifier is exact: it names one field, and the child is the one
+    /// that field's name reaches.
     pub fn get_by_id(&self, id: FixId) -> Option<&Scalar> {
         let known = self.registry.get_field_by_id(id)?;
         let index = self.field.index_of(known.name())?;
@@ -873,10 +849,9 @@ impl FixMsg {
     /// Returns the value of the root child a tag names.
     ///
     /// The registry resolves the tag to its canonical name, and that name
-    /// picks the root child. The tag is looked for in this message's own
-    /// branch first and then in the standard one, so a venue field and
-    /// `MsgType` are both reachable from a venue message. A tag neither
-    /// answers is looked for under its decimal rendering, so an unknown tag a
+    /// picks the root child, so a venue field and `MsgType` are both
+    /// reachable from a venue message. A tag the dictionary does not answer
+    /// is looked for under its decimal rendering, so an unknown tag a
     /// transcriber retained is still reachable.
     pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar> {
         self.value.get(self.reached_by_tag(tag)?)
@@ -885,8 +860,8 @@ impl FixMsg {
     /// The child a tag reaches: the one carrying the tag, by one hash-free
     /// binary search over the index resolved at construction, else the one
     /// either fallback names. A field a dictionary never explained carries
-    /// no tag and falls through to the fallbacks, where the dictionary tiers
-    /// are a probe per branch.
+    /// no tag and falls through to the fallbacks, where the dictionary is
+    /// one probe.
     fn reached_by_tag(&self, tag: i32) -> Option<usize> {
         if let Some(index) = self.index_of_tag(tag) {
             return Some(index);
@@ -915,8 +890,15 @@ impl FixMsg {
 
     /// The root child carrying one tag, by that child's own declaration.
     pub(super) fn index_of_tag(&self, tag: i32) -> Option<usize> {
-        let found = self.tags.binary_search_by_key(&tag, |(held, _)| *held);
-        found.ok().map(|at| self.tags[at].1)
+        // The first child carrying the tag, in the row's own order: a row
+        // may hold two children on one tag where the dictionary holds two
+        // fields on it, and the index is sorted by tag then position, so the
+        // partition point is the earliest.
+        let at = self.tags.partition_point(|(held, _)| *held < tag);
+        self.tags
+            .get(at)
+            .filter(|(held, _)| *held == tag)
+            .map(|(_, index)| *index)
     }
 
     pub(super) fn index_of_group(&self, counter: i32) -> Option<usize> {
@@ -946,9 +928,9 @@ impl FixMsg {
 
     /// Returns the value of the root child a name reaches.
     ///
-    /// The name folds through the registry to its canonical spelling in this
-    /// message's branch first and then in the standard one, and an exact
-    /// root-child match is the fallback when neither knows it.
+    /// The name folds through the registry to its canonical spelling, and
+    /// an exact root-child match is the fallback when the registry does not
+    /// know it.
     pub fn get_by_name(&self, name: &str) -> Option<&Scalar> {
         self.value.get(self.child_index(&self.field, name)?)
     }
@@ -969,8 +951,8 @@ impl FixMsg {
     /// splits a string, so a run addressing the same member a million times
     /// resolves the path once. A named segment resolves as
     /// [`Self::get_by_name`] does - the registry's canonical spelling first,
-    /// then an exact match, under the codec's dialect before the standard
-    /// branch - and an indexed segment takes one occurrence of the List a
+    /// then an exact match - and an indexed segment takes one occurrence of
+    /// the List a
     /// repeating group is, which is what reaching a member needs:
     /// `Parties[0].PartyID`.
     ///
@@ -1040,34 +1022,14 @@ impl FixMsg {
         }
     }
 
-    /// The field a bare tag names: this message's branch, then the
-    /// standard one.
-    ///
-    /// Step one is skipped when this message is already standard, because the
-    /// two probes would be the same one, and when the identifier it would
-    /// build is inadmissible - a specification tag belongs to the standard
-    /// branch and to no other.
+    /// The field a bare tag names: the tag's first holder in the registry.
     pub(super) fn known_by_tag(&self, tag: i32) -> Option<&Field> {
-        let own = if self.branch.is_standard() || !FixId::is_admissible(&self.branch, tag) {
-            None
-        } else {
-            FixId::from_parts(&self.branch, tag)
-                .ok()
-                .and_then(|id| self.registry.get_field_by_id(id))
-        };
-        own.or_else(|| self.registry.get_field_by_id(FixId::standard(tag)))
+        self.registry.get_field_by_tag(tag)
     }
 
-    /// The field a bare name reaches: this message's branch, then the
-    /// standard one.
+    /// The field a bare name reaches, canonical spelling or alias.
     pub(super) fn known_by_name(&self, name: &str) -> Option<&Field> {
-        if !self.branch.is_standard() {
-            if let Some(field) = self.registry.get_field_by_name(name, Some(&self.branch)) {
-                return Some(field);
-            }
-        }
-        self.registry
-            .get_field_by_name(name, Some(&FixBranch::STANDARD))
+        self.registry.get_field_by_name(name)
     }
 
     /// The position of the child `name` reaches under `parent`: the
@@ -1209,7 +1171,6 @@ impl Clone for FixMsg {
         Self {
             registry: Arc::clone(&self.registry),
             entries: self.entries.clone(),
-            branch: self.branch.clone(),
             tags: self.tags.clone(),
             named: OnceLock::new(),
             groups: self.groups.clone(),

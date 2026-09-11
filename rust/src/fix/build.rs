@@ -32,9 +32,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::entry::FixEntry;
 use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
-use super::{
-    FixBranch, FixId, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name,
-};
+use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::media::text::TextBytes;
 use crate::types::State;
 use crate::types::ascii::AsciiFamily;
@@ -242,6 +240,10 @@ pub(super) enum PairArrival {
     Packed(TextBytes, TextBytes),
     /// Another member of a packed pair recorded beside it: nothing to record.
     Read,
+    /// The document spelled the key so, and the row fills under the
+    /// dictionary's own name for it: the record keeps the spelling, under
+    /// the tag the name resolved to.
+    Spelled(TextBytes),
 }
 
 impl FixPair {
@@ -262,6 +264,19 @@ impl FixPair {
             key: PairKey::Rendered(key),
             value,
             arrival: PairArrival::Read,
+        }
+    }
+
+    /// One pair a document wrote under its own spelling of a field the
+    /// dictionary names otherwise.
+    ///
+    /// `name` is what the row fills under and `key` is what arrived: the
+    /// entry keeps the arrival, and the child takes the dictionary's name.
+    pub(super) const fn spelled(name: Vec<u8>, key: TextBytes, value: TextBytes) -> Self {
+        Self {
+            key: PairKey::Rendered(name),
+            value,
+            arrival: PairArrival::Spelled(key),
         }
     }
 
@@ -297,6 +312,11 @@ impl FixPair {
                 value: value.clone(),
                 named: false,
             }),
+            (PairArrival::Spelled(key), _) => Some(Arrived {
+                key: key.clone(),
+                value: self.value.clone(),
+                named: true,
+            }),
             // A rendered key is a reading and never an arrival, which is the
             // whole of what `read` records.
             (PairArrival::Own | PairArrival::Read, _) => None,
@@ -312,19 +332,9 @@ impl FixPair {
 /// disagree about what it is called.
 pub(super) const BEGINSTRING_COLUMN: &str = "beginstring";
 /// The name a row states its own clock under, which stamps the message.
-pub(super) const CLOCK_COLUMN: &str = super::TIMESTAMP_NAME;
+pub(super) const CLOCK_COLUMN: &str = super::TIMESTAMP_TAG_NAME.1;
 /// The name a row states the direction its line moved under.
 pub(super) const DIRECTION_COLUMN: &str = "direction";
-/// The name a row states the plugin that logged its line under.
-///
-/// Read twice over, from one cell: as the fill of the crate's own
-/// [`pluginid`](super::PLUGINID_TAG) field, by name like any other, and as the
-/// dialect the row is read under, through [`FixCodec::dialect_of`]. It is
-/// deliberately no parameter: a parameter is consumed by the read, and this
-/// one is carried into the row it names.
-///
-/// [`FixCodec::dialect_of`]: super::codec::FixCodec::dialect_of
-pub(super) const PLUGINID_COLUMN: &str = "pluginid";
 
 /// The version a `beginstring` states, as `BeginString` spells it.
 ///
@@ -341,14 +351,14 @@ pub(super) fn version_of(beginstring: &str) -> Option<Version> {
 
 /// What a row states beside its payload, applied when its message is built.
 ///
-/// A dialect, a version, a clock and fills, all the caller speaking per row.
-/// The dialect and the version are what the row's `pluginid` and
-/// `beginstring` resolved to, and they outrank the codec's own pins because
-/// a row is the more specific statement; both arrive resolved, so the build
-/// reads under them and parses no name per line. The clock stamps the
-/// message where a clock the message carries otherwise would, because a row
-/// that says when its line was written outranks what the reader would
-/// derive, exactly as a stated direction outranks the reading of the line.
+/// A version, a clock and fills, all the caller speaking per row. The
+/// version is what the row's `beginstring` resolved to, and it outranks the
+/// codec's own pin because a row is the more specific statement; it arrives
+/// resolved, so the build reads under it and parses no name per line. The
+/// clock stamps the message where a clock the message carries otherwise
+/// would, because a row that says when its line was written outranks what
+/// the reader would derive, exactly as a stated direction outranks the
+/// reading of the line.
 /// Each fill lands on the field its name reaches - a capture named `sessionId`
 /// fills `sessionid`, one named `seqNum` fills `MsgSeqNum` - unless the
 /// message stated that field itself, because a stated value is never
@@ -356,8 +366,6 @@ pub(super) fn version_of(beginstring: &str) -> Option<Version> {
 /// on the line, and these arrived on the row.
 #[derive(Clone, Copy, Default)]
 pub(super) struct RowExtras<'row> {
-    /// The dialect the row is read under, where it named one.
-    pub(super) branch: Option<&'row FixBranch>,
     /// The version the row is read at, where it stated one.
     pub(super) version: Option<Version>,
     /// The row's own clock.
@@ -384,7 +392,6 @@ pub(super) struct Fill<'row> {
 impl RowExtras<'static> {
     /// A row stating nothing beside its payload.
     pub(super) const NONE: Self = Self {
-        branch: None,
         version: None,
         clock: None,
         fills: &[],
@@ -393,15 +400,13 @@ impl RowExtras<'static> {
 
 /// The registry field one of a row's own columns fills, and its tag.
 ///
-/// Three tiers, each consulted only when the ones before it missed: the
-/// message's own branch and then the standard one - where the crate's own
-/// fields live, so a column named `msgCtxId` means the capture's context -
-/// which is how every key resolves; then any dictionary the registry holds;
-/// then the bridge's own spellings of standard fields, because a bridge
-/// writes `seqNum` in its log where FIX says `MsgSeqNum`.
+/// Two tiers, the second consulted only when the first missed: the
+/// dictionary's one namespace - where the crate's own fields live, so a
+/// column named `msgCtxId` means the capture's context - which is how every
+/// key resolves; then the bridge's own spellings of standard fields, because
+/// a bridge writes `seqNum` in its log where FIX says `MsgSeqNum`.
 pub(super) fn fill_field<'registry>(
     registry: &'registry FixRegistry,
-    branch: &FixBranch,
     key: &str,
 ) -> Option<(&'registry Field, i32)> {
     let key = key.trim();
@@ -413,14 +418,8 @@ pub(super) fn fill_field<'registry>(
     let path = crate::FieldPath::from_str(key).ok();
     let named = path
         .as_ref()
-        .and_then(|path| {
-            registry.get_field_by_path(path, Some(branch)).or_else(|| {
-                (!branch.is_standard())
-                    .then(|| registry.get_field_by_path(path, Some(&FixBranch::STANDARD)))
-                    .flatten()
-            })
-        })
-        .or_else(|| registry.get_field_by_name(key, None));
+        .and_then(|path| registry.get_field_by_path(path))
+        .or_else(|| registry.get_field_by_name(key));
     if let Some(field) = named {
         let tag = field.as_fix().tag().ok().flatten()?;
         return Some((field, tag));
@@ -454,10 +453,6 @@ pub(super) struct Builder<'registry> {
     /// packs, and the group resolves once per line rather than once per
     /// member.
     groups: Vec<(SmolStr, Field, i32, bool)>,
-    /// The dialect this message is read under: the row's own, the codec's
-    /// pin or the standard one, each of which outlives the build - so it is
-    /// borrowed rather than copied, alias list and all, once per line.
-    branch: &'registry FixBranch,
     version: Option<Version>,
     slots: Vec<Slot>,
     /// Each slot's name digested, beside the slot.
@@ -534,13 +529,12 @@ struct OpenGroup {
 }
 
 impl<'registry> Builder<'registry> {
-    /// Opens a build against one dictionary, dialect and version.
+    /// Opens a build against one dictionary and version.
     pub(super) fn new(
         registry: &'registry FixRegistry,
         message: Option<&'registry super::MsgType>,
         beginstring: &'registry Field,
         memo: &'registry Memo,
-        branch: &'registry FixBranch,
         version: Option<Version>,
         capacity: usize,
     ) -> Self {
@@ -550,7 +544,6 @@ impl<'registry> Builder<'registry> {
             beginstring,
             memo,
             groups: Vec::new(),
-            branch,
             version,
             slots: Vec::with_capacity(capacity),
             hashes: Vec::with_capacity(capacity),
@@ -576,11 +569,7 @@ impl<'registry> Builder<'registry> {
             let group = std::str::from_utf8(key)
                 .ok()
                 .and_then(super::field::parse_tag)
-                .and_then(|tag| {
-                    let field = self.by_tag(tag)?;
-                    let id = self.registry.identity_of(field)?;
-                    Some((tag, self.numeric_plan(id)?))
-                });
+                .and_then(|tag| Some((tag, self.numeric_plan(tag)?)));
             self.arrival = pair.arrived();
             self.push(key, value);
             if let Some((tag, plan)) = group {
@@ -612,17 +601,23 @@ impl<'registry> Builder<'registry> {
         }
     }
 
-    fn numeric_plan(&self, id: super::FixId) -> Option<&'registry GroupPlan> {
-        match self.message.filter(|message| message.has_group_counter(id)) {
-            Some(message) => message.get_group_plan_by_counter(id),
-            None => self.registry.get_group_plan_by_counter(id),
+    fn numeric_plan(&self, counter: i32) -> Option<&'registry GroupPlan> {
+        match self
+            .message
+            .filter(|message| message.has_group_counter(counter))
+        {
+            Some(message) => message.get_group_plan_by_counter(counter),
+            None => self.registry.get_group_plan_by_counter(counter),
         }
     }
 
-    fn numeric_group(&self, id: super::FixId) -> Option<&'registry Field> {
-        match self.message.filter(|message| message.has_group_counter(id)) {
-            Some(message) => message.get_group_by_counter(id),
-            None => self.registry.get_group_by_counter(id),
+    fn numeric_group(&self, counter: i32) -> Option<&'registry Field> {
+        match self
+            .message
+            .filter(|message| message.has_group_counter(counter))
+        {
+            Some(message) => message.get_group_by_counter(counter),
+            None => self.registry.get_group_by_counter(counter),
         }
     }
 
@@ -797,67 +792,42 @@ impl<'registry> Builder<'registry> {
 
     /// The registry field one key names, and the tag it carries.
     ///
-    /// A name is looked for in this message's branch and then in the standard
-    /// one, which is the tier [`FixMsg`](super::FixMsg) reads a built message
-    /// by: a row transcribed against a venue's dictionary names that venue's
-    /// fields by the venue's spellings while still carrying `MsgType`,
-    /// `SenderCompID` and every other specification field. Building it under
-    /// one branch alone would drop exactly those identities before a reader
-    /// could ask for them.
+    /// The dictionary is one namespace, which is the tier
+    /// [`FixMsg`](super::FixMsg) reads a built message by: a row transcribed
+    /// against a venue's dictionary names that venue's fields by the venue's
+    /// spellings while still carrying `MsgType`, `SenderCompID` and every
+    /// other specification field, and one namespace answers all of them.
     fn resolve(&self, key: &str) -> Option<(&'registry Field, i32)> {
         let field = if let Some(tag) = super::field::parse_tag(key) {
             self.by_tag(tag)
         } else {
             // The key is a wire spelling, so this is where it becomes a path.
             let path = crate::FieldPath::from_str(key).ok()?;
-            self.by_path(&path, self.branch).or_else(|| {
-                (!self.branch.is_standard())
-                    .then(|| self.by_path(&path, &super::FixBranch::STANDARD))
-                    .flatten()
-            })
+            self.registry.get_field_by_path(&path)
         }?;
         // The tag off the index the registry keeps, never read out of the
         // field's metadata for every key of every line.
-        let tag = self.registry.identity_of(field).map_or(0, FixId::tag);
+        let tag = self.registry.identity_of(field).map_or(0, |(tag, _)| tag);
         Some((field, tag))
     }
 
-    /// One path looked for in exactly one dictionary.
-    fn by_path(&self, path: &crate::FieldPath, branch: &FixBranch) -> Option<&'registry Field> {
-        self.registry.get_field_by_path(path, Some(branch))
-    }
-
-    /// A pinned dialect may fall back to standard fields, never another venue.
+    /// The field a tag names: the one that holds the tag, first holder first.
     fn by_tag(&self, tag: i32) -> Option<&'registry Field> {
-        if self.branch.is_standard() {
-            return self.registry.get_field_by_tag(tag);
-        }
-        if FixId::is_admissible(self.branch, tag) {
-            let id = FixId::new(tag, self.branch.digest_signed());
-            if let Some(field) = self.registry.get_field_by_id(id) {
-                return Some(field);
-            }
-        }
-        self.registry.get_field_by_id(FixId::standard(tag))
+        self.registry.get_field_by_tag(tag)
     }
 
-    /// The group a counter tag heads, under the tier a member resolves by.
+    /// The group a counter tag heads.
     ///
     /// Counters are scalar fields and the groups they head are catalog
     /// definitions, so this is the one lookup that crosses the two.
     fn by_counter(&self, tag: i32) -> Option<&'registry Field> {
-        if !self.branch.is_standard() && FixId::is_admissible(self.branch, tag) {
-            let id = FixId::new(tag, self.branch.digest_signed());
-            if let Some(group) = self.registry.get_group_by_counter(id) {
-                return Some(group);
-            }
-        }
-        self.registry.get_group_by_counter(FixId::standard(tag))
+        self.registry.get_group_by_counter(tag)
     }
 
-    /// A group's own field, under the same tier a member resolves by.
+    /// A group's own field, by the name a key spells it.
     fn by_group(&self, group: &str) -> Option<&'registry Field> {
-        self.registry.known_group(group, self.branch)
+        self.registry
+            .get_definition(crate::FixCategory::Groups, group)
     }
 
     /// The field a key builds under, as the dictionary declares it.
@@ -870,9 +840,9 @@ impl<'registry> Builder<'registry> {
     /// dictionary does not know is kept under the key's own folded spelling
     /// as nullable text, because a venue sends fields no dictionary has.
     /// A dialect that spelled one name over two tags is why `scope` is
-    /// passed: a dictionary indexes a name once per branch, so such a
-    /// spelling names neither tag there, and the message the row declares is
-    /// what says which one it meant. `scope` is the children of the level
+    /// passed: a dictionary indexes a name once, so such a spelling names
+    /// neither tag there, and the message the row declares is what says
+    /// which one it meant. `scope` is the children of the level
     /// the key arrived at - the message root for a flat key, the occurrence's
     /// own members for a grouped one - and it is read only where the
     /// dictionary answered nothing, so an unambiguous name costs no scan.
@@ -908,9 +878,9 @@ impl<'registry> Builder<'registry> {
     /// What the dictionary holds under one key, asked once per run.
     ///
     /// The field the key names and the group it heads are facts of the
-    /// registry, the branch tier and the key alone, so the run remembers
-    /// them; a dotted path descends into a definition the identity cannot
-    /// name, and is resolved every time.
+    /// registry and the key alone, so the run remembers them; a dotted path
+    /// descends into a definition the identity cannot name, and is resolved
+    /// every time.
     fn known(&self, key: &str) -> Known<'registry> {
         if key.contains('.') {
             return Known {
@@ -918,7 +888,7 @@ impl<'registry> Builder<'registry> {
                 group: self.by_group(key),
             };
         }
-        let lookup = self.memo.lookup(self.branch, key, || Lookup {
+        let lookup = self.memo.lookup(key, || Lookup {
             field: self
                 .resolve(key)
                 .and_then(|(field, _)| self.registry.identity_of(field)),
@@ -927,7 +897,7 @@ impl<'registry> Builder<'registry> {
         Known {
             field: lookup
                 .field
-                .and_then(|id| Some((self.registry.get_field_by_id(id)?, id.tag()))),
+                .and_then(|(tag, id)| Some((self.registry.get_field_by_id(id)?, tag))),
             group: if lookup.group {
                 self.by_group(key)
             } else {
@@ -1022,12 +992,10 @@ impl<'registry> Builder<'registry> {
                 return;
             }
             self.open.clear();
-            // The pinned dialect's own field, then the standard one, never
-            // another venue's - the same tiering `push_pairs` reads under.
-            // A blind probe here answers with whichever branch holds the tag.
+            // The tag's first holder, the same probe `push_pairs` reads under.
             match self.by_tag(parsed) {
                 Some(found) => {
-                    let tag = self.registry.identity_of(found).map_or(0, FixId::tag);
+                    let tag = self.registry.identity_of(found).map_or(0, |(tag, _)| tag);
                     if found.dtype().is_nested() {
                         if self.shadowed(found.name()) {
                             return;
@@ -1086,9 +1054,8 @@ impl<'registry> Builder<'registry> {
         if let Some(group) = located.group {
             return Some((stated(group), group.as_fix().counter().ok()??));
         }
-        let (counter, tag) = located.field?;
-        let id = self.registry.identity_of(counter)?;
-        let group = self.numeric_group(id)?;
+        let (_, tag) = located.field?;
+        let group = self.numeric_group(tag)?;
         Some((stated(group), tag))
     }
 
@@ -1411,16 +1378,17 @@ impl<'registry> Builder<'registry> {
     /// first, which recorded the pair the bridge actually wrote. A key that
     /// named an occurrence rather than a field carries no tag, exactly as an
     /// unresolved key does.
-    fn arrived(&self, tag: i32) -> Option<(i32, FixEntry)> {
+    ///
+    /// Taken rather than cloned: a pair is recorded once, where its key
+    /// finished resolving, and the two ranges move into the entry rather than
+    /// being counted a second time on their way there.
+    fn arrived(&mut self, tag: i32) -> Option<(i32, FixEntry)> {
         if self.outer.is_some() {
             return None;
         }
-        let arrived = self.arrival.as_ref()?;
+        let arrived = self.arrival.take()?;
         let tag = if arrived.named { tag } else { 0 };
-        Some((
-            tag,
-            FixEntry::new(tag, arrived.key.clone(), arrived.value.clone()),
-        ))
+        Some((tag, FixEntry::new(tag, arrived.key, arrived.value)))
     }
 
     /// Closes the build into a root field, its value, and the entries.
@@ -1479,7 +1447,10 @@ impl<'registry> Builder<'registry> {
         // what the message says about itself and is left exactly as it
         // arrived; this is what answered it, and the two differ every time a
         // session carries a row written to a later FIX than it speaks.
-        if !slots.iter().any(|slot| slot.tag == super::VERSION_TAG) {
+        if !slots
+            .iter()
+            .any(|slot| slot.tag == super::VERSION_TAG_NAME.0)
+        {
             if let Some(field) = super::crated::version_field() {
                 let spelled = format_smolstr!("{}", version.unwrap_or_else(default_version));
                 let value = field
@@ -1487,7 +1458,7 @@ impl<'registry> Builder<'registry> {
                     .unwrap_or_else(|_| Scalar::from(spelled.as_str()));
                 slots.push(Slot {
                     field: field.clone(),
-                    tag: super::VERSION_TAG,
+                    tag: super::VERSION_TAG_NAME.0,
                     known: true,
                     values: vec![value],
                     group: false,
@@ -1502,7 +1473,9 @@ impl<'registry> Builder<'registry> {
         let mut rest: Vec<Slot> = Vec::with_capacity(slots.len());
         let mut trailing: Vec<(usize, Slot)> = Vec::new();
         for slot in slots {
-            if slot.tag == super::TIMESTAMP_TAG || slot.field.name() == super::TIMESTAMP_NAME {
+            if slot.tag == super::TIMESTAMP_TAG_NAME.0
+                || slot.field.name() == super::TIMESTAMP_TAG_NAME.1
+            {
                 // Restamped below, in the one place the clock is decided.
                 continue;
             }
@@ -1568,8 +1541,9 @@ fn stamped(slots: &[Slot], clock: Option<&Scalar>) -> Slot {
     let field = super::crated::timestamp_field()
         .cloned()
         .unwrap_or_else(|| {
-            let mut field = super::schema::CLOCK_DATATYPE.required_field(super::TIMESTAMP_NAME);
-            let _ = field.as_fix_mut().set_tag(super::TIMESTAMP_TAG);
+            let mut field =
+                super::schema::CLOCK_DATATYPE.required_field(super::TIMESTAMP_TAG_NAME.1);
+            let _ = field.as_fix_mut().set_tag(super::TIMESTAMP_TAG_NAME.0);
             field
         });
     let stated_clock = clock.and_then(|held| utc_instant(&field, held));
@@ -1577,7 +1551,8 @@ fn stamped(slots: &[Slot], clock: Option<&Scalar>) -> Slot {
         slots
             .iter()
             .find(|slot| {
-                slot.tag == super::TIMESTAMP_TAG || slot.field.name() == super::TIMESTAMP_NAME
+                slot.tag == super::TIMESTAMP_TAG_NAME.0
+                    || slot.field.name() == super::TIMESTAMP_TAG_NAME.1
             })
             .and_then(|slot| slot.values.first())
             .and_then(|held| utc_instant(&field, held))
@@ -1597,7 +1572,7 @@ fn stamped(slots: &[Slot], clock: Option<&Scalar>) -> Slot {
         .unwrap_or_else(super::schema::epoch);
     Slot {
         field,
-        tag: super::TIMESTAMP_TAG,
+        tag: super::TIMESTAMP_TAG_NAME.0,
         known: true,
         values: vec![value],
         group: false,

@@ -87,7 +87,7 @@ def baseline(target: pathlib.Path) -> int:
         columns["url"].append(target.as_uri())
         columns["rownum"].append(rownum)
         columns["mtime"].append(modified)
-        columns["body"].append((line[: found.start()] + line[found.end() :]).strip().encode())
+        columns["body"].append((line[: found.start()] + line[found.end() :]).strip())
         columns["stamp"].append(datetime.fromisoformat(found.group("stamp")))
         columns["level"].append(found.group("level"))
         columns["id"].append(int(found.group("id")))

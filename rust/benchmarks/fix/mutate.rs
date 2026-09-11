@@ -2,8 +2,7 @@ use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
 use yggdryl::{
-    DataType, Field, FixBranch, FixCategory, FixCode, FixLineageEntry, FixPedigree, FixRegistry,
-    Version,
+    DataType, Field, FixCategory, FixCode, FixLineageEntry, FixPedigree, FixRegistry, Version,
 };
 
 use super::{LARGE_FIELDS, generated, seed, venue};
@@ -118,7 +117,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let mut member = seeded.field(9_010).unwrap().clone();
     member.as_fix_mut().set_field_ref("VenueSymbol").unwrap();
     let mut instrument = seeded
-        .definition(FixCategory::Components, "Instrument", None)
+        .definition(FixCategory::Components, "Instrument")
         .unwrap()
         .clone();
     instrument
@@ -152,26 +151,52 @@ pub fn benchmarks(criterion: &mut Criterion) {
         );
     });
 
-    // The identity setters, and the refusal path a caller pays for a tag the
-    // FIX specification assigns.
+    // The identity and membership setters: a tag on any field, the FIX
+    // specification's own included, and the membership a dictionary stamps -
+    // one name, and a list that is folded, deduplicated and sorted.
     let venue = venue();
     let mut movable = DataType::Utf8.nullable_field("Movable");
     movable.as_fix_mut().set_tag(9_000).unwrap();
-    group.bench_function("set_branch", |bencher| {
+    group.bench_function("set_tag", |bencher| {
         bencher.iter_batched(
             || movable.clone(),
             |mut field| {
-                field.as_fix_mut().set_branch(&venue).unwrap();
+                field.as_fix_mut().set_tag(9_000).unwrap();
                 field
             },
             BatchSize::SmallInput,
         );
     });
-    group.bench_function("set_id", |bencher| {
+    group.bench_function("set_branches_one", |bencher| {
         bencher.iter_batched(
             || movable.clone(),
             |mut field| {
-                field.as_fix_mut().set_id(&venue, 9_000).unwrap();
+                field.as_fix_mut().set_branches([venue]).unwrap();
+                field
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("set_branches_folded", |bencher| {
+        bencher.iter_batched(
+            || movable.clone(),
+            |mut field| {
+                field
+                    .as_fix_mut()
+                    .set_branches(["ulbridge", "CME", venue, "eurex"])
+                    .unwrap();
+                field
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    let mut member = movable.clone();
+    member.as_fix_mut().set_branches([venue]).unwrap();
+    group.bench_function("add_branch", |bencher| {
+        bencher.iter_batched(
+            || member.clone(),
+            |mut field| {
+                field.as_fix_mut().add_branch("eurex").unwrap();
                 field
             },
             BatchSize::SmallInput,
@@ -179,24 +204,14 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     let mut reserved = DataType::Utf8.nullable_field("Reserved");
     reserved.as_fix_mut().set_tag(35).unwrap();
-    group.bench_function("set_branch_refused", |bencher| {
-        bencher.iter_batched(
-            || reserved.clone(),
-            |mut field| {
-                black_box(field.as_fix_mut().set_branch(&venue).unwrap_err());
-                field
-            },
-            BatchSize::SmallInput,
-        );
-    });
-    group.bench_function("set_id_standard", |bencher| {
+    group.bench_function("set_tag_standard", |bencher| {
         bencher.iter_batched(
             || reserved.clone(),
             |mut field| {
                 field
                     .as_fix_mut()
-                    .set_id(&FixBranch::STANDARD, 35)
-                    .expect("the standard branch holds any tag");
+                    .set_tag(35)
+                    .expect("nothing gates a tag on its dictionary");
                 field
             },
             BatchSize::SmallInput,
@@ -277,7 +292,7 @@ fn coded_catalog() -> FixRegistry {
         .create_definition(FixCategory::Groups, group)
         .unwrap();
     let mut group = registry
-        .definition(FixCategory::Groups, "Parties", None)
+        .definition(FixCategory::Groups, "Parties")
         .unwrap()
         .clone();
     group.as_fix_mut().set_group("Parties").unwrap();

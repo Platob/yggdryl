@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use yggdryl::holder::Holder;
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, Field, FixBranch, FixCategory, FixCode, FixRegistry, IOKind, Result};
+use yggdryl::{DataType, Field, FixCategory, FixCode, FixRegistry, IOKind, Result};
 
 use crate::{diff, quality, registry, schema, shell, style};
 
@@ -40,9 +40,12 @@ pub enum Command {
     Ingest {
         /// The `.cfb` file.
         path: PathBuf,
-        /// The dialect its user-range tags belong to.
+        /// The dictionary name stamped on every definition the file produces.
+        ///
+        /// Membership (`fix:branches`) is provenance a listing filters on; it
+        /// never decides how a tag or a name resolves.
         #[arg(long)]
-        branch: Option<String>,
+        dialect: Option<String>,
         /// Fold each field into what is already there rather than replacing.
         #[arg(long)]
         merge: bool,
@@ -51,13 +54,13 @@ pub enum Command {
     Sync {
         /// A folder holding another dictionary, or a `.cfb` file.
         source: PathBuf,
-        /// The dialect a `.cfb`'s user-range tags belong to.
+        /// The dictionary name stamped on every definition a `.cfb` produces.
         ///
         /// A `CBlock` never names itself, so with none given the file's own
         /// stem names the dialect. A folder says nothing to this: its fields
-        /// carry the branch they were written with.
+        /// carry the membership they were written with.
         #[arg(long)]
-        branch: Option<String>,
+        dialect: Option<String>,
     },
     /// Print the one row shape a whole capture lands in.
     Schema {
@@ -87,27 +90,24 @@ pub enum Command {
 /// Operations common to each explicitly selected category.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Create refuses an existing definition; update replaces a definition and refuses absence.\nRead --json emits the native Field document accepted by create/update --input.\nDelete refuses definitions still referenced by other definitions.\nCreate/update omit --branch for standard definitions. Read/delete without --branch use the registry's best match; list includes every branch."
+    after_help = "Create refuses an existing definition; update replaces a definition and refuses absence.\nRead --json emits the native Field document accepted by create/update --input.\nDelete refuses definitions still referenced by other definitions.\nThe registry is one namespace: a key resolves the same way whatever dictionaries a definition belongs to. --dialect on create/update records membership (fix:branches); on list it filters by it."
 )]
 pub enum CategoryCommand {
-    /// List definitions, optionally filtered by name/tag and branch.
+    /// List definitions, optionally filtered by name/tag and dictionary membership.
     List {
         /// Match part of a name or decimal tag, ignoring case.
         filter: Option<String>,
-        /// Only definitions in this branch.
+        /// Only definitions whose fix:branches membership names this dictionary.
         #[arg(long)]
-        branch: Option<String>,
+        dialect: Option<String>,
         /// Maximum number of rows printed.
         #[arg(long, default_value_t = 40)]
         limit: usize,
     },
     /// Read one definition, its references, lineage, and inline enum codes.
     Read {
-        /// Definition name; fields also accept a tag or FIX identifier.
+        /// Definition name; fields also accept a tag.
         key: String,
-        /// Resolve in this branch.
-        #[arg(long)]
-        branch: Option<String>,
         /// Emit a native Field JSON document for create/update --input.
         #[arg(long)]
         json: bool,
@@ -117,16 +117,13 @@ pub enum CategoryCommand {
     /// Replace an existing definition in full, preserving its identity.
     ///
     /// Omitted metadata is removed. For metadata-only edits, read --json,
-    /// edit that document, then update --input; name, branch, and field tag
-    /// remain the same.
+    /// edit that document, then update --input; name and field tag remain
+    /// the same.
     Update(DefinitionArgs),
     /// Delete a definition; absence or a live reference is an error.
     Delete {
-        /// Definition name; fields also accept a tag or FIX identifier.
+        /// Definition name; fields also accept a tag.
         key: String,
-        /// Resolve in this branch.
-        #[arg(long)]
-        branch: Option<String>,
     },
 }
 
@@ -143,14 +140,14 @@ pub struct DefinitionArgs {
     #[arg(required_unless_present = "input")]
     dtype: Option<String>,
     /// Read one native Field JSON document; replaces positional inputs and flags.
-    #[arg(long, conflicts_with_all = ["name", "dtype", "tag", "branch", "description", "counter", "component", "codes", "msgtype", "required"])]
+    #[arg(long, conflicts_with_all = ["name", "dtype", "tag", "dialect", "description", "counter", "component", "codes", "msgtype", "required"])]
     input: Option<PathBuf>,
     /// Numeric tag for a scalar field, including a group counter.
     #[arg(long)]
     tag: Option<i32>,
-    /// Dialect name; omit for standard definitions.
+    /// A dictionary this definition belongs to (fix:branches); repeat for several.
     #[arg(long)]
-    branch: Option<String>,
+    dialect: Vec<String>,
     /// Definition's purpose.
     #[arg(long)]
     description: Option<String>,
@@ -199,9 +196,7 @@ impl DefinitionArgs {
             field.as_fix_mut().set_codes(&codes)?;
         }
         let mut view = field.as_fix_mut();
-        if let Some(branch) = &self.branch {
-            view.set_branch(&FixBranch::from_str(branch)?)?;
-        }
+        view.set_branches(&self.dialect)?;
         if let Some(tag) = self.tag {
             view.set_tag(tag)?;
         }
@@ -246,13 +241,13 @@ fn execute(store: &mut registry::Store, annotate: bool, command: &Command) -> Re
         Command::Groups { command } => category(store, FixCategory::Groups, command)?,
         Command::Ingest {
             path,
-            branch,
+            dialect,
             merge,
         } => {
-            ingest(store, path, branch.as_deref(), *merge)?;
+            ingest(store, path, dialect.as_deref(), *merge)?;
         }
-        Command::Sync { source, branch } => {
-            sync(store, source, branch.as_deref())?;
+        Command::Sync { source, dialect } => {
+            sync(store, source, dialect.as_deref())?;
         }
         Command::Schema {
             rowheader,
@@ -294,22 +289,22 @@ fn category(
     match command {
         CategoryCommand::List {
             filter,
-            branch,
+            dialect,
             limit,
         } => {
-            let branch = branch.as_deref().map(FixBranch::from_str).transpose()?;
-            registry::list(store, category, filter.as_deref(), branch.as_ref(), *limit)
+            registry::list(
+                store,
+                category,
+                filter.as_deref(),
+                dialect.as_deref(),
+                *limit,
+            );
+            Ok(())
         }
-        CategoryCommand::Read { key, branch, json } => {
-            let branch = branch.as_deref().map(FixBranch::from_str).transpose()?;
-            registry::read(store, category, key, branch.as_ref(), *json)
-        }
+        CategoryCommand::Read { key, json } => registry::read(store, category, key, *json),
         CategoryCommand::Create(args) => registry::create(store, category, args.field(category)?),
         CategoryCommand::Update(args) => registry::update(store, category, args.field(category)?),
-        CategoryCommand::Delete { key, branch } => {
-            let branch = branch.as_deref().map(FixBranch::from_str).transpose()?;
-            registry::delete(store, category, key, branch.as_ref())
-        }
+        CategoryCommand::Delete { key } => registry::delete(store, category, key),
     }
 }
 
@@ -319,10 +314,10 @@ fn category(
 /// folder is another dictionary, a `.cfb` is one counterparty's vocabulary,
 /// and anything else is refused rather than guessed at. Both sources arrive
 /// through the one fold, so a tag this dictionary lacks is added, one it holds
-/// keeps every key only it declares, and every dialect either source declares
-/// is recorded beside them - and because that fold is one mutation, a source it
+/// keeps every key only it declares, and the membership either source stamps
+/// is unioned onto them - and because that fold is one mutation, a source it
 /// refuses leaves the dictionary exactly as it was.
-fn sync(store: &mut registry::Store, source: &Path, branch: Option<&str>) -> Result<()> {
+fn sync(store: &mut registry::Store, source: &Path, dialect: Option<&str>) -> Result<()> {
     let mut progress = style::Progress::start(format!("reading {}", source.display()));
     progress.tick();
     let held = Holder::local(registry::located(source)?)?;
@@ -334,17 +329,15 @@ fn sync(store: &mut registry::Store, source: &Path, branch: Option<&str>) -> Res
         }
         // A CBlock declares no media type of its own, so the name is the only
         // thing that says what the bytes are before they are read. Read whole
-        // rather than for its vocabulary alone, so the dialect the file
-        // declares - its version and its session pair - arrives with it.
+        // rather than for its vocabulary alone, so its groups, components and
+        // messages arrive with its fields, each stamped with the dialect.
         IOKind::File
             if source
                 .extension()
                 .is_some_and(|held| held.eq_ignore_ascii_case("cfb")) =>
         {
             progress.tick();
-            store
-                .registry_mut()
-                .add_cfb_file(held.as_io(), branch, None)?
+            store.registry_mut().add_cfb_file(held.as_io(), dialect)?
         }
         kind => {
             return Err(yggdryl::Error::InvalidRecord {
@@ -370,7 +363,7 @@ fn sync(store: &mut registry::Store, source: &Path, branch: Option<&str>) -> Res
 fn ingest(
     store: &mut registry::Store,
     path: &std::path::Path,
-    branch: Option<&str>,
+    dialect: Option<&str>,
     merge: bool,
 ) -> Result<()> {
     let mut progress = style::Progress::start(format!("reading {}", path.display()));
@@ -386,8 +379,7 @@ fn ingest(
         .and_then(std::ffi::OsStr::to_str)
         .unwrap_or_default();
     let handle = yggdryl::IOBase::child_by_path(&held, name)?;
-    let dialect = branch.map(FixBranch::from_str).transpose()?;
-    let (parsed, roots) = FixRegistry::from_cfb_file(&handle, dialect.as_ref())?;
+    let (parsed, roots) = FixRegistry::from_cfb_file(&handle, dialect)?;
     progress.tick();
 
     let (added, folded) = if merge {
@@ -491,7 +483,7 @@ fn dictionary_words(registry: &FixRegistry) -> Vec<String> {
         "--help",
         "--input",
         "--json",
-        "--branch",
+        "--dialect",
         "--tag",
         "--counter",
         "--component",

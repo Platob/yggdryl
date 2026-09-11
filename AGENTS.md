@@ -579,7 +579,10 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
 - Encoding comes from `MediaType` through `RecordOptions`, with no format
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core
   paths.
-- Plain-text rows start with required `url: utf8` and `body: binary`;
+- Plain-text rows start with required `url: utf8` and `body: utf8` - a line is
+  text by construction, its bytes decoded once where the line is made, each
+  byte that is not UTF-8 read as the Windows-1252 character it is, and
+  `TextLine::decoded_byte_size` counting them;
   `TextOptions.start_rownum: Option<i64>` inserts required `rownum: int64` between
   them and names its first value. `parse_mtime`, on by default, inserts nullable
   `mtime: datetime64(ns, UTC)` after it, filled by the row header's `mtime`
@@ -588,7 +591,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   captures, edge-only regex stripping, a line separator, and syntax-directed
   `autotype` via `DataType::from_regex`, so the full source field is known before
   a read. `timezone` stays a shared `RecordOptions` accessor over offset-free
-  datetime captures; writes consume only non-null binary `body`.
+  datetime captures; writes consume only non-null `utf8` `body`.
 - Content coding belongs to the handle: reject outer compression for formats that
   compress internally, such as Parquet.
 

@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use yggdryl::fix::{ENTRIES_COLUMN, UNMAPPED_COLUMN};
 
+use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::{
     DataType, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, fix_schema,
     fix_schema_carrying,
@@ -301,6 +302,50 @@ fn a_data_field_that_is_not_text_reaches_a_row_as_the_decode_a_row_can_hold() {
         ["96 (96) reaches the row as a lossy decode"]
     );
     assert_eq!(stated(&held), stated(&parsed));
+}
+
+#[test]
+fn the_same_line_read_as_text_is_the_decode_of_the_wire_and_says_nothing_of_it() {
+    // Decision 10: a text line is text before the codec reads it. The bytes
+    // that were not UTF-8 read as the Windows-1252 characters they are, so
+    // the stated length - a count of wire bytes - reaches no boundary the
+    // frame stated and is not honoured: the value stays what the frame cut,
+    // the message re-emits the line's text rather than the wire, and no
+    // `Lossy` is raised because nothing the message holds is not text. That
+    // the line was decoded is the line's fact, and the line counts it.
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let wire: &[u8] = b"8=FIX.4.4\x0135=D\x0195=4\x0196=\xff\xfe A\x0110=000\x01";
+    let line = TextLine::from_bytes(0, TextBytes::from_bytes(wire).unwrap()).unwrap();
+    assert_eq!(line.decoded_byte_size(), 2);
+    assert_eq!(
+        line.body(),
+        "8=FIX.4.4\u{1}35=D\u{1}95=4\u{1}96=\u{ff}\u{fe} A\u{1}10=000\u{1}"
+    );
+
+    let parsed = reader
+        .parse_text_line(&line)
+        .unwrap()
+        .next()
+        .expect("one message")
+        .unwrap();
+    let arrived = parsed
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 96)
+        .expect("the data field");
+    assert_eq!(arrived.value().as_bytes(), "\u{ff}\u{fe} A".as_bytes());
+    assert_eq!(parsed.into_bytes(1), line.body().as_bytes());
+    assert_ne!(parsed.into_bytes(1), wire);
+    assert!(
+        parsed.anomalies().next().is_none(),
+        "a value that is text is not a lossy decode of anything"
+    );
+
+    // And the row round-trips whole, which the byte door's line cannot.
+    let row = parsed.into_row(&schema).unwrap();
+    let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(held.into_bytes(1), parsed.into_bytes(1));
 }
 
 #[test]

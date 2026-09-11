@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::{FixBranch, FixCodec, FixRegistry, Scalar, UlPlugin};
+use yggdryl::{FixCodec, FixRegistry, Scalar, UlPlugin};
 
 fn document(count: usize) -> Scalar {
     let values = (0..count).map(|index| {
@@ -42,8 +42,14 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let registry = FixRegistry::new()
         .with_ulbridge_fields()
         .expect("UL fields");
-    let branch = FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).expect("UL branch");
-    let codec = FixCodec::new(Arc::new(registry)).with_branch(&branch);
+    assert!(
+        registry
+            .field(yggdryl::MBEAN_TAG_NAME.0)
+            .expect("the bridge's first field")
+            .as_fix()
+            .has_branch(yggdryl::ULBRIDGE_DIALECT)
+    );
+    let codec = FixCodec::new(Arc::new(registry));
     let mut group = criterion.benchmark_group("fix/ulconfig");
     for count in [1, 32, crate::bench_profile::corpus(256, 64)] {
         let document = document(count);

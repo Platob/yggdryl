@@ -652,14 +652,14 @@ mod held {
             .map(|batch| {
                 let batch = batch.unwrap();
                 let index = batch.schema().index_of("body").unwrap();
-                arrow_array::cast::as_generic_binary_array::<i32>(batch.column(index))
+                arrow_array::cast::as_string_array(batch.column(index))
                     .iter()
-                    .map(|value| value.unwrap().to_vec())
+                    .map(|value| value.unwrap().to_owned())
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>()
             .concat();
-        assert_eq!(bodies, [b"[INFO] alpha".to_vec(), b"[WARN] beta".to_vec()]);
+        assert_eq!(bodies, ["[INFO] alpha", "[WARN] beta"]);
         assert_eq!(decoded.row_size().unwrap(), 2);
     }
 }

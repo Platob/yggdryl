@@ -60,7 +60,10 @@ use crate::{DigestAlgorithm, Result, Scalar, TimeUnit};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
-use super::{ID_TAG, INSTID_TAG, ISINCODE_TAG, MICCODE_TAG, PERSISTENTID_TAG, STATE_TAG};
+use super::{
+    ID_TAG_NAME, INSTID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME, PERSISTENTID_TAG_NAME,
+    STATE_TAG_NAME,
+};
 
 /// The tags an order is known by, in the order a message is joined on them.
 ///
@@ -86,7 +89,7 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, ID_TAG, PERSISTENTID_TAG};
+/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, ID_TAG_NAME, PERSISTENTID_TAG_NAME};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let registry = Arc::new(FixRegistry::new());
@@ -111,9 +114,9 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///         .expect("one message")?,
 /// )?;
 /// // One chain: the acknowledgement carries the order's persistent id.
-/// assert_eq!(order.by_tag(PERSISTENTID_TAG)?, ack.by_tag(PERSISTENTID_TAG)?);
+/// assert_eq!(order.by_tag(PERSISTENTID_TAG_NAME.0)?, ack.by_tag(PERSISTENTID_TAG_NAME.0)?);
 /// // Two messages: two ids, and the later one sorts after.
-/// assert!(order.by_tag(ID_TAG)?.as_bytes() < ack.by_tag(ID_TAG)?.as_bytes());
+/// assert!(order.by_tag(ID_TAG_NAME.0)?.as_bytes() < ack.by_tag(ID_TAG_NAME.0)?.as_bytes());
 /// assert_eq!(life.alive(), 1);
 ///
 /// // The fill closes the chain, and the venue's identifier is forgotten.
@@ -160,7 +163,7 @@ impl FixLifecycle {
     /// without them - which none built by this crate is - stamps nothing.
     #[must_use]
     pub fn new(registry: Arc<FixRegistry>) -> Self {
-        let stamps = [INSTID_TAG, ID_TAG, PERSISTENTID_TAG]
+        let stamps = [INSTID_TAG_NAME.0, ID_TAG_NAME.0, PERSISTENTID_TAG_NAME.0]
             .into_iter()
             .all(|tag| registry.get_field_by_tag(tag).is_some());
         Self {
@@ -209,7 +212,7 @@ impl FixLifecycle {
         let keys = chain_keys(&message);
         // The chain is joined before anything is stamped: joining moves the
         // state, stamping only reads it.
-        let chain = if stated(PERSISTENTID_TAG) {
+        let chain = if stated(PERSISTENTID_TAG_NAME.0) {
             None
         } else {
             self.join(&keys, impact, instrument.as_ref())
@@ -217,20 +220,20 @@ impl FixLifecycle {
         let persistent =
             chain.and_then(|at| self.chains[at].as_ref().map(|held| held.persistent.clone()));
         let mut stamps: Vec<(i32, Scalar)> = Vec::with_capacity(3);
-        if !stated(INSTID_TAG) {
+        if !stated(INSTID_TAG_NAME.0) {
             if let Some(held) = &instrument {
-                stamps.push((INSTID_TAG, Scalar::from(held.to_vec())));
+                stamps.push((INSTID_TAG_NAME.0, Scalar::from(held.to_vec())));
             }
         }
-        if !stated(ID_TAG) {
+        if !stated(ID_TAG_NAME.0) {
             let digest = DigestAlgorithm::Xxh3.digest(&message.digest().to_be_bytes());
             stamps.push((
-                ID_TAG,
+                ID_TAG_NAME.0,
                 Scalar::from(TxHash::new(impact, digest).into_bytes().to_vec()),
             ));
         }
         if let Some(held) = persistent {
-            stamps.push((PERSISTENTID_TAG, held));
+            stamps.push((PERSISTENTID_TAG_NAME.0, held));
         }
         // One rebuild for the three, which is what a per-message stamp costs.
         message.set_many(stamps)?;
@@ -351,9 +354,9 @@ fn instrument_digest(message: &FixMsg) -> Option<[u8; 16]> {
                 .map(str::to_ascii_uppercase)
         })
     };
-    let market = first(&[MICCODE_TAG, 207, 100, 30]);
+    let market = first(&[MICCODE_TAG_NAME.0, 207, 100, 30]);
     let classification = first(&[461]);
-    let isin = first(&[ISINCODE_TAG]).or_else(|| {
+    let isin = first(&[ISINCODE_TAG_NAME.0]).or_else(|| {
         (message.get_by_tag(22).and_then(Scalar::as_str) == Some("4"))
             .then(|| first(&[48]))
             .flatten()
@@ -397,7 +400,7 @@ fn persistent_digest(impact: i64, instrument: Option<&[u8; 16]>, first: &str) ->
 /// The crate's own `state`, else `OrdStatus`, else `ExecType`, read as the
 /// one lifecycle vocabulary; a message stating none is not an ending.
 fn is_terminal(message: &FixMsg) -> bool {
-    [STATE_TAG, 39, 150]
+    [STATE_TAG_NAME.0, 39, 150]
         .into_iter()
         .filter_map(|tag| message.get_by_tag(tag))
         .find(|held| !held.is_null())

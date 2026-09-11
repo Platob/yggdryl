@@ -272,7 +272,7 @@ A group packed inside an occurrence is packed behind the same separator, at the 
 
 - Ordinary unframed text can produce an empty message. Malformed configuration input returns a located error; a fallible message iterator stops after that error.
 - A bridge key's `#` is judged against the row's bare spellings, in a bridge row and in the name keys a bridge writes into a numeric frame alike. Alone, it drops: `#ORDERID=123` is the dictionary's `OrderID`. Restating a bare pair's bytes, the marked pair is a second spelling of one pair and goes, row and entries alike: `ORDERID=123|#ORDERID=123` is `OrderID` once, and `into_bytes` re-emits the one pair. Beside a bare twin stating other bytes it stays verbatim, because collapsing the two would merge two values under one name: `ORDERID=123|#ORDERID=345` is `OrderID` 123 beside `#ORDERID` 345 - its own column, its own entry - whichever arrived first. The twin is matched by the fold every key resolves under, so `OrderId` and `ORDER_ID` twin it too, and by its stem, so a bare `NOPARTYIDS` group claims every `#NOPARTYIDS[n]` however many the two state - each stays whole under its own name, the count beside them, and none lands in the dictionary's group. A marked group goes only whole: a marked count restating the bare one beside occurrences the bare group never numbered stays with them, and only a marked group restating the bare group pair for pair goes. A bare pair whose value is a stated absence is no twin, because a key that said nothing was sent is not a key that was sent; a value is compared as its bytes, because `abc` is not `ABC`; and the twin is a spelling, never an identity, so a tag and a marked name - `55=AAPL|#SYMBOL=AAPL` - state two values exactly as a tag and a bare name do. In a numeric frame the marks are judged and the keys kept as they are: a packed occurrence there is one value, as a bare one always was. A key marked twice is judged one mark at a time: `##ORDERID` twins `#ORDERID` as `#ORDERID` twins `ORDERID` - restating it goes, beside other bytes it stays, alone it loses one mark.
-- A row's message type resolves the way every key does: the codec's dialect first, then the standard one. A bridge row calling itself `tradecapturereport` under a pinned dialect that declares no message of that name reads against FIX's own, which is what places a counter half the dictionary shares - `NoLegs`, `NoSides` - under the group that message declares.
+- A row's message type resolves the way every key does, in the one namespace: a name reaches the message of that name, and a bare code the message tag 35's code set names, else the first in name order. A bridge row calling itself `tradecapturereport` reads against the message of that name, which is what places a counter half the dictionary shares - `NoLegs`, `NoSides` - under the group that message declares.
 - A stated absence - one of `null_values` - produces no field and no entry, because a key that said nothing was sent is not a key that was sent.
 - A pinned `version` decides which code spelling a value translates through, never what a field is called: a tag is one column under the name the dictionary holds it by, and what each version called it stays readable through the field's lineage.
 
@@ -353,13 +353,13 @@ Two lists close every row.
 
 `nofixentries` is the whole arrival record: every pair the reader read as sent - a stated absence and a bridge's marked restatement of a bare pair are read as never sent, as the [edges](#edges) above state - in arrival order, untranslated, and a group's members riding under the counter pair that heads them. It is a list of `fixentry` structs, each the tag its key named, that key, its value, and what arrived under it. It is what makes a row lossless - the fixed columns are a *reading* of the message and the entries *are* the message, so the wire is rebuilt from them and never from the columns.
 
-An entry says what arrived and only that. A key and a value are ranges of the line the message was read from, so an entry never carries a key that appears nowhere in that line: a bridge packing a whole occurrence into one value - `#NOPARTYIDS[0]=PARTYID=BUYSIDE...PARTYROLE=1` - is recorded as the pair the bridge wrote, and the members read out of it fill `parties[0].partyid` and its siblings in the row. The dialect is not there either: it is one value for every pair of one message, so `FixMsg::branch` answers it and no pair repeats it.
+An entry says what arrived and only that. A key and a value are ranges of the line the message was read from, so an entry never carries a key that appears nowhere in that line: a bridge packing a whole occurrence into one value - `#NOPARTYIDS[0]=PARTYID=BUYSIDE...PARTYROLE=1` - is recorded as the pair the bridge wrote, and the members read out of it fill `parties[0].partyid` and its siblings in the row. No dialect is there either: a message is not a dictionary member, and which dictionaries a field belongs to is the field's own `fix:branches` in the registry.
 
 `nounmappedfixentries` is a **view** over that record rather than the rest of it: the pairs no dictionary explained, discovered pre-order at any depth and flattened to one level, in the order they arrived. It holds nothing `nofixentries` does not, and it exists so a venue onboarding a new field finds it by reading one column instead of filtering a million rows. On a well-known dialect it is empty on every row and costs a validity bit.
 
 ## The crate's own columns
 
-Twenty fields carry what a capture states, or what a message implies, that no dictionary publishes. Each is an ordinary standard field with a tag from 65000 up - a block no venue claims, above the user-defined range a dialect may take - so it lifts, columns, serializes and resolves with no special case anywhere, and a bridge row spelling `SESSIONID` or `ULFROMSESSIONNAME` reaches it by name like any other field. Every registry holds them from construction: `FixRegistry::new()` inserts them before anything else, so a dictionary loaded from a [store](store.md), built from fields or left empty answers `timestamp` and `sendersessionid` alike, and the store never writes them. `fix_crate_fields` is the listing, in tag order; `SENDERSESSIONID_TAG` and its siblings name the tags, `CRATE_TAG_MIN` the first of them, `is_crate_tag` whether a tag is one, and `TIMESTAMP_NAME` the column the clock takes.
+Twenty fields carry what a capture states, or what a message implies, that no dictionary publishes. Each is an ordinary field with a tag from 65000 up - a block above every tag FIX or a venue publishes - so it lifts, columns, serializes and resolves with no special case anywhere, and a bridge row spelling `SESSIONID` or `ULFROMSESSIONNAME` reaches it by name like any other field. Every registry holds them from construction: `FixRegistry::new()` inserts them before anything else, so a dictionary loaded from a [store](store.md), built from fields or left empty answers `timestamp` and `sendersessionid` alike, and the store never writes them. `fix_crate_fields` is the listing, in tag order; `SENDERSESSIONID_TAG_NAME` and its siblings are each field's `(tag, name)` pair - `.0` the tag, `.1` the column - because that pair is what identifies it; `CRATE_TAG_MIN` is the first tag of the block and `is_crate_tag` whether a tag is one.
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |
@@ -372,7 +372,7 @@ Twenty fields carry what a capture states, or what a message implies, that no di
 | `parentorderid` | `ParentOrderID` | 65006 | the venue order identifier this order descends from |
 | `sendersessionid` | `SenderSessionId` | 65007 | the session the message came from: its own statement, a bridge row's `SESSIONID` by alias, else the session instance the bracket in front of the line names |
 | `msgctxid` | `MsgCtxId` | 65008 | the message context a bridge handled the message in, from its log's bracket |
-| `pluginid` | `PluginId` | 65009 | the plugin that logged the line, as a bridge names it: a row's own `pluginid` capture, and the dialect the line is read under where the dictionary declares a branch by that name |
+| `pluginid` | `PluginId` | 65009 | the plugin that logged the line, as a bridge names it: a row's own `pluginid` capture or column fills it, and it selects nothing - no dictionary, no version |
 | `prevpluginid` | `PrevPluginId` | 65010 | the plugin a message came through before the one that logged it, as a bridge names it; only ever a capture of that name, never derived |
 | `sendersessionname` | `SenderSessionName` | 65011 | the name of the session the message came from: a bridge row's `ULFROMSESSIONNAME`, else the session that logged a line it sent |
 | `targetsessionname` | `TargetSessionName` | 65012 | the name of the session the message went to: a bridge row's `ULTOSESSIONNAME`, else the session that logged a line it received |
@@ -457,7 +457,7 @@ Two of them declare more than a type, in the protocols the crate already has rat
 
 Two of the columns are filled when a message is built, whatever its line carried, and neither becomes an entry unless the wire sent it - so `into_bytes` still re-emits the wire byte for byte.
 
-`beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.<version>` for the version the message was read at: the pinned `version`, else the one `ApplVerID` or `BeginString` implied, else the branch's default, else the dictionary's newest, else 4.4. A bridge row and a configuration document therefore say which FIX they were read as exactly as a frame does.
+`beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.<version>` for the version the message was read at: the row's own `beginstring` [column or capture](arrow.md#a-column-is-the-caller-speaking-per-row), else the pinned `version`, else the one `ApplVerID(1128)` or `BeginString(8)` implied, else the dictionary's newest, else 4.4. A bridge row and a configuration document therefore say which FIX they were read as exactly as a frame does.
 
 `version` states that same answer outright, on every message the codec generates, because `BeginString` is what the message says about *itself* and a session that mislabels itself - or that carries a row written to a later FIX than it speaks - makes the two differ. `FixMsg::version()` answers the crate's column where a read stamped one and `BeginString` otherwise, so it always answers for a built message.
 
@@ -581,11 +581,11 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|";
     let held = reader.enrich_message(reader.parse_line(line)?.next().expect("one frame")?)?;
     assert_eq!(held.by_tag(22)?.as_str(), Some("4"));
-    assert_eq!(held.by_tag(yggdryl::ISINCODE_TAG)?.as_str(), Some("US0378331005"));
+    assert_eq!(held.by_tag(yggdryl::ISINCODE_TAG_NAME.0)?.as_str(), Some("US0378331005"));
     assert_eq!(held.by_tag(470)?.as_str(), Some("US"));
     assert_eq!(held.by_tag(167)?.as_str(), Some("CS"));
     assert_eq!(held.by_tag(460)?, &Scalar::from(5_i32));
-    assert_eq!(held.by_tag(yggdryl::MICCODE_TAG)?.as_str(), Some("XNAS"));
+    assert_eq!(held.by_tag(yggdryl::MICCODE_TAG_NAME.0)?.as_str(), Some("XNAS"));
     // A trade leaving nothing is filled, as the `state` column spells it.
     assert_eq!(held.by_tag(39)?.as_str(), Some("80FILLED"));
     assert_eq!(held.by_tag(59)?.as_str(), Some("0"), "a day order");
@@ -669,40 +669,61 @@ ObjectName order within each response. The cursor retains the source document
 and its current position, with no collected output messages.
 
 Each selected configuration converts to one flat `FixMsg`. `SenderCompID`,
-`TargetCompID` and `BeginString` retain standard FIX tags; the `ulbridge`
-dictionary types the configuration-specific attributes. Register it with
-`with_ulbridge_fields` / `withUlbridgeFields`, then select the codec's
-`ulbridge` branch when converting configurations directly.
+`TargetCompID` and `BeginString` retain standard FIX tags; the bridge's own
+fields, from `ULBRIDGE_TAG_MIN` (20001) up, type the configuration-specific
+attributes. `with_ulbridge_fields` / `withUlbridgeFields` registers them in the
+one namespace beside the standard ones, each carrying `fix:branches = ulbridge`
+- the membership `ULBRIDGE_DIALECT` names, which `dialects()` lists and no
+lookup consults - so a document's attributes reach them by name and the codec
+needs no pin. Two attributes are held under another name than the document
+spells: every registry already holds the crate's `state` (the order's) and
+`version` (the FIX version a row was read at), so a plugin's `State` is the
+field `PluginState` (20019) and its `Version` is `PluginVersion` (20021). The
+row holds them under the dictionary's names; the arrival entry keeps the
+document's spelling, exactly as a line keeps what it wrote.
 
 | Source | Flat message |
 | --- | --- |
 | selected ObjectName | `MBean`, `SessionInterface`, `MBeanType`, `PluginType` |
 | request operation | `Operation` |
 | response status or error | `Status`, `Error` |
-| selected attribute map | typed fields such as `Name`, `CurrentPort`, `NeedReload` |
+| selected attribute map | typed fields such as `Name`, `CurrentPort`, `NeedReload`; `State` and `Version` land in `PluginState` and `PluginVersion` |
 
 ### One configuration, out of a bulk body and back
 
-The first response below contains two MBeans. The second is a request with no
-value. Parsing produces three messages; no response is discarded.
+The first response below contains two MBeans, the first of them stating its
+`State` and `Version`. The second is a request with no value. Parsing produces
+three messages; no response is discarded.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::{FixBranch, FixCodec, FixRegistry, Scalar, UlPlugin};
+    use yggdryl::{FixCodec, FixRegistry, MBEAN_TAG_NAME, Scalar, ULBRIDGE_DIALECT, UlPlugin};
 
-    let body = br#"[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin":{"Name":"A","CurrentPort":7061},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,type=Plugin":{"Name":"B","CurrentPort":7062}},"status":200},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]"#;
+    let body = br#"[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin":{"Name":"A","CurrentPort":7061,"State":"logged","Version":"4.7.0"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,type=Plugin":{"Name":"B","CurrentPort":7062}},"status":200},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]"#;
     let registry = FixRegistry::new().with_ulbridge_fields()?;
-    let codec = FixCodec::new(Arc::new(registry)).with_branch(&FixBranch::from_str("ulbridge")?);
+    // The bridge's fields sit in the one namespace, each a member of `ulbridge`.
+    assert_eq!(registry.dialects(), [ULBRIDGE_DIALECT]);
+    assert!(registry.field_by_tag(MBEAN_TAG_NAME.0)?.as_fix().has_branch(ULBRIDGE_DIALECT));
+    let codec = FixCodec::new(Arc::new(registry));
     let mut configurations = UlPlugin::from_json_bytes(body)?;
     let first = configurations.next().expect("first configuration");
     assert_eq!(first.name(), Some("A"));
+    assert_eq!(first.state(), Some("logged"));
     assert_eq!(configurations.count(), 2);
 
     let message = first.into_fixmsg(&codec)?;
     assert_eq!(message.by_name("CurrentPort")?, &Scalar::from(7061_i64));
+    // The row holds the plugin's State and Version under the dictionary's names;
+    // the entry keeps the document's spelling.
+    assert_eq!(message.by_name("PluginState")?, &Scalar::from("logged"));
+    assert_eq!(message.by_tag(20_021)?, &Scalar::from("4.7.0"));
+    assert!(message.get_by_name("state").is_none(), "the order's state is another field");
+    let entry = message.entries().iter().find(|entry| entry.tag() == 20_019).expect("the State entry");
+    assert_eq!(entry.key().as_bytes(), b"State");
     assert_eq!(UlPlugin::from_fixmsg(&message)?.name(), Some("A"));
+    assert_eq!(UlPlugin::from_fixmsg(&message)?.state(), Some("logged"));
     let mut count = 0;
     for message in codec.parse_line(body)? {
         message?;
@@ -714,20 +735,31 @@ value. Parsing produces three messages; no response is discarded.
 === "Python"
 
     ```python
-    from yggdryl.fix import FixCodec, FixRegistry, UlPlugin
+    from yggdryl.fix import ULBRIDGE_DIALECT, FixCodec, FixRegistry, UlPlugin
 
-    body = b'[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin":{"Name":"A","CurrentPort":7061},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,type=Plugin":{"Name":"B","CurrentPort":7062}},"status":200},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]'
+    body = b'[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin":{"Name":"A","CurrentPort":7061,"State":"logged","Version":"4.7.0"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,type=Plugin":{"Name":"B","CurrentPort":7062}},"status":200},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]'
     registry = FixRegistry()
     registry.with_ulbridge_fields()
-    codec = FixCodec(registry, branch="ulbridge")
+    # The bridge's fields sit in the one namespace, each a member of `ulbridge`.
+    assert registry.dialects() == [ULBRIDGE_DIALECT]
+    assert registry.field_by_tag(20_001).fix.branches == [ULBRIDGE_DIALECT]
+    codec = FixCodec(registry)
     configurations = UlPlugin.from_json_bytes(body)
     first = next(configurations)
     assert first.name == "A"
+    assert first.state == "logged"
     assert sum(1 for _ in configurations) == 2
 
     message = first.into_fixmsg(codec)
     assert message.by_name("CurrentPort").as_py() == 7061
+    # The row holds the plugin's State and Version under the dictionary's names;
+    # the entry keeps the document's spelling.
+    assert message.by_name("PluginState").as_py() == "logged"
+    assert message.by_tag(20_021).as_py() == "4.7.0"
+    assert message.get_by_name("state") is None, "the order's state is another field"
+    assert (20_019, "State", "logged") in message.entries()
     assert UlPlugin.from_fixmsg(message).name == "A"
+    assert UlPlugin.from_fixmsg(message).state == "logged"
     assert sum(1 for _ in codec.parse_line(body)) == 3
     ```
 
@@ -737,18 +769,29 @@ value. Parsing produces three messages; no response is discarded.
     const assert = require('node:assert/strict')
     const { fix } = require('yggdryl')
 
-    const body = Buffer.from('[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin":{"Name":"A","CurrentPort":7061},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,type=Plugin":{"Name":"B","CurrentPort":7062}},"status":200},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]')
+    const body = Buffer.from('[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin":{"Name":"A","CurrentPort":7061,"State":"logged","Version":"4.7.0"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,type=Plugin":{"Name":"B","CurrentPort":7062}},"status":200},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]')
     const registry = new fix.FixRegistry()
     registry.withUlbridgeFields()
-    const codec = new fix.FixCodec(registry, { branch: 'ulbridge' })
+    // The bridge's fields sit in the one namespace, each a member of `ulbridge`.
+    assert.deepEqual(registry.dialects(), ['ulbridge'])
+    assert.deepEqual(registry.fieldByTag(20_001).fix.branches, ['ulbridge'])
+    const codec = new fix.FixCodec(registry)
     const configurations = fix.UlPlugin.fromJsonBytes(body)[Symbol.iterator]()
     const first = configurations.next().value
     assert.equal(first.name, 'A')
+    assert.equal(first.state, 'logged')
     assert.equal([...configurations].length, 2)
 
     const message = first.intoFixmsg(codec)
     assert.equal(message.byName('CurrentPort').asJs(), 7061)
+    // The row holds the plugin's State and Version under the dictionary's names;
+    // the entry keeps the document's spelling.
+    assert.equal(message.byName('PluginState').asJs(), 'logged')
+    assert.equal(message.byTag(20_021).asJs(), '4.7.0')
+    assert.equal(message.getByName('state'), null, "the order's state is another field")
+    assert.ok(message.arrivals().some(([tag, key]) => tag === 20_019 && key === 'State'))
     assert.equal(fix.UlPlugin.fromFixmsg(message).name, 'A')
+    assert.equal(fix.UlPlugin.fromFixmsg(message).state, 'logged')
     assert.equal([...codec.parseLine(body)].length, 3)
     ```
 
@@ -768,7 +811,7 @@ value. Parsing produces three messages; no response is discarded.
 
 ## A column is filled by the tag its field carries
 
-Every message in a capture asks for the same tags in the same order, and each ask through the ordinary [resolution tiers](registry.md#tiers) would be a hash, a verification and a branch walk. None of that runs per row: the schema is fixed, its columns are named `msgtype` and `symbol`, each carries its field's `fix:tag`, and `into_row` fills each one by that tag. `fix_column_tags` reads the tags off a schema once, so a batch of a million rows reads them once rather than once per row; a caller-declared root that spells a column by its tag's digits is read the same way, the digits answering where the field carries no tag.
+Every message in a capture asks for the same tags in the same order, and each ask through the ordinary [lookup](registry.md) would be a hash and a verification. None of that runs per row: the schema is fixed, its columns are named `msgtype` and `symbol`, each carries its field's `fix:tag`, and `into_row` fills each one by that tag. `fix_column_tags` reads the tags off a schema once, so a batch of a million rows reads them once rather than once per row; a caller-declared root that spells a column by its tag's digits is read the same way, the digits answering where the field carries no tag.
 
 So there is nothing beside the schema to build, hold, or invalidate. A caller finds a column with `index_of` on the schema it already has - or with `fix_column_of` and the tag - and two captures sharing a dictionary share both the schema and every position in it. A named group column is filled by the counter its `fix:counter` states, which is read ahead of the tag the group derives from its own name, while the numeric count stays in its own column.
 
@@ -796,7 +839,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
     let capture = DataType::from_fields([
         DataType::Utf8.required_field("url"),
         DataType::Int64.required_field("rownum"),
-        DataType::Binary.required_field("body"),
+        DataType::Utf8.required_field("body"),
     ])?
     .required_field("line");
 
@@ -823,7 +866,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
             [
                 Field("url", DataType("utf8"), nullable=False),
                 Field("rownum", DataType("int64"), nullable=False),
-                Field("body", DataType("binary"), nullable=False),
+                Field("body", DataType("utf8"), nullable=False),
             ]
         ),
         nullable=False,
@@ -850,7 +893,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
       [
         fields.utf8('url', { nullable: false }),
         fields.int64('rownum', { nullable: false }),
-        fields.binary('body', { nullable: false }),
+        fields.utf8('body', { nullable: false }),
       ],
       { nullable: false },
     )
@@ -869,7 +912,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
 - A column whose field carries neither a `fix:tag` nor a `fix:counter`, and whose name spells no tag, is the capture's own, so `into_row` answers null there; whoever read the capture fills it.
 - A clock a narrow dictionary types as text is still an instant in the derived `timestamp` column: FIX's own spelling is read there, and text that is not a clock leaves the message to its next clock, else the epoch - never a refusal.
 - `unixpartition` is floored from the clock's nanoseconds, so a clock stated to the microsecond has a partition rather than a null for not being a whole second.
-- A column of the crate's own is typed by the crate's definition, on a standard tag from 65000 that no dialect claims: `timestamp` is an instant, `miccode` a `mic`, `state` a `state`, whatever text a venue spelled them in.
+- A column of the crate's own is typed by the crate's definition, on a tag from 65000 that no dictionary publishes: `timestamp` is an instant, `miccode` a `mic`, `state` a `state`, whatever text a venue spelled them in.
 - Typed text drops the replacement character and every control character but tab, so a byte a transport mangled does not become a mangled column; the entry keeps the bytes exactly as they arrived.
 - `index_of` on a column the schema does not carry -> `None`, never a wrong column.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single message.

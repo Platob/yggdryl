@@ -117,3 +117,25 @@ handle.mergeArrowTable(arrowTable, merging)
 handle.overwriteArrowBatch(arrowBatch, options)
 handle.appendArrowBatch(arrowBatch, named)
 handle.mergeArrowBatch(arrowBatch, merging)
+
+// The text row's line and its entries answer text; the ranges stand beside them.
+import { TextLine } from '../..'
+
+const textLine: TextLine = new TextLine(0, '58=caf\u00e9|10=0|', ['FIX.4.4', null])
+const lineFromBytes: TextLine = new TextLine(1, Buffer.from('58=caf\u00e9|10=0|'))
+const lineBody: string = textLine.body
+const lineCaptures: Array<string | null> = lineFromBytes.captures
+const decoded: number = textLine.decodedByteSize
+const entry = textLine.getEntryByPath('58')
+if (entry !== null) {
+  const key: string = entry.key
+  const value: string = entry.value
+  const keyBytes: Buffer = entry.keyBytes
+  const valueBytes: Buffer = entry.valueBytes
+  void [key, value, keyBytes, valueBytes]
+}
+// @ts-expect-error a body is text or bytes, never a number
+new TextLine(2, 5)
+// @ts-expect-error the body is a string, not a Buffer
+const bodyBytes: Buffer = textLine.body
+void [lineBody, lineCaptures, decoded, bodyBytes]

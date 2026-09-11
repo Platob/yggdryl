@@ -134,7 +134,7 @@ def test_text_options_are_flat_validated_values() -> None:
             constructor(incomplete)
 
 
-def test_generic_records_have_optional_rownums_regex_types_and_binary_body(
+def test_generic_records_have_optional_rownums_regex_types_and_text_body(
     tmp_path: pathlib.Path,
 ) -> None:
     source = handle(
@@ -159,14 +159,14 @@ def test_generic_records_have_optional_rownums_regex_types_and_binary_body(
     assert Field.from_arrow(url_field).dtype == DataType("url")
     assert reader.schema.field("rownum").type == pa.int64()
     assert reader.schema.field("mtime").type == pa.timestamp("ns", "UTC")
-    assert reader.schema.field("body").type == pa.binary()
+    assert reader.schema.field("body").type == pa.string()
     assert reader.schema.field("level").type == pa.string()
     assert reader.schema.field("id").type == pa.int64()
 
     table = reader.read_all()
     assert table.column("rownum").to_pylist() == [10, 11, 12]
     assert table.column("mtime").to_pylist() == [MTIME, MTIME, MTIME]
-    assert table.column("body").to_pylist() == [b"first", b"second", b"plain"]
+    assert table.column("body").to_pylist() == ["first", "second", "plain"]
     assert table.column("level").to_pylist() == ["INFO", "WARN", None]
     assert table.column("id").to_pylist() == [7, 9, None]
     # A located handle states the canonical URL of where it holds the bytes.
@@ -179,7 +179,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_binary_body(
             "url": table.column("url")[0].as_py(),
             "rownum": 10,
             "mtime": MTIME,
-            "body": b"first",
+            "body": "first",
             "level": "INFO",
             "id": 7,
         },
@@ -187,7 +187,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_binary_body(
             "url": table.column("url")[1].as_py(),
             "rownum": 11,
             "mtime": MTIME,
-            "body": b"second",
+            "body": "second",
             "level": "WARN",
             "id": 9,
         },
@@ -195,10 +195,42 @@ def test_generic_records_have_optional_rownums_regex_types_and_binary_body(
             "url": table.column("url")[2].as_py(),
             "rownum": 12,
             "mtime": MTIME,
-            "body": b"plain",
+            "body": "plain",
             "level": None,
             "id": None,
         },
+    ]
+
+
+def test_a_line_that_was_not_utf_8_reaches_the_body_column_as_text(
+    tmp_path: pathlib.Path,
+) -> None:
+    source = handle(
+        tmp_path,
+        b"[INFO] id=7 caf\xe9 caf\xc3\xa9\n[WARN] id=9 \x80 \x93quoted\x94\nplain\n",
+    )
+    options = text_options()
+    options.rowheader = ROWHEADER
+    options.lstrip = [r"^\s+"]
+
+    reader = source.read_arrow_reader(options=options)
+    body = reader.schema.field("body")
+    assert body.type == pa.string()
+    assert body.nullable is False
+    table = reader.read_all()
+    # Every valid run is kept and each other byte is read as Windows-1252
+    # gives it: the lone byte is one character, and the UTF-8 pair beside it
+    # is the same character it was.
+    assert table.column("body").to_pylist() == [
+        "caf\u00e9 caf\u00e9",
+        "\u20ac \u201cquoted\u201d",
+        "plain",
+    ]
+    assert table.column("level").to_pylist() == ["INFO", "WARN", None]
+    assert [row["body"] for row in source.read_records(options=options)] == [
+        "caf\u00e9 caf\u00e9",
+        "\u20ac \u201cquoted\u201d",
+        "plain",
     ]
 
 
@@ -212,7 +244,7 @@ def test_rowheader_removal_and_stripping_are_independent_edge_operations(
     options.rstrip = [r"\s+--$"]
 
     row = next(source.read_records(options=options))
-    assert row["body"] == b"right"
+    assert row["body"] == "right"
     assert row["level"] == "INFO"
     assert row["id"] == 7
 
@@ -373,30 +405,30 @@ def test_retained_text_options_parse_the_real_execution_row(
     assert row["module"] == "ModuleFailFastFilterChecker"
     assert row["level"] == "DEBUG"
     assert row["body"] == (
-        b"Execution report (execId: 20260828180000369318, from session:"
+        "Execution report (execId: 20260828180000369318, from session:"
     )
     # No capture is spelled `mtime`, so the file's own modification time dates
     # the row.
     assert row["mtime"] == MTIME
 
 
-def test_generic_record_writes_encode_only_binary_body(tmp_path: pathlib.Path) -> None:
+def test_generic_record_writes_encode_only_text_body(tmp_path: pathlib.Path) -> None:
     target = IOBase(tmp_path / "out.txt")
     options = text_options()
 
-    target.overwrite_records(({"body": value} for value in (b"one", b"two")), options=options)
-    target.append_records([{"body": b"three"}], options=options)
+    target.overwrite_records(({"body": value} for value in ("one", "two")), options=options)
+    target.append_records([{"body": "three"}], options=options)
     assert target.read_bytes() == b"one\ntwo\nthree\n"
     # The rows read back carry the modification time the writes just made.
     dated(tmp_path / "out.txt")
     assert [row["body"] for row in target.read_records(options=options)] == [
-        b"one",
-        b"two",
-        b"three",
+        "one",
+        "two",
+        "three",
     ]
 
     with pytest.raises(ValueError, match="without its record terminator"):
-        target.append_records([{"body": b"bad\nline"}], options=options)
+        target.append_records([{"body": "bad\nline"}], options=options)
 
 
 def test_pinned_line_separator_round_trips_through_generic_records(
@@ -406,12 +438,12 @@ def test_pinned_line_separator_round_trips_through_generic_records(
     options = text_options()
     options.linesep = r"\r\n"
 
-    target.overwrite_records([{"body": b"one"}, {"body": b"two"}], options=options)
+    target.overwrite_records([{"body": "one"}, {"body": "two"}], options=options)
     assert target.read_bytes() == b"one\r\ntwo\r\n"
     dated(tmp_path / "rows.txt")
     assert [row["body"] for row in target.read_records(options=options)] == [
-        b"one",
-        b"two",
+        "one",
+        "two",
     ]
 
 
@@ -429,9 +461,9 @@ def test_framing_normalizes_terminators_and_reports_record_caps(
     base.batch_row_size = 1
 
     for limit, expected_bodies, expected_dropped in (
-        (7, [b"abc\ndef", b"xyz"], [None, None]),
-        (6, [b"abc\nde", b"xyz"], [1, None]),
-        (0, [b"", b""], [7, 3]),
+        (7, ["abc\ndef", "xyz"], [None, None]),
+        (6, ["abc\nde", "xyz"], [1, None]),
+        (0, ["", ""], [7, 3]),
     ):
         options = copy.copy(base)
         options.max_record_byte_size = limit
@@ -479,7 +511,7 @@ def test_compressed_logs_stream_their_records_without_naming_the_coding(
         batches = list(reader)
         assert [batch.num_rows for batch in batches] == [1, 1]
         table = pa.Table.from_batches(batches)
-        assert table.column("body").to_pylist() == [b"first\ncontinued", b"second"]
+        assert table.column("body").to_pylist() == ["first\ncontinued", "second"]
         assert table.column("kind").to_pylist() == ["A", "B"]
 
         # The property counts through the same decoded stream, under the
@@ -526,7 +558,7 @@ def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path
     assert [row["rownum"] for row in rows] == [1, 1]
     # Each leaf answers with its own modification time.
     assert [row["mtime"] for row in rows] == [MTIME, MTIME]
-    assert [row["body"] for row in rows] == [b"from a", b"from b"]
+    assert [row["body"] for row in rows] == ["from a", "from b"]
     assert [row["id"] for row in rows] == [1, 2]
     assert [pathlib.PurePosixPath(row["url"]).name for row in rows] == [
         "a.log",

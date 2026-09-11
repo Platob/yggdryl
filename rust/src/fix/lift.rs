@@ -30,7 +30,6 @@ use std::sync::LazyLock;
 
 use crate::{DataType, Field, Scalar, Version};
 
-use super::FixId;
 use super::msg::FixMsg;
 
 /// One place a facet may be answered from.
@@ -371,15 +370,17 @@ impl FixMsg {
         self.lift_resolved(facet).map(|(_, value)| value)
     }
 
-    /// Which source answered a facet, so a fallback is visible.
+    /// Which source answered a facet, as its tag, so a fallback is visible.
     ///
     /// A latency computed from `SendingTime` when `TransactTime` was meant is
     /// not a latency, and a monitor cannot tell the two apart from the value
     /// alone. A derived answer names the tag it was derived *from*, which is
-    /// the same question asked of a different lane.
+    /// the same question asked of a different lane. A source is declared by
+    /// tag, so the tag is what is answered; the dictionary says what the tag
+    /// is called.
     #[must_use]
-    pub fn lift_source(&self, facet: &str) -> Option<FixId> {
-        self.lift_resolved(facet).map(|(id, _)| id)
+    pub fn lift_source(&self, facet: &str) -> Option<i32> {
+        self.lift_resolved(facet).map(|(tag, _)| tag)
     }
 
     /// Every facet this message answers, for a batch writer.
@@ -450,7 +451,7 @@ impl FixMsg {
     }
 
     /// The source and the value of one facet, resolved once for both readers.
-    fn lift_resolved(&self, facet: &str) -> Option<(FixId, &Scalar)> {
+    fn lift_resolved(&self, facet: &str) -> Option<(i32, &Scalar)> {
         let lift = fix_lift(facet)?;
         let msgtype = self.msgtype();
         let at = self.version();
@@ -472,10 +473,10 @@ impl FixMsg {
                 continue;
             };
             if !self.is_deprecated(source.tag, at) {
-                return Some((self.identify(source.tag), value));
+                return Some((source.tag, value));
             }
             if superseded.is_none() {
-                superseded = Some((self.identify(source.tag), value));
+                superseded = Some((source.tag, value));
             }
         }
         superseded.or_else(|| self.derived(facet, msgtype))
@@ -508,11 +509,6 @@ impl FixMsg {
         self.registry()
             .get_field_by_tag(tag)
             .is_some_and(|field| field.as_fix().deprecated_at(at))
-    }
-
-    /// The identity a tag names in this message's dialect.
-    fn identify(&self, tag: i32) -> FixId {
-        FixId::from_parts(self.branch(), tag).unwrap_or_else(|_| FixId::standard(tag))
     }
 
     /// One symbolic code spelling as the member field's own typed value.
@@ -549,7 +545,7 @@ impl FixMsg {
     /// stated source has missed. A message carrying `BidPx` *and* `Side`
     /// answers both as stated, and a disagreement between them is reported
     /// through [`anomalies`](Self::anomalies) rather than resolved here.
-    fn derived(&self, facet: &str, msgtype: &str) -> Option<(FixId, &Scalar)> {
+    fn derived(&self, facet: &str, msgtype: &str) -> Option<(i32, &Scalar)> {
         // One lane implies a side; two lanes imply nothing. A quote carrying
         // only `BidPx` is a party bidding, so the side is `Buy`; a two-sided
         // quote carries both lanes and no single side is the message's, which
@@ -558,8 +554,8 @@ impl FixMsg {
             return self.lane_of(facet, msgtype);
         }
         match (self.flat(132).is_some(), self.flat(133).is_some()) {
-            (true, false) => Some((self.identify(132), &DERIVED_BID)),
-            (false, true) => Some((self.identify(133), &DERIVED_ASK)),
+            (true, false) => Some((132, &DERIVED_BID)),
+            (false, true) => Some((133, &DERIVED_ASK)),
             _ => None,
         }
     }
@@ -571,7 +567,7 @@ impl FixMsg {
     /// price is a traded price, not a quote lane, and putting it on one would
     /// state a quote that never existed. The message type is what tells the
     /// two apart.
-    fn lane_of(&self, facet: &str, msgtype: &str) -> Option<(FixId, &Scalar)> {
+    fn lane_of(&self, facet: &str, msgtype: &str) -> Option<(i32, &Scalar)> {
         let (lane, tag) = match facet {
             "bidpx" => (BID_LANE, 44),
             "askpx" => (ASK_LANE, 44),
@@ -582,7 +578,7 @@ impl FixMsg {
         if !ORDERS.contains(&msgtype) || !self.in_lane(lane) {
             return None;
         }
-        Some((self.identify(tag), self.flat(tag)?))
+        Some((tag, self.flat(tag)?))
     }
 
     /// Whether this message's stated side takes `lane`.

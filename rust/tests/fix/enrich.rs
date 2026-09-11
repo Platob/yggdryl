@@ -69,12 +69,15 @@ fn an_identifier_names_the_standard_that_closes_it() {
     // SEDOL: a `SecurityID` one of them closes has stated its own source.
     let isin = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|");
     assert_eq!(text(&isin, 22), Some("4"));
-    assert_eq!(text(&isin, yggdryl::ISINCODE_TAG), Some("US0378331005"));
+    assert_eq!(
+        text(&isin, yggdryl::ISINCODE_TAG_NAME.0),
+        Some("US0378331005")
+    );
     assert_eq!(text(&isin, 470), Some("US"), "the country the prefix names");
 
     let cusip = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=037833100|10=0|");
     assert_eq!(text(&cusip, 22), Some("1"));
-    assert_eq!(cusip.get_by_tag(yggdryl::ISINCODE_TAG), None);
+    assert_eq!(cusip.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
     assert_eq!(cusip.get_by_tag(470), None);
 
     let sedol = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=B0YBKJ7|10=0|");
@@ -83,7 +86,10 @@ fn an_identifier_names_the_standard_that_closes_it() {
     // Case does not change what a check digit closes.
     let folded = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=us0378331005|10=0|");
     assert_eq!(text(&folded, 22), Some("4"));
-    assert_eq!(text(&folded, yggdryl::ISINCODE_TAG), Some("US0378331005"));
+    assert_eq!(
+        text(&folded, yggdryl::ISINCODE_TAG_NAME.0),
+        Some("US0378331005")
+    );
 
     // A value no standard closes answers nothing, and a typo is not an
     // identifier of anything.
@@ -100,14 +106,14 @@ fn an_identifier_names_the_standard_that_closes_it() {
             "{}",
             String::from_utf8_lossy(line)
         );
-        assert_eq!(held.get_by_tag(yggdryl::ISINCODE_TAG), None);
+        assert_eq!(held.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
     }
 
     // A stated source wins over what the value would validate as, and an
     // ISIN under another source is not read as one.
     let stated = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=1|10=0|");
     assert_eq!(text(&stated, 22), Some("1"));
-    assert_eq!(stated.get_by_tag(yggdryl::ISINCODE_TAG), None);
+    assert_eq!(stated.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
 
     // The rules read codes. A bridge row spelling the source in its own
     // word has stated one, which stands, and `isin` is not the code `4`: the
@@ -118,7 +124,7 @@ fn an_identifier_names_the_standard_that_closes_it() {
         b"MSGTYPE=D|CLORDID=A|SECURITYID=CH0012221716|SECURITYIDSOURCE=isin",
     );
     assert_eq!(text(&worded, 22), Some("isin"));
-    assert_eq!(worded.get_by_tag(yggdryl::ISINCODE_TAG), None);
+    assert_eq!(worded.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
 }
 
 #[test]
@@ -127,7 +133,10 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
     // The alternate identifier whose source says ISIN is the ISIN, and once
     // the row holds one it holds the primary identifier and its source too.
     let held = settled(&reader, &alternate("CH0012221716", "4"));
-    assert_eq!(text(&held, yggdryl::ISINCODE_TAG), Some("CH0012221716"));
+    assert_eq!(
+        text(&held, yggdryl::ISINCODE_TAG_NAME.0),
+        Some("CH0012221716")
+    );
     assert_eq!(text(&held, 48), Some("CH0012221716"));
     assert_eq!(text(&held, 22), Some("4"));
     assert_eq!(text(&held, 470), Some("CH"));
@@ -140,7 +149,10 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
         b"MSGTYPE=D|#CLORDID=A|#SECURITYID=US0378331005|#NOSECURITYALTID=1|#NOSECURITYALTID[0]=SECURITYALTID=CH0012221716\x04\x03SECURITYALTIDSOURCE=4",
     );
     assert_eq!(text(&both, 22), Some("4"));
-    assert_eq!(text(&both, yggdryl::ISINCODE_TAG), Some("US0378331005"));
+    assert_eq!(
+        text(&both, yggdryl::ISINCODE_TAG_NAME.0),
+        Some("US0378331005")
+    );
     assert_eq!(text(&both, 470), Some("US"));
     // Under another source the primary is no ISIN, and the alternate is.
     let sourced = settled(
@@ -149,7 +161,10 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
     );
     assert_eq!(text(&sourced, 22), Some("1"));
     assert_eq!(text(&sourced, 48), Some("037833100"));
-    assert_eq!(text(&sourced, yggdryl::ISINCODE_TAG), Some("CH0012221716"));
+    assert_eq!(
+        text(&sourced, yggdryl::ISINCODE_TAG_NAME.0),
+        Some("CH0012221716")
+    );
     assert_eq!(text(&sourced, 470), Some("CH"));
 
     // A bridge row stating only the crate's own column has stated the
@@ -162,17 +177,17 @@ fn an_isin_reaches_its_column_from_wherever_the_message_put_it() {
     // An international prefix is an agency and not a country.
     for id in ["XS0000000009", "EU0000000008"] {
         let held = settled(&reader, &alternate(id, "4"));
-        assert_eq!(text(&held, yggdryl::ISINCODE_TAG), Some(id));
+        assert_eq!(text(&held, yggdryl::ISINCODE_TAG_NAME.0), Some(id));
         assert_eq!(held.get_by_tag(470), None, "{id}");
     }
 
     // An alternate identifier under another source is not an ISIN, and one
     // the check digit does not close is nothing at all.
     let cusip = settled(&reader, &alternate("037833100", "1"));
-    assert_eq!(cusip.get_by_tag(yggdryl::ISINCODE_TAG), None);
+    assert_eq!(cusip.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
     assert_eq!(cusip.get_by_tag(48), None);
     let masked = settled(&reader, &alternate("XX0000000001", "4"));
-    assert_eq!(masked.get_by_tag(yggdryl::ISINCODE_TAG), None);
+    assert_eq!(masked.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
     assert_eq!(masked.get_by_tag(48), None);
     assert_eq!(masked.get_by_tag(22), None);
 }
@@ -292,16 +307,22 @@ fn the_crates_market_and_state_columns_are_stated_on_the_message() {
         (b"8=FIX.4.4|35=D|11=A|30=XLON|10=0|", "XLON"),
     ] {
         let held = settled(&reader, line);
-        assert_eq!(text(&held, yggdryl::MICCODE_TAG), Some(market));
+        assert_eq!(text(&held, yggdryl::MICCODE_TAG_NAME.0), Some(market));
     }
     let silent = settled(&reader, b"8=FIX.4.4|35=D|11=A|10=0|");
-    assert_eq!(silent.get_by_tag(yggdryl::MICCODE_TAG), None);
+    assert_eq!(silent.get_by_tag(yggdryl::MICCODE_TAG_NAME.0), None);
 
     // The column spells a state by its rank, whichever code stated it.
     let status = settled(&reader, b"8=FIX.4.4|35=8|39=1|150=F|10=0|");
-    assert_eq!(text(&status, yggdryl::STATE_TAG), Some(state("1").as_str()));
+    assert_eq!(
+        text(&status, yggdryl::STATE_TAG_NAME.0),
+        Some(state("1").as_str())
+    );
     let trade = settled(&reader, b"8=FIX.4.4|35=8|150=F|10=0|");
-    assert_eq!(text(&trade, yggdryl::STATE_TAG), Some(state("F").as_str()));
+    assert_eq!(
+        text(&trade, yggdryl::STATE_TAG_NAME.0),
+        Some(state("F").as_str())
+    );
     assert_eq!(trade.get_by_tag(39), None, "a trade alone says no status");
 }
 
@@ -390,7 +411,7 @@ fn a_report_states_its_status_where_its_execution_type_or_its_quantities_do() {
     assert_eq!(text(&chained, 39), Some(state("0").as_str()));
     assert_eq!(chained.by_tag(151).unwrap(), &Scalar::from(100.0_f64));
     assert_eq!(
-        text(&chained, yggdryl::STATE_TAG),
+        text(&chained, yggdryl::STATE_TAG_NAME.0),
         Some(state("0").as_str())
     );
 }

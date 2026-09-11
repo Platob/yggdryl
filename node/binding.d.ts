@@ -2859,17 +2859,11 @@ export interface UlPluginConstructor {
 /** `yggdryl::fix`: the FIX dictionary, its message, and the process default. */
 export interface Fix {
   /**
-   * The FIX specification's own dictionary, and what an absent `fix:branch`
-   * means. Its spelling is the empty string.
-   */
-  readonly STANDARD_BRANCH: string
-  /** Inclusive lower bound of the user-defined tag range. */
-  readonly USER_TAG_MIN: number
-  /** Exclusive upper bound of the user-defined tag range. */
-  readonly USER_TAG_MAX: number
-  /**
    * FIX field definitions resolved by identifier, by tag, by name, or by
-   * dotted path.
+   * dotted path. One namespace: an identifier is the number `field.fix.id`
+   * derives from a tag and a name, a bare number is a tag, and a
+   * dictionary's membership is `fix:branches` on the field it contributed
+   * to - provenance a caller filters on, never a lookup tier.
    */
   readonly FixRegistry: typeof FixRegistry
   /** A FIX message: a value plus the registry that types it. */
@@ -2916,7 +2910,7 @@ export interface Fix {
   /** One row's columns, in order, as tags. */
   schemaTags(): number[]
   /**
-   * The nineteen fields this crate defines, in tag order: standard fields
+   * The twenty fields this crate defines, in tag order: standard fields
    * from 65000 up, above every tag FIX or a venue publishes - the digest,
    * the clock and its partition, the session a message states, the bridge's
    * message context, the plugins and plugin sessions a line moved between,

@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use super::group_plan::GroupPlan;
 use super::registry::name_digest;
-use super::{FixBranch, FixId};
 use crate::{DataType, Error, Field, Result};
 
 /// The seed the child index folds names under.
@@ -26,7 +25,7 @@ const CHILD_DOMAIN: u64 = 0x4d53_475f_4348_4c44;
 /// let mut field = DataType::from_fields([])?.required_field("Order");
 /// field.as_fix_mut().set_msgtype("D")?;
 /// registry.create_definition(FixCategory::Messages, field)?;
-/// let message = registry.msgtype("D", None)?;
+/// let message = registry.msgtype("D")?;
 /// assert_eq!(message.name(), "Order");
 /// assert_eq!(message.as_str(), "D");
 /// # Ok::<(), yggdryl::Error>(())
@@ -34,7 +33,7 @@ const CHILD_DOMAIN: u64 = 0x4d53_475f_4348_4c44;
 #[derive(Clone, Debug)]
 pub struct MsgType {
     field: Field,
-    groups: HashMap<FixId, Option<GroupOccurrence>>,
+    groups: HashMap<i32, Option<GroupOccurrence>>,
     /// The direct scalar children carrying a tag, by folded name: what a
     /// key the dictionary does not name resolves against, answered by one
     /// probe rather than by a walk of a wide message's three hundred
@@ -97,11 +96,7 @@ impl MsgType {
                 continue;
             }
             children
-                .entry(name_digest(
-                    &FixBranch::STANDARD,
-                    child.name(),
-                    CHILD_DOMAIN,
-                ))
+                .entry(name_digest(child.name(), CHILD_DOMAIN))
                 .or_insert(index);
         }
         Ok(Self {
@@ -117,7 +112,7 @@ impl MsgType {
     /// One probe of the index built when the message was registered,
     /// rechecked against the child it lands on, so a collision is a miss.
     pub(super) fn get_child_by_name(&self, key: &str) -> Option<(&Field, i32)> {
-        let digest = name_digest(&FixBranch::STANDARD, key, CHILD_DOMAIN);
+        let digest = name_digest(key, CHILD_DOMAIN);
         let child = self.field.fields().get(*self.children.get(&digest)?)?;
         if !crate::types::folds_equal(child.name(), key) {
             return None;
@@ -145,8 +140,8 @@ impl MsgType {
 
     /// Borrows the unique repeating group using a counter in this message.
     /// Its path is compiled at registration; repeated contexts are ambiguous.
-    pub fn get_group_by_counter(&self, id: FixId) -> Option<&Field> {
-        let path = &self.groups.get(&id)?.as_ref()?.path;
+    pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field> {
+        let path = &self.groups.get(&tag)?.as_ref()?.path;
         let mut field = &self.field;
         for step in path {
             field = match step {
@@ -160,18 +155,18 @@ impl MsgType {
         Some(field)
     }
 
-    pub(super) fn has_group_counter(&self, id: FixId) -> bool {
-        self.groups.contains_key(&id)
+    pub(super) fn has_group_counter(&self, tag: i32) -> bool {
+        self.groups.contains_key(&tag)
     }
 
-    pub(super) fn get_group_plan_by_counter(&self, id: FixId) -> Option<&GroupPlan> {
-        Some(&self.groups.get(&id)?.as_ref()?.plan)
+    pub(super) fn get_group_plan_by_counter(&self, tag: i32) -> Option<&GroupPlan> {
+        Some(&self.groups.get(&tag)?.as_ref()?.plan)
     }
 
     fn index_groups(
         field: &Field,
         path: &mut Vec<GroupStep>,
-        groups: &mut HashMap<FixId, Option<GroupOccurrence>>,
+        groups: &mut HashMap<i32, Option<GroupOccurrence>>,
         plans: &mut HashMap<Vec<GroupStep>, Arc<GroupPlan>>,
     ) -> Result<()> {
         if path.len() > 64 {
@@ -182,7 +177,6 @@ impl MsgType {
         }
         if let DataType::List(item) | DataType::LargeList(item) = field.dtype() {
             if let Some(tag) = field.as_fix().counter()? {
-                let id = FixId::from_parts(&field.as_fix().branch()?, tag)?;
                 let plan = match plans.remove(path) {
                     Some(plan) => plan,
                     None => Arc::new(GroupPlan::from_field(field)?),
@@ -197,7 +191,7 @@ impl MsgType {
                     plans.insert(nested_path, Arc::clone(nested));
                 }
                 groups
-                    .entry(id)
+                    .entry(tag)
                     .and_modify(|held| *held = None)
                     .or_insert_with(|| {
                         Some(GroupOccurrence {

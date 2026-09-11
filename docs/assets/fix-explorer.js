@@ -96,7 +96,10 @@
     return wrapper
   }
   const metadata = (field) => field.metadata ?? {}
-  const branch = (field) => metadata(field)['fix:branch'] ?? ''
+  // `fix:branches` is membership: the dictionaries that contributed a field,
+  // comma-separated, lowercase and sorted. Empty for every field the
+  // specification alone defines; no lookup consults it.
+  const memberships = (field) => (metadata(field)['fix:branches'] ?? '').split(',').filter(Boolean)
   const title = (field) => metadata(field).display ?? field.name
   const searchText = (text) => String(text).toLowerCase()
   const words = (text) => searchText(text).trim().split(/\s+/).filter(Boolean)
@@ -110,11 +113,11 @@
       }).then((data) => ({
         data,
         // Search text is presentation state. Names keep their stored spelling;
-        // this index does not implement registry lookup or branch precedence.
+        // this index does not implement registry lookup or the one fold.
         definitions: CATEGORIES.flatMap((category) => data.catalog[category].map((field) => ({
           category,
           field,
-          text: searchText([category, field.name, ...['display', 'description', 'fix:tag', 'fix:aliases', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:branch'].map((key) => metadata(field)[key] ?? '')].join(' ')),
+          text: searchText([category, field.name, ...['display', 'description', 'fix:tag', 'fix:aliases', 'fix:tags', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:branches'].map((key) => metadata(field)[key] ?? '')].join(' ')),
         }))),
       }))
     }
@@ -141,10 +144,13 @@
   function fieldDetail(field, category, navigate) {
     const body = make('div')
     const meta = metadata(field)
+    const held = memberships(field)
     body.append(grid(['Property', 'Native value'], [
-      ['category', category], ['name', field.name], ['branch', branch(field) || 'standard'],
+      ['category', category], ['name', field.name],
       ['datatype', field.dtype.type], ['nullable', field.nullable],
-      ...['fix:tag', 'fix:counter', 'fix:component', 'fix:msgtype', 'description'].filter((key) => meta[key] !== undefined).map((key) => [key, meta[key]]),
+      ...['fix:tag', 'fix:tags', 'fix:aliases', 'fix:counter', 'fix:component', 'fix:msgtype', 'description'].filter((key) => meta[key] !== undefined).map((key) => [key, meta[key]]),
+      // Membership is provenance, shown only where a dictionary recorded it.
+      ...(held.length ? [['membership', held.join(', ')]] : []),
     ]))
     // Direct occurrences are already present in the native Field document.
     // A reference button changes the search; it never expands a target schema.
@@ -217,7 +223,7 @@
       for (const { field, category: kind } of matches.slice(0, limit)) {
         const meta = metadata(field)
         const identity = meta['fix:tag'] ? `tag ${meta['fix:tag']}` : meta['fix:counter'] ? `counter ${meta['fix:counter']}` : meta['fix:msgtype'] ? `wire ${meta['fix:msgtype']}` : ''
-        const entry = panel(title(field), [kind, identity, branch(field)].filter(Boolean).join(' / '))
+        const entry = panel(title(field), [kind, identity, memberships(field).join(', ')].filter(Boolean).join(' / '))
         let filled = false
         entry.element.addEventListener('toggle', () => {
           if (filled || !entry.element.open) return
@@ -248,7 +254,7 @@
     body.append(make('h4', null, 'Recorded input (escaped text)'), wire(frame.line))
     body.append(grid(['Native answer', 'Value'], [
       ['MIME type', frame.mime], ['message code', frame.msgtype], ['direction', frame.direction],
-      ['branch', frame.branch || 'standard'], ['root', frame.root], ['field count', frame.size],
+      ['root', frame.root], ['field count', frame.size],
       ['ticker', frame.ticker], ['market timestamp', frame.clock], ['partition', frame.partition], ['digest', frame.digest],
     ]))
     body.append(make('h4', null, 'Native anomalies'), note(frame.anomalies.length ? frame.anomalies.join(', ') : 'No anomalies reported.'))
@@ -259,7 +265,7 @@
     columns.body.append(grid(['Tag', 'Name', 'Datatype', 'Value'], frame.columns.map((column) => [column.t, column.n, column.y, column.v])))
     body.append(columns.element)
     const lifted = panel('Native facets', `${frame.lift.length}`)
-    lifted.body.append(grid(['Facet', 'Value', 'Source'], frame.lift))
+    lifted.body.append(grid(['Facet', 'Value', 'Source tag'], frame.lift))
     body.append(lifted.element, jsonPanel('Native message Field', frame.field), jsonPanel('Native message Scalar', frame.value))
     if (!emittedFirst) output()
     return body
@@ -336,7 +342,17 @@
     }
     root.append(grid(['Source', 'Format', 'Version', 'SHA-256', 'License'], data.spec.sources.map((source) => [
       link(source.id, source.url), source.format, source.version, source.sha256, link('License', source.license),
-    ])), jsonPanel('Native branch declarations', data.catalog.branches))
+    ])))
+    // Membership travels on each field's `fix:branches`; a registry lists the
+    // distinct names through `dialects()`. The shipped dictionary names none.
+    const dialects = data.kpi.dialectSizes ?? []
+    if (dialects.length) {
+      const held = panel('Dialects', `${dialects.length}`)
+      held.body.append(grid(['Dialect', 'Member fields'], dialects))
+      root.append(held.element)
+    } else {
+      root.append(note('No field carries a membership: every field is the specification\'s own, and registry.dialects() answers an empty list.'))
+    }
   }
 
   const renderers = {

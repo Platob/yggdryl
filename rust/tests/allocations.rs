@@ -29,8 +29,8 @@ use std::sync::Arc;
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::types::{MsgDirection, UncheckedFieldScalar};
 use yggdryl::{
-    DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixBranch, FixCode, FixCodec,
-    FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType, PythonKind,
+    DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixId,
+    FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType, PythonKind,
     PythonMetadata, Scalar, TimeUnit, Timezone, Version,
 };
 
@@ -232,19 +232,14 @@ fn iceberg_field(extra: usize) -> Field {
     field
 }
 
-/// The venue branch the branched cases probe, at exactly the length
-/// `FixBranch::MAX_LENGTH` allows.
+/// The dialect the venue field below is a member of.
 ///
-/// A branch at the bound must still be inline, because every identifier
-/// probe clones one. If the bound ever exceeds `smol_str`'s inline capacity,
-/// the cases below start allocating and fail here rather than silently
-/// costing the documented hot path a heap round trip.
-fn venue() -> FixBranch {
-    FixBranch::from_str(&"v".repeat(FixBranch::MAX_LENGTH)).expect("a branch at the bound")
-}
+/// Membership is provenance a caller filters on; resolution never consults
+/// it, so a member field costs what a standard one does in every probe.
+const VENUE: &str = "venue";
 
 /// A FIX registry of `extra` generated fields around two fully keyed fields,
-/// one in the standard branch and one in a venue's, plus one repeating group.
+/// one standard and one a venue's member, plus one repeating group.
 ///
 /// The generated fields are what a probe walks past in the maps; the keyed
 /// ones are what every hit lands on. The group keeps a nested shape in the
@@ -273,10 +268,11 @@ fn fix_registry(extra: usize) -> FixRegistry {
     let mut msgtype = DataType::Utf8.nullable_field("MsgType");
     msgtype.as_fix_mut().set_tag(35).expect("a static tag");
     let mut trade = DataType::Utf8.nullable_field("TradeID");
+    trade.as_fix_mut().set_tag(5_001).expect("a static tag");
     trade
         .as_fix_mut()
-        .set_id(&venue(), 5_001)
-        .expect("a static identifier");
+        .set_branches([VENUE])
+        .expect("a static membership");
     trade
         .as_fix_mut()
         .set_aliases(["TradeIdentifier"])
@@ -307,9 +303,9 @@ fn fix_registry(extra: usize) -> FixRegistry {
 fn a_fix_registry_lookup_allocates_nothing() {
     // A wide dictionary: a hit must cost the same however much it walks past.
     let registry = fix_registry(512);
-    let standard = FixBranch::STANDARD;
-    let venue = venue();
-    let vendor = FixId::from_parts(&venue, 5_001).expect("a vendor identifier");
+    let vendor = FixId::of(5_001, "TradeID").expect("a vendor identifier");
+    // Another name on the same tag is another identity: an exact miss.
+    let foreign = FixId::of(5_001, "OtherTradeID").expect("a foreign identifier");
 
     free("get_field_by_tag scalar hit", || {
         let _ = black_box(registry.get_field_by_tag(55));
@@ -318,14 +314,10 @@ fn a_fix_registry_lookup_allocates_nothing() {
         let _ = black_box(registry.get_field_by_tag(453));
     });
     free("get_field_by_name counter hit", || {
-        let _ = black_box(registry.get_field_by_name("nopartyids", Some(&standard)));
+        let _ = black_box(registry.get_field_by_name("nopartyids"));
     });
     free("get_definition group hit", || {
-        let _ = black_box(registry.get_definition(
-            yggdryl::FixCategory::Groups,
-            "PARTIES",
-            Some(&standard),
-        ));
+        let _ = black_box(registry.get_definition(yggdryl::FixCategory::Groups, "PARTIES"));
     });
     free("get_field_by_tag alternate hit", || {
         let _ = black_box(registry.get_field_by_tag(65));
@@ -333,39 +325,32 @@ fn a_fix_registry_lookup_allocates_nothing() {
     free("get_field_by_tag miss", || {
         let _ = black_box(registry.get_field_by_tag(7));
     });
-    // An identifier is the hash key itself, both halves, so vendor probes
-    // cost what standard ones do.
+    // An identifier is the hash key itself, tag and folded name, so vendor
+    // probes cost what standard ones do.
     free("get_field_by_id vendor hit", || {
         let _ = black_box(registry.get_field_by_id(vendor));
     });
     free("get_field_by_id vendor miss", || {
-        let _ = black_box(registry.get_field_by_id(FixId::standard(5_001)));
+        let _ = black_box(registry.get_field_by_id(foreign));
     });
     // The name index is probed with the caller's text folded as it is
     // hashed, so a differently cased query builds no folded copy.
     free("get_field_by_name differently cased hit", || {
-        let _ = black_box(registry.get_field_by_name("sYmBoL", Some(&standard)));
+        let _ = black_box(registry.get_field_by_name("sYmBoL"));
     });
     free("get_field_by_name alias hit", || {
-        let _ = black_box(registry.get_field_by_name("TICKER", Some(&standard)));
+        let _ = black_box(registry.get_field_by_name("TICKER"));
     });
     free("get_field_by_name long alias hit", || {
-        let _ = black_box(registry.get_field_by_name("securitysymbolidentifier", Some(&standard)));
+        let _ = black_box(registry.get_field_by_name("securitysymbolidentifier"));
     });
+    // A member field lives in the one namespace: its name answers without
+    // any dialect being named.
     free("get_field_by_name vendor hit", || {
-        let _ = black_box(registry.get_field_by_name("tradeid", Some(&venue)));
-    });
-    free("get_field_by_name inferred vendor hit", || {
-        let _ = black_box(registry.get_field_by_name("tradeid", None));
-    });
-    free("get_field_by_name inferred standard hit", || {
-        let _ = black_box(registry.get_field_by_name("ticker", None));
+        let _ = black_box(registry.get_field_by_name("tradeid"));
     });
     free("get_field_by_name miss", || {
-        let _ = black_box(registry.get_field_by_name("absent", Some(&standard)));
-    });
-    free("get_field_by_name inferred miss", || {
-        let _ = black_box(registry.get_field_by_name("absent", None));
+        let _ = black_box(registry.get_field_by_name("absent"));
     });
     free("get_field generic", || {
         let _ = black_box(registry.get_field("ticker"));
@@ -376,7 +361,7 @@ fn a_fix_registry_lookup_allocates_nothing() {
     // read: what the lookup itself costs is nothing.
     let absent_member = FieldPath::from_str("Symbol.absent").expect("a path");
     free("get_field_by_path member", || {
-        let _ = black_box(registry.get_field_by_path(&absent_member, Some(&standard)));
+        let _ = black_box(registry.get_field_by_path(&absent_member));
     });
     free("contains", || {
         let _ = black_box(registry.contains("Symbol"));
@@ -465,7 +450,7 @@ fn registry_message_singletons_and_scoped_groups_are_borrowed() {
     let mut message = DataType::from_fields([
         registry.field_by_tag(453).unwrap().clone(),
         registry
-            .definition(yggdryl::FixCategory::Groups, "Parties", None)
+            .definition(yggdryl::FixCategory::Groups, "Parties")
             .unwrap()
             .clone(),
     ])
@@ -475,14 +460,14 @@ fn registry_message_singletons_and_scoped_groups_are_borrowed() {
     registry
         .insert_definition(yggdryl::FixCategory::Messages, message)
         .unwrap();
-    let held = registry.msgtype("D", None).unwrap();
-    let counter = FixId::standard(453);
+    let held = registry.msgtype("D").unwrap();
+    let counter = 453;
     assert_eq!(
         held.get_group_by_counter(counter).unwrap().name(),
         "Parties"
     );
     free("registry message singleton", || {
-        black_box(registry.get_msgtype("D", None));
+        black_box(registry.get_msgtype("D"));
         black_box(registry.msgtypes().next());
     });
     free("borrowed message fields and scoped group", || {
@@ -504,7 +489,7 @@ fn fix_hash_state_allocation_is_constant_across_catalog_sizes() {
         registry
             .create_definition(yggdryl::FixCategory::Messages, definition)
             .unwrap();
-        let held = registry.msgtype("H", None).unwrap();
+        let held = registry.msgtype("H").unwrap();
         // Each call constructs one shared XXH3 state. The native structural
         // feed adds no allocations as the fields and message schema grow.
         costs("registry stable hash", 1, || {
@@ -685,21 +670,19 @@ fn a_fix_code_lookup_allocates_nothing() {
 #[test]
 fn a_fix_message_tag_lookup_allocates_nothing() {
     let registry = Arc::new(fix_registry(64));
-    let venue = venue();
-    let vendor = FixId::from_parts(&venue, 5_001).expect("a vendor identifier");
+    let vendor = FixId::of(5_001, "TradeID").expect("a vendor identifier");
+    let foreign = FixId::of(5_001, "OtherTradeID").expect("a foreign identifier");
     let mut symbol = DataType::Utf8.nullable_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a static tag");
     let mut trade = DataType::Utf8.nullable_field("TradeID");
+    trade.as_fix_mut().set_tag(5_001).expect("a static tag");
     trade
         .as_fix_mut()
-        .set_id(&venue, 5_001)
-        .expect("a static identifier");
-    let mut root = DataType::from_fields([symbol, trade, DataType::Utf8.nullable_field("9999")])
+        .set_branches([VENUE])
+        .expect("a static membership");
+    let root = DataType::from_fields([symbol, trade, DataType::Utf8.nullable_field("9999")])
         .expect("three children")
         .required_field("row");
-    root.as_fix_mut()
-        .set_branch(&venue)
-        .expect("a venue message");
     let value = Scalar::from_sequence([
         Scalar::from("AAPL"),
         Scalar::from("T-1"),
@@ -707,7 +690,17 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     ]);
     let msg = FixMsg::with_registry(registry, root, value).expect("a valid message");
 
-    // The two-step tier: the message's own branch, then the standard one.
+    // One namespace: a venue's field by its own name and a standard field by
+    // its tag are both reachable from the same message, and neither costs
+    // an allocation.
+    assert!(
+        msg.get_by_name("tradeid").is_some(),
+        "the venue field by name"
+    );
+    assert!(msg.get_by_tag(55).is_some(), "the standard field by tag");
+    free("get_by_name vendor", || {
+        let _ = black_box(msg.get_by_name("tradeid"));
+    });
     free("get_by_tag vendor", || {
         let _ = black_box(msg.get_by_tag(5_001));
     });
@@ -718,7 +711,7 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
         let _ = black_box(msg.get_by_id(vendor));
     });
     free("get_by_id foreign", || {
-        let _ = black_box(msg.get_by_id(FixId::standard(5_001)));
+        let _ = black_box(msg.get_by_id(foreign));
     });
     // An unknown tag is rendered on the stack and looked up by that name.
     free("get_by_tag unknown retained", || {
@@ -1597,7 +1590,7 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// total but how it grows: fifteen allocations for twelve more pairs and fifty
 /// for forty-eight more, which is the same growth these three widths measured
 /// before the entries became ranges of the line's own page - 22, 37 and 87.
-/// Every one of the five that were added is per *message*, and the per-pair
+/// Every one of the four that were added is per *message*, and the per-pair
 /// cost did not move at all.
 ///
 /// That is worth stating plainly, because the change was expected to save two
@@ -1610,16 +1603,18 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// counts with three-kilobyte values cost exactly what two-byte values cost,
 /// which an owned copy could not have managed.
 ///
-/// The five are the page the line is copied into - two allocations, the
+/// The four are the page the line is copied into - two allocations, the
 /// vector and the shared box around it - and the lists the two-stage read
 /// holds, what the line said and what the build folds in. The page is what a
 /// message owning its bytes costs when it is handed a borrowed slice, which
-/// is all this door can be handed.
+/// is all this door can be handed. A fifth went with the branch (decision
+/// 11): the root's own `fix:branch` key, written once per message, is no
+/// longer written at all.
 ///
 /// A caller who decoded the line already owns that page, and
 /// [`FIX_TEXT_LINE_COSTS`] is the same three widths through the door that
 /// takes it: two fewer at each, which is the page and nothing else.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 27), (16, 42), (64, 92)];
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 26), (16, 41), (64, 91)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -1670,7 +1665,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// Two pair counts and two widths, because one of each could tell neither a
 /// per-message cost from a per-pair one nor a cost that scales with a value
 /// from one that does not.
-const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 2] = [(4, (27, 30)), (16, (42, 57))];
+const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 2] = [(4, (26, 29)), (16, (41, 56))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -1760,8 +1755,10 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// more per member, measured, on the very path decision 5 names the cost of.
 ///
 /// Four members and sixteen, because the number that matters is the slope,
-/// and the rest of it is the row a wider group builds.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 61), (16, 95)];
+/// and the rest of it is the row a wider group builds. The codec reads a
+/// row's pairs directly and descends into none of them, so the tree the
+/// packed value would have been scanned into is not among these.
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 59), (16, 93)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -1798,7 +1795,7 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// is one page however many pairs the line carries, so the slope is unchanged
 /// and only the constant moves. Three widths again, so that the claim is the
 /// constant and not a number that happens to be smaller.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 25), (16, 40), (64, 90)];
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 24), (16, 39), (64, 89)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
@@ -1810,7 +1807,7 @@ fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
         // The page is made outside the counted closure because that is what a
         // caller reading text actually has: the decode already happened, and
         // what is measured here is what reading a message from it adds.
-        let line = TextLine::new(0, TextBytes::from_bytes(&held).expect("a page"));
+        let line = TextLine::from_bytes(0, TextBytes::from_bytes(&held).expect("a page")).unwrap();
         costs(
             &format!("a {pairs}-pair decoded line read as a message"),
             *each,

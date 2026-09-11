@@ -1,9 +1,10 @@
 //! Native JavaScript view of the decoded text row and the path that addresses
 //! one entry of it.
 //!
-//! Every class here redirects into the core value it wraps. Bytes cross as
-//! `Buffer`, which is copied - state that in the docs rather than claiming a
-//! zero copy this boundary does not have.
+//! Every class here redirects into the core value it wraps. A body, a key and
+//! a value cross as `string`, because the line is text by construction; the
+//! `Bytes` accessors answer the same ranges as `Buffer`, copied - state that in
+//! the docs rather than claiming a zero copy this boundary does not have.
 
 use napi::bindgen_prelude::{Buffer, Either, Generator, Result};
 use napi_derive::napi;
@@ -15,6 +16,20 @@ use yggdryl::media::text::{
 use yggdryl::{FieldPath as CoreFieldPath, FieldSegment};
 
 use crate::napi_error;
+
+/// Whatever spelling of a value the caller used, as the bytes the line holds.
+///
+/// A `string` is its UTF-8; a `Buffer` is taken as given. What the bytes go
+/// to decides the rest: a line decodes what is not text where it is made,
+/// while an entry's value is the range it was given and answers the lossy
+/// decode of it as text.
+fn bytes_from_input(value: Either<Buffer, String>) -> Result<TextBytes> {
+    match value {
+        Either::A(bytes) => TextBytes::from_bytes(bytes.as_ref()),
+        Either::B(text) => TextBytes::from_bytes(text.as_bytes()),
+    }
+    .map_err(napi_error)
+}
 
 /// Whatever spelling of a path the caller used, resolved exactly once.
 pub(crate) fn path_from_input(value: Either<String, &JsFieldPath>) -> Result<CoreFieldPath> {
@@ -155,14 +170,29 @@ impl JsTextEntry {
 
 #[napi]
 impl JsTextEntry {
+    /// The key, as text.
     #[napi(getter)]
-    pub fn key(&self) -> Buffer {
-        Buffer::from(self.inner.key().as_bytes())
+    pub fn key(&self) -> String {
+        self.inner.key().into_owned()
     }
 
+    /// The value, as text.
     #[napi(getter)]
-    pub fn value(&self) -> Buffer {
-        Buffer::from(self.inner.value().as_bytes())
+    pub fn value(&self) -> String {
+        self.inner.value().into_owned()
+    }
+
+    /// The key as the bytes of its range, copied.
+    #[napi(getter)]
+    pub fn key_bytes(&self) -> Buffer {
+        Buffer::from(self.inner.key_bytes().as_bytes())
+    }
+
+    /// The value as the bytes of its range, copied: what a reader working in
+    /// offsets - a data field re-sliced to its stated length - reads.
+    #[napi(getter)]
+    pub fn value_bytes(&self) -> Buffer {
+        Buffer::from(self.inner.value_bytes().as_bytes())
     }
 
     #[napi(getter, ts_return_type = "TextEntries | null")]
@@ -278,25 +308,30 @@ impl JsTextLine {
     /// contract and `FixCodec`'s `captureNames` is what names it.
     ///
     /// The body is copied into a page this line owns, once: every key and
-    /// value a message read from it records is a range of that page.
+    /// value a message read from it records is a range of that page. A
+    /// `string` body is its UTF-8; a `Buffer` body that is not UTF-8 is
+    /// decoded as the core decodes one, each invalid byte as its Windows-1252
+    /// character, and `decodedByteSize` counts them.
     #[napi(
         constructor,
-        ts_args_type = "index: number, body: Buffer, captures?: Array<string | null>"
+        ts_args_type = "index: number, body: string | Buffer, captures?: Array<string | null>"
     )]
-    pub fn new(index: i64, body: Buffer, captures: Option<Vec<Option<String>>>) -> Result<Self> {
-        let page = TextBytes::from_bytes(&body).map_err(crate::napi_error)?;
-        let mut line = CoreTextLine::new(index.unsigned_abs(), page);
+    pub fn new(
+        index: i64,
+        body: Either<Buffer, String>,
+        captures: Option<Vec<Option<String>>>,
+    ) -> Result<Self> {
+        let page = bytes_from_input(body)?;
+        let mut line = CoreTextLine::from_bytes(index.unsigned_abs(), page).map_err(napi_error)?;
         if let Some(held) = captures {
             let mut read = Vec::with_capacity(held.len());
             for capture in held {
                 read.push(match capture {
-                    Some(text) => {
-                        Some(TextBytes::from_bytes(text.as_bytes()).map_err(crate::napi_error)?)
-                    }
+                    Some(text) => Some(TextBytes::from_bytes(text.as_bytes()).map_err(napi_error)?),
                     None => None,
                 });
             }
-            line.set_captures(read);
+            line.set_captures(read).map_err(napi_error)?;
         }
         Ok(Self::from_core(line))
     }
@@ -336,10 +371,19 @@ impl JsTextLine {
 
     /// The line, with whatever was read off its front removed.
     ///
-    /// Copied across this boundary, as every byte value here is.
+    /// Text, always: what the constructor or the reader decoded.
     #[napi(getter)]
-    pub fn body(&self) -> Buffer {
-        Buffer::from(self.inner.body().as_bytes())
+    pub fn body(&self) -> String {
+        self.inner.body().to_owned()
+    }
+
+    /// How many bytes of the line as read were not UTF-8 and were decoded.
+    ///
+    /// Zero for a line that was text as read; the body's count and the
+    /// captures' together.
+    #[napi(getter)]
+    pub fn decoded_byte_size(&self) -> i64 {
+        i64::try_from(self.inner.decoded_byte_size()).unwrap_or(i64::MAX)
     }
 
     /// Which way the line moved.
@@ -358,12 +402,10 @@ impl JsTextLine {
 
     /// The row header's named captures, in the order the expression declares
     /// them.
-    #[napi(getter, ts_return_type = "Array<Buffer | null>")]
-    pub fn captures(&self) -> Vec<Option<Buffer>> {
-        self.inner
-            .captures()
-            .iter()
-            .map(|capture| capture.as_ref().map(|held| Buffer::from(held.as_bytes())))
+    #[napi(getter, ts_return_type = "Array<string | null>")]
+    pub fn captures(&self) -> Vec<Option<String>> {
+        (0..self.inner.captures().len())
+            .map(|at| self.inner.capture(at).map(ToOwned::to_owned))
             .collect()
     }
 
@@ -398,14 +440,14 @@ impl JsTextLine {
     }
 
     /// Set the value a path reaches, creating what is not there.
-    #[napi]
+    #[napi(ts_args_type = "path: string | FieldPath, value: string | Buffer")]
     pub fn set_entry_by_path(
         &mut self,
         path: Either<String, &JsFieldPath>,
-        value: Buffer,
+        value: Either<Buffer, String>,
     ) -> Result<()> {
         let path = path_from_input(path)?;
-        let value = TextBytes::from_bytes(value.as_ref()).map_err(napi_error)?;
+        let value = bytes_from_input(value)?;
         self.inner
             .set_entry_by_path(&path, value)
             .map_err(napi_error)

@@ -10,7 +10,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 | `rowheader` | byte regex searched once per physical line; in framed mode a match starts a record |
 | `framing` | join physical lines into logical records; default `false`, and enabling it requires `rowheader` |
 | `leading_fragment` / `leadingFragment` | `keep`, `drop`, or `error` for lines before the first framed header; default `keep` |
-| `max_record_byte_size` / `maxRecordByteSize` | retained decoded-body byte limit per record; unset is unlimited |
+| `max_record_byte_size` / `maxRecordByteSize` | retained body byte limit per record, counted in bytes as read; unset is unlimited |
 | `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding physical-line body edge |
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
 | `start_rownum` / `startRownum` | optional signed 64-bit first row number; unset omits the column |
@@ -26,7 +26,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 === "Rust"
 
     ```rust
-    use arrow_array::{Array as _, BinaryArray, Int64Array};
+    use arrow_array::{Array as _, Int64Array, StringArray};
     use yggdryl::media::IORecordOptions as _;
     use yggdryl::{IOBase as _, IOMedia as _};
     use yggdryl::holder::Buffer;
@@ -63,10 +63,10 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
         text_batch
             .column(3)
             .as_any()
-            .downcast_ref::<BinaryArray>()
+            .downcast_ref::<StringArray>()
             .unwrap()
             .value(0),
-        b"first\n detail A",
+        "first\n detail A",
     );
     ```
 
@@ -93,8 +93,8 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
         rows = list(handle.read_records())
         assert [row["rownum"] for row in rows] == [1, 3]
         assert [row["body"] for row in rows] == [
-            b"first\n detail A",
-            b"second\n detail B",
+            "first\n detail A",
+            "second\n detail B",
         ]
         assert [row["id"] for row in rows] == [7, 9]
     ```
@@ -124,7 +124,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
     const textRows = [...textHandle.readRecords()]
     assert.deepEqual(textRows.map((row) => row.rownum), [1n, 3n])
     assert.deepEqual(
-      textRows.map((row) => Buffer.from(row.body).toString()),
+      textRows.map((row) => row.body),
       ['first\n detail A', 'second\n detail B'],
     )
     assert.deepEqual(textRows.map((row) => row.id), [7n, 9n])
@@ -143,10 +143,12 @@ The source field is complete before any source bytes are read.
 | `mtime` | `datetime64(ns, UTC)` | nullable; present unless `parse_mtime` is off |
 | `direction` | `msgdirection` | nullable; present only with `parse_direction` |
 | `mimetype` | `utf8` | present only with `parse_mimetype` |
-| `body` | `binary` | required retained record bytes |
-| `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped |
+| `body` | `utf8` | required; the retained record as text, [decoded where the line is made](#a-line-is-text) |
+| `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped; counts bytes as read |
 
-Named `rowheader` captures follow these columns and stay nullable in both modes.
+Named `rowheader` captures follow these columns and stay nullable in both modes,
+and the columns `lift_names` [lifts](#lifting-an-entry-into-a-column) follow
+the captures.
 [`DataType::from_regex`](../types/text.md) types captures constrained to
 booleans, signed 64-bit integers, finite floats, ISO dates, times, and
 datetimes. `yggdryl::ULBRIDGE_ROWHEADER` is the header a bridge log writes,
@@ -175,10 +177,18 @@ through it, so a caller reading lines and a caller reading batches read one
 decode rather than two.
 
 A line is a struct, not a map: `index`, `url`, `timestamp`, `bodytype`, `body`,
-`direction`, `dropped_byte_size`, the row header's `captures` in the order the
-expression declares them, and the `entries` it carries. Each field already holds
-what its column holds, so building a batch reads the struct rather than
-re-deriving a datatype per value.
+`direction`, `dropped_byte_size`, `decoded_byte_size`, the row header's
+`captures` in the order the expression declares them, and the `entries` it
+carries. Each field already holds what its column holds, so building a batch
+reads the struct rather than re-deriving a datatype per value.
+
+`TextLine::from_bytes(index, body)` makes one from the bytes the reader cut, and
+is where those bytes [become text](#a-line-is-text); `set_body` and
+`set_captures` / `with_captures` take bytes the same way, and the Python and
+JavaScript constructors take a `str` / `string` body beside bytes. `set_body`,
+`with_captures` and `body_bytes` are Rust-only. `body` answers `&str`,
+`capture(index)` answers `Option<&str>`, and `body_bytes` answers the body as
+the range of its page for a reader that works in offsets.
 
 `timestamp` counts nanoseconds UTC in 128 bits, wider than the column it fills.
 A 64-bit nanosecond count runs out in 2262, so a capture reading past that has
@@ -201,8 +211,7 @@ count that will not fit is refused by name rather than truncated.
         read.push((
             line.index(),
             line.get_entry_by_path(&symbol)
-                .and_then(|entry| entry.value().as_str())
-                .map(str::to_owned),
+                .map(|entry| entry.value().into_owned()),
         ));
     }
     assert_eq!(
@@ -225,7 +234,7 @@ count that will not fit is refused by name rather than truncated.
         (line.index, line.get_entry_by_path("55").value)
         for line in capture.read_text_lines(options=options)
     ]
-    assert read == [(0, b"AAPL"), (1, b"MSFT")]
+    assert read == [(0, "AAPL"), (1, "MSFT")]
     ```
 
 === "JavaScript"
@@ -239,18 +248,125 @@ count that will not fit is refused by name rather than truncated.
 
     const read = []
     for (const line of capture.readTextLines(options)) {
-      read.push([Number(line.index), line.getEntryByPath('55').value.toString()])
+      read.push([Number(line.index), line.getEntryByPath('55').value])
     }
     console.assert(JSON.stringify(read) === JSON.stringify([[0, 'AAPL'], [1, 'MSFT']]))
     ```
 
+### A line is text
+
+A line's body is text, and it is made so where the line is made. The reader
+forces UTF-8: a body that is valid UTF-8 - every line of every capture this
+crate holds - stays the range of the page it was read into and costs nothing
+beyond the validation. A body that is not is decoded once, for that line, into
+a page of its own: every valid UTF-8 run is kept as it is, and every byte of
+every invalid run is read as the character Windows-1252 gives it, as the WHATWG
+encoding standard tables it - `0x80`-`0x9F` as that table's punctuation,
+currency and letters, `0xA0`-`0xFF` as `U+00A0`-`U+00FF`, and the five bytes
+the classic table leaves undefined (`0x81`, `0x8D`, `0x8F`, `0x90`, `0x9D`) as
+the C1 controls of the same number rather than a refusal. A byte the wire held
+is a fact, and the reader never writes `U+FFFD` for one, because a replacement
+character is the absence of a fact where the line had one. There is no charset
+option: Windows-1252 is the one decode of a stray byte that loses nothing, since
+it maps every byte to one character.
+
+The decode is per byte rather than per line. A capture is mostly UTF-8 with an
+odd Latin-1 byte far more often than it is wholly Windows-1252 - a name a
+Windows tool wrote into a log a Linux service otherwise wrote in UTF-8 - and
+decoding a valid `é` (`C3 A9`) as `Ã©` because a lone `0xE9` stands elsewhere
+on the line would destroy what was right to repair what was wrong. A wholly
+Windows-1252 line has no valid multi-byte run to keep and reads byte for byte
+either way. The row header's captures take the same decode, because a line
+half text would be two readings of one line, so a capture holding an invalid
+byte reaches its typed column decoded rather than refused. The header is
+still matched against the bytes as read, and a Unicode class matches
+characters: `[^\]]+` never matches a byte that is not one, so a header that
+must capture such a byte spells the class in bytes, `(?-u:[^\]]+)`.
+
+The decode comes last. Everything the reader does before the line exists - the
+row-header match, `lstrip` / `rstrip`, the direction, `max_record_byte_size`,
+`dropped_byte_size`, adjacent deduplication - is a fact of the bytes as read,
+in bytes as read: the byte limit bounds the wire, not the decode, so a body of N
+wire bytes decodes to as many as 3N bytes of text, and `dropped_byte_size`
+stays a wire count. A limit that cut a multi-byte character in two leaves its
+orphan bytes invalid, and they decode as the Windows-1252 characters they are -
+`E2 82` reads `â‚` - which is the honest answer to a reader that asked for N
+bytes and got them.
+
+`decoded_byte_size` says how many bytes of the line as read - body and captures
+together - were not UTF-8 and were decoded; `0` for a line that was text as
+read. It is the one fact the decode keeps, so a reader auditing a capture can
+find the lines the reader repaired without decoding them again.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::media::text::{TextBytes, TextLine};
+
+    let line = TextLine::from_bytes(0, TextBytes::from_bytes(b"58=caf\xe9|10=0|")?)?;
+    assert_eq!(line.body(), "58=café|10=0|");
+    assert_eq!(line.decoded_byte_size(), 1);
+
+    let text = TextLine::from_bytes(1, TextBytes::from_bytes("58=café|10=0|")?)?;
+    assert_eq!(text.body(), line.body());
+    assert_eq!(text.decoded_byte_size(), 0);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import TextLine
+
+    line = TextLine(0, b"58=caf\xe9|10=0|")
+    assert line.body == "58=café|10=0|"
+    assert line.decoded_byte_size == 1
+
+    text = TextLine(1, "58=café|10=0|")
+    assert text.body == line.body
+    assert text.decoded_byte_size == 0
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { TextLine } = require('yggdryl')
+
+    const line = new TextLine(0, Buffer.from('58=caf\xe9|10=0|', 'latin1'))
+    assert.equal(line.body, '58=café|10=0|')
+    assert.equal(line.decodedByteSize, 1)
+
+    const text = new TextLine(1, Buffer.from('58=café|10=0|'))
+    assert.equal(text.body, line.body)
+    assert.equal(text.decodedByteSize, 0)
+    ```
+
+The codec's own byte doors - `parse_fix_line`, `parse_ullink_line`,
+`parse_pairs` - take bytes as given and decode nothing, so a caller holding the
+wire still reads it as the wire; a message read from a line the text reader made
+reads that line's text, and [re-emits](../fix/encode.md) it. A data field whose
+stated length reaches no boundary of the decoded line is not honoured, exactly
+as any stated length that reaches no boundary is not: the value stays what the
+frame cut, and the line's `decoded_byte_size` says the line was decoded.
+
 ### Entries and paths
 
 `entries` is the key/value tree the line itself wrote down, keyed and valued by
-ranges of the bytes the line was read into. It is the one thing on the decode
+ranges of the page the line was read into. It is the one thing on the decode
 path that allocates, so it is built only when a column reads an entry or a
 caller asks: a read whose columns never touch one never pays for it, and the
 benchmark reports both.
+
+`TextEntry::key` and `value` answer text, infallibly - `Cow<str>` in Rust,
+`str` in Python, a string in JavaScript - borrowed wherever the range is text,
+which on a line the reader made is always: the line [was text](#a-line-is-text)
+before it was scanned, and the scanner cuts a range at `=`, at a separator, at
+whitespace and at the punctuation a transport closed a line with, all of them
+ASCII, so no range it cuts ever divides a character. A range a caller built
+from bytes of their own that are not text is answered as the lossy decode of
+it, owned. `key_bytes` and `value_bytes` answer the ranges themselves, for a
+reader that works in offsets - the FIX codec re-slicing a data field to the
+length its `Len` field stated, or re-emitting a frame byte for byte.
 
 `TextEntries::from_bytes` is that walk, and it takes a `TextBytes` rather than
 a slice because every key and value it answers is a range of the page those
@@ -258,7 +374,11 @@ bytes already point into. It is how a reader holding one field's value - a FIX
 data field carrying a whole row - reads that value's own pairs through the same
 walk the line was read by, rather than writing a second one. `None` where the
 bytes state no pair at all, which is the absence `TextLine::entries` carries for
-a line nothing asked a tree of.
+a line nothing asked a tree of. `TextEntries::from_bytes_direct` is the same
+walk stopped at one level - every pair the bytes state, none descended into -
+for a reader that reads a nested value by rules of its own, as the FIX codec
+reads a data field to the length it stated; the tree would be a second reading
+of the same bytes, paid on every value holding an `=` and then thrown away.
 
 An entry is addressed by [`FieldPath`](../types/paths.md), the crate's one path
 grammar: `.name` for a child, `[0]` and `[-1]` for a position, `['key']` for a
@@ -335,17 +455,23 @@ writes one, and the last segment's own name otherwise. `"55" as symbol` selects
 and names in one breath, which is also how two paths ending in the same segment
 are told apart. `rename_columns` still renames it like any other column.
 
+A lifted column is `utf8`, nullable: it holds the entry's value as the line's
+text holds it, and a row not carrying the entry is null.
+
 The two options have one job each and meet only at the compiled column plan:
 renaming decides what a column is called and never whether one exists, lifting
 decides which entry paths become columns and never what they are called.
 
 ### What is copied
 
-A body is a range of the page the line was read into, so a decoded line copies
-no byte of it, and the Arrow value it lands in is built from that same page. A
-record joining several physical lines is assembled into a page of its own and
-copies once. Every value crossing into Python or JavaScript is copied by
-contract: `bytes` and `Buffer` own their bytes.
+A body that was UTF-8 as read is a range of the page the line was read into, so
+a decoded line copies no byte of it, and the Arrow value it lands in is built
+from that same page. A record joining several physical lines is assembled into
+a page of its own and copies once, and so is a line that [was not
+UTF-8](#a-line-is-text): decoded into a page of its own, once, for that line.
+Every value crossing into Python or JavaScript is copied by contract: `str` and
+strings own their text, and the `bytes` and `Buffer` the `_bytes` accessors
+answer own their bytes.
 
 ## Reading Arrow back into lines
 
@@ -377,7 +503,7 @@ closes the active record and starts the next one.
 | EOF without a final terminator | the active record is still emitted |
 | end of a handle or folder leaf | framing state ends, so records never join across source objects |
 | `rownum` | the record's first physical line number, a kept leading fragment included |
-| unbounded `body` | the exact source bytes after first-line header removal and normalization |
+| unbounded `body` | the exact source bytes after first-line header removal and normalization, [as text](#a-line-is-text) |
 | `lstrip`, `rstrip` | cut from each physical line before it is joined |
 
 Rust selects `LeadingFragment::{Keep, Drop, Error}`; Python and JavaScript use
@@ -396,14 +522,19 @@ without retaining it.
 
 | fact | value |
 | --- | --- |
-| what the bound counts | the decoded body, including normalized separators |
-| omitted bytes | reported in `dropped_byte_size` |
+| what the bound counts | the body in bytes as read, including normalized separators - the wire, never the [decoded text](#a-line-is-text) |
+| omitted bytes | reported in `dropped_byte_size`, in bytes as read |
 | `max_row_size`, `max_byte_size` | total result rows and total Arrow result memory; independent and unchanged |
 
 ## Writes
 
-Writes stay physical-line operations, consuming the non-null Binary `body`
-column and appending the terminator.
+Writes stay physical-line operations, consuming the non-null `utf8` `body`
+column - `utf8`, `large_utf8` or `utf8_view`, or any of those behind a
+dictionary, which is what Arrow JS infers for a plain record's string and is
+unpacked once per batch - one spelling here - and appending
+the terminator. A batch carrying a `binary` body is refused naming what was
+expected: a `binary` column may hold anything, and rendering one would write
+bytes no reader of the file could read back as the rows they were.
 
 ## Edges
 
@@ -423,6 +554,9 @@ column and appending the terminator.
 - a lifted path no line carries -> that column is null in every row; the column still exists in the schema.
 - a lifted path whose last segment names nothing -> refused when the option is set.
 - `body` holding the terminator -> write refused.
+- a `binary` `body` column -> write refused: `expected a utf8 body column, got Binary`.
+- a body or capture that is not UTF-8 -> [decoded](#a-line-is-text), never refused and never `U+FFFD`; `decoded_byte_size` counts the bytes it took.
+- `max_record_byte_size` cutting inside a multi-byte character -> the orphan bytes decode as the Windows-1252 characters they are; the count dropped is still the wire count.
 - keyed merge -> unsupported; overwrite and append only.
 - `app.log.gz` or a folder mixing plain, gzip, and zstd leaves -> same options, one stream, no reopened handle and no retained prior page. The transport is read one [fetch window](../holder/iobase/bytes.md#fetch-window) at a time, whatever the decoder pulls.
 - `Text` handle -> options only, no line iterator or schema builder.

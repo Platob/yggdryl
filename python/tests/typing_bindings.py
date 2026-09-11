@@ -1155,13 +1155,12 @@ fix_tag: int | None = fix_field.fix.tag
 fix_tags: list[int] = fix_field.fix.tags
 fix_aliases: list[str] = fix_field.fix.aliases
 fix_description: str | None = fix_field.fix.description
-fix_branch: str = fix_field.fix.branch
-fix_id: str | None = fix_field.fix.id
-fix_standard_branch: str = fix.STANDARD_BRANCH
-fix_declared_branch: fix.FixBranch = fix.FixBranch("bloomberg", aliases=["blp"])
-fix_branch_aliases: list[str] = fix_declared_branch.aliases
-fix_branch_pickle: tuple[object, tuple[str, str, list[str]]] = fix_declared_branch.__reduce__()
-fix_branch_has_alias: bool = fix_declared_branch.has_alias("blp")
+fix_field.fix.branches = ["cme", "Bloomberg"]
+fix_field.fix.add_branch("ice")
+fix_branches: list[str] = fix_field.fix.branches
+fix_has_branch: bool = fix_field.fix.has_branch("BLOOMBERG")
+fix_id: int | None = fix_field.fix.id
+fix_ulbridge_dialect: str = fix.ULBRIDGE_DIALECT
 
 python_field: Field = Field("Quote", "int64", nullable=False)
 python_field.python.class_metadata = PythonMetadata(
@@ -1187,13 +1186,11 @@ python_declared_keyword: bool = python_declaration.is_keyword_constructed
 python_declared_properties: dict[str, str] = python_declaration.properties
 python_declared_hash: int = python_declaration.stable_hash()
 python_from_type: PythonMetadata = PythonMetadata.from_type(Field, "class")
-fix_user_tag_min: int = fix.USER_TAG_MIN
-fix_user_tag_max: int = fix.USER_TAG_MAX
 
 fix_vendor: Field = Field("TradeID", "utf8")
-fix_vendor.fix.id = "5001:cme"
-fix_vendor.fix.branch = "cme"
-fix_vendor_id: str | None = fix_vendor.fix.id
+fix_vendor.fix.tag = 5001
+fix_vendor.fix.branches = ["cme"]
+fix_vendor_id: int | None = fix_vendor.fix.id
 
 fix_registry: fix.FixRegistry = fix.FixRegistry()
 fix_registry_from_fields: fix.FixRegistry = fix.FixRegistry.from_fields([fix_field])
@@ -1209,18 +1206,18 @@ fix_registry_from_handle: fix.FixRegistry = fix.FixRegistry.from_handle(
 fix_registry_from_text: fix.FixRegistry = fix.FixRegistry.from_handle(
     "file:///dictionary"
 )
-fix_by_id: Field = fix_registry_from_fields.field_by_id("38:")
-fix_maybe_by_id: Field | None = fix_registry_from_fields.get_field_by_id("38:")
+fix_field_id: int = fix_id if fix_id is not None else 0
+fix_by_id: Field = fix_registry_from_fields.field_by_id(fix_field_id)
+fix_maybe_by_id: Field | None = fix_registry_from_fields.get_field_by_id(fix_field_id)
 fix_by_tag: Field = fix_registry_from_fields.field_by_tag(38)
 fix_maybe_by_tag: Field | None = fix_registry_from_fields.get_field_by_tag(38)
-fix_by_name: Field = fix_registry_from_fields.field_by_name("qty", fix.STANDARD_BRANCH)
-fix_maybe_by_name: Field | None = fix_registry_from_fields.get_field_by_name(
-    "qty", ""
-)
-fix_by_path: Field = fix_registry_from_fields.field_by_path("OrderQty", "")
+fix_by_name: Field = fix_registry_from_fields.field_by_name("qty")
+fix_maybe_by_name: Field | None = fix_registry_from_fields.get_field_by_name("qty")
+fix_by_path: Field = fix_registry_from_fields.field_by_path("OrderQty")
 fix_maybe_by_path: Field | None = fix_registry_from_fields.get_field_by_path(
-    "OrderQty", ""
+    "OrderQty"
 )
+fix_dialects: list[str] = fix_registry_from_fields.dialects()
 fix_bytes_protocol: MimeType = MimeType.infer_bytes(b"35=D|")
 fix_text_protocol: MimeType = MimeType.infer_text("35=D|")
 fix_bytes_msgtype: bytes | None = fix.FixCodec.infer_msgtype_bytes(b"35=D|")
@@ -1232,7 +1229,7 @@ fix_default: object = fix_registry_from_fields.get("nope", None)
 fix_replaced: Field | None = fix_registry.insert(fix_field)
 fix_registry.update(fix_field)
 fix_removed: Field | None = fix_registry.remove(38)
-fix_removed_by_id: Field | None = fix_registry.remove_by_id("5001:cme")
+fix_removed_by_id: Field | None = fix_registry.remove_by_id(fix_field_id)
 fix_size: int = len(fix_registry_from_fields)
 fix_has: bool = 38 in fix_registry_from_fields
 fix_names: list[str] = [entry.name for entry in fix_registry_from_fields]
@@ -1249,9 +1246,8 @@ fix_message_explicit: fix.FixMsg = fix.FixMsg(
 fix_message_registry: fix.FixRegistry = fix_message.registry
 fix_message_field: Field = fix_message.field
 fix_message_value: Scalar = fix_message.value
-fix_message_branch: str = fix_message.branch
-fix_message_by_id: Scalar = fix_message.by_id("38:")
-fix_message_maybe_id: Scalar | None = fix_message.get_by_id("38:")
+fix_message_by_id: Scalar = fix_message.by_id(fix_field_id)
+fix_message_maybe_id: Scalar | None = fix_message.get_by_id(fix_field_id)
 fix_message_by_tag: Scalar = fix_message.by_tag(38)
 fix_message_maybe_tag: Scalar | None = fix_message.get_by_tag(38)
 fix_message_by_name: Scalar = fix_message.by_name("qty")
@@ -1268,7 +1264,7 @@ fix_message_ticker: Scalar | None = fix_message.symbol_ticker()
 fix_message_clock: Scalar | None = fix_message.market_timestamp()
 fix_message_partition: Scalar | None = fix_message.unix_partition(3600)
 fix_message_lifted: Scalar | None = fix_message.lifted("bidpx")
-fix_message_lift_source: str | None = fix_message.lift_source("bidpx")
+fix_message_lift_source: int | None = fix_message.lift_source("bidpx")
 fix_message_lift: list[tuple[str, Scalar]] = fix_message.lift()
 fix_message_party: list[Scalar | None] | None = fix_message.party("1")
 fix_message_regulatory: Scalar | None = fix_message.trd_reg_timestamp("1")
@@ -1283,18 +1279,9 @@ fix_message_read_back_explicit: fix.FixMsg = fix.FixMsg.from_row(
     fix_root, fix_message_value, fix_registry_from_fields
 )
 
-fix_branch_or_none: fix.FixBranch | None = fix_registry_from_fields.get_branch_by_digest(
-    fix_declared_branch.digest()
-)
-fix_registry_from_fields.set_branch(fix_declared_branch)
-fix_branch_by_digest: fix.FixBranch = fix_registry_from_fields.branch_by_digest(
-    fix_declared_branch.digest()
-)
-
 fix_reader: fix.FixCodec = fix.FixCodec(fix_registry_from_fields)
 fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,
-    branch="cme",
     version="4.2",
     separator=124,
     payload_column="line",
@@ -1303,7 +1290,6 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     batch_byte_size=1 << 20,
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
-fix_reader_branch: str | None = fix_reader_pinned.branch
 fix_reader_version: str | None = fix_reader_pinned.version
 fix_reader_separator: int | None = fix_reader_pinned.separator
 fix_reader_payload_column: str = fix_reader_pinned.payload_column
@@ -1316,6 +1302,16 @@ fix_read_bytes: fix.FixMsg = next(fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|")
 fix_read_lines: fix.FixMessages = fix_reader.parse_lines([b"8=FIX.4.4|35=D|10=0|", bytearray()])
 fix_read_line: fix.FixMessages = fix_reader.parse_text_line(TextLine(0, b"35=D|"))
 fix_read_text_lines: fix.FixMessages = fix_reader.parse_text_lines([TextLine(0, b"35=D|")])
+text_line_text: TextLine = TextLine(1, "35=D|", ["FIX.4.4", None])
+text_line_body: str = text_line_text.body
+text_line_decoded: int = text_line_text.decoded_byte_size
+text_line_captures: tuple[str | None, ...] = text_line_text.captures
+text_line_text.set_entry_by_path("58", "text")
+text_line_text.set_entry_by_path("58", memoryview(b"bytes"))
+text_entry_value: str = text_line_text.entry_by_path("58").value
+text_entry_value_bytes: bytes = text_line_text.entry_by_path("58").value_bytes
+text_entry_key: str = text_line_text.entry_by_path("58").key
+text_entry_key_bytes: bytes = text_line_text.entry_by_path("58").key_bytes
 fix_read_config: fix.FixMessages = fix_reader.parse_ulconfig_line(b'{"Name":"Router"}')
 fix_read_frame: fix.FixMsg = fix_reader.parse_fix_line(b"8=FIX.4.4")
 fix_read_bridge: fix.FixMsg = fix_reader.parse_ullink_line(b"#SYMBOL=TTF")
@@ -1359,26 +1355,26 @@ fix_added_definition: bool = fix_catalog.add_definition("components", fix_compon
 fix_inserted_definition: Field | None = fix_catalog.insert_definition("groups", fix_group)
 fix_updated_definition: Field = fix_catalog.update_definition("groups", fix_group)
 fix_definition: Field = fix_catalog.definition("groups", "parties")
-fix_optional_definition: Field | None = fix_catalog.get_definition("components", "party", "")
+fix_optional_definition: Field | None = fix_catalog.get_definition("components", "party")
 fix_definitions: FixDefinitionIterator = fix_catalog.definitions("groups")
 fix_definition_item: Field = next(fix_definitions)
-fix_group_by_counter: Field = fix_catalog.group_by_counter("453:")
-fix_optional_group: Field | None = fix_catalog.get_group_by_counter("453:")
-fix_removed_definition: Field | None = fix_catalog.remove_definition("groups", "parties", "")
+fix_group_by_counter: Field = fix_catalog.group_by_counter(453)
+fix_optional_group: Field | None = fix_catalog.get_group_by_counter(453)
+fix_removed_definition: Field | None = fix_catalog.remove_definition("groups", "parties")
 fix_catalog_snapshot: str = fix_catalog.into_json()
 fix_catalog_restored: fix.FixRegistry = fix.FixRegistry.from_json(fix_catalog_snapshot)
 fix_catalog_hash: int = fix_catalog.stable_hash()
 fix_catalog_copy: fix.FixRegistry = fix_catalog.__copy__()
 fix_catalog_pickle: tuple[object, tuple[str]] = fix_catalog.__reduce__()
 fix_registered_type: fix.MsgType = fix_catalog.register_msgtype("U1", "CustomMessage")
-fix_msgtype: fix.MsgType = fix_registry_loaded.msgtype("D", "")
+fix_msgtype: fix.MsgType = fix_registry_loaded.msgtype("D")
 fix_optional_msgtype: fix.MsgType | None = fix_registry_loaded.get_msgtype("D")
 fix_msgtypes: MsgTypeIterator = fix_registry_loaded.msgtypes()
 fix_msgtype_item: fix.MsgType = next(fix_msgtypes)
 fix_msgtype_name: str = fix_msgtype.name
 fix_msgtype_value: str = fix_msgtype.value
 fix_msgtype_field: Field = fix_msgtype.field
-fix_msgtype_group: Field | None = fix_msgtype.get_group_by_counter("453:")
+fix_msgtype_group: Field | None = fix_msgtype.get_group_by_counter(453)
 fix_msgtype_hash: int = fix_msgtype.stable_hash()
 fix_msgtype_ordered: bool = fix_msgtype <= fix_msgtype_item
 fix_msgtype_pickle: tuple[object, tuple[str, int]] = fix_msgtype.__reduce__()
@@ -1404,7 +1400,10 @@ fix_added_field: bool = fix_registry_from_fields.add_field(fix_field)
 fix_folded: tuple[int, int] = fix_registry_from_fields.add_fields(fix_cblock)
 fix_combined: tuple[int, int] = fix_registry_from_fields.merge_with(fix_registry_loaded)
 fix_ingested: tuple[int, int] = fix_registry_from_fields.add_cfb_file(
-    Path("cblocks") / "bloomberg.cfb", "bloomberg", ["blp"]
+    Path("cblocks") / "bloomberg.cfb", "bloomberg"
+)
+fix_read_cblock: tuple[fix.FixRegistry, list[Field]] = fix.FixRegistry.from_cfb_file(
+    Path("cblocks") / "bloomberg.cfb", dialect="bloomberg"
 )
 fix_carried_schema: Field = fix.fix_schema_carrying(fix_root, fix_fixed_schema)
 fix_column_at: int | None = fix_fixed_schema.index_of("msgtype")
@@ -1414,9 +1413,10 @@ fix_global: fix.FixRegistry = fix.global_registry()
 fix.install_global_registry(fix_registry_from_fields)
 
 assert fix_tag == 38 and fix_tags and fix_aliases and fix_description
-assert fix_branch == fix_standard_branch and fix_user_tag_min == 5000
-assert fix_user_tag_max == 40_000
-assert fix_id == "38:" and fix_vendor_id == "5001:cme"
+assert fix_branches == ["bloomberg", "cme", "ice"] and fix_has_branch
+assert fix_ulbridge_dialect == "ulbridge" and fix_dialects
+assert fix_id is not None and fix_vendor_id is not None
+assert fix_read_cblock[0] is not None
 assert python_declared is not None and python_declared.kind == "field"
 assert python_module == "trading.execution" and python_qualname == "Book.Fill"
 assert python_class_name == "Fill" and python_kind == "field"
@@ -1459,7 +1459,6 @@ assert fix_removed_by_id is None or fix_removed_by_id
 assert fix_size >= 0 and fix_has or not fix_has
 assert fix_names == [] or fix_names
 assert fix_message_registry and fix_message_field and fix_message_value
-assert fix_message_branch == ""
 assert fix_message_by_id and fix_message_maybe_id
 assert fix_message_by_tag and fix_message_maybe_tag
 assert fix_message_by_name and fix_message_maybe_name

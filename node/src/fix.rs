@@ -7,12 +7,14 @@
 //! lives on the protocol view class [`JsProtocolField`](crate::JsProtocolField),
 //! which is what `field.fix` already answers.
 //!
-//! A branch and an identifier cross as `string` and are parsed once here
-//! through [`branch_from_js`] and [`id_from_js`], so neither gets a class of
-//! its own in JavaScript and the grammar, the ASCII folding and the
-//! standard-tag rule all stay the core's. A bare tag or name uses the core's
-//! deterministic best match, and a colon-bearing string is a name, never an
-//! identifier.
+//! An identifier crosses as a `number` - the signed 32-bit digest of a
+//! field's tag and its name that the core derives - and is read once here
+//! through [`id_from_js`], so it gets no class of its own in JavaScript. A
+//! bare tag or name uses the core's deterministic best match: a `number`
+//! there is a tag, never an identifier, and an identifier is only ever
+//! spelled through the `ById` doors. A dictionary's membership is
+//! `fix:branches` on the field it contributed to, read on the protocol view;
+//! nothing here resolves through it.
 
 mod catalog;
 mod ulplugin;
@@ -31,9 +33,9 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use yggdryl::types::MsgDirection;
 use yggdryl::{
-    Error as CoreError, Field as CoreField, FixBranch as CoreFixBranch, FixCategory,
-    FixCodec as CoreFixCodec, FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle,
-    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
+    Error as CoreError, Field as CoreField, FixCategory, FixCodec as CoreFixCodec,
+    FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
+    FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
 };
 
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
@@ -50,59 +52,15 @@ const ROOT_NAME: &str = "fix";
 const SHARED: &str =
     "this registry is shared with a message or installed as the process default; build a new one";
 
-/// Read one branch, or throw the native parse failure.
+/// Read one identifier, or throw naming what an identifier is.
 ///
-/// A branch crosses as text and becomes a [`FixBranch`](CoreFixBranch) here,
-/// once, so no second class exists in JavaScript and the grammar - a leading
-/// ASCII letter, no `:` or `,`, at most 23 bytes, ASCII case folded - stays the
-/// core's.
-pub(crate) fn branch_from_js(text: &str) -> Result<CoreFixBranch> {
-    CoreFixBranch::from_str(text).map_err(napi_error)
-}
-
-/// Read one identifier, or throw the native parse failure.
-///
-/// The text is `tag:branch`, and `FixId::from_str` is what parses it - the
-/// standard-tag rule included, so `35:cme` is refused here exactly as it is in
-/// Rust.
-pub(crate) fn id_from_js(text: &str) -> Result<CoreFixId> {
-    CoreFixId::from_str(text).map_err(napi_error)
-}
-
-/// Retain branch text beside the identifier for a field write.
-///
-/// The identifier parses first, exactly as `id_parts_from_py` does it. Reading
-/// the colon first would answer a malformed identifier with a message of this
-/// binding's own invention, where Python answers with the core's - and the
-/// core's is the one every test and every documented example spells.
-pub(crate) fn id_parts_from_js(text: &str) -> Result<(CoreFixBranch, CoreFixId)> {
-    // The core parses first, so a malformed identifier is refused in the
-    // grammar's own words - the same words Python's boundary answers with -
-    // rather than in a sentence this file invented.
-    let id = id_from_js(text)?;
-    let branch = text
-        .split_once(':')
-        .map(|(_, branch)| branch)
-        .ok_or_else(|| napi::Error::from_reason("a FIX identifier requires tag:branch"))?;
-    Ok((branch_from_js(branch)?, id))
-}
-
-/// What an absent `fix:branch` means, for the `fix` namespace to freeze.
-#[napi(js_name = "_fixStandardBranchNative", skip_typescript)]
-pub fn fix_standard_branch_native() -> String {
-    CoreFixBranch::STANDARD.name().to_owned()
-}
-
-/// Inclusive lower bound of FIX's user-defined tag range.
-#[napi(js_name = "_fixUserTagMinNative", skip_typescript)]
-pub fn fix_user_tag_min_native() -> i32 {
-    CoreFixId::USER_TAG_MIN
-}
-
-/// Exclusive upper bound of FIX's user-defined tag range.
-#[napi(js_name = "_fixUserTagMaxNative", skip_typescript)]
-pub fn fix_user_tag_max_native() -> i32 {
-    CoreFixId::USER_TAG_MAX
+/// An identifier crosses as the signed 32-bit digest `field.fix.id` answers,
+/// checked exactly: a fractional or out-of-`i32` number is refused rather
+/// than narrowed into a different identity. Nothing else is checked, because
+/// an integer read back is whatever was written, and the registry lookup is
+/// what says whether a field stands behind it.
+pub(crate) fn id_from_js(value: f64) -> Result<CoreFixId> {
+    exact_i32(value, "id").map(CoreFixId::from_digest)
 }
 
 /// The dictionary a caller named, or the process default where none was.
@@ -192,23 +150,23 @@ impl JsFixRegistry {
 #[allow(clippy::cast_possible_truncation)]
 #[napi]
 impl JsFixRegistry {
-    /// Look up a globally unique group by its scalar counter identifier.
+    /// Look up a globally unique group by its scalar counter tag.
     #[napi]
-    pub fn get_group_by_counter(&self, id: String) -> Result<Option<JsField>> {
-        let id = id_from_js(&id)?;
+    pub fn get_group_by_counter(&self, tag: f64) -> Result<Option<JsField>> {
+        let tag = exact_i32(tag, "tag")?;
         Ok(self
             .inner
-            .get_group_by_counter(id)
+            .get_group_by_counter(tag)
             .cloned()
             .map(JsField::from_core))
     }
 
     /// Look up a globally unique group, failing when absent or ambiguous.
     #[napi]
-    pub fn group_by_counter(&self, id: String) -> Result<JsField> {
-        let id = id_from_js(&id)?;
+    pub fn group_by_counter(&self, tag: f64) -> Result<JsField> {
+        let tag = exact_i32(tag, "tag")?;
         self.inner
-            .group_by_counter(id)
+            .group_by_counter(tag)
             .cloned()
             .map(JsField::from_core)
             .map_err(napi_error)
@@ -216,33 +174,21 @@ impl JsFixRegistry {
 
     /// Look up a category definition, returning null when absent.
     #[napi]
-    pub fn get_definition(
-        &self,
-        category: String,
-        name: String,
-        branch: Option<String>,
-    ) -> Result<Option<JsField>> {
+    pub fn get_definition(&self, category: String, name: String) -> Result<Option<JsField>> {
         let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        let branch = branch.as_deref().map(branch_from_js).transpose()?;
         Ok(self
             .inner
-            .get_definition(category, &name, branch.as_ref())
+            .get_definition(category, &name)
             .cloned()
             .map(JsField::from_core))
     }
 
     /// Look up a category definition, failing when absent.
     #[napi]
-    pub fn definition(
-        &self,
-        category: String,
-        name: String,
-        branch: Option<String>,
-    ) -> Result<JsField> {
+    pub fn definition(&self, category: String, name: String) -> Result<JsField> {
         let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        let branch = branch.as_deref().map(branch_from_js).transpose()?;
         self.inner
-            .definition(category, &name, branch.as_ref())
+            .definition(category, &name)
             .map(|field| JsField::from_core(field.clone()))
             .map_err(napi_error)
     }
@@ -317,42 +263,26 @@ impl JsFixRegistry {
 
     /// Remove a definition, refusing dangling references.
     #[napi]
-    pub fn remove_definition(
-        &mut self,
-        category: String,
-        name: String,
-        branch: Option<String>,
-    ) -> Result<Option<JsField>> {
+    pub fn remove_definition(&mut self, category: String, name: String) -> Result<Option<JsField>> {
         let category = FixCategory::from_str(&category).map_err(napi_error)?;
-        let branch = branch.as_deref().map(branch_from_js).transpose()?;
         self.inner_mut()?
-            .remove_definition(category, &name, branch.as_ref())
+            .remove_definition(category, &name)
             .map(|field| field.map(JsField::from_core))
             .map_err(napi_error)
     }
 
     /// Borrow the message singleton named by wire code, canonical name, or alias.
     #[napi]
-    pub fn get_msgtype(
-        &self,
-        spelling: String,
-        branch: Option<String>,
-    ) -> Result<Option<JsMsgType>> {
-        let branch = branch.as_deref().map(branch_from_js).transpose()?;
-        Ok(self
-            .inner
-            .get_msgtype(&spelling, branch.as_ref())
-            .map(|message| JsMsgType::from_borrowed(&self.inner, message)))
+    pub fn get_msgtype(&self, spelling: String) -> Option<JsMsgType> {
+        self.inner
+            .get_msgtype(&spelling)
+            .map(|message| JsMsgType::from_borrowed(&self.inner, message))
     }
 
     /// Borrow a message singleton, failing when absent.
     #[napi]
-    pub fn msgtype(&self, spelling: String, branch: Option<String>) -> Result<JsMsgType> {
-        let branch = branch.as_deref().map(branch_from_js).transpose()?;
-        let message = self
-            .inner
-            .msgtype(&spelling, branch.as_ref())
-            .map_err(napi_error)?;
+    pub fn msgtype(&self, spelling: String) -> Result<JsMsgType> {
+        let message = self.inner.msgtype(&spelling).map_err(napi_error)?;
         Ok(JsMsgType::from_borrowed(&self.inner, message))
     }
 
@@ -421,8 +351,11 @@ impl JsFixRegistry {
     /// Read an Ullink `CBlock` into a dictionary, with what it declared.
     ///
     /// Answers the dictionary and the message roots the file spelled out, in
-    /// the order it spelled them. `branch` is the dialect its user-range tags
-    /// belong to; with none named they stay on the standard branch.
+    /// the order it spelled them. `dialect` is the membership every field,
+    /// group, component and message the file produces is stamped with, on
+    /// its `fix:branches` - standard tags included, since membership means
+    /// the dictionary speaks it; with none named nothing is stamped. A
+    /// dialect that is empty or carries a comma is refused.
     ///
     /// A file this cannot be read from throws the native sentence whole: the
     /// byte the reader stopped at, what was expected, what arrived, and the
@@ -430,15 +363,14 @@ impl JsFixRegistry {
     #[napi(ts_return_type = "[FixRegistry, Array<Field>]")]
     pub fn from_cfb_file(
         location: LocationInput<'_>,
-        branch: Option<String>,
+        dialect: Option<String>,
     ) -> Result<(Self, Vec<JsField>)> {
         // A CBlock is a file, so the location is held as whichever role it
         // actually is: a container handle reads no bytes, and a reader handed
         // one answers an empty vocabulary instead of a refusal.
         let handle = located_from_input(location)?;
-        let branch = branch.map(|held| branch_from_js(&held)).transpose()?;
-        let (registry, roots) =
-            CoreFixRegistry::from_cfb_file(handle.as_io(), branch.as_ref()).map_err(napi_error)?;
+        let (registry, roots) = CoreFixRegistry::from_cfb_file(handle.as_io(), dialect.as_deref())
+            .map_err(napi_error)?;
         Ok((
             Self::from_arc(Arc::new(registry)),
             roots.into_iter().map(JsField::from_core).collect(),
@@ -465,14 +397,15 @@ impl JsFixRegistry {
         self.inner_mut()?
             .register_msgtype(&spelling, name.as_deref(), description.as_deref())
             .map_err(napi_error)?;
-        self.msgtype(spelling, None)
+        self.msgtype(spelling)
     }
 
-    /// Write every populated shard under `<location>/<tree>/<branch>`, removing
-    /// the shards, branch folders and trees no field populates any more. The
-    /// crate's own fields - the standard fields from 65000 up - are never
-    /// written: they are the crate's rather than the store's, and every
-    /// registry holds them already.
+    /// Write every populated shard under `<location>/fields/<shard>.json` and
+    /// every definition under `<location>/<category>/<name>.json`, removing
+    /// the shards and trees no field populates any more. The crate's own
+    /// fields - the standard fields from 65000 up - are never written: they
+    /// are the crate's rather than the store's, and every registry holds them
+    /// already.
     #[napi]
     pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
         let mut holder = folder_from_input(location)?;
@@ -485,13 +418,14 @@ impl JsFixRegistry {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
     }
 
-    /// The field a canonical or alternate identifier names, or `null`.
+    /// The field one identifier names exactly, or `null`.
     ///
-    /// `id` is the `tag:branch` text; a malformed one throws the native parse
-    /// failure, never a miss.
+    /// `id` is the number `field.fix.id` answers - the digest of a tag and a
+    /// name - and the lookup is exact: no tiering, no fold, and a number that
+    /// is not a signed 32-bit integer is refused, never a miss.
     #[napi]
-    pub fn get_field_by_id(&self, id: String) -> Result<Option<JsField>> {
-        let id = id_from_js(&id)?;
+    pub fn get_field_by_id(&self, id: f64) -> Result<Option<JsField>> {
+        let id = id_from_js(id)?;
         Ok(self
             .inner
             .get_field_by_id(id)
@@ -499,10 +433,10 @@ impl JsFixRegistry {
             .map(JsField::from_core))
     }
 
-    /// The field a canonical or alternate identifier names.
+    /// The field one identifier names exactly.
     #[napi]
-    pub fn field_by_id(&self, id: String) -> Result<JsField> {
-        let id = id_from_js(&id)?;
+    pub fn field_by_id(&self, id: f64) -> Result<JsField> {
+        let id = id_from_js(id)?;
         self.inner
             .field_by_id(id)
             .map(|field| JsField::from_core(field.clone()))
@@ -511,8 +445,8 @@ impl JsFixRegistry {
 
     /// The field a canonical or alternate tag names, or `null`.
     ///
-    /// The standard dictionary wins, then named dictionaries in canonical
-    /// name order.
+    /// The canonical holder of the tag answers first, then the field holding
+    /// it as an alternate.
     #[napi]
     pub fn get_field_by_tag(&self, tag: f64) -> Result<Option<JsField>> {
         let tag = exact_i32(tag, "tag")?;
@@ -535,44 +469,31 @@ impl JsFixRegistry {
 
     /// The field a canonical name or alias names, ASCII case folded, or `null`.
     ///
-    /// Supplying `branch` restricts the lookup. Otherwise the core infers the
-    /// best match: canonical before alias, standard before named branches.
+    /// One namespace: the canonical fold answers first, then an alias fold.
     #[napi]
-    pub fn get_field_by_name(
-        &self,
-        name: String,
-        branch: Option<String>,
-    ) -> Result<Option<JsField>> {
-        let branch = branch.as_deref().map(branch_from_js).transpose()?;
-        Ok(self
-            .inner
-            .get_field_by_name(&name, branch.as_ref())
+    pub fn get_field_by_name(&self, name: String) -> Option<JsField> {
+        self.inner
+            .get_field_by_name(&name)
             .cloned()
-            .map(JsField::from_core))
+            .map(JsField::from_core)
     }
 
     /// The field a canonical name or alias names, ASCII case folded.
     #[napi]
-    pub fn field_by_name(&self, name: String, branch: Option<String>) -> Result<JsField> {
-        let branch = branch.as_deref().map(branch_from_js).transpose()?;
+    pub fn field_by_name(&self, name: String) -> Result<JsField> {
         self.inner
-            .field_by_name(&name, branch.as_ref())
+            .field_by_name(&name)
             .map(|field| JsField::from_core(field.clone()))
             .map_err(napi_error)
     }
 
     /// The field a dotted path reaches through a component or a group, or `null`.
-    #[napi]
-    pub fn get_field_by_path(
-        &self,
-        path: Either<String, &JsFieldPath>,
-        branch: Option<String>,
-    ) -> Result<Option<JsField>> {
+    #[napi(ts_args_type = "path: string | FieldPath")]
+    pub fn get_field_by_path(&self, path: Either<String, &JsFieldPath>) -> Result<Option<JsField>> {
         let path = path_from_input(path)?;
-        let branch = branch.as_deref().map(branch_from_js).transpose()?;
         Ok(self
             .inner
-            .get_field_by_path(&path, branch.as_ref())
+            .get_field_by_path(&path)
             .cloned()
             .map(JsField::from_core))
     }
@@ -583,16 +504,11 @@ impl JsFixRegistry {
     /// `Parties[0].PartyID` - and a schema answers the item every occurrence
     /// of a group holds, so that spelling reaches the member here as well as
     /// in a message.
-    #[napi(ts_args_type = "path: string | FieldPath, branch?: string")]
-    pub fn field_by_path(
-        &self,
-        path: Either<String, &JsFieldPath>,
-        branch: Option<String>,
-    ) -> Result<JsField> {
+    #[napi(ts_args_type = "path: string | FieldPath")]
+    pub fn field_by_path(&self, path: Either<String, &JsFieldPath>) -> Result<JsField> {
         let path = path_from_input(path)?;
-        let branch = branch.as_deref().map(branch_from_js).transpose()?;
         self.inner
-            .field_by_path(&path, branch.as_ref())
+            .field_by_path(&path)
             .map(|field| JsField::from_core(field.clone()))
             .map_err(napi_error)
     }
@@ -636,17 +552,18 @@ impl JsFixRegistry {
     ///
     /// The lenient counterpart of `insert`, which replaces, and of `update`,
     /// which refuses everything new. Answers `true` when the field arrived
-    /// and `false` when it folded into a stored one: a canonical identity the
-    /// dictionary holds merges, a name folding to a stored canonical name or
-    /// alias in the same branch merges into that field - aliases and
-    /// alternate tags become the union and the incoming canonical tag joins
-    /// them unless another field in the branch answers it - a nested field is
+    /// and `false` when it folded into a stored one: the same tag under the
+    /// same folded name merges; a name folding to a stored canonical name or
+    /// alias under another tag merges into that field - aliases, alternate
+    /// tags and membership become the union and the incoming canonical tag
+    /// joins the alternates unless another field answers it; the same tag
+    /// under another name is added beside the holder, which gains the name
+    /// as an alias while the bare tag keeps answering it; a nested field is
     /// redirected to `addDefinition` under the category its shape names, and
     /// one of this crate's own tags is skipped as already held.
     ///
-    /// One mutation: a refusal - no `fix:tag`, a key another field holds in
-    /// the same branch, a datatype disagreeing with the stored field - leaves
-    /// the dictionary exactly as it was.
+    /// One mutation: a refusal - no `fix:tag`, a datatype disagreeing with
+    /// the stored field - leaves the dictionary exactly as it was.
     #[napi]
     pub fn add_field(&mut self, field: &JsField) -> Result<bool> {
         self.inner_mut()?
@@ -665,16 +582,15 @@ impl JsFixRegistry {
             .map(JsField::from_core))
     }
 
-    /// Merge a definition into the stored field with the same canonical
-    /// identifier.
+    /// Merge a definition into the stored field with the same identity: the
+    /// same tag under the same folded name.
     #[napi]
     pub fn update(&mut self, field: &JsField) -> Result<()> {
         let field = field.inner.clone();
         self.inner_mut()?.update(field).map_err(napi_error)
     }
 
-    /// Remove the field a tag or a name reaches in the standard branch,
-    /// answering it.
+    /// Remove the field a tag or a name reaches, answering it.
     #[napi(ts_args_type = "key: number | string")]
     pub fn remove(&mut self, env: Env, key: Unknown<'_>) -> Result<Option<JsField>> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
@@ -684,49 +600,31 @@ impl JsFixRegistry {
             .map(JsField::from_core))
     }
 
-    /// Remove the field a canonical or alternate identifier names, answering
-    /// it.
+    /// Remove the field one identifier names exactly, answering it.
     ///
-    /// The generic `remove` reads a string as a standard-branch name, so this
-    /// is the spelling that reaches a vendor dictionary at all; `id` is parsed
-    /// exactly as every other identifier argument is.
+    /// The generic `remove` reads a number as a tag, so this is the spelling
+    /// that reaches one of two fields sharing a tag by its own identity;
+    /// `id` is read exactly as every other identifier argument is.
     #[napi]
-    pub fn remove_by_id(&mut self, id: String) -> Result<Option<JsField>> {
-        let id = id_from_js(&id)?;
+    pub fn remove_by_id(&mut self, id: f64) -> Result<Option<JsField>> {
+        let id = id_from_js(id)?;
         Ok(self.inner_mut()?.remove(id).map(JsField::from_core))
     }
 
-    /// The branch one digest names, or `null`.
+    /// The distinct dictionaries any field or definition names on its
+    /// `fix:branches`, sorted.
     ///
-    /// A branch's digest is what the store's branch manifest publishes beside
-    /// the declaration, so this is the table that turns one back into the
-    /// dialect it names. The derivation is one way, which is why the registry
-    /// publishes the resolution rather than leaving a reader to reproduce the
-    /// hash. A branch crosses as its name here, as it does everywhere else in
-    /// this binding.
+    /// Membership is provenance and this is its listing; nothing resolves
+    /// through it. A registry holding only the specification's own fields
+    /// answers an empty array.
     #[napi]
-    pub fn get_branch_by_digest(&self, digest: i32) -> Option<String> {
-        self.inner
-            .get_branch_by_digest(digest)
-            .map(|branch| branch.name().to_owned())
+    pub fn dialects(&self) -> Vec<String> {
+        self.inner.dialects()
     }
 
-    /// The branch one digest names.
+    /// The fields in ascending identifier order, lazily.
     ///
-    /// # Errors
-    ///
-    /// Throws naming the digest when no branch carries it.
-    #[napi]
-    pub fn branch_by_digest(&self, digest: i32) -> Result<String> {
-        self.inner
-            .branch_by_digest(digest)
-            .map(|branch| branch.name().to_owned())
-            .map_err(napi_error)
-    }
-
-    /// The fields in ascending canonical-identifier order, lazily.
-    ///
-    /// The order is the core's: tag-major, then by branch digest. The iterator holds
+    /// The order is the core's: tag-major, then by identifier. The iterator holds
     /// the registry and the identifier it stopped at, so nothing is collected
     /// crossing the boundary and the dictionary is never cloned to walk it.
     /// Holding it is therefore sharing it: a mutation refuses until the walk
@@ -740,14 +638,13 @@ impl JsFixRegistry {
         }
     }
 
-    /// Whether two registries hold the same fields, in canonical-identifier
-    /// order.
+    /// Whether two registries hold the same fields, in identifier order.
     #[napi]
     pub fn equals(&self, other: &JsFixRegistry) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner) || self.inner == other.inner
     }
 
-    /// Deterministic hash bits over all categories and branch definitions.
+    /// Deterministic hash bits over all categories.
     #[napi]
     pub fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
@@ -765,7 +662,7 @@ impl JsFixRegistry {
         format!("FixRegistry({} fields)", self.inner.len())
     }
 
-    /// A complete native catalog snapshot, including branch definitions.
+    /// A complete native catalog snapshot: the four categories.
     #[napi(js_name = "toJSON")]
     pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::from_str(&self.inner.into_json().map_err(napi_error)?).map_err(napi_error)
@@ -792,12 +689,12 @@ impl Default for JsFixRegistry {
     }
 }
 
-/// The fields of a registry, in ascending canonical-identifier order.
+/// The fields of a registry, in ascending identifier order.
 ///
 /// Answered by `keys()`. It advances with the core's own cursor - the registry
 /// plus the last `FixId` it answered - so taking one field from a dictionary of
-/// thousands costs one lookup, and a walk crosses every branch in the one order
-/// the core iterates. It lets the registry go the moment the walk ends, because
+/// thousands costs one lookup, and a walk crosses every field in the one order
+/// the core iterates: tag-major, then identifier. It lets the registry go the moment the walk ends, because
 /// JavaScript collects at its own pace and a mutation must not wait for a
 /// drained iterator to be swept.
 #[napi(iterator, js_name = "FixFieldIterator")]
@@ -954,30 +851,21 @@ impl JsFixMsg {
         self.inner.as_field().fields().len() as f64
     }
 
-    /// The dictionary this message is spelled in.
-    ///
-    /// Derived from the root field's own `fix:branch` at construction, never
-    /// declared, so nothing can disagree with it; empty when the root states
-    /// none.
-    #[napi(getter)]
-    pub fn branch(&self) -> String {
-        self.inner.branch().name().to_owned()
-    }
-
     /// The value of the root child an identifier names, or `null`.
     ///
-    /// An identifier is exact and does not tier: a dictionary this message does
-    /// not speak simply misses.
+    /// An identifier is exact and does not fold: `id` is the number
+    /// `field.fix.id` answers, and a field the dictionary does not hold
+    /// under it simply misses.
     #[napi]
-    pub fn get_by_id(&self, id: String) -> Result<Option<JsScalar>> {
-        let id = id_from_js(&id)?;
+    pub fn get_by_id(&self, id: f64) -> Result<Option<JsScalar>> {
+        let id = id_from_js(id)?;
         Ok(self.inner.get_by_id(id).cloned().map(JsScalar::from_core))
     }
 
     /// The value of the root child an identifier names.
     #[napi]
-    pub fn by_id(&self, id: String) -> Result<JsScalar> {
-        let id = id_from_js(&id)?;
+    pub fn by_id(&self, id: f64) -> Result<JsScalar> {
+        let id = id_from_js(id)?;
         self.inner
             .by_id(id)
             .map(|value| JsScalar::from_core(value.clone()))
@@ -986,8 +874,8 @@ impl JsFixMsg {
 
     /// The value of the root child a tag names, or `null`.
     ///
-    /// The tag resolves in this message's own branch first, then in the
-    /// standard one.
+    /// The tag resolves through the dictionary: the canonical holder first,
+    /// then an alternate.
     #[napi]
     pub fn get_by_tag(&self, tag: f64) -> Result<Option<JsScalar>> {
         let tag = exact_i32(tag, "tag")?;
@@ -1006,8 +894,8 @@ impl JsFixMsg {
 
     /// The value of the root child a name reaches, or `null`.
     ///
-    /// The name folds through this message's own branch first, then the
-    /// standard one.
+    /// The name folds through the dictionary: the canonical spelling first,
+    /// then an alias.
     #[napi]
     pub fn get_by_name(&self, name: String) -> Option<JsScalar> {
         self.inner
@@ -1049,8 +937,7 @@ impl JsFixMsg {
             .map_err(napi_error)
     }
 
-    /// The value a tag or a name reaches in the standard branch tier, or
-    /// `null`.
+    /// The value a tag or a name reaches, or `null`.
     #[napi(ts_args_type = "key: number | string")]
     pub fn get(&self, env: Env, key: Unknown<'_>) -> Result<Option<JsScalar>> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
@@ -1061,7 +948,7 @@ impl JsFixMsg {
             .map(JsScalar::from_core))
     }
 
-    /// The value a tag or a name reaches in the standard branch tier.
+    /// The value a tag or a name reaches.
     ///
     /// The failing half of `get` is spelled `at` rather than the core's
     /// `value`, because `value` is this class's property for the whole message
@@ -1078,9 +965,8 @@ impl JsFixMsg {
     /// Writes one value into the row, typed by the field the key resolves to.
     ///
     /// `key` is a tag or a name, resolved as a lookup resolves one - through
-    /// the dictionary in this message's own branch, then the standard one -
-    /// and a name the dictionary does not know still reaches a child spelled
-    /// that way. `value` is whatever `Scalar.fromJs` reads, widened by the
+    /// the dictionary, canonical before alternate or alias - and a name the
+    /// dictionary does not know still reaches a child spelled that way. `value` is whatever `Scalar.fromJs` reads, widened by the
     /// loader; a known field types it through the core's value contract, and
     /// `null` is stored as a stated null. An existing child is replaced where
     /// it stands and an absent one appended; a bare tag no dictionary explains
@@ -1159,10 +1045,13 @@ impl JsFixMsg {
         self.inner.lifted(&facet).cloned().map(JsScalar::from_core)
     }
 
-    /// Which field a lifted facet came from, or `null`.
+    /// The tag a lifted facet was read from, or `null`.
+    ///
+    /// A lift source is declared by tag, and the tag is the whole of what it
+    /// is; the field that tag names is the registry's to answer.
     #[napi]
-    pub fn lift_source(&self, facet: String) -> Option<String> {
-        self.inner.lift_source(&facet).map(|id| id.to_string())
+    pub fn lift_source(&self, facet: String) -> Option<i32> {
+        self.inner.lift_source(&facet)
     }
 
     /// Every facet this message lifts, in the table's own order.
@@ -1210,9 +1099,7 @@ impl JsFixMsg {
     /// What arrived, in arrival order, untranslated.
     ///
     /// Flattened pre-order: a group's members follow the counter pair that
-    /// heads them, so a caller reading the array reads the wire. The dialect
-    /// is the message's own, answered by `branch`: it is one value for every
-    /// pair a message carries, so no pair repeats it.
+    /// heads them, so a caller reading the array reads the wire.
     #[napi(ts_return_type = "Array<[number, string, string]>")]
     pub fn arrivals(&self) -> Vec<(f64, String, String)> {
         let mut held = Vec::new();
@@ -1562,8 +1449,8 @@ impl std::io::Write for JsSink<'_> {
 /// of it, a bare frame, a numeric frame with a stated separator, a bridge's
 /// name/value text, a configuration document, pairs a caller already split,
 /// a record a text reader answered. Each redirects to the core method of the
-/// same name, so nothing here decides a dialect, a version or a separator -
-/// it only carries what JavaScript said across. A stage is a call: the
+/// same name, so nothing here decides a version or a separator - it only
+/// carries what JavaScript said across. A stage is a call: the
 /// stream methods take any iterable and answer a lazy `FixMessages`, the
 /// Arrow methods take and answer a `BatchReader`, one batch at a time.
 ///
@@ -1582,8 +1469,8 @@ pub struct JsFixCodec {
 impl JsFixCodec {
     /// Open a codec over one dictionary, or over the process default.
     ///
-    /// Every pin is the core's, spelled once here. `branch` and `version`
-    /// cross as text; `separator` is the byte a numeric frame splits on where
+    /// Every pin is the core's, spelled once here. `version` crosses as
+    /// text; `separator` is the byte a numeric frame splits on where
     /// the line does not say; `payloadColumn` names the batch column a line
     /// is read from; `captureNames` are what a run's row-header captures are
     /// called, in the order a line answers them, which is what lets
@@ -1600,9 +1487,6 @@ impl JsFixCodec {
         let registry = registry_or_global(registry)?;
         let options = options.unwrap_or_default();
         let mut inner = CoreFixCodec::new(Arc::clone(&registry));
-        if let Some(held) = &options.branch {
-            inner = inner.with_branch(&branch_from_js(held)?);
-        }
         if let Some(held) = &options.version {
             inner = inner.with_version(version_from_js(held)?);
         }
@@ -1636,15 +1520,11 @@ impl JsFixCodec {
         JsFixRegistry::from_arc(Arc::clone(&self.registry))
     }
 
-    /// The dialect every line is read in, or `null` where each line implies
-    /// its own.
-    #[napi(getter)]
-    pub fn branch(&self) -> Option<String> {
-        self.inner.branch().map(|branch| branch.name().to_owned())
-    }
-
     /// The version values are read at, or `null` where each line states its
     /// own.
+    ///
+    /// A row reads at `ApplVerID`, then `BeginString`, then this pin, then
+    /// the registry's newest.
     #[napi(getter)]
     pub fn version(&self) -> Option<String> {
         self.inner.version().map(|version| version.to_string())
@@ -1786,10 +1666,8 @@ impl JsFixCodec {
     /// `withCaptureNames` is what decides which capture is which, once for
     /// the whole run, because a line answers its captures by position.
     ///
-    /// A `pluginid` capture whose text is the name or an alias of a branch the
-    /// dictionary declares is also the dialect the line is read under,
-    /// outranking the codec's own pin; any other keeps the pin, then the
-    /// standard branch.
+    /// A `pluginid` capture fills the crate's own `pluginid` field and
+    /// selects nothing: the dictionary is one namespace.
     ///
     /// A `direction` capture is named so it cannot silently fill a field of
     /// that name, and is not otherwise read: only `parseTextArrowReader` has
@@ -1989,8 +1867,6 @@ impl JsFixCodec {
 #[napi(object)]
 #[derive(Default)]
 pub struct FixCodecOptions {
-    /// The dialect every row is read in, rather than the one each row implies.
-    pub branch: Option<String>,
     /// The version built messages are expressed in.
     pub version: Option<String>,
     /// The byte a numeric frame splits on where the line does not say.
@@ -2116,7 +1992,7 @@ pub fn fix_schema(
 /// as `senderSessionId` for that reason, so the value reaches the FIX column
 /// rather than leading the row - and never over a reading the message stated
 /// itself. Its `pluginid` capture reaches the crate's own column of that name
-/// the same way, and is what a row's dialect is read from.
+/// the same way.
 #[napi(js_name = "fixSchemaCarrying")]
 pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField> {
     yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)

@@ -50,7 +50,18 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
     assert.throws(() => registry.removeDefinition(category, name))
     assert.equal(registry.intoJson(), before)
   }
-  assert.throws(() => registry.createDefinition('fields', tagged('DifferentName', 448)))
+  // One namespace: a held tag under another name is a new field beside the
+  // holder, which gains the name as an alias while the bare tag keeps
+  // answering it; a held name under another tag is what is refused.
+  {
+    const beside = registry.clone()
+    beside.createDefinition('fields', tagged('DifferentName', 448))
+    assert.equal(beside.field(448).name, 'PartyID')
+    assert.ok(beside.field(448).fix.aliases.includes('DifferentName'))
+    assert.equal(beside.fieldByName('differentname').fix.tag, 448)
+    assert.notEqual(beside.fieldByName('differentname').fix.id, beside.field(448).fix.id)
+  }
+  assert.throws(() => registry.createDefinition('fields', tagged('PartyID', 9448)), /existing FIX definition/)
   assert.equal(registry.intoJson(), before)
   for (const [category, name] of [['fields', 'PartyID'], ['components', 'Party'], ['groups', 'Parties'], ['messages', 'NewOrderSingle']]) {
     const original = registry.definition(category, name)
@@ -138,21 +149,25 @@ test('inline codes and the complete native catalog survive snapshots', () => {
   registry.updateDefinition('fields', coded)
   assert.match(registry.fieldByPath('NewOrderSingle.Parties.PartyID').get('fix:codes'), /Broker/)
   const vendor = tagged('Vendor', 9001)
-  vendor.fix.branch = 'venue'
+  vendor.fix.branches = ['venue']
   registry.insert(vendor)
   const document = registry.toJSON()
-  assert.deepEqual(Object.keys(document).sort(), ['branches', 'components', 'fields', 'groups', 'messages'])
-  const branch = document.branches.find(value => value.name === 'venue')
-  branch.version = '5.1.258'
-  branch.aliases = ['counterparty']
+  // Four categories and nothing else: a dictionary's membership is metadata
+  // on the field it contributed to, so it travels inside `fields`.
+  assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups', 'messages'])
+  assert.equal(document.fields.find(value => value.name === 'Vendor').metadata['fix:branches'], 'venue')
   const declared = fix.FixRegistry.fromJson(JSON.stringify(document))
-  assert.deepEqual(declared.toJSON().branches.find(value => value.name === 'venue').aliases, ['counterparty'])
+  assert.deepEqual(declared.fieldByTag(9001).fix.branches, ['venue'])
+  assert.deepEqual(declared.dialects(), ['venue'])
   for (const copy of [declared.clone(), fix.FixRegistry.fromJson(declared.intoJson())]) {
     assert.ok(copy.equals(declared))
     assert.equal(copy.stableHash(), declared.stableHash())
-    assert.equal(copy.groupByCounter('453:').name, 'Parties')
-    assert.equal(copy.getGroupByCounter('999:'), null)
+    assert.equal(copy.groupByCounter(453).name, 'Parties')
+    assert.equal(copy.getGroupByCounter(999), null)
   }
+  // A counter is a tag: an exact number, never text.
+  assert.throws(() => declared.groupByCounter(1.5), /tag must be a signed 32-bit integer/)
+  assert.throws(() => declared.getGroupByCounter('453'), /into rust type `f64`/)
   assert.throws(() => registry.definitions('codesets'))
   const changed = registry.clone()
   const definition = changed.definition('messages', 'NewOrderSingle')
@@ -201,13 +216,19 @@ test('message singleton indices distinguish names from another wire code', () =>
   assert.equal(registry.definition('messages', 'D').fix.msgtype, 'X')
   assert.throws(() => new fix.MsgType())
   assert.throws(() => registry.createDefinition('messages', message('AnotherOrder', 'D')), /shared/)
-  const ambiguous = registry.clone()
-  ambiguous.createDefinition('messages', message('AnotherOrder', 'D'))
-  assert.equal(ambiguous.getMsgtype('D'), null)
-  assert.throws(() => ambiguous.msgtype('D'))
+  // One message-code namespace: a second message declaring a held code under
+  // another name is a second message reached by its name, and the bare code
+  // answers the message tag 35's code set names - none here, so the first
+  // in name order - whichever arrived first.
+  const second = registry.clone()
+  second.createDefinition('messages', message('AnotherOrder', 'D'))
+  assert.equal(second.msgtype('D').name, 'AnotherOrder')
+  assert.equal(second.msgtype('newordersingle').asStr(), 'D')
+  assert.equal(second.msgtype('anotherorder').asStr(), 'D')
+  assert.equal([...second.msgtypes()].length, 4)
   const held = catalog().msgtype('D')
-  assert.equal(held.getGroupByCounter('453:').name, 'Parties')
-  assert.equal(held.getGroupByCounter('999:'), null)
+  assert.equal(held.getGroupByCounter(453).name, 'Parties')
+  assert.equal(held.getGroupByCounter(999), null)
 })
 
 test('numeric counters remain int32 beside message-scoped occurrence lists', () => {
@@ -267,7 +288,7 @@ test('UlPlugin iterators own selected values and exchange identity', () => {
 test('bulk message streams preserve flat configuration rows and fuse', () => {
   const registry = new fix.FixRegistry()
   registry.withUlbridgeFields()
-  const codec = new fix.FixCodec(registry, { branch: 'ulbridge' })
+  const codec = new fix.FixCodec(registry)
   const error = { request: { mbean: 'com.ullink.ulbridge:type=Bridge', type: 'read' }, status: 404, error: 'missing' }
   const request = { mbean: 'com.ullink.ulbridge:type=Bridge', type: 'read' }
   const body = Buffer.from(JSON.stringify([wildcard(), error, request]))
@@ -300,11 +321,13 @@ test('bulk message streams preserve flat configuration rows and fuse', () => {
 for (const [method, vocabulary] of [['withUlbridgeFields', fix.ulbridgeFields]]) {
   test(`${method} refuses atomically with a named catalog present`, () => {
     const registry = catalog()
-    const conflict = vocabulary().at(-1)
-    conflict.setName('ConflictingName')
+    // One namespace: a held name under another tag folds into its holder,
+    // and a datatype the holder disagrees with is what is refused.
+    const conflict = Field.from(`${vocabulary()[0].name}: int32`)
+    conflict.fix.tag = 9001
     registry.insert(conflict)
     const before = registry.intoJson()
-    assert.throws(() => registry[method]())
+    assert.throws(() => registry[method](), /int32/)
     assert.equal(registry.intoJson(), before)
   })
 }
