@@ -972,7 +972,23 @@ fn is_segment_key(key: &[u8]) -> bool {
 /// segment and steps over that field, because a field given nothing says
 /// nothing about what the line is.
 pub(crate) fn entry_spans(line: &[u8]) -> impl Iterator<Item = PairSpan> + '_ {
-    let frame = locate_frame(line).filter(|frame| frame.separator.stated());
+    located_entry_spans(line).1
+}
+
+/// [`entry_spans`], beside where the frame it located opens.
+///
+/// The frame is located once for both answers: a reader that wants the
+/// pairs and where the payload starts - the codec, bounding a message to
+/// its frame - would otherwise walk the line to the frame twice, and on a
+/// bridge row that walk is every pair the row holds. `None` where the line
+/// holds no frame at all, which is where [`payload_at`] goes on to ask
+/// whether a document opens instead.
+pub(crate) fn located_entry_spans(
+    line: &[u8],
+) -> (Option<usize>, impl Iterator<Item = PairSpan> + '_) {
+    let located = locate_frame(line);
+    let frame_at = located.map(|frame| frame.start);
+    let frame = located.filter(|frame| frame.separator.stated());
     let opens = frame.map_or(line.len(), |frame| frame.start);
     // Pairs arrive in line order, so the loose walk stops where the frame
     // opens rather than filtering the frame's own `=` signs back out of it.
@@ -1002,7 +1018,7 @@ pub(crate) fn entry_spans(line: &[u8]) -> impl Iterator<Item = PairSpan> + '_ {
         });
         stated.into_iter().chain(loose.into_iter().flatten())
     });
-    outside.chain(inside)
+    (frame_at, outside.chain(inside))
 }
 
 /// Whether the line holds any pair at all, marked or not.
@@ -1080,6 +1096,15 @@ pub(crate) fn trim_ascii(line: &[u8]) -> &[u8] {
 /// direction is read from and what a body strips.
 pub(crate) fn payload_at(line: &[u8]) -> Option<usize> {
     payload(line).0
+}
+
+/// Where the message starts, given where a frame was already located.
+///
+/// The answer [`payload_at`] gives, for a caller whose scan already located
+/// the frame - or found none, in which case the one document that opens a
+/// payload is looked for here and nowhere earlier.
+pub(crate) fn payload_at_or_document(line: &[u8], frame_at: Option<usize>) -> Option<usize> {
+    frame_at.or_else(|| ulconfig_at(line))
 }
 
 /// Where one line's payload starts, and what a document there states about

@@ -955,10 +955,12 @@ impl FixCodec {
     /// once per pair.
     fn parse_page_with(&self, page: &TextBytes, extras: RowExtras<'_>) -> Result<FixMessages> {
         let row = page.as_bytes();
-        let entries = TextEntries::from_bytes_direct(page).unwrap_or_default();
-        // A row that carries no payload at all opens past its own end, so the
-        // frame reading gets nothing and the document readers below answer.
-        let opens = line::payload_at(row).unwrap_or(row.len());
+        // One scan answers the pairs and where the frame opens; a row that
+        // carries no payload at all opens past its own end, so the frame
+        // reading gets nothing and the document readers below answer.
+        let (entries, frame_at) = TextEntries::from_bytes_direct_located(page);
+        let entries = entries.unwrap_or_default();
+        let opens = line::payload_at_or_document(row, frame_at).unwrap_or(row.len());
         let framed = framed_entries(entries.as_slice(), page.start() as usize + opens);
         if framed.first().is_some_and(tag_keyed) {
             return self.frame_with(framed, extras).map(FixMessages::one);

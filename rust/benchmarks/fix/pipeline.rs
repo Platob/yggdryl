@@ -272,3 +272,88 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     group.finish();
 }
+
+/// One line of the capture, stripped of its row header, checked to be the
+/// shape the benchmark names so an edit to the corpus fails here rather than
+/// silently measuring something else.
+fn capture_body(index: usize, expects: &[u8]) -> Vec<u8> {
+    let line = LOG
+        .split(|byte| *byte == b'\n')
+        .nth(index)
+        .expect("a line of the capture");
+    // The row header closes on the level in parentheses and one space.
+    let at = line
+        .windows(2)
+        .position(|pair| pair == b") ")
+        .expect("a row header")
+        + 2;
+    let body = line[at..].to_vec();
+    assert!(
+        memchr::memmem::find(&body, expects).is_some(),
+        "line {index} of the capture no longer holds {}",
+        String::from_utf8_lossy(expects)
+    );
+    body
+}
+
+/// What one line costs the codec, one shape at a time.
+///
+/// The shapes a capture actually mixes, each measured through the one door
+/// `parse_lines` takes - a bridge row of a hundred named keys, a numeric
+/// frame on pipes, the same frame on raw SOH, a `35=UL` frame packing a
+/// bridge row inside its `XmlData`, and frames spelled `^A` and `<SOH>` -
+/// beside the scan alone, so what the message costs after its pairs are
+/// read is the difference. Per shape rather than over the corpus, so a
+/// change to the codec is attributed to the shape it moved.
+pub fn line_benchmarks(criterion: &mut Criterion) {
+    let branch = FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).expect("a branch");
+    let registry = Arc::new(
+        seed()
+            .with_ulbridge_fields()
+            .expect("the bridge's own fields"),
+    );
+    let codec = FixCodec::new(Arc::clone(&registry)).with_branch(&branch);
+    let frame_pipe = capture_body(72, b"8=FIX.4.4|9=886|35=8|");
+    let frame_soh: Vec<u8> = frame_pipe
+        .iter()
+        .map(|byte| if *byte == b'|' { 0x01 } else { *byte })
+        .collect();
+    let shapes: [(&str, Vec<u8>); 6] = [
+        (
+            "bridge_pipe",
+            capture_body(1, b"MSGTYPE=executionreport|NOPARTYIDS=2|"),
+        ),
+        ("frame_pipe", frame_pipe),
+        ("frame_soh", frame_soh),
+        (
+            "frame_packed",
+            capture_body(111, b"8=FIX.4.2|9=3430|35=UL|"),
+        ),
+        ("frame_caret", capture_body(102, b"8=FIX.4.4^A9=61^A35=0^A")),
+        (
+            "frame_marker",
+            capture_body(103, b"8=FIX.4.4<SOH>9=70<SOH>35=1<SOH>"),
+        ),
+    ];
+
+    let mut group = criterion.benchmark_group("fix/line");
+    for (shape, body) in &shapes {
+        group.throughput(Throughput::Bytes(body.len() as u64));
+        group.bench_function(format!("{shape}/parse_line"), |bencher| {
+            bencher.iter(|| {
+                black_box(&codec)
+                    .parse_line(black_box(body))
+                    .expect("messages")
+                    .count()
+            });
+        });
+        let page = TextBytes::from_bytes(body).expect("a page");
+        group.bench_function(format!("{shape}/scan"), |bencher| {
+            bencher.iter(|| {
+                yggdryl::media::text::TextEntries::from_bytes_direct(black_box(&page))
+                    .map_or(0, |held| held.len())
+            });
+        });
+    }
+    group.finish();
+}

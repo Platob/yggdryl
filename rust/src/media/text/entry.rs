@@ -221,6 +221,18 @@ impl TextEntries {
         read_entries_at(body, 1)
     }
 
+    /// [`from_bytes_direct`](Self::from_bytes_direct), beside where the frame
+    /// the scan located opens in `body` - `None` where it located none.
+    ///
+    /// One scan for both, because the reader that bounds a message to its
+    /// frame asks both of the same bytes, and locating the frame is a walk
+    /// over every pair a line holds in front of it.
+    pub(crate) fn from_bytes_direct_located(body: &TextBytes) -> (Option<Self>, Option<usize>) {
+        let bytes = body.as_bytes();
+        let (frame_at, spans) = crate::mime_type::line::located_entry_spans(bytes);
+        (collect_entries(body, spans, 1), frame_at)
+    }
+
     /// Borrow the entries in the order the line declared them.
     #[must_use]
     pub fn as_slice(&self) -> &[TextEntry] {
@@ -403,9 +415,19 @@ fn read_entries_at(body: &TextBytes, levels: usize) -> Option<TextEntries> {
     if levels == 0 {
         return None;
     }
+    let spans = crate::mime_type::line::entry_spans(body.as_bytes());
+    collect_entries(body, spans, levels)
+}
+
+/// The entries one level's spans name, each a range of `body`.
+fn collect_entries(
+    body: &TextBytes,
+    spans: impl Iterator<Item = crate::mime_type::line::PairSpan>,
+    levels: usize,
+) -> Option<TextEntries> {
     let bytes = body.as_bytes();
     let mut entries: Option<TextEntries> = None;
-    for span in crate::mime_type::line::entry_spans(bytes) {
+    for span in spans {
         let (Ok(key), Ok(value)) = (
             body.slice(span.key.start, span.key.end),
             body.slice(span.value.start, span.value.end),
