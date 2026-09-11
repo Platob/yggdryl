@@ -257,16 +257,16 @@ fn data_end(
     let stated = stated
         .and_then(|held| std::str::from_utf8(held.value()).ok())
         .and_then(|text| text.parse::<usize>().ok());
-    if let Some(span) = stated.and_then(|length| opens.checked_add(length))
-        && cut_at(entry, &entries[after..], span)
-    {
-        let next = entries[after..]
-            .iter()
-            .find(|held| held.key().start() as usize >= span);
-        match next {
-            None => return Some(span),
-            Some(held) if tag_keyed(held) && !held.key().is_empty() => return Some(span),
-            _ => {}
+    if let Some(span) = stated.and_then(|length| opens.checked_add(length)) {
+        if cut_at(entry, &entries[after..], span) {
+            let next = entries[after..]
+                .iter()
+                .find(|held| held.key().start() as usize >= span);
+            match next {
+                None => return Some(span),
+                Some(held) if tag_keyed(held) && !held.key().is_empty() => return Some(span),
+                _ => {}
+            }
         }
     }
     if !xml {
