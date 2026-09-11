@@ -666,3 +666,61 @@ fn a_utf8_refusal_names_where_the_bytes_stop_being_text() {
     };
     assert_eq!(position, 5);
 }
+
+#[test]
+fn a_byte_order_mark_and_the_prolog_around_a_root_are_not_content() {
+    let expected = from_xml_scalar("<row><id>1</id></row>").unwrap();
+    for document in [
+        "\u{feff}<row><id>1</id></row>",
+        "  \n<row><id>1</id></row>\n  ",
+        "<!DOCTYPE row SYSTEM \"http://example.invalid/row.dtd\"><row><id>1</id></row>",
+    ] {
+        assert_eq!(from_xml_scalar(document).unwrap(), expected, "{document}");
+    }
+}
+
+#[test]
+fn an_attribute_is_read_once_and_normalized_as_the_specification_says() {
+    // A repeated attribute names no value, so it is refused rather than
+    // resolved to one of the two.
+    let error = from_xml_scalar(r#"<a b="1" b="2"/>"#).unwrap_err();
+    assert!(reason(&error).contains("duplicated attribute"), "{error}");
+
+    // A literal line break inside an attribute is a space by the time any
+    // reader sees it, which is why the writer spells one as a reference.
+    assert_eq!(
+        from_xml_scalar("<a b=\"x\ny\"/>")
+            .unwrap()
+            .get_key_str("a")
+            .and_then(|a| a.get_key_str("@b"))
+            .and_then(Scalar::as_str),
+        Some("x y")
+    );
+    assert_eq!(
+        from_xml_scalar("<a b=\"x&#10;y\"/>")
+            .unwrap()
+            .get_key_str("a")
+            .and_then(|a| a.get_key_str("@b"))
+            .and_then(Scalar::as_str),
+        Some("x\ny")
+    );
+}
+
+#[test]
+fn character_data_arrives_with_its_line_endings_normalized() {
+    // Every reader normalizes them, so a carriage return only survives as the
+    // reference this crate's writer spells it with.
+    assert_eq!(
+        from_xml_scalar("<a>x\r\ny</a>")
+            .unwrap()
+            .get_key_str("a")
+            .and_then(Scalar::as_str),
+        Some("x\ny")
+    );
+    let value = Scalar::from_record([("a", Scalar::from("x\r\ny"))]).unwrap();
+    assert_eq!(into_xml_scalar(&value).unwrap(), "<a>x&#13;\ny</a>");
+    assert_eq!(
+        from_xml_scalar(&into_xml_scalar(&value).unwrap()).unwrap(),
+        value
+    );
+}
