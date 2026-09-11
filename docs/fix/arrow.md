@@ -716,11 +716,13 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
 
 | stage | estimate | throughput | per line, row or message |
 | --- | --- | --- | --- |
-| `text_read`, the row header framed, each line numbered, classified and read for its direction | 146 ms | 76 MB/s | 20.2 us |
-| `parse_text_arrow_reader`, the whole path into fixed rows | 1.65 s | 6.7 MB/s | 226 us |
-| `parse_lines`, the codec alone over the framed bodies | 710 ms | 15.6 MB/s | 98.2 us |
+| `text_read`, the row header framed, each line numbered, classified and read for its direction | 160 ms | 68.6 MB/s | 22.2 us |
+| `parse_text_arrow_reader`, the whole path into fixed rows | 1.82 s | 6.1 MB/s | 249 us |
+| `parse_lines`, the codec alone over the framed bodies | 859 ms | 12.8 MB/s | 119 us |
 
-The text stage is under a tenth of the whole and the codec two fifths; the rest is the row landing in Arrow. What a message costs after it is built, each pass over fresh clones of the 7,232 messages, so every number is the pass over a message the stream just built:
+The text stage is under a tenth of the whole and the codec just under a half; the rest is the row landing in Arrow.
+
+These three are slower than they were before a frame decided where a value ends and an entry became a range of its line, measured on one container against the commit those changes began from: `text_read` by 16%, `parse_text_arrow_reader` by 9%, `parse_lines` by 30%. `text_read` runs no FIX code at all, so its share is the scanner's: `LineSeparator::for_line` ranks four candidates by position where it used to stop at the first that answered, and ranking means asking each one where it first separated a field. That reading is the one [`inspect`, `classify` and `entry_spans` now share](../media/text.md), which is what stopped them being three answers to one question - and what it costs is stated here rather than left for a reader to discover. What a message costs after it is built, each pass over fresh clones of the 7,232 messages, so every number is the pass over a message the stream just built:
 
 | pass | estimate | per message |
 | --- | --- | --- |
