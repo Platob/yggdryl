@@ -2,7 +2,8 @@
 //!
 //! XML states less about shape than the other structured formats do, and a
 //! declared [`Field`] is the only thing that can say what the missing part
-//! was. Four readings need it, and nothing else here decides anything:
+//! was. These are the readings that need it, and nothing else here decides
+//! anything:
 //!
 //! | Document | Field | Reading |
 //! | --- | --- | --- |

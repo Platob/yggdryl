@@ -727,11 +727,9 @@ fn character_data_arrives_with_its_line_endings_normalized() {
         Some("x\ny")
     );
     let value = Scalar::from_record([("a", Scalar::from("x\r\ny"))]).unwrap();
-    assert_eq!(into_xml_scalar(&value).unwrap(), "<a>x&#13;\ny</a>");
-    assert_eq!(
-        from_xml_scalar(&into_xml_scalar(&value).unwrap()).unwrap(),
-        value
-    );
+    let encoded = into_xml_scalar(&value).unwrap();
+    assert_eq!(encoded, "<a>x&#13;\ny</a>");
+    assert_eq!(from_xml_scalar(encoded).unwrap(), value);
 }
 
 #[test]
