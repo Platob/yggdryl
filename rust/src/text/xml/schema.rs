@@ -2,7 +2,7 @@
 //!
 //! XML states less about shape than the other structured formats do, and a
 //! declared [`Field`] is the only thing that can say what the missing part
-//! was. Three readings need it, and nothing else here decides anything:
+//! was. Four readings need it, and nothing else here decides anything:
 //!
 //! | Document | Field | Reading |
 //! | --- | --- | --- |
@@ -44,10 +44,10 @@ pub(super) fn shaped_document(document: Scalar, field: &Field) -> Result<Scalar>
 
 /// Restate one XML value in the shape `field` declares.
 pub(super) fn shaped(value: Scalar, field: &Field) -> Result<Scalar> {
-    shaped_for(value, field.dtype(), field.is_nullable())
+    shaped_for(value, field.dtype())
 }
 
-fn shaped_for(value: Scalar, dtype: &DataType, nullable: bool) -> Result<Scalar> {
+fn shaped_for(value: Scalar, dtype: &DataType) -> Result<Scalar> {
     if value.is_null() {
         return Ok(value);
     }
@@ -79,12 +79,14 @@ fn shaped_for(value: Scalar, dtype: &DataType, nullable: bool) -> Result<Scalar>
             for child in fields.iter() {
                 match entries.get(child.name()) {
                     Some(value) => {
-                        shaped_entries.push((SmolStr::new(child.name()), shaped(value.clone(), child)?));
+                        shaped_entries
+                            .push((SmolStr::new(child.name()), shaped(value.clone(), child)?));
                     }
                     // A list with no occurrence is the empty list, which is
                     // the one absence XML has no other spelling for.
                     None if !child.is_nullable() && is_list(child.dtype()) => {
-                        shaped_entries.push((SmolStr::new(child.name()), Scalar::from_sequence([])));
+                        shaped_entries
+                            .push((SmolStr::new(child.name()), Scalar::from_sequence([])));
                     }
                     // Anything else absent is the value contract's to name.
                     None => {}
@@ -124,7 +126,7 @@ fn shaped_for(value: Scalar, dtype: &DataType, nullable: bool) -> Result<Scalar>
                 .map(Scalar::from_sequence),
             None => count_of(&value),
         },
-        DataType::Dictionary(dictionary) => shaped_for(value, dictionary.value(), nullable),
+        DataType::Dictionary(dictionary) => shaped_for(value, dictionary.value()),
         DataType::RunEndEncoded(encoded) => shaped(value, encoded.values()),
         _ => Ok(value),
     }
@@ -135,18 +137,15 @@ fn count_of(value: &Scalar) -> Result<Scalar> {
     let Some(text) = value.as_str() else {
         return Ok(value.clone());
     };
-    text.trim()
-        .parse::<i64>()
-        .map(Scalar::from)
-        .map_err(|_| {
-            codec_error(
-                0,
-                smol_str::format_smolstr!(
-                    "expected an interval part as a whole number, got {:?}",
-                    crate::text::elide_to(text, crate::text::ERROR_TEXT_LIMIT)
-                ),
-            )
-        })
+    text.trim().parse::<i64>().map(Scalar::from).map_err(|_| {
+        codec_error(
+            0,
+            smol_str::format_smolstr!(
+                "expected an interval part as a whole number, got {:?}",
+                crate::text::elide_to(text, crate::text::ERROR_TEXT_LIMIT)
+            ),
+        )
+    })
 }
 
 /// Whether a datatype frames a list of values.

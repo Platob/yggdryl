@@ -248,12 +248,7 @@ fn write_text<W: Write>(writer: &mut W, text: &str, escaping: Escaping) -> Resul
 /// Whether a key is a name XML can write as an element or an attribute.
 fn check_name(name: &str) -> Result<()> {
     let mut characters = name.chars();
-    let valid = characters
-        .next()
-        .is_some_and(is_name_start)
-        .then(|| characters.all(is_name_char))
-        .unwrap_or_default();
-    if valid {
+    if characters.next().is_some_and(is_name_start) && characters.all(is_name_char) {
         return Ok(());
     }
     Err(invalid(format_smolstr!(
@@ -320,9 +315,7 @@ fn leaf_text(value: &Scalar) -> Result<String> {
         Scalar::Url(value) => value.to_string(),
         Scalar::Uuid(value) => value.to_string(),
         Scalar::Enum(value) => value.as_str().to_owned(),
-        Scalar::Bytes(value) => {
-            base64::engine::general_purpose::STANDARD.encode(value.as_bytes())
-        }
+        Scalar::Bytes(value) => base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
         Scalar::Geospatial(value) => {
             base64::engine::general_purpose::STANDARD.encode(value.as_bytes())
         }
@@ -347,11 +340,9 @@ fn leaf_text(value: &Scalar) -> Result<String> {
                 None => value.count().to_string(),
             }
         }
-        Scalar::Temporal(Temporal::Time32(value)) => time_text(
-            i64::from(value.count()),
-            value.unit(),
-            &value.timezone(),
-        )?,
+        Scalar::Temporal(Temporal::Time32(value)) => {
+            time_text(i64::from(value.count()), value.unit(), &value.timezone())?
+        }
         Scalar::Temporal(Temporal::Time64(value)) => {
             time_text(value.count(), value.unit(), &value.timezone())?
         }
@@ -367,11 +358,9 @@ fn leaf_text(value: &Scalar) -> Result<String> {
             };
             text.map_or_else(|| value.count().to_string(), |text| text.to_string())
         }
-        Scalar::Temporal(Temporal::Duration32(value)) => duration_text(
-            i64::from(value.count()),
-            value.unit(),
-            &value.timezone(),
-        )?,
+        Scalar::Temporal(Temporal::Duration32(value)) => {
+            duration_text(i64::from(value.count()), value.unit(), &value.timezone())?
+        }
         Scalar::Temporal(Temporal::Duration64(value)) => {
             duration_text(value.count(), value.unit(), &value.timezone())?
         }
@@ -387,12 +376,7 @@ fn leaf_text(value: &Scalar) -> Result<String> {
 }
 
 /// The ordered parts an interval's layout is read back from.
-fn interval_parts(
-    unit: TimeUnit,
-    months: i32,
-    days: i32,
-    nanoseconds: i64,
-) -> Result<Vec<i64>> {
+fn interval_parts(unit: TimeUnit, months: i32, days: i32, nanoseconds: i64) -> Result<Vec<i64>> {
     Ok(match unit {
         TimeUnit::YearMonth => vec![i64::from(months)],
         TimeUnit::DayTime => vec![i64::from(days), nanoseconds / 1_000_000],

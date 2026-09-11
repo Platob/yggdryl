@@ -61,9 +61,10 @@
 //! `<a/>` and `<a></a>` are one document, so an element with no character data
 //! is absence and an empty string reads back as [`Scalar::Null`]. A document
 //! also has no framing around a repeated element, so one occurrence is one
-//! value until a field declares a list; that declaration is the only thing
-//! this layer reads a shape from, and the tables in [`mod@schema`] are the
-//! whole of it.
+//! value until a field declares a list, and it has no spelling for an empty
+//! one at all. A declared [`Field`] reads all three - the root element's own
+//! name, one occurrence as a one-item list, no occurrence as the empty list -
+//! and that is the whole of what a shape is read from here.
 
 use std::borrow::Borrow;
 use std::io::{Read, Write};
@@ -127,9 +128,9 @@ pub fn from_xml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar> {
 /// answering the shared `Scalar`.
 ///
 /// This is the inferring entry point over [`from_bytes_with_field`]: it
-/// coerces `input` exactly as [`from_xml_scalar`] does - content, never a path
-/// - and redirects, so `field` names the root element, types every leaf's
-/// character data and orders the record there under default [`Limits`].
+/// coerces `input` exactly as [`from_xml_scalar`] does, as content rather than
+/// as a path, and redirects, so `field` names the root element, types every
+/// leaf's character data and orders the record there under default [`Limits`].
 /// Explicit limits go through [`from_bytes_with_field_and_limits`].
 ///
 /// ```
@@ -220,9 +221,9 @@ pub fn from_reader<R: Read>(reader: R) -> Result<Scalar> {
 /// Decode one XML document from a reader with explicit limits.
 pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Scalar> {
     let mut reader = Reader::with_limits(reader, limits);
-    reader.next().unwrap_or_else(|| {
-        Err(codec_error(0, "XML reader did not yield its document"))
-    })
+    reader
+        .next()
+        .unwrap_or_else(|| Err(codec_error(0, "XML reader did not yield its document")))
 }
 
 /// Decode XML from a reader under `field`.
@@ -338,8 +339,7 @@ pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(
     field: &'a Field,
     limits: Limits,
 ) -> ScalarIter<'a> {
-    ScalarIter::new(Reader::with_limits(reader, limits))
-        .with_field(field, crate::text::Format::Xml)
+    ScalarIter::new(Reader::with_limits(reader, limits)).with_field(field, crate::text::Format::Xml)
 }
 
 /// An owning lazy iterator that yields exactly one XML document.

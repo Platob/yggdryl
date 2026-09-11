@@ -110,10 +110,10 @@ impl Format {
 
     /// Return whether one resource of this format is exactly one document.
     ///
-    /// TOML and XML both frame a whole resource - a root table, a root element
-    /// - so there is nothing after the first document to read and nothing to
-    /// iterate. JSON is not one of them: one JSON resource is one value, but a
-    /// stream of them reads as several, which is what
+    /// TOML frames a whole resource in its root table and XML in its root
+    /// element, so there is nothing after the first document to read and
+    /// nothing to iterate. JSON is not one of them: one JSON resource is one
+    /// value, but a stream of them reads as several, which is what
     /// [`TextCodec::is_multi_document`](crate::text::TextCodec::is_multi_document)
     /// answers instead.
     pub const fn is_single_document(self) -> bool {

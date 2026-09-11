@@ -42,13 +42,7 @@ pub enum Structured {
 
 impl Structured {
     /// Every format in canonical order.
-    pub const ALL: [Self; 5] = [
-        Self::Json,
-        Self::Jsonl,
-        Self::Toml,
-        Self::Yaml,
-        Self::Xml,
-    ];
+    pub const ALL: [Self; 5] = [Self::Json, Self::Jsonl, Self::Toml, Self::Yaml, Self::Xml];
 
     /// Name the format a [`Format`] value describes.
     pub const fn from_format(format: Format) -> Self {

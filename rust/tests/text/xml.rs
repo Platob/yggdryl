@@ -30,7 +30,10 @@ fn a_document_is_one_root_element_keyed_by_its_name() {
         )])
         .unwrap()
     );
-    assert_eq!(into_xml_scalar(&value).unwrap(), "<trade><symbol>AAPL</symbol></trade>");
+    assert_eq!(
+        into_xml_scalar(&value).unwrap(),
+        "<trade><symbol>AAPL</symbol></trade>"
+    );
 }
 
 #[test]
@@ -117,11 +120,7 @@ fn mixed_content_is_refused_where_it_starts() {
     // of this crate would accept back.
     let mixed = Scalar::from_record([(
         "row",
-        Scalar::from_record([
-            ("#text", Scalar::from("text")),
-            ("id", Scalar::from(1)),
-        ])
-        .unwrap(),
+        Scalar::from_record([("#text", Scalar::from("text")), ("id", Scalar::from(1))]).unwrap(),
     )])
     .unwrap();
     assert!(
@@ -133,7 +132,10 @@ fn mixed_content_is_refused_where_it_starts() {
 #[test]
 fn a_document_has_exactly_one_root_element() {
     let error = from_xml_scalar("<a/><b/>").unwrap_err();
-    assert!(reason(&error).contains("exactly one root element"), "{error}");
+    assert!(
+        reason(&error).contains("exactly one root element"),
+        "{error}"
+    );
     assert!(reason(&from_xml_scalar("").unwrap_err()).contains("expected one XML root element"));
     assert!(reason(&from_xml_scalar("bare text").unwrap_err()).contains("outside the root"));
 
@@ -156,7 +158,10 @@ fn only_predefined_entities_and_character_references_resolve() {
     // reference nor a recursive one is reachable through this parser.
     let declared = "<!DOCTYPE lolz [<!ENTITY lol \"lol\">]><lolz>&lol;</lolz>";
     let error = from_xml_scalar(declared).unwrap_err();
-    assert!(reason(&error).contains("lol"), "the refusal names it: {error}");
+    assert!(
+        reason(&error).contains("lol"),
+        "the refusal names it: {error}"
+    );
     let error = from_xml_scalar("<row>&external;</row>").unwrap_err();
     assert!(reason(&error).contains("external"), "{error}");
 }
@@ -176,8 +181,12 @@ fn a_comment_an_instruction_and_a_doctype_annotate_without_valuing() {
 
 #[test]
 fn a_declaration_that_disagrees_with_the_bytes_is_refused() {
-    let error = from_xml_scalar("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><row/>").unwrap_err();
-    assert!(reason(&error).contains("UTF-8 encoding declaration"), "{error}");
+    let error =
+        from_xml_scalar("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><row/>").unwrap_err();
+    assert!(
+        reason(&error).contains("UTF-8 encoding declaration"),
+        "{error}"
+    );
     let error = from_xml_scalar("<?xml version=\"2.0\"?><row/>").unwrap_err();
     assert!(reason(&error).contains("1.0 or 1.1"), "{error}");
 }
@@ -186,7 +195,8 @@ fn a_declaration_that_disagrees_with_the_bytes_is_refused() {
 fn a_namespace_prefix_is_kept_exactly_as_written() {
     // A record is keyed by name and sorted by it, so the attributes come back
     // in name order rather than in the order the document listed them.
-    let document = r#"<ns:trade xmlns="urn:default" xmlns:ns="urn:example"><ns:id>1</ns:id></ns:trade>"#;
+    let document =
+        r#"<ns:trade xmlns="urn:default" xmlns:ns="urn:example"><ns:id>1</ns:id></ns:trade>"#;
     let value = from_xml_scalar(document).unwrap();
     let trade = value.get_key_str("ns:trade").unwrap();
     assert_eq!(
@@ -245,7 +255,10 @@ fn a_name_a_document_cannot_spell_is_refused_by_name() {
     for name in ["", "1st", "a b", "a>b"] {
         let value = Scalar::from_record([(name, Scalar::Null)]).unwrap();
         let error = into_xml_scalar(&value).unwrap_err();
-        assert!(reason(&error).contains("expected an XML name"), "{name}: {error}");
+        assert!(
+            reason(&error).contains("expected an XML name"),
+            "{name}: {error}"
+        );
     }
     // A prefixed name and an underscore are names.
     for name in ["ns:total", "_private", "a-b.c"] {
@@ -331,7 +344,10 @@ fn field_directed_xml_restores_exact_leaves_inside_a_record() {
 
     let row = Scalar::from_record([
         ("price", decimal.scalar(Scalar::from(1250)).unwrap()),
-        ("day", DataType::Date32.scalar(Scalar::from("2024-01-02")).unwrap()),
+        (
+            "day",
+            DataType::Date32.scalar(Scalar::from("2024-01-02")).unwrap(),
+        ),
         ("payload", Scalar::from(vec![0_u8, 255])),
         (
             "key",
@@ -424,7 +440,11 @@ fn a_field_reads_the_three_shapes_a_document_cannot_spell() {
         Scalar::from_sequence([Scalar::from("a")]),
         "one occurrence is a one-item list"
     );
-    assert_eq!(values[2], Scalar::Null, "an absent nullable element is absent");
+    assert_eq!(
+        values[2],
+        Scalar::Null,
+        "an absent nullable element is absent"
+    );
 
     // No occurrence at all is the empty list, which is the one absence XML
     // has no other spelling for.
@@ -454,9 +474,11 @@ fn formatting_changes_bytes_and_never_meaning() {
     let compact = xml::into_utf8(&value).unwrap();
     assert_eq!(compact, "<row><a>x</a><b><c>y</c></b></row>");
 
-    let indented =
-        xml::into_utf8_with_formatting(&value, Formatting::default().with_indent(Indent::Spaces(2)))
-            .unwrap();
+    let indented = xml::into_utf8_with_formatting(
+        &value,
+        Formatting::default().with_indent(Indent::Spaces(2)),
+    )
+    .unwrap();
     assert_eq!(
         indented,
         "<row>\n  <a>x</a>\n  <b>\n    <c>y</c>\n  </b>\n</row>"
@@ -483,21 +505,28 @@ fn formatting_changes_bytes_and_never_meaning() {
 fn limits_bound_bytes_depth_nodes_and_documents() {
     let deep = format!("{}{}", "<a>".repeat(40), "</a>".repeat(40));
     let error = xml::from_utf8_with_limits(&deep, Limits::new(8, 1 << 20, 1 << 20, 1)).unwrap_err();
-    assert!(reason(&error).contains("nesting depth limit exceeded"), "{error}");
+    assert!(
+        reason(&error).contains("nesting depth limit exceeded"),
+        "{error}"
+    );
 
-    let error = xml::from_utf8_with_limits(
-        "<row><a/><b/><c/></row>",
-        Limits::new(64, 1 << 20, 2, 1),
-    )
-    .unwrap_err();
+    let error =
+        xml::from_utf8_with_limits("<row><a/><b/><c/></row>", Limits::new(64, 1 << 20, 2, 1))
+            .unwrap_err();
     assert!(reason(&error).contains("node limit exceeded"), "{error}");
 
     let error = xml::from_utf8_with_limits("<row/>", Limits::new(64, 3, 1 << 20, 1)).unwrap_err();
-    assert!(reason(&error).contains("input byte limit exceeded"), "{error}");
+    assert!(
+        reason(&error).contains("input byte limit exceeded"),
+        "{error}"
+    );
 
-    let error = xml::from_utf8_with_limits("<row/>", Limits::new(64, 1 << 20, 1 << 20, 0))
-        .unwrap_err();
-    assert!(reason(&error).contains("document limit exceeded"), "{error}");
+    let error =
+        xml::from_utf8_with_limits("<row/>", Limits::new(64, 1 << 20, 1 << 20, 0)).unwrap_err();
+    assert!(
+        reason(&error).contains("document limit exceeded"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -580,7 +609,10 @@ fn content_that_opens_a_tag_is_inferred_as_xml() {
         yggdryl::text::infer_format(b"<<: *anchor\nid: 1\n").unwrap(),
         Format::Yaml
     );
-    assert_eq!(yggdryl::text::infer_format(b"{\"id\":1}").unwrap(), Format::Json);
+    assert_eq!(
+        yggdryl::text::infer_format(b"{\"id\":1}").unwrap(),
+        Format::Json
+    );
 }
 
 #[test]
@@ -588,8 +620,12 @@ fn placeholders_substitute_inside_a_document() {
     let loading = yggdryl::text::Loading::new().with_placeholders(
         yggdryl::text::Placeholders::new().with_variable("SYMBOL", Scalar::from("AAPL")),
     );
-    let value = yggdryl::text::from_utf8_with("<row><symbol>{{ SYMBOL }}</symbol></row>", Format::Xml, &loading)
-        .unwrap();
+    let value = yggdryl::text::from_utf8_with(
+        "<row><symbol>{{ SYMBOL }}</symbol></row>",
+        Format::Xml,
+        &loading,
+    )
+    .unwrap();
     assert_eq!(
         value
             .get_key_str("row")

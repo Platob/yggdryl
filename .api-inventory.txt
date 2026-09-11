@@ -1607,7 +1607,8 @@ pub const MAGIC_PROBE_LEN: usize = 64;
   pub fn from_magic_bytes(input: &[u8]) -> Option<Self>
 
 ### yggdryl::media  [rust\src\media\mod.rs]
-pub enum Media
+pub const XML_DOCUMENT_NAME: &str = "records";
+  pub enum Media
   pub fn open(handle: Holder) -> Result<Self>
   pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self>
   pub fn ipc(handle: Holder) -> Self
@@ -2106,6 +2107,7 @@ pub enum Format
   pub fn from_path(path: impl AsRef<Path>) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn extension(self) -> &'static str
+  pub const fn is_single_document(self) -> bool
   pub const fn mime_type(self) -> MimeType
 
 ### yggdryl::text::io  [rust\src\text\io.rs]
@@ -2288,6 +2290,60 @@ pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported
   pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ValueIter<'a>
   pub fn from_reader_iter_with_field<'a, R: Read + 'a>(reader: &'a mut R, field: &Field) -> ValueIter<'a>
   pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(reader: &'a mut R, field: &Field, limits: Limits) -> ValueIter<'a>
+  pub struct Reader<R: Read>
+  pub fn new(reader: R) -> Self
+  pub const fn with_limits(reader: R, limits: Limits) -> Self
+  pub const fn byte_offset(&self) -> usize
+  pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>>
+  pub fn into_bytes_with_formatting(value: &Scalar, formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8(value: &Scalar) -> Result<String>
+  pub fn into_utf8_with_formatting(value: &Scalar, formatting: Formatting) -> Result<String>
+  pub fn validate_for_write(value: &Scalar) -> Result<()>
+  pub fn validate_for_write_with_limits(value: &Scalar, limits: Limits) -> Result<()>
+  pub fn into_writer<W: Write>(value: &Scalar, writer: W) -> Result<()>
+  pub fn into_writer_with_formatting<W: Write>(value: &Scalar, writer: W, formatting: Formatting) -> Result<()>
+  pub fn into_bytes_all(values: &[Scalar]) -> Result<Vec<u8>>
+  pub fn into_bytes_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<Vec<u8>>
+  pub fn into_utf8_all(values: &[Scalar]) -> Result<String>
+  pub fn into_utf8_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<String>
+  pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
+  pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
+
+### yggdryl::text::xml  [rust\src\text\xml\mod.rs]
+pub fn from_xml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn from_xml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
+  pub fn into_xml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
+  pub const MAX_PARSER_DEPTH: usize = 384;
+  pub const ATTRIBUTE_PREFIX: char = '@';
+  pub const TEXT_KEY: &str = "#text";
+  pub fn from_utf8(input: &str) -> Result<Scalar>
+  pub fn from_utf8_with_limits(input: &str, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes(input: &[u8]) -> Result<Scalar>
+  pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Scalar>
+  pub fn from_utf8_with_field(input: &str, field: &Field) -> Result<Scalar>
+  pub fn from_utf8_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_bytes_with_field(input: &[u8], field: &Field) -> Result<Scalar>
+  pub fn from_bytes_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_reader<R: Read>(reader: R) -> Result<Scalar>
+  pub fn from_reader_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Scalar>
+  pub fn from_reader_with_field<R: Read>(reader: R, field: &Field) -> Result<Scalar>
+  pub fn from_reader_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Scalar>
+  pub fn from_utf8_all(input: &str) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_limits(input: &str, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all(input: &[u8]) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_limits(input: &[u8], limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field(input: &str, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_utf8_all_with_field_and_limits(input: &str, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field(input: &[u8], field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_bytes_all_with_field_and_limits(input: &[u8], field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_all<R: Read>(reader: R) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_limits<R: Read>(reader: R, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field<R: Read>(reader: R, field: &Field) -> Result<Vec<Scalar>>
+  pub fn from_reader_all_with_field_and_limits<R: Read>(reader: R, field: &Field, limits: Limits) -> Result<Vec<Scalar>>
+  pub fn from_reader_iter<'a, R: Read + 'a>(reader: &'a mut R) -> ScalarIter<'a>
+  pub fn from_reader_iter_with_limits<'a, R: Read + 'a>( reader: &'a mut R, limits: Limits, ) -> ScalarIter<'a>
+  pub fn from_reader_iter_with_field<'a, R: Read + 'a>(reader: &'a mut R, field: &Field) -> ScalarIter<'a>
+  pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(reader: &'a mut R, field: &Field, limits: Limits) -> ScalarIter<'a>
   pub struct Reader<R: Read>
   pub fn new(reader: R) -> Self
   pub const fn with_limits(reader: R, limits: Limits) -> Self

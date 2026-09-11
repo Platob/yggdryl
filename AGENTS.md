@@ -43,6 +43,7 @@ binding first.
 | codec | `coding/<name>.rs` (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
 | storage backend | `holder/<name>/` with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `media/<name>/` free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
+| structured text format | `text/<name>/` (`mod`, `parser` to `RawValue`, `wire` from `Scalar`) + a `Format`/`Structured`/codec-marker triple + the `MimeType::format` arm that reaches them; `media/structured.rs` carries its rows -> interop both directions -> bindings -> `docs/text/` |
 | metadata property | a protocol view keyed `<scheme>:<property>`; never a new `Field` accessor |
 | binding method | core method first; the binding only infers, coerces, redirects - plus a parity test, a boundary benchmark, a docs entry |
 
@@ -116,7 +117,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `media/` | record routing and settings; `{ipc,parquet,avro}/` each own free functions over `IOBase` plus a stateful wrapper |
 | `media/text/` | `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering |
 | `media/iceberg/` | separate modules: types, schema, partition, snapshots, metadata, manifests, statistics, scalar rendering, scan, table, options, catalog, evolution, inspection |
-| `text/` | JSON/YAML/TOML over `Scalar` |
+| `text/` | JSON/YAML/TOML/XML over `Scalar` |
 | `uri/` | URI, URL, URN |
 | `arrow/` | Arrow interop; recursive cast planning stays with `Field` |
 | `expression/` | expression grammar, bound statements, `FieldPath`/`FieldSegment` |
@@ -675,13 +676,22 @@ change to `media/iceberg/`.
   without it, return only types the document proves.
 - YAML ignores tags as annotations; TOML follows its native root/table, integer,
   date/time, and single-document limits; unsupported values fail.
+- XML is one root element, so a document is a one-entry record keyed by its name;
+  an attribute keys behind `@`, an element's own character data keys `#text`, a
+  repeated element is a sequence, and an empty element is absence. Mixed content,
+  a second root, and a name XML cannot spell are refused. Only the five predefined
+  entities and character references resolve - no declared entity is ever expanded.
+  Every leaf is character data, so a `Field` is what types one, and it is also
+  what reads the three shapes a document cannot spell: the root element's name,
+  one occurrence of a repeated element as a one-item list, and no occurrence at
+  all as the empty list.
 - Limits bound bytes, depth, nodes, documents, aliases, and hard recursion;
   errors name format and byte position; streaming fails at the failing item under
   backpressure.
 - Inference is deterministic: explicit format, then path suffix; byte-like is
   content, a string is a path only when it names an existing file; content parse
-  order is JSON, TOML when complete and non-empty, then YAML. Never infer JSONL
-  from content.
+  order is XML when the content opens a tag, then JSON, TOML when complete and
+  non-empty, then YAML. Never infer JSONL from content.
 - Placeholder substitution walks parsed `Scalar` under a closed grammar and needs
   separate opt-ins for substitution and environment access. Benchmark slice,
   stream, writer, field-directed, wide, and deep paths.
@@ -762,6 +772,7 @@ Exchange formats, both directions, against outside implementations; a skipped
 half is a failure, not a pass:
 
 ```bash
+python scripts/check_xml_interop.py       # Python xml.etree.ElementTree
 python scripts/check_zip_interop.py       # Python zipfile
 python scripts/check_avro_interop.py      # fastavro, plus the apache-avro probe
 python scripts/check_object_interop.py        # MinIO + boto3

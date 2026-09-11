@@ -258,7 +258,11 @@ pub fn from_bytes_all_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_bytes_all_with_limits(input, limits)?, Format::Json, field)
+    apply_field(
+        from_bytes_all_with_limits(input, limits)?,
+        Format::Json,
+        field,
+    )
 }
 
 /// Decode every JSON value from a reader.
@@ -282,7 +286,11 @@ pub fn from_reader_all_with_field_and_limits<R: Read>(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_reader_all_with_limits(reader, limits)?, Format::Json, field)
+    apply_field(
+        from_reader_all_with_limits(reader, limits)?,
+        Format::Json,
+        field,
+    )
 }
 
 /// Lazily decode JSON values from a borrowed reader.

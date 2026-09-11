@@ -155,17 +155,22 @@
     parse options: field, cls, safe, errors, max_depth, max_input_bytes, max_nodes, max_documents
     output options: format, utf8 (into_io), indent; destination=None returns bytes or str, otherwise writes and returns None
   text.json
-    exports: Buffer, Destination, Readable, Source, Writable, dump, dump_all, dumps, dumps_all, load, load_all, loads, loads_all
+    exports: Buffer, Destination, Readable, Source, Writable, dump, dump_all, dumps, dumps_all, load_all, loads, loads_all
     output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes; dump_all requires a destination
-    parse: load/loads/load_all/loads_all(source, *, cls=None, field=None, safe=True, errors="raise", max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None)
+    parse: loads/load_all/loads_all(source, *, cls=None, field=None, safe=True, errors="raise", max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None)
   text.toml
-    exports: Buffer, Destination, Readable, Source, Writable, dump, dumps, load, loads
+    exports: Buffer, Destination, Readable, Source, Writable, dump, dumps, loads
     output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes
-    parse: load/loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None)
+    parse: loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None)
+  text.xml
+    exports: Buffer, Destination, Readable, Source, Writable, dump, dumps, loads
+    document: one root element, so a decoded document is a one-entry mapping keyed by its name; an attribute keys behind '@', an element's own character data keys '#text', a repeated element is a list, and an empty element is None
+    output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes
+    parse: loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None); every leaf is text until `field` types it
   text.yaml
-    exports: Buffer, Destination, Readable, Source, Writable, dump, dump_all, dumps, dumps_all, load, load_all, loads, loads_all
+    exports: Buffer, Destination, Readable, Source, Writable, dump, dump_all, dumps, dumps_all, load_all, loads, loads_all
     output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes; dump_all requires a destination
-    parse: load/loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None); load_all/loads_all use the same native limits
+    parse: loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None); load_all/loads_all use the same native limits
   arrow
     exports: SHAPES, ArrowValue
     ingestion: ArrowValue.from_py(value, field=None, *, safe=True, nullability="default", representation="value") reads a pyarrow Scalar/Array/ChunkedArray/RecordBatch/Table/RecordBatchReader/Dataset/Scanner, a pandas or polars frame or series, a numpy array, an Arrow C data or stream exporter, or any value a Scalar holds

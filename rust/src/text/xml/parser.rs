@@ -224,7 +224,7 @@ fn open(
 /// Close one element that never had an end tag of its own.
 fn close(
     element: Element,
-    stack: &mut Vec<Element>,
+    stack: &mut [Element],
     document: &mut Option<(String, RawValue)>,
 ) -> Result<()> {
     let (name, value) = element.finish()?;
@@ -280,7 +280,10 @@ fn check_declaration(declaration: &BytesDecl<'_>, position: usize) -> Result<()>
     if let Some(encoding) = declaration.encoding() {
         let encoding = encoding.map_err(|error| malformed(position, &error.to_string()))?;
         if !encoding.eq_ignore_ascii_case(b"utf-8") && !encoding.eq_ignore_ascii_case(b"utf8") {
-            return Err(codec_error(position, "expected a UTF-8 encoding declaration"));
+            return Err(codec_error(
+                position,
+                "expected a UTF-8 encoding declaration",
+            ));
         }
     }
     Ok(())

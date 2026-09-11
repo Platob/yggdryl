@@ -69,7 +69,10 @@ fn writes_a_document_for_the_external_reader() {
 
     // Whatever the external reader makes of it, this crate reads its own
     // bytes back as the value it wrote.
-    assert_eq!(xml::from_bytes(&encoded).expect("the document decodes"), exchanged());
+    assert_eq!(
+        xml::from_bytes(&encoded).expect("the document decodes"),
+        exchanged()
+    );
 }
 
 #[test]
@@ -81,9 +84,16 @@ fn reads_the_external_document() {
     };
 
     let value = xml::from_bytes(&encoded).expect("the external document decodes");
-    assert_eq!(value, exchanged(), "the external document carries the exchange");
+    assert_eq!(
+        value,
+        exchanged(),
+        "the external document carries the exchange"
+    );
 
     // And the same bytes this crate would have written for it.
     let encoded = xml::into_utf8(&value).expect("the document encodes");
-    assert_eq!(from_xml_scalar(&encoded).expect("the document decodes"), exchanged());
+    assert_eq!(
+        from_xml_scalar(&encoded).expect("the document decodes"),
+        exchanged()
+    );
 }

@@ -47,7 +47,7 @@ from yggdryl import (
 )
 from yggdryl.coding import gzip, zlib, zstd
 from yggdryl.media import avro, iceberg
-from yggdryl.text import json, toml, yaml
+from yggdryl.text import json, toml, xml, yaml
 from yggdryl._native import (
     ByteIterator,
     FieldMetadata,
@@ -128,7 +128,7 @@ urn: Urn = Uri("urn:isbn:9780131103627").into_urn()
 uri_again: Uri = urn.into_uri()
 mime_type: MimeType = file_uri.mime_type
 media_type: MediaType = file_uri.media_type
-mime_format: Literal["json", "json_lines", "yaml", "toml"] | None = mime_type.format
+mime_format: Literal["json", "json_lines", "yaml", "toml", "xml"] | None = mime_type.format
 content_coding: Literal["gzip", "compress", "deflate", "br", "zstd"] | None = (
     MimeType.GZIP.content_coding
 )
@@ -509,26 +509,34 @@ field_differences: list[str] = list(field.show_diffs(typed_id, False))
 json_source: json.Source = io.BytesIO(b'{"value":42}')
 yaml_source: yaml.Source = io.StringIO("value: 42\n")
 toml_source: toml.Source = io.StringIO("value = 42\n")
+xml_source: xml.Source = io.StringIO("<row><value>42</value></row>")
 json_destination: json.Destination = io.BytesIO()
 yaml_destination: yaml.Destination = Path("value.yaml")
 toml_destination: toml.Destination = io.StringIO()
+xml_destination: xml.Destination = io.BytesIO()
 decoded_json: dict[str, int] = json.loads(json_source)
 decoded_yaml: dict[str, int] = yaml.loads(yaml_source)
 decoded_toml: dict[str, int] = toml.loads(toml_source)
+decoded_xml: dict[str, dict[str, str]] = xml.loads(xml_source)
 typed_json: object = json.loads("42", field=field)
 typed_yaml: object = yaml.loads("42\n", field=field)
 typed_toml: object = toml.loads("value = 42\n", field=typed_struct)
+typed_xml: object = xml.loads("<row><value>42</value></row>", field=typed_struct)
 encoded_json: bytes = json.dumps(decoded_json)
 encoded_yaml: bytes = yaml.dumps(decoded_yaml)
 encoded_toml: bytes = toml.dumps(decoded_toml)
+encoded_xml: bytes = xml.dumps(decoded_xml)
 returned_json: bytes = json.dump(decoded_json)
 returned_yaml: str = yaml.dump(decoded_yaml, utf8=True)
 returned_toml: bytes = toml.dump(decoded_toml)
+returned_xml: bytes = xml.dump(decoded_xml)
 json.dump(decoded_json, json_destination)
 yaml.dump(decoded_yaml, yaml_destination)
 toml.dump(decoded_toml, toml_destination)
+xml.dump(decoded_xml, xml_destination)
 assert typed_json is not None and typed_yaml is not None and typed_toml is not None
-assert returned_json and returned_yaml and returned_toml
+assert typed_xml is not None
+assert returned_json and returned_yaml and returned_toml and returned_xml
 
 alias: str | None = field.alias
 comment: str | None = field.comment
@@ -641,6 +649,7 @@ assert field_differences == [] or field_differences
 assert encoded_json
 assert encoded_yaml
 assert encoded_toml
+assert encoded_xml
 
 record_handle: IOBase = IOBase(Path("trades.arrows"))
 parquet_statistics = IOBase(Path("trades.parquet")).read_parquet_statistics()

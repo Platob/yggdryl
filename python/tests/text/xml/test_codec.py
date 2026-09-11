@@ -8,7 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from yggdryl import DataType, Field, Scalar
+from yggdryl import Field, Scalar
 from yggdryl.text import xml
 
 
@@ -51,20 +51,14 @@ def test_every_leaf_is_text_until_a_field_types_it() -> None:
 
     field = Field(
         "row",
-        DataType.struct(
-            [
-                Field("size", "int64", nullable=False),
-                Field("price", "decimal(18,2)", nullable=False),
-                Field("day", "date32", nullable=False),
-            ]
-        ),
+        "struct<size: int64 not null, price: decimal(18,2) not null, day: date32 not null>",
         nullable=False,
     )
-    assert xml.loads(document, field=field) == [
-        dt.date(2026, 8, 15),
-        Decimal("12.50"),
-        100,
-    ]
+    assert xml.loads(document, field=field) == {
+        "size": 100,
+        "price": Decimal("12.50"),
+        "day": dt.date(2026, 8, 15),
+    }
 
 
 def test_exact_scalars_use_their_interoperable_spelling() -> None:
@@ -87,11 +81,11 @@ def test_exact_scalars_use_their_interoperable_spelling() -> None:
     assert restored["decimal"] == "123.4500"
     assert restored["date"] == "2026-08-15"
     assert restored["datetime"] == "2026-08-15T12:03:04.000005"
-    assert restored["zoned"] == "2026-08-15T12:00:00Z"
+    assert restored["zoned"] == "2026-08-15T12:00:00.000000Z"
     assert restored["delta"] == "-PT172796.999996S"
 
 
-def test_dataclass_reconstruction_requires_an_explicit_target() -> None:
+def test_a_dataclass_lowers_to_the_element_that_names_it() -> None:
     @dataclasses.dataclass
     class Point:
         x: int
@@ -99,9 +93,13 @@ def test_dataclass_reconstruction_requires_an_explicit_target() -> None:
 
     encoded = xml.dumps({"point": Point(2, 3)})
 
+    assert encoded == b"<point><x>2</x><y>3</y></point>"
     assert b"python:" not in encoded
-    assert xml.loads(encoded) == {"point": {"x": "2", "y": "3"}}
-    assert xml.loads(encoded, cls=Point)["point"] == {"x": "2", "y": "3"}
+    # A document is one root element, so reconstruction names that root: the
+    # target sees the one-entry record, never the element's contents alone.
+    assert xml.loads(encoded)["point"] == {"x": "2", "y": "3"}
+    field = Field("point", "struct<x: int64 not null, y: int64 not null>", nullable=False)
+    assert xml.loads(encoded, field=field) == {"x": 2, "y": 3}
 
 
 def test_a_refused_document_names_the_byte_it_stopped_at() -> None:

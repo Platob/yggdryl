@@ -179,7 +179,11 @@ pub fn from_bytes_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Scalar> {
-    typed(from_bytes_with_limits(input, format, limits)?, format, field)
+    typed(
+        from_bytes_with_limits(input, format, limits)?,
+        format,
+        field,
+    )
 }
 
 /// Decode one value from bytes under `loading`.
@@ -222,7 +226,11 @@ pub fn from_reader_with_field_and_limits<R: Read>(
     field: &Field,
     limits: Limits,
 ) -> Result<Scalar> {
-    typed(from_reader_with_limits(reader, format, limits)?, format, field)
+    typed(
+        from_reader_with_limits(reader, format, limits)?,
+        format,
+        field,
+    )
 }
 
 /// Decode one value from a reader under `loading`.
@@ -277,7 +285,11 @@ pub fn from_bytes_all_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_bytes_all_with_limits(input, format, limits)?, format, field)
+    apply_field(
+        from_bytes_all_with_limits(input, format, limits)?,
+        format,
+        field,
+    )
 }
 
 /// Decode all values from UTF-8.
@@ -312,7 +324,11 @@ pub fn from_utf8_all_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_utf8_all_with_limits(input, format, limits)?, format, field)
+    apply_field(
+        from_utf8_all_with_limits(input, format, limits)?,
+        format,
+        field,
+    )
 }
 
 /// Decode all values from a reader.
@@ -351,7 +367,11 @@ pub fn from_reader_all_with_field_and_limits<R: Read>(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_reader_all_with_limits(reader, format, limits)?, format, field)
+    apply_field(
+        from_reader_all_with_limits(reader, format, limits)?,
+        format,
+        field,
+    )
 }
 
 /// Lazily decode values from a borrowed reader.
