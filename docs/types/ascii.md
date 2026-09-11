@@ -2,6 +2,8 @@
 
 Variable and fixed-width ASCII text, the registered codes, packed integers, and the `AsciiEnum` vocabulary a field declares.
 
+These are *datatypes* whose stored bytes happen to be US-ASCII, not an encoding: the byte class they validate is [`Charset::Ascii`](../charset/index.md), and a payload in any other encoding is decoded before it reaches one.
+
 ## Contract
 
 | Spelling | Width | Arrow storage, extension |

@@ -14,7 +14,7 @@ use crate::metadata::{
     HTTP_CONTENT_RANGE_KEY, HTTP_CONTENT_TYPE_KEY, HTTP_ETAG_KEY, HTTP_EXPIRES_KEY,
     HTTP_LAST_MODIFIED_KEY, HTTP_LOCATION_KEY, HTTP_RANGE_KEY, HTTP_VARY_KEY, parse_content_length,
 };
-use crate::{Error, MediaType, MimeType, Result, Url};
+use crate::{Charset, Error, MediaType, MimeType, Result, Url};
 
 impl<'field> HttpField<'field> {
     /// Returns the raw HTTP `Accept` field value.
@@ -112,6 +112,19 @@ impl<'field> HttpField<'field> {
     /// content coding.
     pub fn media_type(&self) -> Result<MediaType> {
         MediaType::from_content_headers(self.content_type(), self.content_encoding())
+    }
+
+    /// Parses the `charset` parameter of the stored HTTP `Content-Type`.
+    ///
+    /// Answers `None` when the header declares none, which is the header
+    /// saying nothing rather than saying UTF-8.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the parameter names no known charset.
+    pub fn charset(&self) -> Result<Option<Charset>> {
+        self.content_type()
+            .map_or(Ok(None), Charset::from_content_type)
     }
 
     /// Returns the raw HTTP `ETag` field value.
@@ -405,7 +418,13 @@ impl HttpFieldMut<'_> {
     /// File encodings without registered HTTP coding tokens are rejected
     /// before either metadata key or the Arrow projection cache is changed.
     pub fn set_media_type(&mut self, value: MediaType) -> Result<()> {
-        let content_type = value.base().to_string();
+        // A declared charset is part of what `Content-Type` says, so it is
+        // written back with the base rather than dropped; `Self::media_type`
+        // reads it out of the same header.
+        let content_type = match value.charset() {
+            Some(charset) => format!("{}; {}={charset}", value.base(), Charset::PARAMETER),
+            None => value.base().to_string(),
+        };
         let mut content_encoding = String::new();
         for encoding in value.encodings() {
             let coding = encoding

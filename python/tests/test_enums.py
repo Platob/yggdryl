@@ -29,6 +29,7 @@ def test_every_vocabulary_is_a_nonempty_tuple_of_strings() -> None:
         enums.UNION_MODES,
         enums.IO_MODES,
         enums.CODECS,
+        enums.CHARSETS,
         enums.IO_KINDS,
         enums.COMPATIBILITY_SCHEMES,
     ):
@@ -47,6 +48,7 @@ def test_the_spellings_are_the_ones_the_parsers_accept() -> None:
     assert enums.IO_MODES == ("overwrite", "append", "merge", "readonly", "random")
     assert "us" in enums.TIME_UNITS
     assert "gzip" in enums.CODECS
+    assert "windows-1252" in enums.CHARSETS
     assert "file" in enums.IO_KINDS
     assert "arrow" in enums.COMPATIBILITY_SCHEMES
 

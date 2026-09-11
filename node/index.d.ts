@@ -2575,6 +2575,10 @@ export declare class MediaType {
   get extension(): string | null
   /** Preferred base and encoding extensions in filename order. */
   get extensions(): Array<string>
+  /** The declared charset, or `null` where the media type declares none. */
+  get charset(): string | null
+  /** Declare, or clear with `null`, the charset these bytes are in. */
+  setCharset(value?: string | undefined | null): void
   /** Replace the base MIME type. */
   setBase(value: MimeTypeInput): void
   /** Append one outer encoding. */
@@ -4146,6 +4150,15 @@ export declare class TextOptions {
   get linesep(): Buffer | null
   /** Set or clear the physical-line terminator. */
   set linesep(value: string | Uint8Array | undefined | null)
+  /**
+   * Return the charset row-header captures are read in.
+   *
+   * This reads captures, never the body: a captured record is an arrival
+   * record, so `body` stays the exact bytes the line was written with.
+   */
+  get charset(): string
+  /** Set the charset row-header captures are read in. */
+  set charset(charset: string)
   /** Return whether regex-syntax capture autotyping is enabled. */
   get autotype(): boolean
   /** Enable or disable regex-syntax capture autotyping. */
@@ -4962,6 +4975,14 @@ export interface BoundStatementOrder {
   direction: 'ascending' | 'descending'
   /** `first`, `last`, or `null` when the statement left the default implicit. */
   nulls?: 'first' | 'last' | null
+}
+
+/** A byte-order mark: the charset it declares, and how long the mark is. */
+export interface CharsetMark {
+  /** The canonical charset name the mark declares. */
+  charset: string
+  /** How many bytes the mark itself occupies. */
+  length: number
 }
 
 /** Infer a codec format through the native extension rules. */

@@ -29,9 +29,9 @@ use std::sync::Arc;
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::types::{MsgDirection, UncheckedFieldScalar};
 use yggdryl::{
-    DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixBranch, FixCode, FixCodec,
-    FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType, PythonKind,
-    PythonMetadata, Scalar, TimeUnit, Timezone, Version,
+    Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixBranch, FixCode,
+    FixCodec, FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType,
+    PythonKind, PythonMetadata, Scalar, TimeUnit, Timezone, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -1844,4 +1844,78 @@ fn a_fix_message_read_from_a_line_costs_what_its_pairs_cost() {
             },
         );
     }
+}
+
+/// The charsets that agree with US-ASCII, which is what lets a decode borrow.
+const ASCII_COMPATIBLE: [Charset; 8] = [
+    Charset::Utf8,
+    Charset::Ascii,
+    Charset::Latin1,
+    Charset::Latin2,
+    Charset::Latin9,
+    Charset::Cp1252,
+    Charset::Cp437,
+    Charset::MacRoman,
+];
+
+#[test]
+fn an_ascii_payload_is_read_in_any_charset_without_allocating() {
+    // The claim `crate::charset` makes under its `# Borrowing` heading: a
+    // legacy export is mostly ASCII, and the ASCII part must cost a borrow.
+    // Several sizes, because one buffer could be short enough to hide a copy.
+    for rows in [1_usize, 16, 1_024] {
+        let text = "symbol,price\nAAPL,187.23\n".repeat(rows);
+        let payload = text.clone().into_bytes();
+        for charset in ASCII_COMPATIBLE {
+            free(&format!("decoding {rows} ASCII rows as {charset}"), || {
+                let decoded = charset
+                    .decode(black_box(payload.as_slice()))
+                    .expect("US-ASCII under every charset here");
+                assert!(matches!(decoded, std::borrow::Cow::Borrowed(_)));
+                black_box(decoded);
+            });
+            free(&format!("encoding {rows} ASCII rows as {charset}"), || {
+                let encoded = charset
+                    .encode(black_box(text.as_str()))
+                    .expect("US-ASCII under every charset here");
+                assert!(matches!(encoded, std::borrow::Cow::Borrowed(_)));
+                black_box(encoded);
+            });
+        }
+    }
+}
+
+#[test]
+fn resolving_a_charset_name_allocates_nothing() {
+    // Intake runs once per read, but it runs on every read; a name that
+    // allocated to resolve would be a cost on the first byte of every file.
+    for name in ["utf-8", "UTF-8", "  windows-1252 ", "latin1", "cp437"] {
+        free(&format!("resolving {name:?}"), || {
+            black_box(Charset::from_str(black_box(name)).expect("a known charset"));
+        });
+    }
+    free("reading a declared charset off a media type", || {
+        black_box(Charset::from_media_type(black_box(&MediaType::default())));
+    });
+}
+
+#[test]
+fn a_transcode_pays_for_the_text_it_builds() {
+    // The borrow above is only meaningful beside the case that does not
+    // borrow: bytes that are not already UTF-8 become a string that is.
+    let wire = Charset::Cp1252
+        .encode("symbol,désk\nAAPL,€1\n")
+        .expect("windows-1252 holds it")
+        .into_owned();
+    let (allocations, decoded) = counted(|| {
+        Charset::Cp1252
+            .decode(black_box(wire.as_slice()))
+            .expect("windows-1252")
+            .into_owned()
+    });
+    assert!(
+        allocations > 0,
+        "a transcode reported a borrow of bytes it does not own"
+    );
+    assert_eq!(decoded, "symbol,désk\nAAPL,€1\n");
 }

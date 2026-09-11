@@ -18,7 +18,7 @@ use crate::holder::Buffer;
 use crate::holder::Holder;
 use crate::media::IORecordOptions;
 use crate::types::ascii::iso;
-use crate::{Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
+use crate::{Charset, Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
 use crate::{Cursor, IOBase};
 
 use super::leading::LeadingFragment;
@@ -102,6 +102,7 @@ fn text_lines(
         reads_entries: plan.reads_entries(),
         reads_classification: plan.reads_classification(),
         timezone: options.timezone().copied(),
+        charset: options.charset(),
         timestamp_capture,
     })
 }
@@ -969,6 +970,8 @@ pub struct TextLines {
     reads_entries: bool,
     reads_classification: bool,
     timezone: Option<Timezone>,
+    /// The charset a capture is read in, resolved before the first byte.
+    charset: Charset,
     /// Where the timestamp capture sits, when the header declares one.
     timestamp_capture: Option<usize>,
 }
@@ -1034,25 +1037,29 @@ impl TextLines {
         let Some(Some(raw)) = capture else {
             return Ok(self.mtime);
         };
-        let Some(text) = raw.as_str() else {
-            return Err(row_error(
+        let text = raw.decode(self.charset).map_err(|error| {
+            row_error(
                 index,
                 None,
                 self.url.as_deref(),
                 super::options::MTIME_COLUMN,
-                SmolStr::new_static("expected a UTF-8 row-header capture, got invalid bytes"),
-            ));
-        };
-        let parsed = parse_capture(text, &super::options::mtime_dtype(), self.timezone.as_ref())
-            .map_err(|reason| {
-                row_error(
-                    index,
-                    None,
-                    self.url.as_deref(),
-                    super::options::MTIME_COLUMN,
-                    reason,
-                )
-            })?;
+                format_smolstr!("{error}"),
+            )
+        })?;
+        let parsed = parse_capture(
+            &text,
+            &super::options::mtime_dtype(),
+            self.timezone.as_ref(),
+        )
+        .map_err(|reason| {
+            row_error(
+                index,
+                None,
+                self.url.as_deref(),
+                super::options::MTIME_COLUMN,
+                reason,
+            )
+        })?;
         Ok(parsed
             .as_temporal()
             .map(|held| i128::from(held.count()))

@@ -20,6 +20,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 | `lift_names` / `liftNames` | entry paths lifted into columns of their own, each named by its `as` alias where it writes one; unset lifts nothing beyond the row header's captures |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
+| `charset` | [charset](../charset/index.md) row-header captures are read in; default `utf-8`. It reads captures only - `body` stays the exact bytes that arrived - so reading a whole resource in one charset is [`charset::Transcoded`](../charset/transcoded.md) instead |
 
 ## Use
 

@@ -879,6 +879,12 @@ impl PyMediaType {
         self.inner.extensions().collect()
     }
 
+    /// The declared charset, or `None` where the media type declares none.
+    #[getter]
+    fn charset(&self) -> Option<&'static str> {
+        self.inner.charset().map(yggdryl::Charset::as_str)
+    }
+
     fn set_base(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner.set_base(core_mime_type_from_value(value)?);
@@ -890,6 +896,17 @@ impl PyMediaType {
         self.inner
             .set_encodings(mime_types_from_iterable(values)?)
             .map_err(value_error)
+    }
+
+    /// Declare, or clear with `None`, the charset this media type's bytes are in.
+    fn set_charset(&mut self, value: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        let charset = value
+            .map(yggdryl::Charset::from_str)
+            .transpose()
+            .map_err(value_error)?;
+        self.inner.set_charset(charset);
+        Ok(())
     }
 
     fn push_encoding(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {

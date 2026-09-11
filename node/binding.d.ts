@@ -2077,6 +2077,8 @@ export declare const enums: {
   readonly ioModes: readonly IOMode[]
   /** Every content coding, e.g. `'identity'`, `'gzip'`, `'zstd'`. */
   readonly codecs: readonly string[]
+  /** Every character encoding, e.g. `'utf-8'`, `'windows-1252'`. */
+  readonly charsets: readonly Charset[]
   /** Every answer a handle gives about what it addresses, e.g. `'file'`. */
   readonly ioKinds: readonly string[]
   /** Every Python form a `python:kind` declaration names, e.g. `'dataclass'`. */
@@ -2095,6 +2097,56 @@ export declare const enums: {
 }
 /** Generic format-inferred byte codec. */
 export declare const codec: GenericCodec
+
+/** One character encoding, spelled the same way in every language. */
+export type Charset =
+  | 'utf-8'
+  | 'utf-16le'
+  | 'utf-16be'
+  | 'us-ascii'
+  | 'iso-8859-1'
+  | 'iso-8859-2'
+  | 'iso-8859-15'
+  | 'windows-1250'
+  | 'windows-1251'
+  | 'windows-1252'
+  | 'ibm437'
+  | 'ibm850'
+  | 'macintosh'
+
+/** What a byte-order mark declares, and how many bytes it occupies. */
+export interface CharsetMark {
+  /** The canonical charset name the mark declares. */
+  readonly charset: Charset
+  /** How many bytes the mark itself occupies. */
+  readonly length: number
+}
+
+/**
+ * Character encodings over bytes.
+ *
+ * `decode` answers what `new TextDecoder(name).decode(bytes)` answers over the
+ * same names; `encode` is the direction the runtime does not have, since
+ * `TextEncoder` writes UTF-8 and nothing else. Both refuse with the charset,
+ * the byte position, and the byte or scalar found there. A whole resource is
+ * read by naming the charset on its media type instead of calling these.
+ */
+export declare const charset: {
+  /** Every character encoding, the same listing `enums.charsets` carries. */
+  readonly CHARSETS: readonly Charset[]
+  /** Decode bytes in one charset, throwing on what it cannot read. */
+  readonly decode: (charset: Charset | string, data: Uint8Array) => string
+  /** Decode bytes in one charset, replacing what it cannot read. */
+  readonly decodeLossy: (charset: Charset | string, data: Uint8Array) => string
+  /** Encode text in one charset, throwing on a scalar it has no byte for. */
+  readonly encode: (charset: Charset | string, text: string) => Buffer
+  /** The charset a leading byte-order mark names, or `null`. */
+  readonly fromBom: (data: Uint8Array) => CharsetMark | null
+  /** The byte-order mark a charset is written with, or `null`. */
+  readonly bom: (charset: Charset | string) => Buffer | null
+  /** The canonical name a charset name or alias resolves to. */
+  readonly canonicalName: (charset: Charset | string) => Charset
+}
 
 /** One xxHash algorithm, spelled the same way in every language. */
 export type DigestAlgorithm = 'xxh32' | 'xxh64' | 'xxh3-64' | 'xxh3-128'

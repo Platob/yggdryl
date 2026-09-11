@@ -164,6 +164,8 @@ def test_media_type_default_compound_headers_and_detached_snapshots() -> None:
         MimeType.BROTLI,
         MimeType.COMPRESS,
     )
+    assert from_headers.charset == "utf-8"
+    assert MediaType.from_str("text/csv").charset is None
     assert MediaType.from_content_headers().base == MimeType.OCTET_STREAM
     assert MediaType.from_path("events.json.gz").encodings == (MimeType.GZIP,)
     assert MediaType.from_file_name("events.csv.zst").base == MimeType.CSV

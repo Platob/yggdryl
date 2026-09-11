@@ -54,6 +54,8 @@ Integration targets are one file per layer under `rust/tests/`; unit tests sit b
     cargo test --features "parquet iceberg" -p yggdryl --lib iobase::
     cargo test --features "parquet iceberg" -p yggdryl --lib holder::
     cargo test --features "parquet iceberg" -p yggdryl --lib coding::
+    cargo test --features "parquet iceberg" -p yggdryl --lib charset::
+    cargo test --features "parquet iceberg" -p yggdryl --test charset
     cargo test --features "parquet iceberg" -p yggdryl --lib media::
     cargo test --features "parquet iceberg" -p yggdryl --lib text::
     cargo test --features "parquet iceberg" -p yggdryl --lib expression::
@@ -67,6 +69,7 @@ Integration targets are one file per layer under `rust/tests/`; unit tests sit b
     python/.venv/bin/python -m pytest python/tests/types
     python/.venv/bin/python -m pytest python/tests/holder
     python/.venv/bin/python -m pytest python/tests/coding
+    python/.venv/bin/python -m pytest python/tests/charset
     python/.venv/bin/python -m pytest python/tests/media
     python/.venv/bin/python -m pytest python/tests/text
     python/.venv/bin/python -m pytest python/tests/expression

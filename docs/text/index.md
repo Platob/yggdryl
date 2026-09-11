@@ -25,6 +25,7 @@
 | `Limits` | input bytes, nesting, decoded nodes, document count, enforced while streaming; four nullable spellings in both bindings; omitted uses the safe core default |
 | Errors | name the format and byte offset, cumulative across documents; readers fuse after the first error |
 | Coding | `text::from_io` / `into_io` infer format and coding from the handle `MediaType`, so `quotes.json.gz` is JSON through gzip; `from_io_with_field` types strictly |
+| Charset | the same plan resolves a [charset](../charset/index.md) from the handle's `MediaType`, or from a leading byte-order mark; the mark is framing at this seam and comes off before the parser sees it, so a `windows-1252` JSON document reads without an argument |
 
 ## Use
 

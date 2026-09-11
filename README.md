@@ -28,6 +28,7 @@ page per family in that layer, so the site tree and source tree agree:
 | Datatypes, fields, scalars, casting, families | [types](docs/types/index.md) |
 | Storage handles and backends | [holder](docs/holder/index.md) |
 | Content codings | [coding](docs/coding/index.md) |
+| Character encodings | [charset](docs/charset/index.md) |
 | Record encodings and tables | [media](docs/media/index.md) |
 | Structured text | [text](docs/text/index.md) |
 | Identifiers | [uri](docs/uri/index.md) |
@@ -53,6 +54,7 @@ rust/                    The core crate
   src/types/             Datatypes, fields, scalars, and family behavior
   src/holder/            Buffer, local/Arrow filesystems, and buffering
   src/coding/            gzip, zlib/deflate, and Zstandard
+  src/charset/           UTF-8, UTF-16, ASCII, ISO 8859, Windows and DOS pages
   src/media/             IPC, Parquet, Avro, text records, and Iceberg
   src/text/              JSON, YAML, TOML, limits, and inference
   src/{uri,arrow,expression,xxhash,txhash,fix}/

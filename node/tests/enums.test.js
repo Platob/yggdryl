@@ -15,6 +15,7 @@ test('every vocabulary is a frozen non-empty array of strings', () => {
     enums.unionModes,
     enums.ioModes,
     enums.codecs,
+    enums.charsets,
     enums.ioKinds,
     enums.compatibilitySchemes,
   ]) {
@@ -33,6 +34,7 @@ test('the spellings are the ones the parsers accept', () => {
   assert.deepEqual([...enums.ioModes], ['overwrite', 'append', 'merge', 'readonly', 'random'])
   assert.ok(enums.timeUnits.includes('us'))
   assert.ok(enums.codecs.includes('gzip'))
+  assert.ok(enums.charsets.includes('windows-1252'))
   assert.ok(enums.ioKinds.includes('file'))
   assert.ok(enums.compatibilitySchemes.includes('arrow'))
 })

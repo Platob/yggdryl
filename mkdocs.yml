@@ -165,6 +165,11 @@ nav:
     - gzip: coding/gzip.md
     - zlib: coding/zlib.md
     - zstd: coding/zstd.md
+  - Charset:
+    - charset/index.md
+    - Encodings: charset/encodings.md
+    - Transcoded: charset/transcoded.md
+    - Streams: charset/streams.md
   - Media:
     - media/index.md
     - Options: media/options.md

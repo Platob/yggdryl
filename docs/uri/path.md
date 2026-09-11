@@ -13,6 +13,7 @@ This page owns the path as a sequence of names: segments, filenames, media type,
 | `stem` | filename minus last extension; dotfiles keep the dot |
 | Mutators | atomic; a rejected name changes nothing |
 | `mime_type`, `media_type` | last suffix; whole chain as base plus encodings |
+| `charset` | a `MediaType` also carries the [charset](../charset/index.md) its bytes are in, parsed from a `Content-Type` parameter and rendered back as `;charset=`; a filename never declares one |
 | `from_path`, `into_path` | drive: first segment, empty authority; UNC server: authority; either separator roots a path |
 | A path naming no root | `Uri` keeps it relative; `Url` roots it at the working directory, because a `file:` URL is absolute |
 | Escapes across the bridge | `from_path` encodes a name, `into_path` decodes one; an escape that would become a separator, a dot segment, a drive, or a UNC name is refused instead |

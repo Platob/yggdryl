@@ -36,6 +36,7 @@ Run the checks for what you changed; code, tests, and documentation agree before
 | `rust/src/types/` | `rust/tests/types/` | [Types](types/index.md) |
 | `rust/src/holder/`, `rust/src/iobase*` | `rust/tests/holder/` | [Holder](holder/index.md) |
 | `rust/src/coding/` | `rust/src/coding/tests.rs` | [Coding](coding/index.md) |
+| `rust/src/charset.rs`, `rust/src/charset/` | `rust/src/charset/tests.rs`, `rust/tests/charset/` | [Charset](charset/index.md) |
 | `rust/src/media/` | `rust/src/media/tests.rs`, `rust/tests/interop/` | [Media](media/index.md) |
 | `rust/src/text/` | `rust/tests/text/` | [Text](text/index.md) |
 | `rust/src/uri/` | `rust/tests/uri/` | [URI](uri/index.md) |

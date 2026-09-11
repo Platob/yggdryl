@@ -41,6 +41,7 @@ binding first.
 | datatype variant | `types/` family module, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
 | logical name | `DataType::LOGICAL_NAMES` only; resolves to an existing datatype, adds no variant |
 | codec | `coding/<name>.rs` (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
+| charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant -> interop both directions -> bench -> bindings -> `docs/charset/` |
 | storage backend | `holder/<name>/` with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `media/<name>/` free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
 | metadata property | a protocol view keyed `<scheme>:<property>`; never a new `Field` accessor |
@@ -113,6 +114,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
+| `charset.rs` + `charset/` | the `Charset` vocabulary beside its implementations: `ascii`/`single_byte`/`unicode` own the codecs, generated `tables.rs` owns the code pages, `Decoder`/`Reader`/`Writer` the chunked doors, `Transcoded` the decoding handle. Fused rather than split like `codec.rs`/`coding/`, because no single code page is a public module of its own |
 | `media/` | record routing and settings; `{ipc,parquet,avro}/` each own free functions over `IOBase` plus a stateful wrapper |
 | `media/text/` | `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering |
 | `media/iceberg/` | separate modules: types, schema, partition, snapshots, metadata, manifests, statistics, scalar rendering, scan, table, options, catalog, evolution, inspection |
@@ -148,10 +150,10 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
   derives, never what another contributes - mark one field, leave its sources
   ordinary columns.
 - Shared and dispatch enums each live in their named root file, re-exported from
-  the crate root: `Codec`, `DataTypeId`, `DataTypeKind`, `DigestAlgorithm`,
-  `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`, `MediaType`, `MimeType`,
-  `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No local copies, no `enums`
-  module. `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside
+  the crate root: `Charset`, `Codec`, `DataTypeId`, `DataTypeKind`,
+  `DigestAlgorithm`, `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`,
+  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No
+  local copies, no `enums` module. `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside
   `Codec`; `Scalar` -> `types`, storage variants -> `holder`, record settings ->
   `media`, `FieldPath`/`FieldSegment` -> `expression`, whose grammar already
   writes their steps.
@@ -202,8 +204,9 @@ Equivalences a change keeps lossless, in both directions:
 
 `IOBase: Send + IOMedia`, so every handle answers records; a media wrapper
 implements `overwrite_arrow_reader` and inherits streamed append and merge.
-Wrappers compose over a handle, never inside it - `Coded` (coding), `Buffered`
-(holder), `Hashed` (xxhash), `Counted` (tests) - each forwarding through
+Wrappers compose over a handle, never inside it - `Coded` (coding),
+`Transcoded` (charset), `Buffered` (holder), `Hashed` (xxhash), `Counted`
+(tests) - each forwarding through
 `delegate_iobase!` and overriding only what it changes. Commit cadence belongs to
 `RecordOptions` and the write session in `iobase/transfer.rs`
 (`ArrowWriteSession::{overwrite,append,merge}` with `push` and `finish`/`abort`),
@@ -663,6 +666,57 @@ change to `media/iceberg/`.
   overwrite/merge/compact restore state on conflict, and a failed commit may
   leave unreferenced files.
 
+## Charsets
+
+`docs/charset/` documents the surface; these bind a change to `charset.rs`,
+`charset/`, and every byte that becomes text anywhere else.
+
+- **Text crosses the boundary once.** A byte payload is decoded at intake -
+  by a `Transcoded` handle, by `text::io::Plan`, by `TextOptions::charset`, or
+  by a direct `Charset::decode` - and everything past that point is `str`,
+  `Scalar::Utf8`, or an Arrow string array whose bytes are already UTF-8.
+  Nothing below `Scalar` carries a charset, nothing re-decodes, and no cast,
+  digest, or record layer branches on one per row. A layer that wants a charset
+  argument wants the wrong seam: wrap the handle instead.
+- `Charset` is the one vocabulary and the only place a name selects an
+  implementation. Intake accepts every documented alias case-insensitively;
+  past it nothing sees a string. Two refusals are deliberate and are contract,
+  not omission: `iso-8859-1` is ISO 8859-1 and never `windows-1252`, and bare
+  `utf-16` is refused because RFC 2781 and the WHATWG Encoding Standard
+  disagree about it - `utf-16le`, `utf-16be`, and `Charset::from_bom` are the
+  three unambiguous answers.
+- Precedence where a caller did not say: an explicit argument, then the
+  declared `MediaType`, then one bounded content read of a byte-order mark.
+  `MediaType` carries `Option<Charset>`; absent is the media type saying
+  nothing, and `Charset::from_media_type` is the one place that absence becomes
+  `Utf8`. A mark is framing rather than content, so `from_bom` answers its
+  length and the caller decides - only the structured-text plan takes it off.
+- Every charset agrees with US-ASCII below `0x80` except the UTF-16 pair, and
+  that is load-bearing: `decode` and `encode` borrow an all-ASCII payload
+  rather than transcoding it, a line scan splits on `\n` before anything is
+  decoded, and the borrow is asserted in the counting allocator rather than
+  argued. A charset that broke it would need its own scan and its own line
+  splitter.
+- `decode` refuses and names the charset, the byte position, and the byte or
+  scalar found there, through `Error::Codec` - no new error variant, and the
+  charset's canonical name in `format`. `decode_lossy` is the separate
+  contract a capture of arbitrary wire bytes needs and never what a stored
+  column gets. There is no lossy *encode*: a scalar a charset cannot spell is
+  unrepresentable input, which fails.
+- Tables are generated from Python's codec registry by
+  `scripts/generate_charset_tables.py` and never edited by hand; a wrong scalar
+  is a silently corrupted column. `scripts/check_charset_interop.py` checks
+  every table against that registry in both directions, because a table wrong
+  both ways round trips perfectly.
+- A decode resumes only at a sequence boundary, which `Decoder::is_pending`
+  answers, and every charset here is stateless past one - so a byte offset is
+  the whole of what `Transcoded` needs to seek. A shift-state encoding would
+  have to carry that state into the resume index before it could be added.
+- A record capture keeps its arrival bytes: `media/text` decodes row-header
+  captures under `TextOptions::charset` and leaves `body` exactly as written.
+  Reading a whole resource in one charset is `Transcoded`, not a second option
+  on every reader.
+
 ## Structured codecs
 
 `docs/text/` documents the surface; these bind a change to `text/`.
@@ -758,10 +812,17 @@ Cost-model and allocation claims are assertions, not arguments - every derived
 cargo test --locked -p yggdryl --test iobase_calls --test allocations
 ```
 
+Generated tables are checked for drift rather than trusted:
+
+```bash
+python scripts/generate_charset_tables.py --check
+```
+
 Exchange formats, both directions, against outside implementations; a skipped
 half is a failure, not a pass:
 
 ```bash
+python scripts/check_charset_interop.py    # Python codecs, every code page
 python scripts/check_zip_interop.py       # Python zipfile
 python scripts/check_avro_interop.py      # fastavro, plus the apache-avro probe
 python scripts/check_object_interop.py        # MinIO + boto3
@@ -771,7 +832,7 @@ python scripts/check_iceberg_interop.py   # PyIceberg, v1/v2/v3 tables
 Benchmarks for every touched surface, release build, numbers regenerated:
 
 ```bash
-cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|media|holder|xxhash|expression|fix>
+cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|xxhash|expression|fix>
 ```
 
 # 3. Python

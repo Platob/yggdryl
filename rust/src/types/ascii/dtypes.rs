@@ -624,7 +624,11 @@ pub(crate) fn ascii_text_sized(width: Option<usize>, bytes: &[u8]) -> Result<&st
             format_smolstr!("a NUL byte at {position}"),
         ));
     }
-    if let Some(position) = text.iter().position(|byte| !byte.is_ascii()) {
+    // The byte class is one fact and [`crate::Charset`] owns it: this is that
+    // charset's own scan, which reads a machine word at a time, rather than a
+    // second one written here.
+    let position = crate::charset::ascii_len(text);
+    if position < text.len() {
         return Err(ascii_refusal(
             width,
             format_smolstr!("a non-ASCII byte 0x{:02X} at {position}", text[position]),

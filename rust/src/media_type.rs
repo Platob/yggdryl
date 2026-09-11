@@ -7,17 +7,25 @@ use serde::ser::SerializeStruct as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::MimeType;
-use crate::{Error, Result, stable_hash_display};
+use crate::{Charset, Error, Result, stable_hash_display};
 
-/// A base MIME type and the ordered transparent encodings applied to it.
+/// A base MIME type, the charset its bytes are in, and the ordered transparent
+/// encodings applied to it.
 ///
 /// Encoding order matches HTTP `Content-Encoding`: the first item was applied
 /// first and the final item is the outermost filename suffix. Clones share the
 /// encoding collection, while the empty/default value has no collection
 /// allocation.
+///
+/// The charset is the one a textual payload's bytes are written in, exactly as
+/// a `Content-Type` header's `charset` parameter declares it. It is absent
+/// unless something said otherwise, and an absent charset reads as
+/// [`Charset::Utf8`] - which is what [`Charset::from_media_type`] answers, and
+/// what [`crate::charset::Transcoded`] leaves alone.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct MediaType {
     base: MimeType,
+    charset: Option<Charset>,
     encodings: Option<Arc<Vec<MimeType>>>,
 }
 
@@ -26,6 +34,7 @@ impl MediaType {
     pub fn new(base: MimeType) -> Self {
         Self {
             base,
+            charset: None,
             encodings: None,
         }
     }
@@ -40,14 +49,17 @@ impl MediaType {
     {
         Ok(Self {
             base,
+            charset: None,
             encodings: validate_encodings(encodings)?,
         })
     }
 
     /// Parse a canonical media description, MIME name, or filename/path.
     ///
-    /// Encoded canonical display uses
-    /// `base/type;encodings=application/gzip,application/zstd`. Plain MIME
+    /// Canonical display uses
+    /// `base/type;charset=windows-1252;encodings=application/gzip,application/zstd`,
+    /// with each parameter present only where it was declared, and either
+    /// parameter accepted in either order on the way in. Plain MIME
     /// names construct an unencoded value. Other strings use compound filename
     /// inference and therefore default to `application/octet-stream` when no
     /// recognized base suffix exists.
@@ -103,6 +115,8 @@ impl MediaType {
 
         Self {
             base: base.unwrap_or_default(),
+            // A filename names a format and its codings, never a charset.
+            charset: None,
             encodings: encodings.filter(|values| !values.is_empty()).map(Arc::new),
         }
     }
@@ -151,8 +165,14 @@ impl MediaType {
             .map(MimeType::from_content_type)
             .transpose()?
             .unwrap_or_default();
+        // `MimeType` keeps no parameters, so the declared charset is read off
+        // the header here rather than dropped with the rest of them.
+        let charset = content_type
+            .map(Charset::from_content_type)
+            .transpose()?
+            .flatten();
         let Some(content_encoding) = content_encoding else {
-            return Ok(Self::new(base));
+            return Ok(with_charset(Self::new(base), charset));
         };
         if content_encoding.trim_matches([' ', '\t']).is_empty() {
             return Err(Error::Parse {
@@ -165,7 +185,7 @@ impl MediaType {
             .split(',')
             .map(MimeType::from_content_coding)
             .collect::<Result<Vec<_>>>()?;
-        Self::from_parts(base, encodings)
+        Ok(with_charset(Self::from_parts(base, encodings)?, charset))
     }
 
     /// Borrow the underlying, unencoded MIME type.
@@ -205,6 +225,44 @@ impl MediaType {
     /// Return whether at least one transparent encoding is present.
     pub const fn is_encoded(&self) -> bool {
         self.encodings.is_some()
+    }
+
+    /// Return the charset this media type declares, if it declares one.
+    ///
+    /// An absent charset is the media type saying nothing, not saying UTF-8.
+    /// [`Charset::from_media_type`] is where that absence becomes
+    /// [`Charset::Utf8`], so the two questions - what was declared, and what
+    /// will be decoded - keep one answer each.
+    pub const fn charset(&self) -> Option<Charset> {
+        self.charset
+    }
+
+    /// Return whether a charset is declared.
+    pub const fn is_charset_declared(&self) -> bool {
+        self.charset.is_some()
+    }
+
+    /// Declare, or clear, the charset this media type's bytes are in.
+    pub const fn set_charset(&mut self, charset: Option<Charset>) {
+        self.charset = charset;
+    }
+
+    /// Return this media type with a charset declared.
+    #[must_use]
+    pub const fn with_charset(mut self, charset: Charset) -> Self {
+        self.charset = Some(charset);
+        self
+    }
+
+    /// Return this media type with no charset declared.
+    ///
+    /// This is what a decoding seam reports: [`crate::charset::Transcoded`]
+    /// presents UTF-8, so the charset the wrapped handle declared is no longer
+    /// true of the bytes a caller reads.
+    #[must_use]
+    pub const fn without_charset(mut self) -> Self {
+        self.charset = None;
+        self
     }
 
     /// Return the final preferred filename extension.
@@ -374,50 +432,72 @@ impl FromStr for MediaType {
         let trimmed_start = value.trim_start_matches([' ', '\t']);
         let leading_offset = value.len() - trimmed_start.len();
         let value = trimmed_start.trim_end_matches([' ', '\t']);
-        if let Some((base, encoded_raw)) = value.split_once(';') {
-            let encoded_start = encoded_raw.trim_start_matches([' ', '\t']);
-            let encoded_offset =
-                leading_offset + base.len() + 1 + (encoded_raw.len() - encoded_start.len());
-            let encoded = encoded_start.trim_end_matches([' ', '\t']);
-            let Some((name, values)) = encoded.split_once('=') else {
-                return Err(media_parse_error(
-                    encoded_offset,
-                    "expected encodings= after media base",
-                ));
-            };
-            if !name
-                .trim_matches([' ', '\t'])
-                .eq_ignore_ascii_case("encodings")
-            {
-                return Err(media_parse_error(
-                    encoded_offset,
-                    "only the encodings media attribute is supported",
-                ));
-            }
-            let values_offset = encoded_offset + name.len() + 1;
-            if values.is_empty() {
-                return Err(media_parse_error(
-                    values_offset,
-                    "encodings list must not be empty",
-                ));
-            }
+        if let Some((base, parameters)) = value.split_once(';') {
             let base = MimeType::from_str(base.trim_matches([' ', '\t']))
                 .map_err(|error| shift_parse_error(error, leading_offset))?;
+            let mut cursor = leading_offset + value.len() - parameters.len();
+            let mut charset = None;
             let mut encodings = Vec::new();
-            let mut token_offset = 0;
-            for token in values.split(',') {
-                let encoding = MimeType::from_str(token)
-                    .map_err(|error| shift_parse_error(error, values_offset + token_offset))?;
-                if !encoding.is_encoding() {
+            // Parameters are `;`-separated, and an encodings list separates its
+            // own members with `,`, so neither delimiter can be mistaken for
+            // the other and the two parameters may appear in either order.
+            for raw in parameters.split(';') {
+                let start = raw.trim_start_matches([' ', '\t']);
+                let offset = cursor + (raw.len() - start.len());
+                cursor += raw.len() + 1;
+                let parameter = start.trim_end_matches([' ', '\t']);
+                let Some((name, values)) = parameter.split_once('=') else {
                     return Err(media_parse_error(
-                        values_offset + token_offset,
-                        "expected a MIME type whose is_encoding predicate is true",
+                        offset,
+                        "expected charset= or encodings= after media base",
+                    ));
+                };
+                let name = name.trim_matches([' ', '\t']);
+                let values_offset = offset + parameter.len() - values.len();
+                if name.eq_ignore_ascii_case(Charset::PARAMETER) {
+                    if charset.is_some() {
+                        return Err(media_parse_error(offset, "duplicate charset attribute"));
+                    }
+                    charset = Some(
+                        Charset::from_str(values)
+                            .map_err(|error| shift_parse_error(error, values_offset))?,
+                    );
+                    continue;
+                }
+                if !name.eq_ignore_ascii_case("encodings") {
+                    return Err(media_parse_error(
+                        offset,
+                        "only the charset and encodings media attributes are supported",
                     ));
                 }
-                encodings.push(encoding);
-                token_offset += token.len() + 1;
+                if !encodings.is_empty() {
+                    return Err(media_parse_error(offset, "duplicate encodings attribute"));
+                }
+                if values.is_empty() {
+                    return Err(media_parse_error(
+                        values_offset,
+                        "encodings list must not be empty",
+                    ));
+                }
+                let mut token_offset = 0;
+                for token in values.split(',') {
+                    let encoding = MimeType::from_str(token)
+                        .map_err(|error| shift_parse_error(error, values_offset + token_offset))?;
+                    if !encoding.is_encoding() {
+                        return Err(media_parse_error(
+                            values_offset + token_offset,
+                            "expected a MIME type whose is_encoding predicate is true",
+                        ));
+                    }
+                    encodings.push(encoding);
+                    token_offset += token.len() + 1;
+                }
             }
-            return Self::from_parts(base, encodings);
+            let parsed = Self::from_parts(base, encodings)?;
+            return Ok(match charset {
+                Some(charset) => parsed.with_charset(charset),
+                None => parsed,
+            });
         }
 
         let mime = MimeType::from_str(value);
@@ -435,6 +515,10 @@ impl FromStr for MediaType {
 impl fmt::Display for MediaType {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.base.fmt(formatter)?;
+        if let Some(charset) = self.charset {
+            formatter.write_str(";charset=")?;
+            formatter.write_str(charset.as_str())?;
+        }
         if self.is_encoded() {
             formatter.write_str(";encodings=")?;
             for (index, encoding) in self.encodings().iter().enumerate() {
@@ -453,8 +537,15 @@ impl Serialize for MediaType {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("MediaType", 2)?;
+        // The charset is written only where one was declared: an absent
+        // charset is the media type saying nothing, and a `null` in the
+        // structure would be a third state that means the same as its absence.
+        let declared = usize::from(self.charset.is_some());
+        let mut state = serializer.serialize_struct("MediaType", 2 + declared)?;
         state.serialize_field("base", &self.base)?;
+        if let Some(charset) = self.charset {
+            state.serialize_field("charset", &charset)?;
+        }
         state.serialize_field("encodings", self.encodings())?;
         state.end()
     }
@@ -469,11 +560,18 @@ impl<'de> Deserialize<'de> for MediaType {
         struct Representation {
             base: MimeType,
             #[serde(default)]
+            charset: Option<Charset>,
+            #[serde(default)]
             encodings: Vec<MimeType>,
         }
 
         let value = Representation::deserialize(deserializer)?;
-        Self::from_parts(value.base, value.encodings).map_err(serde::de::Error::custom)
+        let media_type =
+            Self::from_parts(value.base, value.encodings).map_err(serde::de::Error::custom)?;
+        Ok(match value.charset {
+            Some(charset) => media_type.with_charset(charset),
+            None => media_type,
+        })
     }
 }
 
@@ -483,6 +581,14 @@ impl<'a> IntoIterator for &'a MediaType {
 
     fn into_iter(self) -> Self::IntoIter {
         self.encodings().iter()
+    }
+}
+
+/// Apply a charset only where one was declared.
+fn with_charset(media_type: MediaType, charset: Option<Charset>) -> MediaType {
+    match charset {
+        Some(charset) => media_type.with_charset(charset),
+        None => media_type,
     }
 }
 

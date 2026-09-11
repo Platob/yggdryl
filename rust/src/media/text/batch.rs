@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, format_smolstr};
 
 use crate::arrow::BatchReader;
 use crate::media::IORecordOptions as _;
@@ -169,16 +169,16 @@ fn capture_value(
         return Ok(Scalar::Null);
     };
     let name = options.capture_names().nth(index).unwrap_or_default();
-    let Some(text) = raw.as_str() else {
-        return Err(super::arrow::row_error(
+    let text = raw.decode(options.charset()).map_err(|error| {
+        super::arrow::row_error(
             line.index(),
             None,
             line.url(),
             name,
-            SmolStr::new_static("expected a UTF-8 row-header capture, got invalid bytes"),
-        ));
-    };
-    super::arrow::parse_capture(text, dtype, options.timezone())
+            format_smolstr!("{error}"),
+        )
+    })?;
+    super::arrow::parse_capture(&text, dtype, options.timezone())
         .map_err(|reason| super::arrow::row_error(line.index(), None, line.url(), name, reason))
 }
 

@@ -588,6 +588,13 @@ fn typed_http_media_preserves_raw_parameters_and_encoding_order() {
     let media = field.as_http().media_type().unwrap();
     assert_eq!(media.base(), &MimeType::JSON);
     assert_eq!(media.encodings(), &[MimeType::GZIP, MimeType::BROTLI]);
+    // The charset the header declared rides on the media type rather than
+    // being dropped with the rest of the parameters.
+    assert_eq!(media.charset(), Some(yggdryl::Charset::Utf8));
+    assert_eq!(
+        field.as_http().charset().unwrap(),
+        Some(yggdryl::Charset::Utf8)
+    );
     assert_eq!(
         Field::new("empty", DataType::Binary, true)
             .as_http()

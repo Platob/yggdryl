@@ -79,6 +79,18 @@ fn dropped(batches: &[arrow_array::RecordBatch]) -> Vec<Option<u64>> {
         .collect()
 }
 
+fn collect_err(source: &impl crate::IOBase, options: TextOptions) -> String {
+    source
+        .read_arrow_reader(&options.into())
+        .and_then(|reader| {
+            reader
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(crate::Error::from)
+        })
+        .expect_err("expected the read to be refused")
+        .to_string()
+}
+
 fn strings(batches: &[arrow_array::RecordBatch], name: &str) -> Vec<Option<String>> {
     batches
         .iter()
@@ -497,8 +509,30 @@ fn an_invalid_next_header_follows_the_completed_record_batch_prefix() {
     let prefix = reader.next().unwrap().unwrap();
     assert_eq!(bodies(&[prefix]), [b"first".to_vec()]);
     let error = reader.next().unwrap().unwrap_err().to_string();
-    assert!(error.contains("UTF-8 row-header capture"), "{error}");
+    // The refusal names the charset the capture was read in and the byte that
+    // is not in it, rather than only that the bytes were not UTF-8.
+    assert!(error.contains("invalid utf-8 data"), "{error}");
+    assert!(error.contains("0xff"), "{error}");
     assert!(reader.next().is_none());
+}
+
+#[test]
+fn a_declared_charset_reads_a_capture_the_default_one_refuses() {
+    let source = named("cp1252.log", b"\xe9 first\nA second\n");
+    let refused = collect_err(&source, framed(r"^(?<kind>(?-u:.)) "));
+    assert!(refused.contains("invalid utf-8 data"), "{refused}");
+
+    // The same bytes under the charset they were written in are a capture,
+    // and the body stays the arrival bytes either way.
+    let batches = collect(
+        &source,
+        framed(r"^(?<kind>(?-u:.)) ").with_charset(crate::Charset::Cp1252),
+    );
+    assert_eq!(
+        strings(&batches, "kind"),
+        [Some("\u{00e9}".to_owned()), Some("A".to_owned())]
+    );
+    assert_eq!(bodies(&batches), [b"first".to_vec(), b"second".to_vec()]);
 }
 
 #[test]

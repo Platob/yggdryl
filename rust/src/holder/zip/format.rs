@@ -10,7 +10,7 @@
 
 use smol_str::format_smolstr;
 
-use crate::{Codec, Error, Restarts, Result};
+use crate::{Charset, Codec, Error, Restarts, Result};
 
 use super::Entry;
 
@@ -566,31 +566,12 @@ pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<Entry> {
 /// name is always readable, and one member named in a code page never costs
 /// the archive around it.
 fn decode_text(bytes: &[u8], _offset: usize, _field: &str) -> smol_str::SmolStr {
-    match std::str::from_utf8(bytes) {
+    match Charset::Utf8.decode(bytes) {
         Ok(text) => smol_str::SmolStr::new(text),
-        Err(_) => bytes.iter().map(|byte| cp437(*byte)).collect(),
+        // IBM 437 assigns all 256 bytes, so the lossy door replaces nothing
+        // here; it is the spelling that says so without an unreachable arm.
+        Err(_) => smol_str::SmolStr::new(Charset::Cp437.decode_lossy(bytes)),
     }
-}
-
-/// The character IBM code page 437 gives one byte.
-///
-/// The lower half is ASCII; the upper half is the page's own, which is what
-/// an archive written before general purpose bit 11 existed spells names in.
-fn cp437(byte: u8) -> char {
-    const UPPER: [char; 128] = [
-        'Ç', 'ü', 'é', 'â', 'ä', 'à', 'å', 'ç', 'ê', 'ë', 'è', 'ï', 'î', 'ì', 'Ä', 'Å', 'É', 'æ',
-        'Æ', 'ô', 'ö', 'ò', 'û', 'ù', 'ÿ', 'Ö', 'Ü', '¢', '£', '¥', '₧', 'ƒ', 'á', 'í', 'ó', 'ú',
-        'ñ', 'Ñ', 'ª', 'º', '¿', '⌐', '¬', '½', '¼', '¡', '«', '»', '░', '▒', '▓', '│', '┤', '╡',
-        '╢', '╖', '╕', '╣', '║', '╗', '╝', '╜', '╛', '┐', '└', '┴', '┬', '├', '─', '┼', '╞', '╟',
-        '╚', '╔', '╩', '╦', '╠', '═', '╬', '╧', '╨', '╤', '╥', '╙', '╘', '╒', '╓', '╫', '╪', '┘',
-        '┌', '█', '▄', '▌', '▐', '▀', 'α', 'ß', 'Γ', 'π', 'Σ', 'σ', 'µ', 'τ', 'Φ', 'Θ', 'Ω', 'δ',
-        '∞', 'φ', 'ε', '∩', '≡', '±', '≥', '≤', '⌠', '⌡', '÷', '≈', '°', '∙', '·', '√', 'ⁿ', '²',
-        '■', '\u{a0}',
-    ];
-    if byte.is_ascii() {
-        return char::from(byte);
-    }
-    UPPER[usize::from(byte) - 128]
 }
 
 /// Encode one central directory record.

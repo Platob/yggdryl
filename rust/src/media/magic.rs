@@ -9,7 +9,7 @@
 //! in application order through [`MediaType`], so one call recovers the whole
 //! stack a reader must unwrap.
 
-use crate::{MediaType, MimeType};
+use crate::{Charset, MediaType, MimeType};
 
 /// Bytes that must be inspected to identify every supported signature.
 ///
@@ -194,19 +194,17 @@ impl MimeType {
     /// non-whitespace bytes cannot plausibly belong to another text format.
     /// Returns `None` when the payload is not valid UTF-8 or is ambiguous.
     pub fn from_text_bytes(input: &[u8]) -> Option<Self> {
-        let probe = &input[..input.len().min(MAGIC_PROBE_LEN)];
-        // A BOM or invalid UTF-8 prefix means this is not text worth sniffing.
-        let text = std::str::from_utf8(probe)
-            .ok()
-            .or_else(|| {
-                // A truncated probe may split a character; retry on the valid prefix.
-                std::str::from_utf8(probe)
-                    .err()
-                    .map(|error| error.valid_up_to())
-                    .and_then(|valid| std::str::from_utf8(&probe[..valid]).ok())
-            })?
-            .trim_start_matches('\u{feff}')
-            .trim_start();
+        // A byte-order mark names the encoding of what follows it, and is
+        // framing rather than content, so it is taken off before the sniff.
+        // Without one the probe is read as UTF-8, which every ASCII-compatible
+        // charset agrees with over the handful of bytes a sniff looks at.
+        let (charset, mark) = Charset::from_bom(input).unwrap_or((Charset::Utf8, 0));
+        let probe = input.get(mark..)?;
+        let probe = &probe[..probe.len().min(MAGIC_PROBE_LEN)];
+        // A probe cut mid-sequence is read up to the cut rather than refused:
+        // what is being looked for is the first scalar, not a whole document.
+        let decoded = charset.decode_lossy(probe);
+        let text = decoded.trim_start();
 
         let first = text.as_bytes().first()?;
         match first {

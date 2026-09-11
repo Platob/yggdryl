@@ -13,6 +13,7 @@
 #[cfg(feature = "arrow")]
 pub mod arrow;
 mod bytestream;
+pub mod charset;
 mod codec;
 pub mod coding;
 mod datatype_id;
@@ -60,6 +61,7 @@ pub mod xxhash;
 #[cfg(feature = "arrow")]
 pub use arrow::{ArrowShape, ArrowValue};
 pub use bytestream::ByteStream;
+pub use charset::Charset;
 pub use codec::{Codec, Encoder, Level, RestartScan, Restarts};
 pub use datatype_id::DataTypeId;
 pub use datatype_kind::DataTypeKind;

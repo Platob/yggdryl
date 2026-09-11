@@ -1,6 +1,6 @@
 # Architecture
 
-Shared vocabulary lives in root files; implementations live in eleven layer folders. Rust is the source of truth, and Python and JavaScript are native views of the same contracts.
+Shared vocabulary lives in root files; implementations live in twelve layer folders. Rust is the source of truth, and Python and JavaScript are native views of the same contracts.
 
 ```text
 root traits, enums, and values
@@ -10,6 +10,8 @@ root traits, enums, and values
         │      └── expression ──┤
         │                       ▼
         ├── holder ◄── coding ◄── media
+        │      ▲
+        │   charset ── decoded bytes for media and text
         │                         │
         ├── uri ──────────────────┘
         ├── text
@@ -27,6 +29,7 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, or value (`iobase.rs` own
 | [`types`](types/index.md) | `DataType`, `Field`, `Scalar`, the datatype families, protocol views, validation, and casting |
 | [`holder`](holder/index.md) | `Buffer`, local and generic filesystem handles, buffering, and every `IOBase` implementation |
 | [`coding`](coding/index.md) | gzip, zlib/deflate, zstd, and transparent coded handles |
+| [`charset`](charset/index.md) | UTF-8, UTF-16, US-ASCII, the ISO 8859 and Windows code pages, and transparent transcoded handles |
 | [`media`](media/index.md) | record options, IPC, Parquet, Avro, plain-text records, and Iceberg |
 | [`text`](text/index.md) | structured `Scalar` codecs for JSON, YAML, and TOML |
 | [`uri`](uri/index.md) | URI, URL, URN, path, glob, and partition syntax |

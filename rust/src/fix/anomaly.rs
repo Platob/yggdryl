@@ -18,10 +18,8 @@ use super::entry::FixEntry;
 use super::group_plan::GroupPlan;
 use super::msg::FixMsg;
 use super::{FixId, MsgType};
+use crate::charset::REPLACEMENT;
 use crate::{DataType, Field, Scalar};
-
-/// The replacement character a lossy decode leaves behind.
-const REPLACEMENT: char = '\u{FFFD}';
 
 /// One disagreement between what arrived and what the row made of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

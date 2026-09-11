@@ -178,6 +178,8 @@ test('MediaType consumes iterables once and exposes detached snapshots', () => {
     [...headers].map((value) => value.toString()),
     ['application/gzip', 'application/x-brotli', 'application/x-compress'],
   )
+  assert.equal(headers.charset, 'utf-8')
+  assert.equal(MediaType.fromString('text/csv').charset, null)
   assert.ok(new MediaType().base.equals(MimeType.OCTET_STREAM))
   assert.ok(MediaType.fromPath('events.json.gz').encoding.equals(MimeType.GZIP))
   assert.ok(MediaType.fromFileName('events.csv.zst').base.equals(MimeType.CSV))
