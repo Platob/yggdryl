@@ -339,6 +339,38 @@ native Version example corpus.
 
 ## Performance
 
+### Allocations per row
+
+A string value is a `SmolStr`, which holds its first twenty-three bytes inline
+and shares an `Arc<str>` above them. That threshold is the whole allocation
+story: below it a cell is free to build and free to clone, above it it is one
+shared handle and one copy. These counts are measured with the counting
+allocator over a thousand-row column and asserted in
+`rust/tests/allocations.rs`, not timed - a count is the same on every machine,
+and a timing is not.
+
+| path | cell ≤ 23 bytes | cell > 23 bytes |
+| --- | ---: | ---: |
+| `utf8` build | one buffer per column | one buffer per column |
+| `utf8` read | 0 | 1 |
+| `string(windows-1252)` build | one buffer per column | one buffer per column |
+| `string(windows-1252)` read, all-ASCII cell | 0 | 1 |
+| `string(windows-1252)` read, transcoded cell | 0 | 2 |
+
+A column's build cost is its buffers and not its rows: the payload is measured
+with [`Charset::encoded_len`](../charset/index.md) before a byte of it is
+built, so the count is equal at sixteen rows and at sixteen thousand. The
+`read` row above 23 bytes is one `Arc<str>` per cell out of a buffer Arrow
+already shares; removing it needs a storage handle that does not fit
+[`Scalar`](scalar.md)'s pinned forty-eight bytes, so it is recorded rather
+than spent.
+
+A transcoded cell over 23 bytes costs two because the text is built once and
+copied once into the shared handle, and `String` and `Arc<str>` have different
+layouts, so no conversion between them is free.
+
+### Timings
+
 AMD Ryzen 5 150, 12 logical CPUs, Windows; Rust 1.96, Python 3.12.13 and Node
 24.18, release builds. Rust reports Criterion point estimates; Python reports
 the median of five runs of 10,000 iterations; Node reports throughput over
