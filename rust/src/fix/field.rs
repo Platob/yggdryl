@@ -109,10 +109,11 @@ impl<'field> FixField<'field> {
     }
 
     /// Whether `dialect` is one of the dictionaries that contributed this
-    /// field, ASCII case folded.
+    /// field, under the crate's one fold - the fold the list is deduplicated
+    /// by, so a spelling that would have folded into a listed name is a
+    /// member.
     pub fn has_branch(&self, dialect: &str) -> bool {
-        self.branches()
-            .any(|held| held.eq_ignore_ascii_case(dialect))
+        self.branches().any(|held| folds_equal(held, dialect))
     }
 
     /// Builds this field's identity, absent exactly when `fix:tag` is.

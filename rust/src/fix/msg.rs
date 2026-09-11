@@ -890,8 +890,15 @@ impl FixMsg {
 
     /// The root child carrying one tag, by that child's own declaration.
     pub(super) fn index_of_tag(&self, tag: i32) -> Option<usize> {
-        let found = self.tags.binary_search_by_key(&tag, |(held, _)| *held);
-        found.ok().map(|at| self.tags[at].1)
+        // The first child carrying the tag, in the row's own order: a row
+        // may hold two children on one tag where the dictionary holds two
+        // fields on it, and the index is sorted by tag then position, so the
+        // partition point is the earliest.
+        let at = self.tags.partition_point(|(held, _)| *held < tag);
+        self.tags
+            .get(at)
+            .filter(|(held, _)| *held == tag)
+            .map(|(_, index)| *index)
     }
 
     pub(super) fn index_of_group(&self, counter: i32) -> Option<usize> {

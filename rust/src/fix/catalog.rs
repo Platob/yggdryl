@@ -575,7 +575,7 @@ impl FixRegistry {
     /// Resolves a category name, reporting absence with its category.
     pub fn definition(&self, category: FixCategory, name: &str) -> Result<&Field> {
         self.get_definition(category, name)
-            .ok_or_else(|| Error::absent(category.as_str(), format_args!("{name:?}")))
+            .ok_or_else(|| Error::absent(category.as_str(), name))
     }
 
     /// Iterates one category deterministically without collecting definitions.
@@ -699,9 +699,11 @@ impl FixRegistry {
             self.get_definition(category, field.name()).is_some()
         };
         if existing {
+            // Read through the template: "expected to create a free FIX
+            // definition name at ..., got an existing FIX definition".
             return Err(Error::conflict(
-                "absent FIX definition",
-                "existing FIX definition",
+                "free FIX definition name",
+                "FIX definition",
                 field.name(),
             ));
         }

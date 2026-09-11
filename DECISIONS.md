@@ -584,9 +584,11 @@ and `tier` go, `RowTier` is the declared message alone, and `RowExtras`,
 `RowStamp`, `Builder` and `FixMsg` lose their branch member. A row's
 `pluginid` capture fills the crate's `pluginid` field and selects nothing.
 A dialect's default FIX version loses its home with the branch: the
-version a row reads at is `ApplVerID`, then `BeginString`, then the
-`FixCodec::with_version` pin, then the registry's newest, and a CBlock file
-that declared one is read under the pin the caller states.
+version a row reads at is the row's own `beginstring` capture or column,
+else the `FixCodec::with_version` pin, else what the line states -
+`ApplVerID`, then `BeginString` - else the registry's newest, exactly as
+before with the dialect's default step taken out; a CBlock file that
+declared one is read under the pin the caller states.
 
 **Crate fields as tuples.** Every field this crate defines is declared once
 as a `(tag, name)` pair - `PLUGINID_TAG_NAME`, `TIMESTAMP_TAG_NAME`,
