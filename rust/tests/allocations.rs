@@ -1919,3 +1919,80 @@ fn a_transcode_pays_for_the_text_it_builds() {
     );
     assert_eq!(decoded, "symbol,désk\nAAPL,€1\n");
 }
+
+/// One column of `n` values of `width` bytes, every one of them US-ASCII.
+fn ascii_cells(count: usize, width: usize) -> Scalar {
+    Scalar::from_sequence((0..count).map(|index| Scalar::from(format!("{index:0width$}"))))
+}
+
+#[test]
+fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
+    // The write path measures the whole payload with `Charset::encoded_len`
+    // before it builds a byte of it, so the cost of a column is the buffers it
+    // publishes and nothing per row. Before that it encoded each cell into its
+    // own `Vec<u8>` - even for an all-ASCII cell, where the encode borrows -
+    // and the count grew with the row count.
+    for dtype in [
+        DataType::from_str("string(windows-1252)").expect("a charset string"),
+        DataType::from_str("large_string(windows-1252)").expect("a charset string"),
+        DataType::Utf8,
+    ] {
+        let field = dtype.clone().nullable_field("value");
+        let mut counts = Vec::new();
+        for rows in [16_usize, 1_024, 16_384] {
+            let column = ascii_cells(rows, 32);
+            let (allocations, _) = counted(|| {
+                yggdryl::arrow::array_from_value(black_box(&field), black_box(&column))
+                    .expect("a string column")
+            });
+            counts.push(allocations);
+        }
+        assert!(
+            counts.windows(2).all(|pair| pair[0] == pair[1]),
+            "{dtype} built {counts:?} allocations at 16, 1024 and 16384 rows; \
+             a column's cost must not grow with its rows"
+        );
+    }
+}
+
+#[test]
+fn an_ascii_payload_in_a_declared_charset_column_transcribes_by_borrowing() {
+    // Every charset with a byte to transcribe is still ASCII-compatible, so an
+    // all-ASCII payload is already its own answer. `decode`, `decode_lossy`
+    // and `encode` all take this borrow at their first line; `transcribe` used
+    // to be the one door that did not, and allocated for text it never touched.
+    free("transcribing an all-ASCII payload", || {
+        black_box(Charset::Cp1252.transcribe(black_box(b"symbol,price")));
+    });
+    free(
+        "transcribing a short all-ASCII payload into compact storage",
+        || {
+            black_box(Charset::Cp1252.transcribe_smol(black_box(b"AAPL")));
+        },
+    );
+}
+
+#[test]
+fn a_short_transcoded_cell_fits_the_inline_buffer() {
+    // A payload that transcribes to twenty-three bytes or fewer is the case
+    // compact storage exists for, and it reaches the heap only if something
+    // built an intermediate first. `0x81` is unassigned in windows-1252 and
+    // reads as its ISO 8859-1 scalar, so this is the transcoding path.
+    free("transcribing a short cell into compact storage", || {
+        black_box(Charset::Cp1252.transcribe_smol(black_box(b"ok\x81 caf\xe9")));
+    });
+}
+
+#[test]
+fn a_long_transcoded_cell_costs_its_buffer_and_its_handle() {
+    // Above the inline buffer there is no saving to claim: the text is built
+    // once into a sized buffer and copied once into the shared handle, and
+    // `String` and `Arc<str>` have different layouts, so no conversion between
+    // them is free. Two is the floor, and this pins it as the floor rather
+    // than leaving a later change room to quietly reach three.
+    let mut wire = b"caf\xe9 ".repeat(12);
+    wire.truncate(60);
+    costs("transcribing a long cell into compact storage", 2, || {
+        black_box(Charset::Cp1252.transcribe_smol(black_box(wire.as_slice())));
+    });
+}

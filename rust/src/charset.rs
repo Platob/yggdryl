@@ -65,6 +65,14 @@ pub use transcoded::Transcoded;
 pub use writer::Writer;
 
 pub(crate) use ascii::ascii_len;
+use ascii::text;
+
+/// How many bytes `SmolStr` holds without reaching the heap.
+///
+/// Pinned rather than imported: `smol_str` does not export it, and a value at
+/// or under this width is the case [`Charset::transcribe_smol`] exists to keep
+/// free. The test beside it fails if the dependency ever moves it.
+const INLINE_CAPACITY: usize = 23;
 use single_byte::SingleByte;
 
 use crate::{Error, MediaType, Result, Url};
@@ -483,6 +491,17 @@ impl Charset {
             _ => match self.table() {
                 Some(table) if table.is_complete() => self.decode_lossy(input),
                 Some(table) => {
+                    // The three incomplete tables are the only charsets with a
+                    // byte to transcribe, and they are still ASCII-compatible,
+                    // so an all-ASCII payload is already its own answer. This
+                    // is the borrow `decode`, `decode_lossy` and `encode` all
+                    // take at their first line; without it this door was the
+                    // one that allocated for text it did not have to touch.
+                    if let Ok(borrowed) = text(input) {
+                        if ascii_len(input) == input.len() {
+                            return Cow::Borrowed(borrowed);
+                        }
+                    }
                     let mut target = String::new();
                     match table.transcribe_into(input, &mut target) {
                         Ok(()) => Cow::Owned(target),
@@ -490,6 +509,92 @@ impl Charset {
                     }
                 }
                 None => self.decode_lossy(input),
+            },
+        }
+    }
+
+    /// Transcribe a complete buffer into compact string storage.
+    ///
+    /// The same reading as [`Charset::transcribe`], written into the storage
+    /// every text value in this crate holds. A payload that transcribes to
+    /// twenty-three bytes or fewer never reaches the heap at all, where
+    /// `SmolStr::new(charset.transcribe(..))` would build a `String` first and
+    /// copy out of it.
+    ///
+    /// Above that width there is no saving to claim and none is claimed: the
+    /// builder spills to a `String` and `finish` allocates the `Arc<str>` it
+    /// hands back, which is the same two allocations, because `String` and
+    /// `Arc<str>` have different layouts and no conversion between them is
+    /// free.
+    ///
+    /// ```
+    /// use yggdryl::Charset;
+    ///
+    /// // `0x81` is unassigned in windows-1252 and reads as its ISO 8859-1
+    /// // scalar, exactly as `transcribe` answers it.
+    /// assert_eq!(Charset::Cp1252.transcribe_smol(b"ok\x81"), "ok\u{0081}");
+    /// assert_eq!(Charset::Cp1252.transcribe_smol(b"caf\xe9"), "café");
+    /// ```
+    #[must_use]
+    pub fn transcribe_smol(self, input: &[u8]) -> smol_str::SmolStr {
+        // A borrow means the answer is the input, and `SmolStr` copies a short
+        // one inline; only an owned answer had an intermediate worth avoiding.
+        match self.transcribe_borrowed(input) {
+            Some(borrowed) => smol_str::SmolStr::new(borrowed),
+            // A transcription never shrinks - every byte answers at least one
+            // UTF-8 byte - so an input past the inline buffer is an answer
+            // past it too, and the builder would only spill to a `String` it
+            // could not have reserved. That case takes the sized `String`
+            // directly: one buffer and one handle, which is the floor, since
+            // `String` and `Arc<str>` have different layouts.
+            None if input.len() > INLINE_CAPACITY => {
+                let mut target = String::new();
+                match self.transcribe_sink(input, &mut target) {
+                    Ok(()) => smol_str::SmolStr::new(target),
+                    Err(_) => smol_str::SmolStr::new(self.decode_lossy(input)),
+                }
+            }
+            None => {
+                let mut target = smol_str::SmolStrBuilder::new();
+                match self.transcribe_sink(input, &mut target) {
+                    Ok(()) => target.finish(),
+                    Err(_) => smol_str::SmolStr::new(self.decode_lossy(input)),
+                }
+            }
+        }
+    }
+
+    /// The transcription that is the input itself, when it is.
+    fn transcribe_borrowed(self, input: &[u8]) -> Option<&str> {
+        match self {
+            Self::Utf16Le | Self::Utf16Be => None,
+            Self::Utf8 => unicode::utf8_decode(input)
+                .ok()
+                .and_then(|text| match text {
+                    Cow::Borrowed(text) => Some(text),
+                    Cow::Owned(_) => None,
+                }),
+            // Every other charset here agrees with US-ASCII below `0x80`.
+            _ => (ascii_len(input) == input.len())
+                .then(|| text(input).ok())
+                .flatten(),
+        }
+    }
+
+    /// The one transcription body, written against whichever target a caller
+    /// brought.
+    fn transcribe_sink(self, input: &[u8], target: &mut impl sink::Utf8Sink) -> Result<()> {
+        match self {
+            Self::Utf8 => match unicode::utf8_decode(input) {
+                Ok(_) => unicode::utf8_decode_into::<false>(input, target),
+                Err(_) => Self::Latin1.decode_sink::<true>(input, target),
+            },
+            Self::Utf16Le | Self::Utf16Be => self.decode_sink::<true>(input, target),
+            Self::Ascii => Self::Latin1.decode_sink::<true>(input, target),
+            _ => match self.table() {
+                Some(table) if table.is_complete() => self.decode_sink::<true>(input, target),
+                Some(table) => table.transcribe_sink(input, target),
+                None => self.decode_sink::<true>(input, target),
             },
         }
     }

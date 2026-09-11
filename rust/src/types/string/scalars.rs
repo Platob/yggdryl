@@ -93,7 +93,7 @@ macro_rules! string_leaf {
             /// payload already US-ASCII costs a borrow, not a transcode.
             pub fn from_bytes(value: &[u8], charset: Charset) -> Self {
                 Self {
-                    text: SmolStr::new(charset.transcribe(value)),
+                    text: charset.transcribe_smol(value),
                     charset: stored_charset(charset),
                 }
             }
@@ -254,7 +254,7 @@ impl FixedUtf8 {
         let width = u32::try_from(value.len()).unwrap_or(u32::MAX);
         let trimmed = trim_padding(value);
         Self {
-            text: SmolStr::new(charset.transcribe(trimmed)),
+            text: charset.transcribe_smol(trimmed),
             charset: stored_charset(charset),
             width: width.max(1),
         }

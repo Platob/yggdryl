@@ -1,4 +1,4 @@
-//! The two targets a decode appends UTF-8 to.
+//! The three targets a decode appends UTF-8 to.
 
 use crate::Result;
 
@@ -8,7 +8,7 @@ use crate::Result;
 /// bytes that is already UTF-8 because it is US-ASCII, and one scalar a table
 /// or a sequence answered. A [`String`] wants that scalar and a byte target
 /// wants its pre-encoded bytes, and both want the run copied whole, so each
-/// codec is written once against this pair and each target spells the two
+/// codec is written once against this trait and each target spells the two
 /// operations the cheapest way its representation allows.
 pub(super) trait Utf8Sink {
     /// Append a run of bytes the caller proved to be UTF-8 already.
@@ -53,5 +53,22 @@ impl Utf8Sink for Vec<u8> {
 
     fn reserve(&mut self, additional: usize) {
         Self::reserve(self, additional);
+    }
+}
+
+impl Utf8Sink for smol_str::SmolStrBuilder {
+    fn push_utf8(&mut self, run: &[u8]) -> Result<()> {
+        self.push_str(super::ascii::text(run)?);
+        Ok(())
+    }
+
+    fn push_scalar(&mut self, scalar: char, _encoded: &[u8]) {
+        self.push(scalar);
+    }
+
+    fn reserve(&mut self, _additional: usize) {
+        // The builder holds its first twenty-three bytes inline and spills to
+        // a `String` past them, so there is no capacity to ask for: reserving
+        // would force the spill this target exists to avoid.
     }
 }

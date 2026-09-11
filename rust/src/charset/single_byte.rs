@@ -156,6 +156,25 @@ impl SingleByte {
 }
 
 impl SingleByte {
+    /// How many UTF-8 bytes [`Self::transcribe_sink`] answers for `input`.
+    ///
+    /// An unassigned byte reads as its ISO 8859-1 scalar, which is two UTF-8
+    /// bytes for every one of them: they are all C1 controls in `0x80..=0x9F`.
+    fn transcribed_len(&self, input: &[u8]) -> usize {
+        let leading = ascii_len(input);
+        let mut length = leading;
+        for byte in &input[leading..] {
+            let Some(slot) = usize::from(*byte).checked_sub(0x80) else {
+                length += 1;
+                continue;
+            };
+            length += match self.widths[slot] {
+                0 => 2,
+                width => usize::from(width),
+            };
+        }
+        length
+    }
     /// Whether this charset assigns all 256 bytes.
     ///
     /// A complete charset has nothing to transcribe: every byte already reads
@@ -172,7 +191,16 @@ impl SingleByte {
     /// of those bytes is a C1 control in ISO 8859-1 - which is exactly what
     /// the WHATWG Encoding Standard's own index maps them to.
     pub(super) fn transcribe_into(&self, input: &[u8], target: &mut String) -> Result<()> {
-        target.reserve(input.len());
+        self.transcribe_sink(input, target)
+    }
+
+    /// [`Self::transcribe_into`] over whichever target a caller brought.
+    pub(super) fn transcribe_sink(&self, input: &[u8], target: &mut impl Utf8Sink) -> Result<()> {
+        // A high byte answers up to three UTF-8 bytes, so the input length is
+        // a floor rather than a size: reserving it leaves a target that grows
+        // to fit, which is the one reallocation this door exists to avoid.
+        // The exact answer costs one scan of the bytes above US-ASCII.
+        target.reserve(self.transcribed_len(input));
         let mut index = 0;
         while index < input.len() {
             let run = ascii_len(&input[index..]);
@@ -185,10 +213,14 @@ impl SingleByte {
             let slot = usize::from(byte) - 0x80;
             if usize::from(self.widths[slot]) == 0 {
                 // ISO 8859-1 maps `0x80..=0xFF` onto `U+0080..=U+00FF`, so
-                // the scalar is the byte and needs no table to find.
-                target.push(char::from(byte));
+                // the scalar is the byte and needs no table to find. Its two
+                // UTF-8 bytes are `0xC2`/`0xC3` then the low six bits.
+                let scalar = char::from(byte);
+                let mut encoded = [0_u8; 2];
+                target.push_scalar(scalar, scalar.encode_utf8(&mut encoded).as_bytes());
             } else {
-                target.push(self.scalars[slot]);
+                let width = usize::from(self.widths[slot]);
+                target.push_scalar(self.scalars[slot], &self.encoded[slot][..width]);
             }
             index += 1;
         }

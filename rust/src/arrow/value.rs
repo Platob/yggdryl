@@ -14,6 +14,7 @@ use crate::types::{
     code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
+use arrow_array::builder::{LargeStringBuilder, StringBuilder, StringViewBuilder};
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
@@ -22,14 +23,14 @@ use arrow_array::{
     Decimal32Array, Decimal64Array, Decimal128Array, Decimal256Array, DictionaryArray,
     DurationMicrosecondArray, DurationMillisecondArray, DurationNanosecondArray,
     DurationSecondArray, FixedSizeBinaryArray, FixedSizeListArray, Float16Array, Float32Array,
-    Float64Array, Int8Array, Int16Array, Int16RunArray, Int32Array, Int32RunArray, Int64Array,
-    Int64RunArray, IntervalDayTimeArray, IntervalMonthDayNanoArray, IntervalYearMonthArray,
-    LargeBinaryArray, LargeListArray, LargeListViewArray, LargeStringArray, ListArray,
-    ListViewArray, MapArray, NullArray, PrimitiveArray, StringArray, StringViewArray, StructArray,
-    Time32MillisecondArray, Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray,
-    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
-    TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array, UnionArray,
-    make_array, new_empty_array,
+    Float64Array, GenericBinaryArray, Int8Array, Int16Array, Int16RunArray, Int32Array,
+    Int32RunArray, Int64Array, Int64RunArray, IntervalDayTimeArray, IntervalMonthDayNanoArray,
+    IntervalYearMonthArray, LargeBinaryArray, LargeListArray, LargeListViewArray, LargeStringArray,
+    ListArray, ListViewArray, MapArray, NullArray, PrimitiveArray, StringArray, StringViewArray,
+    StructArray, Time32MillisecondArray, Time32SecondArray, Time64MicrosecondArray,
+    Time64NanosecondArray, TimestampMicrosecondArray, TimestampMillisecondArray,
+    TimestampNanosecondArray, TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array,
+    UInt64Array, UnionArray, make_array, new_empty_array,
 };
 use arrow_buffer::{
     Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer, OffsetBuffer, ScalarBuffer, i256,
@@ -221,26 +222,9 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 .into_iter()
                 .collect::<BinaryViewArray>(),
         ),
-        DataType::Utf8 => Arc::new(StringArray::from(
-            values
-                .iter()
-                .map(|value| optional_str(value))
-                .collect::<Result<Vec<_>>>()?,
-        )),
-        DataType::LargeUtf8 => Arc::new(LargeStringArray::from(
-            values
-                .iter()
-                .map(|value| optional_str(value))
-                .collect::<Result<Vec<_>>>()?,
-        )),
-        DataType::Utf8View => Arc::new(
-            values
-                .iter()
-                .map(|value| optional_str(value))
-                .collect::<Result<Vec<_>>>()?
-                .into_iter()
-                .collect::<StringViewArray>(),
-        ),
+        DataType::Utf8 => utf8_array(StringLayout::String, values)?,
+        DataType::LargeUtf8 => utf8_array(StringLayout::LargeString, values)?,
+        DataType::Utf8View => utf8_array(StringLayout::StringView, values)?,
         DataType::List(child) => list_array::<i32>(child, values, ListKind::List)?,
         DataType::ListView(child) => list_view_array::<i32>(child, values, ListKind::ListView)?,
         DataType::FixedSizeList(child, size) => fixed_size_list_array(child, *size, values)?,
@@ -1509,35 +1493,125 @@ fn string_array(parameters: StringParameters, values: &[&Scalar]) -> Result<Arra
         )?));
     }
     if charset.is_utf8() {
-        let text = values
-            .iter()
-            .map(|value| optional_str(value))
-            .collect::<Result<Vec<_>>>()?;
-        return Ok(match parameters.layout() {
-            StringLayout::LargeString => Arc::new(LargeStringArray::from(text)) as ArrayRef,
-            StringLayout::StringView | StringLayout::LargeStringView => {
-                Arc::new(text.into_iter().collect::<StringViewArray>())
-            }
-            _ => Arc::new(StringArray::from(text)),
-        });
+        return utf8_array(parameters.layout(), values);
     }
-    let encoded = values
-        .iter()
-        .map(|value| -> Result<Option<Vec<u8>>> {
-            match optional_str(value)? {
-                Some(text) => Ok(Some(charset.encode(text)?.into_owned())),
-                None => Ok(None),
-            }
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let cells = encoded.iter().map(|value| value.as_deref());
-    Ok(match parameters.layout() {
-        StringLayout::LargeString => Arc::new(LargeBinaryArray::from_iter(cells)) as ArrayRef,
-        StringLayout::StringView | StringLayout::LargeStringView => {
-            Arc::new(cells.collect::<BinaryViewArray>())
+    // The stored length is a property of the text and the charset, so the whole
+    // payload is measured before a byte of it is built: one buffer sized once,
+    // rather than a `Vec<u8>` per row - which `encode` would have had to build
+    // even where it borrows, which is every all-ASCII cell - and then an Arrow
+    // buffer that starts at a kilobyte and doubles its way up.
+    let mut payload = 0_usize;
+    for value in values {
+        if let Some(text) = optional_str(value)? {
+            payload = payload
+                .checked_add(charset.encoded_len(text))
+                .ok_or_else(|| invalid_value("a string column within usize", payload))?;
         }
-        _ => Arc::new(BinaryArray::from_iter(cells)),
+    }
+    let mut bytes = Vec::with_capacity(payload);
+    let mut validity = Vec::with_capacity(values.len());
+    let mut ends = Vec::with_capacity(values.len());
+    for value in values {
+        match optional_str(value)? {
+            Some(text) => {
+                charset.encode_into(text, &mut bytes)?;
+                validity.push(true);
+            }
+            None => validity.push(false),
+        }
+        ends.push(bytes.len());
+    }
+    let nulls = nulls(validity);
+    Ok(match parameters.layout() {
+        StringLayout::LargeString => Arc::new(binary_from_parts::<i64>(&ends, bytes, nulls)?),
+        // Arrow's view layout holds its own prefix per cell, so it is built
+        // from the finished payload rather than from offsets.
+        StringLayout::StringView | StringLayout::LargeStringView => {
+            Arc::new(binary_view_from_parts(&ends, &bytes, nulls.as_ref()))
+        }
+        _ => Arc::new(binary_from_parts::<i32>(&ends, bytes, nulls)?) as ArrayRef,
     })
+}
+
+/// Build one UTF-8 column straight into a builder sized for its whole payload.
+///
+/// The bytes a UTF-8 column stores are the characters it already holds, so the
+/// payload can be measured before any of it is built and the array needs one
+/// buffer rather than one that starts at a kilobyte and doubles - and no
+/// intermediate `Vec` of borrowed cells to hand it.
+fn utf8_array(layout: StringLayout, values: &[&Scalar]) -> Result<ArrayRef> {
+    let mut payload = 0_usize;
+    for value in values {
+        if let Some(text) = optional_str(value)? {
+            payload = payload
+                .checked_add(text.len())
+                .ok_or_else(|| invalid_value("a string column within usize", payload))?;
+        }
+    }
+    macro_rules! filled {
+        ($builder:expr) => {{
+            let mut builder = $builder;
+            for value in values {
+                match optional_str(value)? {
+                    Some(text) => builder.append_value(text),
+                    None => builder.append_null(),
+                }
+            }
+            Arc::new(builder.finish()) as ArrayRef
+        }};
+    }
+    Ok(match layout {
+        StringLayout::LargeString => {
+            filled!(LargeStringBuilder::with_capacity(values.len(), payload))
+        }
+        // Arrow's view layout carries a prefix per cell rather than offsets,
+        // so it takes the row count and grows its own payload blocks.
+        StringLayout::StringView | StringLayout::LargeStringView => {
+            filled!(StringViewBuilder::with_capacity(values.len()))
+        }
+        _ => filled!(StringBuilder::with_capacity(values.len(), payload)),
+    })
+}
+
+/// One binary array from the payload and the end offset of every cell.
+fn binary_from_parts<O: arrow_array::OffsetSizeTrait>(
+    ends: &[usize],
+    bytes: Vec<u8>,
+    nulls: Option<NullBuffer>,
+) -> Result<GenericBinaryArray<O>> {
+    let mut offsets = Vec::with_capacity(ends.len() + 1);
+    offsets.push(O::zero());
+    for end in ends {
+        offsets.push(
+            O::from_usize(*end)
+                .ok_or_else(|| invalid_value("a string column within its offset width", *end))?,
+        );
+    }
+    Ok(GenericBinaryArray::try_new(
+        arrow_buffer::OffsetBuffer::new(offsets.into()),
+        arrow_buffer::Buffer::from_vec(bytes),
+        nulls,
+    )?)
+}
+
+/// One binary view array over the same payload.
+fn binary_view_from_parts(
+    ends: &[usize],
+    bytes: &[u8],
+    nulls: Option<&NullBuffer>,
+) -> BinaryViewArray {
+    let mut builder = arrow_array::builder::BinaryViewBuilder::with_capacity(ends.len());
+    let mut start = 0;
+    for (index, end) in ends.iter().enumerate() {
+        let present = nulls.is_none_or(|nulls| nulls.is_valid(index));
+        if present {
+            builder.append_value(&bytes[start..*end]);
+        } else {
+            builder.append_null();
+        }
+        start = *end;
+    }
+    builder.finish()
 }
 
 /// Read one cell of a string column, transcribing what its charset cannot read.
