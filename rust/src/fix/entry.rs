@@ -36,9 +36,8 @@ use crate::media::text::TextBytes;
 ///
 /// The tag is the whole of what FIX adds here. A key, a value and what nested
 /// under them are what the line said, and the text reader already says them;
-/// the branch a pair resolved in is what a *dictionary* decided about the
-/// message, one value for all of its fields, so
-/// [`FixMsg::branch`](super::FixMsg::branch) is where it is asked for.
+/// which field the tag names is what a *dictionary* decided, and the
+/// message's [registry](super::FixMsg::registry) is where it is asked for.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FixEntry {
     tag: i32,

@@ -247,22 +247,28 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     assert_eq!(behind.by_tag(54).unwrap(), fixml.by_tag(54).unwrap());
     assert_eq!(behind.entries().len(), fixml.entries().len());
 
-    // A bridge configuration document, read as the document it is. It is read
-    // under the bridge's own dialect, which is what gives its envelope fields
-    // somewhere to land; a name the specification publishes still resolves,
-    // because a name is looked for in the pinned branch and then the standard
-    // one.
-    let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).expect("a branch");
-    let bridge = FixCodec::new(Arc::clone(&registry)).with_branch(&branch);
+    // A bridge configuration document, read as the document it is. The
+    // bridge's own vocabulary lives in the one namespace beside the
+    // specification's, which is what gives its envelope fields somewhere to
+    // land; a name the specification publishes resolves the same way. The
+    // bridge's fields carry their dictionary as a membership, and a message
+    // root carries none, because a message is not a dictionary member.
+    let bridge = FixCodec::new(Arc::clone(&registry));
     let config = bridge
         .one_line(ULCONFIG.as_bytes(), true)
         .expect("a configuration document");
-    assert_eq!(config.branch(), &branch);
-    assert_eq!(config.as_field().as_fix().branch().unwrap(), branch);
+    assert!(
+        registry
+            .field_by_tag(yggdryl::STATUS_TAG_NAME.0)
+            .unwrap()
+            .as_fix()
+            .has_branch(yggdryl::ULBRIDGE_DIALECT)
+    );
+    assert_eq!(config.as_field().as_fix().branches().count(), 0);
     // The envelope is what the exchange was, and it types: a status is a
     // number rather than the text it arrived as.
     assert_eq!(
-        config.by_tag(yggdryl::STATUS_TAG).unwrap(),
+        config.by_tag(yggdryl::STATUS_TAG_NAME.0).unwrap(),
         &Scalar::from(200_i64)
     );
     // One MBean produces one message, with standard FIX fields on their own tags.
@@ -419,8 +425,7 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
         Some(&b"Plugin"[..])
     );
 
-    let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
-    let codec = FixCodec::new(registry()).with_branch(&branch);
+    let codec = FixCodec::new(registry());
     let message = codec
         .one_ulconfig_line(LOGGED.as_bytes(), false)
         .expect("the document the line carries");
@@ -431,15 +436,31 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
             .and_then(Scalar::as_str),
         Some("CLI.PROD.TRD")
     );
+    // The document spells the plugin's version `Version`, which is the
+    // crate's own column's name: the row holds it under the bridge's
+    // `PluginVersion`, and the entry keeps the document's spelling.
+    assert_eq!(
+        message
+            .get_by_path(&path("PluginVersion"))
+            .and_then(Scalar::as_str),
+        Some("4.7.0")
+    );
     assert_eq!(
         message
             .get_by_path(&path("Version"))
             .and_then(Scalar::as_str),
-        Some("4.7.0")
+        message.version().map(|held| held.to_string()).as_deref()
+    );
+    assert!(
+        message
+            .entries()
+            .iter()
+            .any(|entry| entry.tag() == 20_021 && entry.key().as_bytes() == b"Version"),
+        "the arrival record keeps the document's spelling"
     );
     // A `[Jolokia]` in the prose opens no document: only an object whose first
     // member is quoted, or an array of those, does.
-    assert!(message.get_by_tag(yggdryl::MBEAN_TAG).is_some());
+    assert!(message.get_by_tag(yggdryl::MBEAN_TAG_NAME.0).is_some());
 }
 
 #[test]
@@ -473,8 +494,7 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
 
     // And back to a typed message, and out of one again: the crossing keeps
     // the ObjectName, the attributes and their types.
-    let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
-    let codec = FixCodec::new(registry()).with_branch(&branch);
+    let codec = FixCodec::new(registry());
     let message = held[0].into_fixmsg(&codec).expect("a typed message");
     assert_eq!(
         message
@@ -490,8 +510,7 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
 
 #[test]
 fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
-    let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
-    let codec = FixCodec::new(registry()).with_branch(&branch);
+    let codec = FixCodec::new(registry());
     let messages = codec
         .parse_line(WILDCARD.as_bytes())
         .expect("a wildcard response")
@@ -504,11 +523,11 @@ fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
     {
         assert_eq!(message.by_name("Name").unwrap().as_str(), Some(expected));
         assert_eq!(
-            message.by_tag(yggdryl::STATUS_TAG).unwrap(),
+            message.by_tag(yggdryl::STATUS_TAG_NAME.0).unwrap(),
             &Scalar::from(200_i64)
         );
         assert_eq!(
-            message.by_tag(yggdryl::MBEAN_TAG).unwrap().as_str(),
+            message.by_tag(yggdryl::MBEAN_TAG_NAME.0).unwrap().as_str(),
             Some("com.ullink.ulbridge.sessioninterfaces.plugins:*"),
         );
         assert!(

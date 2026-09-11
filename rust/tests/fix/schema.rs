@@ -63,22 +63,22 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     // identity is the folded name, while renderers receive the FIX-style
     // spelling the field keeps as its display.
     for (tag, display) in [
-        (yggdryl::MSGHASH_TAG, "MsgHash"),
-        (yggdryl::VERSION_TAG, "Version"),
-        (yggdryl::SYMBOLTICKER_TAG, "SymbolTicker"),
-        (yggdryl::TIMESTAMP_TAG, "Timestamp"),
-        (yggdryl::UNIXPARTITION_TAG, "UnixPartition"),
-        (yggdryl::PARENTCLORDID_TAG, "ParentClOrdID"),
-        (yggdryl::PARENTORDERID_TAG, "ParentOrderID"),
-        (yggdryl::SENDERSESSIONID_TAG, "SenderSessionId"),
-        (yggdryl::MSGCTXID_TAG, "MsgCtxId"),
-        (yggdryl::PLUGINID_TAG, "PluginId"),
-        (yggdryl::PREVPLUGINID_TAG, "PrevPluginId"),
-        (yggdryl::SENDERSESSIONNAME_TAG, "SenderSessionName"),
-        (yggdryl::TARGETSESSIONNAME_TAG, "TargetSessionName"),
-        (yggdryl::ISINCODE_TAG, "ISINCode"),
-        (yggdryl::MICCODE_TAG, "MICCode"),
-        (yggdryl::STATE_TAG, "State"),
+        (yggdryl::MSGHASH_TAG_NAME.0, "MsgHash"),
+        (yggdryl::VERSION_TAG_NAME.0, "Version"),
+        (yggdryl::SYMBOLTICKER_TAG_NAME.0, "SymbolTicker"),
+        (yggdryl::TIMESTAMP_TAG_NAME.0, "Timestamp"),
+        (yggdryl::UNIXPARTITION_TAG_NAME.0, "UnixPartition"),
+        (yggdryl::PARENTCLORDID_TAG_NAME.0, "ParentClOrdID"),
+        (yggdryl::PARENTORDERID_TAG_NAME.0, "ParentOrderID"),
+        (yggdryl::SENDERSESSIONID_TAG_NAME.0, "SenderSessionId"),
+        (yggdryl::MSGCTXID_TAG_NAME.0, "MsgCtxId"),
+        (yggdryl::PLUGINID_TAG_NAME.0, "PluginId"),
+        (yggdryl::PREVPLUGINID_TAG_NAME.0, "PrevPluginId"),
+        (yggdryl::SENDERSESSIONNAME_TAG_NAME.0, "SenderSessionName"),
+        (yggdryl::TARGETSESSIONNAME_TAG_NAME.0, "TargetSessionName"),
+        (yggdryl::ISINCODE_TAG_NAME.0, "ISINCode"),
+        (yggdryl::MICCODE_TAG_NAME.0, "MICCode"),
+        (yggdryl::STATE_TAG_NAME.0, "State"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
@@ -175,38 +175,38 @@ fn the_derived_columns_are_computed_and_never_stored() {
     let row = order.into_row(&schema).unwrap();
 
     // The digest is sixteen bytes of value, not a rendered string.
-    let digest = at(&row, &schema, yggdryl::MSGHASH_TAG);
+    let digest = at(&row, &schema, yggdryl::MSGHASH_TAG_NAME.0);
     assert_eq!(digest.as_bytes().map(<[u8]>::len), Some(16));
 
     // One ticker for one instrument, qualified by the venue that named it.
     assert_eq!(
-        at(&row, &schema, yggdryl::SYMBOLTICKER_TAG).as_str(),
+        at(&row, &schema, yggdryl::SYMBOLTICKER_TAG_NAME.0).as_str(),
         Some("AAPL@XNAS"),
     );
 
     // The clock, and the partition it falls in - an hour, floored, so a row
     // lands in the partition that contains it.
-    assert!(!at(&row, &schema, yggdryl::TIMESTAMP_TAG).is_null());
-    let partition = at(&row, &schema, yggdryl::UNIXPARTITION_TAG);
+    assert!(!at(&row, &schema, yggdryl::TIMESTAMP_TAG_NAME.0).is_null());
+    let partition = at(&row, &schema, yggdryl::UNIXPARTITION_TAG_NAME.0);
     let seconds = 1_704_190_530_i64; // 2024-01-02T10:15:30Z
     assert_eq!(partition, &Scalar::from(seconds - seconds % 3_600));
 
     // The version it was read at, which is not always what the frame claimed.
     assert_eq!(
-        at(&row, &schema, yggdryl::VERSION_TAG).as_str(),
+        at(&row, &schema, yggdryl::VERSION_TAG_NAME.0).as_str(),
         Some("4.4")
     );
 
     // And nothing of it was stored: the message is what it was. The clock
     // alone is a child of the message, stamped when it was built - but never
     // an entry, so the wire re-emits without it.
-    assert!(order.get_by_tag(yggdryl::MSGHASH_TAG).is_none());
-    assert!(order.get_by_tag(yggdryl::TIMESTAMP_TAG).is_some());
+    assert!(order.get_by_tag(yggdryl::MSGHASH_TAG_NAME.0).is_none());
+    assert!(order.get_by_tag(yggdryl::TIMESTAMP_TAG_NAME.0).is_some());
     assert!(
         order
             .entries()
             .iter()
-            .all(|entry| entry.tag() != yggdryl::TIMESTAMP_TAG)
+            .all(|entry| entry.tag() != yggdryl::TIMESTAMP_TAG_NAME.0)
     );
 }
 

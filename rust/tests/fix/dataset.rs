@@ -26,8 +26,7 @@ use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::types::State;
 use yggdryl::{
-    DataType, FixBranch, FixCodec, FixDedup, FixMsg, FixRegistry, IOMedia, MimeType, Scalar,
-    Timezone, Url,
+    DataType, FixCodec, FixDedup, FixMsg, FixRegistry, IOMedia, MimeType, Scalar, Timezone, Url,
 };
 
 /// The capture, exactly as the bridge wrote it.
@@ -90,18 +89,18 @@ fn reading() -> RecordOptions {
     options.into()
 }
 
-/// The codec every read uses: the bridge's own dialect, pinned for the whole
-/// run, and batches closing at `bytes` of raw capture where one is stated.
+/// The codec every read uses: the bridge's dictionary, whose fields resolve in
+/// the one namespace, and batches closing at `bytes` of raw capture where one
+/// is stated.
 fn codec_batching(bytes: Option<u64>) -> FixCodec {
-    let codec = FixCodec::new(registry())
-        .with_branch(&FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap());
+    let codec = FixCodec::new(registry());
     match bytes {
         Some(bytes) => codec.with_batch_byte_size(bytes),
         None => codec,
     }
 }
 
-/// The codec the row-by-row read uses, over the same dictionary and dialect.
+/// The codec the row-by-row read uses, over the same dictionary.
 ///
 /// It is also told what the run's captures are called, because a line answers
 /// them by position and only this boundary knows what each position means.
@@ -281,7 +280,7 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
         .collect();
     assert!(fixed.len() > 80, "{} fixed columns", fixed.len());
     let direction =
-        yggdryl::fix_column_of(&schema, yggdryl::MSGDIRECTION_TAG).expect("the direction");
+        yggdryl::fix_column_of(&schema, yggdryl::MSGDIRECTION_TAG_NAME.0).expect("the direction");
     let mut next = 0;
     for (line, held) in lines.iter().enumerate() {
         // The line is the text reader's own, whole: the body is what the
@@ -376,7 +375,10 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
     // the state it reports - and the country its ISIN opens with, which is
     // no fixed column, so the message answers for it.
     assert_eq!(
-        enriched.by_tag(yggdryl::ISINCODE_TAG).unwrap().as_str(),
+        enriched
+            .by_tag(yggdryl::ISINCODE_TAG_NAME.0)
+            .unwrap()
+            .as_str(),
         Some("CH0012221716")
     );
     assert_eq!(enriched.by_tag(470).unwrap().as_str(), Some("CH"));
@@ -386,22 +388,22 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
         "Product from SecurityType"
     );
     assert_eq!(
-        rows[fill][column(yggdryl::MICCODE_TAG)].as_str(),
+        rows[fill][column(yggdryl::MICCODE_TAG_NAME.0)].as_str(),
         Some("XSWX")
     );
     assert_eq!(
-        rows[fill][column(yggdryl::STATE_TAG)]
+        rows[fill][column(yggdryl::STATE_TAG_NAME.0)]
             .as_str()
             .and_then(State::from_spelling),
         State::from_spelling("1"),
         "the state the report stated, as the column spells it"
     );
     for tag in [
-        yggdryl::ISINCODE_TAG,
+        yggdryl::ISINCODE_TAG_NAME.0,
         470,
         460,
-        yggdryl::MICCODE_TAG,
-        yggdryl::STATE_TAG,
+        yggdryl::MICCODE_TAG_NAME.0,
+        yggdryl::STATE_TAG_NAME.0,
     ] {
         assert!(
             plain.get_by_tag(tag).is_none(),
@@ -419,7 +421,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
         .enriched_line(&lines[masked])
         .and_then(|mut messages| messages.next().expect("a message"))
         .expect("the anonymized line reads");
-    for tag in [yggdryl::ISINCODE_TAG, 470] {
+    for tag in [yggdryl::ISINCODE_TAG_NAME.0, 470] {
         assert!(
             masked.get_by_tag(tag).is_none_or(Scalar::is_null),
             "tag {tag} off a masked ISIN"
@@ -427,7 +429,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
     }
     // And the row is dated by the row header, not by the wire's clock.
     let clock = &text[fill][at(&text_names, "timestamp")];
-    assert_eq!(&rows[fill][column(yggdryl::TIMESTAMP_TAG)], clock);
+    assert_eq!(&rows[fill][column(yggdryl::TIMESTAMP_TAG_NAME.0)], clock);
 }
 
 #[test]
@@ -443,12 +445,12 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         // own, so a row is read against the line it came from.
         let clock = &text[line_of(row)][at(&text_names, "timestamp")];
         assert_eq!(
-            &held[column(yggdryl::TIMESTAMP_TAG)],
+            &held[column(yggdryl::TIMESTAMP_TAG_NAME.0)],
             clock,
             "row {row} is dated by its header"
         );
         assert!(
-            !held[column(yggdryl::UNIXPARTITION_TAG)].is_null(),
+            !held[column(yggdryl::UNIXPARTITION_TAG_NAME.0)].is_null(),
             "row {row} has a partition"
         );
         assert!(
@@ -459,7 +461,7 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             held[column(8)]
         );
         assert!(
-            !held[column(yggdryl::MSGHASH_TAG)].is_null(),
+            !held[column(yggdryl::MSGHASH_TAG_NAME.0)].is_null(),
             "row {row} digests"
         );
         // The bracket names the context, which fills `msgctxid`; its session
@@ -468,7 +470,7 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         // `SESSIONID`, and nothing on any other line.
         let context = &text[line_of(row)][at(&text_names, "msgCtxId")];
         assert_eq!(
-            &held[column(yggdryl::MSGCTXID_TAG)],
+            &held[column(yggdryl::MSGCTXID_TAG_NAME.0)],
             context,
             "row {row} context"
         );
@@ -476,7 +478,7 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         // makes one, and the instance its bridge bracketed in front of the
         // line where it does not - a fill never lands over a stated reading.
         let uid = &text[line_of(row)][at(&text_names, "senderSessionId")];
-        let session = &held[column(yggdryl::SENDERSESSIONID_TAG)];
+        let session = &held[column(yggdryl::SENDERSESSIONID_TAG_NAME.0)];
         let line = body(&text_names, &text[line_of(row)]);
         if line.contains("|SESSIONID=") {
             assert!(
@@ -494,23 +496,23 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         // came through before.
         let plugin = &text[line_of(row)][at(&text_names, "pluginid")];
         assert_eq!(
-            &held[column(yggdryl::PLUGINID_TAG)],
+            &held[column(yggdryl::PLUGINID_TAG_NAME.0)],
             plugin,
             "row {row} names the plugin that logged it"
         );
         assert!(
-            held[column(yggdryl::PREVPLUGINID_TAG)].is_null(),
+            held[column(yggdryl::PREVPLUGINID_TAG_NAME.0)].is_null(),
             "row {row} states no previous plugin"
         );
         if !line.contains("ULFROMSESSIONNAME=") {
             assert!(
-                held[column(yggdryl::SENDERSESSIONNAME_TAG)].is_null(),
+                held[column(yggdryl::SENDERSESSIONNAME_TAG_NAME.0)].is_null(),
                 "row {row} states no sender session name"
             );
         }
         if !line.contains("ULTOSESSIONNAME=") {
             assert!(
-                held[column(yggdryl::TARGETSESSIONNAME_TAG)].is_null(),
+                held[column(yggdryl::TARGETSESSIONNAME_TAG_NAME.0)].is_null(),
                 "row {row} states no target session name"
             );
         }
@@ -523,8 +525,8 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         .position(|held| body(&text_names, held).starts_with("URI: /jolokia"))
         .expect("the Jolokia read");
     let jolokia = row_of(jolokia);
-    assert!(rows[jolokia][column(yggdryl::SENDERSESSIONID_TAG)].is_null());
-    assert!(rows[jolokia][column(yggdryl::MSGCTXID_TAG)].is_null());
+    assert!(rows[jolokia][column(yggdryl::SENDERSESSIONID_TAG_NAME.0)].is_null());
+    assert!(rows[jolokia][column(yggdryl::MSGCTXID_TAG_NAME.0)].is_null());
     let stating = |key: &str| {
         text.iter()
             .position(|held| body(&text_names, held).contains(&format!("|{key}")))
@@ -546,16 +548,16 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
     };
     let bridged = stating("ULFROMSESSIONNAME=");
     assert_eq!(
-        rows[row_of(bridged)][column(yggdryl::SENDERSESSIONNAME_TAG)].as_str(),
+        rows[row_of(bridged)][column(yggdryl::SENDERSESSIONNAME_TAG_NAME.0)].as_str(),
         Some(spelled(bridged, "ULFROMSESSIONNAME=").as_str())
     );
     assert_eq!(
-        rows[row_of(bridged)][column(yggdryl::TARGETSESSIONNAME_TAG)].as_str(),
+        rows[row_of(bridged)][column(yggdryl::TARGETSESSIONNAME_TAG_NAME.0)].as_str(),
         Some(spelled(bridged, "ULTOSESSIONNAME=").as_str())
     );
     let sessioned = stating("SESSIONID=");
     assert_eq!(
-        rows[row_of(sessioned)][column(yggdryl::SENDERSESSIONID_TAG)].as_str(),
+        rows[row_of(sessioned)][column(yggdryl::SENDERSESSIONID_TAG_NAME.0)].as_str(),
         Some(spelled(sessioned, "SESSIONID=").as_str())
     );
     // And the sequence number the bracket states fills a row that carries
@@ -845,7 +847,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     );
     let message = read(document);
     assert_eq!(
-        message.by_tag(yggdryl::STATUS_TAG).unwrap(),
+        message.by_tag(yggdryl::STATUS_TAG_NAME.0).unwrap(),
         &Scalar::from(200_i64)
     );
     assert_eq!(
@@ -878,7 +880,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     }
     // An error answer states its error.
     let error = find(r#""error_type":"javax.management.InstanceNotFoundException""#);
-    assert!(read(error).get_by_tag(yggdryl::ERROR_TAG).is_some());
+    assert!(read(error).get_by_tag(yggdryl::ERROR_TAG_NAME.0).is_some());
 
     // FIXML behind a verb reads by its attributes.
     let out = find("<FIXML xmlns=");
@@ -948,7 +950,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     assert!(rows[row_of(empty)][column(35)].is_null());
     assert!(!rows[row_of(empty)][column(8)].is_null());
     assert_eq!(
-        &rows[row_of(empty)][column(yggdryl::TIMESTAMP_TAG)],
+        &rows[row_of(empty)][column(yggdryl::TIMESTAMP_TAG_NAME.0)],
         &text[empty][at(&text_names, "timestamp")]
     );
     // And a sentence is a sentence.

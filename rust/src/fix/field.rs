@@ -12,17 +12,16 @@ use std::str::Split;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::FixId;
 use super::codes::{FixCode, FixCodeValue, FixCodes};
 use super::lineage::{FixLineage, FixLineageEntry};
 use super::replacements::{FixReplacement, FixReplacements};
-use super::{FixBranch, FixId};
 use crate::types::folds_equal;
 use crate::{DataType, Error, FixField, FixFieldMut, Result, Version};
 
-/// The dictionary a field belongs to; absent means the standard one.
-const BRANCH: &str = "branch";
-/// The full key the branch is stored under, spelled once.
-pub(super) const BRANCH_KEY: &str = "fix:branch";
+/// The dictionaries that contributed this field, folded and sorted; absent
+/// for a field the specification alone defines.
+const BRANCHES: &str = "branches";
 /// The canonical tag.
 const TAG: &str = "tag";
 /// The full key the canonical tag is stored under.
@@ -58,14 +57,10 @@ const SEPARATOR: char = ',';
 /// What a tag is, spelled once for every refusal.
 const TAG_SHAPE: &str = "a FIX tag, a decimal integer from 0 to 2147483647";
 
-/// What a branch is, spelled once for every refusal.
-const BRANCH_SHAPE: &str = "a FIX branch, at most 23 ASCII letters, digits, hyphen, dot or underscore, starting with a letter";
-
 /// Parse one tag strictly: decimal digits only, never negative, never signed.
 ///
 /// `i32::from_str` would also accept `+35`, which the writer never emits, so
-/// the digits are checked first and the width second. [`FixId::from_str`]
-/// parses the tail of an identifier through this same one strict parse.
+/// the digits are checked first and the width second.
 pub(super) fn parse_tag(text: &str) -> Option<i32> {
     if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
@@ -101,42 +96,38 @@ impl<'field> FixField<'field> {
             .transpose()
     }
 
-    /// Parses the dictionary this field belongs to.
+    /// Iterates the dictionaries that contributed this field, folded and
+    /// sorted.
     ///
-    /// An absent property is [`FixBranch::STANDARD`]: the FIX
-    /// specification's own fields are the common case and state nothing.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the full `fix:branch` key when the stored
-    /// text is not a branch: [`FixFieldMut::set_branch`] never writes
-    /// one, so this can only come from externally edited state.
-    pub fn branch(&self) -> Result<FixBranch> {
-        match self.get(BRANCH) {
-            Some(stored) => {
-                FixBranch::from_str(stored).map_err(|_| self.invalid(BRANCH, BRANCH_SHAPE, stored))
-            }
-            None => Ok(FixBranch::STANDARD),
-        }
+    /// Membership is provenance: a dialect merged into a registry names
+    /// itself on every field it touched, and a caller filters on it. It is
+    /// never consulted to resolve a tag or a name. The iterator is lazy and
+    /// allocates nothing, and an absent property - every field the
+    /// specification alone defines - yields nothing.
+    pub fn branches(&self) -> FixSpellings<'field> {
+        FixSpellings::over(self.get(BRANCHES))
+    }
+
+    /// Whether `dialect` is one of the dictionaries that contributed this
+    /// field, ASCII case folded.
+    pub fn has_branch(&self, dialect: &str) -> bool {
+        self.branches()
+            .any(|held| held.eq_ignore_ascii_case(dialect))
     }
 
     /// Builds this field's identity, absent exactly when `fix:tag` is.
     ///
-    /// Derived from the branch and the canonical tag on every ask; nothing
-    /// stores it. Building it through [`FixId::from_parts`] is what refuses a
-    /// hand-edited record that claims a specification tag for another
-    /// dictionary at the door rather than after it is indexed.
+    /// Derived from the canonical tag and the field's own name on every ask;
+    /// nothing stores it, so a rename is never stale.
     ///
     /// # Errors
     ///
-    /// Returns the failure [`Self::tag`] or [`Self::branch`] raises, or
-    /// [`FixId::from_parts`]'s refusal.
+    /// Returns the failure [`Self::tag`] raises, or [`FixId::of`]'s refusal.
     pub fn id(&self) -> Result<Option<FixId>> {
         let Some(tag) = self.tag()? else {
             return Ok(None);
         };
-        let branch = self.branch()?;
-        FixId::from_parts(&branch, tag).map(Some)
+        FixId::of(tag, self.as_field().name()).map(Some)
     }
 
     /// Parses the canonical FIX tag.
@@ -240,7 +231,7 @@ impl<'field> FixField<'field> {
     /// Returns the version this field was first defined at.
     ///
     /// Derived from the first entry rather than stored beside it, the way
-    /// [`FixId`] is derived from a branch and a tag. A field with no lineage,
+    /// [`FixId`] is derived from a tag and a name. A field with no lineage,
     /// and a malformed document, both answer `None`: a version filter that
     /// cannot read a history must not act as though the field had none it
     /// disagreed with.
@@ -526,7 +517,6 @@ impl FixFieldMut<'_> {
         if tag < 0 {
             return Err(self.rejected(COUNTER, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
         }
-        FixId::from_parts(&self.as_protocol().branch()?, tag)?;
         self.store(COUNTER, tag.to_string())
     }
 
@@ -569,72 +559,77 @@ impl FixFieldMut<'_> {
         self.store(key, name.to_ascii_lowercase())
     }
 
-    /// Records the dictionary this field belongs to.
+    /// Records the dictionaries that contributed this field.
     ///
-    /// [`FixBranch::STANDARD`] removes the property rather than writing an
-    /// empty name, exactly as an empty tag or alias list removes its own, so
-    /// one declaration has one stored form. The canonical tag and every
-    /// alternate tag are held to the standard-tag rule against the new
-    /// branch before anything is written.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FixId::from_parts`]'s refusal when a tag this field holds is
-    /// one the FIX specification assigns, the parse failure when a stored
-    /// `fix:` property is malformed, or the property write's refusal. Any of
-    /// them leaves the field unchanged.
-    pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()> {
-        let view = self.as_protocol();
-        if let Some(tag) = view.tag()? {
-            FixId::from_parts(branch, tag)?;
-        }
-        for tag in view.tags()? {
-            FixId::from_parts(branch, tag)?;
-        }
-        self.put_branch(branch)?;
-        Ok(())
-    }
-
-    /// Records both halves of an identity at once.
-    ///
-    /// Moving a field between branches one property at a time works in only
-    /// one order and refuses the other, because each setter holds the field to
-    /// the standard-tag rule as it stands. This writes the branch, then the
-    /// tag, and restores the prior branch entry if the tag write fails, so
-    /// either move succeeds and a failure leaves the field unchanged. A
-    /// The two native parts pass through [`FixId::from_parts`] before either
-    /// property changes.
+    /// Each name is held to the alias grammar - non-empty, no separator -
+    /// folded by ASCII case once, deduplicated under the crate fold, and the
+    /// list is stored sorted, so two registries built from the same
+    /// dictionaries in any order hash alike. Empty input removes the
+    /// property, so a field the specification alone defines states nothing.
     ///
     /// # Errors
     ///
-    /// Returns the tag write's refusal, having restored the branch.
-    pub fn set_id(&mut self, branch: &FixBranch, tag: i32) -> Result<()> {
-        FixId::from_parts(branch, tag)?;
-        let prior = self.put_branch(branch)?;
-        match self.set_tag(tag) {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                self.restore(BRANCH, prior);
-                Err(error)
+    /// Returns an error when a name is empty or contains the separator,
+    /// leaving the field unchanged.
+    pub fn set_branches<I, S>(&mut self, dialects: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut held: Vec<String> = Vec::new();
+        for dialect in dialects {
+            let dialect = dialect.as_ref();
+            if dialect.is_empty() {
+                return Err(
+                    self.rejected(BRANCHES, "expected a non-empty dialect, got \"\"".into())
+                );
+            }
+            if dialect.contains(SEPARATOR) {
+                return Err(self.rejected(
+                    BRANCHES,
+                    format_smolstr!("expected a dialect without {SEPARATOR:?}, got {dialect:?}"),
+                ));
+            }
+            let folded = dialect.to_ascii_lowercase();
+            if !held.iter().any(|known| folds_equal(known, &folded)) {
+                held.push(folded);
             }
         }
+        if held.is_empty() {
+            self.remove(BRANCHES);
+            return Ok(());
+        }
+        held.sort();
+        self.store(BRANCHES, held.join(","))
+    }
+
+    /// Adds one dictionary to those that contributed this field.
+    ///
+    /// Idempotent under the fold: a dialect already listed is listed once.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`set_branches`](Self::set_branches)'s refusal.
+    pub fn add_branch(&mut self, dialect: &str) -> Result<()> {
+        if self.as_protocol().has_branch(dialect) {
+            return Ok(());
+        }
+        let mut held: Vec<String> = self.as_protocol().branches().map(str::to_owned).collect();
+        held.push(dialect.to_owned());
+        self.set_branches(held)
     }
 
     /// Records the canonical FIX tag.
     ///
     /// # Errors
     ///
-    /// Returns an error when the tag is negative, when this field's branch
-    /// may not claim it - a non-standard branch is limited to
-    /// [`FixId::USER_TAG_MIN`] through [`FixId::USER_TAG_MAX`] (exclusive) -
-    /// or when the property write fails the validation every metadata write
-    /// goes through. Any of them leaves the field unchanged.
+    /// Returns an error when the tag is negative, or when the property write
+    /// fails the validation every metadata write goes through. Either leaves
+    /// the field unchanged.
     pub fn set_tag(&mut self, tag: i32) -> Result<()> {
         if tag < 0 {
             return Err(self.rejected(TAG, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
         }
-        let branch = self.as_protocol().branch()?;
-        FixId::from_parts(&branch, tag)?;
         self.store(TAG, tag.to_string())
     }
 
@@ -644,22 +639,18 @@ impl FixFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error when a tag is negative, repeated, or one this field's
-    /// branch may not claim, leaving the field unchanged. An alternate tag
-    /// resolves exactly as a canonical one does, so it is held to the same
-    /// standard-tag rule.
+    /// Returns an error when a tag is negative or repeated, leaving the field
+    /// unchanged.
     pub fn set_tags(&mut self, tags: &[i32]) -> Result<()> {
         if tags.is_empty() {
             self.remove(TAGS);
             return Ok(());
         }
-        let branch = self.as_protocol().branch()?;
         let mut rendered = String::new();
         for (index, tag) in tags.iter().enumerate() {
             if *tag < 0 {
                 return Err(self.rejected(TAGS, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
             }
-            FixId::from_parts(&branch, *tag)?;
             if tags[..index].contains(tag) {
                 return Err(self.rejected(
                     TAGS,
@@ -988,7 +979,8 @@ impl FixFieldMut<'_> {
     ///
     /// | key | rule |
     /// | --- | --- |
-    /// | `fix:branch`, `fix:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
+    /// | `fix:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
+    /// | `fix:branches` | union, folded, sorted: every dictionary that contributed either side |
     /// | `fix:tags` | union, incoming first, order kept, deduplicated |
     /// | `fix:aliases` | union, folded, incoming first, then rewritten from the merged lineage |
     /// | `description` | not folded here at all: it is a generic key, so the metadata merge every protocol shares carries it |
@@ -1010,25 +1002,13 @@ impl FixFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns a typed conflict naming both sides when the branch or the tag
-    /// disagrees, and the write's refusal otherwise. Either leaves the field
-    /// exactly as it was.
+    /// Returns a typed conflict naming both sides when the tag disagrees,
+    /// and the write's refusal otherwise. Either leaves the field exactly as
+    /// it was.
     pub fn merge_with(&mut self, other: &FixField<'_>) -> Result<()> {
         let held = self.as_protocol();
         // Identity is checked before anything is built, so a refusal costs
         // neither a render nor a write.
-        let (branch, incoming_branch) = (held.branch()?, other.branch()?);
-        if !branch.has_identity(&incoming_branch) {
-            return Err(Error::conflict(
-                "fix field",
-                "fix field",
-                format_smolstr!(
-                    "branch {:?} merged with {:?}",
-                    branch.name(),
-                    incoming_branch.name()
-                ),
-            ));
-        }
         if held.tag()? != other.tag()? {
             return Err(Error::conflict(
                 "fix field",
@@ -1068,6 +1048,7 @@ impl FixFieldMut<'_> {
                 aliases.push(alias);
             }
         }
+        let branches = render_branches(held.branches().chain(other.branches()));
         let lineage = merge_lineage(&held, other)?;
         let codes = merge_codes(&held, other)?;
         // The aliases the merged lineage implies replace the union, because
@@ -1084,6 +1065,7 @@ impl FixFieldMut<'_> {
             let value = match key {
                 TAGS => render_tags(&tags),
                 ALIASES => render_aliases(&aliases),
+                BRANCHES => branches.clone(),
                 LINEAGE => lineage.clone(),
                 CODES => codes.clone(),
                 // Every other key is "incoming wins, stored keeps what only
@@ -1153,16 +1135,6 @@ impl FixFieldMut<'_> {
     fn store(&mut self, name: &str, value: impl Into<String>) -> Result<()> {
         self.insert(name, value)?;
         Ok(())
-    }
-
-    /// Put the branch entry in the one form that declaration has, and
-    /// answer what stood there before.
-    fn put_branch(&mut self, branch: &FixBranch) -> Result<Option<String>> {
-        if branch.is_standard() {
-            Ok(self.remove(BRANCH))
-        } else {
-            self.insert(BRANCH, branch.name())
-        }
     }
 
     /// Name the full key a value was refused under.
@@ -1237,8 +1209,8 @@ impl FusedIterator for FixSpellings<'_> {}
 /// the held names are owned `String`s behind a generic snapshot and building
 /// a vector of them to scan `O(n*m)` is what this replaced.
 const MERGED_KEYS: [&str; 8] = [
-    BRANCH,
     TAG,
+    BRANCHES,
     TAGS,
     ALIASES,
     NULLS,
@@ -1253,6 +1225,23 @@ fn render_aliases(aliases: &[&str]) -> Option<String> {
         return None;
     }
     Some(aliases.join(","))
+}
+
+/// Render the dictionaries that contributed a field the way the setter
+/// renders them: folded, deduplicated under the crate fold, sorted.
+fn render_branches<'a>(dialects: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    let mut held: Vec<String> = Vec::new();
+    for dialect in dialects {
+        let folded = dialect.to_ascii_lowercase();
+        if !held.iter().any(|known| folds_equal(known, &folded)) {
+            held.push(folded);
+        }
+    }
+    if held.is_empty() {
+        return None;
+    }
+    held.sort();
+    Some(held.join(","))
 }
 
 /// Render alternate tags the way the setter renders them.

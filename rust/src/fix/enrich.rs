@@ -53,7 +53,7 @@ use crate::types::{AsciiEnum, Isin, State};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
-use super::{ISINCODE_TAG, MICCODE_TAG, STATE_TAG};
+use super::{ISINCODE_TAG_NAME, MICCODE_TAG_NAME, STATE_TAG_NAME};
 
 /// A condition one rule requires, read from the row.
 struct FixWhen {
@@ -362,7 +362,7 @@ static RULES: &[FixRule] = &[
     },
     // ISO 6166, in the primary identifier: `SecurityID` under an ISIN source.
     FixRule {
-        tag: ISINCODE_TAG,
+        tag: ISINCODE_TAG_NAME.0,
         msgtypes: &[],
         when: &[FixWhen {
             tag: 22,
@@ -373,7 +373,7 @@ static RULES: &[FixRule] = &[
     // ISO 6166, in the alternate identifiers: the `SecurityAltID` whose
     // source says ISIN is the instrument's ISIN where the primary was not.
     FixRule {
-        tag: ISINCODE_TAG,
+        tag: ISINCODE_TAG_NAME.0,
         msgtypes: &[],
         when: &[],
         from: FixDerivation::Member {
@@ -393,7 +393,7 @@ static RULES: &[FixRule] = &[
         tag: 48,
         msgtypes: &[],
         when: &[],
-        from: FixDerivation::Same(ISINCODE_TAG),
+        from: FixDerivation::Same(ISINCODE_TAG_NAME.0),
     },
     FixRule {
         tag: 22,
@@ -408,7 +408,7 @@ static RULES: &[FixRule] = &[
         tag: 470,
         msgtypes: &[],
         when: &[],
-        from: FixDerivation::Country(ISINCODE_TAG),
+        from: FixDerivation::Country(ISINCODE_TAG_NAME.0),
     },
     // A `SecurityID` under an exchange's or Bloomberg's source is the symbol,
     // and so is the `SecurityAltID` an exchange gave.
@@ -471,7 +471,7 @@ static RULES: &[FixRule] = &[
     // The crate's own market column: the exchange the instrument is listed
     // on, the destination it was routed to, or the market it last traded on.
     FixRule {
-        tag: MICCODE_TAG,
+        tag: MICCODE_TAG_NAME.0,
         msgtypes: &[],
         when: &[],
         from: FixDerivation::First(&[207, 100, 30]),
@@ -511,7 +511,7 @@ static RULES: &[FixRule] = &[
     // The crate's own lifecycle column: the order's status, else what the
     // report said happened.
     FixRule {
-        tag: STATE_TAG,
+        tag: STATE_TAG_NAME.0,
         msgtypes: &[],
         when: &[],
         from: FixDerivation::First(&[39, 150]),

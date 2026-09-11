@@ -761,7 +761,9 @@ impl<'msg> Restater<'msg> {
         name: &str,
         members: FixFills<'_>,
     ) -> Option<Write> {
-        let definition = self.registry.known_group(name, self.msg.branch())?;
+        let definition = self
+            .registry
+            .get_definition(crate::FixCategory::Groups, name)?;
         let counter_tag = definition.as_fix().counter().ok().flatten()?;
         let counter_field = stated_field(self.msg.known_by_tag(counter_tag)?);
         let at = writes.position_of_group(counter_tag, definition.name());
@@ -928,7 +930,7 @@ pub(super) fn restate(msg: FixMsg) -> Result<FixMsg> {
     let mut restated = FixMsg::from_parts(registry, root, Scalar::from_sequence(values), entries)?;
     if let Some(newest) = newest {
         let spelled = format_smolstr!("{newest}");
-        restated.set(super::VERSION_TAG, Scalar::from(spelled.as_str()))?;
+        restated.set(super::VERSION_TAG_NAME.0, Scalar::from(spelled.as_str()))?;
     }
     Ok(restated)
 }

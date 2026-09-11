@@ -8,7 +8,7 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::types::State;
-use yggdryl::{DataType, FixBranch, FixCategory, FixCodec, FixEntry, FixRegistry, Scalar, Version};
+use yggdryl::{DataType, FixCategory, FixCodec, FixEntry, FixId, FixRegistry, Scalar, Version};
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -392,11 +392,14 @@ fn a_tag_key_and_a_name_key_build_the_same_message() {
     assert_eq!(by_tag.as_value(), by_name.as_value());
     assert_eq!(by_tag.as_field().dtype(), by_name.as_field().dtype());
 
-    // Case and separators fold away, so a renderer's spelling still resolves.
+    // Case and separators fold away, so a renderer's spelling still resolves,
+    // and every spelling with the tag is the one id the field carries.
+    let id = registry().field_by_tag(35).unwrap().as_fix().id().unwrap();
     for spelling in ["MsgType", "msgtype", "MSG_TYPE", "msg-type", "Msg Type"] {
         let row = format!("8=FIX.4.4|{spelling}=D|10=0|");
         let message = reader.one_line(row.as_bytes(), false).expect(&row);
         assert_eq!(message.as_field().name(), "D", "{spelling}");
+        assert_eq!(FixId::of(35, spelling).ok(), id, "{spelling}");
     }
 }
 
@@ -421,12 +424,16 @@ fn a_value_is_translated_typed_and_kept_as_it_arrived() {
         .expect("tag 54");
     assert_eq!(side.value().as_str(), Some("Buy"));
     assert_eq!(side.key().as_str(), Some("54"));
-    // The identity is the entry's tag under the message's own dialect: one
-    // branch for the message, never one copy per pair.
+    // The identity is the entry's tag with the dictionary field's name: one
+    // id for the pair, the same under any spelling of the name, and the one
+    // `get_by_id` answers the row through.
+    let id = FixId::of(side.tag(), "Side").unwrap();
     assert_eq!(
-        yggdryl::FixId::from_parts(message.branch(), side.tag()).unwrap(),
-        yggdryl::FixId::standard(54)
+        registry().field_by_tag(54).unwrap().as_fix().id().unwrap(),
+        Some(id)
     );
+    assert_eq!(FixId::of(54, "side").unwrap(), id);
+    assert_eq!(message.get_by_id(id).unwrap().as_str(), Some("1"));
 }
 
 #[test]
@@ -1342,48 +1349,72 @@ fn a_mark_is_judged_where_a_row_is_split_and_nowhere_else() {
 }
 
 #[test]
-fn a_dialect_declaring_a_code_twice_names_no_message_and_the_standard_does_not_answer() {
-    // A dialect's own message wins where it declares the code once, the
-    // standard one answers where it declares it not at all, and a code it
-    // declares twice names nothing: ambiguity is an answer, not an absence,
-    // so the standard grammar never stands in for a dialect's doubled one.
-    let dual = FixBranch::from_str("dual").unwrap();
-    let declare = |registry: &mut FixRegistry, name: &str| {
+fn a_code_declared_under_another_name_is_a_second_message_and_the_bare_code_answers_the_first() {
+    // Message codes live in one namespace under the same rule as fields: a
+    // definition re-declaring a code under another name is a second message,
+    // reached by its name, while the bare code keeps answering the first
+    // holder; re-declaring it under the same folded name folds into the
+    // stored one. The codec reads a frame under the first holder's grammar.
+    let declare = |name: &str| {
         let mut allocation = DataType::Int32.nullable_field("AllocQty");
         allocation.as_fix_mut().set_tag(80).unwrap();
         let mut message = DataType::from_fields([allocation])
             .unwrap()
             .required_field(name);
-        message.as_fix_mut().set_branch(&dual).unwrap();
         message.as_fix_mut().set_msgtype("J").unwrap();
-        registry
-            .create_definition(FixCategory::Messages, message)
-            .unwrap();
+        message
     };
     let frame: &[u8] = b"8=FIX.4.4|35=J|70=A1|78=1|79=ACC|80=5|10=0|";
     let grouped = |message: &yggdryl::FixMsg| message.get_by_name("allocgrp").is_some();
 
-    // Undeclared: the standard AllocationInstruction folds the allocation
-    // group the frame states flat.
+    // Undeclared: the standard AllocationInstruction holds the code and
+    // folds the allocation group the frame states flat.
     let mut registry = registry().as_ref().clone();
-    registry.set_branch(dual.clone()).unwrap();
-    let none = FixCodec::new(Arc::new(registry.clone())).with_branch(&dual);
+    let standard = registry
+        .msgtype("J")
+        .expect("the standard holder")
+        .name()
+        .to_owned();
+    assert_eq!(
+        registry.msgtype("allocationinstruction").unwrap().as_str(),
+        "J"
+    );
+    let messages = registry.msgtypes().count();
+    let none = FixCodec::new(Arc::new(registry.clone()));
     assert!(grouped(&none.one_line(frame, false).unwrap()));
 
-    // Declared once: the dialect's own grammar, which declares no group.
-    declare(&mut registry, "AllocIn");
-    let once = FixCodec::new(Arc::new(registry.clone())).with_branch(&dual);
+    // Declared under another name: a second message, reached by its name and
+    // carrying the code, while the bare code still answers the first holder.
+    registry
+        .create_definition(FixCategory::Messages, declare("AllocIn"))
+        .unwrap();
+    assert_eq!(registry.msgtypes().count(), messages + 1);
+    assert_eq!(registry.msgtype("J").unwrap().name(), standard);
+    assert_eq!(registry.msgtype("AllocIn").unwrap().as_str(), "J");
+    assert_eq!(registry.msgtype("alloc_in").unwrap().name(), "AllocIn");
+    let once = FixCodec::new(Arc::new(registry.clone()));
     let message = once.one_line(frame, false).unwrap();
-    assert!(!grouped(&message));
-    assert_eq!(message.by_tag(80).unwrap().as_f64(), Some(5.0));
-
-    // Declared twice: no message, so no grammar of anyone's.
-    declare(&mut registry, "AllocOut");
-    assert!(registry.get_msgtype("J", Some(&dual)).is_none());
-    let twice = FixCodec::new(Arc::new(registry)).with_branch(&dual);
-    let message = twice.one_line(frame, false).unwrap();
-    assert!(!grouped(&message));
+    assert!(grouped(&message), "the first holder's grammar");
+    let occurrences = message
+        .get_by_name("allocgrp")
+        .and_then(Scalar::as_sequence)
+        .expect("the group's occurrences");
+    assert_eq!(occurrences.len(), 1, "{occurrences:?}");
+    assert!(
+        message.get_by_tag(80).is_none(),
+        "tag 80 nests, as the holder declares"
+    );
     assert_eq!(message.anomalies().count(), 0);
+
+    // Re-declared under the same folded name: it folds into the stored one,
+    // and no third message appears.
+    let added = registry
+        .add_definition(FixCategory::Messages, declare("Alloc_In"))
+        .unwrap();
+    assert!(!added, "merged, not added");
+    assert_eq!(registry.msgtypes().count(), messages + 1);
+    assert_eq!(registry.msgtype("J").unwrap().name(), standard);
+    assert_eq!(registry.msgtype("allocin").unwrap().as_str(), "J");
 }
 
 #[test]
@@ -1673,7 +1704,7 @@ fn a_state_code_is_read_through_the_name_its_field_gives_it() {
     );
     // The derived state follows the typed column, not the letter.
     assert_eq!(
-        restated.by_tag(yggdryl::STATE_TAG).unwrap().as_str(),
+        restated.by_tag(yggdryl::STATE_TAG_NAME.0).unwrap().as_str(),
         Some(State::from_spelling("Restated").unwrap().as_str())
     );
     let bidding = reader.one_line(b"8=FIX.4.4|35=8|39=D|10=0|", true).unwrap();
@@ -2408,7 +2439,7 @@ fn every_generated_message_carries_the_version_the_read_used() {
         .unwrap();
     assert_eq!(dated.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
     assert_eq!(
-        dated.by_tag(yggdryl::VERSION_TAG).unwrap().as_str(),
+        dated.by_tag(yggdryl::VERSION_TAG_NAME.0).unwrap().as_str(),
         Some("4.4")
     );
     assert_eq!(dated.version(), Some(Version::new(4, 4, 0)));

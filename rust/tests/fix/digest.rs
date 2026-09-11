@@ -246,7 +246,7 @@ fn a_direction_is_read_in_front_of_the_payload_and_never_inside_it() {
 }
 
 #[test]
-fn the_crate_carries_fields_of_its_own_on_the_standard_branch_from_65000() {
+fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
     assert_eq!(
@@ -320,21 +320,28 @@ fn the_crate_carries_fields_of_its_own_on_the_standard_branch_from_65000() {
         );
     }
 
-    // Every one is a standard field from 65000 up: one tag block, on the
-    // branch every dictionary resolves through, so a bridge row spelling
-    // `SESSIONID` or `ULFROMSESSIONNAME` reaches it by name.
+    // Every one is a field from 65000 up: one tag block, in the one namespace
+    // every dictionary resolves through, so a bridge row spelling `SESSIONID`
+    // or `ULFROMSESSIONNAME` reaches it by name; its identity is its tag and
+    // its name, and a dictionary member it is not.
     for (at, field) in held.iter().enumerate() {
         let view = field.as_fix();
         let tag = view.tag().unwrap().expect("a tag");
         let id = view.id().unwrap().expect("an identity");
         assert_eq!(tag, yggdryl::CRATE_TAG_MIN + i32::try_from(at).unwrap());
-        assert_eq!(id, FixId::standard(tag), "the standard branch");
+        assert_eq!(id, FixId::of(tag, field.name()).unwrap(), "tag and name");
         assert!(yggdryl::is_crate_tag(tag));
+        assert_eq!(
+            view.branches().count(),
+            0,
+            "{} is no dictionary's",
+            field.name()
+        );
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
-    assert_eq!(yggdryl::MSGHASH_TAG, 65_000);
-    assert_eq!(yggdryl::STATE_TAG, 65_015);
-    assert_eq!(yggdryl::PERSISTENTID_TAG, 65_018);
+    assert_eq!(yggdryl::MSGHASH_TAG_NAME.0, 65_000);
+    assert_eq!(yggdryl::STATE_TAG_NAME.0, 65_015);
+    assert_eq!(yggdryl::PERSISTENTID_TAG_NAME.0, 65_018);
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
     let sessions = &held[11..13];
     assert_eq!(
@@ -347,7 +354,7 @@ fn the_crate_carries_fields_of_its_own_on_the_standard_branch_from_65000() {
 
     // `MsgDirection` is FIX's own, so it is not invented here.
     assert!(!names.contains(&"msgdirection"));
-    assert_eq!(yggdryl::MSGDIRECTION_TAG, 385);
+    assert_eq!(yggdryl::MSGDIRECTION_TAG_NAME.0, 385);
 
     // Every registry holds them from construction, and inserting them again
     // replaces rather than collides.

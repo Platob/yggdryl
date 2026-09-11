@@ -24,8 +24,8 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::{
-    FixBranch, FixCodec, FixEntry, FixRegistry, IOMedia, Scalar, TimeUnit, Timezone, Url,
-    fix_schema, fix_schema_carrying,
+    FixCodec, FixEntry, FixRegistry, IOMedia, Scalar, TimeUnit, Timezone, Url, fix_schema,
+    fix_schema_carrying,
 };
 
 /// The committed dictionary beside the bridge's own vocabulary.
@@ -105,9 +105,10 @@ fn text() -> RecordOptions {
     text_options().into()
 }
 
-/// The codec: the bridge's own dialect, pinned for the whole run.
+/// The codec: over the bridge's dictionary, whose fields resolve in the one
+/// namespace without a pin.
 fn codec() -> FixCodec {
-    FixCodec::new(registry()).with_branch(&FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap())
+    FixCodec::new(registry())
 }
 
 /// The first stage alone, as one batch: what the text reader hands the codec.
@@ -309,8 +310,8 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     // row's bracket stated them, the heartbeat's did not. No line here spells a
     // session of its own, so the bracket's instance is what `sendersessionid`
     // reads.
-    let session = tag_text(&read, yggdryl::SENDERSESSIONID_TAG);
-    let context = tag_text(&read, yggdryl::MSGCTXID_TAG);
+    let session = tag_text(&read, yggdryl::SENDERSESSIONID_TAG_NAME.0);
+    let context = tag_text(&read, yggdryl::MSGCTXID_TAG_NAME.0);
     assert_eq!(session[ROUTED_ROW].as_deref(), Some("e7254b22"));
     assert_eq!(context[ROUTED_ROW].as_deref(), Some("9f015ee861"));
     assert_eq!(session[HEARTBEAT_ROW], None);
@@ -322,7 +323,7 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     // names a line moved between are what the line itself spells, and no
     // line here spells one, nor which plugin the message came through
     // before.
-    let plugin = tag_text(&read, yggdryl::PLUGINID_TAG);
+    let plugin = tag_text(&read, yggdryl::PLUGINID_TAG_NAME.0);
     assert_eq!(
         plugin[HEARTBEAT_ROW].as_deref(),
         Some("OMS_X1_TradeCapture")
@@ -333,9 +334,9 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
         Some("Broker_DarkPool_TradeCapture")
     );
     assert_eq!(plugin[RESPONSE_ROW].as_deref(), Some("Jolokia"));
-    let sender = tag_text(&read, yggdryl::SENDERSESSIONNAME_TAG);
-    let target = tag_text(&read, yggdryl::TARGETSESSIONNAME_TAG);
-    let previous = tag_text(&read, yggdryl::PREVPLUGINID_TAG);
+    let sender = tag_text(&read, yggdryl::SENDERSESSIONNAME_TAG_NAME.0);
+    let target = tag_text(&read, yggdryl::TARGETSESSIONNAME_TAG_NAME.0);
+    let previous = tag_text(&read, yggdryl::PREVPLUGINID_TAG_NAME.0);
     for row in 0..CAPTURE.len() {
         assert_eq!(sender[row], None, "row {row} states no sender session name");
         assert_eq!(target[row], None, "row {row} states no target session name");
@@ -369,7 +370,7 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     // own `msgdirection` - a name of its own beside the text reader's
     // `direction` - agrees with the text reader's wherever the text reader
     // answered, and fills the default where it did not.
-    let fix_direction = tag_text(&read, yggdryl::MSGDIRECTION_TAG);
+    let fix_direction = tag_text(&read, yggdryl::MSGDIRECTION_TAG_NAME.0);
     assert_eq!(fix_direction[HEARTBEAT_ROW].as_deref(), Some("SENT"));
     assert_eq!(fix_direction[FILL_ROW].as_deref(), Some("RECV"));
     assert_eq!(fix_direction[RESPONSE_ROW].as_deref(), Some("RECV"));
@@ -436,7 +437,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     // The crate's own columns: a digest for every row that carried anything -
     // the framed fill and the routed row state different tag sets, so they
     // digest apart - and the clock every row is stamped with.
-    let digest = tag_column(&read, yggdryl::MSGHASH_TAG);
+    let digest = tag_column(&read, yggdryl::MSGHASH_TAG_NAME.0);
     assert!(
         digest[FILL_ROW]
             .as_bytes()
@@ -448,7 +449,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
             .is_some_and(|held| held.len() == 16)
     );
     assert_ne!(digest[FILL_ROW], digest[ROUTED_ROW]);
-    let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG);
+    let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG_NAME.0);
     assert!(matches!(stamp[FILL_ROW], Scalar::Temporal(_)));
     assert!(matches!(stamp[ROUTED_ROW], Scalar::Temporal(_)));
 }
@@ -464,7 +465,7 @@ fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() 
     // text read declared UTC, so the capture and the stamp are one instant,
     // on every row.
     let clock = column(&stage, "timestamp");
-    let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG);
+    let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG_NAME.0);
     for row in 0..CAPTURE.len() {
         assert!(!stamp[row].is_null(), "row {row} is stamped");
         assert_eq!(
@@ -480,7 +481,7 @@ fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() 
 
     // The partition the stamp falls in, floored from the clock's own
     // nanoseconds so a millisecond clock still has one - on every row.
-    let partition = tag_column(&read, yggdryl::UNIXPARTITION_TAG);
+    let partition = tag_column(&read, yggdryl::UNIXPARTITION_TAG_NAME.0);
     for (row, held) in partition.iter().enumerate() {
         assert!(!held.is_null(), "row {row} has a partition");
     }
@@ -509,10 +510,68 @@ fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() 
 }
 
 #[test]
+fn the_bridges_own_fields_carry_its_membership_and_resolve_beside_the_standard() {
+    let registry = registry();
+    // The bridge's dictionary is a membership on the fields it contributed,
+    // not a namespace of its own: every field from `ULBRIDGE_TAG_MIN` says
+    // the bridge speaks it, a standard field it never touched says nothing,
+    // and both are reached by tag or by name from the one registry.
+    assert_eq!(registry.dialects(), [yggdryl::ULBRIDGE_DIALECT.to_owned()]);
+    let (tag, name) = yggdryl::MBEAN_TAG_NAME;
+    assert_eq!(tag, yggdryl::ULBRIDGE_TAG_MIN);
+    let mbean = registry
+        .field_by_tag(tag)
+        .expect("the bridge's first field");
+    assert!(mbean.as_fix().has_branch(yggdryl::ULBRIDGE_DIALECT));
+    assert_eq!(
+        mbean.as_fix().branches().collect::<Vec<_>>(),
+        [yggdryl::ULBRIDGE_DIALECT]
+    );
+    assert_eq!(
+        mbean.as_fix().id().unwrap(),
+        Some(yggdryl::FixId::of(tag, name).unwrap())
+    );
+    assert_eq!(registry.field_by_name(name).unwrap().name(), mbean.name());
+    let msgtype = registry
+        .field_by_tag(yggdryl::fix::MSGTYPE_TAG_NAME.0)
+        .expect("MsgType");
+    assert_eq!(msgtype.as_fix().branches().count(), 0);
+    assert_eq!(
+        registry
+            .field_by_name(yggdryl::fix::MSGTYPE_TAG_NAME.1)
+            .unwrap()
+            .name(),
+        msgtype.name()
+    );
+    // Every field the bridge defines is held, and every one of them says so
+    // in its membership; the specification's own fields in the same tag
+    // range say nothing of the bridge.
+    let mut bridged = 0;
+    for defined in yggdryl::fix_ulbridge_fields().unwrap() {
+        let held = registry
+            .field_by_id(defined.as_fix().id().unwrap().unwrap())
+            .unwrap();
+        bridged += 1;
+        assert!(
+            held.as_fix().has_branch(yggdryl::ULBRIDGE_DIALECT),
+            "{} says nothing of the bridge",
+            held.name()
+        );
+    }
+    assert!(bridged > 0, "the bridge's block is held");
+    assert!(
+        !registry
+            .field_by_name("NoAdditionalTermBondRefs")
+            .unwrap()
+            .as_fix()
+            .has_branch(yggdryl::ULBRIDGE_DIALECT)
+    );
+}
+
+#[test]
 fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     let registry = registry();
-    let branch = FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
-    let codec = FixCodec::new(Arc::clone(&registry)).with_branch(&branch);
+    let codec = FixCodec::new(Arc::clone(&registry));
 
     // The line as the text reader hands it to the codec: the row header
     // gone, the `Response:` prose still in front of the document.
@@ -524,11 +583,11 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
 
     // The envelope is what the exchange was, and it types.
     assert_eq!(
-        message.by_tag(yggdryl::OPERATION_TAG).unwrap(),
+        message.by_tag(yggdryl::OPERATION_TAG_NAME.0).unwrap(),
         &Scalar::from("read")
     );
     assert_eq!(
-        message.by_tag(yggdryl::STATUS_TAG).unwrap(),
+        message.by_tag(yggdryl::STATUS_TAG_NAME.0).unwrap(),
         &Scalar::from(200_i64)
     );
     // A session interface is one flat message. Standard and bridge attributes
@@ -544,7 +603,9 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
         ("BackupPort", Scalar::from(-1_i64)),
         ("IncomingMsgSeqNum", Scalar::from(4507_i64)),
         ("NeedReload", Scalar::from(false)),
-        ("State", Scalar::from("logged")),
+        // The document's `State` is the plugin's, held under the bridge's
+        // own name beside the crate's order `state`.
+        ("PluginState", Scalar::from("logged")),
     ] {
         assert_eq!(message.by_path(&fpath(path)).unwrap(), &expected, "{path}");
     }
@@ -561,7 +622,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     // reader filtering the arrival record by tag finds them.
     let tags: Vec<i32> = message.entries().iter().map(FixEntry::tag).collect();
     assert!(tags.contains(&49), "{tags:?}");
-    assert!(tags.contains(&yggdryl::MBEAN_TAG), "{tags:?}");
+    assert!(tags.contains(&yggdryl::MBEAN_TAG_NAME.0), "{tags:?}");
     assert!(tags.contains(&20_027), "CurrentPort: {tags:?}");
 
     // In the batch the same document is the same row: the envelope on its
@@ -608,8 +669,7 @@ const ROWHEADER_WIDTH: usize = "2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) "
 #[test]
 fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     let registry = registry();
-    let branch = FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
-    let codec = FixCodec::new(Arc::clone(&registry)).with_branch(&branch);
+    let codec = FixCodec::new(Arc::clone(&registry));
     let read = read(&CAPTURE);
 
     // The text reader's bodies are what the codec reads, so the line read
@@ -670,9 +730,9 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     assert_eq!(recorded.len(), alone.entries().len());
     for filled in [
         34,
-        yggdryl::MSGCTXID_TAG,
-        yggdryl::PLUGINID_TAG,
-        yggdryl::TIMESTAMP_TAG,
+        yggdryl::MSGCTXID_TAG_NAME.0,
+        yggdryl::PLUGINID_TAG_NAME.0,
+        yggdryl::TIMESTAMP_TAG_NAME.0,
     ] {
         assert!(
             !recorded.contains(&i64::from(filled)),

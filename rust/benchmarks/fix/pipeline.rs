@@ -14,15 +14,15 @@
 //! framing each line under the bridge's row header, the whole path into fixed
 //! rows, the codec alone over the framed bodies, the record reader over the
 //! same bodies with each row naming the plugin that logged it - so the
-//! per-row dialect path is measured on its own - and then what a message
+//! `pluginid` capture's fill is measured on its own - and then what a message
 //! costs after it is built - its row, the batch the rows land in, the rules
 //! that fill what it implies, the restatement at the dictionary's newest
 //! version, the stamp that joins it to its order's life, and its digest.
 //!
-//! The codec is pinned to the bridge's own dialect, which is what a capture
-//! holding configuration documents needs: a name resolves in that dialect
-//! first and in the standard one after, so the framed FIX still lands on
-//! FIX's own tags while a document's attributes land on the bridge's.
+//! The registry carries the bridge's own fields beside the standard ones in
+//! the one namespace, which is what a capture holding configuration
+//! documents needs: the framed FIX lands on FIX's own tags while a
+//! document's attributes land on the bridge's, each by its name.
 
 use std::hint::black_box;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{TextBytes, TextLine, TextOptions};
-use yggdryl::{FixBranch, FixCodec, FixMsg, IOMedia, Timezone, Url, fix_schema};
+use yggdryl::{FixCodec, FixMsg, IOMedia, Timezone, Url, fix_schema};
 
 use super::seed;
 
@@ -93,13 +93,19 @@ fn bodies(source: &Buffer) -> Vec<Vec<u8>> {
 pub fn benchmarks(criterion: &mut Criterion) {
     let bytes = corpus();
     let source = handle(&bytes);
-    let branch = FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).expect("a branch");
     let registry = Arc::new(
         seed()
             .with_ulbridge_fields()
             .expect("the bridge's own fields"),
     );
-    let codec = FixCodec::new(Arc::clone(&registry)).with_branch(&branch);
+    assert!(
+        registry
+            .field(yggdryl::MBEAN_TAG_NAME.0)
+            .expect("the bridge's first field")
+            .as_fix()
+            .has_branch(yggdryl::ULBRIDGE_DIALECT)
+    );
+    let codec = FixCodec::new(Arc::clone(&registry));
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
 
     let mut group = criterion.benchmark_group("fix/pipeline");
@@ -146,23 +152,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
 
     // The record reader over the same bodies, each row naming the plugin
-    // that logged it: every other row an alias of the pinned dialect, the
-    // rest a plugin no branch is named after. The alias is declared on a
-    // copy of the dictionary so the other cases keep their setup, and the
-    // codec stays pinned as they are. A row's dialect resolves off the
-    // codec's memo after the first row spelling it, so this is what a row
-    // costs to read under a dialect it names for itself.
-    let mut aliased = registry.as_ref().clone();
-    let alias = aliased
-        .branch_named(yggdryl::ULBRIDGE_BRANCH)
-        .cloned()
-        .expect("the bridge's branch")
-        .with_aliases(["ulb"])
-        .expect("an alias");
-    aliased.set_branch(alias).expect("the alias declares");
-    let plugin_codec = FixCodec::new(Arc::new(aliased))
-        .with_branch(&branch)
-        .with_capture_names(["pluginid"]);
+    // that logged it: the capture fills the crate's `pluginid` field and
+    // selects nothing, so this is what a row costs to read with one more
+    // captured column in front of its tags.
+    let plugin_codec = FixCodec::new(Arc::clone(&registry)).with_capture_names(["pluginid"]);
     let lines: Vec<TextLine> = held
         .iter()
         .enumerate()
@@ -308,13 +301,12 @@ fn capture_body(index: usize, expects: &[u8]) -> Vec<u8> {
 /// read is the difference. Per shape rather than over the corpus, so a
 /// change to the codec is attributed to the shape it moved.
 pub fn line_benchmarks(criterion: &mut Criterion) {
-    let branch = FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).expect("a branch");
     let registry = Arc::new(
         seed()
             .with_ulbridge_fields()
             .expect("the bridge's own fields"),
     );
-    let codec = FixCodec::new(Arc::clone(&registry)).with_branch(&branch);
+    let codec = FixCodec::new(Arc::clone(&registry));
     let frame_pipe = capture_body(72, b"8=FIX.4.4|9=886|35=8|");
     let frame_soh: Vec<u8> = frame_pipe
         .iter()

@@ -1,7 +1,8 @@
 # The decisions the TextLine adaptation rests on
 
-Ten decisions and three amendments, settled while the FIX layer was moved onto
-the text reader that landed in `main`, and then made text. Each is one rule, and the module doc
+Eleven decisions and three amendments, settled while the FIX layer was moved
+onto the text reader that landed in `main`, then made text, then given one
+namespace. Each is one rule, and the module doc
 named beside it is where the rule is written down.
 
 They are here rather than in a scratchpad because they are the contract the work
@@ -12,8 +13,8 @@ find the answer without archaeology.
 Decisions 1-7 were settled before the work began, from five reader reports that
 measured both sides against the branch's own fixtures. Decision 8 was settled
 when the codec's entry point changed, decision 9 when its paths did, and
-decision 10 when the line became text - written, like the others, before the
-code that keeps it. The
+decision 10 when the line became text, decision 11 when the registry's branches
+went - each written, like the others, before the code that keeps it. The
 amendments record where a decision turned out to over-claim once it met the
 code - which is the part most worth keeping.
 
@@ -164,8 +165,9 @@ reading the contract forbids. The grammar is not too narrow here - it already
 writes positions, and FIX simply wrote them differently.
 
 What must survive, and does, is FIX's *name* resolution: alias before exact,
-the fold that drops case and separators, and the branch tiers. That belongs in
-how a segment resolves a name against the registry, not in a second parser.
+the fold that drops case and separators, and the branch tiers (the tiers went
+with decision 11; the rest stands). That belongs in how a segment resolves a
+name against the registry, not in a second parser.
 
 **Written in:** `fix/msg.rs`, on the path navigator, and `docs/fix/message.md`.
 **Fixtures:** every `by_path`/`get_by_path` site in the FIX suites, the Python
@@ -270,8 +272,10 @@ fields and its row-header captures, never as a name looked up in a map per row:
 The codec is told the capture names once - `FixCodec::with_capture_names`,
 taking what `TextOptions::capture_names` answers - and resolves each there to
 the one role it plays: the dialect, the version, the clock, the direction, or a
-fill and the field it fills. Per line it reads a capture by position. A line
-carrying no captures states nothing, and nothing is silence, never an error.
+fill and the field it fills (the dialect role went with decision 11: a
+`pluginid` capture is a fill and selects nothing). Per line it reads a capture
+by position. A line carrying no captures states nothing, and nothing is
+silence, never an error.
 
 **Why not a lifted entry.** A lift reaches into the body, and the body is the
 message. A fact read out of it is already a FIX field, which the codec fills
@@ -351,8 +355,10 @@ could not do: the registry needed `Parties.PartyID` where the message needed
 
 **What survives, per segment.** FIX's name resolution is the behaviour this
 must not lose: the codec's dialect first and then the standard branch
-(`known_by_name`), alias before exact, the fold that drops case and separators,
-and the registry's canonical spelling before a folded child (`child_index`).
+(`known_by_name`; superseded by decision 11, under which `known_by_name` is
+the one namespace's lookup), alias before exact, the fold that drops case and
+separators, and the registry's canonical spelling before a folded child
+(`child_index`).
 None of that is parsing, so none of it belongs in the grammar; it is how a
 `Field` segment resolves a name against a dictionary.
 
@@ -496,3 +502,149 @@ snapshot, unmoved; the Python and Node record dictionaries, answering `str`.
 | `fix/` | call sites read the ranges through the `_bytes` accessors | the equivalence snapshot; the byte-door fixture in `tests/fix/message.rs` |
 | Python, Node | `body`, `key`, `value`, captures answer text; `key_bytes`/`value_bytes` beside them; `decoded_byte_size` | argument order and error semantics |
 | docs, `AGENTS.md` | `body: utf8`; the examples read text | |
+
+## 11. A field is its tag and its name; a dictionary is a membership, not a namespace
+
+**Rule.** A FIX field is identified by its tag and its name together, and by
+nothing else. `FixId` is one `i32`: the signed XXH32, under a fixed seed, of
+the tag's four little-endian bytes followed by the name under the crate's one
+fold - ASCII case dropped, `_`, `-` and space dropped - so `Msg_Type`,
+`msgtype` and `MsgType` under tag 35 are one id, and the id agrees with what
+every name lookup already answers. It is derived on every read from
+`fix:tag` and the field's name, never written into a dictionary shard, for
+the reason `FixField::id` gives today: the registry, the catalog, the store
+and the CBlock reader rename a field after it is built, and a stored id
+would go stale where a derived one cannot. Wherever an id crosses a boundary
+- `FixKey::Id`, `FixMsg::get_by_id`, Python, Node, a row - it is that
+integer, rendered as its decimal; `FixKey::from(i32)` keeps meaning a tag,
+and an id is always spelled `FixKey::Id`, because one integer must not have
+two readings. `FixMsg::lift_source` answers the tag a facet was read from,
+because a lift source is declared by tag and the tag is the whole of what
+it is; the field that tag names is the registry's to answer.
+
+The branch goes. `FixBranch`, the branch half of the old identity, the
+`tag:branch` spelling, the admissibility rule that let a dialect claim only
+`5000..40000`, the branch table and its order, the four-tier resolution
+(standard canonical, named canonical, standard alias, named alias), every
+`Option<&FixBranch>` parameter, the codec's pin and its per-row dialect, the
+builder's and the message's own-branch step, the store's `branches.json`
+manifest and per-branch folders, and the `branches` array of the JSON
+snapshot are all deleted. What a dictionary contributes is recorded on the
+field it contributed to: `fix:branches` is a comma-separated list of
+dialect names, each validated as an alias is (non-empty, no `,`), folded by
+ASCII case once, deduplicated under the crate fold and kept sorted so that
+two registries built from the same dictionaries in any order hash alike.
+`FixField::branches` and `has_branch` read it, `FixFieldMut::set_branches`
+and `add_branch` write it, `merge_with` unions it, and a message root the
+codec builds carries none, because a message is not a dictionary member.
+`FixRegistry::dialects` lists the distinct names any field or definition
+carries. Membership is provenance a caller filters on; resolution never
+consults it.
+
+**What one namespace means for a field that arrives.** The identity is the
+pair, so three things can happen when a field is added or merged:
+
+| the registry holds | the arrival | what happens |
+| --- | --- | --- |
+| the same tag under the same folded name | the same field | update: `merge_with` unions its tags, aliases, membership and the rest, as today |
+| the same tag under another name | a new field | it is registered under its own id, *and* the holder gains the arrival's name as an alias; a bare wire tag keeps answering the first holder, the newcomer is reached by its name or its id |
+| the same folded name under another tag | the same field spelled with another tag | it merges into the holder, which gains the tag as an alternate; no second field |
+| neither | a new field | it is inserted as it arrived |
+
+A name is what identifies a field to a reader, so a new name on a held tag
+is a new thing a dialect defined over a tag it reused; a tag is what
+identifies a field on the wire, so a held name on a new tag is the same
+thing spelled with another number. The asymmetry is the rule and not an
+accident of it. Two identities hashing to one id - possible, since the id
+is 32 bits - is a typed conflict on insert, exactly as a digest collision is
+today, and every id hit is rechecked against the tag and the fold before it
+counts.
+
+**Resolution without tiers.** Canonical before alternate for tags, canonical
+name before alias for names, the fold always, and nothing else:
+`get_field_by_id` is exact; `get_field_by_tag` answers the canonical holder
+of a tag, then an alternate; `get_field_by_name` answers the canonical fold,
+then an alias fold; `get_field_by_path` is decision 9 unchanged. On a
+message, `known_by_tag` and `known_by_name` are those two lookups, and
+`child_index` keeps the registry's canonical spelling before an exact child
+before the one folded child. Message codes live in one map under the same
+rule as fields - a definition re-declaring a code under the same folded name
+folds into the stored one, under another name it is a second message reached
+by its name. The bare code answers the message named as tag 35's code set
+names the code - what the specification calls it, and what a reader of
+`35=D` means - else the first in name order: both are facts of the catalog's
+content rather than of the order it was built in, so a dictionary folded,
+stored and loaded answers the same message, and a venue's second message on
+a specification code never takes that code from the specification's. The
+counter tables are keyed by counter tag, since every caller holds a tag.
+`known_msgtype` and `known_group` go with the tiers they existed for.
+
+**The codec.** No pin, no dialect: `FixCodec::with_branch`, `dialect_of`
+and `tier` go, `RowTier` is the declared message alone, and `RowExtras`,
+`RowStamp`, `Builder` and `FixMsg` lose their branch member. A row's
+`pluginid` capture fills the crate's `pluginid` field and selects nothing.
+A dialect's default FIX version loses its home with the branch: the
+version a row reads at is `ApplVerID`, then `BeginString`, then the
+`FixCodec::with_version` pin, then the registry's newest, and a CBlock file
+that declared one is read under the pin the caller states.
+
+**Crate fields as tuples.** Every field this crate defines is declared once
+as a `(tag, name)` pair - `PLUGINID_TAG_NAME`, `TIMESTAMP_TAG_NAME`,
+`VERSION_TAG_NAME` and the rest - because that pair is what identifies it,
+and a caller that names one of them names both halves. The bare `*_TAG`
+constants and `TIMESTAMP_NAME` are deleted with the branch. ULBridge's own
+fields keep their tags from `ULBRIDGE_TAG_MIN` and carry
+`fix:branches=ulbridge`; that spelling is `ULBRIDGE_DIALECT`, which replaces
+`ULBRIDGE_BRANCH`. The derived definition-tag block stays, as it never
+depended on a branch; `USER_TAG_MIN`/`USER_TAG_MAX` and `is_admissible` go,
+since nothing gates a tag on its dictionary any more.
+
+**Ingest and the store.** `FixRegistry::from_cfb_file(handle, dialect)` and
+`FixField::from_cfb_file` stamp the dialect on every field, group, component
+and message the file produces - standard tags included, since membership
+means "this dictionary speaks it"; `add_cfb_file(handle, dialect)` takes
+the dialect or the file's stem and merges under the table above; the
+`aliases` parameter goes with `dialect_of`. The store writes
+`fields/<shard>.json` and `<category>/<name>.json` and nothing keyed by
+branch; a placeholder does not copy the target's membership, as it does not
+copy its tag. The shipped dictionary under `config/fix` changes in no file,
+because it never declared a branch and the id is not stored.
+
+**Order.** Tag-major, then the tag's holder, then id, so `FixFieldIter` and
+the bindings' documented ascending iteration keep their order on a registry
+of any size - and so the store, which writes in that order and loads in
+file order, hands the bare tag back to the field that held it: the holder
+is decided by arrival and survives a round trip because it is written first.
+
+**What it collides with.** Decisions 6 and 9 name "the codec's dialect first
+and then the standard branch" among what survives: that clause is
+superseded here, and the rest of both - alias before exact, the one fold,
+canonical spelling before folded child, the list-transparent descend, the
+unique-head rule - is what this decision keeps. `FixRegistry::stable_hash`
+moves, because the branches it folded in are gone. The Iceberg snapshot
+branches are another word and untouched.
+
+**Written in:** `fix/mod.rs`, on `FixId`; `fix/field.rs`, on `fix:branches`;
+`fix/registry.rs`, on the insert rule; `docs/fix/registry.md`.
+**Fixtures:** the three rows of the table, each through `add_field` and
+through `merge_with`, with the alias and the alternate asserted on the
+holder and the bare tag answering the first holder; two identities forced
+onto one id refused; `Msg_Type`, `msgtype` and `MsgType` one id; a CBlock
+merged under a dialect stamping every field it touched and unioning onto a
+standard one; the one message-code namespace; iteration order over a
+registry holding two fields on one tag; the equivalence snapshot, unmoved;
+the allocation pins over the unseeded fold, still zero.
+
+**What it costs.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `fix/mod.rs` | `FixBranch` deleted; `FixId` one `i32` with `of(tag, name)`; the colon grammar gone | `FixKey`'s three doors; `From<i32>` = a tag |
+| `fix/field.rs` | `fix:branch` -> `fix:branches`; the branch-identity refusal in `merge_with` gone | the tag-must-agree refusal; every other `fix:` key |
+| `fix/registry.rs`, `catalog.rs`, `memo.rs` | one namespace: tag, alternate, name, alias and id indexes, unseeded; the table above; counters by tag; one code map | `identity_of`'s borrowed read; zero allocations per lookup |
+| `fix/codec.rs`, `build.rs`, `msg.rs`, `batch.rs`, `ulbridge.rs`, `lift.rs`, `anomaly.rs`, `latest.rs` | no branch member, pin, tier or dialect; `pluginid` a fill; version as stated above | the wire bytes, the entries, the row values, the equivalence snapshot |
+| `fix/cfb.rs`, `store.rs` | dialect stamped on every produced field; no manifest, no branch folders, no snapshot `branches` | the shard arithmetic; provenance checks; the shipped files |
+| `fix/crated.rs` | `*_TAG_NAME` tuples; `ULBRIDGE_DIALECT` | the tags themselves |
+| tests, benchmarks | the branch pins go or are re-spelled; `numeric_branch.rs` goes | `tier_order_never_lets_an_alternate_key_shadow_a_canonical_one`, the path and fold cases |
+| Python, Node, CLI | `field.fix.id` an int, `fix.branches` a list, `--dialect`; every `branch=` gone | argument order and error semantics elsewhere |
+| docs | eleven pages and the explorer re-spelled | |

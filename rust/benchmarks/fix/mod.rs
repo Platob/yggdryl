@@ -9,6 +9,6 @@ pub mod store;
 pub mod ulconfig;
 
 pub(crate) use common::{
-    BRANCH_FIELDS, LARGE_FIELDS, generated, mixed_categories, scratch, seed, seed_root,
-    two_branches, venue,
+    DIALECT_FIELDS, LARGE_FIELDS, generated, mixed_categories, scratch, seed, seed_root,
+    two_dialects, venue,
 };

@@ -73,6 +73,39 @@ fn the_committed_dictionary_answers_the_worked_case_end_to_end() {
 }
 
 #[test]
+fn the_committed_dictionary_is_no_dialects_member_and_a_field_is_its_tag_and_its_name() {
+    let registry = seed();
+    // The shipped dictionary never declared a branch, so nothing it holds
+    // carries a membership and it lists no dialect.
+    assert!(registry.dialects().is_empty(), "{:?}", registry.dialects());
+    for category in FixCategory::ALL {
+        for field in registry.definitions(category) {
+            assert_eq!(
+                field.as_fix().branches().count(),
+                0,
+                "{category}/{} carries a membership",
+                field.name()
+            );
+        }
+    }
+    // A field's identity is derived from its tag and its name, never stored:
+    // the id every read answers is the one the pair hashes to, under the fold
+    // every name lookup already applies.
+    let msgtype = registry.field_by_tag(35).expect("tag 35");
+    let id = msgtype.as_fix().id().unwrap().expect("an identity");
+    assert_eq!(id, yggdryl::FixId::of(35, "MsgType").unwrap());
+    assert_eq!(id, yggdryl::FixId::of(35, "Msg_Type").unwrap());
+    assert_eq!(id, yggdryl::FixId::of(35, "msgtype").unwrap());
+    assert_ne!(id, yggdryl::FixId::of(36, "MsgType").unwrap());
+    assert_ne!(id, yggdryl::FixId::of(35, "MsgSeqNum").unwrap());
+    assert_eq!(registry.field_by_id(id).unwrap().name(), "msgtype");
+    assert!(
+        msgtype.as_metadata().get("fix:id").is_none(),
+        "an id is derived, never stored"
+    );
+}
+
+#[test]
 fn every_generated_name_is_folded_and_no_two_collide() {
     let registry = seed();
     let scalar_names: BTreeSet<_> = registry.iter().map(Field::name).collect();
@@ -88,8 +121,7 @@ fn every_generated_name_is_folded_and_no_two_collide() {
                 "{name} holds an uppercase byte"
             );
             assert!(!name.contains('_'), "{name} holds an underscore");
-            let branch = field.as_fix().branch().expect("valid branch");
-            assert!(seen.insert((branch, name)), "duplicate {category}/{name}");
+            assert!(seen.insert(name), "duplicate {category}/{name}");
             if category != FixCategory::Fields {
                 assert!(
                     !scalar_names.contains(name),
@@ -179,7 +211,7 @@ fn a_repeating_group_has_a_scalar_counter_and_a_separately_named_component() {
     assert_eq!(counter.name(), "nopartyids");
     assert_eq!(counter.dtype(), &DataType::Int32);
     let parties = registry
-        .definition(FixCategory::Groups, "Parties", None)
+        .definition(FixCategory::Groups, "Parties")
         .expect("Parties group");
     assert_eq!(parties.name(), "parties");
     assert_eq!(parties.display(), Some("Parties"));
@@ -196,7 +228,7 @@ fn a_repeating_group_has_a_scalar_counter_and_a_separately_named_component() {
     assert_eq!(item.as_fix().component(), Some("party"));
     assert!(!item.is_nullable());
     let component = registry
-        .definition(FixCategory::Components, "Party", None)
+        .definition(FixCategory::Components, "Party")
         .expect("Party component");
     assert_eq!(component.dtype(), item.dtype());
     let members: Vec<&str> = item
@@ -211,7 +243,7 @@ fn a_repeating_group_has_a_scalar_counter_and_a_separately_named_component() {
     assert!(!members.contains(&"nopartyids"), "{members:?}");
     assert_eq!(
         registry
-            .definition(FixCategory::Groups, "Parties", None)
+            .definition(FixCategory::Groups, "Parties")
             .unwrap()
             .get_field_by_path("party.partyid")
             .map(Field::name),

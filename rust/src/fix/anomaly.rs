@@ -14,10 +14,10 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use super::MsgType;
 use super::entry::FixEntry;
 use super::group_plan::GroupPlan;
 use super::msg::FixMsg;
-use super::{FixId, MsgType};
 use crate::{DataType, Field, Scalar};
 
 /// The replacement character a lossy decode leaves behind.
@@ -296,11 +296,7 @@ impl<'msg> FixAnomalies<'msg> {
             msgtype: message
                 .get_by_tag(35)
                 .and_then(Scalar::as_str)
-                .and_then(|code| {
-                    message
-                        .registry()
-                        .known_msgtype(code, Some(message.branch()))
-                }),
+                .and_then(|code| message.registry().get_msgtype(code)),
             numeric: Vec::new(),
         }
     }
@@ -328,11 +324,13 @@ impl<'msg> FixAnomalies<'msg> {
                 .last()
                 .and_then(|context| context.plan.nested(entry.tag()).map(|(_, plan)| plan));
             let plan = nested.or_else(|| {
-                let branch = group.field.as_fix().branch().ok()?;
-                let id = FixId::from_parts(&branch, entry.tag()).ok()?;
-                match self.msgtype.filter(|message| message.has_group_counter(id)) {
-                    Some(message) => message.get_group_plan_by_counter(id),
-                    None => self.message.registry().get_group_plan_by_counter(id),
+                let tag = entry.tag();
+                match self
+                    .msgtype
+                    .filter(|message| message.has_group_counter(tag))
+                {
+                    Some(message) => message.get_group_plan_by_counter(tag),
+                    None => self.message.registry().get_group_plan_by_counter(tag),
                 }
             });
             if let Some(plan) = plan.filter(|_| self.numeric.len() < 64) {

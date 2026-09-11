@@ -4,12 +4,11 @@
 //! most of what a line asks the dictionary is a question the line before it
 //! asked: what the field `#AVEXDESTINATION` names (nothing), which spellings
 //! `LastQty` states as an absence (none), what `2` translates to in
-//! `ExecType` at FIX 4.2, which dialect the plugin `ULBridge` logs under.
-//! Each answer is a fact of the registry, the branch, and the text alone,
-//! and the registry sits behind an `Arc` the codec holds for as long as this
-//! table lives, so an answer read once is an answer.
+//! `ExecType` at FIX 4.2. Each answer is a fact of the registry and the text
+//! alone, and the registry sits behind an `Arc` the codec holds for as long
+//! as this table lives, so an answer read once is an answer.
 //!
-//! Four tables, each keyed by what its answer is a fact of, each bounded at
+//! Three tables, each keyed by what its answer is a fact of, each bounded at
 //! [`Memo::CAPACITY`] entries past which an answer is still given and simply
 //! not remembered - a dictionary is a bounded vocabulary, and a capture
 //! spelling more distinct keys or values than that is spelling junk, which
@@ -20,7 +19,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use smol_str::SmolStr;
 
-use super::{FixBranch, FixId};
+use super::FixId;
 use crate::{Field, Version};
 
 /// What a run has learned, shared by every stream the codec is cloned into.
@@ -30,11 +29,8 @@ pub(super) struct Memo {
     facts: Mutex<HashMap<usize, Arc<Facts>>>,
     /// The wire value a text spells for a field at a version.
     translations: Mutex<HashMap<Question, Option<SmolStr>>>,
-    /// What the dictionary holds under one key in one branch tier.
-    names: Mutex<HashMap<(u32, SmolStr), Lookup>>,
-    /// The branch one plugin names, by the text a row's `pluginid` column
-    /// holds: its digest, or `None` where the spelling reaches no branch.
-    dialects: Mutex<HashMap<SmolStr, Option<u32>>>,
+    /// What the dictionary holds under one key.
+    names: Mutex<HashMap<SmolStr, Lookup>>,
 }
 
 /// One translation asked: the field's address, the version the read is
@@ -58,10 +54,10 @@ impl Facts {
 }
 
 /// What the dictionary holds under one key: the field the key names, by its
-/// identity, and whether the key names a repeating group.
+/// tag and identity, and whether the key names a repeating group.
 #[derive(Clone, Copy)]
 pub(super) struct Lookup {
-    pub(super) field: Option<FixId>,
+    pub(super) field: Option<(i32, FixId)>,
     pub(super) group: bool,
 }
 
@@ -86,7 +82,6 @@ impl Memo {
             facts: Mutex::new(HashMap::new()),
             translations: Mutex::new(HashMap::new()),
             names: Mutex::new(HashMap::new()),
-            dialects: Mutex::new(HashMap::new()),
         }
     }
 
@@ -134,42 +129,16 @@ impl Memo {
         answer
     }
 
-    /// What the dictionary holds under `key` in `branch`'s tier, answered by
-    /// `ask` the first time and remembered.
-    pub(super) fn lookup(
-        &self,
-        branch: &FixBranch,
-        key: &str,
-        ask: impl FnOnce() -> Lookup,
-    ) -> Lookup {
-        let question = (branch.digest(), SmolStr::new(key));
-        if let Some(answer) = held(&self.names).get(&question) {
+    /// What the dictionary holds under `key`, answered by `ask` the first
+    /// time and remembered.
+    pub(super) fn lookup(&self, key: &str, ask: impl FnOnce() -> Lookup) -> Lookup {
+        if let Some(answer) = held(&self.names).get(key) {
             return *answer;
         }
         let answer = ask();
         let mut table = held(&self.names);
         if table.len() < Self::CAPACITY {
-            table.insert(question, answer);
-        }
-        answer
-    }
-
-    /// The branch the plugin `plugin` names, as its digest, answered by `ask`
-    /// the first time and remembered.
-    ///
-    /// A capture names a few dozen plugins over millions of lines, so the
-    /// registry is asked once per spelling rather than once per row. The
-    /// digest is what is kept rather than the branch, because the branch
-    /// lives in the registry and is read back from it by digest - the table
-    /// holds no second copy of a declaration.
-    pub(super) fn dialect(&self, plugin: &str, ask: impl FnOnce() -> Option<u32>) -> Option<u32> {
-        if let Some(answer) = held(&self.dialects).get(plugin) {
-            return *answer;
-        }
-        let answer = ask();
-        let mut table = held(&self.dialects);
-        if table.len() < Self::CAPACITY {
-            table.insert(SmolStr::new(plugin), answer);
+            table.insert(SmolStr::new(key), answer);
         }
         answer
     }
