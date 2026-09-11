@@ -5,6 +5,7 @@ pub(crate) mod floating;
 pub(crate) mod geospatial;
 pub(crate) mod nested;
 pub(crate) mod parser;
+pub(crate) mod string;
 pub(crate) mod temporal;
 pub(crate) mod value;
 pub(crate) mod version;
