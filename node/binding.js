@@ -3384,13 +3384,10 @@ UlPlugin.fromFixmsg = function fromFixmsg(message) {
   return NativeUlPlugin.fromFixmsg(message)
 }
 
-// A record crosses as the value `Scalar.fromJs` reads and a batch source as
-// whatever `BatchReader.from` accepts - a reader, an Arrow JS table or batch,
-// IPC bytes - so both widenings live here, beside the conversions they use.
-const nativeParseTextRecord = binding.FixCodec.prototype.parseTextRecord
-binding.FixCodec.prototype.parseTextRecord = function parseTextRecord(record) {
-  return nativeParseTextRecord.call(this, asScalar(record))
-}
+// A line crosses as the `TextLine` a text read answered - there is nothing to
+// widen, because a line is a decoded row and not a value - and a batch source
+// as whatever `BatchReader.from` accepts: a reader, an Arrow JS table or
+// batch, IPC bytes. That widening lives here, beside the conversions it uses.
 for (const name of ['parseTextArrowReader', 'enrichMessagesArrowReader', 'messages']) {
   const native = binding.FixCodec.prototype[name]
   binding.FixCodec.prototype[name] = {
@@ -3436,10 +3433,16 @@ function asMessage(value) {
   }
   return value
 }
+function asLine(value) {
+  if (!(value instanceof binding.TextLine)) {
+    throw new TypeError('every item of a line stream must be a TextLine')
+  }
+  return value
+}
 {
   const streams = [
     ['parseLines', '_parseLinesNative', toBytes, 'lines'],
-    ['parseTextRecords', '_parseTextRecordsNative', asScalar, 'records'],
+    ['parseTextLines', '_parseTextLinesNative', asLine, 'lines'],
     ['enrichMessages', '_enrichMessagesNative', asMessage, 'messages'],
     ['lifecycle', '_lifecycleNative', asMessage, 'messages'],
   ]

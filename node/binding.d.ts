@@ -16,6 +16,7 @@ export {
   ProtocolField,
   RecordOptions,
   Statement,
+  TextLine,
   TextOptions,
   Timezone,
   TxHash,
@@ -54,6 +55,7 @@ import type {
   ProtocolField,
   RecordOptions,
   Statement,
+  TextLine,
   TextOptions,
   Timezone,
   TxHash,
@@ -454,8 +456,8 @@ declare module './index' {
      * read; each line is read as `parseLine` reads it.
      */
     parseLines(lines: Iterable<string | ArrayBufferLike | ArrayBufferView>): FixMessages
-    /** A stream of records, pulled one at a time; each as `parseTextRecord` reads it. */
-    parseTextRecords(records: Iterable<unknown>): FixMessages
+    /** A stream of lines, pulled one at a time; each as `parseTextLine` reads it. */
+    parseTextLines(lines: Iterable<TextLine>): FixMessages
     /** A stream of messages filled with what each implies, one at a time. */
     enrichMessages(messages: Iterable<FixMsg>): FixMessages
     /** One lifecycle over a whole stream of messages, one at a time. */
@@ -2415,6 +2417,11 @@ declare module './index' {
   /** A lazy, bounded byte stream exposed through JavaScript iteration. */
   interface ByteIterator extends IterableIterator<Buffer> {
     next(): IteratorResult<Buffer>
+  }
+
+  /** A lazy stream of decoded lines, exposed through JavaScript iteration. */
+  interface TextLineIterator extends IterableIterator<TextLine> {
+    next(): IteratorResult<TextLine>
   }
 
   /** Iterating a handle lists its immediate children. */

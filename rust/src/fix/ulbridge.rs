@@ -91,12 +91,14 @@ const SESSIONINTERFACE_NAME: &str = "SessionInterface";
 /// Every capture is named for what it does. `timestamp` is the row's clock,
 /// so it stamps the message; `msgCtxId` fills the crate's own
 /// [`MsgCtxId`](super::MSGCTXID_TAG); `seqNum` fills `MsgSeqNum(34)`,
-/// through the bridge's own spellings of standard fields; `plugin` names the plugin
-/// session that logged the line, which fills
-/// [`SenderSessionName`](super::SENDERSESSIONNAME_TAG) for a line it
-/// sent and [`TargetSessionName`](super::TARGETSESSIONNAME_TAG) for one
-/// it received; `senderSessionId` is the session instance the bridge handled
-/// the line on, and fills
+/// through the bridge's own spellings of standard fields; `pluginid` is the
+/// plugin that logged the line, which fills the crate's own
+/// [`PluginId`](super::PLUGINID_TAG) and names the dialect the line is read
+/// under where the dictionary declares a branch by that name or alias, as
+/// [`FixCodec::parse_text_line`](super::FixCodec::parse_text_line)
+/// says - the session names the line moved between are what the line itself
+/// spells, never the plugin; `senderSessionId` is the session instance the
+/// bridge handled the line on, and fills
 /// [`SenderSessionId`](super::SENDERSESSIONID_TAG) - but only where the
 /// message states none of its own, because a fill never lands over a value the
 /// message already stated. A row spelling `SESSIONID` therefore keeps its own
@@ -108,12 +110,12 @@ const SESSIONINTERFACE_NAME: &str = "SessionInterface";
 ///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
 /// let captures = options.source_field()?;
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-/// assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "plugin", "level"]));
+/// assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "pluginid", "level"]));
 /// assert_eq!(captures.field("seqNum")?.dtype(), &yggdryl::DataType::Int64);
 /// # Ok(())
 /// # }
 /// ```
-pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<senderSessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<senderSessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
 
 /// The standard tag one of the bridge's own capture spellings fills.
 ///
@@ -508,12 +510,17 @@ fn push_attributes(
 
 /// What the row a document arrived on stated beside it.
 ///
-/// A row's clock and its own columns are borrowed from the row the reader
-/// framed, and one document answers for as many plugins as it names, so what
-/// the row stated is retained here and applied to each of them rather than
-/// borrowed across an expansion the caller drives.
+/// A row's dialect, version, clock and own columns are borrowed from the row
+/// the reader framed, and one document answers for as many plugins as it
+/// names, so what the row stated is retained here and applied to each of
+/// them rather than borrowed across an expansion the caller drives. One
+/// copy per document, never per line: an ordinary line borrows.
 #[derive(Clone, Debug)]
 struct RowStamp {
+    /// The dialect the row is read under, where it named one.
+    branch: Option<FixBranch>,
+    /// The version the row is read at, where it stated one.
+    version: Option<crate::Version>,
     /// The row's own clock.
     clock: Option<Scalar>,
     /// The row's own columns, beside the field and tag each fills.
@@ -523,10 +530,16 @@ struct RowStamp {
 impl RowStamp {
     /// What a row stated, retained; nothing at all where it stated nothing.
     fn retained(extras: super::build::RowExtras<'_>) -> Option<Arc<Self>> {
-        if extras.clock.is_none() && extras.fills.is_empty() {
+        if extras.branch.is_none()
+            && extras.version.is_none()
+            && extras.clock.is_none()
+            && extras.fills.is_empty()
+        {
             return None;
         }
         Some(Arc::new(Self {
+            branch: extras.branch.cloned(),
+            version: extras.version,
             clock: extras.clock.cloned(),
             fills: extras
                 .fills
@@ -831,6 +844,8 @@ impl UlPlugin {
             })
             .collect();
         let extras = super::build::RowExtras {
+            branch: self.stamp.as_ref().and_then(|stamp| stamp.branch.as_ref()),
+            version: self.stamp.as_ref().and_then(|stamp| stamp.version),
             clock: self.stamp.as_ref().and_then(|stamp| stamp.clock.as_ref()),
             fills: &fills,
         };

@@ -27,7 +27,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{DataType, FixCategory, FixRegistry, IOBase};
+    use yggdryl::{DataType, FixCategory, FixRegistry, IOBase, FieldPath};
 
     let path = Folder::temporary()?.path()?.join(format!("ygg-doc-store-{}", std::process::id()));
     let mut root = Folder::new(&path)?;
@@ -55,7 +55,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     assert!(path.join("messages/Order.json").is_file());
     let reloaded = FixRegistry::from_handle(&root)?;
     assert_eq!(reloaded, registry);
-    assert_eq!(reloaded.field_by_path("Parties.PartyID", None)?.as_fix().tag()?, Some(448));
+    assert_eq!(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?, None)?.as_fix().tag()?, Some(448));
     root.remove(true)?;
     ```
 
@@ -189,7 +189,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixBranch, FixRegistry};
+    use yggdryl::{FixBranch, FixRegistry, FieldPath};
 
     let standard = FixBranch::STANDARD;
     let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
@@ -200,7 +200,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert_eq!(registry.field_by_tag(55)?.name(), "symbol");
     assert_eq!(registry.field_by_name("SYMBOL", Some(&standard))?.name(), "symbol");
     assert_eq!(registry.field_by_tag(150)?.display(), Some("ExecType"));
-    assert_eq!(registry.field_by_path("Parties.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?, Some(&standard))?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("ClOrdID", Some(&standard))?.display(), Some("ClOrdID"));
     // Every field is a specification field or one of the crate's own, and
     // both are standard, so none states a branch.

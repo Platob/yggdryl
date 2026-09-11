@@ -999,7 +999,7 @@ impl TextLines {
             line.set_bodytype(Some(shape));
         }
         if self.reads_entries {
-            let entries = super::entry::read_entries(line.body());
+            let entries = super::TextEntries::from_bytes(line.body());
             line.set_entries(entries);
         }
 

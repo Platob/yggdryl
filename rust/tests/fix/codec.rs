@@ -1,12 +1,14 @@
 //! The codec's readers, over the committed dictionary and a real capture.
 
 use super::OneMessage;
+use super::path;
 
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
+use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::types::State;
-use yggdryl::{DataType, FixCategory, FixCodec, FixEntry, FixRegistry, Scalar, Version};
+use yggdryl::{DataType, FixBranch, FixCategory, FixCodec, FixEntry, FixRegistry, Scalar, Version};
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -94,7 +96,7 @@ fn a_framed_row_takes_its_type_from_the_frame_and_its_prefix_is_dropped() {
     let keys: Vec<&str> = framed
         .entries()
         .iter()
-        .map(yggdryl::FixEntry::key)
+        .map(|entry| entry.key().as_str().unwrap_or_default())
         .collect();
     assert_eq!(keys, ["8", "9", "35", "10"], "{keys:?}");
 }
@@ -134,27 +136,33 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
     let message = reader.parse_fix_line(wire).unwrap();
     assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
     assert_eq!(
-        message.by_path("Parties.0.PartyID").unwrap().as_str(),
+        message
+            .by_path(&path("Parties[0].PartyID"))
+            .unwrap()
+            .as_str(),
         Some("A")
     );
     assert_eq!(
-        message.by_path("Parties.1.PartyID").unwrap().as_str(),
+        message
+            .by_path(&path("Parties[1].PartyID"))
+            .unwrap()
+            .as_str(),
         Some("B")
     );
     assert_eq!(
-        message.by_path("Parties.0.NoPartySubIDs").unwrap(),
+        message.by_path(&path("Parties[0].NoPartySubIDs")).unwrap(),
         &Scalar::from(2_i32)
     );
     assert_eq!(
         message
-            .by_path("Parties.0.PtysSubGrp.1.PartySubID")
+            .by_path(&path("Parties[0].PtysSubGrp[1].PartySubID"))
             .unwrap()
             .as_str(),
         Some("CLIENT")
     );
     assert_eq!(
         message
-            .by_path("Parties.1.PtysSubGrp.0.PartySubID")
+            .by_path(&path("Parties[1].PtysSubGrp[0].PartySubID"))
             .unwrap()
             .as_str(),
         Some("OTHER")
@@ -182,14 +190,34 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
 fn numeric_group_member_anomalies_keep_omitted_and_repeated_occurrences_aligned() {
     let wire = b"35=D|453=5|448=OMITTED|448=INVALID|452=bogus|448=VALID|452=1|448=OMITTED2|448=OVERFLOW|452=2147483648|10=0|";
     let message = reader().parse_fix_line(wire).unwrap();
-    assert!(message.by_path("Parties.0.PartyRole").unwrap().is_null());
-    assert!(message.by_path("Parties.1.PartyRole").unwrap().is_null());
+    assert!(
+        message
+            .by_path(&path("Parties[0].PartyRole"))
+            .unwrap()
+            .is_null()
+    );
+    assert!(
+        message
+            .by_path(&path("Parties[1].PartyRole"))
+            .unwrap()
+            .is_null()
+    );
     assert_eq!(
-        message.by_path("Parties.2.PartyRole").unwrap(),
+        message.by_path(&path("Parties[2].PartyRole")).unwrap(),
         &Scalar::from(1_i32)
     );
-    assert!(message.by_path("Parties.3.PartyRole").unwrap().is_null());
-    assert!(message.by_path("Parties.4.PartyRole").unwrap().is_null());
+    assert!(
+        message
+            .by_path(&path("Parties[3].PartyRole"))
+            .unwrap()
+            .is_null()
+    );
+    assert!(
+        message
+            .by_path(&path("Parties[4].PartyRole"))
+            .unwrap()
+            .is_null()
+    );
     let anomalies: Vec<_> = message.anomalies().collect();
     assert_eq!(
         anomalies,
@@ -266,7 +294,10 @@ fn an_unknown_numeric_group_member_closes_the_scope_without_losing_pairs() {
     let wire = b"35=D|453=1|448=A|9999=outside|447=D|55=AAPL|10=0|";
     let message = reader.parse_fix_line(wire).unwrap();
     assert_eq!(
-        message.by_path("Parties.0.PartyID").unwrap().as_str(),
+        message
+            .by_path(&path("Parties[0].PartyID"))
+            .unwrap()
+            .as_str(),
         Some("A")
     );
     assert_eq!(message.by_tag(9999).unwrap().as_str(), Some("outside"));
@@ -388,9 +419,14 @@ fn a_value_is_translated_typed_and_kept_as_it_arrived() {
         .iter()
         .find(|entry| entry.tag() == 54)
         .expect("tag 54");
-    assert_eq!(side.value(), "Buy");
-    assert_eq!(side.key(), "54");
-    assert_eq!(side.id(), Some(yggdryl::FixId::standard(54)));
+    assert_eq!(side.value().as_str(), Some("Buy"));
+    assert_eq!(side.key().as_str(), Some("54"));
+    // The identity is the entry's tag under the message's own dialect: one
+    // branch for the message, never one copy per pair.
+    assert_eq!(
+        yggdryl::FixId::from_parts(message.branch(), side.tag()).unwrap(),
+        yggdryl::FixId::standard(54)
+    );
 }
 
 #[test]
@@ -411,10 +447,9 @@ fn an_unknown_key_is_kept_and_a_bad_value_is_null_rather_than_a_failure() {
     let held = message
         .entries()
         .iter()
-        .find(|entry| entry.key() == "VenueOwnThing")
+        .find(|entry| entry.key().as_bytes() == b"VenueOwnThing")
         .expect("the venue's own key");
     assert_eq!(held.tag(), 0, "an unknown key names no tag");
-    assert_eq!(held.id(), None);
 
     // A `BodyLength` of `abc` nulls that field while the raw text stays.
     assert_eq!(message.by_name("bodylength").unwrap(), &Scalar::Null);
@@ -422,7 +457,7 @@ fn an_unknown_key_is_kept_and_a_bad_value_is_null_rather_than_a_failure() {
         message
             .entries()
             .iter()
-            .any(|entry| entry.tag() == 9 && entry.value() == "abc")
+            .any(|entry| entry.tag() == 9 && entry.value().as_bytes() == b"abc")
     );
 }
 
@@ -525,29 +560,37 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
         Some(3),
         "three members, split on the control bytes"
     );
-    // The members arrived under the counter pair that heads them, so the
+    // The occurrence arrived under the counter pair that heads it, so the
     // arrival record nests exactly as the wire stated: the counter entry
-    // carries them and the top level does not repeat them.
+    // carries it and the top level does not repeat it. What it carries is the
+    // pair the bridge wrote - the members above are a reading of that pair,
+    // and a key like `NOPARTYIDS[0].PARTYID` appears nowhere in the line.
     let counter = message
         .entries()
         .iter()
         .find(|entry| entry.tag() == 453)
         .expect("the counter pair");
-    let keys: Vec<&str> = counter.children().iter().map(FixEntry::key).collect();
+    let keys: Vec<&str> = counter
+        .children()
+        .iter()
+        .map(|entry| entry.key().as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(keys, ["NOPARTYIDS[0]"]);
     assert_eq!(
-        keys,
-        [
-            "NOPARTYIDS[0].PARTYID",
-            "NOPARTYIDS[0].PARTYIDSOURCE",
-            "NOPARTYIDS[0].PARTYROLE",
-        ]
+        counter.children()[0].value().as_str(),
+        Some("PARTYID=BUYSIDE\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=1"),
+    );
+    assert_eq!(
+        counter.children()[0].tag(),
+        0,
+        "an occurrence names no field"
     );
     assert!(
         message
             .entries()
             .iter()
-            .all(|entry| !entry.key().starts_with("NOPARTYIDS[0].")),
-        "a member rides under its counter, not beside it",
+            .all(|entry| !entry.key().as_bytes().starts_with(b"NOPARTYIDS[0]")),
+        "an occurrence rides under its counter, not beside it",
     );
 
     // Which is enough to lift the party the frame is about.
@@ -589,7 +632,11 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
             "{spelled}"
         );
         // The entries are the wire record, so both arrival spellings stay.
-        let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
+        let keys: Vec<&str> = message
+            .entries()
+            .iter()
+            .map(|entry| entry.key().as_str().unwrap_or_default())
+            .collect();
         assert!(keys.contains(&"ORDERID"), "{spelled}: {keys:?}");
         assert!(keys.contains(&"#ORDERID"), "{spelled}: {keys:?}");
 
@@ -606,6 +653,94 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
     let single = reader.one_line(b"MSGTYPE=D|#ORDERID=345", false).unwrap();
     assert_eq!(single.by_tag(37).unwrap().as_str(), Some("345"));
     assert!(single.by_name("#orderid").is_err());
+
+    // A marked pair restating the bare one's bytes is a second spelling of
+    // one pair, and one pair is what remains: row and entries alike, on
+    // whichever side it arrived, however the bare key was spelled, and with
+    // whatever space the row put around the values.
+    for (row, bare) in [
+        (b"MSGTYPE=D|ORDERID=123|#ORDERID=123".as_slice(), "ORDERID"),
+        (b"MSGTYPE=D|#ORDERID=123|ORDERID=123".as_slice(), "ORDERID"),
+        (b"MSGTYPE=D|OrderId=123|#ORDERID=123".as_slice(), "OrderId"),
+        (
+            b"MSGTYPE=D|ORDERID=123 |#ORDERID= 123".as_slice(),
+            "ORDERID",
+        ),
+    ] {
+        let message = reader.one_line(row, false).unwrap();
+        let spelled = String::from_utf8_lossy(row);
+        assert_eq!(
+            message.by_tag(37).unwrap().as_str(),
+            Some("123"),
+            "{spelled}"
+        );
+        assert!(message.by_name("#orderid").is_err(), "{spelled}");
+        let keys: Vec<&str> = message
+            .entries()
+            .iter()
+            .map(|entry| entry.key().as_str().unwrap_or_default())
+            .collect();
+        assert_eq!(keys, ["MSGTYPE", bare], "{spelled}");
+        assert_eq!(
+            message.into_bytes(b'|'),
+            format!("MSGTYPE=D|{bare}=123|").as_bytes(),
+            "{spelled}"
+        );
+    }
+    // A value is a value: two spellings of the bytes are two values.
+    let cased = reader
+        .one_line(b"MSGTYPE=D|ORDERID=abc|#ORDERID=ABC", false)
+        .unwrap();
+    assert_eq!(cased.by_tag(37).unwrap().as_str(), Some("abc"));
+    assert_eq!(cased.by_name("#orderid").unwrap().as_str(), Some("ABC"));
+
+    // A bridge marks the name keys it writes into a numeric frame exactly as
+    // it marks a row's, and they are judged by the same rules: alone the
+    // mark drops, beside a twin of other bytes it stays, restating a twin it
+    // goes.
+    let framed = reader
+        .one_line(
+            b"sending >> 8=FIX.4.2|35=UL|#SYMBOL=TTF|#SIDE=1|10=044|",
+            false,
+        )
+        .unwrap();
+    assert_eq!(framed.by_tag(55).unwrap().as_str(), Some("TTF"));
+    assert_eq!(framed.by_tag(54).unwrap().as_str(), Some("1"));
+    let keys: Vec<&str> = framed
+        .entries()
+        .iter()
+        .map(|entry| entry.key().as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(keys, ["8", "35", "SYMBOL", "SIDE", "10"]);
+    let twinned = reader
+        .one_line(b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=345|10=0|", false)
+        .unwrap();
+    assert_eq!(twinned.by_tag(37).unwrap().as_str(), Some("123"));
+    assert_eq!(twinned.by_name("#orderid").unwrap().as_str(), Some("345"));
+    let restated = reader
+        .one_line(b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=123|10=0|", false)
+        .unwrap();
+    assert_eq!(restated.by_tag(37).unwrap().as_str(), Some("123"));
+    assert!(restated.by_name("#orderid").is_err());
+    assert_eq!(
+        restated.into_bytes(b'|'),
+        b"8=FIX.4.2|35=UL|ORDERID=123|10=0|"
+    );
+
+    // The row's type is read after the marks are judged, so a type the
+    // bridge marked names the message - and the message is what splits a
+    // separator-less occurrence of a counter half the dictionary shares at
+    // the members its own group declares.
+    let typed = reader
+        .one_line(b"#MSGTYPE=s|#NOSIDES=1|#NOSIDES[0]=SIDE=1CLORDID=X", false)
+        .unwrap();
+    assert_eq!(typed.by_tag(35).unwrap().as_str(), Some("s"));
+    assert_eq!(
+        typed
+            .by_path(&path("SideCrossOrdModGrp[0].ClOrdID"))
+            .unwrap(),
+        &Scalar::from("X")
+    );
 }
 
 #[test]
@@ -647,13 +782,608 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     // resolves.
     let row: &[u8] = b"MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
     let message = reader.one_line(row, false).unwrap();
-    let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
+    let keys: Vec<&str> = message
+        .entries()
+        .iter()
+        .map(|entry| entry.key().as_str().unwrap_or_default())
+        .collect();
     assert!(keys.contains(&"NOPARTYIDS[0]"), "{keys:?}");
     assert!(keys.contains(&"#NOPARTYIDS[0]"), "{keys:?}");
     assert!(
         !keys.iter().any(|key| key.starts_with("#NOPARTYIDS[0].")),
         "{keys:?}"
     );
+
+    // A group is one thing however many occurrences it states, so a bare
+    // group claims every marked key of it: the count and the occurrences the
+    // bare spelling never numbered stay whole beside it, each its own child
+    // under its own name, and none of them lands in the dictionary's group.
+    for row in [
+        b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=BARE\x04\x03PARTYROLE=1\
+|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=B\x04\x03PARTYROLE=3"
+            .as_slice(),
+        b"MSGTYPE=D|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=B\x04\x03PARTYROLE=3\
+|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=BARE\x04\x03PARTYROLE=1"
+            .as_slice(),
+    ] {
+        let message = reader.one_line(row, false).unwrap();
+        let spelled = String::from_utf8_lossy(row);
+        assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1), "{spelled}");
+        let parties = message.by_name("parties").unwrap().as_sequence().unwrap().to_vec();
+        assert_eq!(parties.len(), 1, "{spelled}: {parties:?}");
+        assert_eq!(
+            message.by_path(&path("Parties[0].PartyID")).unwrap().as_str(),
+            Some("BARE"),
+            "{spelled}"
+        );
+        let child = |name: &str| {
+            let at = message.as_field().index_of(name).expect(name);
+            message.as_value().as_sequence().expect("a row")[at].clone()
+        };
+        assert_eq!(child("#nopartyids").as_str(), Some("2"), "{spelled}");
+        // The row types the packed text with the bridge's control bytes
+        // gone, as it types any value; the entry keeps the bytes as they
+        // arrived.
+        for (name, key, id, role) in [
+            ("#nopartyids[0]", "#NOPARTYIDS[0]", "A", "1"),
+            ("#nopartyids[1]", "#NOPARTYIDS[1]", "B", "3"),
+        ] {
+            let held = child(name);
+            let text = held.as_str().expect(name);
+            assert!(
+                text.starts_with(&format!("PARTYID={id}"))
+                    && text.ends_with(&format!("PARTYROLE={role}")),
+                "{spelled}: {text}"
+            );
+            let entry = message
+                .entries()
+                .iter()
+                .find(|entry| entry.key().as_bytes() == key.as_bytes())
+                .unwrap_or_else(|| panic!("{spelled}: {key}"));
+            assert_eq!(
+                entry.value().as_str(),
+                Some(format!("PARTYID={id}\x04\x03PARTYROLE={role}").as_str()),
+                "{spelled}"
+            );
+            assert!(entry.children().is_empty(), "{spelled}");
+        }
+        let keys: Vec<&str> = message.entries().iter().map(|entry| entry.key().as_str().unwrap_or_default()).collect();
+        assert!(keys.contains(&"#NOPARTYIDS"), "{spelled}: {keys:?}");
+        assert!(
+            !message
+                .entries()
+                .iter()
+                .flat_map(|entry| entry.children().iter().chain(std::iter::once(entry)))
+                .any(|entry| entry.key().as_bytes().starts_with(b"NOPARTYIDS[1]")
+                    || entry.key().as_bytes().starts_with(b"#NOPARTYIDS[0].")),
+            "{spelled}: {keys:?}"
+        );
+        // The row and the group agree, so there is no miscount to report.
+        assert_eq!(message.anomalies().count(), 0, "{spelled}");
+    }
+
+    // A marked group goes only whole. A marked count restating the bare one
+    // beside occurrences the bare group never numbered is no second spelling
+    // of the bare count - it counts the marked occurrences - so it stays
+    // verbatim with them; a marked group restating the bare group pair for
+    // pair goes pair for pair.
+    let counted: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=B\x04\x03PARTYROLE=1\
+|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
+    let message = reader.one_line(counted, false).unwrap();
+    assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
+    assert_eq!(
+        message.by_path(&path("Parties[0].PartyID")).unwrap(),
+        &Scalar::from("B")
+    );
+    let at = message
+        .as_field()
+        .index_of("#nopartyids")
+        .expect("the marked count");
+    assert_eq!(
+        message.as_value().as_sequence().expect("a row")[at].as_str(),
+        Some("1")
+    );
+    let keys: Vec<&str> = message
+        .entries()
+        .iter()
+        .map(|entry| entry.key().as_str().unwrap_or_default())
+        .collect();
+    assert!(
+        keys.contains(&"#NOPARTYIDS") && keys.contains(&"#NOPARTYIDS[0]"),
+        "{keys:?}"
+    );
+    assert_eq!(message.anomalies().count(), 0);
+    let restated: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1\
+|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
+    let message = reader.one_line(restated, false).unwrap();
+    assert_eq!(
+        message.by_path(&path("Parties[0].PartyID")).unwrap(),
+        &Scalar::from("A")
+    );
+    assert!(message.as_field().index_of("#nopartyids").is_none());
+    assert!(
+        message
+            .entries()
+            .iter()
+            .all(|entry| !entry.key().as_bytes().starts_with(b"#"))
+    );
+}
+
+#[test]
+fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary() {
+    let reader = reader();
+    // Every packed value ends with the separator, so where the bridge packs
+    // an occurrence inside another it writes two in a row: the empty
+    // segment between them closes the inner one. A run carrying a close is
+    // bounded by its closes alone, so the venue's own `VENUE_SEQ` packed
+    // inside the sub-identifier stays inside it and `PARTYID` after the
+    // close is the party's.
+    let closed: &[u8] = b"MSGTYPE=D|NOPARTYIDS=2\
+|NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03\
+|NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03";
+    let message = reader.one_line(closed, false).unwrap();
+    assert_eq!(
+        message
+            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubID"))
+            .unwrap(),
+        &Scalar::from("a")
+    );
+    assert_eq!(
+        message.by_path(&path("Parties[0].PartyID")).unwrap(),
+        &Scalar::from("X")
+    );
+    assert_eq!(
+        message.by_path(&path("Parties[1].PartyID")).unwrap(),
+        &Scalar::from("Y")
+    );
+    let members = |path: &str| -> Vec<String> {
+        let group = message.as_field().get_field_by_path(path).expect(path);
+        let DataType::List(item) = group.dtype() else {
+            panic!("{path}: a list, got {}", group.dtype());
+        };
+        item.fields()
+            .iter()
+            .map(|field| field.name().to_owned())
+            .collect()
+    };
+    assert!(
+        members("parties.ptyssubgrp").contains(&"venueseq".to_owned()),
+        "{:?}",
+        members("parties.ptyssubgrp")
+    );
+    assert!(
+        !members("parties").contains(&"venueseq".to_owned()),
+        "{:?}",
+        members("parties")
+    );
+    fn keys(entries: &[FixEntry], out: &mut Vec<String>) {
+        for entry in entries {
+            out.push(entry.key().as_str().unwrap_or_default().to_owned());
+            keys(entry.children(), out);
+        }
+    }
+    let mut arrived = Vec::new();
+    keys(message.entries(), &mut arrived);
+    // The arrival record keeps the occurrence the bridge wrote, packed value
+    // and all - the sub-occurrence above is a reading of that value, and no
+    // range of the line spells `NOPARTYIDS[0].NOPARTYSUBIDS[0].VENUE_SEQ`.
+    assert_eq!(
+        arrived,
+        ["MSGTYPE", "NOPARTYIDS", "NOPARTYIDS[0]", "NOPARTYIDS[1]"]
+    );
+    let occurrence = message
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 453)
+        .expect("the counter pair")
+        .children()[0]
+        .value()
+        .as_str()
+        .expect("the packed value");
+    assert!(occurrence.contains("VENUE_SEQ=7"), "{occurrence}");
+
+    // A run carrying no close is bounded by what the dictionary declares:
+    // the pairs after the sub-occurrence belong to it while its group
+    // declares them, and the first it does not - the venue's own key here -
+    // comes back up to the party, as does everything after it.
+    let open: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1\
+|NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03";
+    let message = reader.one_line(open, false).unwrap();
+    assert_eq!(
+        message
+            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubID"))
+            .unwrap(),
+        &Scalar::from("a")
+    );
+    assert_eq!(
+        message
+            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubIDType"))
+            .unwrap()
+            .as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        message.by_path(&path("Parties[0].PartyID")).unwrap(),
+        &Scalar::from("X")
+    );
+    let party = message
+        .as_field()
+        .get_field_by_path("parties")
+        .expect("parties");
+    let DataType::List(item) = party.dtype() else {
+        panic!("a list");
+    };
+    let names: Vec<&str> = item.fields().iter().map(yggdryl::Field::name).collect();
+    assert!(names.contains(&"venueseq"), "{names:?}");
+
+    // A close is an empty segment and nothing else: a segment of spaces
+    // between two separators is residue, and the run stays bounded by the
+    // dictionary.
+    let spaced: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1\
+|NOPARTYIDS[0]=PARTYID=X\x04\x03 \x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03PARTYROLE=1\x04\x03";
+    let message = reader.one_line(spaced, false).unwrap();
+    assert_eq!(
+        message
+            .by_path(&path("Parties[0].PartyRole"))
+            .unwrap()
+            .as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        message
+            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubIDType"))
+            .unwrap()
+            .as_i64(),
+        Some(1)
+    );
+
+    // A run of openers nothing closes nests as deep as a schema may and no
+    // deeper: past that an opener is one more member, and a line of two
+    // thousand of them reads rather than exhausting the stack.
+    let mut deep = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=\x04\x03".to_vec();
+    for _ in 0..2000 {
+        deep.extend_from_slice(b"NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03");
+    }
+    let message = reader.one_line(&deep, false).unwrap();
+    assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
+    // The row is what the two thousand openers built; the arrival record is
+    // the one pair the bridge wrote, which is what a range of the line can
+    // name.
+    let mut arrived = Vec::new();
+    keys(message.entries(), &mut arrived);
+    assert_eq!(arrived, ["MSGTYPE", "NOPARTYIDS", "NOPARTYIDS[0]"]);
+    let mut depth = 0;
+    let mut level = message
+        .get_by_path(&path("Parties[0].PtysSubGrp"))
+        .and_then(Scalar::as_sequence);
+    while let Some(held) = level {
+        depth += 1;
+        level = held
+            .first()
+            .and_then(Scalar::as_sequence)
+            .and_then(|occurrence| occurrence.iter().find_map(Scalar::as_sequence));
+    }
+    // As deep as a schema may nest and no deeper, which is the bound this
+    // case exists to pin: the openers past it are members of the deepest
+    // occurrence rather than another level of it, so two thousand of them
+    // build a wide row instead of exhausting the stack. Sixty-five levels
+    // because the party's own occurrence is the one the reader opened at
+    // depth zero, and sixty-four more are what it may open under it.
+    assert_eq!(depth, 65, "the openers nested to the bound and stopped");
+}
+
+#[test]
+fn an_implicit_run_nests_a_declared_group_at_every_depth_and_lifts_what_no_level_declares() {
+    let reader = reader();
+    // No close anywhere, three levels deep: the party is bounded by what the
+    // side's party group declares, and the sub-identifier it declares is
+    // skipped whole inside it, so the party's own `PARTYID` lands on the
+    // party and the second party opens after it.
+    let row: &[u8] = b"MSGTYPE=AE|NOSIDES=1\
+|NOSIDES[0]=NOPARTYIDS=2\x04\x03NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03";
+    let message = reader.one_line(row, false).unwrap();
+    assert_eq!(
+        message
+            .by_path(&path(
+                "TrdCapRptSideGrp[0].Parties[0].PtysSubGrp[0].PartySubID"
+            ))
+            .unwrap(),
+        &Scalar::from("a")
+    );
+    assert_eq!(
+        message
+            .by_path(&path("TrdCapRptSideGrp[0].Parties[0].PartyID"))
+            .unwrap(),
+        &Scalar::from("X")
+    );
+    assert_eq!(
+        message
+            .by_path(&path("TrdCapRptSideGrp[0].Parties[0].PartyRole"))
+            .unwrap()
+            .as_i64(),
+        Some(1)
+    );
+    assert_eq!(
+        message
+            .by_path(&path("TrdCapRptSideGrp[0].Parties[1].PartyID"))
+            .unwrap(),
+        &Scalar::from("Y")
+    );
+
+    // A pair no level declares ends the sub-identifier, then the party, and
+    // lands on the side - the packed value's own occurrence - with
+    // everything after it, because without a close nothing says where the
+    // bridge meant it to go.
+    let lifted: &[u8] = b"MSGTYPE=AE|NOSIDES=1\
+|NOSIDES[0]=NOPARTYIDS=1\x04\x03NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03VENUE_SEQ=7\x04\x03PARTYID=X\x04\x03";
+    let message = reader.one_line(lifted, false).unwrap();
+    let members = |path: &str| -> Vec<String> {
+        let group = message.as_field().get_field_by_path(path).expect(path);
+        let DataType::List(item) = group.dtype() else {
+            panic!("{path}: a list, got {}", group.dtype());
+        };
+        item.fields()
+            .iter()
+            .map(|field| field.name().to_owned())
+            .collect()
+    };
+    let side = members("trdcaprptsidegrp");
+    assert!(
+        side.contains(&"venueseq".to_owned()) && side.contains(&"partyid".to_owned()),
+        "{side:?}"
+    );
+    assert!(
+        !members("trdcaprptsidegrp.parties").contains(&"venueseq".to_owned()),
+        "{:?}",
+        members("trdcaprptsidegrp.parties")
+    );
+}
+
+#[test]
+fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_once_more() {
+    let reader = reader();
+    // The frame's own marks are judged, and the row inside its data field by
+    // its own bare spellings: the frame's `#SYMBOL` drops its mark, the
+    // row's `#ORDERID` restates the row's bare one and goes.
+    let nested = "MSGTYPE=D|ORDERID=9|#ORDERID=9|#SIDE=1";
+    let frame = format!(
+        "8=FIX.4.2|35=UL|#SYMBOL=TTF|212={}|213={nested}|10=0|",
+        nested.len()
+    );
+    let message = reader.one_line(frame.as_bytes(), false).unwrap();
+    let keys: Vec<&str> = message
+        .entries()
+        .iter()
+        .map(|entry| entry.key().as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(keys, ["8", "35", "SYMBOL", "212", "213", "10"]);
+    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("TTF"));
+    assert_eq!(message.by_tag(37).unwrap().as_str(), Some("9"));
+    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("1"));
+    assert!(message.by_name("#orderid").is_err());
+
+    // A key marked twice is judged one mark at a time: `##ORDERID` twins
+    // `#ORDERID` as `#ORDERID` twins `ORDERID`.
+    let restated = reader
+        .one_line(b"MSGTYPE=D|#ORDERID=123|##ORDERID=123", false)
+        .unwrap();
+    assert_eq!(restated.by_tag(37).unwrap().as_str(), Some("123"));
+    let keys: Vec<&str> = restated
+        .entries()
+        .iter()
+        .map(|entry| entry.key().as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(keys, ["MSGTYPE", "ORDERID"]);
+    let beside = reader
+        .one_line(b"MSGTYPE=D|#ORDERID=123|##ORDERID=345", false)
+        .unwrap();
+    assert_eq!(beside.by_tag(37).unwrap().as_str(), Some("123"));
+    let at = beside
+        .as_field()
+        .index_of("##orderid")
+        .expect("the twice-marked key");
+    assert_eq!(
+        beside.as_value().as_sequence().expect("a row")[at].as_str(),
+        Some("345")
+    );
+    let alone = reader.one_line(b"MSGTYPE=D|##ORDERID=345", false).unwrap();
+    assert!(alone.get_by_tag(37).is_none());
+    let at = alone
+        .as_field()
+        .index_of("#orderid")
+        .expect("one mark gone");
+    assert_eq!(
+        alone.as_value().as_sequence().expect("a row")[at].as_str(),
+        Some("345")
+    );
+}
+
+#[test]
+fn a_stated_length_is_honoured_only_where_it_ends_a_segment_the_frame_cut() {
+    let reader = reader();
+    let value = |frame: &[u8], tag: i32| -> Vec<u8> {
+        let message = reader
+            .parse_fix_line(frame)
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(
+            message.into_bytes(b'|'),
+            frame,
+            "a data field re-emits the bytes the frame carried"
+        );
+        message
+            .entries()
+            .iter()
+            .find(|entry| entry.tag() == tag)
+            .unwrap_or_else(|| panic!("tag {tag}"))
+            .value()
+            .as_bytes()
+            .to_vec()
+    };
+
+    // The length is what a data field is for: the frame's separator stands
+    // inside the value and the count is what reaches past it.
+    assert_eq!(
+        value(b"8=FIX.4.4|9=0|35=D|95=5|96=AB|CD|10=000|", 96),
+        b"AB|CD"
+    );
+
+    // A count that stops in the middle of the value is honoured by nothing:
+    // the frame's own cut is kept, because widening to a byte the frame never
+    // separated at would truncate the field and drop what stood past it from
+    // the message and from the wire alike.
+    assert_eq!(value(b"8=FIX.4.4|35=D|95=2|96=ABCDE|10=000|", 96), b"ABCDE");
+    // Nor one that reaches past everything the line wrote.
+    assert_eq!(
+        value(b"8=FIX.4.4|35=D|95=99|96=ABCDE|10=000|", 96),
+        b"ABCDE"
+    );
+
+    // `XmlData` takes the trailer instead where the count lands nowhere,
+    // because a bridge writes it last and a log that printed each control
+    // byte as a glyph carries more bytes than the bridge counted.
+    assert_eq!(
+        value(b"8=FIX.4.4|35=D|212=5|213=ABCDEFGH|10=0|", 213),
+        b"ABCDEFGH"
+    );
+    // Including a count landing inside the checksum's own key, which is the
+    // one that costs a message its trailer: the entry after any span at all
+    // is the tag-keyed `10` the frame closes with, so `10` being a tag is no
+    // evidence that the span ended a segment.
+    let trailered: &[u8] = b"8=FIX.4.4|35=D|212=7|213=A|B|C|10=000|";
+    assert_eq!(value(trailered, 213), b"A|B|C");
+    assert_eq!(
+        reader
+            .parse_fix_line(trailered)
+            .unwrap()
+            .by_tag(10)
+            .unwrap()
+            .as_str(),
+        Some("000"),
+        "the checksum is still the message's"
+    );
+}
+
+#[test]
+fn a_frame_reader_takes_the_frame_and_leaves_the_transports_own_pairs() {
+    let reader = reader();
+    // One bound for every door: a log line printing its own `k=v` in front of
+    // the frame it quoted states neither field, whether the line arrives at
+    // the row reader or here. The line still said them - `TextEntries` keeps
+    // every pair it saw - but a message that swallowed them would answer them
+    // by name and re-emit them as its own.
+    let line: &[u8] = b"ts=12|thread=7|8=FIX.4.4|35=D|11=A1|10=000|";
+    let message = reader.parse_fix_line(line).unwrap();
+    let keys: Vec<&str> = message
+        .entries()
+        .iter()
+        .map(|entry| entry.key().as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(keys, ["8", "35", "11", "10"]);
+    assert!(message.get_by_name("ts").is_none());
+    assert_eq!(message.into_bytes(b'|'), b"8=FIX.4.4|35=D|11=A1|10=000|");
+
+    // A body that opens at its own first pair is bounded at zero, so nothing
+    // a caller hands in whole is dropped.
+    let bare: &[u8] = b"8=FIX.4.4|35=D|11=A1|10=000|";
+    assert_eq!(reader.parse_fix_line(bare).unwrap().into_bytes(b'|'), bare);
+}
+
+#[test]
+fn a_mark_is_judged_where_a_row_is_split_and_nowhere_else() {
+    let reader = reader();
+    // A member a rendered occurrence carries marked is a member like any
+    // other: the reader opens a marked occurrence packed inside a party,
+    // bounded by its close, and the builder nests it as its key says - an
+    // unknown group of the party's own.
+    let packed: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1\
+|NOPARTYIDS[0]=PARTYID=a\x04\x03#NOPARTYSUBIDS[0]=PARTYSUBID=s\x04\x03PARTYSUBIDTYPE=1\x04\x03\x04\x03PARTYROLE=1\x04\x03";
+    let message = reader.one_line(packed, false).unwrap();
+    assert_eq!(
+        message
+            .by_path(&path("Parties[0].PartyRole"))
+            .unwrap()
+            .as_i64(),
+        Some(1)
+    );
+    let party = message
+        .as_field()
+        .get_field_by_path("parties")
+        .expect("parties");
+    let DataType::List(item) = party.dtype() else {
+        panic!("a list");
+    };
+    let marked = item.field("#nopartysubids").expect("the marked group");
+    let DataType::List(sub) = marked.dtype() else {
+        panic!("a list, got {}", marked.dtype());
+    };
+    let names: Vec<&str> = sub.fields().iter().map(yggdryl::Field::name).collect();
+    assert_eq!(names, ["partysubid", "partysubidtype"]);
+
+    // Pairs a caller split are built as they are: a mark is neither judged
+    // nor dropped, and a marked occurrence is one flat child.
+    let built = reader
+        .parse_pairs([
+            (b"MSGTYPE".as_slice(), b"D".as_slice()),
+            (b"SYMBOL", b"S"),
+            (b"#SYMBOL", b"S"),
+            (b"#NOPARTYIDS[0]", b"whole"),
+        ])
+        .unwrap();
+    assert_eq!(built.by_tag(55).unwrap().as_str(), Some("S"));
+    assert_eq!(built.by_name("#symbol").unwrap().as_str(), Some("S"));
+    let at = built
+        .as_field()
+        .index_of("#nopartyids[0]")
+        .expect("the marked occurrence");
+    assert_eq!(
+        built.as_value().as_sequence().expect("a row")[at].as_str(),
+        Some("whole")
+    );
+}
+
+#[test]
+fn a_dialect_declaring_a_code_twice_names_no_message_and_the_standard_does_not_answer() {
+    // A dialect's own message wins where it declares the code once, the
+    // standard one answers where it declares it not at all, and a code it
+    // declares twice names nothing: ambiguity is an answer, not an absence,
+    // so the standard grammar never stands in for a dialect's doubled one.
+    let dual = FixBranch::from_str("dual").unwrap();
+    let declare = |registry: &mut FixRegistry, name: &str| {
+        let mut allocation = DataType::Int32.nullable_field("AllocQty");
+        allocation.as_fix_mut().set_tag(80).unwrap();
+        let mut message = DataType::from_fields([allocation])
+            .unwrap()
+            .required_field(name);
+        message.as_fix_mut().set_branch(&dual).unwrap();
+        message.as_fix_mut().set_msgtype("J").unwrap();
+        registry
+            .create_definition(FixCategory::Messages, message)
+            .unwrap();
+    };
+    let frame: &[u8] = b"8=FIX.4.4|35=J|70=A1|78=1|79=ACC|80=5|10=0|";
+    let grouped = |message: &yggdryl::FixMsg| message.get_by_name("allocgrp").is_some();
+
+    // Undeclared: the standard AllocationInstruction folds the allocation
+    // group the frame states flat.
+    let mut registry = registry().as_ref().clone();
+    registry.set_branch(dual.clone()).unwrap();
+    let none = FixCodec::new(Arc::new(registry.clone())).with_branch(&dual);
+    assert!(grouped(&none.one_line(frame, false).unwrap()));
+
+    // Declared once: the dialect's own grammar, which declares no group.
+    declare(&mut registry, "AllocIn");
+    let once = FixCodec::new(Arc::new(registry.clone())).with_branch(&dual);
+    let message = once.one_line(frame, false).unwrap();
+    assert!(!grouped(&message));
+    assert_eq!(message.by_tag(80).unwrap().as_f64(), Some(5.0));
+
+    // Declared twice: no message, so no grammar of anyone's.
+    declare(&mut registry, "AllocOut");
+    assert!(registry.get_msgtype("J", Some(&dual)).is_none());
+    let twice = FixCodec::new(Arc::new(registry)).with_branch(&dual);
+    let message = twice.one_line(frame, false).unwrap();
+    assert!(!grouped(&message));
+    assert_eq!(message.anomalies().count(), 0);
 }
 
 #[test]
@@ -799,11 +1529,11 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
     // stated, beside the group the occurrences reach.
     assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
     assert_eq!(
-        message.by_path("Parties.0.PartyRole").unwrap(),
+        message.by_path(&path("Parties[0].PartyRole")).unwrap(),
         &Scalar::from(1_i32)
     );
     assert_eq!(
-        message.by_path("Parties.1.PartyRole").unwrap(),
+        message.by_path(&path("Parties[1].PartyRole")).unwrap(),
         &Scalar::from(17_i32)
     );
     // A member lives in its occurrence and nowhere else: nothing is flat at
@@ -816,7 +1546,7 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
     let counter = message
         .entries()
         .iter()
-        .find(|entry| entry.key() == "453")
+        .find(|entry| entry.key().as_bytes() == b"453")
         .expect("the counter's entry");
     assert_eq!(counter.children().len(), 6);
     assert_eq!(message.into_bytes(b'|'), row.as_bytes());
@@ -1214,26 +1944,38 @@ fn separatorless_group_inference_uses_only_direct_members() {
         )
         .expect("a bridge row");
 
-    // The counter pair arrived, so its members - the unknown residue
-    // included - ride under it in the arrival record.
+    // The counter pair arrived, so the occurrence rides under it in the
+    // arrival record - as the bridge wrote it, residue included, because the
+    // members below are this reader's reading of that one pair.
     let counter = message
         .entries()
         .iter()
         .find(|entry| entry.tag() == 453)
         .expect("the counter pair");
-    let unknown = counter
+    let occurrence = counter
         .children()
         .iter()
-        .find(|entry| entry.key() == "NOPARTYIDS[0].VENUEFLAG")
-        .expect("the unknown member residue");
-    assert_eq!(unknown.tag(), 0);
-    assert_eq!(unknown.value(), "XSymbol=TTF");
+        .find(|entry| entry.key().as_bytes() == b"NOPARTYIDS[0]")
+        .expect("the occurrence the bridge wrote");
+    assert_eq!(occurrence.tag(), 0);
+    assert_eq!(
+        occurrence.value().as_str(),
+        Some("VENUEFLAG=XSymbol=TTFPARTYROLE=1")
+    );
+    // The residue keeps its own value, and nothing invented a `Symbol` out of
+    // the bytes inside it.
+    assert_eq!(
+        message
+            .by_path(&path("parties[0].venueflag"))
+            .expect("the residue the group kept")
+            .as_str(),
+        Some("XSymbol=TTF")
+    );
     assert!(
-        counter
-            .children()
-            .iter()
-            .chain(message.entries())
-            .all(|entry| entry.key() != "NOPARTYIDS[0].Symbol")
+        message
+            .as_field()
+            .get_field_by_path("parties.symbol")
+            .is_none()
     );
     let members = message
         .get_by_name("parties")
@@ -1266,6 +2008,22 @@ fn separatorless_group_inference_uses_only_direct_members() {
             false,
         )
         .expect("a bridge row");
+    // One member, unsplit, because the group declares no `PARTYROLE` to split
+    // at - which the row says, while the arrival record says what the bridge
+    // wrote and nothing about how it was read.
+    assert_eq!(
+        numeric_name
+            .by_path(&path("minimalparties[0].partyid"))
+            .expect("the one unsplit member")
+            .as_str(),
+        Some("BUYSIDEPARTYROLE=1")
+    );
+    assert!(
+        numeric_name
+            .as_field()
+            .get_field_by_path("minimalparties.partyrole")
+            .is_none()
+    );
     let flat: Vec<&FixEntry> = numeric_name
         .entries()
         .iter()
@@ -1273,10 +2031,9 @@ fn separatorless_group_inference_uses_only_direct_members() {
         .collect();
     let party = flat
         .iter()
-        .find(|entry| entry.key() == "453[0].PARTYID")
-        .expect("the one unsplit member");
-    assert_eq!(party.value(), "BUYSIDEPARTYROLE=1");
-    assert!(flat.iter().all(|entry| entry.key() != "453[0].PARTYROLE"));
+        .find(|entry| entry.key().as_bytes() == b"453[0]")
+        .expect("the occurrence the bridge wrote");
+    assert_eq!(party.value().as_str(), Some("PARTYID=BUYSIDEPARTYROLE=1"));
 }
 
 /// A row's content can never fail the batch it arrives in.
@@ -1474,54 +2231,13 @@ fn read_line_picks_the_reader_the_row_shape_names() {
     assert_eq!(xml.by_name("clordid").unwrap().as_str(), Some("XML-1"));
 }
 
-/// A record is its payload column read under its own columns.
-#[test]
-fn read_record_takes_the_payload_column_and_the_columns_beside_it() {
-    let codec = codec();
-
-    // Only a payload: exactly what the byte reader does.
-    let bare = Scalar::from_record([(
-        "body",
-        Scalar::from(b"8=FIX.4.4|35=D|11=ORDER-1|10=0|".to_vec()),
-    )])
-    .expect("a record");
-    let message = codec.one_record(&bare, false).expect("a readable record");
-    assert_eq!(message.as_field().name(), "D");
-    assert_eq!(message.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
-
-    // The payload column is named, so a record spelling it another way is
-    // read by naming that spelling and not by guessing.
-    let renamed = Scalar::from_record([(
-        "payload",
-        Scalar::from(b"8=FIX.4.4|35=D|11=OTHER|10=0|".to_vec()),
-    )])
-    .expect("a record");
-    assert_eq!(
-        codec
-            .clone()
-            .with_payload_column("payload")
-            .one_record(&renamed, false)
-            .expect("a readable record")
-            .by_tag(11)
-            .unwrap()
-            .as_str(),
-        Some("OTHER"),
-    );
-
-    // A value that is not a record at all is the one refusal.
-    let refused = codec
-        .one_record(&Scalar::from("not a record"), false)
-        .unwrap_err();
-    assert!(refused.to_string().contains("record"), "{refused}");
-}
-
 /// The batch readers, each over the one shape it takes.
 ///
-/// A capture arrives as records - a text reader answers one per line, with
-/// the payload beside the `url` and `rownum` it came from - so the codec
-/// takes that shape at two widths: one record at a time, and a stream of
-/// Arrow batches. Both are the same read, which is what these pin: the
-/// message a stream answers is the message a record answers.
+/// A capture arrives as lines - a text reader answers one per line, with the
+/// body beside the `url` and `rownum` it came from - so the codec takes that
+/// shape at two widths: one line at a time, and a stream of Arrow batches.
+/// Both are the same read, which is what these pin: the message a stream
+/// answers is the message a line answers.
 #[test]
 fn every_batch_reader_answers_what_the_single_reader_answers() {
     let codec = codec();
@@ -1529,18 +2245,16 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
         b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec(),
         b"8=FIX.4.4|35=8|37=O-9|55=MSFT|10=0|".to_vec(),
     ];
-    let records: Vec<Scalar> = rows
+    let lines: Vec<TextLine> = rows
         .iter()
-        .map(|row| {
-            Scalar::from_record([("body", Scalar::from(row.clone()))]).expect("a capture row")
-        })
+        .map(|row| TextLine::new(0, TextBytes::from_bytes(row).expect("a capture page")))
         .collect();
 
-    // One record at a time, lazily: the iterator is the stream.
+    // One line at a time, lazily: the iterator is the stream.
     let read: Vec<_> = codec
-        .parse_text_records(records.clone())
+        .parse_text_lines(lines)
         .collect::<Result<Vec<_>, _>>()
-        .expect("readable records");
+        .expect("readable lines");
     assert_eq!(read.len(), 2);
     assert_eq!(read[0].as_field().name(), "D");
     assert_eq!(read[1].by_name("symbol").unwrap().as_str(), Some("MSFT"));

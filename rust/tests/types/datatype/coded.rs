@@ -11,9 +11,9 @@ use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArra
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::types::{AsciiFamily, CfiField, CountryField, CurrencyField, MicField};
-use yggdryl::types::{CurrencyScalar, MicScalar};
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, AsciiEnum, DataType, DataTypeId, DataTypeKind, Field, Scalar,
+    ArrowCast, ArrowCastOptions, AsciiEnum, DataType, DataTypeId, DataTypeKind, Field, FieldScalar,
+    Scalar,
 };
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -412,9 +412,13 @@ fn the_typed_field_and_scalar_aliases_name_their_code() {
     assert_eq!(iso.as_field().dtype(), &DataType::Country);
     assert_eq!(cfi.as_field().dtype(), &DataType::Cfi);
 
-    let value = CurrencyScalar::new(Scalar::from("USD")).unwrap();
+    // The pairing is the field's value contract, so the text becomes the code
+    // leaf on the way in.
+    let value = FieldScalar::new(ccy.as_field(), "USD").unwrap();
     assert_eq!(value.dtype(), &DataType::Currency);
-    assert_eq!(value.value(), &Scalar::from("USD"));
+    assert_eq!(value.name(), "ccy");
+    assert_eq!(value.as_str(), Some("USD"));
+    assert_eq!(value.value().id(), DataTypeId::Currency);
 
     // The marker checks the datatype, so a width is not a code.
     let plain = Field::new("ccy", DataType::FixedAscii(3), false);
@@ -423,7 +427,7 @@ fn the_typed_field_and_scalar_aliases_name_their_code() {
             .try_into_typed::<yggdryl::types::ascii::CurrencyType>()
             .is_err()
     );
-    assert!(MicScalar::new(Scalar::from("XPARIS")).is_err());
+    assert!(FieldScalar::new(venue.as_field(), "XPARIS").is_err());
 }
 
 #[test]

@@ -23,7 +23,7 @@ from typing import Any, Iterable
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url, refresh_logging
+from yggdryl import DataType, Field, IOBase, MimeType, Scalar, TextLine, Url, refresh_logging
 from yggdryl.fix import (
     FixBranch,
     FixMsg,
@@ -496,7 +496,7 @@ def test_registry_absence_is_a_key_error_carrying_the_core_message(
 
     with pytest.raises(KeyError) as by_path:
         seed.field_by_path("Symbol.absent", "")
-    assert 'path \\"Symbol.absent\\"' in by_path.value.args[0]
+    assert "path Symbol.absent" in by_path.value.args[0]
 
     with pytest.raises(KeyError):
         seed[9999]
@@ -736,6 +736,57 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     with pytest.raises(ValueError, match="fix:tag"):
         registry.insert(Field("Untagged", "utf8"))
     assert seed.get_field_by_name("Untagged", "") is None
+
+
+def test_registry_add_field_answers_whether_the_field_arrived_or_folded() -> None:
+    """`add_field` is the one-field verb `add_fields` folds through: True arrived, False merged."""
+    registry = FixRegistry.from_fields(
+        [
+            _field("Symbol", "utf8", 55, tags=[65], aliases=["Ticker"], description="stored"),
+            _field("Price", "float64", 44),
+        ]
+    )
+
+    # A name that folds to a stored name merges into that field: the stored
+    # identity, spelling and nullability stand, the alternate tags and the
+    # aliases are the union - stored order first, the incoming canonical tag
+    # last - and the incoming metadata wins a shared key.
+    incoming = _field(
+        "symbol", "utf8", 9001, tags=[66], aliases=["Sym", "TICKER"], description="incoming"
+    )
+    assert registry.add_field(incoming) is False
+    assert len(registry) == 2 + CRATED
+    stored = registry.field_by_tag(55)
+    assert stored.name == "Symbol"
+    assert stored.fix.id == "55:"
+    assert stored.fix.tags == [65, 66, 9001]
+    assert stored.fix.aliases == ["Ticker", "Sym"]
+    assert stored.description == "incoming"
+
+    # Every spelling the incoming field carried now reaches the stored one.
+    for key in (9001, 66, 65, "sym", "TICKER"):
+        assert registry.field(key).name == "Symbol", key
+
+    # Folding it again changes nothing, and a field nothing answers to
+    # arrives whole.
+    before = registry.into_json()
+    assert registry.add_field(incoming) is False
+    assert registry.into_json() == before
+    assert registry.add_field(_field("TransactTime", "utf8", 60)) is True
+    assert len(registry) == 3 + CRATED
+
+    # A datatype that disagrees with the stored field is refused, and the
+    # refusal writes nothing: merging metadata never redeclares a datatype.
+    before = registry.into_json()
+    with pytest.raises(ValueError, match="utf8"):
+        registry.add_field(_field("SYMBOL", "int32", 9002))
+    assert registry.into_json() == before
+    assert registry.get_field_by_tag(9002) is None
+
+    # One of this crate's own tags is every dictionary's already: neither
+    # added nor merged.
+    assert registry.add_field(fix_crate_fields()[0]) is False
+    assert registry.into_json() == before
 
 
 def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() -> None:
@@ -1063,7 +1114,7 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert message.by_id("55:").as_py() == "AAPL"
     assert message.by_name("symbol").as_py() == "AAPL"
     assert message.by_tag(38).as_py() == 100.0
-    assert message.by_path("parties.0.partyid").as_py() == "BROKER"
+    assert message.by_path("parties[0].partyid").as_py() == "BROKER"
     # An unknown tag is retained under its rendered name, never dropped.
     assert message.by_tag(9999).as_py() == "custom"
     # An identifier is exact: a dictionary this message does not speak misses.
@@ -1090,7 +1141,7 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert 'name \\"nope\\"' in by_name.value.args[0]
     with pytest.raises(KeyError) as by_path:
         message.by_path("Parties.PartyID")
-    assert 'path \\"Parties.PartyID\\"' in by_path.value.args[0]
+    assert "path Parties.PartyID" in by_path.value.args[0]
     with pytest.raises(TypeError, match="not bool"):
         message[True]
     # A malformed identifier is the native parse failure, never a miss.
@@ -1221,7 +1272,7 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     restored = pickle.loads(pickle.dumps(message))
     assert restored == message
     assert restored.registry == seed
-    assert restored.by_path("parties.0.partyid").as_py() == "BROKER"
+    assert restored.by_path("parties[0].partyid").as_py() == "BROKER"
 
     assert repr(message) == 'FixMsg("NewOrderSingle", 5 values)'
     assert repr(seed) == f"FixRegistry({6241 + CRATED} fields)"
@@ -1291,7 +1342,7 @@ def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> No
     framed = next(reader.parse_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|"))
     assert framed.by_tag(55).as_py() == "AAPL"
     assert next(reader.parse_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|")).by_tag(55).as_py() == "AAPL"
-    assert reader.parse_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
+    assert reader.parse_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01").by_tag(
         55
     ).as_py() == "AAPL"
     assert reader.parse_pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
@@ -1422,10 +1473,10 @@ def test_a_message_restates_at_the_dictionarys_newest_version(seed: FixRegistry)
     assert latest.by_tag(47).as_py() == "A"
     # ExecBroker and ClientID are two parties, in tag order, counted.
     assert latest.by_tag(453).as_py() == 2
-    assert latest.by_path("parties.0.partyid").as_py() == "BRKR"
-    assert latest.by_path("parties.0.partyrole").as_py() == 1
-    assert latest.by_path("parties.1.partyid").as_py() == "CLIENT1"
-    assert latest.by_path("parties.1.partyrole").as_py() == 3
+    assert latest.by_path("parties[0].partyid").as_py() == "BRKR"
+    assert latest.by_path("parties[0].partyrole").as_py() == 1
+    assert latest.by_path("parties[1].partyid").as_py() == "CLIENT1"
+    assert latest.by_path("parties[1].partyrole").as_py() == 3
     # The fill under its newest spelling, reachable by the old one too.
     assert latest.by_tag(32).as_py() == 100.0
     assert latest.by_name("LastShares").as_py() == 100.0
@@ -1727,8 +1778,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "parentorderid",
         "sendersessionid",
         "msgctxid",
-        "senderpluginid",
-        "targetpluginid",
+        "pluginid",
+        "prevpluginid",
         "sendersessionname",
         "targetsessionname",
         "isincode",
@@ -1749,8 +1800,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "ParentOrderID",
         "SenderSessionId",
         "MsgCtxId",
-        "SenderPluginId",
-        "TargetPluginId",
+        "PluginId",
+        "PrevPluginId",
         "SenderSessionName",
         "TargetSessionName",
         "ISINCode",
@@ -1784,9 +1835,10 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert held.metadata["iceberg:transform"] == "truncate[3600]"
 
     # What a bridge's own log states about a line - the session the message
-    # itself names, its message context, the plugins and the plugin sessions
-    # it moved between - is text, like the identifiers, and the two plugin
-    # sessions answer to the spellings a bridge row writes them under.
+    # itself names, its message context, the plugin that logged it and the one
+    # it came through before that, and the two session names the line spells -
+    # is text, like the identifiers, and the two session names answer to the
+    # spellings a bridge row writes them under.
     for name in (
         "version",
         "symbolticker",
@@ -1794,8 +1846,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "parentorderid",
         "sendersessionid",
         "msgctxid",
-        "senderpluginid",
-        "targetpluginid",
+        "pluginid",
+        "prevpluginid",
         "sendersessionname",
         "targetsessionname",
     ):
@@ -1878,7 +1930,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
     wire = b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=000|"
     order = next(reader.parse_line(wire))
     assert order.into_bytes(ord("|")) == wire
-    assert {tag for tag, _, _, _ in order.entries()} == {8, 35, 11, 55, 54, 38, 10}
+    assert {tag for tag, _, _ in order.entries()} == {8, 35, 11, 55, 54, 38, 10}
 
     # The message's own clocks, in decreasing exactness: TransactTime(60)
     # outranks SendingTime(52), and a sub-second clock still has a partition.
@@ -1901,7 +1953,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
     assert _root_names(stated)[0] == "beginstring"
     assert _root_names(stated)[-1] == "timestamp"
     assert stated.by_tag(8).as_py().startswith("FIX.")
-    assert {tag for tag, _, _, _ in stated.entries()} == {55}
+    assert {tag for tag, _, _ in stated.entries()} == {55}
     assert not stated.into_bytes(ord("|")).startswith(b"8=")
 
     # A bridge frame and a FIXML row are built the same way.
@@ -1962,29 +2014,92 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     assert {entry["tag"] for entry in entries[1]} == {8, 35, 34, 52, 10}
 
 
-def test_the_plugin_that_logged_a_row_fills_the_session_its_direction_names(
+def test_a_rows_pluginid_fills_its_field_and_names_the_dialect_it_is_read_under(
     seed: FixRegistry,
 ) -> None:
-    """A row's `plugin` is a parameter: with the row's direction it names one plugin session."""
+    """A row's `pluginid` fills the crate's field and, where it spells a branch, is the row's dialect."""
+    crated = {field.name: field.fix.tag for field in fix_crate_fields()}
+    # A dialect declared under a plugin's name and an alias, with one field of
+    # its own, so a row's `VENUETAG` resolves under that dialect and nowhere
+    # else.
+    seed.set_branch(FixBranch("venue", aliases=["vnu"]))
+    seed.insert(_field("VenueTag", "utf8", 5001, branch="venue"))
+    codec = FixCodec(seed)
+    body = b"MSGTYPE=D|CLORDID=A|VENUETAG=dark"
+    spellings = ["venue", "VNU", "OMS_X1_TradeCapture", None, ""]
+    previous = ["ULFilter", None, None, None, None]
     source = pa.table(
         {
-            "direction": pa.array(["SENT", "RECV", None, None, "SENT"], pa.utf8()),
-            "plugin": pa.array(
-                [
-                    "OMS_X1_TradeCapture",
-                    "Spot_FX_TradeCapture",
-                    "Broker_DarkPool_TradeCapture",
-                    "Spot_FX_TradeCapture",
-                    "ULMSG_BROKER_BDG_DMZ_CLI",
-                ],
-                pa.utf8(),
-            ),
+            "pluginid": pa.array(spellings, pa.utf8()),
+            "prevpluginid": pa.array(previous, pa.utf8()),
+            "body": pa.array([body] * len(spellings), pa.binary()),
+        }
+    )
+    parsed = codec.parse_text_arrow_reader(source).read_all()
+    names = parsed.schema.names
+
+    # Both columns are fixed columns' names, so neither is carried in front:
+    # each fills the column of its own name, exactly as the row spelled it,
+    # and only the payload leads.
+    assert names[0] == "body"
+    assert names[1:4] == ["beginstring", "bodylength", "msgtype"]
+    for once in ("pluginid", "prevpluginid"):
+        assert names.count(once) == 1, once
+    assert parsed.column("pluginid").to_pylist() == spellings
+    assert parsed.column("prevpluginid").to_pylist() == previous
+
+    # The dialect is the row's own: the branch's name and its alias in another
+    # case each read the row under it, so the dialect's field resolves and the
+    # message carries the branch it resolved in - one value for the message,
+    # never one per pair. Any other plugin - one no branch is named after, a
+    # null, an empty string - keeps the codec's pin, then the standard branch,
+    # where the same key maps to nothing and is kept under its own spelling
+    # instead.
+    entries = parsed.column("nofixentries").to_pylist()
+    unmapped = parsed.column("nounmappedfixentries").to_pylist()
+    for row in (0, 1):
+        assert {entry["tag"] for entry in entries[row]} == {35, 11, 5001}, row
+        assert unmapped[row] == [], row
+    for row in (2, 3, 4):
+        assert {entry["tag"] for entry in entries[row]} == {35, 11, 0}, row
+        assert [entry["key"] for entry in unmapped[row]] == ["VENUETAG"], row
+
+    # One line read alone answers exactly what the batch did, and a fill is
+    # never an entry: neither plugin is one.
+    lined = FixCodec(seed, capture_names=["pluginid"])
+    for row, spelled in enumerate(spellings):
+        message = next(lined.parse_text_line(TextLine(0, body, [spelled])))
+        assert message.branch == ("venue" if row < 2 else STANDARD_BRANCH), spelled
+        held = message.get_by_name("pluginid")
+        assert (held.as_py() if held is not None else None) == spelled, spelled
+        assert all(
+            tag not in (crated["pluginid"], crated["prevpluginid"])
+            for tag, _, _ in message.entries()
+        ), spelled
+
+    # A capture speaks per row where the codec speaks per run: the pin stands
+    # for a row that names no dialect, and a row that names one outranks a pin
+    # naming another.
+    pinned = FixCodec(seed, branch="venue", capture_names=["pluginid"])
+    for spelled in ("OMS_X1_TradeCapture", None, ""):
+        message = next(pinned.parse_text_line(TextLine(0, body, [spelled])))
+        assert message.branch == "venue", spelled
+        assert message.by_tag(5001).as_py() == "dark", spelled
+    elsewhere = FixCodec(seed, branch="elsewhere", capture_names=["pluginid"])
+    assert next(elsewhere.parse_text_line(TextLine(0, body, ["vnu"]))).branch == "venue"
+    assert next(elsewhere.parse_text_line(TextLine(0, body, ["ULBridge"]))).branch == "elsewhere"
+
+    # The two session names are only ever what the line itself spells, through
+    # the aliases a bridge writes them under: neither the plugin that logged
+    # the row nor the direction it moved in fills them, and nothing fills
+    # `prevpluginid` but a column of that name.
+    spoken = pa.table(
+        {
+            "direction": pa.array(["SENT", "RECV"], pa.utf8()),
+            "pluginid": pa.array(["venue", "vnu"], pa.utf8()),
             "body": pa.array(
                 [
-                    b"8=FIX.4.4|35=0|34=696|10=0|",
-                    b"8=FIX.4.4|35=8|17=EXEC-1|10=0|",
-                    b"8=FIX.4.4|35=D|55=AAPL|10=0|",
-                    b"received << 8=FIX.4.4|35=8|17=EXEC-2|10=0|",
+                    b"MSGTYPE=D|CLORDID=A",
                     b"|#SYMBOL=TTF|#ULFROMSESSIONNAME=OMS_X1_OrderOut"
                     b"|#ULTOSESSIONNAME=ULMSG_BROKER_BDG_DMZ_CLI|",
                 ],
@@ -1992,44 +2107,17 @@ def test_the_plugin_that_logged_a_row_fills_the_session_its_direction_names(
             ),
         }
     )
-    parsed = FixCodec(seed).parse_text_arrow_reader(source).read_all()
-    names = parsed.schema.names
-
-    # `plugin` and `direction` are parameters of the row, and neither is a
-    # fixed column's name, so both are carried in front beside the payload;
-    # the text reader's `direction` and FIX's own `msgdirection` are two
-    # names, so both are here.
-    assert names[:3] == ["direction", "plugin", "body"]
-    assert names[3:6] == ["beginstring", "bodylength", "msgtype"]
-    assert names.count("direction") == 1 and names.count("msgdirection") == 1
-
-    # The plugin that logged a line is the plugin session the line moved from
-    # or to, by the direction the row states: a sent line's sender, a
-    # received line's target. A row stating no direction takes its line's
-    # verb, and a line with no verb was sent - the reading every unmarked
-    # line of a session's own log takes.
-    sender = parsed.column("sendersessionname").to_pylist()
-    target = parsed.column("targetsessionname").to_pylist()
-    assert sender[:4] == [
-        "OMS_X1_TradeCapture",
-        None,
-        "Broker_DarkPool_TradeCapture",
-        None,
-    ]
-    assert target[:4] == [None, "Spot_FX_TradeCapture", None, "Spot_FX_TradeCapture"]
-
-    # A message that states its plugin sessions itself - a bridge row spells
-    # `ULFROMSESSIONNAME` and `ULTOSESSIONNAME`, which the two fields answer
-    # to by alias - keeps its own statement over the plugin that logged it.
-    assert sender[4] == "OMS_X1_OrderOut"
-    assert target[4] == "ULMSG_BROKER_BDG_DMZ_CLI"
-
-    # The message's own session is only what the message itself states, and
-    # the plugin session a row filled is never an entry.
-    assert parsed.column("sendersessionid").to_pylist() == [None] * 5
-    entries = parsed.column("nofixentries").to_pylist()
-    assert {entry["tag"] for entry in entries[0]} == {8, 35, 34, 10}
-    assert {entry["tag"] for entry in entries[2]} == {8, 35, 55, 10}
+    spoken = codec.parse_text_arrow_reader(spoken).read_all()
+    # `direction` is a parameter of the row and no fixed column is spelled so,
+    # which is why it is carried in front; FIX's own `msgdirection` is the
+    # column it fills, so both names are here.
+    assert spoken.schema.names[:2] == ["direction", "body"]
+    assert spoken.schema.names.count("direction") == 1
+    assert spoken.schema.names.count("msgdirection") == 1
+    assert spoken.column("sendersessionname").to_pylist() == [None, "OMS_X1_OrderOut"]
+    assert spoken.column("targetsessionname").to_pylist() == [None, "ULMSG_BROKER_BDG_DMZ_CLI"]
+    assert spoken.column("sendersessionid").to_pylist() == [None, None]
+    assert spoken.column("prevpluginid").to_pylist() == [None, None]
 
 
 def test_a_branch_declaration_carries_its_dialect() -> None:

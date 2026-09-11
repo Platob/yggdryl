@@ -25,7 +25,7 @@
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::{DataType, FixCategory, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field, into_json_scalar};
+    use yggdryl::{DataType, FixCategory, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field, into_json_scalar, FieldPath};
 
     let mut symbol = DataType::Utf8.required_field("Symbol");
     symbol.as_fix_mut().set_tag(55)?;
@@ -63,7 +63,7 @@
     assert_eq!(msg.as_value().as_sequence().map(|row| row.len()), Some(5));
     assert_eq!(msg.by_tag(38)?, &Scalar::from(100_i64));
     assert_eq!(msg.by_name("ticker")?, &Scalar::from("AAPL"));
-    assert_eq!(msg.by_path("Parties.0.PartyID")?, &Scalar::from("BROKER"));
+    assert_eq!(msg.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?, &Scalar::from("BROKER"));
     assert_eq!(msg.by_tag(9999)?, &Scalar::from("custom"), "an unknown tag is retained");
     assert_eq!(msg.get(55), msg.get_by_tag(55));
     assert!(msg.value("Parties.PartyID").is_err(), "a group member needs its index");
@@ -132,7 +132,7 @@
     assert len(message) == 5
     assert message.by_tag(38).as_py() == 100
     assert message.by_name("ticker").as_py() == "AAPL"
-    assert message.by_path("Parties.0.PartyID").as_py() == "BROKER"
+    assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
     assert message.by_tag(9999).as_py() == "custom", "an unknown tag is retained"
     assert message[55] == message.get_by_tag(55)
     with pytest.raises(KeyError):
@@ -195,7 +195,7 @@
     assert.equal(message.value.kind, 'sequence')
     assert.equal(message.byTag(38).asJs(), 100)
     assert.equal(message.byName('ticker').asJs(), 'AAPL')
-    assert.equal(message.byPath('Parties.0.PartyID').asJs(), 'BROKER')
+    assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
     assert.equal(message.byTag(9999).asJs(), 'custom', 'an unknown tag is retained')
     assert.ok(message.get(55).equals(message.getByTag(55)))
     assert.throws(() => message.at('Parties.PartyID'), /a fix value/)
@@ -310,7 +310,7 @@ A written child keeps its position, so every reader already holding the row addr
     reader = FixCodec(registry)
 
     line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|"
-    message = reader.parse_fix_line(line, separator=ord("|"))
+    message = reader.parse_fix_line(line)
     children = len(message)
     names = [name for name, _ in message]
 
@@ -342,7 +342,7 @@ A written child keeps its position, so every reader already holding the row addr
 
     # Only the row changed: the wire comes back byte for byte.
     assert message.into_bytes(ord("|")) == line
-    assert message.entries() == reader.parse_fix_line(line, separator=ord("|")).entries()
+    assert message.entries() == reader.parse_fix_line(line).entries()
     ```
 
 === "JavaScript"
@@ -356,7 +356,7 @@ A written child keeps its position, so every reader already holding the row addr
     const reader = new fix.FixCodec(registry)
 
     const line = '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|'
-    const message = reader.parseFixLine(Buffer.from(line), 124)
+    const message = reader.parseFixLine(Buffer.from(line))
     const children = message.size
     const names = [...message].map(([name]) => name)
 
@@ -391,7 +391,7 @@ A written child keeps its position, so every reader already holding the row addr
 
 ## A row is a message again
 
-`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The branch is the schema's own `fix:branch`. The entries are rebuilt from the `nofixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the line the row was read from and `digest` answers what it answered; a row without that column has no entries. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds.
+`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The branch is the schema's own `fix:branch`. The entries are rebuilt from the `nofixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the line the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `Utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds.
 
 === "Rust"
 
@@ -434,7 +434,7 @@ A written child keeps its position, so every reader already holding the row addr
     schema = fix_schema(registry, "fix")
 
     line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|"
-    order = reader.parse_fix_line(line, separator=ord("|"))
+    order = reader.parse_fix_line(line)
     row = order.into_row(schema)
 
     held = FixMsg.from_row(schema, row, registry)
@@ -460,7 +460,7 @@ A written child keeps its position, so every reader already holding the row addr
     const schema = fix.schema(registry, 'fix')
 
     const line = '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|'
-    const order = reader.parseFixLine(Buffer.from(line), 124)
+    const order = reader.parseFixLine(Buffer.from(line))
     const row = order.intoRow(schema)
 
     const held = fix.FixMsg.fromRow(schema, row, registry)
@@ -501,7 +501,7 @@ A FIX 4.2 execution report, read as it was sent and then restated. The entries, 
 
     use yggdryl::holder::local::Folder;
     use yggdryl::types::State;
-    use yggdryl::{FixCodec, FixRegistry, Scalar};
+    use yggdryl::{FixCodec, FixRegistry, Scalar, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
@@ -527,10 +527,10 @@ A FIX 4.2 execution report, read as it was sent and then restated. The entries, 
     // ExecBroker and ClientID are two parties, in tag order, and the
     // counter states the count.
     assert_eq!(latest.by_tag(453)?.as_i128(), Some(2));
-    assert_eq!(latest.by_path("parties.0.partyid")?, &Scalar::from("BRKR"));
-    assert_eq!(latest.by_path("parties.0.partyrole")?, &Scalar::from(1));
-    assert_eq!(latest.by_path("parties.1.partyid")?, &Scalar::from("CLIENT1"));
-    assert_eq!(latest.by_path("parties.1.partyrole")?, &Scalar::from(3));
+    assert_eq!(latest.by_path(&FieldPath::from_str("parties[0].partyid")?)?, &Scalar::from("BRKR"));
+    assert_eq!(latest.by_path(&FieldPath::from_str("parties[0].partyrole")?)?, &Scalar::from(1));
+    assert_eq!(latest.by_path(&FieldPath::from_str("parties[1].partyid")?)?, &Scalar::from("CLIENT1"));
+    assert_eq!(latest.by_path(&FieldPath::from_str("parties[1].partyrole")?)?, &Scalar::from(3));
     // LastShares is LastQty, reachable by either spelling.
     assert_eq!(latest.by_tag(32)?, &Scalar::from(100.0_f64));
     assert_eq!(latest.by_name("LastShares")?, latest.by_tag(32)?);
@@ -573,10 +573,10 @@ A FIX 4.2 execution report, read as it was sent and then restated. The entries, 
     # ExecBroker and ClientID are two parties, in tag order, and the
     # counter states the count.
     assert latest.by_tag(453).as_py() == 2
-    assert latest.by_path("parties.0.partyid").as_py() == "BRKR"
-    assert latest.by_path("parties.0.partyrole").as_py() == 1
-    assert latest.by_path("parties.1.partyid").as_py() == "CLIENT1"
-    assert latest.by_path("parties.1.partyrole").as_py() == 3
+    assert latest.by_path("parties[0].partyid").as_py() == "BRKR"
+    assert latest.by_path("parties[0].partyrole").as_py() == 1
+    assert latest.by_path("parties[1].partyid").as_py() == "CLIENT1"
+    assert latest.by_path("parties[1].partyrole").as_py() == 3
     # LastShares is LastQty, reachable by either spelling.
     assert latest.by_tag(32).as_py() == 100.0
     assert latest.by_name("LastShares") == latest.by_tag(32)
@@ -618,10 +618,10 @@ A FIX 4.2 execution report, read as it was sent and then restated. The entries, 
     // ExecBroker and ClientID are two parties, in tag order, and the
     // counter states the count.
     assert.equal(latest.byTag(453).toJSON(), 2)
-    assert.equal(latest.byPath('parties.0.partyid').toJSON(), 'BRKR')
-    assert.equal(latest.byPath('parties.0.partyrole').toJSON(), 1)
-    assert.equal(latest.byPath('parties.1.partyid').toJSON(), 'CLIENT1')
-    assert.equal(latest.byPath('parties.1.partyrole').toJSON(), 3)
+    assert.equal(latest.byPath('parties[0].partyid').toJSON(), 'BRKR')
+    assert.equal(latest.byPath('parties[0].partyrole').toJSON(), 1)
+    assert.equal(latest.byPath('parties[1].partyid').toJSON(), 'CLIENT1')
+    assert.equal(latest.byPath('parties[1].partyrole').toJSON(), 3)
     // LastShares is LastQty, reachable by either spelling.
     assert.equal(latest.byTag(32).toJSON(), 100)
     assert.ok(latest.byName('LastShares').equals(latest.byTag(32)))
@@ -654,7 +654,7 @@ A value written into a target is re-typed for the target's field through the cod
 - `get_by_tag(9999)`, an unknown tag -> the root child named `9999` exactly, never `09999`; the miss allocates nothing.
 - A bare tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` on a non-standard message -> only the standard branch is tried.
 - `by_id` on a foreign branch -> a miss, because an identifier never tiers.
-- `by_path("Parties.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the entry's index (`Parties.0.PartyID`).
+- `by_path("Parties.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the occurrence (`Parties[0].PartyID`), which is the spelling the registry takes too.
 - `set` with a name nothing reaches -> a typed absence naming the key, and the message unchanged; with a value the field refuses -> the value contract's refusal, and the message unchanged; `set_many` refuses all of its writes on the first refusal.
 - `set` with a `Null` -> a stated null, the child kept and made nullable; `remove` -> the child gone and its value answered, `None` for a key that reaches nothing.
 - `set` twice under one key -> one child, the later value; a bare unknown tag written twice -> one decimal-named child.

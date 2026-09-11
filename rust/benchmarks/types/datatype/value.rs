@@ -2,7 +2,8 @@ use std::hint::black_box;
 
 use criterion::Criterion;
 use yggdryl::{
-    Enum, Float16, Float32, Float64, I256, IOMode, Scalar, TimeUnit, Timezone, TypedScalar,
+    DataType, Enum, Field, FieldScalar, Float16, Float32, Float64, I256, IOMode, Scalar, TimeUnit,
+    Timezone,
 };
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
@@ -35,7 +36,9 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     .unwrap();
     let duration = Scalar::duration64(250, TimeUnit::Millisecond).unwrap();
     let duration_scalar = Scalar::from(5);
-    let typed: TypedScalar = TypedScalar::try_from_value(Scalar::from(42)).unwrap();
+    let typed_integer = Scalar::from(42_i64);
+    let typed_decimal = Scalar::d128(1_050, 2);
+    let typed_field = Field::new("size", DataType::Int64, false);
     let integer256: I256 = "1234567890123456789012345678901234567890".parse().unwrap();
     let float16 = Float16::from_f16(half::f16::from_f32(1.25));
     let float32 = Float32::from_f32(1.25);
@@ -49,8 +52,17 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     group.bench_function("stable_hash_record", |bencher| {
         bencher.iter(|| black_box(&record).stable_hash());
     });
-    group.bench_function("stable_hash_typed_value", |bencher| {
-        bencher.iter(|| black_box(&typed).stable_hash());
+    group.bench_function("typed_infer", |bencher| {
+        bencher.iter(|| {
+            let integer = FieldScalar::infer(black_box(&typed_integer).clone()).unwrap();
+            let decimal = FieldScalar::infer(black_box(&typed_decimal).clone()).unwrap();
+            black_box((integer, decimal))
+        });
+    });
+    group.bench_function("typed_new", |bencher| {
+        bencher.iter(|| {
+            FieldScalar::new(black_box(&typed_field), black_box(&typed_integer).clone()).unwrap()
+        });
     });
     group.bench_function("stable_hash_i256", |bencher| {
         bencher.iter(|| black_box(&integer256).stable_hash());

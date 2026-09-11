@@ -16,6 +16,7 @@ import {
   type UlPlugins,
   type FixValueInput,
   type LocationInput,
+  type TextLine,
 } from '../..'
 
 declare const field: Field
@@ -60,6 +61,7 @@ const byNameKey: Field | null = loaded.getField('Symbol')
 const requiredByKey: Field = loaded.field('Symbol')
 const mapLike: Field | null = loaded.get(55)
 const present: boolean = loaded.has('Symbol')
+const added: boolean = loaded.addField(field)
 const inserted: Field | null = loaded.insert(field)
 loaded.update(field)
 const removed: Field | null = loaded.remove(55)
@@ -254,7 +256,7 @@ const pinnedBatchByteSize: number = pinned.batchByteSize
 const fromText: FixMsg = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
 const fromBytes: FixMessages = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
 const fromLines: FixMessages = reader.parseLines([Buffer.from('8=FIX.4.4|35=D|10=0|'), '8=FIX.4.4|35=D|10=0|'])
-const fromFrame: FixMsg = reader.parseFixLine(Buffer.from('8=FIX.4.4'), 1)
+const fromFrame: FixMsg = reader.parseFixLine(Buffer.from('8=FIX.4.4'))
 const fromBridge: FixMsg = reader.parseUllinkLine(Buffer.from('#SYMBOL=TTF'))
 const fromFixml: FixMsg = reader.parseFixmlLine(Buffer.from("<Order ClOrdID='A'/>"))
 const fromPairs: FixMsg = reader.parsePairs([['55', 'AAPL']])
@@ -332,7 +334,7 @@ const lift: Array<[string, Scalar]> = fromText.lift()
 const party: Array<Scalar | null> | null = fromText.party('1')
 const regulatory: Scalar | null = fromText.trdRegTimestamp('1')
 const anomalies: string[] = fromText.anomalies()
-const arrivals: Array<[number, number, string, string]> = fromText.arrivals()
+const arrivals: Array<[number, string, string]> = fromText.arrivals()
 const wire: Buffer = fromText.intoBytes(124)
 
 void branchName
@@ -372,6 +374,7 @@ const group: Field = loaded.definition('groups', 'parties')
 const counter: Field = loaded.definition('fields', 'nopartyids')
 const component: Field | null = loaded.getDefinition('components', 'party')
 const definitions: IterableIterator<Field> = loaded.definitions('messages')
+const definitionAdded: boolean = loaded.addDefinition('components', field)
 const previous: Field | null = loaded.insertDefinition('components', field)
 loaded.createDefinition('components', field)
 const replaced: Field = loaded.updateDefinition('components', field)
@@ -414,10 +417,11 @@ const configMessage: FixMsg = selected.intoFixmsg(reader)
 const recovered: UlPlugin = fix.UlPlugin.fromFixmsg(configMessage)
 const configHash: bigint = selected.stableHash()
 const bulk: FixMessages = reader.parseUlconfigLine(Buffer.from('{}'))
-const records: FixMessages = reader.parseTextRecord({ body: Buffer.from('35=D|') })
-const recordStream: FixMessages = reader.parseTextRecords([{ body: Buffer.from('35=D|') }])
+const decoded: TextLine = handle.readTextLines().next().value
+const records: FixMessages = reader.parseTextLine(decoded)
+const lineStream: FixMessages = reader.parseTextLines([decoded])
 const nextMessage: IteratorResult<FixMsg> = bulk.next()
-const allMessages: FixMsg[] = [...records, ...recordStream]
+const allMessages: FixMsg[] = [...records, ...lineStream]
 
 // @ts-expect-error the generic parse returns a cursor
 const single: FixMsg = reader.parseLine(Buffer.from('35=D|'))

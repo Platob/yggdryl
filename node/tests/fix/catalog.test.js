@@ -5,7 +5,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
-const { Field, Scalar, fields, fix } = require('yggdryl')
+const { DataType, Field, Scalar, TextLine, fields, fix } = require('yggdryl')
 
 function tagged(name, tag, dtype = 'utf8') {
   const field = Field.from(`${name}: ${dtype}`)
@@ -17,6 +17,12 @@ function message(name, code, children = []) {
   const field = fields.struct(name, children, { nullable: false })
   field.fix.msgtype = code
   return field
+}
+
+function members(field) {
+  const held = []
+  for (let at = 0; at < field.fieldLen; at += 1) held.push(field.fieldAt(at))
+  return held
 }
 
 function catalog() {
@@ -77,6 +83,52 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
   // Only the crate's own fields are left: they seed every registry and
   // are never a definition a caller can remove.
   assert.equal(registry.size, fix.crateFields().length)
+})
+
+test('addDefinition folds a definition into the one its name reaches', () => {
+  const registry = catalog()
+  assert.equal(registry.addField(tagged('PartyNote', 9002)), true)
+  const note = registry.field(9002)
+  note.fix.fieldRef = 'PartyNote'
+  const extended = registry.definition('components', 'Party')
+  extended.setDtype(DataType.fromFields([...members(extended), note]))
+  assert.equal(registry.addDefinition('components', extended), false)
+
+  // The stored members keep their order and the incoming one is appended; the
+  // group and the message that reference the component see it without holding
+  // a copy, and the reference resolves again.
+  assert.deepEqual(members(registry.definition('components', 'Party')).map(held => held.name), ['PartyID', 'PartyNote'])
+  for (const spelled of ['Party.PartyNote', 'Parties.PartyNote', 'NewOrderSingle.Parties.PartyNote']) {
+    const member = registry.fieldByPath(spelled)
+    assert.equal(member.fix.tag, 9002, spelled)
+    assert.equal(member.fix.fieldRef, 'partynote', spelled)
+  }
+  assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
+
+  // A message extends the same way and keeps its wire code.
+  const order = registry.definition('messages', 'NewOrderSingle')
+  order.setDtype(DataType.fromFields([...members(order), Field.from('Text: utf8')]))
+  assert.equal(registry.addDefinition('messages', order), false)
+  const held = registry.definition('messages', 'NewOrderSingle')
+  assert.equal(held.fix.msgtype, 'D')
+  assert.deepEqual(members(held).map(member => member.name), ['NoPartyIDs', 'Parties', 'Text'])
+
+  // A name no definition reaches arrives whole, and `'fields'` redirects a
+  // scalar to `addField`.
+  const hop = fields.struct('Hop', [Field.from('HopID: utf8')], { nullable: false })
+  assert.equal(registry.addDefinition('components', hop), true)
+  assert.equal(registry.addDefinition('fields', tagged('Symbol', 55)), true)
+  assert.equal(registry.field(55).name, 'Symbol')
+
+  // One level deep: a member both sides declare stays the stored one, so an
+  // incoming member restating it under another datatype refuses the whole
+  // call, and the strict verb still refuses the name outright.
+  const before = registry.intoJson()
+  const disagreeing = fields.struct('Party', [Field.from('partynote: int32')], { nullable: false })
+  assert.throws(() => registry.addDefinition('components', disagreeing), /Party\.PartyNote/)
+  assert.equal(registry.intoJson(), before)
+  assert.throws(() => registry.createDefinition('components', registry.definition('components', 'Party')))
+  assert.equal(registry.intoJson(), before)
 })
 
 test('inline codes and the complete native catalog survive snapshots', () => {
@@ -170,8 +222,8 @@ test('numeric counters remain int32 beside message-scoped occurrence lists', () 
   const parties = registry.definition('groups', 'Parties').fix.tag
   assert.ok(parties >= 100_000 && parties < 1_100_000, `derived definition tag, got ${parties}`)
   assert.equal(value.byTag(453).asJs(), 2)
-  assert.equal(value.byPath('Parties.0.PartyID').asJs(), 'ONE')
-  assert.equal(value.byPath('Parties.1.PartyID').asJs(), 'TWO')
+  assert.equal(value.byPath('Parties[0].PartyID').asJs(), 'ONE')
+  assert.equal(value.byPath('Parties[1].PartyID').asJs(), 'TWO')
   assert.deepEqual(value.anomalies(), [])
   assert.match(value.intoBytes(124).toString(), /453=2\|448=ONE\|448=TWO/)
 })
@@ -232,7 +284,7 @@ test('bulk message streams preserve flat configuration rows and fuse', () => {
   assert.equal(cursor.next().done, true)
   assert.equal(cursor.next().done, true)
   assert.equal([...codec.parseUlconfigLine(body)].length, 4)
-  assert.equal([...codec.parseTextRecord({ url: 'capture.log', rownum: 17, body })].length, 4)
+  assert.equal([...codec.parseTextLine(new TextLine(17, body))].length, 4)
   const selected = fix.UlPlugin.fromFixmsg(values[0])
   assert.equal(selected.name, 'Item0')
   assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Item0')

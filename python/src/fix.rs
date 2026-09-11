@@ -34,6 +34,7 @@ use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::media::iceberg::folder_holder_from_value;
 use crate::text::codec::{PythonWriter, with_python_bytes};
+use crate::text_line::{PyTextLine, core_path_from_value};
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
 use crate::uri::core_url_from_value;
@@ -62,13 +63,12 @@ fn read_cfb<T>(
 /// The native record nests a group's members under the counter that heads
 /// them; a binding is a view, so it flattens rather than inventing a second
 /// shape. Order is the wire's.
-fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(i32, i32, String, String)>) {
+fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(i32, String, String)>) {
     for entry in entries {
         out.push((
             entry.tag(),
-            entry.branch(),
-            entry.key().to_owned(),
-            entry.value().to_owned(),
+            entry.key().as_str().unwrap_or_default().to_owned(),
+            entry.value().as_str().unwrap_or_default().to_owned(),
         ));
         flatten_entries(entry.children(), out);
     }
@@ -297,6 +297,26 @@ impl PyFixRegistry {
         ))
     }
 
+    /// Fold one field in, adding it when absent and merging it when stored.
+    ///
+    /// The lenient counterpart of `insert`, which replaces, and of `update`,
+    /// which refuses everything new. Answers `True` when the field arrived
+    /// and `False` when it folded into a stored one: a canonical identity the
+    /// dictionary holds merges, a name folding to a stored canonical name or
+    /// alias in the same branch merges into that field - aliases and
+    /// alternate tags become the union and the incoming canonical tag joins
+    /// them unless another field in the branch answers it - a nested field is
+    /// redirected to `add_definition` under the category its shape names, and
+    /// one of this crate's own tags is skipped as already held.
+    ///
+    /// One mutation: a refusal - no `fix:tag`, a key another field holds in
+    /// the same branch, a datatype disagreeing with the stored field - leaves
+    /// the dictionary exactly as it was.
+    fn add_field(&mut self, field: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let field = core_field_from_value(field)?;
+        self.inner_mut()?.add_field(field).map_err(value_error)
+    }
+
     /// Fold `fields` in, adding what is absent and merging what is stored.
     ///
     /// Each entry is anything `Field` accepts. A field whose canonical
@@ -441,6 +461,30 @@ impl PyFixRegistry {
         self.inner_mut()?
             .insert_definition(category, field)
             .map(|field| field.map(PyField::from_inner))
+            .map_err(value_error)
+    }
+
+    /// Fold a named definition into the one its name reaches.
+    ///
+    /// The lenient counterpart of `create_definition`, which refuses a name
+    /// it holds, and of `insert_definition`, which replaces one wholesale.
+    /// Answers `True` when the definition arrived and `False` when it merged;
+    /// `"fields"` redirects to `add_field`.
+    ///
+    /// A merge keeps the stored definition's identity, name and every member
+    /// it declares, in its order, and appends the members it lacks - for a
+    /// group, to the occurrence inside the list, and to the component when
+    /// that occurrence is a component's. It is one level deep: a member both
+    /// sides declare stays the stored one, so a member whose datatype - or
+    /// whose restated reference - disagrees is refused. Every message and
+    /// component referencing the definition sees the appended members.
+    ///
+    /// One mutation: a refusal leaves the dictionary exactly as it was.
+    fn add_definition(&mut self, category: &str, field: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let category = CoreFixCategory::from_str(category).map_err(value_error)?;
+        let field = core_field_from_value(field)?;
+        self.inner_mut()?
+            .add_definition(category, field)
             .map_err(value_error)
     }
 
@@ -621,23 +665,34 @@ impl PyFixRegistry {
             .map_err(|error| absent(&error))
     }
 
-    /// The field a dotted path reaches through a component or a group.
+    /// The field a path reaches through a component or a group.
     #[pyo3(signature = (path, branch=None))]
-    fn get_field_by_path(&self, path: &str, branch: Option<&str>) -> PyResult<Option<PyField>> {
+    fn get_field_by_path(
+        &self,
+        path: &Bound<'_, PyAny>,
+        branch: Option<&str>,
+    ) -> PyResult<Option<PyField>> {
+        let path = core_path_from_value(path)?;
         let branch = branch.map(branch_from_py).transpose()?;
         Ok(self
             .inner
-            .get_field_by_path(path, branch.as_ref())
+            .get_field_by_path(&path, branch.as_ref())
             .cloned()
             .map(PyField::from_inner))
     }
 
-    /// The field a dotted path reaches through a component or a group.
+    /// The field a path reaches through a component or a group.
+    ///
+    /// A position is spelled the way the one grammar spells it -
+    /// ``Parties[0].PartyID`` - and a schema answers the item every
+    /// occurrence of a group holds, so that spelling reaches the member here
+    /// as well as in a message.
     #[pyo3(signature = (path, branch=None))]
-    fn field_by_path(&self, path: &str, branch: Option<&str>) -> PyResult<PyField> {
+    fn field_by_path(&self, path: &Bound<'_, PyAny>, branch: Option<&str>) -> PyResult<PyField> {
+        let path = core_path_from_value(path)?;
         let branch = branch.map(branch_from_py).transpose()?;
         self.inner
-            .field_by_path(path, branch.as_ref())
+            .field_by_path(&path, branch.as_ref())
             .map(|field| PyField::from_inner(field.clone()))
             .map_err(|error| absent(&error))
     }
@@ -703,10 +758,11 @@ impl PyFixRegistry {
 
     /// The branch one digest resolves to, or `None`.
     ///
-    /// An arrival entry carries its dialect as the digest `branch`, so this is
-    /// the table that turns a capture's column back into the branch it was
-    /// read under. The digest is one way, which is why the registry publishes
-    /// the resolution rather than leaving a reader to reproduce the hash.
+    /// A branch's digest is what the store's branch manifest publishes beside
+    /// the declaration, so this is the table that turns one back into the
+    /// dialect it names. The derivation is one way, which is why the registry
+    /// publishes the resolution rather than leaving a reader to reproduce the
+    /// hash.
     fn get_branch_by_digest(&self, digest: i32) -> Option<PyFixBranch> {
         self.inner
             .get_branch_by_digest(digest)
@@ -1085,11 +1141,6 @@ fn line_bytes(item: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
         "a captured line must be bytes, bytearray, or memoryview",
         |bytes| Ok(bytes.to_vec()),
     )
-}
-
-/// One record, as the document the core reads it as.
-fn record_scalar(item: &Bound<'_, PyAny>) -> PyResult<Scalar> {
-    from_py(item).map(stated_document)
 }
 
 /// One message, refusing anything else where it is met.
@@ -1478,15 +1529,20 @@ impl PyFixMsg {
             .map_err(|error| absent(&error))
     }
 
-    /// The value a dotted path reaches, or `None`.
-    fn get_by_path(&self, path: &str) -> Option<PyScalar> {
-        Self::answered(self.inner.get_by_path(path))
+    /// The value a path reaches, or `None`.
+    fn get_by_path(&self, path: &Bound<'_, PyAny>) -> PyResult<Option<PyScalar>> {
+        let path = core_path_from_value(path)?;
+        Ok(Self::answered(self.inner.get_by_path(&path)))
     }
 
-    /// The value a dotted path reaches.
-    fn by_path(&self, path: &str) -> PyResult<PyScalar> {
+    /// The value a path reaches.
+    ///
+    /// A position is spelled the way the one grammar spells it:
+    /// ``Parties[0].PartyID``.
+    fn by_path(&self, path: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
+        let path = core_path_from_value(path)?;
         self.inner
-            .by_path(path)
+            .by_path(&path)
             .map(|value| PyScalar::from_inner(value.clone()))
             .map_err(|error| absent(&error))
     }
@@ -1683,9 +1739,9 @@ impl PyFixMsg {
     ///
     /// Flattened pre-order: a group's members follow the counter pair that
     /// heads them, so a caller reading the sequence reads the wire. The
-    /// dialect crosses as its digest, which `FixRegistry.branch_by_digest`
-    /// resolves.
-    fn entries(&self) -> Vec<(i32, i32, String, String)> {
+    /// dialect is the message's own, answered by :attr:`branch`: it is one
+    /// value for every pair a message carries, so no pair repeats it.
+    fn entries(&self) -> Vec<(i32, String, String)> {
         let mut held = Vec::new();
         flatten_entries(self.inner.entries(), &mut held);
         held
@@ -1807,8 +1863,11 @@ impl PyFixCodec {
     ///
     /// Every pin is the core's, spelled once here. `branch` and `version`
     /// cross as text; `separator` is the byte a numeric frame splits on where
-    /// the line does not say; `payload_column` names the record column a line
-    /// is read from; `null_values` are the spellings that mean nothing was
+    /// the line does not say; `payload_column` names the batch column a line
+    /// is read from; `capture_names` are what a run's row-header captures are
+    /// called, in the order a line answers them, which is what lets
+    /// `parse_text_line` read a capture by position rather than by name;
+    /// `null_values` are the spellings that mean nothing was
     /// sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
     /// or `"unknown"`; `batch_byte_size` is the raw bytes one Arrow batch
     /// targets, the core's 128 MiB when unstated.
@@ -1820,6 +1879,7 @@ impl PyFixCodec {
         version=None,
         separator=None,
         payload_column="body",
+        capture_names=None,
         null_values=None,
         direction="sent",
         batch_byte_size=None,
@@ -1831,6 +1891,7 @@ impl PyFixCodec {
         version: Option<&str>,
         separator: Option<u8>,
         payload_column: &str,
+        capture_names: Option<Vec<String>>,
         null_values: Option<Vec<String>>,
         direction: &str,
         batch_byte_size: Option<u64>,
@@ -1847,6 +1908,9 @@ impl PyFixCodec {
         }
         if let Some(held) = separator {
             inner = inner.with_separator(held);
+        }
+        if let Some(held) = capture_names {
+            inner = inner.with_capture_names(held);
         }
         if let Some(held) = null_values {
             inner = inner.with_null_values(held);
@@ -1934,14 +1998,9 @@ impl PyFixCodec {
         ))
     }
 
-    /// One numeric frame, split on the separator stated or inferred.
-    #[pyo3(signature = (body, separator=None))]
-    fn parse_fix_line(&self, body: &[u8], separator: Option<u8>) -> PyResult<PyFixMsg> {
-        let codec = match separator {
-            Some(held) => self.inner.clone().with_separator(held),
-            None => self.inner.clone(),
-        };
-        codec
+    /// One numeric frame, read by the pairs it states.
+    fn parse_fix_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
+        self.inner
             .parse_fix_line(body)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
@@ -1991,26 +2050,38 @@ impl PyFixCodec {
             .map_err(value_error)
     }
 
-    /// One record a text reader answered: its messages.
+    /// One line a text reader answered: its messages.
     ///
-    /// The payload column names the line and the row's own columns -
-    /// `branch`, `beginstring`, `sep`, `timestamp`, `direction`, `plugin` -
-    /// are the parameters of the same name; a mapping states a record as
-    /// well as a native `Scalar` does.
-    fn parse_text_record(&self, record: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
-        let record = record_scalar(record)?;
+    /// The line's body is the bytes read, its timestamp the clock that stamps
+    /// the message, and its row-header captures state the rest - the plugin
+    /// that logged it, the version, and every field a capture's name reaches.
+    /// `with_capture_names` is what decides which capture is which, once for
+    /// the whole run, because a line answers its captures by position.
+    ///
+    /// A `pluginid` capture whose text is the name or an alias of a branch the
+    /// dictionary declares is also the dialect the line is read under,
+    /// outranking the codec's own pin; any other keeps the pin, then the
+    /// standard branch.
+    ///
+    /// A `direction` capture is named so it cannot silently fill a field of
+    /// that name, and is not otherwise read: only `parse_text_arrow_reader`
+    /// has a column to put a direction in.
+    fn parse_text_line(&self, line: &PyTextLine) -> PyResult<PyFixMessages> {
         self.inner
-            .parse_text_record(&record)
+            .parse_text_line(line.as_core())
             .map(PyFixMessages::over)
             .map_err(value_error)
     }
 
-    /// A stream of records, lazily: each as `parse_text_record` reads it.
-    fn parse_text_records(&self, records: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
-        let pulled = Pulled::new(records, record_scalar)?;
+    /// A stream of lines, lazily: each as `parse_text_line` reads it.
+    fn parse_text_lines(&self, lines: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+        let pulled = Pulled::new(lines, |held| {
+            let held = held.cast::<PyTextLine>().map_err(PyErr::from)?;
+            Ok(held.borrow().as_core().clone())
+        })?;
         let failed = pulled.failed.clone();
         Ok(PyFixMessages::pulling(
-            self.inner.parse_text_records(pulled),
+            self.inner.parse_text_lines(pulled),
             failed,
         ))
     }
@@ -2021,7 +2092,7 @@ impl PyFixCodec {
     /// value exporting the Arrow C stream; the answer is a
     /// `pyarrow.RecordBatchReader` pulling one batch at a time. The schema is
     /// decided before the first row: the capture's own columns lead and the
-    /// fixed FIX columns follow. Every row is parsed as `parse_text_record`
+    /// fixed FIX columns follow. Every row is parsed as the line door
     /// parses one, and batches close on the raw bytes of the payload column
     /// against `batch_byte_size`.
     fn parse_text_arrow_reader<'py>(
@@ -2287,12 +2358,13 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// The digest, the version read, the cross-venue symbol, the market clock, the
 /// partition it falls in, the two parent order identifiers no standard tag
 /// names, what a bridge's own log states about a line - the session the
-/// message itself names, its message context, the plugins and the plugin
-/// sessions it moved between - the three facts a row derives from what the
-/// message said: its ISIN, its market and the order's state - and the three
-/// identities a stream implies, which `FixLifecycle` stamps: the instrument,
-/// the message and the order chain. Every registry holds them from
-/// construction; this is the listing.
+/// message itself names, its message context, the plugin that logged it and
+/// the one it came through before that, and the two session names the line
+/// spells - the three facts a row derives from what the message said: its
+/// ISIN, its market and the order's state - and the three identities a
+/// stream implies, which `FixLifecycle` stamps: the instrument, the message
+/// and the order chain. Every registry holds them from construction; this is
+/// the listing.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {

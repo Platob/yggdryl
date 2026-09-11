@@ -49,6 +49,7 @@ mod apply;
 mod bind;
 mod display;
 mod eval;
+mod literal;
 mod parser;
 mod path;
 mod pushdown;
@@ -66,10 +67,11 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Result, TypedScalar};
+use crate::{DataType, Error, Result};
 
 pub use apply::{ApplyExpression, ApplyExpressionStream};
 pub use bind::{Bound, BoundStatement};
+pub use literal::Literal;
 pub use parser::{Direction, NullsOrder, Order, Projection, Statement, needs_quoting};
 pub use path::{FieldPath, FieldSegment};
 pub use pushdown::{Bounds, ColumnBounds, Residual};
@@ -511,10 +513,10 @@ pub enum Expression {
     // ---- Leaves: nodes with no expression children -----------------------
     /// A constant, carrying the datatype it belongs to.
     ///
-    /// A literal is a [`TypedScalar`] and never a bare Rust primitive, so
+    /// A literal is a [`Literal`] and never a bare Rust primitive, so
     /// `decimal '1.50'` stays an exact decimal at scale two all the way to the
     /// comparison rather than becoming an integer that happens to print alike.
-    Literal(TypedScalar),
+    Literal(Literal),
     /// A top-level column of the row, by name.
     Column(SmolStr),
     /// A path into a nested value: a base expression and the steps that reach
@@ -619,16 +621,7 @@ impl Expression {
     /// and one that does not is held as the null it is.
     #[must_use]
     pub fn literal(value: impl Into<crate::Scalar>) -> Self {
-        let value = value.into();
-        TypedScalar::from_value(value).map_or_else(
-            |_| {
-                Self::Literal(
-                    TypedScalar::from_parts(DataType::Null, crate::Scalar::Null)
-                        .unwrap_or_else(|_| unreachable!("null belongs to the null datatype")),
-                )
-            },
-            Self::Literal,
-        )
+        Self::Literal(Literal::infer(value.into()).unwrap_or_else(|_| Literal::null()))
     }
 
     /// Hold a constant under an exact datatype.
@@ -637,7 +630,7 @@ impl Expression {
     ///
     /// Returns an error when the value and the datatype disagree.
     pub fn typed_literal(dtype: DataType, value: crate::Scalar) -> Result<Self> {
-        Ok(Self::Literal(TypedScalar::from_parts(dtype, value)?))
+        Ok(Self::Literal(Literal::new(dtype, value)?))
     }
 
     /// Name a top-level column.
@@ -876,7 +869,7 @@ impl Expression {
     pub fn neg(self) -> Self {
         if let Self::Literal(held) = &self {
             if let Some(negated) = negate_value(held.value()) {
-                if let Ok(folded) = TypedScalar::from_parts(held.dtype().clone(), negated) {
+                if let Ok(folded) = Literal::new(held.dtype().clone(), negated) {
                     return Self::Literal(folded);
                 }
             }
@@ -921,7 +914,7 @@ impl Expression {
     /// Borrow the constant this expression holds, if it holds one.
     #[must_use]
     #[inline]
-    pub const fn as_literal(&self) -> Option<&TypedScalar> {
+    pub const fn as_literal(&self) -> Option<&Literal> {
         match self {
             Self::Literal(value) => Some(value),
             _ => None,

@@ -774,9 +774,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// The array boundary for a single scalar: the value is validated through the
 /// same schema-directed walk every row value takes - the exact Field is the
 /// authority on nullability, dictionary options, and extension identity - and
-/// then materialized under the shared physical budgets. A caller holding a
-/// [`crate::TypedScalar`] with no Field around it uses
-/// [`crate::TypedScalar::into_arrow_array`] instead.
+/// then materialized under the shared physical budgets. A
+/// [`crate::FieldScalar`] is that validated half already, so
+/// [`crate::FieldScalar::into_arrow_array`] materializes without the walk.
 ///
 /// # Errors
 ///

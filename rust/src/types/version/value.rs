@@ -306,7 +306,6 @@ impl ScalarFamily for Version {
 
 impl ScalarValue for Version {
     type Family = Self;
-    type Type = super::VersionType;
 
     const ID: DataTypeId = DataTypeId::Version;
     const KIND: DataTypeKind = DataTypeKind::Text;

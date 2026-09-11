@@ -14,6 +14,4 @@ pub(crate) use dtypes::DEFAULT_CRS;
 pub(crate) use dtypes::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 pub use dtypes::{GeospatialParameters, GeospatialType};
 pub use fields::*;
-pub use scalars::{
-    Geography, GeographyScalar, Geometry, GeometryScalar, Geospatial, GeospatialValue,
-};
+pub use scalars::{Geography, Geometry, Geospatial, GeospatialValue};

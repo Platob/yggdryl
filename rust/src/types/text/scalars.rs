@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use crate::types::Scalar;
-use crate::types::typed::define_scalar_type;
 use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValue};
 
 /// Borrowing access shared by every UTF-8 representation.
@@ -154,10 +153,9 @@ impl Hash for Text {
 const _: () = assert!(std::mem::size_of::<Text>() == 32);
 
 macro_rules! text_value {
-    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $dtype:ident) => {
+    ($leaf:ident, $variant:ident, $id:ident, $dtype:ident) => {
         impl ScalarValue for $leaf {
             type Family = Text;
-            type Type = $marker;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Text;
@@ -201,15 +199,9 @@ macro_rules! text_value {
     };
 }
 
-text_value!(Utf8, super::Utf8Type, Utf8, Utf8, Utf8);
-text_value!(
-    LargeUtf8,
-    super::LargeUtf8Type,
-    LargeUtf8,
-    LargeUtf8,
-    LargeUtf8
-);
-text_value!(Utf8View, super::Utf8ViewType, Utf8View, Utf8View, Utf8View);
+text_value!(Utf8, Utf8, Utf8, Utf8);
+text_value!(LargeUtf8, LargeUtf8, LargeUtf8, LargeUtf8);
+text_value!(Utf8View, Utf8View, Utf8View, Utf8View);
 
 impl ScalarFamily for Text {
     const KIND: DataTypeKind = DataTypeKind::Text;
@@ -259,20 +251,6 @@ impl From<SmolStr> for Scalar {
         Self::Text(Text::Utf8(Utf8::new(value)))
     }
 }
-
-define_scalar_type!(Utf8Scalar, super::Utf8Type, "utf8", crate::DataType::Utf8);
-define_scalar_type!(
-    LargeUtf8Scalar,
-    super::LargeUtf8Type,
-    "large_utf8",
-    crate::DataType::LargeUtf8
-);
-define_scalar_type!(
-    Utf8ViewScalar,
-    super::Utf8ViewType,
-    "utf8_view",
-    crate::DataType::Utf8View
-);
 
 /// The canonical text a value spells, shared rather than rebuilt.
 ///

@@ -18,7 +18,7 @@ from typing import Any, Iterator
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, Scalar
+from yggdryl import DataType, Field, Scalar, TextLine
 from yggdryl.fix import FixCodec, FixMessages, FixMsg, FixRegistry, fix_schema, fix_schema_carrying
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
@@ -159,31 +159,31 @@ def test_an_item_that_is_not_bytes_is_refused_where_it_is_met(seed: FixRegistry)
         codec.parse_lines(42)
 
 
-def test_parse_text_records_pulls_one_record_at_a_time(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+def test_parse_text_lines_pulls_one_line_at_a_time(seed: FixRegistry) -> None:
+    codec = FixCodec(seed, capture_names=["beginstring"])
     pulled = 0
 
-    def records() -> Iterator[dict[str, Any]]:
+    def lines() -> Iterator[TextLine]:
         nonlocal pulled
         for body in [b"8=FIX.4.4|35=D|11=A|10=0|", b"8=FIX.4.4|35=D|11=B|10=0|"]:
             pulled += 1
-            yield {"body": body}
+            yield TextLine(pulled - 1, body)
 
-    messages = codec.parse_text_records(records())
+    messages = codec.parse_text_lines(lines())
     assert pulled == 0
     assert next(messages).by_tag(11).as_py() == "A"
     assert pulled == 1
     assert next(messages).by_tag(11).as_py() == "B"
     assert next(messages, None) is None
-    # A record speaks per row: `beginstring` reads the frame at 4.2, where
+    # A capture speaks per row: `beginstring` reads the frame at 4.2, where
     # tag 32 is `lastshares`, and the column is still the dictionary's own.
     (old,) = list(
-        codec.parse_text_records([{"body": b"8=FIX.4.4|35=8|32=100|10=0|", "beginstring": "FIX.4.2"}])
+        codec.parse_text_lines([TextLine(0, b"8=FIX.4.4|35=8|32=100|10=0|", ["FIX.4.2"])])
     )
     assert old.field.index_of("lastqty") is not None
     assert old.get_by_name("lastshares") is not None
     # A bulk document is many messages, and the stream door yields each.
-    assert len(list(FixCodec(_config_registry()).parse_text_records([{"body": BULK_CONFIG}]))) == 2
+    assert len(list(FixCodec(_config_registry()).parse_text_lines([TextLine(0, BULK_CONFIG)]))) == 2
 
 
 def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
@@ -217,8 +217,9 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
     assert FixCodec(seed, direction="unknown").direction == "unknown"
     with pytest.raises(ValueError, match="sent, recv, unknown"):
         FixCodec(seed, direction="sideways")
-    # The payload column is where a record's line is read from.
-    (read,) = list(pinned.parse_text_records([{"line": b"8=FIX.4.2|35=D|11=A|10=0|"}]))
+    # The payload column names a batch column; a line's body is its own, so
+    # the line door reads the same frame without naming anything.
+    (read,) = list(pinned.parse_text_lines([TextLine(0, b"8=FIX.4.2|35=D|11=A|10=0|")]))
     assert read.by_tag(11).as_py() == "A"
 
 

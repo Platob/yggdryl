@@ -416,7 +416,7 @@ fn entries_field(name: &str, display: &str, description: &str) -> Result<Field> 
 
 /// One `fixentry` struct at one materialization level.
 ///
-/// The fifth member is `nofixentries` at every level and the meaning is
+/// The fourth member is `nofixentries` at every level and the meaning is
 /// invariant; the type alone says where materialization stops - a list of
 /// deeper occurrences above [`ENTRY_DEPTH`], the binary leaf at it. Every
 /// occurrence, both inner lists and the leaf are non-null: an empty child
@@ -430,7 +430,6 @@ fn entry_item(level: usize) -> Result<Field> {
     };
     Ok(DataType::from_fields([
         DataType::Int32.nullable_field("tag"),
-        DataType::Int32.required_field("branch"),
         DataType::Utf8.nullable_field("key"),
         DataType::Utf8.nullable_field("value"),
         tail,
@@ -459,21 +458,23 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
         let rendered = crate::into_json_scalar(&crate::Scalar::from_sequence(folded))?;
         crate::Scalar::from(rendered.as_bytes())
     };
-    // The key and the value are the entry's own text, shared rather than
-    // copied: a row is materialized once per message and an entry's text is
-    // what it is wherever it is read.
+    // The key and the value are the ranges of the line the entry names, read
+    // as the text a `Utf8` column holds - lossily where a data field's bytes
+    // are not text, which is the one place a row cannot say what arrived. It
+    // says that it cannot: the decode leaves the replacement character, and
+    // `anomalies()` reads it as the `Lossy` it is, on the parsed message and
+    // on one rebuilt from this row alike.
     Ok(crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry.branch()),
-        crate::Scalar::from(entry.key_shared()),
-        crate::Scalar::from(entry.value_shared()),
+        crate::Scalar::from(entry.key_text()),
+        crate::Scalar::from(entry.value_text()),
         tail,
     ]))
 }
 
 /// One truncated entry as the value the leaf's JSON stores.
 ///
-/// The same five members in the same order, children as a plain array, so a
+/// The same four members in the same order, children as a plain array, so a
 /// reader walks the decoded value exactly as it walks the materialized
 /// levels. Untyped on the way back in, because no finite field describes an
 /// unbounded subtree - and every member is an integer or UTF-8, so an untyped
@@ -481,9 +482,8 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
 fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
     crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry.branch()),
-        crate::Scalar::from(entry.key_shared()),
-        crate::Scalar::from(entry.value_shared()),
+        crate::Scalar::from(entry.key_text()),
+        crate::Scalar::from(entry.value_text()),
         crate::Scalar::from_sequence(
             entry
                 .children()
@@ -545,14 +545,16 @@ pub(super) fn item_fields(field: &Field) -> Option<&[Field]> {
 
 /// One arrival entry read back out of the row value its level holds.
 ///
-/// The inverse of [`entry_scalar`], level by level: the five members in the
+/// The inverse of [`entry_scalar`], level by level: the four members in the
 /// order it wrote them, the children walked as the materialized List where
 /// the level holds one and as the leaf's JSON - decoded through the crate's
 /// one parser - where the level folded them. A leaf that cannot be decoded is
 /// a refusal rather than a hole, because a message rebuilt with a pair
 /// missing is a different message. An absent tag reads as `0`, the tag of a
-/// key that named no field, and an absent key or value as empty text; the
-/// branch is copied as the digest the row holds.
+/// key that named no field, and an absent key or value as empty text. The key
+/// and the value are copied here, because a row is where a message stops being
+/// a range of a line: the column holds the text, and the entry rebuilt from it
+/// owns a page of its own.
 ///
 /// # Errors
 ///
@@ -575,7 +577,7 @@ fn entry_from_scalar(pair: &crate::Scalar) -> Result<super::FixEntry> {
             .and_then(crate::Scalar::as_str)
             .unwrap_or_default()
     };
-    let children = match held.get(4) {
+    let children = match held.get(3) {
         Some(tail) if tail.as_sequence().is_some() => tail
             .as_sequence()
             .unwrap_or_default()
@@ -593,10 +595,11 @@ fn entry_from_scalar(pair: &crate::Scalar) -> Result<super::FixEntry> {
         },
         None => Vec::new(),
     };
-    let mut entry = super::FixEntry::new(integer(0).unwrap_or(0), text(2), text(3));
-    if let Some(branch) = integer(1) {
-        entry = entry.with_branch_digest(branch);
-    }
+    let entry = super::FixEntry::new(
+        integer(0).unwrap_or(0),
+        crate::media::text::TextBytes::from_bytes(text(1))?,
+        crate::media::text::TextBytes::from_bytes(text(2))?,
+    );
     Ok(entry.with_children(children))
 }
 
@@ -614,6 +617,16 @@ impl super::FixMsg {
     /// read from, and a row without that column has no entries. Nothing is
     /// parsed again: this is what makes a batch of rows a stream of messages
     /// at the cost of the values it already holds.
+    ///
+    /// The round trip is byte for byte over every capture this crate is
+    /// tested against, and it is exact for an entry whose bytes are text -
+    /// which is every entry a log wrote. It cannot be for one whose bytes are
+    /// not: the row spells a key and a value as `Utf8` because a column a
+    /// reader can read is what a row is for, and a `data` field carrying
+    /// bytes no text holds reaches that column as the decode of them. A
+    /// message read from a line keeps the bytes and re-emits them; the same
+    /// message read back out of a row re-emits the decode, and
+    /// [`Self::anomalies`] reports the `Lossy` that says so on both.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -986,9 +999,8 @@ impl super::FixMsg {
             if !self.explains(entry.tag()) {
                 out.push(crate::Scalar::from_sequence([
                     crate::Scalar::from(entry.tag()),
-                    crate::Scalar::from(entry.branch()),
-                    crate::Scalar::from(entry.key_shared()),
-                    crate::Scalar::from(entry.value_shared()),
+                    crate::Scalar::from(entry.key_text()),
+                    crate::Scalar::from(entry.value_text()),
                     crate::Scalar::from_sequence(Vec::new()),
                 ]));
             }

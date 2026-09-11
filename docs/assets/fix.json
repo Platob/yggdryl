@@ -236208,32 +236208,32 @@
         "x": "The message context a bridge handled the message in, as its own log names it."
       },
       {
-        "c": "senderpluginid",
+        "c": "pluginid",
         "t": 65009,
-        "n": "SenderPluginId",
+        "n": "PluginId",
         "y": "utf8",
-        "x": "The plugin a message came from inside a bridge, as the bridge names it."
+        "x": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own pluginid column, never derived."
       },
       {
-        "c": "targetpluginid",
+        "c": "prevpluginid",
         "t": 65010,
-        "n": "TargetPluginId",
+        "n": "PrevPluginId",
         "y": "utf8",
-        "x": "The plugin a message went to inside a bridge, as the bridge names it."
+        "x": "The plugin the message came through before the one that logged it, as the bridge names it: the row's own prevpluginid column, never derived."
       },
       {
         "c": "sendersessionname",
         "t": 65011,
         "n": "SenderSessionName",
         "y": "utf8",
-        "x": "The name of the session a message came from: the bridge row's own statement, else the session that logged the line it sent."
+        "x": "The name of the session a message came from, as the bridge row states it."
       },
       {
         "c": "targetsessionname",
         "t": 65012,
         "n": "TargetSessionName",
         "y": "utf8",
-        "x": "The name of the session a message went to: the bridge row's own statement, else the session that logged the line it received."
+        "x": "The name of the session a message went to, as the bridge row states it."
       },
       {
         "c": "isincode",
@@ -236295,14 +236295,14 @@
         "c": "nofixentries",
         "t": 0,
         "n": "NoFixEntries",
-        "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
+        "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
         "x": "Every pair the message carried, in arrival order and untranslated."
       },
       {
         "c": "nounmappedfixentries",
         "t": 0,
         "n": "NoUnmappedFixEntries",
-        "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
+        "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
         "x": "The pairs no dictionary explained, a view over the arrival record."
       }
     ],
@@ -243672,22 +243672,14 @@
           "2"
         ],
         [
-          "448",
-          "NOPARTYIDS[0].PARTYID",
-          "BUYSIDE"
-        ],
-        [
-          "447",
-          "NOPARTYIDS[0].PARTYIDSOURCE",
-          "D"
-        ],
-        [
-          "452",
-          "NOPARTYIDS[0].PARTYROLE",
-          "1"
+          "0",
+          "NOPARTYIDS[0]",
+          "PARTYID=BUYSIDE\u0004\u0003PARTYIDSOURCE=D\u0004\u0003PARTYROLE=1"
         ]
       ],
-      "unmapped": [],
+      "unmapped": [
+        "NOPARTYIDS[0]"
+      ],
       "lift": [
         [
           "symbol",
@@ -243713,11 +243705,11 @@
       "anomalies": [
         "parties (453) states 2 occurrences and holds 1"
       ],
-      "digest": "3d5dfa375c7137ba61146956a330598c",
+      "digest": "3453421e1590f50e8050f00d019b5c82",
       "ticker": "TTF",
       "clock": "1970-01-01T00:00:00.000000000Z",
       "partition": "0",
-      "emitted": "SYMBOL=TTF|SIDE=1|ORDERQTY=1200|PRICE=41.2500|NOPARTYIDS=2|NOPARTYIDS[0].PARTYID=BUYSIDE|NOPARTYIDS[0].PARTYIDSOURCE=D|NOPARTYIDS[0].PARTYROLE=1|",
+      "emitted": "SYMBOL=TTF|SIDE=1|ORDERQTY=1200|PRICE=41.2500|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=BUYSIDE\\x04\\x03PARTYIDSOURCE=D\\x04\\x03PARTYROLE=1|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))]"
     },
     {

@@ -21,7 +21,7 @@ your own bytes.
     ```rust
     use std::sync::Arc;
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixCodec, FixRegistry};
+    use yggdryl::{FixCodec, FixRegistry, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
@@ -30,7 +30,7 @@ your own bytes.
     let message = messages.next().expect("one frame")?;
     assert!(messages.next().is_none());
     assert_eq!(message.by_tag(453)?, &yggdryl::Scalar::from(1_i32));
-    assert_eq!(message.by_path("Parties.0.PartyID")?.as_str(), Some("BROKER"));
+    assert_eq!(message.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?.as_str(), Some("BROKER"));
     assert_eq!(message.into_bytes(b'|'), b"8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|");
     ```
 
@@ -44,7 +44,7 @@ your own bytes.
     frame = b"recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|"
     message, = codec.parse_line(frame)
     assert message.by_tag(453).as_py() == 1
-    assert message.by_path("Parties.0.PartyID").as_py() == "BROKER"
+    assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
     assert message.into_bytes(ord("|")) == frame.removeprefix(b"recv ")
     ```
 
@@ -59,7 +59,7 @@ your own bytes.
     const frame = 'recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|'
     const [message] = codec.parseLine(Buffer.from(frame))
     assert.equal(message.byTag(453).asJs(), 1)
-    assert.equal(message.byPath('Parties.0.PartyID').asJs(), 'BROKER')
+    assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
     assert.equal(Buffer.from(message.intoBytes(124)).toString(), frame.slice(5))
     ```
 

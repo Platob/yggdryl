@@ -33,7 +33,7 @@
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixCategory, FixId, FixRegistry};
+    use yggdryl::{DataType, FixCategory, FixId, FixRegistry, FieldPath};
 
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     counter.as_fix_mut().set_tag(453)?;
@@ -59,7 +59,7 @@
     registry.create_definition(FixCategory::Messages, order)?;
 
     assert_eq!(registry.field(453)?.dtype(), &DataType::Int32);
-    assert_eq!(registry.field_by_path("Order.Parties.PartyID", None)?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_path(&FieldPath::from_str("Order.Parties.PartyID")?, None)?.as_fix().tag()?, Some(448));
     let message = registry.msgtype("D", None)?;
     assert_eq!(message.name(), "Order");
     assert_eq!(message.get_group_by_counter(FixId::from_str("453:")?).unwrap().name(), "Parties");
@@ -160,7 +160,7 @@ Scalar lookups try canonical identifiers, alternate identifiers, folded names, a
 | `group_by_counter(FixId)` | Globally unique group for that counter |
 | `MsgType::get_group_by_counter(FixId)` | Unique group within that message's structure |
 
-The `get_` forms return absence; failing twins return a typed, located error. A path through a group omits the occurrence type: `Parties.PartyID`; a message value adds an occurrence index, such as `Parties.0.PartyID`. A counter shared by multiple contexts is ambiguous globally, so parsing uses the selected message's compiled group index.
+The `get_` forms return absence; failing twins return a typed, located error. One spelling addresses a member on both sides: a schema states one item type for a list, so `Parties[0].PartyID` answers the field every occurrence holds here and the value that occurrence carries in a message. A path through a group may still omit the occurrence - `Parties.PartyID` - because a schema has no positions to skip. A counter shared by multiple contexts is ambiguous globally, so parsing uses the selected message's compiled group index.
 
 Within a scalar lookup kind, omission of a branch tries standard canonical keys, named-branch canonical keys, standard alternates, then named-branch alternates. Names and aliases use separate indexes; a stored name is rechecked after hashing, so a digest collision never selects an unrelated field.
 
@@ -173,7 +173,7 @@ Within a scalar lookup kind, omission of a branch tries standard canonical keys,
 | `branch_of(FixId)` | Borrowed declaration for an identifier's branch |
 | `branch_named(name)` | Canonical name first, then an alias |
 | `branches()` | Lazy branch declarations |
-| `get_branch_by_digest(i32)` / `branch_by_digest(i32)` | The branch named by an arrival's signed digest |
+| `get_branch_by_digest(i32)` / `branch_by_digest(i32)` | The branch named by a signed branch digest, as `FixBranch::digest_signed` answers it and `branches.json` publishes it |
 | `set_branch(FixBranch)` | Install or replace a declaration atomically |
 
 ## Accessors

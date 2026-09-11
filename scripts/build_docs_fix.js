@@ -329,11 +329,11 @@ function frameCase(registry, reader, schema, key, label, line) {
     branch: held.branch,
     size: held.size,
     columns,
-    arrivals: held.arrivals().map(([tag, , key_, value]) => [String(tag), key_, value]),
+    arrivals: held.arrivals().map(([tag, key_, value]) => [String(tag), key_, value]),
     unmapped: held
       .arrivals()
       .filter(([tag]) => registry.getFieldByTag(tag) === null)
-      .map(([, , key_]) => key_),
+      .map(([, key_]) => key_),
     lift: held.lift().map(([facet, value]) => [facet, String(value.toJSON()), held.liftSource(facet)]),
     anomalies: held.anomalies(),
     digest: Buffer.from(held.digest()).toString('hex'),

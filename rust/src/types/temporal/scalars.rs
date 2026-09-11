@@ -18,7 +18,6 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::ascii::iso;
 use crate::types::decimal::scalars::exact_value_parts;
-use crate::types::typed::define_scalar_type;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{
     DataType, DataTypeId, DataTypeKind, Error, I256, Result, Scalar, ScalarFamily, ScalarValue,
@@ -341,10 +340,9 @@ impl fmt::Display for Temporal {
 }
 
 macro_rules! temporal_value {
-    ($leaf:ident, $marker:ty, $variant:ident, $id:ident, $family:ident, $bits:literal, $count:ty) => {
+    ($leaf:ident, $variant:ident, $id:ident, $family:ident, $bits:literal, $count:ty) => {
         impl ScalarValue for $leaf {
             type Family = Temporal;
-            type Type = $marker;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Temporal;
@@ -410,41 +408,16 @@ macro_rules! temporal_value {
     };
 }
 
-temporal_value!(Date32, super::Date32Type, Date32, Date32, Date, 32, i32);
-temporal_value!(Date64, super::Date64Type, Date64, Date64, Date, 64, i64);
-temporal_value!(Time32, super::Time32Type, Time32, Time32, Time, 32, i32);
-temporal_value!(Time64, super::Time64Type, Time64, Time64, Time, 64, i64);
-temporal_value!(
-    DateTime64,
-    super::DateTime64Type,
-    DateTime64,
-    DateTime64,
-    DateTime,
-    64,
-    i64
-);
-temporal_value!(
-    Duration32,
-    super::Duration32Type,
-    Duration32,
-    Duration32,
-    Duration,
-    32,
-    i32
-);
-temporal_value!(
-    Duration64,
-    super::Duration64Type,
-    Duration64,
-    Duration64,
-    Duration,
-    64,
-    i64
-);
+temporal_value!(Date32, Date32, Date32, Date, 32, i32);
+temporal_value!(Date64, Date64, Date64, Date, 64, i64);
+temporal_value!(Time32, Time32, Time32, Time, 32, i32);
+temporal_value!(Time64, Time64, Time64, Time, 64, i64);
+temporal_value!(DateTime64, DateTime64, DateTime64, DateTime, 64, i64);
+temporal_value!(Duration32, Duration32, Duration32, Duration, 32, i32);
+temporal_value!(Duration64, Duration64, Duration64, Duration, 64, i64);
 
 impl ScalarValue for Interval {
     type Family = Temporal;
-    type Type = super::IntervalType;
 
     const ID: DataTypeId = DataTypeId::Interval;
     const KIND: DataTypeKind = DataTypeKind::Temporal;
@@ -538,25 +511,6 @@ impl ScalarFamily for Temporal {
         }
     }
 }
-
-define_scalar_type!(DateTime64Scalar, super::DateTime64Type, "datetime64");
-define_scalar_type!(
-    Date32Scalar,
-    super::Date32Type,
-    "date32",
-    crate::DataType::Date32
-);
-define_scalar_type!(
-    Date64Scalar,
-    super::Date64Type,
-    "date64",
-    crate::DataType::Date64
-);
-define_scalar_type!(Time32Scalar, super::Time32Type, "time32");
-define_scalar_type!(Time64Scalar, super::Time64Type, "time64");
-define_scalar_type!(Duration32Scalar, super::Duration32Type, "duration32");
-define_scalar_type!(Duration64Scalar, super::Duration64Type, "duration64");
-define_scalar_type!(IntervalScalar, super::IntervalType, "interval");
 
 /// One logical temporal family, independent of its physical width.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

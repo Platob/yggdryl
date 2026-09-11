@@ -16,6 +16,8 @@ mod dictionary;
 mod digest;
 #[path = "fix/enrich.rs"]
 mod enrich;
+#[path = "fix/equivalence.rs"]
+mod equivalence;
 #[path = "fix/global_env.rs"]
 mod global_env;
 #[path = "fix/global_home.rs"]
@@ -28,6 +30,8 @@ mod latest;
 mod lifecycle;
 #[path = "fix/lift.rs"]
 mod lift;
+#[path = "fix/merge.rs"]
+mod merge;
 #[path = "fix/message.rs"]
 mod message;
 #[path = "fix/numeric_branch.rs"]
@@ -94,6 +98,15 @@ mod warned {
 }
 
 /// Immutable seed fixtures share parsing and compiled plans within this binary.
+/// One path, resolved once, as every FIX navigator now takes it.
+///
+/// A position is written the way the one grammar writes it -
+/// `Parties[0].PartyID` - and reaches the same member through a message and
+/// through the registry that declares it.
+fn path(spelling: &str) -> yggdryl::FieldPath {
+    yggdryl::FieldPath::from_str(spelling).unwrap_or_else(|error| panic!("{spelling}: {error}"))
+}
+
 fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
     static REGISTRY: std::sync::OnceLock<std::sync::Arc<yggdryl::FixRegistry>> =
         std::sync::OnceLock::new();
@@ -122,7 +135,6 @@ fn ulbridge_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
 
 trait OneMessage {
     fn one_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
-    fn one_record(&self, row: &yggdryl::Scalar, enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
     fn one_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
 }
 
@@ -156,10 +168,6 @@ fn one_message_filled(
 impl OneMessage for yggdryl::FixCodec {
     fn one_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
         one_message_filled(self, self.parse_line(row)?, enrich)
-    }
-
-    fn one_record(&self, row: &yggdryl::Scalar, enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        one_message_filled(self, self.parse_text_record(row)?, enrich)
     }
 
     fn one_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {

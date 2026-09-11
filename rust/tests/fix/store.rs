@@ -1,5 +1,7 @@
 //! FIX category storage and atomic catalog mutations.
 
+use super::path as fpath;
+
 use std::path::PathBuf;
 use yggdryl::holder::local::Folder;
 use yggdryl::{
@@ -597,66 +599,61 @@ fn merging_a_complete_catalog_commits_references_together() {
 }
 
 #[test]
-fn merging_case_only_named_definitions_preserves_canonical_names_and_references() {
+fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
     let original = catalog();
     let categories = [
         FixCategory::Components,
         FixCategory::Groups,
         FixCategory::Messages,
     ];
-    let source = |collision: Option<FixCategory>| {
+    // Every spelling the fold reads as one name: another case, and a
+    // separator the fold drops.
+    let source = |respell: fn(&str) -> String| {
         let mut source = FixRegistry::from_fields(original.iter().cloned()).unwrap();
         for category in categories {
             for field in original.definitions(category) {
                 let mut field = field.clone();
-                let name = if collision == Some(category) {
-                    format!("_{}", field.name())
-                } else {
-                    field.name().to_ascii_uppercase()
-                };
-                field.set_name(name);
+                field.set_name(respell(field.name()));
                 source.create_definition(category, field).unwrap();
             }
         }
         source
     };
-    let mut target = original.clone();
-    let incoming = source(None);
-    assert_eq!(target.merge_with(&incoming).unwrap(), (0, 2));
-    assert_eq!(target, original);
-    for (category, name) in [
-        (FixCategory::Components, "Party"),
-        (FixCategory::Groups, "Parties"),
-        (FixCategory::Messages, "NewOrderSingle"),
-    ] {
-        assert_eq!(
-            target.definition(category, name, None).unwrap().name(),
-            name
-        );
-    }
-    let group = target
-        .msgtype("D", None)
-        .unwrap()
-        .get_group_by_counter(FixId::standard(453))
-        .unwrap();
-    assert_eq!(group.name(), "Parties");
-    assert_eq!(
-        target
-            .field_by_path("NewOrderSingle.Parties.PartyID", None)
+    for respell in [str::to_ascii_uppercase as fn(&str) -> String, |name| {
+        format!("_{name}")
+    }] {
+        let mut target = original.clone();
+        let incoming = source(respell);
+        assert_eq!(target.merge_with(&incoming).unwrap(), (0, 2));
+        assert_eq!(target, original);
+        for (category, name) in [
+            (FixCategory::Components, "Party"),
+            (FixCategory::Groups, "Parties"),
+            (FixCategory::Messages, "NewOrderSingle"),
+        ] {
+            assert_eq!(
+                target.definition(category, name, None).unwrap().name(),
+                name
+            );
+        }
+        let group = target
+            .msgtype("D", None)
             .unwrap()
-            .as_fix()
-            .code_name("B"),
-        Some("Broker")
-    );
-    assert_eq!(
-        FixRegistry::from_json(&target.into_json().unwrap()).unwrap(),
-        target
-    );
-    for category in categories {
-        let incoming = source(Some(category));
-        let error = target.merge_with(&incoming).unwrap_err().to_string();
-        assert!(error.contains("canonical"), "{error}");
-        assert_eq!(target, original, "{category}");
+            .get_group_by_counter(FixId::standard(453))
+            .unwrap();
+        assert_eq!(group.name(), "Parties");
+        assert_eq!(
+            target
+                .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
+                .unwrap()
+                .as_fix()
+                .code_name("B"),
+            Some("Broker")
+        );
+        assert_eq!(
+            FixRegistry::from_json(&target.into_json().unwrap()).unwrap(),
+            target
+        );
     }
 }
 
@@ -689,7 +686,7 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
         "NewOrderSingle.Parties.PartyID",
         "IncomingOrder.Parties.PartyID",
     ] {
-        let field = target.field_by_path(path, None).unwrap();
+        let field = target.field_by_path(&fpath(path), None).unwrap();
         assert_eq!(field.as_fix().code_name("B"), Some("Broker"), "{path}");
         assert_eq!(field.as_fix().code_name("C"), Some("Client"), "{path}");
     }
@@ -716,9 +713,8 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
 }
 
 #[test]
-fn merging_catalogs_still_refuses_referenced_structural_changes_atomically() {
+fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_atomically() {
     let mut target = catalog();
-    let before = target.clone();
     let mut coded = target.field(448).unwrap().clone();
     coded
         .as_fix_mut()
@@ -730,19 +726,56 @@ fn merging_catalogs_still_refuses_referenced_structural_changes_atomically() {
         .unwrap();
     let mut member = source.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
-    let changed = DataType::from_fields([member, DataType::Int32.nullable_field("Extra")])
+    let extended = DataType::from_fields([member, DataType::Int32.nullable_field("Extra")])
         .unwrap()
         .required_field("Party");
     source
-        .create_definition(FixCategory::Components, changed)
+        .create_definition(FixCategory::Components, extended)
         .unwrap();
     let before_source = source.clone();
 
+    // The member the source adds to the component reaches the group and the
+    // message that restate it, through the references they keep.
+    assert_eq!(target.merge_with(&source).unwrap(), (0, 1));
+    for path in [
+        "Party.Extra",
+        "Parties.Extra",
+        "NewOrderSingle.Parties.Extra",
+    ] {
+        assert_eq!(
+            target.field_by_path(&fpath(path), None).unwrap().dtype(),
+            &DataType::Int32,
+            "{path}"
+        );
+    }
+    assert_eq!(
+        target
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
+            .unwrap()
+            .as_fix()
+            .code_name("C"),
+        Some("Client")
+    );
+    assert_eq!(source, before_source);
+    assert_eq!(
+        FixRegistry::from_json(&target.into_json().unwrap()).unwrap(),
+        target
+    );
+
+    // A member both hold under another datatype refuses the whole merge.
+    let before = target.clone();
+    let mut member = source.field(448).unwrap().clone();
+    member.as_fix_mut().set_field_ref("PartyID").unwrap();
+    let changed = DataType::from_fields([member, DataType::Int64.nullable_field("Extra")])
+        .unwrap()
+        .required_field("Party");
+    source
+        .insert_definition(FixCategory::Components, changed)
+        .unwrap();
     let error = target.merge_with(&source).unwrap_err().to_string();
-    assert!(error.contains("datatype"), "{error}");
+    assert!(error.contains("Party.Extra"), "{error}");
     assert_eq!(target, before);
     assert_eq!(target.stable_hash(), before.stable_hash());
-    assert_eq!(source, before_source);
 }
 
 #[test]
@@ -760,7 +793,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .update_definition(FixCategory::Components, component)
         .unwrap();
     let DataType::List(item) = registry
-        .field_by_path("NewOrderSingle.Parties", None)
+        .field_by_path(&fpath("NewOrderSingle.Parties"), None)
         .unwrap()
         .dtype()
     else {
@@ -777,7 +810,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .unwrap();
     assert_eq!(
         registry
-            .field_by_path("NewOrderSingle.Parties.PartyID", None)
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
             .unwrap()
             .as_fix()
             .description(),
@@ -796,7 +829,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .unwrap();
     assert_eq!(
         registry
-            .field_by_path("NewOrderSingle.Parties", None)
+            .field_by_path(&fpath("NewOrderSingle.Parties"), None)
             .unwrap()
             .as_fix()
             .description(),
@@ -852,12 +885,12 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
         }
     }
     let partyid = registry
-        .field_by_path("NewOrderSingle.Parties.PartyID", None)
+        .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
         .unwrap();
     assert_eq!(partyid.name(), "PartyID");
     assert_eq!(partyid.as_fix().description(), Some("Replaced metadata"));
     let group = registry
-        .field_by_path("NewOrderSingle.Parties", None)
+        .field_by_path(&fpath("NewOrderSingle.Parties"), None)
         .unwrap();
     assert_eq!(group.name(), "Parties");
     assert_eq!(group.as_fix().description(), Some("Replaced metadata"));
@@ -897,7 +930,7 @@ fn folded_field_updates_keep_canonical_names_and_refresh_references() {
     assert_eq!(canonical.as_fix().tags().unwrap(), [9001]);
     assert!(std::ptr::eq(registry.field(9001).unwrap(), canonical));
     for path in ["Instrument.Symbol", "NewOrderSingle.Instrument.Symbol"] {
-        let occurrence = registry.field_by_path(path, None).unwrap();
+        let occurrence = registry.field_by_path(&fpath(path), None).unwrap();
         assert_eq!(occurrence.name(), "symbol");
         assert_eq!(occurrence.as_fix().field_ref(), Some("symbol"));
         assert_eq!(occurrence.as_fix().tags().unwrap(), [9001]);
@@ -1100,7 +1133,7 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
     assert_eq!(registry.msgtype("NOS", None).unwrap().as_str(), "D");
     assert_eq!(
         registry
-            .field_by_path("EnumReport.Header.MsgType", None)
+            .field_by_path(&fpath("EnumReport.Header.MsgType"), None)
             .unwrap()
             .as_fix()
             .code_value("NOS"),
@@ -1118,7 +1151,7 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
     registry.insert(changed).unwrap();
     assert_eq!(
         registry
-            .field_by_path("EnumReport.Header.MsgType", None)
+            .field_by_path(&fpath("EnumReport.Header.MsgType"), None)
             .unwrap()
             .as_fix()
             .description(),
@@ -1131,7 +1164,7 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
     assert!(registry.get_msgtype("NOS", None).is_none());
     assert!(
         registry
-            .field_by_path("EnumReport.Header.MsgType", None)
+            .field_by_path(&fpath("EnumReport.Header.MsgType"), None)
             .unwrap()
             .as_fix()
             .codes()

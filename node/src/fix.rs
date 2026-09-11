@@ -25,7 +25,7 @@ use std::thread::ThreadId;
 
 use napi::JsValue as _;
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Env, FromNapiValue, Function, FunctionRef, Generator,
+    Buffer, ClassInstance, Either, Env, FromNapiValue, Function, FunctionRef, Generator,
     JsObjectValue as _, Object, Result, Status, Unknown, ValueType,
 };
 use napi_derive::napi;
@@ -39,6 +39,7 @@ use yggdryl::{
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::iomedia::JsBatchReader;
 use crate::text::codec::JsScalar;
+use crate::text_line::{JsFieldPath, JsTextLine, path_from_input};
 use crate::types::field::JsField;
 use crate::{exact_i32, exact_i64, napi_error, napi_type_error};
 
@@ -257,6 +258,30 @@ impl JsFixRegistry {
         })
     }
 
+    /// Fold a named definition into the one its name reaches.
+    ///
+    /// The lenient counterpart of `createDefinition`, which refuses a name it
+    /// holds, and of `insertDefinition`, which replaces one wholesale.
+    /// Answers `true` when the definition arrived and `false` when it merged;
+    /// `"fields"` redirects to `addField`.
+    ///
+    /// A merge keeps the stored definition's identity, name and every member
+    /// it declares, in its order, and appends the members it lacks - for a
+    /// group, to the occurrence inside the list, and to the component when
+    /// that occurrence is a component's. It is one level deep: a member both
+    /// sides declare stays the stored one, so a member whose datatype - or
+    /// whose restated reference - disagrees is refused. Every message and
+    /// component referencing the definition sees the appended members.
+    ///
+    /// One mutation: a refusal leaves the dictionary exactly as it was.
+    #[napi]
+    pub fn add_definition(&mut self, category: String, field: &JsField) -> Result<bool> {
+        let category = FixCategory::from_str(&category).map_err(napi_error)?;
+        self.inner_mut()?
+            .add_definition(category, field.inner.clone())
+            .map_err(napi_error)
+    }
+
     /// Insert or replace a complete native category definition atomically.
     #[napi]
     pub fn insert_definition(
@@ -356,10 +381,10 @@ impl JsFixRegistry {
     ///
     /// Every registry starts here: the twenty standard fields from tag 65000
     /// that `fixCrateFields` lists - the digest, the clock and its partition,
-    /// the session a message states, the bridge's message context, the
-    /// plugin sessions a line moved between and the identities a lifecycle
-    /// pass stamps - are what a row is typed by, so a dictionary loaded from
-    /// a store, built from fields or left alone holds them alike.
+    /// the session a message states, the bridge's message context, the plugin
+    /// that logged a line and the session names it spells, and the identities
+    /// a lifecycle pass stamps - are what a row is typed by, so a dictionary
+    /// loaded from a store, built from fields or left alone holds them alike.
     #[napi(constructor)]
     pub fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -540,9 +565,10 @@ impl JsFixRegistry {
     #[napi]
     pub fn get_field_by_path(
         &self,
-        path: String,
+        path: Either<String, &JsFieldPath>,
         branch: Option<String>,
     ) -> Result<Option<JsField>> {
+        let path = path_from_input(path)?;
         let branch = branch.as_deref().map(branch_from_js).transpose()?;
         Ok(self
             .inner
@@ -551,9 +577,19 @@ impl JsFixRegistry {
             .map(JsField::from_core))
     }
 
-    /// The field a dotted path reaches through a component or a group.
-    #[napi]
-    pub fn field_by_path(&self, path: String, branch: Option<String>) -> Result<JsField> {
+    /// The field a path reaches through a component or a group.
+    ///
+    /// A position is spelled the way the one grammar spells it -
+    /// `Parties[0].PartyID` - and a schema answers the item every occurrence
+    /// of a group holds, so that spelling reaches the member here as well as
+    /// in a message.
+    #[napi(ts_args_type = "path: string | FieldPath, branch?: string")]
+    pub fn field_by_path(
+        &self,
+        path: Either<String, &JsFieldPath>,
+        branch: Option<String>,
+    ) -> Result<JsField> {
+        let path = path_from_input(path)?;
         let branch = branch.as_deref().map(branch_from_js).transpose()?;
         self.inner
             .field_by_path(&path, branch.as_ref())
@@ -594,6 +630,28 @@ impl JsFixRegistry {
     pub fn has(&self, env: Env, key: Unknown<'_>) -> Result<bool> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
         Ok(self.inner.contains(key.as_key()))
+    }
+
+    /// Fold one field in, adding it when absent and merging it when stored.
+    ///
+    /// The lenient counterpart of `insert`, which replaces, and of `update`,
+    /// which refuses everything new. Answers `true` when the field arrived
+    /// and `false` when it folded into a stored one: a canonical identity the
+    /// dictionary holds merges, a name folding to a stored canonical name or
+    /// alias in the same branch merges into that field - aliases and
+    /// alternate tags become the union and the incoming canonical tag joins
+    /// them unless another field in the branch answers it - a nested field is
+    /// redirected to `addDefinition` under the category its shape names, and
+    /// one of this crate's own tags is skipped as already held.
+    ///
+    /// One mutation: a refusal - no `fix:tag`, a key another field holds in
+    /// the same branch, a datatype disagreeing with the stored field - leaves
+    /// the dictionary exactly as it was.
+    #[napi]
+    pub fn add_field(&mut self, field: &JsField) -> Result<bool> {
+        self.inner_mut()?
+            .add_field(field.inner.clone())
+            .map_err(napi_error)
     }
 
     /// Add a field, answering the one it replaced.
@@ -640,12 +698,12 @@ impl JsFixRegistry {
 
     /// The branch one digest names, or `null`.
     ///
-    /// An arrival entry carries its dialect as the digest `branch`, so this is
-    /// the table that turns a capture's column back into the branch it was
-    /// read under. The digest is one way, which is why the registry publishes
-    /// the resolution rather than leaving a reader to reproduce the hash. A
-    /// branch crosses as its name here, as it does everywhere else in this
-    /// binding.
+    /// A branch's digest is what the store's branch manifest publishes beside
+    /// the declaration, so this is the table that turns one back into the
+    /// dialect it names. The derivation is one way, which is why the registry
+    /// publishes the resolution rather than leaving a reader to reproduce the
+    /// hash. A branch crosses as its name here, as it does everywhere else in
+    /// this binding.
     #[napi]
     pub fn get_branch_by_digest(&self, digest: i32) -> Option<String> {
         self.inner
@@ -792,16 +850,14 @@ impl Generator for JsFixFieldIterator {
 /// them; a binding is a view, so it flattens rather than inventing a second
 /// shape. Order is the wire's.
 ///
-/// A branch digest is an XXH32 held signed, and every `i32` is an exact
-/// `f64`, so the number JavaScript reads is the digest rather than a rounding
-/// of it.
-fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(f64, f64, String, String)>) {
+/// A tag is an `i32` and every `i32` is an exact `f64`, so the number
+/// JavaScript reads is the tag rather than a rounding of it.
+fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(f64, String, String)>) {
     for entry in entries {
         out.push((
             f64::from(entry.tag()),
-            f64::from(entry.branch()),
-            entry.key().to_owned(),
-            entry.value().to_owned(),
+            entry.key().as_str().unwrap_or_default().to_owned(),
+            entry.value().as_str().unwrap_or_default().to_owned(),
         ));
         flatten_entries(entry.children(), out);
     }
@@ -969,18 +1025,24 @@ impl JsFixMsg {
             .map_err(napi_error)
     }
 
-    /// The value a dotted path reaches, or `null`.
-    #[napi]
-    pub fn get_by_path(&self, path: String) -> Option<JsScalar> {
-        self.inner
+    /// The value a path reaches, or `null`.
+    #[napi(ts_args_type = "path: string | FieldPath")]
+    pub fn get_by_path(&self, path: Either<String, &JsFieldPath>) -> Result<Option<JsScalar>> {
+        let path = path_from_input(path)?;
+        Ok(self
+            .inner
             .get_by_path(&path)
             .cloned()
-            .map(JsScalar::from_core)
+            .map(JsScalar::from_core))
     }
 
-    /// The value a dotted path reaches.
-    #[napi]
-    pub fn by_path(&self, path: String) -> Result<JsScalar> {
+    /// The value a path reaches.
+    ///
+    /// A position is spelled the way the one grammar spells it:
+    /// `Parties[0].PartyID`.
+    #[napi(ts_args_type = "path: string | FieldPath")]
+    pub fn by_path(&self, path: Either<String, &JsFieldPath>) -> Result<JsScalar> {
+        let path = path_from_input(path)?;
         self.inner
             .by_path(&path)
             .map(|value| JsScalar::from_core(value.clone()))
@@ -1149,9 +1211,10 @@ impl JsFixMsg {
     ///
     /// Flattened pre-order: a group's members follow the counter pair that
     /// heads them, so a caller reading the array reads the wire. The dialect
-    /// crosses as its digest, which `FixRegistry.branchByDigest` resolves.
-    #[napi(ts_return_type = "Array<[number, number, string, string]>")]
-    pub fn arrivals(&self) -> Vec<(f64, f64, String, String)> {
+    /// is the message's own, answered by `branch`: it is one value for every
+    /// pair a message carries, so no pair repeats it.
+    #[napi(ts_return_type = "Array<[number, string, string]>")]
+    pub fn arrivals(&self) -> Vec<(f64, String, String)> {
         let mut held = Vec::new();
         flatten_entries(self.inner.entries(), &mut held);
         held
@@ -1521,8 +1584,11 @@ impl JsFixCodec {
     ///
     /// Every pin is the core's, spelled once here. `branch` and `version`
     /// cross as text; `separator` is the byte a numeric frame splits on where
-    /// the line does not say; `payloadColumn` names the record column a line
-    /// is read from; `nullValues` are the spellings that mean nothing was
+    /// the line does not say; `payloadColumn` names the batch column a line
+    /// is read from; `captureNames` are what a run's row-header captures are
+    /// called, in the order a line answers them, which is what lets
+    /// `parseTextLine` read a capture by position rather than by name;
+    /// `nullValues` are the spellings that mean nothing was
     /// sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
     /// or `"unknown"`; `batchByteSize` is the raw bytes one Arrow batch
     /// targets, the core's 128 MiB when unstated.
@@ -1545,6 +1611,9 @@ impl JsFixCodec {
         }
         if let Some(held) = options.payload_column {
             inner = inner.with_payload_column(held);
+        }
+        if let Some(held) = options.capture_names {
+            inner = inner.with_capture_names(held);
         }
         if let Some(held) = options.null_values {
             inner = inner.with_null_values(held);
@@ -1659,17 +1728,10 @@ impl JsFixCodec {
         ))
     }
 
-    /// One numeric frame, split on the separator stated or inferred.
+    /// One numeric frame, read by the pairs it states.
     #[napi]
-    pub fn parse_fix_line(&self, body: Buffer, separator: Option<f64>) -> Result<JsFixMsg> {
-        let codec = match separator {
-            Some(held) => self
-                .inner
-                .clone()
-                .with_separator(separator_byte(Some(held))?),
-            None => self.inner.clone(),
-        };
-        codec
+    pub fn parse_fix_line(&self, body: Buffer) -> Result<JsFixMsg> {
+        self.inner
             .parse_fix_line(&body)
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
@@ -1716,32 +1778,42 @@ impl JsFixCodec {
             .map_err(napi_error)
     }
 
-    /// One record a text reader answered: its messages.
+    /// One line a text reader answered: its messages.
     ///
-    /// The payload column names the line, and the row's own columns -
-    /// `branch`, `beginstring`, `sep`, `timestamp`, `direction`, `plugin` -
-    /// are the parameters of the same name. The loader widens the record from
-    /// whatever `Scalar.fromJs` reads.
-    #[napi(ts_args_type = "record: unknown")]
-    pub fn parse_text_record(&self, record: &JsScalar) -> Result<JsFixMessages> {
+    /// The line's body is the bytes read, its timestamp the clock that stamps
+    /// the message, and its row-header captures state the rest - the plugin
+    /// that logged it, the version, and every field a capture's name reaches.
+    /// `withCaptureNames` is what decides which capture is which, once for
+    /// the whole run, because a line answers its captures by position.
+    ///
+    /// A `pluginid` capture whose text is the name or an alias of a branch the
+    /// dictionary declares is also the dialect the line is read under,
+    /// outranking the codec's own pin; any other keeps the pin, then the
+    /// standard branch.
+    ///
+    /// A `direction` capture is named so it cannot silently fill a field of
+    /// that name, and is not otherwise read: only `parseTextArrowReader` has
+    /// a column to put a direction in.
+    #[napi(ts_args_type = "line: TextLine")]
+    pub fn parse_text_line(&self, line: &JsTextLine) -> Result<JsFixMessages> {
         self.inner
-            .parse_text_record(&record.inner)
+            .parse_text_line(line.as_core())
             .map(JsFixMessages::over)
             .map_err(napi_error)
     }
 
-    /// A stream of records, lazily: each as `parseTextRecord` reads it.
-    #[napi(js_name = "_parseTextRecordsNative", skip_typescript)]
-    pub fn parse_text_records_native(
+    /// A stream of lines, lazily: each as `parseTextLine` reads it.
+    #[napi(js_name = "_parseTextLinesNative", skip_typescript)]
+    pub fn parse_text_lines_native(
         &self,
         env: Env,
-        pull: Function<'_, (), Option<ClassInstance<'static, JsScalar>>>,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsTextLine>>>,
     ) -> Result<JsFixMessages> {
         let pulled = Pulled::new(env, pull)?;
         let failed = pulled.failed.clone();
-        let records = pulled.map(|record| record.inner.clone());
+        let lines = pulled.map(|line| line.as_core().clone());
         Ok(JsFixMessages::pulling(
-            self.inner.parse_text_records(records),
+            self.inner.parse_text_lines(lines),
             failed,
         ))
     }
@@ -1749,8 +1821,8 @@ impl JsFixCodec {
     /// A stream of Arrow batches of capture rows as batches of FIX rows.
     ///
     /// The schema is decided before the first row: the capture's own columns
-    /// lead and the fixed FIX columns follow. Every row is parsed as
-    /// `parseTextRecord` parses one, and batches close on the raw bytes of
+    /// lead and the fixed FIX columns follow. Every row is parsed as the
+    /// line door parses one, and batches close on the raw bytes of
     /// the payload column against `batchByteSize`. The source is consumed.
     #[napi]
     pub fn parse_text_arrow_reader(&self, source: &mut JsBatchReader) -> Result<JsBatchReader> {
@@ -1923,8 +1995,11 @@ pub struct FixCodecOptions {
     pub version: Option<String>,
     /// The byte a numeric frame splits on where the line does not say.
     pub separator: Option<f64>,
-    /// The record column a line is read from; `body` when unstated.
+    /// The batch column a line is read from; `body` when unstated.
     pub payload_column: Option<String>,
+    /// What a run's row-header captures are called, in the order a line
+    /// answers them.
+    pub capture_names: Option<Vec<String>>,
     /// The spellings that mean "nothing was sent".
     pub null_values: Option<Vec<String>>,
     /// What an unmarked line took: `sent`, `recv`, or `unknown`; `sent` when
@@ -2040,8 +2115,8 @@ pub fn fix_schema(
 /// A bridge's own row header spells the session instance it handled a line on
 /// as `senderSessionId` for that reason, so the value reaches the FIX column
 /// rather than leading the row - and never over a reading the message stated
-/// itself. Its `plugin` capture fills the session the line's direction names:
-/// the sender's for a line it sent, the target's for one it received.
+/// itself. Its `pluginid` capture reaches the crate's own column of that name
+/// the same way, and is what a row's dialect is read from.
 #[napi(js_name = "fixSchemaCarrying")]
 pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField> {
     yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)
@@ -2064,11 +2139,12 @@ pub fn fix_schema_tags() -> Vec<f64> {
 ///
 /// The digest, the version read at, the ticker, the clock and its partition,
 /// the parent identifiers, the session the message states, the bridge's
-/// message context, the plugins and plugin sessions a line moved between, the
-/// ISIN, MIC and order state a row derives, and the instrument, message and
-/// order-chain identities a lifecycle pass stamps. Every registry already
-/// holds them, so this is the listing a schema or a document walks rather than
-/// something a caller registers.
+/// message context, the plugin that logged the line and the one it came
+/// through before that, the two session names the line spells, the ISIN, MIC
+/// and order state a row derives, and the instrument, message and order-chain
+/// identities a lifecycle pass stamps. Every registry already holds them, so
+/// this is the listing a schema or a document walks rather than something a
+/// caller registers.
 #[napi(js_name = "fixCrateFields")]
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {
     yggdryl::fix_crate_fields()

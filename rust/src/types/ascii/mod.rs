@@ -23,7 +23,6 @@ pub(crate) use dtypes::{
 pub(crate) use dtypes::{code_refusal, code_text};
 pub use fields::*;
 pub use scalars::{
-    Ascii, AsciiFamily, AsciiScalar, AsciiValue, Cfi, CfiScalar, Country, CountryScalar, Currency,
-    CurrencyScalar, FixedAscii, FixedAsciiScalar, Isin, IsinScalar, Mic, MicScalar, MsgDirection,
-    MsgDirectionScalar, Side, SideScalar, State, StateScalar, TimeInForce, TimeInForceScalar,
+    Ascii, AsciiFamily, AsciiValue, Cfi, Country, Currency, FixedAscii, Isin, Mic, MsgDirection,
+    Side, State, TimeInForce,
 };

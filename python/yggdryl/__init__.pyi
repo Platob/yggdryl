@@ -19,6 +19,10 @@ from .media import (
     MediaType as MediaType,
     MimeType as MimeType,
     RecordOptions as RecordOptions,
+    TextEntries as TextEntries,
+    TextEntry as TextEntry,
+    TextLine as TextLine,
+    TextLines as TextLines,
     TextOptions as TextOptions,
 )
 from .types import (
