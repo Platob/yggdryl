@@ -400,3 +400,55 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
         assert_invalid(error, "FixedSizeList", "length must be non-negative: -1");
     }
 }
+
+#[test]
+fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
+    // `DataType::into_arrow_ffi` documents that it "keeps an extension
+    // identity - a code, a UUID, a version, a variant, a geospatial parameter
+    // set". It used to promise that against a hand-written list of datatypes,
+    // which had drifted five behind: `side`, `state`, `timeinforce`,
+    // `msgdirection` and every `string(...)` fell through to the plain arm and
+    // crossed as anonymous storage. The listing is now the one function that
+    // answers which datatypes have an extension at all, so a datatype added
+    // later cannot be added to one and forgotten in the other.
+    let extension_typed = [
+        DataType::Ascii,
+        DataType::ascii(4).unwrap(),
+        DataType::Country,
+        DataType::Currency,
+        DataType::Mic,
+        DataType::Cfi,
+        DataType::Isin,
+        DataType::Side,
+        DataType::State,
+        DataType::TimeInForce,
+        DataType::MsgDirection,
+        DataType::Uuid,
+        DataType::Version,
+        DataType::Url,
+        DataType::Variant,
+        DataType::from_str("string(windows-1252)").unwrap(),
+        DataType::from_str("fixed_string(windows-1252,8)").unwrap(),
+        DataType::from_str("large_utf8_view").unwrap(),
+    ];
+
+    for dtype in extension_typed {
+        let ffi = dtype.clone().into_arrow_ffi().unwrap();
+        let arrow = ArrowField::try_from(&ffi)
+            .unwrap_or_else(|error| panic!("{dtype} did not project a C schema: {error}"));
+        let name = arrow
+            .metadata()
+            .get("ARROW:extension:name")
+            .unwrap_or_else(|| panic!("{dtype} crossed the C Data Interface without its identity"));
+        assert!(
+            name.starts_with("yggdryl.") || name.starts_with("arrow.") || name.contains('.'),
+            "{dtype} projected an unqualified extension name {name:?}"
+        );
+        // And what came back reads as the datatype that was sent.
+        assert_eq!(
+            Field::from_arrow(&arrow).unwrap().dtype(),
+            &dtype,
+            "{dtype} did not read back as itself"
+        );
+    }
+}

@@ -905,19 +905,14 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
         // and a C schema is a field, so the storage projection carries the
         // two `ARROW:extension:*` entries here. `Field::into_arrow_ffi`
         // merges the same entries with the field's own metadata.
-        DataType::Variant
-        | DataType::Geometry(_)
-        | DataType::Geography(_)
-        | DataType::Ascii
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin
-        | DataType::Uuid
-        | DataType::Version
-        | DataType::Url => {
+        //
+        // Which datatypes those are is asked of the function that answers it
+        // rather than re-listed here. The list this used to spell had drifted
+        // five datatypes behind - `side`, `state`, `timeinforce`,
+        // `msgdirection` and every `string(...)` - and each of them fell to
+        // the plain arm below and crossed the C Data Interface as anonymous
+        // storage, which is exactly what this arm exists to prevent.
+        dtype if arrow_extension_parts(dtype).is_some() => {
             let arrow = dtype.clone().into_arrow()?;
             let schema = FFI_ArrowSchema::try_from(&arrow)?;
             let Some((name, metadata)) = arrow_extension_parts(dtype) else {
