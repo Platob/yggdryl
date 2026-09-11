@@ -24,11 +24,12 @@ pub(crate) mod typed;
 /// document needs, then the value contract every reading goes through.
 pub(crate) use typed::with_field as prepare_text;
 pub(crate) mod wire;
+pub mod xml;
 pub mod yaml;
 
 pub use crate::types::floating::scalars::{Float16, Float32, Float64};
 pub use crate::types::{Children, Scalar, TypedScalar};
-pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
+pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Xml, Yaml};
 pub(crate) use display::ERROR_TEXT_LIMIT;
 pub(crate) use display::{
     elide_display, elide_to, expected_got, stable_hash_display, stable_hash_of,
@@ -50,7 +51,7 @@ use crate::{Error, Field, Result};
 /// A lazy iterator over decoded values.
 pub struct ScalarIter<'a> {
     inner: Box<dyn Iterator<Item = Result<Scalar>> + 'a>,
-    field: Option<&'a Field>,
+    field: Option<(&'a Field, Format)>,
 }
 
 impl<'a> ScalarIter<'a> {
@@ -63,8 +64,8 @@ impl<'a> ScalarIter<'a> {
 
     /// Interpret every yielded natural value under one field without
     /// materializing the iterator.
-    pub(crate) fn with_field(mut self, field: &'a Field) -> Self {
-        self.field = Some(field);
+    pub(crate) fn with_field(mut self, field: &'a Field, format: Format) -> Self {
+        self.field = Some((field, format));
         self
     }
 }
@@ -74,7 +75,7 @@ impl Iterator for ScalarIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|value| match self.field {
-            Some(field) => value.and_then(|value| field.from_natural_value(value)),
+            Some((field, format)) => value.and_then(|value| typed(value, format, field)),
             None => value,
         })
     }
@@ -90,7 +91,7 @@ fn filled(value: Scalar, input: &[u8], format: Format, loading: &Loading) -> Res
             return Err(Error::InvalidRecord {
                 path: "$.placeholders".into(),
                 reason: expected_got(
-                    "a format with placeholder support (yaml, toml)",
+                    "a format with placeholder support (yaml, toml, xml)",
                     format.as_str(),
                 ),
             });
@@ -104,7 +105,7 @@ fn filled(value: Scalar, input: &[u8], format: Format, loading: &Loading) -> Res
         value
     };
     match loading.field() {
-        Some(field) => field.from_natural_value(value),
+        Some(field) => typed(value, format, field),
         None => Ok(value),
     }
 }
@@ -123,6 +124,7 @@ pub fn from_utf8_with_limits(input: &str, format: Format, limits: Limits) -> Res
         }
         Format::Yaml => yaml::from_utf8_with_limits(input, limits),
         Format::Toml => toml::from_utf8_with_limits(input, limits),
+        Format::Xml => xml::from_utf8_with_limits(input, limits),
     }
 }
 
@@ -138,7 +140,7 @@ pub fn from_utf8_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Scalar> {
-    field.from_natural_value(from_utf8_with_limits(input, format, limits)?)
+    typed(from_utf8_with_limits(input, format, limits)?, format, field)
 }
 
 /// Decode one value from UTF-8 under `loading`.
@@ -161,6 +163,7 @@ pub fn from_bytes_with_limits(input: &[u8], format: Format, limits: Limits) -> R
         }
         Format::Yaml => yaml::from_bytes_with_limits(input, limits),
         Format::Toml => toml::from_bytes_with_limits(input, limits),
+        Format::Xml => xml::from_bytes_with_limits(input, limits),
     }
 }
 
@@ -176,7 +179,7 @@ pub fn from_bytes_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Scalar> {
-    field.from_natural_value(from_bytes_with_limits(input, format, limits)?)
+    typed(from_bytes_with_limits(input, format, limits)?, format, field)
 }
 
 /// Decode one value from bytes under `loading`.
@@ -203,6 +206,7 @@ pub fn from_reader_with_limits<R: Read>(
         }
         Format::Yaml => yaml::from_reader_with_limits(reader, limits),
         Format::Toml => toml::from_reader_with_limits(reader, limits),
+        Format::Xml => xml::from_reader_with_limits(reader, limits),
     }
 }
 
@@ -218,7 +222,7 @@ pub fn from_reader_with_field_and_limits<R: Read>(
     field: &Field,
     limits: Limits,
 ) -> Result<Scalar> {
-    field.from_natural_value(from_reader_with_limits(reader, format, limits)?)
+    typed(from_reader_with_limits(reader, format, limits)?, format, field)
 }
 
 /// Decode one value from a reader under `loading`.
@@ -226,7 +230,7 @@ pub fn from_reader_with<R: Read>(reader: R, format: Format, loading: &Loading) -
     if loading.placeholders().is_none() {
         let value = from_reader_with_limits(reader, format, loading.limits())?;
         return match loading.field() {
-            Some(field) => field.from_natural_value(value),
+            Some(field) => typed(value, format, field),
             None => Ok(value),
         };
     }
@@ -253,6 +257,7 @@ pub fn from_bytes_all_with_limits(
         Format::JsonLines => json::from_lines_bytes_with_limits(input, limits),
         Format::Yaml => yaml::from_bytes_all_with_limits(input, limits),
         Format::Toml => toml::from_bytes_all_with_limits(input, limits),
+        Format::Xml => xml::from_bytes_all_with_limits(input, limits),
     }
 }
 
@@ -272,7 +277,7 @@ pub fn from_bytes_all_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_bytes_all_with_limits(input, format, limits)?, field)
+    apply_field(from_bytes_all_with_limits(input, format, limits)?, format, field)
 }
 
 /// Decode all values from UTF-8.
@@ -291,6 +296,7 @@ pub fn from_utf8_all_with_limits(
         Format::JsonLines => json::from_lines_utf8_with_limits(input, limits),
         Format::Yaml => yaml::from_utf8_all_with_limits(input, limits),
         Format::Toml => toml::from_utf8_all_with_limits(input, limits),
+        Format::Xml => xml::from_utf8_all_with_limits(input, limits),
     }
 }
 
@@ -306,7 +312,7 @@ pub fn from_utf8_all_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_utf8_all_with_limits(input, format, limits)?, field)
+    apply_field(from_utf8_all_with_limits(input, format, limits)?, format, field)
 }
 
 /// Decode all values from a reader.
@@ -325,6 +331,7 @@ pub fn from_reader_all_with_limits<R: Read>(
         Format::JsonLines => json::from_lines_reader_with_limits(reader, limits),
         Format::Yaml => yaml::from_reader_all_with_limits(reader, limits),
         Format::Toml => toml::from_reader_all_with_limits(reader, limits),
+        Format::Xml => xml::from_reader_all_with_limits(reader, limits),
     }
 }
 
@@ -344,7 +351,7 @@ pub fn from_reader_all_with_field_and_limits<R: Read>(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_reader_all_with_limits(reader, format, limits)?, field)
+    apply_field(from_reader_all_with_limits(reader, format, limits)?, format, field)
 }
 
 /// Lazily decode values from a borrowed reader.
@@ -363,6 +370,7 @@ pub fn from_reader_iter_with_limits<'a, R: Read + 'a>(
         Format::JsonLines => json::from_lines_reader_iter_with_limits(reader, limits),
         Format::Yaml => yaml::from_reader_iter_with_limits(reader, limits),
         Format::Toml => toml::from_reader_iter_with_limits(reader, limits),
+        Format::Xml => xml::from_reader_iter_with_limits(reader, limits),
     }
 }
 
@@ -382,7 +390,7 @@ pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(
     field: &'a Field,
     limits: Limits,
 ) -> ScalarIter<'a> {
-    from_reader_iter_with_limits(reader, format, limits).with_field(field)
+    from_reader_iter_with_limits(reader, format, limits).with_field(field, format)
 }
 
 /// Encode one value to bytes.
@@ -406,6 +414,7 @@ pub fn into_bytes_with_formatting(
         },
         Format::Yaml => yaml::into_bytes_with_formatting(value, formatting),
         Format::Toml => toml::into_bytes_with_formatting(value, formatting),
+        Format::Xml => xml::into_bytes_with_formatting(value, formatting),
     }
 }
 
@@ -430,6 +439,7 @@ pub fn into_utf8_with_formatting(
         },
         Format::Yaml => yaml::into_utf8_with_formatting(value, formatting),
         Format::Toml => toml::into_utf8_with_formatting(value, formatting),
+        Format::Xml => xml::into_utf8_with_formatting(value, formatting),
     }
 }
 
@@ -459,6 +469,7 @@ pub fn into_writer_with_formatting<W: Write>(
         },
         Format::Yaml => yaml::into_writer_with_formatting(value, writer, formatting),
         Format::Toml => toml::into_writer_with_formatting(value, writer, formatting),
+        Format::Xml => xml::into_writer_with_formatting(value, writer, formatting),
     }
 }
 
@@ -526,10 +537,11 @@ where
         }
         Format::Yaml => yaml::into_writer_all_with_formatting(values, writer, formatting),
         Format::Toml => toml::into_writer_all_with_formatting(values, writer, formatting),
+        Format::Xml => xml::into_writer_all_with_formatting(values, writer, formatting),
     }
 }
 
-/// Infer JSON, TOML, or YAML from document content.
+/// Infer XML, JSON, TOML, or YAML from document content.
 pub fn infer_format(input: &[u8]) -> Result<Format> {
     let limits = Limits::default();
     check_input_size(input, limits, "format")?;
@@ -558,7 +570,7 @@ pub fn from_utf8_inferred_with_limits(input: &str, limits: Limits) -> Result<(Fo
 /// Infer and decode UTF-8 under `field` without parsing twice.
 pub fn from_utf8_inferred_with_field(input: &str, field: &Field) -> Result<(Format, Scalar)> {
     let (format, value) = from_utf8_inferred(input)?;
-    Ok((format, field.from_natural_value(value)?))
+    Ok((format, typed(value, format, field)?))
 }
 
 /// Infer and decode one byte document without parsing it twice.
@@ -580,7 +592,7 @@ pub fn from_bytes_inferred_with_limits(input: &[u8], limits: Limits) -> Result<(
 /// Infer and decode bytes under `field` without parsing twice.
 pub fn from_bytes_inferred_with_field(input: &[u8], field: &Field) -> Result<(Format, Scalar)> {
     let (format, value) = from_bytes_inferred(input)?;
-    Ok((format, field.from_natural_value(value)?))
+    Ok((format, typed(value, format, field)?))
 }
 
 fn infer_utf8_impl(input: &str, limits: Limits) -> Result<(Format, Scalar)> {
@@ -598,6 +610,14 @@ enum Inferred {
 }
 
 fn infer_utf8_decision(input: &str, limits: Limits) -> Inferred {
+    // A document that opens a tag is XML before anything else is tried: no
+    // JSON or TOML document starts with one, and the only YAML reading of one
+    // is the bare string it is.
+    if opens_a_tag(input.as_bytes()) {
+        if let Ok(value) = xml::from_utf8_with_limits(input, limits) {
+            return Inferred::Decoded(Format::Xml, value);
+        }
+    }
     if let Ok(value) = json::from_utf8_with_limits(input, limits) {
         return Inferred::Decoded(Format::Json, value);
     }
@@ -610,6 +630,11 @@ fn infer_utf8_decision(input: &str, limits: Limits) -> Inferred {
     Inferred::Yaml
 }
 
+/// Whether content opens a tag, which is the one thing XML always does.
+fn opens_a_tag(input: &[u8]) -> bool {
+    input.trim_ascii_start().first() == Some(&b'<')
+}
+
 fn is_empty_or_comment_only(input: &[u8]) -> bool {
     input.split(|byte| *byte == b'\n').all(|line| {
         let first = line
@@ -620,11 +645,46 @@ fn is_empty_or_comment_only(input: &[u8]) -> bool {
     })
 }
 
-pub(crate) fn apply_field(values: Vec<Scalar>, field: &Field) -> Result<Vec<Scalar>> {
+pub(crate) fn apply_field(
+    values: Vec<Scalar>,
+    format: Format,
+    field: &Field,
+) -> Result<Vec<Scalar>> {
     values
         .into_iter()
-        .map(|value| field.from_natural_value(value))
+        .map(|value| typed(value, format, field))
         .collect()
+}
+
+/// Interpret one natural document value under `field`.
+///
+/// Every schema-directed read of a document goes through here, because one
+/// format shapes its document against the field before the value contract
+/// sees it: XML names its root element, repeats an element instead of framing
+/// a list, and spells every leaf as character data, so a declared field is the
+/// only thing that can read those back. Every other format hands the value
+/// contract exactly what it parsed.
+pub(crate) fn typed(value: Scalar, format: Format, field: &Field) -> Result<Scalar> {
+    match format {
+        Format::Xml => xml::with_field(value, field),
+        Format::Json | Format::JsonLines | Format::Yaml | Format::Toml => {
+            field.from_natural_value(value)
+        }
+    }
+}
+
+/// Interpret one natural value that is already a row under `field`.
+///
+/// The row half of [`typed`]: a record surface has taken the rows out of the
+/// document that framed them, so the document's own framing is gone and only
+/// the per-row shaping is left.
+pub(crate) fn typed_row(value: Scalar, format: Format, field: &Field) -> Result<Scalar> {
+    match format {
+        Format::Xml => xml::with_field_row(value, field),
+        Format::Json | Format::JsonLines | Format::Yaml | Format::Toml => {
+            field.from_natural_value(value)
+        }
+    }
 }
 
 pub(crate) fn input_too_large(format: &'static str, position: usize) -> Error {
@@ -644,6 +704,15 @@ pub(crate) fn check_input_size(input: &[u8], limits: Limits, format: &'static st
 }
 
 pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result<()> {
+    check_encode_depth_to(value, format, Limits::default().max_depth())
+}
+
+/// Bound one value's encoding depth explicitly.
+pub(crate) fn check_encode_depth_to(
+    value: &Scalar,
+    format: &'static str,
+    maximum: usize,
+) -> Result<()> {
     fn visit(value: &Scalar, depth: usize, maximum: usize, format: &'static str) -> Result<()> {
         if depth > maximum {
             return Err(Error::Codec {
@@ -688,5 +757,5 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
         Ok(())
     }
 
-    visit(value, 0, Limits::default().max_depth(), format)
+    visit(value, 0, maximum, format)
 }

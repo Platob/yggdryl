@@ -19,11 +19,19 @@ pub enum Format {
     Yaml,
     /// One TOML document.
     Toml,
+    /// One XML document.
+    Xml,
 }
 
 impl Format {
     /// Every format in canonical order.
-    pub const ALL: [Self; 4] = [Self::Json, Self::JsonLines, Self::Yaml, Self::Toml];
+    pub const ALL: [Self; 5] = [
+        Self::Json,
+        Self::JsonLines,
+        Self::Yaml,
+        Self::Toml,
+        Self::Xml,
+    ];
 
     /// Parse a format name or conventional extension.
     #[allow(clippy::should_implement_trait)]
@@ -58,6 +66,7 @@ impl Format {
             Self::JsonLines => "json_lines",
             Self::Yaml => "yaml",
             Self::Toml => "toml",
+            Self::Xml => "xml",
         }
     }
 
@@ -68,6 +77,7 @@ impl Format {
             Self::JsonLines => "jsonl",
             Self::Yaml => "yaml",
             Self::Toml => "toml",
+            Self::Xml => "xml",
         }
     }
 
@@ -98,12 +108,25 @@ impl Format {
             })
     }
 
+    /// Return whether one resource of this format is exactly one document.
+    ///
+    /// TOML and XML both frame a whole resource - a root table, a root element
+    /// - so there is nothing after the first document to read and nothing to
+    /// iterate. JSON is not one of them: one JSON resource is one value, but a
+    /// stream of them reads as several, which is what
+    /// [`TextCodec::is_multi_document`](crate::text::TextCodec::is_multi_document)
+    /// answers instead.
+    pub const fn is_single_document(self) -> bool {
+        matches!(self, Self::Toml | Self::Xml)
+    }
+
     pub const fn mime_type(self) -> MimeType {
         match self {
             Self::Json => MimeType::JSON,
             Self::JsonLines => MimeType::JSON_LINES,
             Self::Yaml => MimeType::YAML,
             Self::Toml => MimeType::TOML,
+            Self::Xml => MimeType::XML,
         }
     }
 }
@@ -122,7 +145,7 @@ impl FromStr for Format {
             .ok_or_else(|| Error::Codec {
                 format: "format",
                 position: 0,
-                reason: "expected json, jsonl/ndjson, yaml/yml, or toml".into(),
+                reason: "expected json, jsonl/ndjson, yaml/yml, toml, or xml".into(),
             })
     }
 }

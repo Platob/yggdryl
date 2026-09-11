@@ -1,4 +1,4 @@
-"""Shared byte-oriented helpers for the public JSON, TOML, and YAML modules."""
+"""Shared byte-oriented helpers for the public JSON, TOML, YAML, and XML modules."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any, Literal, Protocol, TypeAlias, TypeVar, cast
 
 from .. import _native
 
-Format = Literal["json", "json_lines", "toml", "yaml"]
+Format = Literal["json", "json_lines", "toml", "xml", "yaml"]
 CodecFormat: TypeAlias = Literal[
     "json",
     "json_lines",
@@ -20,6 +20,10 @@ CodecFormat: TypeAlias = Literal[
     "toml",
     ".toml",
     "application/toml",
+    "xml",
+    ".xml",
+    "application/xml",
+    "text/xml",
     "yaml",
     "yml",
 ]
@@ -107,12 +111,14 @@ def _limit_values(
 
 def _normalize_format(format: str) -> Format:
     if not isinstance(format, str):
-        raise TypeError("format must be 'json', 'json_lines', 'toml', or 'yaml'")
+        raise TypeError(
+            "format must be 'json', 'json_lines', 'toml', 'xml', or 'yaml'"
+        )
     try:
         return cast(Format, _native._codec_normalize_format(format))
     except ValueError as error:
         raise ValueError(
-            "format must be 'json', 'json_lines', 'toml', or 'yaml'"
+            "format must be 'json', 'json_lines', 'toml', 'xml', or 'yaml'"
         ) from error
 
 

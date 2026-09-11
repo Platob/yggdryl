@@ -8,5 +8,7 @@ mod iceberg;
 #[cfg(feature = "object")]
 #[path = "interop/object/mod.rs"]
 mod object;
+#[path = "interop/xml.rs"]
+mod xml;
 #[path = "interop/zip.rs"]
 mod zip;

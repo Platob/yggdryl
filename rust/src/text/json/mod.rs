@@ -22,7 +22,8 @@ mod wire;
 use crate::text::position::{LineOffsets, line_column_to_byte_offset};
 use crate::text::wire::from_raw;
 use crate::text::{
-    Formatting, Limits, Scalar, ScalarIter, apply_field, check_encode_depth, check_input_size,
+    Format, Formatting, Limits, Scalar, ScalarIter, apply_field, check_encode_depth,
+    check_input_size,
 };
 use crate::{Error, Field, Result};
 
@@ -257,7 +258,7 @@ pub fn from_bytes_all_with_field_and_limits(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_bytes_all_with_limits(input, limits)?, field)
+    apply_field(from_bytes_all_with_limits(input, limits)?, Format::Json, field)
 }
 
 /// Decode every JSON value from a reader.
@@ -281,7 +282,7 @@ pub fn from_reader_all_with_field_and_limits<R: Read>(
     field: &Field,
     limits: Limits,
 ) -> Result<Vec<Scalar>> {
-    apply_field(from_reader_all_with_limits(reader, limits)?, field)
+    apply_field(from_reader_all_with_limits(reader, limits)?, Format::Json, field)
 }
 
 /// Lazily decode JSON values from a borrowed reader.
@@ -311,7 +312,7 @@ pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(
     field: &'a Field,
     limits: Limits,
 ) -> ScalarIter<'a> {
-    ScalarIter::new(Reader::with_limits(reader, limits)).with_field(field)
+    ScalarIter::new(Reader::with_limits(reader, limits)).with_field(field, Format::Json)
 }
 
 /// An owning, lazy iterator over whitespace-separated JSON values.

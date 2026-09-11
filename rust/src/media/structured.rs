@@ -1,6 +1,6 @@
 //! Structured text as Arrow rows.
 //!
-//! JSON, JSON Lines, YAML, and TOML are not record encodings: they carry
+//! JSON, JSON Lines, YAML, TOML, and XML are not record encodings: they carry
 //! documents, not typed columns, so [`RecordOptions`](super::RecordOptions)
 //! does not name them and no reader in [`crate::iobase`] speaks them. This
 //! module is the one bridge between them and Arrow, and it holds no format
@@ -9,7 +9,7 @@
 //!
 //! The two directions are deliberately asymmetric, because the formats are:
 //!
-//! | Direction | JSON, TOML | JSON Lines, YAML |
+//! | Direction | JSON, TOML, XML | JSON Lines, YAML |
 //! | --- | --- | --- |
 //! | Read | one document, then one batch | every document, then one batch |
 //! | Write | one document, rows held | streamed, one batch of rows at a time |
@@ -23,7 +23,7 @@ use std::collections::VecDeque;
 use smol_str::SmolStr;
 
 use crate::arrow::{ArrowValue, BatchReader};
-use crate::text::{Formatting, Plan, Structured};
+use crate::text::{Formatting, Plan, Structured, TextCodec};
 use crate::{Error, Field, IOBase, Result, Scalar};
 
 /// Read a handle's structured text document as one Arrow value.
@@ -62,7 +62,7 @@ pub(crate) fn read_arrow_value<H: IOBase + ?Sized>(
         .as_sequence()
         .unwrap_or_default()
         .iter()
-        .map(|row| root.from_natural_value(row.clone()))
+        .map(|row| crate::text::typed_row(row.clone(), format.format(), &root))
         .collect::<Result<Vec<_>>>()?;
     Ok(ArrowValue::from_rows(
         &root,
@@ -114,15 +114,22 @@ pub(crate) fn write_arrow_value<H: IOBase + ?Sized>(
                 rows.into_result()?;
             }
             // One document: the frame encloses every row, so they are held.
-            Structured::Json | Structured::Toml => {
+            Structured::Json | Structured::Toml | Structured::Xml => {
                 let mut rows = Rows::new(batches, root);
                 let held = rows.by_ref().collect::<Vec<_>>();
                 rows.into_result()?;
                 let document = Scalar::from_sequence(held);
-                let document = if matches!(format, Structured::Toml) {
-                    Scalar::from_record([(name, document)])?
-                } else {
-                    document
+                let document = match format {
+                    // An array of tables under the root's name is the shape a
+                    // TOML table takes.
+                    Structured::Toml => Scalar::from_record([(name, document)])?,
+                    // XML repeats one element per row, and a document element
+                    // is what holds the repetition.
+                    Structured::Xml => Scalar::from_record([(
+                        SmolStr::new_static(crate::media::XML_DOCUMENT_NAME),
+                        Scalar::from_record([(name, document)])?,
+                    )])?,
+                    _ => document,
                 };
                 crate::text::into_writer_with_formatting(
                     &document,
@@ -152,9 +159,37 @@ fn rows_of(documents: Vec<Scalar>, format: Structured, name: &str) -> Vec<Scalar
             None => documents,
         };
     }
+    if matches!(format, Structured::Xml) {
+        // A document is one root element holding the rows, which are its
+        // children named by the root Field. One child is one row, because XML
+        // repeats an element instead of framing a list around it, and a root
+        // element with no children at all holds no rows.
+        let Some(root) = single_element(document) else {
+            return documents;
+        };
+        if root.is_null() {
+            return Vec::new();
+        }
+        return match root.get_key_str(name) {
+            Some(rows) => rows
+                .as_sequence()
+                .map_or_else(|| vec![rows.clone()], <[Scalar]>::to_vec),
+            None => documents,
+        };
+    }
     match document.as_sequence() {
         Some(rows) => rows.to_vec(),
         None => documents,
+    }
+}
+
+/// The one root element a decoded XML document is keyed by.
+fn single_element(document: &Scalar) -> Option<&Scalar> {
+    let record = document.as_record()?;
+    let mut values = record.values();
+    match (values.next(), values.next()) {
+        (Some(root), None) => Some(root),
+        _ => None,
     }
 }
 

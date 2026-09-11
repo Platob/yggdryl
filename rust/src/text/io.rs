@@ -80,7 +80,7 @@ fn unknown_format(media_type: &MediaType) -> Error {
         format: "text",
         position: 0,
         reason: smol_str::format_smolstr!(
-            "expected json, jsonl, yaml, or toml, got {}",
+            "expected json, jsonl, yaml, toml, or xml, got {}",
             crate::text::elide_display(media_type)
         ),
     }

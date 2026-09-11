@@ -72,6 +72,13 @@ pub use magic::MAGIC_PROBE_LEN;
 pub const DEFAULT_ROOT_NAME: &str = "row";
 /// How a partition directory spells an absent value.
 pub const NULL_PARTITION: &str = "null";
+/// The XML document element a record write frames its rows in.
+///
+/// XML has exactly one root element and no array framing of its own, so rows
+/// are repeated elements named by the root Field inside this one. A read takes
+/// the rows from whatever the document's own root element is, so a document
+/// written elsewhere - `<trades><trade/></trades>` - reads the same way.
+pub const XML_DOCUMENT_NAME: &str = "records";
 #[cfg(feature = "arrow")]
 pub(crate) use options::{CommitBuffer, WriteLimitState};
 #[cfg(feature = "arrow")]
