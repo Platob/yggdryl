@@ -1,6 +1,6 @@
 # Structured text
 
-`yggdryl::text` reads and writes JSON, JSON Lines, YAML, and TOML over the shared native `Scalar`; the bindings only translate native and Arrow values.
+`yggdryl::text` reads and writes JSON, JSON Lines, YAML, TOML, and XML over the shared native `Scalar`; the bindings only translate native and Arrow values.
 
 ## Pages
 
@@ -9,7 +9,8 @@
 | [JSON](json.md) | JSON and JSON Lines; placeholders refused |
 | [YAML](yaml.md) | Syntax-proven natural types, document streams, block or flow style |
 | [TOML](toml.md) | One string-key record, syntax-proven temporals, inline tables |
-| [Placeholders](placeholders.md) | The Jinja-style `{{ }}` contract for YAML and TOML |
+| [XML](xml.md) | One root element, attributes and `#text`, every leaf text until a Field types it |
+| [Placeholders](placeholders.md) | The Jinja-style `{{ }}` contract for YAML, TOML, and XML |
 
 ## Contract
 
@@ -21,7 +22,7 @@
 | Order | parse, then [placeholder](placeholders.md) substitution, then Field interpretation |
 | Content | `&str`, `String`, byte slices, and Python `str` are content, never a path; a path is `pathlib.Path`; destination strings are paths |
 | Inference | `inferred_scalar_field` / `inferred_array_field` / `inferred_struct_field`, names `value`, `item`, `row`; one path for every runtime |
-| `Format` | `Json`, `JsonLines`, `Yaml`, `Toml`; extension, path, MIME, and content sniff share one vocabulary; sniff tries JSON before YAML; anonymous output is JSON |
+| `Format` | `Json`, `JsonLines`, `Yaml`, `Toml`, `Xml`; extension, path, MIME, and content sniff share one vocabulary; sniff answers XML where content opens a tag, then tries JSON before YAML; anonymous output is JSON |
 | `Limits` | input bytes, nesting, decoded nodes, document count, enforced while streaming; four nullable spellings in both bindings; omitted uses the safe core default |
 | Errors | name the format and byte offset, cumulative across documents; readers fuse after the first error |
 | Coding | `text::from_io` / `into_io` infer format and coding from the handle `MediaType`, so `quotes.json.gz` is JSON through gzip; `from_io_with_field` types strictly |
@@ -198,13 +199,14 @@ Dumps use ordinary format values; exact values without native syntax become scal
 | JSON | one; JSON Lines for many | any JSON value |
 | YAML | one or more | any YAML value |
 | TOML | exactly one | a string-key record |
+| XML | exactly one | one root element, as a one-entry record |
 
-`Json`, `JsonLines`, `Yaml`, and `Toml` share one `TextCodec` contract; each format has one inferring entry point that redirects to the explicit form.
+`Json`, `JsonLines`, `Yaml`, `Toml`, and `Xml` share one `TextCodec` contract; each format has one inferring entry point that redirects to the explicit form.
 
 | surface | names |
 | --- | --- |
-| Rust transports | `from_utf8`, `from_bytes`, `from_reader`, `into_utf8`, `into_bytes`, `into_writer`; `_all` for JSON streams, JSON Lines, and YAML documents |
-| Rust inferring entry | `from_json_scalar`, `from_json_scalar_with_field`, `into_json_scalar` and the YAML / TOML twins, at the crate root |
+| Rust transports | `from_utf8`, `from_bytes`, `from_reader`, `into_utf8`, `into_bytes`, `into_writer`; `_all` for JSON streams, JSON Lines, and YAML documents, and exactly one value for TOML and XML |
+| Rust inferring entry | `from_json_scalar`, `from_json_scalar_with_field`, `into_json_scalar` and the YAML / TOML / XML twins, at the crate root |
 | Python | `loads` / `dumps`; `dump(value)` bytes, `dump(value, utf8=True)` text, `dump(value, destination)` writes |
 | JavaScript | `loads` / `dumps`; a `Buffer`, or a write to a Node / WHATWG destination |
 | generic facade | Python `from_io`, `from_stream`, `into_io`, `into_stream`; JavaScript `from`, `fromStream`, `into`, `intoStream` |
@@ -250,7 +252,7 @@ The generic facade infers the format once, then redirects to that implementation
     assert.deepEqual(codec.into(value, { format: 'json' }), Buffer.from('{"id":1}'))
     ```
 
-JSON Lines is collection-valued, JSON and TOML return one value, and YAML can stay lazy on the explicit stream path. Field casting and the four decode limits survive redirection.
+JSON Lines is collection-valued, JSON, TOML, and XML return one value, and YAML can stay lazy on the explicit stream path. Field casting and the four decode limits survive redirection.
 
 ## Formatting
 
@@ -261,6 +263,7 @@ JSON Lines is collection-valued, JSON and TOML return one value, and YAML can st
 | JSON | compact by default; spaces for pretty output |
 | YAML | two-space block style by default; `None` selects flow style |
 | TOML | indentation only for nested readability |
+| XML | one flat line by default; spaces or tabs lay children out one per line, never a leaf's own character data |
 
 === "Rust"
 

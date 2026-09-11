@@ -1,22 +1,25 @@
 # Yggdryl for JavaScript
 
 ```javascript
-const { json, toml, yaml } = require('yggdryl')
+const { json, toml, xml, yaml } = require('yggdryl')
 
 const bytes = json.dumps({ symbol: 'AAPL', price: 224.62 })
 const trade = json.loads(bytes)
 const config = toml.loads('symbol = "AAPL"\nprice = 224.62\n')
 const documents = yaml.loadsAll(Buffer.from('---\nsymbol: AAPL\n---\nsymbol: MSFT\n'))
+const quote = xml.loads('<trade><symbol>AAPL</symbol></trade>')
 
 console.assert(Buffer.isBuffer(bytes))
 console.assert(trade.symbol === 'AAPL')
 console.assert(config.symbol === 'AAPL')
 console.assert(documents[1].symbol === 'MSFT')
+console.assert(quote.trade.symbol === 'AAPL')
 ```
 
-JSON, YAML, and TOML emit only each format's natural shapes, with no private
+JSON, YAML, TOML, and XML emit only each format's natural shapes, with no private
 tags. Exact decimals and binary values use ordinary strings where needed;
-values with no natural spelling are refused. Pass `{ field }` while decoding
+values with no natural spelling are refused. XML is one root element and every
+leaf of it is character data. Pass `{ field }` while decoding
 to restore exact widths and types in Rust. A source string is document content;
 use a `file:` URL or descriptor for a location. Native path I/O avoids an
 existence probe and JavaScript whole-file staging. Streams preserve

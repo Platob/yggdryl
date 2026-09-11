@@ -71,7 +71,7 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | Holder | `IOBase` handles: bytes, values, records, and the storage backends | [holder](holder/index.md) |
 | Coding | gzip, zlib/deflate, and Zstandard over any handle | [coding](coding/index.md) |
 | Media | Arrow IPC, Parquet, Avro, plain-text records, and Iceberg tables | [media](media/index.md) |
-| Text | JSON, YAML, and TOML over the shared `Scalar` | [text](text/index.md) |
+| Text | JSON, YAML, TOML, and XML over the shared `Scalar` | [text](text/index.md) |
 | URI | `Uri`, `Url`, `Urn`, paths, globs, and partitions | [uri](uri/index.md) |
 | Arrow | Scalars, schema projection, and batch readers at the Arrow boundary | [arrow](arrow/index.md) |
 | Expression | Predicates: parse, bind, evaluate, and push down | [expression](expression/index.md) |

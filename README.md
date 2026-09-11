@@ -54,7 +54,7 @@ rust/                    The core crate
   src/holder/            Buffer, local/Arrow filesystems, and buffering
   src/coding/            gzip, zlib/deflate, and Zstandard
   src/media/             IPC, Parquet, Avro, text records, and Iceberg
-  src/text/              JSON, YAML, TOML, limits, and inference
+  src/text/              JSON, YAML, TOML, XML, limits, and inference
   src/{uri,arrow,expression,xxhash,txhash,fix}/
                          The remaining core layers
   tests/                 Edge tests, categorized like the source
@@ -134,7 +134,7 @@ for `ArrowValue` instead. It regroups a pinned one-row array, a column, a held
 table, and a one-shot stream behind one value carrying the exact `Field` that
 types it, and `IOMedia::read_arrow_value`/`write_arrow_value` read and write it
 whatever the handle holds - a record encoding as a batch stream, a JSON, JSON
-Lines, YAML, or TOML document as the batch its rows parse into. In Python it is
+Lines, YAML, TOML, or XML document as the batch its rows parse into. In Python it is
 also the one entry point every columnar runtime crosses:
 `yggdryl.ArrowValue.from_py` takes a `pyarrow` container, a pandas or polars
 frame or series, a NumPy array, or anything exporting the Arrow C data or
@@ -176,7 +176,7 @@ extensions are borrowed views and do not allocate. URI-family mutators validate 
 complete replacement before changing the identifier; MIME and media setters use
 the same preferred-extension table as inference.
 
-## JSON, TOML, and YAML bytes
+## JSON, TOML, YAML, and XML bytes
 
 ```rust
 use yggdryl::text::{self, Format};
@@ -196,11 +196,13 @@ assert_eq!(text::from_bytes(&bytes, Format::Json)?, value);
 
 The shared native value preserves bytes, wide integers, exact decimals, the four
 temporals, non-finite floats, and arbitrary mapping keys across JSON, TOML, and
-YAML.
-Slice, reader, writer, JSON Lines, TOML document, and YAML document APIs apply
-explicit byte, depth, node, and document limits. See the
+YAML. XML proves character data alone, so a declared `Field` is what types its
+leaves.
+Slice, reader, writer, JSON Lines, TOML document, YAML document, and XML document
+APIs apply explicit byte, depth, node, and document limits. See the
 [shared text](docs/text/index.md), [JSON](docs/text/json.md),
-[TOML](docs/text/toml.md), and [YAML](docs/text/yaml.md) pages.
+[TOML](docs/text/toml.md), [YAML](docs/text/yaml.md), and [XML](docs/text/xml.md)
+pages.
 
 ## Native value behavior
 

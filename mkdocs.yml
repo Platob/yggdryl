@@ -187,6 +187,7 @@ nav:
       - JSON: text/json.md
       - YAML: text/yaml.md
       - TOML: text/toml.md
+      - XML: text/xml.md
   - URI:
     - uri/index.md
     - Path: uri/path.md
