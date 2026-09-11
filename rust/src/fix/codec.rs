@@ -56,6 +56,8 @@
 //! ten million.
 
 use std::borrow::Borrow;
+use std::borrow::Cow;
+use std::ops::Range;
 use std::sync::Arc;
 
 use quick_xml::events::Event;
@@ -248,7 +250,7 @@ fn cut_at(entry: &TextEntry, rest: &[TextEntry], span: usize) -> bool {
 /// itself said and the only reading that loses nothing.
 fn data_end(
     entry: &TextEntry,
-    stated: Option<&Arrived>,
+    stated: Option<&Arrived<'_>>,
     entries: &[TextEntry],
     after: usize,
     xml: bool,
@@ -294,13 +296,18 @@ fn data_end(
 /// strips it so that every reader lifting a bridge key asks for the name the
 /// bridge gave the field - and `marked` is that fact kept beside it. What the
 /// mark *means* is judged here, which is where the dictionary is.
-struct Arrived {
-    key: TextBytes,
-    value: TextBytes,
+///
+/// Borrowed from the entry the line answered, because judging a row reads
+/// its pairs and copies none of them: the one pair that is not the entry's
+/// own is a data field read past the separator to the length it stated,
+/// which is a new range of the same page and the one place this owns one.
+struct Arrived<'entry> {
+    key: &'entry TextBytes,
+    value: Cow<'entry, TextBytes>,
     marked: bool,
 }
 
-impl Arrived {
+impl Arrived<'_> {
     fn key(&self) -> &[u8] {
         self.key.as_bytes()
     }
@@ -801,9 +808,10 @@ impl FixCodec {
     /// The door every capture should come through, and the only one that
     /// copies nothing: the line already holds its bytes as a range of a page
     /// it owns, so that page is handed over rather than made again, and every
-    /// key and value the messages record is a range of it. Where the line has
-    /// already been asked for its pairs, those are the pairs read - reading a
-    /// line and reading a message from it is one scan as well as one decode.
+    /// key and value the messages record is a range of it. The pairs are
+    /// read off that page here, directly and none descended into, whatever
+    /// tree the line was asked for: a message reads a nested value by its
+    /// own rules, and a data field to the length it stated.
     ///
     /// What the line states for itself outranks this codec's own pins,
     /// because a line is the more specific statement:
@@ -947,7 +955,7 @@ impl FixCodec {
     /// once per pair.
     fn parse_page_with(&self, page: &TextBytes, extras: RowExtras<'_>) -> Result<FixMessages> {
         let row = page.as_bytes();
-        let entries = TextEntries::from_bytes(page).unwrap_or_default();
+        let entries = TextEntries::from_bytes_direct(page).unwrap_or_default();
         // A row that carries no payload at all opens past its own end, so the
         // frame reading gets nothing and the document readers below answer.
         let opens = line::payload_at(row).unwrap_or(row.len());
@@ -999,7 +1007,7 @@ impl FixCodec {
     /// Returns the builder's refusal, which a row's content cannot provoke.
     pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
-        let entries = TextEntries::from_bytes(&page).unwrap_or_default();
+        let entries = TextEntries::from_bytes_direct(&page).unwrap_or_default();
         self.frame_with(bounded(&page, &entries), RowExtras::NONE)
     }
 
@@ -1011,7 +1019,7 @@ impl FixCodec {
             .into_iter()
             .zip(&arrived)
             .filter_map(|(judged, held)| {
-                judged.map(|(key, _)| FixPair::own(key, held.value.clone()))
+                judged.map(|(key, _)| FixPair::own(key, held.value.as_ref().clone()))
             })
             .collect();
         self.build(&pairs, &nested, extras)
@@ -1051,7 +1059,7 @@ impl FixCodec {
     /// Returns the builder's refusal, which a row's content cannot provoke.
     pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
-        let entries = TextEntries::from_bytes(&page).unwrap_or_default();
+        let entries = TextEntries::from_bytes_direct(&page).unwrap_or_default();
         self.bridge_with(bounded(&page, &entries), RowExtras::NONE)
     }
 
@@ -1080,14 +1088,14 @@ impl FixCodec {
     /// reading and never an arrival.
     fn bridge_pairs<'registry>(
         &'registry self,
-        arrived: &[Arrived],
+        arrived: &[Arrived<'_>],
         branch: Option<&'registry FixBranch>,
     ) -> BridgeRow<'registry> {
         // Every `#` key is judged before the row's type is read, so a type
         // the bridge marked names the message exactly as a bare one does,
         // and one kept verbatim beside a bare type does not. A row with no
         // `#` at all judges nothing.
-        let kept: Vec<(TextBytes, &Arrived, bool)> = self
+        let kept: Vec<(TextBytes, &Arrived<'_>, bool)> = self
             .judged_keys(arrived)
             .into_iter()
             .zip(arrived)
@@ -1104,13 +1112,15 @@ impl FixCodec {
                 .as_deref()
                 .and_then(|code| self.declared_message(code, branch)),
         };
-        for (key, held, whole) in &kept {
-            if *whole {
+        // The judged key is the one the pair is built under, so it moves
+        // into the pair rather than being counted once more on the way.
+        for (key, held, whole) in kept {
+            if whole {
                 // Verbatim means whole: the twinned `#` key is its own key
                 // and the packed value is its value, so no group rendering
                 // rewrites either - a group name opening with `#` resolves
                 // in no dictionary anyway.
-                resolved.push(FixPair::own(key.clone(), held.value.clone()));
+                resolved.push(FixPair::own(key, held.value.as_ref().clone()));
                 continue;
             }
             match group_index(key.as_bytes()) {
@@ -1136,10 +1146,10 @@ impl FixCodec {
                     // record of the pair the bridge actually wrote; the rest
                     // are that same arrival, read further.
                     if let Some(first) = resolved.get_mut(opened) {
-                        first.reads(key.clone(), held.value.clone());
+                        first.reads(key, held.value.as_ref().clone());
                     }
                 }
-                _ => resolved.push(FixPair::own(key.clone(), held.value.clone())),
+                _ => resolved.push(FixPair::own(key, held.value.as_ref().clone())),
             }
         }
         (tier.message, resolved)
@@ -1157,7 +1167,7 @@ impl FixCodec {
     /// occurrences the bare group never numbered would leave those
     /// occurrences without their count - so where any marked key of a group
     /// stays verbatim, every marked key of that group does.
-    fn judged_keys(&self, arrived: &[Arrived]) -> Vec<Option<(TextBytes, bool)>> {
+    fn judged_keys(&self, arrived: &[Arrived<'_>]) -> Vec<Option<(TextBytes, bool)>> {
         // A row that marked nothing judges nothing. The twin probe is one pass
         // over the row's bare spellings per marked key, so a wide frame that
         // marked none would otherwise pay a quadratic walk to learn that.
@@ -1172,7 +1182,7 @@ impl FixCodec {
             .iter()
             .map(|held| self.hashed_key(held, arrived, &bare))
             .collect();
-        fn marked(held: &Arrived) -> Option<&[u8]> {
+        fn marked<'held>(held: &'held Arrived<'_>) -> Option<&'held [u8]> {
             held.marked.then(|| line::trim_ascii(held.key()))
         }
         // The stems of the marked groups kept verbatim: a stem some marked
@@ -1214,7 +1224,7 @@ impl FixCodec {
 
     /// The row's bare spellings: every pair the line did not mark whose value
     /// is not a stated absence.
-    fn bare_spellings<'row>(&self, arrived: &'row [Arrived]) -> Vec<(&'row [u8], &'row [u8])> {
+    fn bare_spellings<'row>(&self, arrived: &'row [Arrived<'_>]) -> Vec<(&'row [u8], &'row [u8])> {
         arrived
             .iter()
             .filter(|held| !held.marked && !self.is_absent(held.value()))
@@ -1230,8 +1240,8 @@ impl FixCodec {
     /// under the keys the line wrote rather than the ones it was stripped to.
     fn hashed_key(
         &self,
-        held: &Arrived,
-        arrived: &[Arrived],
+        held: &Arrived<'_>,
+        arrived: &[Arrived<'_>],
         bare: &[(&[u8], &[u8])],
     ) -> Option<(TextBytes, bool)> {
         if !held.marked {
@@ -1242,7 +1252,7 @@ impl FixCodec {
             let written: Vec<(TextBytes, TextBytes)> = arrived
                 .iter()
                 .filter(|held| !self.is_absent(held.value()))
-                .map(|held| (held.written(), held.value.clone()))
+                .map(|held| (held.written(), held.value.as_ref().clone()))
                 .collect();
             let row: Vec<(&[u8], &[u8])> = written
                 .iter()
@@ -1623,7 +1633,7 @@ impl FixCodec {
         // The value's own entries, read in their own scope: what a bridge
         // wrote inside a data field is judged against that row's spellings
         // and not against the frame's.
-        let entries = TextEntries::from_bytes(row).unwrap_or_default();
+        let entries = TextEntries::from_bytes_direct(row).unwrap_or_default();
         let arrived = arrivals(entries.as_slice());
         let (declared, held) = self.bridge_pairs(&arrived, tier);
         self.nest(builder, declared, &held, tier, pinned);
@@ -1874,16 +1884,16 @@ fn tag_keyed(entry: &TextEntry) -> bool {
 }
 
 /// One entry as the pair it arrived as.
-fn arrival(entry: &TextEntry) -> Arrived {
+fn arrival(entry: &TextEntry) -> Arrived<'_> {
     Arrived {
-        key: entry.key().clone(),
-        value: entry.value().clone(),
+        key: entry.key(),
+        value: Cow::Borrowed(entry.value()),
         marked: entry.marked(),
     }
 }
 
 /// Every entry as the pair it arrived as.
-fn arrivals(entries: &[TextEntry]) -> Vec<Arrived> {
+fn arrivals(entries: &[TextEntry]) -> Vec<Arrived<'_>> {
     entries.iter().map(arrival).collect()
 }
 
@@ -1894,8 +1904,8 @@ fn arrivals(entries: &[TextEntry]) -> Vec<Arrived> {
 /// the scanner cut the value at the frame's separator because that is all a
 /// frame states, and a data field says how long its value is instead. What the
 /// widened span swallowed was never a field of the frame, so it goes.
-fn frame_arrivals(entries: &[TextEntry]) -> (Vec<Arrived>, Vec<TextBytes>) {
-    let mut arrived: Vec<Arrived> = Vec::with_capacity(entries.len());
+fn frame_arrivals(entries: &[TextEntry]) -> (Vec<Arrived<'_>>, Vec<TextBytes>) {
+    let mut arrived: Vec<Arrived<'_>> = Vec::with_capacity(entries.len());
     // The data values that are bridge rows, read after the frame's own pairs
     // so the frame's statements come first.
     let mut nested: Vec<TextBytes> = Vec::new();
@@ -1909,7 +1919,7 @@ fn frame_arrivals(entries: &[TextEntry]) -> (Vec<Arrived>, Vec<TextBytes>) {
                 if let Some(widened) = entry.key().page().and_then(|page| {
                     TextBytes::from_page(page, entry.key().end() as usize + 1, end).ok()
                 }) {
-                    held.value = widened;
+                    held.value = Cow::Owned(widened);
                     while entries
                         .get(at)
                         .is_some_and(|swallowed| (swallowed.key().start() as usize) < end)
@@ -1925,7 +1935,7 @@ fn frame_arrivals(entries: &[TextEntry]) -> (Vec<Arrived>, Vec<TextBytes>) {
             // either answers by tag and by name like any other. Anything else
             // in it is a value and stays one.
             if xml && (bridge_row(held.value()) || document(held.value())) {
-                nested.push(held.value.clone());
+                nested.push(held.value.as_ref().clone());
             }
         }
         // A key the bridge marked is the bridge's own, whatever it spells: a
@@ -2020,55 +2030,55 @@ fn group_index(key: &[u8]) -> Option<(&[u8], usize)> {
 /// occurrence on; a segment that is neither a pair nor empty is residue and
 /// stays out.
 fn members(value: &TextBytes, declared: &[Field]) -> Vec<Segment> {
-    split_members(value, declared)
+    split_members(value.as_bytes(), declared)
         .into_iter()
         .filter_map(|part| {
             if part.is_empty() {
                 return Some(Segment::Close);
             }
-            member_pair(&part).map(|(key, value)| Segment::Pair(key, value))
+            member_pair(value, part).map(|(key, value)| Segment::Pair(key, value))
         })
         .collect()
 }
 
-/// One packed member split at its **first** `=`, both halves trimmed.
+/// One packed member - the `part` of `value` - split at its **first** `=`,
+/// both halves trimmed.
 ///
 /// A member's own reading, never a line's: what separates two members is the
 /// bridge's vocabulary and nothing a line ever named, so the pair scanner has
 /// no answer here and this is the one place FIX cuts a value of its own.
 /// `Text=a;b` is one value with a semicolon, not two fields.
-fn member_pair(segment: &TextBytes) -> Option<(TextBytes, TextBytes)> {
-    let held = segment.as_bytes();
-    let at = memchr::memchr(b'=', held)?;
-    let key = trimmed(segment, 0, at);
+fn member_pair(value: &TextBytes, part: Range<usize>) -> Option<(TextBytes, TextBytes)> {
+    let at = part.start + memchr::memchr(b'=', &value.as_bytes()[part.clone()])?;
+    let key = trimmed(value, part.start, at);
     if key.is_empty() {
         return None;
     }
-    Some((key, trimmed(segment, at + 1, held.len())))
+    Some((key, trimmed(value, at + 1, part.end)))
 }
 
-/// One occurrence's value split on the bridge's member separator, empty
-/// segments included.
+/// Where one occurrence's value splits on the bridge's member separator,
+/// empty segments included.
 ///
 /// The first explicit spelling the run actually carries wins, and only that
 /// one splits it. With neither present, declared member names are boundaries;
-/// an unresolved run remains one segment. Every part is a range of the value,
-/// so a wide occurrence costs the list and no byte.
-fn split_members(value: &TextBytes, declared: &[Field]) -> Vec<TextBytes> {
-    let held = value.as_bytes();
+/// an unresolved run remains one segment. Every part is a range of the value
+/// and nothing more, so a wide occurrence costs the list, no byte, and no
+/// count of the page until a part is read as a pair.
+fn split_members(held: &[u8], declared: &[Field]) -> Vec<Range<usize>> {
     let Some(separator) = MEMBER_SEPARATORS
         .into_iter()
         .find(|marker| memchr::memmem::find(held, marker).is_some())
     else {
-        return split_on_declared_members(value, declared);
+        return split_on_declared_members(held, declared);
     };
     let mut parts = Vec::new();
     let mut start = 0;
     while let Some(at) = memchr::memmem::find(&held[start..], separator) {
-        parts.push(value.slice(start, start + at).unwrap_or_default());
+        parts.push(start..start + at);
         start += at + separator.len();
     }
-    parts.push(value.slice(start, held.len()).unwrap_or_default());
+    parts.push(start..held.len());
     parts
 }
 
@@ -2078,12 +2088,12 @@ fn split_members(value: &TextBytes, declared: &[Field]) -> Vec<TextBytes> {
 /// spelling followed by `=` starts the next pair. Matching uses the FIX name
 /// fold, and the longest declared match at one byte wins. Bytes that match no
 /// declared member remain verbatim in the surrounding pair.
-fn split_on_declared_members(value: &TextBytes, declared: &[Field]) -> Vec<TextBytes> {
-    let held = value.as_bytes();
-    let Some(first_equals) = memchr::memchr(b'=', held) else {
-        return vec![value.clone()];
-    };
+fn split_on_declared_members(held: &[u8], declared: &[Field]) -> Vec<Range<usize>> {
     let mut parts = Vec::new();
+    let Some(first_equals) = memchr::memchr(b'=', held) else {
+        parts.push(0..held.len());
+        return parts;
+    };
     let mut start = 0;
     let mut at = first_equals + 1;
     while at < held.len() {
@@ -2091,11 +2101,11 @@ fn split_on_declared_members(value: &TextBytes, declared: &[Field]) -> Vec<TextB
             at += 1;
             continue;
         };
-        parts.push(value.slice(start, at).unwrap_or_default());
+        parts.push(start..at);
         start = at;
         at += prefix_len;
     }
-    parts.push(value.slice(start, held.len()).unwrap_or_default());
+    parts.push(start..held.len());
     parts
 }
 

@@ -191,7 +191,34 @@ impl TextEntries {
     /// ```
     #[must_use]
     pub fn from_bytes(body: &TextBytes) -> Option<Self> {
-        read_entries_at(body, 0)
+        read_entries_at(body, MAX_ENTRY_DEPTH)
+    }
+
+    /// Every pair one run of bytes declares directly, none of them descended
+    /// into.
+    ///
+    /// The same walk as [`from_bytes`](Self::from_bytes) stopped at one
+    /// level: each entry is a range of the page and none carries a tree. For
+    /// a reader that reads a nested value by its own rules - FIX reads a
+    /// data field to the length it stated and scans what that holds in its
+    /// own scope - the descent would be a second reading of the same bytes,
+    /// paid on every value that happens to hold an `=`, and thrown away.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// use yggdryl::media::text::{TextBytes, TextEntries};
+    ///
+    /// let body = TextBytes::from_bytes("8=FIX.4.4|213=a=1 b=2|10=0|")?;
+    /// let direct = TextEntries::from_bytes_direct(&body).expect("pairs");
+    /// assert!(direct.as_slice()[1].entries().is_none());
+    /// let tree = TextEntries::from_bytes(&body).expect("pairs");
+    /// assert_eq!(tree.as_slice()[1].entries().map(TextEntries::len), Some(2));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn from_bytes_direct(body: &TextBytes) -> Option<Self> {
+        read_entries_at(body, 1)
     }
 
     /// Borrow the entries in the order the line declared them.
@@ -370,9 +397,10 @@ impl TextEntries {
     }
 }
 
-/// One level of the walk [`TextEntries::from_bytes`] opens.
-fn read_entries_at(body: &TextBytes, depth: usize) -> Option<TextEntries> {
-    if depth >= MAX_ENTRY_DEPTH {
+/// One level of the walk [`TextEntries::from_bytes`] opens, with `levels`
+/// left to read: this one, and `levels - 1` beneath it.
+fn read_entries_at(body: &TextBytes, levels: usize) -> Option<TextEntries> {
+    if levels == 0 {
         return None;
     }
     let bytes = body.as_bytes();
@@ -385,8 +413,10 @@ fn read_entries_at(body: &TextBytes, depth: usize) -> Option<TextEntries> {
             continue;
         };
         let mut entry = TextEntry::new(key, value).with_marked(span.marked);
-        if span.nested {
-            if let Some(nested) = read_entries_at(entry.value(), depth + 1) {
+        // Whether the value nests is asked only where a level is left to
+        // read it at: the question scans the value for an `=`.
+        if levels > 1 && span.nested(bytes) {
+            if let Some(nested) = read_entries_at(entry.value(), levels - 1) {
                 entry.set_entries(Some(nested));
             }
         }

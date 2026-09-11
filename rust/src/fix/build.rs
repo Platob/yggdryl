@@ -1411,16 +1411,17 @@ impl<'registry> Builder<'registry> {
     /// first, which recorded the pair the bridge actually wrote. A key that
     /// named an occurrence rather than a field carries no tag, exactly as an
     /// unresolved key does.
-    fn arrived(&self, tag: i32) -> Option<(i32, FixEntry)> {
+    ///
+    /// Taken rather than cloned: a pair is recorded once, where its key
+    /// finished resolving, and the two ranges move into the entry rather than
+    /// being counted a second time on their way there.
+    fn arrived(&mut self, tag: i32) -> Option<(i32, FixEntry)> {
         if self.outer.is_some() {
             return None;
         }
-        let arrived = self.arrival.as_ref()?;
+        let arrived = self.arrival.take()?;
         let tag = if arrived.named { tag } else { 0 };
-        Some((
-            tag,
-            FixEntry::new(tag, arrived.key.clone(), arrived.value.clone()),
-        ))
+        Some((tag, FixEntry::new(tag, arrived.key, arrived.value)))
     }
 
     /// Closes the build into a root field, its value, and the entries.

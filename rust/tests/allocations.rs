@@ -1760,8 +1760,10 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// more per member, measured, on the very path decision 5 names the cost of.
 ///
 /// Four members and sixteen, because the number that matters is the slope,
-/// and the rest of it is the row a wider group builds.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 61), (16, 95)];
+/// and the rest of it is the row a wider group builds. The codec reads a
+/// row's pairs directly and descends into none of them, so the tree the
+/// packed value would have been scanned into is not among these.
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 60), (16, 94)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {

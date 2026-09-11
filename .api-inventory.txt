@@ -1761,6 +1761,7 @@ pub struct TextEntries
   pub const fn new() -> Self
   pub fn with_capacity(capacity: usize) -> Self
   pub fn from_bytes(body: &TextBytes) -> Option<Self>
+  pub fn from_bytes_direct(body: &TextBytes) -> Option<Self>
   pub fn as_slice(&self) -> &[TextEntry]
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool

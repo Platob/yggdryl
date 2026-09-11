@@ -247,6 +247,28 @@ fn frame(line: &[u8], (start, numeric): (usize, bool)) -> LineFrame {
 pub(crate) const SOH_MARKERS: [&[u8]; 4] = [b"^A", b"\\x01", b"<SOH>", b"{SOH}"];
 
 impl LineSeparator {
+    /// Every separator a line can name, in the order the walk keeps them.
+    ///
+    /// No two open on the same byte, so no two ever stand at one position and
+    /// the order never breaks a tie; it is the index [`rank`](Self::rank)
+    /// answers and nothing more.
+    const CANDIDATES: [Self; 4] = [
+        Self::Byte(0x01),
+        Self::Byte(b'|'),
+        Self::Marker,
+        Self::Whitespace,
+    ];
+
+    /// This separator's index in [`CANDIDATES`](Self::CANDIDATES).
+    const fn rank(self) -> usize {
+        match self {
+            Self::Byte(0x01) => 0,
+            Self::Byte(_) => 1,
+            Self::Marker => 2,
+            Self::Whitespace => 3,
+        }
+    }
+
     /// What separates two fields of the frame opening at `start`.
     ///
     /// The earliest candidate wins, because a frame separates on what it
@@ -256,22 +278,84 @@ impl LineSeparator {
     /// ranks with the other candidates for that reason, and is also what is
     /// left when the line named nothing - which is the difference
     /// [`stated`](Self::stated) exists to draw.
+    ///
+    /// A candidate ranks where it first stands, and only if it separated a
+    /// field somewhere - which [`separates_at`](Self::separates_at) decides
+    /// one occurrence at a time. One walk over the tail asks both questions
+    /// in position order: a candidate is first met where it first stands,
+    /// each occurrence of one still undecided is asked whether it separated
+    /// there, and once one has, every candidate met behind it is out, since
+    /// it cannot rank above one that stood earlier. The winner so far only
+    /// ever moves earlier - a candidate that stood later was never asked -
+    /// which is what makes that pruning safe. The walk goes on only while a
+    /// candidate that stood earlier than the winner so far is still
+    /// undecided, and stops at the tail's end otherwise. So a frame that
+    /// names its separator in its first field costs the bytes up to its
+    /// second, and the four full scans a ranking of every candidate would
+    /// cost are never paid.
     fn for_line(line: &[u8], start: usize) -> Self {
         let tail = &line[start..];
-        [
-            Self::Byte(0x01),
-            Self::Byte(b'|'),
-            Self::Marker,
-            Self::Whitespace,
-        ]
-        .into_iter()
-        .filter_map(|separator| Some((separator.separates(tail)?, separator)))
-        .min_by_key(|(position, _)| *position)
-        .map_or(Self::Whitespace, |(_, separator)| separator)
+        // Where each candidate first stands, once the walk has reached it.
+        let mut first = [None; Self::CANDIDATES.len()];
+        // Whether the walk is done with a candidate: it separated a field, or
+        // it stands behind one that did.
+        let mut settled = [false; Self::CANDIDATES.len()];
+        // The candidate that separated a field and stands earliest: where it
+        // stands, and its rank.
+        let mut best: Option<(usize, usize)> = None;
+        let mut at = 0;
+        while at < tail.len() {
+            let Some((separator, width)) = Self::candidate_at(tail, at) else {
+                at += 1;
+                continue;
+            };
+            let rank = separator.rank();
+            let next = separator.past(tail, at + width);
+            if !settled[rank] {
+                let stands = *first[rank].get_or_insert(at);
+                if best.is_some_and(|(leads, _)| leads < stands) {
+                    settled[rank] = true;
+                } else if separator.separates_at(tail, next) {
+                    settled[rank] = true;
+                    best = Some((stands, rank));
+                }
+                // Only a candidate met before the winner can still outrank
+                // it; one not met yet stands behind this occurrence.
+                if let Some((leads, _)) = best {
+                    let undecided = first.iter().zip(&settled).any(|(stands, settled)| {
+                        !settled && stands.is_some_and(|stands| stands < leads)
+                    });
+                    if !undecided {
+                        break;
+                    }
+                }
+            }
+            at = next;
+        }
+        best.map_or(Self::Whitespace, |(_, rank)| Self::CANDIDATES[rank])
     }
 
-    /// Where this separator first stands, when the line used it to separate
-    /// two fields rather than merely holding it inside one.
+    /// The candidate standing at `at`, and how wide it is there.
+    ///
+    /// A byte that opens a marker is a marker only where the rest of the
+    /// spelling follows: `<` in front of `x|35=D` stands for nothing, and a
+    /// walk that took it for a separator would rank a marker the line never
+    /// wrote. Whitespace answers one byte wide here; the run it heads is
+    /// [`past`](Self::past)'s to step over.
+    fn candidate_at(line: &[u8], at: usize) -> Option<(Self, usize)> {
+        match line[at] {
+            0x01 => Some((Self::Byte(0x01), 1)),
+            b'|' => Some((Self::Byte(b'|'), 1)),
+            b'^' | b'\\' | b'<' | b'{' => {
+                marker_width(&line[at..]).map(|width| (Self::Marker, width))
+            }
+            byte if byte.is_ascii_whitespace() => Some((Self::Whitespace, 1)),
+            _ => None,
+        }
+    }
+
+    /// Whether this separator separated a field where its next segment opens
+    /// at `next`, rather than merely standing inside one.
     ///
     /// A byte a line holds is not a byte a line separated with, and position
     /// alone cannot tell the two apart: `MSGTYPE=P Report Ack|SYMBOL=AAPL`
@@ -282,32 +366,20 @@ impl LineSeparator {
     /// and keeps `P Report Ack` whole, which is the value the earlier space
     /// would have cut.
     ///
-    /// This decides only whether a candidate separated anything;
-    /// [`Self::for_line`] still ranks the ones that did by position, and
+    /// This decides only whether one occurrence separated anything;
+    /// [`Self::for_line`] still ranks a candidate where it first stands, and
     /// whitespace never names a frame however early it stands. So a line
     /// running its fields together with spaces named nothing, and falls to
     /// the loose rule whatever else it holds.
-    fn separates(self, line: &[u8]) -> Option<usize> {
-        let mut at = 0;
-        let mut first = None;
-        loop {
-            let (end, next) = self.segment(line, at);
-            if end >= line.len() {
-                return None;
-            }
-            first.get_or_insert(end);
-            if next >= line.len() {
-                // A wire message ends with its separator, so the line closing
-                // on one is that line naming it as plainly as a field after
-                // one would.
-                return first;
-            }
-            let (stop, _) = self.segment(line, next);
-            if segment_span(line, next, stop).is_some() {
-                return first;
-            }
-            at = next;
+    fn separates_at(self, line: &[u8], next: usize) -> bool {
+        if next >= line.len() {
+            // A wire message ends with its separator, so the line closing
+            // on one is that line naming it as plainly as a field after
+            // one would.
+            return true;
         }
+        let (stop, _) = self.segment(line, next);
+        segment_span(line, next, stop).is_some()
     }
 
     /// Whether the line named this separator, rather than being read under
@@ -374,13 +446,7 @@ impl LineSeparator {
     fn find(self, line: &[u8], start: usize) -> Option<(usize, usize)> {
         match self {
             Self::Byte(byte) => memchr::memchr(byte, &line[start..]).map(|at| (start + at, 1)),
-            Self::Marker => SOH_MARKERS
-                .iter()
-                .filter_map(|marker| {
-                    memchr::memmem::find(&line[start..], marker)
-                        .map(|at| (start + at, marker.len()))
-                })
-                .min_by_key(|(at, _)| *at),
+            Self::Marker => find_marker(line, start),
             Self::Whitespace => line[start..]
                 .iter()
                 .position(u8::is_ascii_whitespace)
@@ -415,16 +481,64 @@ impl LineSeparator {
         let Some((end, width)) = self.find(line, start) else {
             return (line.len(), line.len());
         };
-        let mut next = end + width;
-        // A run of whitespace separates two fields once, so the next segment
-        // opens past all of it rather than at the second space.
+        (end, self.past(line, end + width))
+    }
+
+    /// Where the next segment opens, given where this separator ended.
+    ///
+    /// A run of whitespace separates two fields once, so the next segment
+    /// opens past all of it rather than at the second space; every other
+    /// separator is as wide as it is.
+    fn past(self, line: &[u8], mut next: usize) -> usize {
         if matches!(self, Self::Whitespace) {
             while next < line.len() && line[next].is_ascii_whitespace() {
                 next += 1;
             }
         }
-        (end, next)
+        next
     }
+}
+
+/// Where an escaped `SOH` next stands at or after `start`, in whichever
+/// spelling comes first, and how wide it is there.
+///
+/// Every spelling opens on one of four bytes, so the openers are visited in
+/// position order and the first that the rest of a spelling follows is the
+/// answer - the same answer as the earliest of four searches, one per
+/// spelling, at the cost of one scan to the next opener rather than four to
+/// the end of the line when a spelling is absent. A frame spelled `^A`
+/// throughout would otherwise pay three full scans per field to learn that it
+/// never spelled the other three.
+fn find_marker(line: &[u8], start: usize) -> Option<(usize, usize)> {
+    let mut at = start;
+    while let Some(offset) = next_marker_opener(&line[at..]) {
+        let opens = at + offset;
+        if let Some(width) = marker_width(&line[opens..]) {
+            return Some((opens, width));
+        }
+        at = opens + 1;
+    }
+    None
+}
+
+/// Where a byte that opens one of [`SOH_MARKERS`] first stands.
+///
+/// Three of the four in one scan, and the fourth only over the bytes in
+/// front of where those three first stood, so whichever opener is earliest
+/// is the answer and no byte is read twice past it.
+fn next_marker_opener(bytes: &[u8]) -> Option<usize> {
+    let three = memchr::memchr3(b'^', b'\\', b'<', bytes);
+    let bound = three.unwrap_or(bytes.len());
+    memchr::memchr(b'{', &bytes[..bound]).or(three)
+}
+
+/// How wide the escaped `SOH` opening at the head of `bytes` is, when one
+/// does.
+fn marker_width(bytes: &[u8]) -> Option<usize> {
+    SOH_MARKERS
+        .iter()
+        .find(|marker| bytes.starts_with(marker))
+        .map(|marker| marker.len())
 }
 
 /// The next field of the frame, for the walk that decides what a line is.
@@ -674,13 +788,6 @@ pub(crate) fn document_behind_prefix(line: &[u8]) -> Option<(MimeType, usize)> {
 pub(crate) struct PairSpan {
     pub(crate) key: std::ops::Range<usize>,
     pub(crate) value: std::ops::Range<usize>,
-    /// Whether the value is itself a run of pairs, so descending into it
-    /// answers something. This is the mixed form the classifier recognizes -
-    /// a numeric envelope whose payload states its own fields - and it is
-    /// also how a Text field that quotes pairs is read: where the field ends
-    /// is the frame's to say, and what the field's own text says is read
-    /// beneath it rather than beside the frame's fields.
-    pub(crate) nested: bool,
     /// Whether the line wrote a `#` in front of the key.
     ///
     /// The key range excludes the marker, because a reader lifting a bridge
@@ -693,19 +800,30 @@ pub(crate) struct PairSpan {
     pub(crate) marked: bool,
 }
 
-/// One pair, with `nested` read off the value it names.
-fn span(
-    line: &[u8],
+impl PairSpan {
+    /// Whether the value is itself a run of pairs, so descending into it
+    /// answers something. This is the mixed form the classifier recognizes -
+    /// a numeric envelope whose payload states its own fields - and it is
+    /// also how a Text field that quotes pairs is read: where the field ends
+    /// is the frame's to say, and what the field's own text says is read
+    /// beneath it rather than beside the frame's fields.
+    ///
+    /// Asked rather than carried, because only the walk that records what a
+    /// line wrote descends: the walk that decides what a line is reads the
+    /// same segments and never asks, and a scan of every value for an `=` it
+    /// would not act on is a scan of most of the line.
+    pub(crate) fn nested(&self, line: &[u8]) -> bool {
+        memchr::memchr(b'=', &line[self.value.clone()]).is_some()
+    }
+}
+
+/// One pair, as ranges of the line.
+const fn span(
     key: std::ops::Range<usize>,
     value: std::ops::Range<usize>,
     marked: bool,
 ) -> PairSpan {
-    PairSpan {
-        nested: memchr::memchr(b'=', &line[value.clone()]).is_some(),
-        key,
-        value,
-        marked,
-    }
+    PairSpan { key, value, marked }
 }
 
 /// One pair where nothing has said which byte separates two fields.
@@ -719,7 +837,6 @@ fn loose_span(line: &[u8], start: usize, equals: usize) -> PairSpan {
         value_end += 1;
     }
     span(
-        line,
         start + usize::from(marked)..equals,
         equals + 1..value_end,
         marked,
@@ -764,7 +881,7 @@ fn segment_span(line: &[u8], start: usize, end: usize) -> Option<PairSpan> {
     {
         value_end -= 1;
     }
-    Some(span(line, name_at..equals, equals + 1..value_end, marked))
+    Some(span(name_at..equals, equals + 1..value_end, marked))
 }
 
 /// Whether what a segment put in front of its `=` is a key.
@@ -1505,5 +1622,53 @@ mod tests {
     fn a_line_with_no_pair_states_none() {
         assert!(read(b"no pairs here at all").is_empty());
         assert!(read(b"x = 5").is_empty(), "an `=` alone is punctuation");
+    }
+
+    #[test]
+    fn a_byte_that_opens_a_marker_is_a_marker_only_where_the_spelling_follows() {
+        // The lines three reviewers could not trace by hand when the walk
+        // that picks a separator was rewritten, pinned to what it answered
+        // before and after: an opener with no spelling behind it is a byte
+        // of the value, a spelling is a separator wherever it stands, and a
+        // candidate ranks where it first stood, not where it first separated.
+        assert_eq!(
+            read(b"8=FIX.4.4<x|35=D|58=a^A10=123"),
+            ["8=FIX.4.4<x", "35=D", "58=a^A10=123"]
+        );
+        assert_eq!(
+            read(br"8=FIX.4.4^A\x0135=D<SOH>{SOH}10=1^A"),
+            ["8=FIX.4.4", "35=D", "10=1"]
+        );
+        assert_eq!(
+            read(br"8=FIX.4.4\x0\x0135=D\x01"),
+            [r"8=FIX.4.4\x0", "35=D"]
+        );
+        assert_eq!(
+            read(br"58=a\x01 8=FIX.4.4\x0135=D\x0110=1\x01"),
+            ["58=a", "8=FIX.4.4", "35=D", "10=1"]
+        );
+        assert_eq!(read(b"8=FIX.4.4{^A35=D^A"), ["8=FIX.4.4{", "35=D"]);
+        assert_eq!(read(b"8=FIX.4.4^{SOH}35=D{SOH}"), ["8=FIX.4.4^", "35=D"]);
+        assert_eq!(read(b"8=FIX.4.4{SOH}35=D^A"), ["8=FIX.4.4", "35=D"]);
+        assert_eq!(
+            read(br"8=FIX.4.4\\x0135=D"),
+            [r"8=FIX.4.4\", "35=D"],
+            "an escaped backslash in front of the spelling is a byte of the value"
+        );
+        // A space in front of the first pipe: whitespace stood first and
+        // never separated, so the pipe names the frame - and the reverse.
+        assert_eq!(read(b"8=FIX.4.4 x|35=D|"), ["8=FIX.4.4 x", "35=D"]);
+        assert_eq!(
+            read(b"8=FIX.4.4 x|35=D y=1"),
+            ["8=FIX.4.4", "35=D", "y=1"],
+            "here the pipe never separated a field, and whitespace did"
+        );
+        assert_eq!(classify(b"8=FIX.4.4 x|35=D y=1"), (MimeType::FIXUL, None));
+        // A raw SOH between two pipes: the pipe stood first and closes the
+        // line, so it names the frame, and the SOH is a byte of a segment
+        // that states no field under the pipe - read loosely instead.
+        assert_eq!(read(b"8=FIX.4.4|\x0135=D\x01|"), ["8=FIX.4.4", "35=D"]);
+        assert_eq!(classify(b"8=FIX.4.4|\x0135=D\x01|"), (MimeType::FIX, None));
+        assert_eq!(read(b"35=U \t\n"), ["35=U"]);
     }
 }

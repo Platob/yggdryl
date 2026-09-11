@@ -258,7 +258,11 @@ bytes already point into. It is how a reader holding one field's value - a FIX
 data field carrying a whole row - reads that value's own pairs through the same
 walk the line was read by, rather than writing a second one. `None` where the
 bytes state no pair at all, which is the absence `TextLine::entries` carries for
-a line nothing asked a tree of.
+a line nothing asked a tree of. `TextEntries::from_bytes_direct` is the same
+walk stopped at one level - every pair the bytes state, none descended into -
+for a reader that reads a nested value by rules of its own, as the FIX codec
+reads a data field to the length it stated; the tree would be a second reading
+of the same bytes, paid on every value holding an `=` and then thrown away.
 
 An entry is addressed by [`FieldPath`](../types/paths.md), the crate's one path
 grammar: `.name` for a child, `[0]` and `[-1]` for a position, `['key']` for a
