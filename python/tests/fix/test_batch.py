@@ -188,7 +188,6 @@ def test_parse_text_lines_pulls_one_line_at_a_time(seed: FixRegistry) -> None:
 
 def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
     bare = FixCodec(seed)
-    assert bare.branch is None
     assert bare.version is None
     assert bare.separator is None
     assert bare.payload_column == "body"
@@ -199,7 +198,6 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
 
     pinned = FixCodec(
         seed,
-        branch="ulbridge",
         version="FIX.4.2",
         separator=124,
         payload_column="line",
@@ -207,7 +205,6 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
         direction="RECV",
         batch_byte_size=4096,
     )
-    assert pinned.branch == "ulbridge"
     assert pinned.version == "4.2"
     assert pinned.separator == 124
     assert pinned.payload_column == "line"

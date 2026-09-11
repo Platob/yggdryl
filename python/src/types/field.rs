@@ -20,7 +20,7 @@ use yggdryl::{
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
 };
-use crate::fix::{FixTag, branch_from_py, id_parts_from_py};
+use crate::fix::FixTag;
 use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow};
 use crate::types::datatype::{
     PyAsciiEnum, PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
@@ -2617,74 +2617,81 @@ impl PyProtocolField {
             .map(str::to_owned))
     }
 
-    /// The dictionary this field belongs to, on the `fix` view.
+    /// The dictionaries that contributed this field, on the `fix` view.
     ///
-    /// A branch crosses as text: an empty string is the FIX specification's
-    /// own dictionary and what an absent `fix:branch` means, and assigning it
-    /// removes the key rather than storing it. A spelling that is not a branch
-    /// is a `ValueError` carrying the native parse failure, and a refusal -
-    /// a tag the specification assigns cannot move to another dictionary -
-    /// leaves the field unchanged.
+    /// `fix:branches` read as a list: folded to ASCII lowercase, sorted, and
+    /// empty when the specification alone defines the field. Membership is
+    /// provenance a caller filters on; no lookup consults it. Assigning a
+    /// sequence of names stores them deduplicated under the fold, and an
+    /// empty one removes the property; a name that is empty or carries a
+    /// comma is a `ValueError` that leaves the field unchanged.
     #[getter]
-    fn branch(&self, py: Python<'_>) -> PyResult<String> {
-        self.require_fix("branch")?;
+    fn branches(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("branches")?;
         let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().branches().map(str::to_owned).collect())
+    }
+
+    #[setter]
+    fn set_branches(&self, dialects: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("branches")?;
+        let mut parsed = Vec::new();
+        for value in dialects.try_iter()? {
+            parsed.push(value?.extract::<String>()?);
+        }
+        let mut field = self.borrow_field_mut(dialects.py())?;
         field
+            .inner
+            .as_fix_mut()
+            .set_branches(parsed)
+            .map_err(value_error)
+    }
+
+    /// Add one dictionary to those that contributed this field.
+    ///
+    /// Idempotent under the fold: a name already listed is listed once.
+    fn add_branch(&self, py: Python<'_>, dialect: &str) -> PyResult<()> {
+        self.require_fix("branches")?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_fix_mut()
+            .add_branch(dialect)
+            .map_err(value_error)
+    }
+
+    /// Whether `dialect` is one of the dictionaries that contributed this
+    /// field, ASCII case folded.
+    fn has_branch(&self, py: Python<'_>, dialect: &str) -> PyResult<bool> {
+        self.require_fix("branches")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().has_branch(dialect))
+    }
+
+    /// This field's identity, on the `fix` view.
+    ///
+    /// The `int` the core derives from the canonical tag and the field's own
+    /// name under the one fold - so `MsgType`, `msg_type` and `MSGTYPE`
+    /// under tag 35 are one id - on every read and never stored, so it is
+    /// `None` exactly when `fix:tag` is absent and a rename is never stale.
+    /// It is what `FixRegistry.get_field_by_id` and `FixMsg.get_by_id` take.
+    #[getter]
+    fn id(&self, py: Python<'_>) -> PyResult<Option<i32>> {
+        self.require_fix("id")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
             .inner
             .as_fix()
-            .branch()
-            .map(|branch| branch.name().to_owned())
-            .map_err(value_error)
-    }
-
-    #[setter]
-    fn set_branch(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_fix("branch")?;
-        let branch = branch_from_py(&value.extract::<String>()?)?;
-        let mut field = self.borrow_field_mut(value.py())?;
-        field
-            .inner
-            .as_fix_mut()
-            .set_branch(&branch)
-            .map_err(value_error)
-    }
-
-    /// This field's identity, `tag:branch`, on the `fix` view.
-    ///
-    /// Derived from the branch and the canonical tag on every read and never
-    /// stored, so it is `None` exactly when `fix:tag` is absent. Assigning one
-    /// moves both halves at once, which is the only ordering-safe way to move
-    /// a field between dictionaries.
-    #[getter]
-    fn id(&self, py: Python<'_>) -> PyResult<Option<String>> {
-        self.require_fix("id")?;
-        let field = self.borrow_field(py)?;
-        let view = field.inner.as_fix();
-        let Some(tag) = view.tag().map_err(value_error)? else {
-            return Ok(None);
-        };
-        let branch = view.branch().map_err(value_error)?;
-        Ok(Some(format!("{tag}:{branch}")))
-    }
-
-    #[setter]
-    fn set_id(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_fix("id")?;
-        let (branch, id) = id_parts_from_py(&value.extract::<String>()?)?;
-        let mut field = self.borrow_field_mut(value.py())?;
-        field
-            .inner
-            .as_fix_mut()
-            .set_id(&branch, id.tag())
-            .map_err(value_error)
+            .id()
+            .map_err(value_error)?
+            .map(yggdryl::FixId::digest))
     }
 
     /// The canonical FIX tag, on the `fix` view.
     ///
     /// Reads and writes `fix:tag` through the core's own typed accessors, so
     /// the property name is never spelled at a call site. `del view["tag"]`
-    /// removes it, the way every other property is removed. A field in another
-    /// branch can claim only `USER_TAG_MIN..USER_TAG_MAX`.
+    /// removes it, the way every other property is removed.
     #[getter]
     fn tag(&self, py: Python<'_>) -> PyResult<Option<i32>> {
         self.require_fix("tag")?;

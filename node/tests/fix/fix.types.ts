@@ -24,10 +24,8 @@ declare const handle: IOBase
 declare const url: Url
 declare const value: Scalar
 
-// The namespace holds native FIX values and iterators.
-const standardBranch: string = fix.STANDARD_BRANCH
-const userTagMin: number = fix.USER_TAG_MIN
-const userTagMax: number = fix.USER_TAG_MAX
+// The namespace holds native FIX values and iterators, and no constant: an
+// identifier is a number derived from a tag and a name.
 const registryClass: typeof FixRegistry = fix.FixRegistry
 const seeded: FixRegistry = new fix.FixRegistry()
 const built: FixRegistry = fix.FixRegistry.fromFields([field, field])
@@ -44,14 +42,14 @@ void fromString
 void fromHandle
 
 const size: number = loaded.size
-const byId: Field | null = loaded.getFieldById('5001:cme')
-const requiredById: Field = loaded.fieldById('5001:cme')
+const byId: Field | null = loaded.getFieldById(-1873404312)
+const requiredById: Field = loaded.fieldById(-1873404312)
 const byTag: Field | null = loaded.getFieldByTag(55)
 const requiredByTag: Field = loaded.fieldByTag(55)
-const byName: Field | null = loaded.getFieldByName('Symbol', standardBranch)
-const requiredByName: Field = loaded.fieldByName('Symbol', '')
-const byPath: Field | null = loaded.getFieldByPath('Parties.PartyID', '')
-const requiredByPath: Field = loaded.fieldByPath('Parties.PartyID', '')
+const byName: Field | null = loaded.getFieldByName('Symbol')
+const requiredByName: Field = loaded.fieldByName('Symbol')
+const byPath: Field | null = loaded.getFieldByPath('Parties.PartyID')
+const requiredByPath: Field = loaded.fieldByPath('Parties.PartyID')
 const bytesProtocol: MimeType = MimeType.inferBytes(Buffer.from('35=D|'))
 const textProtocol: MimeType = MimeType.inferText('35=D|')
 const bytesMsgtype: Buffer | null = fix.FixCodec.inferMsgtypeBytes(Buffer.from('35=D|'))
@@ -65,12 +63,11 @@ const added: boolean = loaded.addField(field)
 const inserted: Field | null = loaded.insert(field)
 loaded.update(field)
 const removed: Field | null = loaded.remove(55)
-const removedById: Field | null = loaded.removeById('5001:cme')
+const removedById: Field | null = loaded.removeById(-1873404312)
 const walk: Generator<Field> = loaded.keys()
 const drained: Field[] = [...loaded]
 const forOf: Field[] = [...loaded.keys()]
-const branchName: string = loaded.branchByDigest(0)
-const branchOrNull: string | null = loaded.getBranchByDigest(0)
+const dialects: string[] = loaded.dialects()
 const same: boolean = loaded.equals(built)
 const registryHash: bigint = loaded.stableHash()
 const copy: FixRegistry = loaded.clone()
@@ -78,8 +75,6 @@ const rendered: string = loaded.toString()
 const document: unknown = loaded.toJSON()
 
 void size
-void userTagMin
-void userTagMax
 void byId
 void requiredById
 void byTag
@@ -103,6 +98,7 @@ void removedById
 void walk
 void drained
 void forOf
+void dialects
 void same
 void registryHash
 void copy
@@ -118,12 +114,16 @@ loaded.get({ tag: 55 })
 loaded.getFieldByTag('55')
 // @ts-expect-error a name is a string, never a number
 loaded.fieldByName('std', 55)
-// @ts-expect-error a name is required even though its branch is optional
+// @ts-expect-error a name is required
 loaded.fieldByName()
-// @ts-expect-error an identifier is a string, never a number
-loaded.fieldById(5001)
-// @ts-expect-error an identifier is a string, never a number
-loaded.removeById(5001)
+// @ts-expect-error an identifier is a number, never a string
+loaded.fieldById('5001:cme')
+// @ts-expect-error an identifier is a number, never a string
+loaded.removeById('55:')
+// @ts-expect-error a name lookup takes no dialect: the registry is one namespace
+loaded.getFieldByName('Symbol', 'cme')
+// @ts-expect-error a path lookup takes no dialect
+loaded.fieldByPath('Parties.PartyID', '')
 
 const input: FixValueInput = { Symbol: 'AAPL' }
 const message: FixMsg = new fix.FixMsg(field, input)
@@ -133,9 +133,8 @@ const linked: FixRegistry = message.registry
 const schema: Field = message.field
 const row: Scalar = message.value
 const valueCount: number = message.size
-const messageBranch: string = message.branch
-const valueById: Scalar | null = message.getById('55:')
-const requiredValueById: Scalar = message.byId('55:')
+const valueById: Scalar | null = message.getById(-1873404312)
+const requiredValueById: Scalar = message.byId(-1873404312)
 const valueByTag: Scalar | null = message.getByTag(55)
 const requiredValueByTag: Scalar = message.byTag(55)
 const valueByName: Scalar | null = message.getByName('Symbol')
@@ -164,7 +163,6 @@ void linked
 void schema
 void row
 void valueCount
-void messageBranch
 void valueById
 void requiredValueById
 void valueByTag
@@ -200,10 +198,11 @@ const global: FixRegistry = fix.globalRegistry()
 fix.installGlobalRegistry(global)
 
 // The typed FIX vocabulary lives on the protocol view a field already answers.
-const branch: string = field.fix.branch
-field.fix.branch = 'cme'
-const identity: string | null = field.fix.id
-field.fix.id = '5001:cme'
+const branches: string[] = field.fix.branches
+field.fix.branches = ['cme', 'ice']
+field.fix.addBranch('bloomberg')
+const member: boolean = field.fix.hasBranch('cme')
+const identity: number | null = field.fix.id
 const tag: number | null = field.fix.tag
 field.fix.tag = 55
 const tags: number[] = field.fix.tags
@@ -213,7 +212,8 @@ field.fix.aliases = ['Ticker']
 const description: string | null = field.fix.description
 field.fix.description = 'Ticker symbol.'
 
-void branch
+void branches
+void member
 void identity
 void tag
 void tags
@@ -222,9 +222,11 @@ void description
 
 // @ts-expect-error a tag crosses as a number, never a bigint
 field.fix.tag = 55n
-// @ts-expect-error a branch crosses as text, never a number
-field.fix.branch = 55
-// @ts-expect-error an identifier crosses as text, never a number
+// @ts-expect-error membership is a list of names, never one name
+field.fix.branches = 'cme'
+// @ts-expect-error membership is a list of names, never numbers
+field.fix.branches = [55]
+// @ts-expect-error the identifier is derived from the tag and the name, never assigned
 field.fix.id = 5001
 // @ts-expect-error aliases are strings
 field.fix.aliases = [55]
@@ -234,7 +236,6 @@ field.fix.aliases = [55]
 const readerClass: typeof FixCodec = fix.FixCodec
 const reader: FixCodec = new fix.FixCodec(loaded)
 const pinned: FixCodec = new fix.FixCodec(loaded, {
-  branch: 'cme',
   version: '4.4',
   separator: 124,
   payloadColumn: 'line',
@@ -245,8 +246,10 @@ const pinned: FixCodec = new fix.FixCodec(loaded, {
 // @ts-expect-error the source and target pins are one `version`
 const stalePin: FixCodec = new fix.FixCodec(loaded, { sourceVersion: '4.2' })
 void stalePin
+// @ts-expect-error no pin names a dialect: the dictionary is one namespace
+const dialectPin: FixCodec = new fix.FixCodec(loaded, { branch: 'cme' })
+void dialectPin
 const readRegistry: FixRegistry = reader.registry
-const pinnedBranch: string | null = pinned.branch
 const pinnedVersion: string | null = pinned.version
 const pinnedSeparator: number | null = pinned.separator
 const pinnedPayloadColumn: string = pinned.payloadColumn
@@ -284,7 +287,6 @@ const readBackStream: FixMessages = reader.messages(filledBatches)
 const rows: BatchReader = reader.arrowReader(field, readBackStream)
 const written: number = reader.writeArrowReader(rows, { write(chunk: Uint8Array) { void chunk } })
 
-void pinnedBranch
 void pinnedVersion
 void pinnedSeparator
 void pinnedPayloadColumn
@@ -329,7 +331,7 @@ const ticker: Scalar | null = fromText.symbolTicker()
 const clock: Scalar | null = fromText.marketTimestamp()
 const partition: Scalar | null = fromText.unixPartition(3600)
 const lifted: Scalar | null = fromText.lifted('bidpx')
-const liftSource: string | null = fromText.liftSource('bidpx')
+const liftSource: number | null = fromText.liftSource('bidpx')
 const lift: Array<[string, Scalar]> = fromText.lift()
 const party: Array<Scalar | null> | null = fromText.party('1')
 const regulatory: Scalar | null = fromText.trdRegTimestamp('1')
@@ -337,8 +339,6 @@ const anomalies: string[] = fromText.anomalies()
 const arrivals: Array<[number, string, string]> = fromText.arrivals()
 const wire: Buffer = fromText.intoBytes(124)
 
-void branchName
-void branchOrNull
 void readerClass
 void pinned
 void readRegistry
@@ -379,19 +379,19 @@ const previous: Field | null = loaded.insertDefinition('components', field)
 loaded.createDefinition('components', field)
 const replaced: Field = loaded.updateDefinition('components', field)
 const deleted: Field | null = loaded.removeDefinition('components', 'party')
-const groupByCounter: Field | null = loaded.getGroupByCounter('453:')
-const requiredGroup: Field = loaded.groupByCounter('453:')
+const groupByCounter: Field | null = loaded.getGroupByCounter(453)
+const requiredGroup: Field = loaded.groupByCounter(453)
 const snapshot: string = loaded.intoJson()
 const restored: FixRegistry = fix.FixRegistry.fromJson(snapshot)
 loaded.withUlbridgeFields()
 
 const order: MsgType = loaded.msgtype('D')
-const optionalOrder: MsgType | null = loaded.getMsgtype('newordersingle', '')
+const optionalOrder: MsgType | null = loaded.getMsgtype('newordersingle')
 const messageTypes: IterableIterator<MsgType> = loaded.msgtypes()
 const registered: MsgType = loaded.registerMsgtype('ConfigurationPlugin', 'configurationplugin')
 const wireCode: string = order.asStr()
 const messageDefinition: Field = order.asField()
-const scoped: Field | null = order.getGroupByCounter('453:')
+const scoped: Field | null = order.getGroupByCounter(453)
 const singletonHash: bigint = order.stableHash()
 const singletonEqual: boolean = order.equals(order.clone())
 const singletonOrder: number = order.compare(order)

@@ -183,44 +183,37 @@ test('parseTextLines pulls one line at a time', () => {
   )
 })
 
-test("a row's pluginid names the dialect it is read under and fills its own column", () => {
-  // A dialect with one field of its own, so `VENUETAG` resolves under it and
-  // nowhere else; inserting a field on a branch is what declares the branch.
+test("a row's pluginid fills its own column and selects nothing", () => {
+  // A venue field beside the specification's: one namespace, so `VENUETAG`
+  // resolves whatever the row's plugin is called, and the membership the
+  // field carries is provenance a caller filters on.
   const registry = seed()
-  for (const [name, id] of [['VenueTag', '5001:venue'], ['OtherTag', '5002:elsewhere']]) {
+  for (const [name, tag, dialect] of [['VenueTag', 5001, 'venue'], ['OtherTag', 5002, 'elsewhere']]) {
     const field = Field.from(`${name}: utf8`)
-    field.fix.id = id
+    field.fix.tag = tag
+    field.fix.branches = [dialect]
     registry.insert(field)
   }
+  assert.deepEqual(registry.dialects(), ['elsewhere', 'venue'])
   const captureNames = ['pluginid', 'prevpluginid']
   const codec = new fix.FixCodec(registry, { captureNames })
-  const pinned = new fix.FixCodec(registry, { branch: 'venue', captureNames })
-  const elsewhere = new fix.FixCodec(registry, { branch: 'elsewhere', captureNames })
   const body = Buffer.from('MSGTYPE=D|CLORDID=A|VENUETAG=dark')
   // A line and the captures its header declared, in that order.
   const lined = (plugin, previous = null, held = body) => new TextLine(0, held, [plugin, previous])
 
-  // A `pluginid` naming a branch the dictionary declares is the dialect the
-  // row is read under; any other - a plugin no branch is named after, a null,
-  // an empty string - keeps the codec's pin, then the standard branch. The
-  // capture fills the crate's own field either way, exactly as it was spelled.
+  // A `pluginid` capture - a plugin named like a dictionary, one no
+  // dictionary is named after, a null, an empty string - fills the crate's
+  // own field exactly as it was spelled and selects no dialect: the venue's
+  // field resolves under every one of them.
   for (const spelled of ['venue', 'VENUE', 'OMS_X1_TradeCapture', null, '']) {
     const [message] = codec.parseTextLine(lined(spelled))
-    const named = spelled === 'venue' || spelled === 'VENUE'
-    assert.equal(message.branch, named ? 'venue' : fix.STANDARD_BRANCH, `${spelled}`)
-    // The dialect's own field resolves only where the row named the dialect;
-    // anywhere else the key is kept under the spelling it arrived in.
-    const resolved = message.getByTag(5001)
-    assert.equal(resolved === null ? null : resolved.asJs(), named ? 'dark' : null, `${spelled}`)
+    assert.equal(message.byTag(5001).asJs(), 'dark', `${spelled}`)
+    assert.equal(message.byName('venuetag').asJs(), 'dark', `${spelled}`)
     const held = message.getByName('pluginid')
     assert.equal(held === null ? null : held.asJs(), spelled, `${spelled}`)
+    // A message root is not a dictionary member.
+    assert.deepEqual(message.field.fix.branches, [])
   }
-
-  // A capture speaks per row where a codec speaks per run: a row naming no
-  // dialect keeps the pin, and a row naming one outranks a pin naming another.
-  assert.equal([...pinned.parseTextLine(lined(null))][0].byTag(5001).asJs(), 'dark')
-  assert.equal([...elsewhere.parseTextLine(lined('venue'))][0].branch, 'venue')
-  assert.equal([...elsewhere.parseTextLine(lined('ULBridge'))][0].branch, 'elsewhere')
 
   // Nothing fills `prevpluginid` but a capture of that name, and the two
   // session names are only ever what the line itself spells, through the
@@ -238,7 +231,6 @@ test("a row's pluginid names the dialect it is read under and fills its own colu
 test('the codec answers the pins it was given', () => {
   const registry = seed()
   const bare = new fix.FixCodec(registry)
-  assert.equal(bare.branch, null)
   assert.equal(bare.version, null)
   assert.equal(bare.separator, null)
   assert.equal(bare.payloadColumn, 'body')
@@ -248,7 +240,6 @@ test('the codec answers the pins it was given', () => {
   assert.equal(bare.batchByteSize, 128 * 1024 * 1024)
 
   const pinned = new fix.FixCodec(registry, {
-    branch: 'ulbridge',
     version: 'FIX.4.2',
     separator: PIPE,
     payloadColumn: 'line',
@@ -256,8 +247,9 @@ test('the codec answers the pins it was given', () => {
     direction: 'RECV',
     batchByteSize: 4096,
   })
-  assert.equal(pinned.branch, 'ulbridge')
   assert.equal(pinned.version, '4.2')
+  // No pin names a dialect: the dictionary is one namespace.
+  assert.equal('branch' in pinned, false)
   assert.equal(pinned.separator, PIPE)
   assert.equal(pinned.payloadColumn, 'line')
   assert.deepEqual(pinned.nullValues, ['<none>'])

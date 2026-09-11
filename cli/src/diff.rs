@@ -1,9 +1,10 @@
 //! What one dictionary changed against another.
 //!
 //! The command a review reads and a workflow gates on. Two dictionaries are
-//! compared field by field on identity, so a rename shows as a rename rather
-//! than as an addition beside a removal, and a retype shows what it was and
-//! what it became.
+//! compared definition by definition on identity - a field is its tag and its
+//! name, a named definition is its name - so a retype shows what it was and
+//! what it became, a membership change shows as metadata, and a renamed field
+//! is what it is under the identity: a removal beside an addition.
 
 use yggdryl::{Field, FixCategory, FixRegistry};
 
@@ -76,34 +77,27 @@ fn previous<'registry>(
     field: &Field,
 ) -> Option<&'registry Field> {
     if category == FixCategory::Fields {
-        return registry.get_field_by_id(identity(field));
+        if let Some(id) = field.as_fix().id().ok().flatten() {
+            return registry.get_field_by_id(id);
+        }
     }
-    let branch = field.as_fix().branch().ok()?;
-    registry.get_definition(category, field.name(), Some(&branch))
+    registry.get_definition(category, field.name())
 }
 
-/// One field's identity, or a standard tag where it declares none.
-fn identity(field: &Field) -> yggdryl::FixId {
-    field
-        .as_fix()
-        .id()
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| yggdryl::FixId::standard(0))
-}
-
-/// One field's tag, rendered.
+/// One definition's key, rendered: the tag for a field, since the name is
+/// printed beside it and the two together are the identity; the name
+/// otherwise.
 fn key_of(category: FixCategory, field: &Field) -> String {
     if category == FixCategory::Fields {
-        format!("{category}/{}", identity(field))
-    } else {
-        let branch = field
+        let tag = field
             .as_fix()
-            .branch()
+            .tag()
             .ok()
-            .filter(|branch| !branch.is_standard())
-            .map_or_else(String::new, |branch| format!("{}/", branch.name()));
-        format!("{category}/{branch}{}", field.name())
+            .flatten()
+            .map_or_else(|| "-".to_owned(), |tag| tag.to_string());
+        format!("{category}/{tag}")
+    } else {
+        format!("{category}/{}", field.name())
     }
 }
 

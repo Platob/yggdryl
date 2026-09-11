@@ -3489,7 +3489,7 @@ Object.defineProperty(binding.FixMessages.prototype, Symbol.iterator, {
 
 // Both FIX collections are lazy native iterators, so the loader supplies only
 // the protocol Node-API cannot spell: iterating a registry walks its fields in
-// canonical-identifier order and iterating a message walks its `[name, value]`
+// identifier order and iterating a message walks its `[name, value]`
 // pairs.
 Object.defineProperty(binding.FixRegistry.prototype, Symbol.iterator, {
   configurable: true,
@@ -3504,13 +3504,11 @@ Object.defineProperty(NativeFixMsg.prototype, Symbol.iterator, {
   },
 })
 
-// The two FIX facts a caller spells rather than derives - what an absent
-// `fix:branch` means, and the half-open range another branch may claim -
-// come from the core's own constants, so neither can drift from it.
+// The FIX surface is reached through this namespace: a dictionary is one
+// namespace of tags and names, an identity is the number `field.fix.id`
+// derives from both, and a dictionary's membership is `fix:branches` on the
+// field it contributed to - so there is no constant a caller spells here.
 const fix = Object.freeze({
-  STANDARD_BRANCH: binding._fixStandardBranchNative(),
-  USER_TAG_MIN: binding._fixUserTagMinNative(),
-  USER_TAG_MAX: binding._fixUserTagMaxNative(),
   FixRegistry: binding.FixRegistry,
   FixMsg,
   FixCodec: binding.FixCodec,
@@ -3555,9 +3553,6 @@ for (const name of [
   'JsUlPlugins',
   'JsFixMessages',
   'JsFixLifecycle',
-  '_fixStandardBranchNative',
-  '_fixUserTagMinNative',
-  '_fixUserTagMaxNative',
   'fixCrateFields',
   'fixUlbridgeFields',
   'fixGlobalRegistryNative',
