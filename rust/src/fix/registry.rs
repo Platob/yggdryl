@@ -439,8 +439,8 @@ impl FixRegistry {
     /// carries it.
     ///
     /// The optional branch applies only to the registry root; nested segments
-    /// continue through [`descend`], which recurses through a group's
-    /// occurrence without consuming one.
+    /// continue through the schema walk, which recurses through a group's
+    /// occurrence without consuming a segment.
     pub fn get_field_by_path(
         &self,
         path: &FieldPath,
