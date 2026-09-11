@@ -82,9 +82,9 @@ fn bodies(source: &Buffer) -> Vec<Vec<u8>> {
     for batch in source.read_arrow_reader(&text()).expect("a reader") {
         let batch = batch.expect("a batch");
         let at = batch.schema().index_of("body").expect("the body column");
-        let column = batch.column(at).as_binary::<i32>();
+        let column = batch.column(at).as_string::<i32>();
         for row in 0..batch.num_rows() {
-            held.push(column.value(row).to_vec());
+            held.push(column.value(row).as_bytes().to_vec());
         }
     }
     held
@@ -172,13 +172,15 @@ pub fn benchmarks(criterion: &mut Criterion) {
             } else {
                 "OMS_X1_TradeCapture"
             };
-            TextLine::new(
+            TextLine::from_bytes(
                 index as u64,
                 TextBytes::from_bytes(body.as_slice()).expect("a page"),
             )
+            .expect("a line")
             .with_captures(vec![Some(
                 TextBytes::from_bytes(plugin.as_bytes()).expect("a page"),
             )])
+            .expect("captures")
         })
         .collect();
     group.bench_function("parse_text_lines_pluginid", |bencher| {

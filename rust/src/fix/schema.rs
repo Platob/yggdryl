@@ -235,7 +235,7 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
 /// let capture = DataType::from_fields([
 ///     DataType::Utf8.required_field("url"),
 ///     DataType::Int64.required_field("rownum"),
-///     DataType::Binary.required_field("body"),
+///     DataType::Utf8.required_field("body"),
 /// ])?
 /// .required_field("line");
 ///

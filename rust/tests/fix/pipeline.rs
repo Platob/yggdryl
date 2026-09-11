@@ -630,7 +630,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     for tag in [8, 35, 49, 56, 34, 11, 55, 54, 38, 44, 31, 32, 150, 151, 60] {
         let held = tag_column(&read, tag);
         for (row, body) in bodies.iter().enumerate() {
-            let body = body.as_bytes().expect("a body");
+            let body = body.as_str().expect("a body").as_bytes();
             let message = codec
                 .one_line(body, false)
                 .unwrap_or_else(|error| panic!("row {row}: {error}"));
@@ -652,7 +652,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // row, which carried none. A fill is never an entry - and neither are the
     // context, the plugin or the clock - so the arrival record is still the
     // line alone.
-    let routed = bodies[ROUTED_ROW].as_bytes().expect("a body");
+    let routed = bodies[ROUTED_ROW].as_str().expect("a body").as_bytes();
     let alone = codec.one_line(routed, false).expect("the routed row");
     assert!(alone.get_by_tag(34).is_none());
     assert_eq!(tag_column(&read, 34)[ROUTED_ROW].as_i64(), Some(4_507));

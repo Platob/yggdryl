@@ -1117,7 +1117,7 @@ with pytest.raises(ValueError, match="overwrite"):
 
 ### Record options
 
-Configure field, selection, batch sizing, compression, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema, logical framing, leading-fragment treatment, per-record decoded-byte retention, and row numbering of [plain-text records](../media/text.md).
+Configure field, selection, batch sizing, compression, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema, logical framing, leading-fragment treatment, per-record retained-byte limit, and row numbering of [plain-text records](../media/text.md).
 
 ## pandas and polars
 

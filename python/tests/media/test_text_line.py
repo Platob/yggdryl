@@ -7,7 +7,7 @@ import pickle
 import pytest
 
 import yggdryl
-from yggdryl import FieldPath, TextOptions
+from yggdryl import FieldPath, TextLine, TextOptions
 from yggdryl.holder import Buffer
 
 CAPTURE = b"8=FIX|55=AAPL|35=D\n35=D|55=MSFT\n"
@@ -16,6 +16,12 @@ CAPTURE = b"8=FIX|55=AAPL|35=D\n35=D|55=MSFT\n"
 def lifted() -> TextOptions:
     options = TextOptions()
     options.lift_names = ["55"]
+    return options
+
+
+def lifted_58() -> TextOptions:
+    options = TextOptions()
+    options.lift_names = ["58"]
     return options
 
 
@@ -59,7 +65,7 @@ class TestTextLine:
     def test_every_line_becomes_one_typed_row(self) -> None:
         lines = list(source().read_text_lines(options=TextOptions()))
         assert [line.index for line in lines] == [0, 1]
-        assert lines[0].body == b"8=FIX|55=AAPL|35=D"
+        assert lines[0].body == "8=FIX|55=AAPL|35=D"
         assert lines[0].url is not None
 
     def test_a_read_wanting_no_entry_builds_no_tree(self) -> None:
@@ -70,8 +76,8 @@ class TestTextLine:
     def test_a_lifted_path_builds_the_tree_and_is_found(self) -> None:
         lines = list(source().read_text_lines(options=lifted()))
         assert lines[0].entries is not None
-        assert lines[0].get_entry_by_path("55").value == b"AAPL"
-        assert lines[1].get_entry_by_path("55").value == b"MSFT"
+        assert lines[0].get_entry_by_path("55").value == "AAPL"
+        assert lines[1].get_entry_by_path("55").value == "MSFT"
 
     def test_a_miss_is_none_and_the_raising_form_says_so(self) -> None:
         line = next(iter(source().read_text_lines(options=lifted())))
@@ -81,12 +87,19 @@ class TestTextLine:
 
     def test_a_resolved_path_and_its_text_reach_the_same_entry(self) -> None:
         line = next(iter(source().read_text_lines(options=lifted())))
-        assert line.get_entry_by_path(FieldPath('"55"')).value == b"AAPL"
+        assert line.get_entry_by_path(FieldPath('"55"')).value == "AAPL"
 
     def test_the_setter_creates_and_the_remover_takes(self) -> None:
         line = next(iter(source().read_text_lines(options=lifted())))
         line.set_entry_by_path("order.price", b"12")
-        assert line.get_entry_by_path("order.price").value == b"12"
+        assert line.get_entry_by_path("order.price").value == "12"
+        line.set_entry_by_path("order.price", "13")
+        assert line.get_entry_by_path("order.price").value == "13"
+        line.set_entry_by_path("order.price", bytearray(b"14"))
+        line.set_entry_by_path("order.price", memoryview(b"15"))
+        assert line.get_entry_by_path("order.price").value_bytes == b"15"
+        with pytest.raises(TypeError, match="str, bytes, bytearray, or memoryview"):
+            line.set_entry_by_path("order.price", 16)  # type: ignore[arg-type]
         removed = line.remove_entry_by_path("order")
         assert removed is not None
         assert line.get_entry_by_path("order.price") is None
@@ -95,7 +108,8 @@ class TestTextLine:
         line = next(iter(source().read_text_lines(options=lifted())))
         entries = line.entries
         assert len(entries) >= 2
-        assert entries[0].key == b"8"
+        assert entries[0].key == "8"
+        assert entries[0].key_bytes == b"8"
         assert entries[-1].value is not None
 
     def test_the_iterator_is_lazy_and_fuses(self) -> None:
@@ -107,6 +121,57 @@ class TestTextLine:
             next(lines)
         with pytest.raises(StopIteration):
             next(lines)
+
+
+class TestTextIsDecodedWhereTheLineIsMade:
+    def test_one_latin_1_byte_among_utf_8_reaches_the_body_as_text(self) -> None:
+        line = TextLine(0, b"58=caf\xe9|10=0|")
+        assert line.body == "58=caf\u00e9|10=0|"
+        assert line.decoded_byte_size == 1
+        # A valid `\u00e9` beside the lone byte is kept as it is.
+        mixed = TextLine(0, b"58=caf\xe9 caf\xc3\xa9|10=0|")
+        assert mixed.body == "58=caf\u00e9 caf\u00e9|10=0|"
+        assert mixed.decoded_byte_size == 1
+
+    def test_a_text_body_costs_no_decode(self) -> None:
+        for body in ("58=caf\u00e9|10=0|", b"58=caf\xc3\xa9|10=0|"):
+            line = TextLine(0, body)
+            assert line.body == "58=caf\u00e9|10=0|"
+            assert line.decoded_byte_size == 0
+
+    def test_every_byte_spelling_is_one_intake(self) -> None:
+        for body in (bytearray(b"58=caf\xe9|"), memoryview(b"58=caf\xe9|")):
+            line = TextLine(0, body)
+            assert line.body == "58=caf\u00e9|"
+            assert line.decoded_byte_size == 1
+        with pytest.raises(TypeError, match="str, bytes, bytearray, or memoryview"):
+            TextLine(0, 7)  # type: ignore[arg-type]
+
+    def test_the_five_undefined_cp1252_bytes_read_as_the_controls_of_their_number(
+        self,
+    ) -> None:
+        for byte in (0x81, 0x8D, 0x8F, 0x90, 0x9D):
+            line = TextLine(0, b"a" + bytes([byte]) + b"b")
+            assert line.body == "a" + chr(byte) + "b", hex(byte)
+            assert line.decoded_byte_size == 1
+        # The defined row reads as Windows-1252 tables it.
+        assert TextLine(0, b"\x80 \x93q\x94").body == "\u20ac \u201cq\u201d"
+
+    def test_captures_answer_text_and_count_with_the_body(self) -> None:
+        line = TextLine(0, b"body", ["FIX.4.4", None])
+        assert line.captures == ("FIX.4.4", None)
+        assert line.decoded_byte_size == 0
+
+    def test_an_entry_answers_text_and_its_bytes_beside_it(self) -> None:
+        line = next(iter(source(b"58=caf\xe9|10=0|\n").read_text_lines(options=lifted_58())))
+        assert line.decoded_byte_size == 1
+        entry = line.entry_by_path("58")
+        assert entry.value == "caf\u00e9"
+        assert isinstance(entry.value, str)
+        assert entry.value_bytes == "caf\u00e9".encode()
+        assert isinstance(entry.value_bytes, bytes)
+        assert entry.key == "58"
+        assert entry.key_bytes == b"58"
 
 
 class TestTextOptions:
@@ -179,4 +244,4 @@ class TestFieldPathAlias:
         assert "symbol" in names
         assert "55" not in names
         line = next(iter(source(b"55=AAPL\n").read_text_lines(options=options)))
-        assert line.get_entry_by_path("55").value == b"AAPL"
+        assert line.get_entry_by_path("55").value == "AAPL"

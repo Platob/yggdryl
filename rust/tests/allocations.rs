@@ -1812,7 +1812,7 @@ fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
         // The page is made outside the counted closure because that is what a
         // caller reading text actually has: the decode already happened, and
         // what is measured here is what reading a message from it adds.
-        let line = TextLine::new(0, TextBytes::from_bytes(&held).expect("a page"));
+        let line = TextLine::from_bytes(0, TextBytes::from_bytes(&held).expect("a page")).unwrap();
         costs(
             &format!("a {pairs}-pair decoded line read as a message"),
             *each,

@@ -216,10 +216,12 @@ fn separator_width(page: &[u8], at: usize) -> Option<usize> {
 /// the middle of something, and there the frame's own cut is the only reading
 /// that loses nothing.
 fn cut_at(entry: &TextEntry, rest: &[TextEntry], span: usize) -> bool {
-    entry.value().end() as usize == span
-        || rest.iter().any(|held| held.value().end() as usize == span)
+    entry.value_bytes().end() as usize == span
+        || rest
+            .iter()
+            .any(|held| held.value_bytes().end() as usize == span)
         || entry
-            .key()
+            .key_bytes()
             .page()
             .is_some_and(|page| separator_width(page, span).is_some())
 }
@@ -255,7 +257,7 @@ fn data_end(
     after: usize,
     xml: bool,
 ) -> Option<usize> {
-    let opens = entry.key().end() as usize + 1;
+    let opens = entry.key_bytes().end() as usize + 1;
     let stated = stated
         .and_then(|held| std::str::from_utf8(held.value()).ok())
         .and_then(|text| text.parse::<usize>().ok());
@@ -263,7 +265,7 @@ fn data_end(
         if cut_at(entry, &entries[after..], span) {
             let next = entries[after..]
                 .iter()
-                .find(|held| held.key().start() as usize >= span);
+                .find(|held| held.key_bytes().start() as usize >= span);
             match next {
                 None => return Some(span),
                 Some(held) if tag_keyed(held) && !held.key().is_empty() => return Some(span),
@@ -280,9 +282,9 @@ fn data_end(
     let checksum = entries[after..]
         .iter()
         .rev()
-        .find(|held| held.key().as_bytes() == b"10")?;
-    let at = checksum.key().start() as usize;
-    let page = checksum.key().page()?;
+        .find(|held| held.key_bytes().as_bytes() == b"10")?;
+    let at = checksum.key_bytes().start() as usize;
+    let page = checksum.key_bytes().page()?;
     let width = line::SOH_MARKERS
         .iter()
         .find(|marker| page[..at].ends_with(marker))
@@ -603,8 +605,8 @@ impl FixCodec {
     /// registry.set_branch(FixBranch::from_str("venue")?.with_aliases(["vnu"])?)?;
     /// let codec = FixCodec::new(Arc::new(registry)).with_capture_names(["pluginid"]);
     ///
-    /// let line = TextLine::new(0, TextBytes::from_bytes(b"8=FIX.4.4|35=D|11=A|10=0|")?)
-    ///     .with_captures(vec![Some(TextBytes::from_bytes(b"VNU")?)]);
+    /// let line = TextLine::from_bytes(0, TextBytes::from_bytes(b"8=FIX.4.4|35=D|11=A|10=0|")?)?
+    ///     .with_captures(vec![Some(TextBytes::from_bytes(b"VNU")?)])?;
     /// let message = codec.parse_text_line(&line)?.next().expect("one message")?;
     /// // The alias named the dialect, and the capture filled its own field.
     /// assert_eq!(message.branch().name(), "venue");
@@ -830,20 +832,8 @@ impl FixCodec {
     ///
     /// Returns the builder's refusal, which a line's content cannot provoke.
     pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages> {
-        // The row's own cells, held while the extras borrow them.
-        let stated: Vec<Option<&TextBytes>> = self
-            .captures
-            .iter()
-            .zip(line.captures())
-            .map(|(_, held)| held.as_ref())
-            .collect();
-        let text = |at: usize| {
-            stated
-                .get(at)
-                .copied()
-                .flatten()
-                .and_then(TextBytes::as_str)
-        };
+        // The row's own cells, read by the position the codec resolved.
+        let text = |at: usize| line.capture(at);
         let mut branch = None;
         let mut version = None;
         let mut stamped = None;
@@ -891,7 +881,7 @@ impl FixCodec {
             clock: clock.as_ref(),
             fills: &fills,
         };
-        let page = line.body();
+        let page = line.body_bytes();
         if page.is_empty() {
             return Ok(FixMessages::one(self.empty_with(extras)));
         }
@@ -1870,7 +1860,7 @@ fn bounded<'entries>(page: &TextBytes, entries: &'entries TextEntries) -> &'entr
 fn framed_entries(entries: &[TextEntry], opens: usize) -> &[TextEntry] {
     let at = entries
         .iter()
-        .position(|entry| entry.key().start() as usize >= opens)
+        .position(|entry| entry.key_bytes().start() as usize >= opens)
         .unwrap_or(entries.len());
     &entries[at..]
 }
@@ -1882,14 +1872,14 @@ fn framed_entries(entries: &[TextEntry], opens: usize) -> &[TextEntry] {
 /// where the bytes after the mark are digits: `#453=1` is a bridge naming the
 /// group by its counter, not a frame stating tag 453.
 fn tag_keyed(entry: &TextEntry) -> bool {
-    !entry.marked() && entry.key().as_bytes().iter().all(u8::is_ascii_digit)
+    !entry.marked() && entry.key_bytes().as_bytes().iter().all(u8::is_ascii_digit)
 }
 
 /// One entry as the pair it arrived as.
 fn arrival(entry: &TextEntry) -> Arrived<'_> {
     Arrived {
-        key: entry.key(),
-        value: Cow::Borrowed(entry.value()),
+        key: entry.key_bytes(),
+        value: Cow::Borrowed(entry.value_bytes()),
         marked: entry.marked(),
     }
 }
@@ -1918,13 +1908,13 @@ fn frame_arrivals(entries: &[TextEntry]) -> (Vec<Arrived<'_>>, Vec<TextBytes>) {
         if let Some(tag) = data_tag(held.key()) {
             let xml = tag == XML_DATA_TAG;
             if let Some(end) = data_end(entry, arrived.last(), entries, at, xml) {
-                if let Some(widened) = entry.key().page().and_then(|page| {
-                    TextBytes::from_page(page, entry.key().end() as usize + 1, end).ok()
+                if let Some(widened) = entry.key_bytes().page().and_then(|page| {
+                    TextBytes::from_page(page, entry.key_bytes().end() as usize + 1, end).ok()
                 }) {
                     held.value = Cow::Owned(widened);
                     while entries
                         .get(at)
-                        .is_some_and(|swallowed| (swallowed.key().start() as usize) < end)
+                        .is_some_and(|swallowed| (swallowed.key_bytes().start() as usize) < end)
                     {
                         at += 1;
                     }

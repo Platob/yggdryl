@@ -1,7 +1,7 @@
-use arrow_array::{Array as _, BinaryArray, Int64Array, StringArray, UInt64Array};
+use arrow_array::{Array as _, Int64Array, StringArray, UInt64Array};
 
 use crate::holder::Buffer;
-use crate::media::text::{LeadingFragment, LineSep, Text, TextOptions};
+use crate::media::text::{LeadingFragment, LineSep, Text, TextLine, TextOptions, read_text_lines};
 use crate::media::{IORecordOptions as _, RecordOptions};
 use crate::{Codec, DataType, Field, Timezone};
 use crate::{IOBase as _, IOMedia as _};
@@ -38,10 +38,10 @@ fn bodies(batches: &[arrow_array::RecordBatch]) -> Vec<Vec<u8>> {
             batch
                 .column(index)
                 .as_any()
-                .downcast_ref::<BinaryArray>()
+                .downcast_ref::<StringArray>()
                 .unwrap()
                 .iter()
-                .map(|value| value.unwrap().to_vec())
+                .map(|value| value.unwrap().as_bytes().to_vec())
                 .collect::<Vec<_>>()
         })
         .collect()
@@ -189,15 +189,11 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
         batch
             .column(3)
             .as_any()
-            .downcast_ref::<BinaryArray>()
+            .downcast_ref::<StringArray>()
             .unwrap()
             .iter()
             .collect::<Vec<_>>(),
-        [
-            Some(&b"first"[..]),
-            Some(&b"second"[..]),
-            Some(&b"plain"[..])
-        ]
+        [Some("first"), Some("second"), Some("plain")]
     );
     assert_eq!(
         batch
@@ -370,10 +366,10 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
         batch
             .column(2)
             .as_any()
-            .downcast_ref::<BinaryArray>()
+            .downcast_ref::<StringArray>()
             .unwrap()
             .value(0),
-        b"Execution report (execId: 20260828180000369318, from session:"
+        "Execution report (execId: 20260828180000369318, from session:"
     );
     assert_eq!(
         batch
@@ -457,13 +453,16 @@ fn text_row_size_ignores_row_value_conversion_and_retains_no_bodies() {
     let text = Text::new(source).with_options(options);
 
     // The second output row cannot be represented by the configured rownum,
-    // and its capture is not UTF-8. Neither changes the number of records.
+    // and its capture is a byte the decode would have to repair. Neither
+    // changes the number of records, because counting converts nothing.
     assert_eq!(text.row_size().unwrap(), 2);
 }
 
 #[test]
 fn a_result_row_limit_does_not_convert_the_following_record() {
-    let source = named("limited-values.log", b"A first\n\xFF invalid\n");
+    // The second row's number cannot be represented, so converting it would
+    // be a refusal; the limit stops the read before that.
+    let source = named("limited-values.log", b"A first\nB second\n");
     let mut options = framed(r"^(?<kind>(?-u:.)) ");
     options.start_rownum = Some(i64::MAX);
     options.set_batch_row_size(Some(8));
@@ -476,7 +475,7 @@ fn a_result_row_limit_does_not_convert_the_following_record() {
 
 #[test]
 fn a_physical_row_limit_does_not_convert_the_following_line() {
-    let source = named("limited-lines.log", b"A first\n\xFF invalid\n");
+    let source = named("limited-lines.log", b"A first\nB second\n");
     let mut options = options(r"^(?<kind>(?-u:.)) ");
     options.start_rownum = Some(i64::MAX);
     options.set_batch_row_size(Some(8));
@@ -488,17 +487,87 @@ fn a_physical_row_limit_does_not_convert_the_following_line() {
 }
 
 #[test]
-fn an_invalid_next_header_follows_the_completed_record_batch_prefix() {
-    let source = named("invalid-next-header.log", b"A first\n\xFF invalid\n");
+fn an_unconvertible_next_record_follows_the_completed_record_batch_prefix() {
+    // The second record's number cannot be represented, and the refusal
+    // arrives after the batch the first record completed - never inside it.
+    let source = named("invalid-next-header.log", b"A first\nB second\n");
     let mut options = framed(r"^(?<kind>(?-u:.)) ");
+    options.start_rownum = Some(i64::MAX);
     options.set_batch_row_size(Some(8));
     let mut reader = source.read_arrow_reader(&options.into()).unwrap();
 
     let prefix = reader.next().unwrap().unwrap();
     assert_eq!(bodies(&[prefix]), [b"first".to_vec()]);
     let error = reader.next().unwrap().unwrap_err().to_string();
-    assert!(error.contains("UTF-8 row-header capture"), "{error}");
+    assert!(
+        error.contains("text row number exceeds i64::MAX"),
+        "{error}"
+    );
     assert!(reader.next().is_none());
+}
+
+#[test]
+fn a_line_that_was_not_utf_8_reaches_its_row_decoded_and_says_so() {
+    // One Latin-1 byte in the body and one in a capture: each reads as the
+    // character Windows-1252 gives it, the row's body is text, and the line
+    // counts the two bytes it repaired. The counts the reader took before
+    // the line existed - the record's bytes over its limit - are counts of
+    // the bytes as read.
+    let source = named("latin1.log", b"[caf\xE9] first \xE9 line\n[plain] second\n");
+    // A byte class, because a Unicode class matches characters and a byte
+    // that is not one is not matched by it.
+    let mut options = framed(r"^\[(?<kind>(?-u:[^\]]+))\] ");
+    options.set_max_record_byte_size(Some(7));
+    let lines: Vec<TextLine> = read_text_lines(&source, &options)
+        .unwrap()
+        .map(|line| line.unwrap())
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0].body(), "first \u{e9}");
+    assert_eq!(lines[0].capture(0), Some("caf\u{e9}"));
+    assert_eq!(lines[0].decoded_byte_size(), 2);
+    assert_eq!(
+        lines[0].dropped_byte_size(),
+        Some(5),
+        "the limit and the count are wire bytes: 12 read, 7 kept"
+    );
+    assert_eq!(lines[1].body(), "second");
+    assert_eq!(lines[1].decoded_byte_size(), 0);
+
+    let batches = collect(&source, framed(r"^\[(?<kind>(?-u:[^\]]+))\] "));
+    assert_eq!(
+        bodies(&batches),
+        ["first \u{e9} line".as_bytes().to_vec(), b"second".to_vec()]
+    );
+    let batch = &batches[0];
+    assert_eq!(
+        batch.schema().field_with_name("body").unwrap().data_type(),
+        &arrow_schema::DataType::Utf8
+    );
+    let kinds = batch
+        .column_by_name("kind")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    assert_eq!(kinds.value(0), "caf\u{e9}");
+}
+
+#[test]
+fn a_record_cut_inside_a_character_reads_the_bytes_that_are_left() {
+    // The three-byte euro sign, cut after two of its bytes by the limit: the
+    // orphans read as the two Windows-1252 characters they are, not as a
+    // replacement character, and both are counted as decoded.
+    let source = named("cut.log", "[A] x\u{20AC}\n".as_bytes());
+    let mut options = framed(r"^\[(?<kind>[A-Z])\] ");
+    options.set_max_record_byte_size(Some(3));
+    let lines: Vec<TextLine> = read_text_lines(&source, &options)
+        .unwrap()
+        .map(|line| line.unwrap())
+        .collect();
+    assert_eq!(lines[0].body(), "x\u{e2}\u{201a}");
+    assert_eq!(lines[0].decoded_byte_size(), 2);
+    assert_eq!(lines[0].dropped_byte_size(), Some(1));
 }
 
 #[test]
@@ -756,13 +825,13 @@ fn folder_leaves_never_share_framing_state_and_restart_physical_rownums() {
 }
 
 #[test]
-fn generic_record_writes_use_only_the_binary_body() {
+fn generic_record_writes_use_only_the_text_body() {
     let mut target = named("out.txt", b"old");
     let mut options: RecordOptions = TextOptions::new().into();
     let field = DataType::from_fields([
         DataType::Utf8.required_field("url"),
         DataType::Int64.required_field("rownum"),
-        DataType::Binary.required_field("body"),
+        DataType::Utf8.required_field("body"),
     ])
     .unwrap()
     .required_field("row");
@@ -771,18 +840,84 @@ fn generic_record_writes_use_only_the_binary_body() {
         crate::Scalar::from_record([
             ("url", crate::Scalar::from("input")),
             ("rownum", crate::Scalar::from(1_i64)),
-            ("body", crate::Scalar::from(&b"first"[..])),
+            ("body", crate::Scalar::from("first")),
         ])
         .unwrap(),
         crate::Scalar::from_record([
             ("url", crate::Scalar::from("input")),
             ("rownum", crate::Scalar::from(2_i64)),
-            ("body", crate::Scalar::from(&b"second"[..])),
+            ("body", crate::Scalar::from("second")),
         ])
         .unwrap(),
     ];
     target.overwrite_records(rows, &options).unwrap();
     assert_eq!(target.read_all_bytes().unwrap(), b"first\nsecond\n");
+}
+
+#[test]
+fn a_dictionary_encoded_body_is_a_text_body_a_write_unpacks_once() {
+    // Arrow JS infers `Dictionary<Int32, Utf8>` for a plain record's string,
+    // so a body column in that layout is the same text under another
+    // spelling, unpacked once per batch rather than refused.
+    use std::sync::Arc;
+
+    use arrow_array::{DictionaryArray, Int32Array, RecordBatch};
+
+    let mut target = named("dictionary.txt", b"old");
+    let options: RecordOptions = TextOptions::new().into();
+    let keys = Int32Array::from(vec![0, 1, 0]);
+    let values = Arc::new(StringArray::from(vec!["one", "two"]));
+    let body = DictionaryArray::<arrow_array::types::Int32Type>::try_new(keys, values).unwrap();
+    let schema = Arc::new(arrow_schema::Schema::new(vec![
+        arrow_schema::Field::new("url", arrow_schema::DataType::Utf8, false),
+        arrow_schema::Field::new(
+            "body",
+            arrow_schema::DataType::Dictionary(
+                Box::new(arrow_schema::DataType::Int32),
+                Box::new(arrow_schema::DataType::Utf8),
+            ),
+            false,
+        ),
+    ]));
+    let batch = RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(StringArray::from(vec!["input", "input", "input"])),
+            Arc::new(body),
+        ],
+    )
+    .unwrap();
+    target.overwrite_arrow_batch(batch, &options).unwrap();
+    assert_eq!(target.read_all_bytes().unwrap(), b"one\ntwo\none\n");
+}
+
+#[test]
+fn a_binary_body_is_refused_by_a_write_naming_what_it_expected() {
+    // A text row's body is text, and a column that may hold anything is not
+    // written as if it were: the refusal names the column and the layout.
+    let mut target = named("refused.txt", b"old");
+    let mut options: RecordOptions = TextOptions::new().into();
+    let field = DataType::from_fields([
+        DataType::Utf8.required_field("url"),
+        DataType::Binary.required_field("body"),
+    ])
+    .unwrap()
+    .required_field("row");
+    options.set_field(field);
+    let rows = [crate::Scalar::from_record([
+        ("url", crate::Scalar::from("input")),
+        ("body", crate::Scalar::from(&b"first"[..])),
+    ])
+    .unwrap()];
+    let error = target
+        .overwrite_records(rows, &options)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("expected a utf8 body column, got Binary"),
+        "{error}"
+    );
+    assert_eq!(target.read_all_bytes().unwrap(), b"old");
 }
 
 #[test]
@@ -1415,6 +1550,39 @@ mod values {
     }
 
     #[test]
+    fn an_entry_answers_text_borrowed_from_its_page_and_its_range_beside_it() {
+        use std::borrow::Cow;
+
+        let body = TextBytes::from_bytes("8=FIX.4.4|58=caf\u{e9}|10=0|".as_bytes()).unwrap();
+        let entries = TextEntries::from_bytes(&body).unwrap();
+        let text = &entries.as_slice()[1];
+        assert!(matches!(text.key(), Cow::Borrowed("58")));
+        assert!(matches!(text.value(), Cow::Borrowed("caf\u{e9}")));
+        assert_eq!(text.value_bytes().as_bytes(), "caf\u{e9}".as_bytes());
+        assert!(
+            std::sync::Arc::ptr_eq(text.value_bytes().page().unwrap(), body.page().unwrap()),
+            "the range is the line's own page"
+        );
+        assert_eq!(text.to_string(), "58=caf\u{e9}");
+
+        // A range a caller built from bytes that are not text is the one
+        // case the answer is owned: the lossy decode, and the range intact.
+        let raw = TextEntry::new(
+            TextBytes::from_bytes(b"96").unwrap(),
+            TextBytes::from_bytes(b"\xff\xfe A").unwrap(),
+        );
+        assert!(matches!(raw.value(), Cow::Owned(_)));
+        assert_eq!(raw.value(), "\u{fffd}\u{fffd} A");
+        assert_eq!(raw.value_bytes().as_bytes(), b"\xff\xfe A");
+        assert!(
+            TextEntries::from_iter([raw.clone()])
+                .get_entry_by_path(&path("96"))
+                .is_some(),
+            "and its key, which is text, is reachable by name"
+        );
+    }
+
+    #[test]
     fn a_range_borrows_its_page_and_copies_nothing() {
         let page = page(b"alpha beta gamma");
         let middle = TextBytes::from_page(&page, 6, 10).expect("inside the page");
@@ -1479,34 +1647,36 @@ mod values {
             )
             .with_entries(nested),
         ]);
-        let line =
-            TextLine::new(0, TextBytes::from_bytes("body").expect("a body")).with_entries(entries);
+        let line = TextLine::from_bytes(0, TextBytes::from_bytes("body").expect("a body"))
+            .unwrap()
+            .with_entries(entries);
 
         assert_eq!(
             line.get_entry_by_path(&path("55"))
-                .and_then(|held| held.value().as_str()),
+                .and_then(|held| held.value_bytes().as_str()),
             Some("AAPL")
         );
         assert_eq!(
             line.get_entry_by_path(&path("\"213\".PartyID"))
-                .and_then(|held| held.value().as_str()),
+                .and_then(|held| held.value_bytes().as_str()),
             Some("ACME")
         );
         assert_eq!(
             line.get_entry_by_path(&path("[1]"))
-                .and_then(|held| held.key().as_str()),
+                .and_then(|held| held.key_bytes().as_str()),
             Some("55")
         );
         assert_eq!(
             line.get_entry_by_path(&path("[-1]"))
-                .and_then(|held| held.key().as_str()),
+                .and_then(|held| held.key_bytes().as_str()),
             Some("213")
         );
     }
 
     #[test]
     fn a_miss_is_null_and_never_an_error_or_a_panic() {
-        let line = TextLine::new(0, TextBytes::new())
+        let line = TextLine::from_bytes(0, TextBytes::new())
+            .unwrap()
             .with_entries(TextEntries::from_iter([entry("a", "1")]));
         for text in ["b", "a.b", "a.b.c", "[9]", "[-9]"] {
             assert!(
@@ -1515,7 +1685,7 @@ mod values {
             );
         }
         // A line carrying no tree at all misses the same way.
-        let bare = TextLine::new(0, TextBytes::new());
+        let bare = TextLine::from_bytes(0, TextBytes::new()).unwrap();
         assert!(bare.get_entry_by_path(&path("a")).is_none());
         // The raising form says why, and names the path.
         let error = bare.entry_by_path(&path("a")).expect_err("raises");
@@ -1524,7 +1694,8 @@ mod values {
 
     #[test]
     fn a_key_with_no_value_is_found_and_is_not_a_miss() {
-        let line = TextLine::new(0, TextBytes::new())
+        let line = TextLine::from_bytes(0, TextBytes::new())
+            .unwrap()
             .with_entries(TextEntries::from_iter([entry("a", "")]));
         let found = line
             .get_entry_by_path(&path("a"))
@@ -1534,7 +1705,7 @@ mod values {
 
     #[test]
     fn the_setter_creates_what_is_not_there() {
-        let mut line = TextLine::new(0, TextBytes::new());
+        let mut line = TextLine::from_bytes(0, TextBytes::new()).unwrap();
         line.set_entry_by_path(
             &path("order.price"),
             TextBytes::from_bytes("12").expect("a value"),
@@ -1542,7 +1713,7 @@ mod values {
         .expect("creates both levels");
         assert_eq!(
             line.get_entry_by_path(&path("order.price"))
-                .and_then(|held| held.value().as_str()),
+                .and_then(|held| held.value_bytes().as_str()),
             Some("12")
         );
         // Setting again replaces rather than appending a second entry.
@@ -1558,14 +1729,15 @@ mod values {
         );
         assert_eq!(
             line.get_entry_by_path(&path("order.price"))
-                .and_then(|held| held.value().as_str()),
+                .and_then(|held| held.value_bytes().as_str()),
             Some("13")
         );
     }
 
     #[test]
     fn a_position_naming_no_entry_refuses_and_changes_nothing() {
-        let mut line = TextLine::new(0, TextBytes::new())
+        let mut line = TextLine::from_bytes(0, TextBytes::new())
+            .unwrap()
             .with_entries(TextEntries::from_iter([entry("a", "1")]));
         let before = line.clone();
         let error = line
@@ -1577,7 +1749,7 @@ mod values {
 
     #[test]
     fn the_root_path_is_not_a_place_to_set() {
-        let mut line = TextLine::new(0, TextBytes::new());
+        let mut line = TextLine::from_bytes(0, TextBytes::new()).unwrap();
         assert!(
             line.set_entry_by_path(&FieldPath::root(), TextBytes::new())
                 .is_err()
@@ -1586,36 +1758,40 @@ mod values {
 
     #[test]
     fn removing_takes_one_entry_at_the_path() {
-        let mut line = TextLine::new(0, TextBytes::new())
+        let mut line = TextLine::from_bytes(0, TextBytes::new())
+            .unwrap()
             .with_entries(TextEntries::from_iter([entry("a", "1"), entry("b", "2")]));
         let removed = line.remove_entry_by_path(&path("a")).expect("removes");
-        assert_eq!(removed.key().as_str(), Some("a"));
+        assert_eq!(removed.key_bytes().as_str(), Some("a"));
         assert_eq!(line.entries().map(TextEntries::len), Some(1));
         assert!(line.remove_entry_by_path(&path("a")).is_none());
     }
 
     #[test]
     fn a_repeated_key_is_two_entries_reachable_by_position() {
-        let line = TextLine::new(0, TextBytes::new()).with_entries(TextEntries::from_iter([
-            entry("tag", "first"),
-            entry("tag", "second"),
-        ]));
+        let line = TextLine::from_bytes(0, TextBytes::new())
+            .unwrap()
+            .with_entries(TextEntries::from_iter([
+                entry("tag", "first"),
+                entry("tag", "second"),
+            ]));
         assert_eq!(
             line.get_entry_by_path(&path("tag"))
-                .and_then(|held| held.value().as_str()),
+                .and_then(|held| held.value_bytes().as_str()),
             Some("first"),
             "a name reaches the first"
         );
         assert_eq!(
             line.get_entry_by_path(&path("[1]"))
-                .and_then(|held| held.value().as_str()),
+                .and_then(|held| held.value_bytes().as_str()),
             Some("second")
         );
     }
 
     #[test]
     fn a_line_carries_what_no_other_field_can_recover() {
-        let mut line = TextLine::new(7, TextBytes::from_bytes("hello").expect("a body"));
+        let mut line =
+            TextLine::from_bytes(7, TextBytes::from_bytes("hello").expect("a body")).unwrap();
         assert_eq!(line.index(), 7);
         line.set_timestamp(Some(1_700_000_000_000_000_000));
         line.set_dropped_byte_size(Some(12));
@@ -1623,12 +1799,13 @@ mod values {
         assert_eq!(line.timestamp(), Some(1_700_000_000_000_000_000));
         assert_eq!(line.dropped_byte_size(), Some(12));
         assert_eq!(line.direction(), Some("out"));
-        assert_eq!(line.body().as_str(), Some("hello"));
+        assert_eq!(line.body(), "hello");
     }
 
     #[test]
     fn a_path_segment_naming_nothing_addressable_misses_rather_than_panics() {
-        let line = TextLine::new(0, TextBytes::new())
+        let line = TextLine::from_bytes(0, TextBytes::new())
+            .unwrap()
             .with_entries(TextEntries::from_iter([entry("a", "1")]));
         let by_index = FieldPath::new([FieldSegment::index(0)]);
         assert!(line.get_entry_by_path(&by_index).is_some());
@@ -1667,11 +1844,14 @@ mod values {
         );
         let entries = tree(b"8=FIX.4.4|35=D|NoAllocs[0].79=ACCT|Symbol[0]=AAPL|10=0|");
         assert_eq!(
-            entries.as_slice()[2].key().as_str(),
+            entries.as_slice()[2].key_bytes().as_str(),
             Some("NoAllocs[0].79"),
             "an indexed key is a key, and the loose walk found neither of these"
         );
-        assert_eq!(entries.as_slice()[3].key().as_str(), Some("Symbol[0]"));
+        assert_eq!(
+            entries.as_slice()[3].key_bytes().as_str(),
+            Some("Symbol[0]")
+        );
     }
 
     #[test]
@@ -1682,13 +1862,16 @@ mod values {
         // field of the frame, and `A` is a member of what `58` says.
         let entries = tree(b"8=FIX.4.4|35=D|58=quoting #A=1 and #B=2|10=0|");
         let quoting = &entries.as_slice()[2];
-        assert_eq!(quoting.value().as_str(), Some("quoting #A=1 and #B=2"));
+        assert_eq!(
+            quoting.value_bytes().as_str(),
+            Some("quoting #A=1 and #B=2")
+        );
         let quoted = quoting
             .entries()
             .expect("the value states pairs")
             .as_slice();
         assert_eq!(quoted.len(), 2);
-        assert_eq!(quoted[0].key().as_str(), Some("A"));
+        assert_eq!(quoted[0].key_bytes().as_str(), Some("A"));
         assert!(
             quoted[0].marked() && quoted[1].marked(),
             "the quoted keys carry the mark the text wrote in front of them"
@@ -1696,7 +1879,7 @@ mod values {
         assert_eq!(
             entries
                 .get_entry_by_path(&path("58"))
-                .and_then(|found| found.value().as_str()),
+                .and_then(|found| found.value_bytes().as_str()),
             Some("quoting #A=1 and #B=2"),
             "and the frame's own field is what the frame's own key reaches"
         );
@@ -1707,10 +1890,10 @@ mod values {
         let page = page(b"8=FIX.4.4|58=a value with spaces|10=0|");
         let body = TextBytes::from_whole_page(Arc::clone(&page)).expect("the whole page");
         let entries = crate::media::text::TextEntries::from_bytes(&body).expect("pairs");
-        let held = entries.as_slice()[1].value();
-        assert_eq!(held.as_str(), Some("a value with spaces"));
+        let held = &entries.as_slice()[1];
+        assert_eq!(held.value(), "a value with spaces");
         assert!(
-            Arc::ptr_eq(held.page().expect("a page"), &page),
+            Arc::ptr_eq(held.value_bytes().page().expect("a page"), &page),
             "a wider value is a wider range, never a copy"
         );
     }
@@ -1721,20 +1904,20 @@ mod values {
         let held = entries.as_slice();
         assert!(!held[1].marked() && held[2].marked());
         assert_eq!(
-            held[1].key().as_str(),
-            held[2].key().as_str(),
+            held[1].key_bytes().as_str(),
+            held[2].key_bytes().as_str(),
             "the mark is off the key, so a path still lifts the name the \
              bridge gave the field"
         );
         assert_eq!(
             entries
                 .get_entry_by_path(&path("ORDERID"))
-                .and_then(|found| found.value().as_str()),
+                .and_then(|found| found.value_bytes().as_str()),
             Some("123"),
             "and the name reaches the pair that arrived first"
         );
         assert!(
-            held[3].marked() && !held[3].key().as_bytes().starts_with(b"#"),
+            held[3].marked() && !held[3].key_bytes().as_bytes().starts_with(b"#"),
             "a marked key with no bare twin is marked all the same"
         );
     }
@@ -1760,7 +1943,7 @@ mod values {
 
         let differing = tree(b"MSGTYPE=D|ORDERID=123|#ORDERID=345");
         assert!(differing.as_slice()[2].marked());
-        assert_eq!(differing.as_slice()[2].value().as_str(), Some("345"));
+        assert_eq!(differing.as_slice()[2].value_bytes().as_str(), Some("345"));
     }
 
     #[test]
@@ -1768,13 +1951,13 @@ mod values {
         let entries = tree(b"MSGTYPE=D|#NOPARTYIDS=3|#NOPARTYIDS[0]=PARTYID=ONE");
         let held = entries.as_slice();
         assert!(held[1].marked() && held[2].marked());
-        assert_eq!(held[1].key().as_str(), Some("NOPARTYIDS"));
-        assert_eq!(held[2].key().as_str(), Some("NOPARTYIDS[0]"));
+        assert_eq!(held[1].key_bytes().as_str(), Some("NOPARTYIDS"));
+        assert_eq!(held[2].key_bytes().as_str(), Some("NOPARTYIDS[0]"));
         assert_eq!(
             held[2]
                 .entries()
                 .and_then(|nested| nested.as_slice().first())
-                .and_then(|member| member.value().as_str()),
+                .and_then(|member| member.value_bytes().as_str()),
             Some("ONE"),
             "an occurrence's members are read in their own scope"
         );
@@ -1820,7 +2003,7 @@ mod values {
 // --- The one decode path, the plan, and the two new options ---
 
 mod decoding {
-    use arrow_array::{Array as _, BinaryArray, StringArray};
+    use arrow_array::{Array as _, StringArray};
 
     use crate::FieldPath;
     use crate::media::text::{TextOptions, into_arrow_batch, read_text_lines};
@@ -1841,7 +2024,7 @@ mod decoding {
         assert_eq!(decoded.len(), 3);
         assert_eq!(decoded[0].index(), 0);
         assert_eq!(decoded[2].index(), 2);
-        assert_eq!(decoded[1].body().as_str(), Some("second"));
+        assert_eq!(decoded[1].body(), "second");
         // The URL is one shared value, not one rebuilt per line.
         assert_eq!(
             decoded[0].url().map(ToString::to_string),
@@ -1872,7 +2055,7 @@ mod decoding {
         assert_eq!(
             decoded[0]
                 .get_entry_by_path(&path)
-                .and_then(|held| held.value().as_str()),
+                .and_then(|held| held.value_bytes().as_str()),
             Some("AAPL")
         );
 
@@ -1883,10 +2066,10 @@ mod decoding {
         assert_eq!(
             column
                 .as_any()
-                .downcast_ref::<BinaryArray>()
-                .expect("lifted values are binary")
+                .downcast_ref::<StringArray>()
+                .expect("lifted values are text")
                 .value(0),
-            b"AAPL"
+            "AAPL"
         );
     }
 
@@ -1926,10 +2109,10 @@ mod decoding {
                 .column_by_name("payload")
                 .expect("renamed")
                 .as_any()
-                .downcast_ref::<BinaryArray>()
-                .expect("still binary")
+                .downcast_ref::<StringArray>()
+                .expect("still text")
                 .value(0),
-            b"hello"
+            "hello"
         );
     }
 
@@ -1974,10 +2157,10 @@ mod decoding {
                 .column_by_name("symbol")
                 .expect("aliased")
                 .as_any()
-                .downcast_ref::<BinaryArray>()
-                .expect("lifted values are binary")
+                .downcast_ref::<StringArray>()
+                .expect("lifted values are text")
                 .value(0),
-            b"AAPL"
+            "AAPL"
         );
     }
 
@@ -2118,7 +2301,7 @@ mod intake {
         // Read under the ordinary names: the aliases carry it.
         let back = from_arrow_batch(&foreign, &options).expect("lines read back");
         assert_eq!(back.len(), 1);
-        assert_eq!(back[0].body().as_str(), Some("hello"));
+        assert_eq!(back[0].body(), "hello");
         assert!(back[0].url().is_some(), "source resolved to url");
     }
 
@@ -2128,7 +2311,7 @@ mod intake {
         let lines = decode(b"hello\n", &renamed);
         let batch = into_arrow_batch(lines, &renamed).expect("a batch");
         let back = from_arrow_batch(&batch, &TextOptions::new()).expect("lines read back");
-        assert_eq!(back[0].body().as_str(), Some("hello"));
+        assert_eq!(back[0].body(), "hello");
     }
 
     #[test]
@@ -2141,7 +2324,7 @@ mod intake {
         let back = from_arrow_batch(&batch, &with_rownum).expect("lines read back");
         assert_eq!(back.len(), 1);
         assert_eq!(back[0].index(), 0, "the position it was read at");
-        assert_eq!(back[0].body().as_str(), Some("only"));
+        assert_eq!(back[0].body(), "only");
     }
 
     #[test]
@@ -2156,7 +2339,7 @@ mod intake {
         assert_eq!(
             back[0]
                 .get_entry_by_path(&path)
-                .and_then(|held| held.value().as_str()),
+                .and_then(|held| held.value_bytes().as_str()),
             Some("AAPL")
         );
     }
@@ -2176,7 +2359,7 @@ mod intake {
             .map(|line| line.expect("a line"))
             .collect();
         assert_eq!(back.len(), 3);
-        assert_eq!(back[2].body().as_str(), Some("c"));
+        assert_eq!(back[2].body(), "c");
     }
 
     #[test]

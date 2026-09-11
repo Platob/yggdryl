@@ -1,5 +1,6 @@
 //! The key/value tree one text line carries.
 
+use std::borrow::Cow;
 use std::fmt;
 
 use smol_str::{SmolStr, format_smolstr};
@@ -61,15 +62,37 @@ impl TextEntry {
         self
     }
 
-    /// Borrow the key.
+    /// The key, as text.
+    ///
+    /// Borrowed wherever the range is text, which on a line the reader made
+    /// is always: the scanner cuts a key at `=` and at the bytes that end a
+    /// field, all of them ASCII, so no range it cuts divides a character, and
+    /// the line itself was decoded before it was scanned. A range a caller
+    /// built from bytes of their own that are not text is answered as the
+    /// lossy decode of it, owned; [`key_bytes`](Self::key_bytes) is the
+    /// range either way.
     #[must_use]
-    pub const fn key(&self) -> &TextBytes {
+    pub fn key(&self) -> Cow<'_, str> {
+        String::from_utf8_lossy(self.key.as_bytes())
+    }
+
+    /// The value, as text, exactly as [`key`](Self::key) answers the key.
+    #[must_use]
+    pub fn value(&self) -> Cow<'_, str> {
+        String::from_utf8_lossy(self.value.as_bytes())
+    }
+
+    /// The key as the range of its page, for a reader that works in offsets.
+    #[must_use]
+    pub const fn key_bytes(&self) -> &TextBytes {
         &self.key
     }
 
-    /// Borrow the value.
+    /// The value as the range of its page, for a reader that works in
+    /// offsets: the FIX codec re-slicing a data field to the length its `Len`
+    /// field stated, or re-emitting a frame byte for byte.
     #[must_use]
-    pub const fn value(&self) -> &TextBytes {
+    pub const fn value_bytes(&self) -> &TextBytes {
         &self.value
     }
 
@@ -121,12 +144,7 @@ impl fmt::Display for TextEntry {
         if self.marked {
             formatter.write_str("#")?;
         }
-        write!(
-            formatter,
-            "{}={}",
-            self.key.as_str().unwrap_or("?"),
-            self.value.as_str().unwrap_or("?")
-        )
+        write!(formatter, "{}={}", self.key(), self.value())
     }
 }
 
@@ -185,7 +203,8 @@ impl TextEntries {
     /// let read: Vec<_> = entries.iter().map(ToString::to_string).collect();
     /// assert_eq!(read, ["8=FIX.4.4", "35=D", "58=a, b", "10=0"]);
     /// // Every key and value is a range of the page `body` holds, never a copy.
-    /// assert_eq!(entries.as_slice()[2].value().as_bytes(), b"a, b");
+    /// assert_eq!(entries.as_slice()[2].value(), "a, b");
+    /// assert_eq!(entries.as_slice()[2].value_bytes().as_bytes(), b"a, b");
     /// # Ok(())
     /// # }
     /// ```
@@ -438,7 +457,7 @@ fn collect_entries(
         // Whether the value nests is asked only where a level is left to
         // read it at: the question scans the value for an `=`.
         if levels > 1 && span.nested(bytes) {
-            if let Some(nested) = read_entries_at(entry.value(), levels - 1) {
+            if let Some(nested) = read_entries_at(entry.value_bytes(), levels - 1) {
                 entry.set_entries(Some(nested));
             }
         }

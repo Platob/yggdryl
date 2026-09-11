@@ -13,27 +13,48 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// the struct rather than re-deriving a datatype per value. The row is not a
 /// map: nothing here is looked up by name on the per-row path.
 ///
-/// The body is a range of the page the line was read into, so a line that fits
-/// one page copies no byte between the stream and the Arrow array that ends up
-/// pointing at that same page.
+/// The body is text, and it is text by construction: a line is made from the
+/// bytes the reader cut, and where those are not UTF-8 they are decoded once,
+/// where the line is made, so every reader after that point reads text and
+/// none of them validates again. A body that was UTF-8 - every line of every
+/// capture this crate holds - stays the range of the page it was read into,
+/// so nothing is copied between the stream and the line.
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TextLine {
     index: u64,
     url: Option<Arc<Url>>,
     timestamp: Option<i128>,
     bodytype: Option<MimeType>,
+    /// Text: [`decoded`] made it so, and every door onto this field goes
+    /// through it.
     body: TextBytes,
+    /// Each text, by the same door.
     captures: Vec<Option<TextBytes>>,
     entries: Option<TextEntries>,
     direction: Option<&'static str>,
     dropped_byte_size: Option<u64>,
+    /// How many bytes of the body, and of the captures, were decoded.
+    decoded_body: u64,
+    decoded_captures: u64,
 }
 
 impl TextLine {
-    /// One line holding only its position and its bytes.
-    #[must_use]
-    pub fn new(index: u64, body: TextBytes) -> Self {
-        Self {
+    /// One line from its position and the bytes the reader cut for it.
+    ///
+    /// The bytes become text here. A body that is valid UTF-8 is kept as the
+    /// range it is; one that is not is decoded once into a page of its own,
+    /// every valid run kept and every other byte read as the character
+    /// Windows-1252 gives it - which is what [`decoded_byte_size`] counts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) when the
+    /// decoded text is longer than a page can address in 32-bit offsets.
+    ///
+    /// [`decoded_byte_size`]: Self::decoded_byte_size
+    pub fn from_bytes(index: u64, body: TextBytes) -> Result<Self> {
+        let (body, decoded_body) = decoded(body)?;
+        Ok(Self {
             index,
             url: None,
             timestamp: None,
@@ -43,7 +64,9 @@ impl TextLine {
             entries: None,
             direction: None,
             dropped_byte_size: None,
-        }
+            decoded_body,
+            decoded_captures: 0,
+        })
     }
 
     /// The physical line number within the object, from zero.
@@ -130,14 +153,49 @@ impl TextLine {
     }
 
     /// The line, with whatever was read off its front removed.
+    ///
+    /// Text, always: what [`from_bytes`](Self::from_bytes) decoded is what
+    /// this answers. Readers that address the line by offset - the scanner,
+    /// the codec re-slicing a data field, the Arrow builder registering a
+    /// page - take the same bytes as a range through
+    /// [`body_bytes`](Self::body_bytes), which is free; this validates the
+    /// range on the way out, once per call, so the per-line path does not
+    /// ask it.
     #[must_use]
-    pub const fn body(&self) -> &TextBytes {
+    pub fn body(&self) -> &str {
+        std::str::from_utf8(self.body.as_bytes()).expect("a line's body is text by construction")
+    }
+
+    /// The body as the range of its page, for a reader that works in offsets.
+    #[must_use]
+    pub const fn body_bytes(&self) -> &TextBytes {
         &self.body
     }
 
-    /// Replace the body.
-    pub fn set_body(&mut self, body: TextBytes) {
+    /// Replace the body, decoded exactly as [`from_bytes`](Self::from_bytes)
+    /// decodes one; [`decoded_byte_size`](Self::decoded_byte_size) counts
+    /// the new body.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusal [`from_bytes`](Self::from_bytes) does, leaving
+    /// the line unchanged.
+    pub fn set_body(&mut self, body: TextBytes) -> Result<()> {
+        let (body, decoded_body) = decoded(body)?;
         self.body = body;
+        self.decoded_body = decoded_body;
+        Ok(())
+    }
+
+    /// How many bytes of the line as read were not UTF-8 and were decoded.
+    ///
+    /// Zero for a line that was text as read. The body's count and the
+    /// captures' together, because both are bytes the line held; it is the
+    /// one fact the decode keeps, so a reader auditing a capture can find the
+    /// lines that were repaired without decoding them again.
+    #[must_use]
+    pub const fn decoded_byte_size(&self) -> u64 {
+        self.decoded_body + self.decoded_captures
     }
 
     /// Which way the line moved, when the marker was taken off the body.
@@ -187,16 +245,49 @@ impl TextLine {
         &self.captures
     }
 
-    /// Replace the captures.
-    pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) {
-        self.captures = captures;
+    /// The capture at `index`, when the header declared and matched it.
+    ///
+    /// Text, by the same door the body came through; a column reads its
+    /// capture here and parses it at its own datatype.
+    #[must_use]
+    pub fn capture(&self, index: usize) -> Option<&str> {
+        let held = self.captures.get(index)?.as_ref()?;
+        Some(std::str::from_utf8(held.as_bytes()).expect("a capture is text by construction"))
     }
 
-    /// Return this line carrying captures.
-    #[must_use]
-    pub fn with_captures(mut self, captures: Vec<Option<TextBytes>>) -> Self {
-        self.captures = captures;
-        self
+    /// Replace the captures, each decoded exactly as the body is.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusal [`from_bytes`](Self::from_bytes) does, leaving
+    /// the line unchanged.
+    pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()> {
+        let mut read = Vec::with_capacity(captures.len());
+        let mut decoded_captures = 0;
+        for capture in captures {
+            read.push(match capture {
+                Some(held) => {
+                    let (held, count) = decoded(held)?;
+                    decoded_captures += count;
+                    Some(held)
+                }
+                None => None,
+            });
+        }
+        self.captures = read;
+        self.decoded_captures = decoded_captures;
+        Ok(())
+    }
+
+    /// Return this line carrying captures, each decoded exactly as the body
+    /// is.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusal [`from_bytes`](Self::from_bytes) does.
+    pub fn with_captures(mut self, captures: Vec<Option<TextBytes>>) -> Result<Self> {
+        self.set_captures(captures)?;
+        Ok(self)
     }
 
     /// The key/value tree this line carries.
@@ -278,9 +369,170 @@ impl TextLine {
 
 impl fmt::Display for TextLine {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.body.as_str() {
-            Some(text) => formatter.write_str(text),
-            None => write!(formatter, "{} bytes", self.body.len()),
+        formatter.write_str(self.body())
+    }
+}
+
+/// The bytes as text, and how many of them had to be decoded to be so.
+///
+/// Valid UTF-8 costs nothing: the range is answered as it is, and `0`. Any
+/// other input is decoded once into a page of its own - every valid run kept
+/// as it is, and every byte of every invalid run read as the character
+/// Windows-1252 gives it - and the count is those bytes. Per byte rather than
+/// per line, because a capture is mostly UTF-8 with an odd Latin-1 byte far
+/// more often than it is wholly Windows-1252, and decoding a valid `é` as
+/// `Ã©` because a lone `0xE9` stands elsewhere on the line would destroy what
+/// was right to repair what was wrong; a wholly Windows-1252 line has no
+/// valid multi-byte run to keep and reads byte for byte either way. A run a
+/// truncation cut inside a character is invalid too, and its orphan bytes
+/// read as the characters they are rather than as `U+FFFD`: a byte the wire
+/// held is a fact, and a replacement character is the absence of one.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) when the
+/// decoded text - up to three bytes per byte decoded - is longer than a page
+/// can address in 32-bit offsets.
+pub(crate) fn decoded(bytes: TextBytes) -> Result<(TextBytes, u64)> {
+    let held = bytes.as_bytes();
+    if std::str::from_utf8(held).is_ok() {
+        return Ok((bytes, 0));
+    }
+    let mut text = String::with_capacity(held.len() + 16);
+    let mut count = 0_u64;
+    for chunk in held.utf8_chunks() {
+        text.push_str(chunk.valid());
+        for byte in chunk.invalid() {
+            text.push(windows_1252(*byte));
+            count += 1;
         }
+    }
+    let page = TextBytes::from_whole_page(Arc::new(text.into_bytes()))?;
+    Ok((page, count))
+}
+
+/// The character Windows-1252 gives one byte, as the WHATWG encoding
+/// standard tables it.
+///
+/// `0x00`-`0x7F` are themselves and `0xA0`-`0xFF` are the Latin-1 range; the
+/// `0x80`-`0x9F` row is the classic table's punctuation, currency and
+/// letters, and the five bytes that table leaves undefined - `0x81`, `0x8D`,
+/// `0x8F`, `0x90`, `0x9D` - are the C1 controls of the same number rather
+/// than a refusal, which is what the standard answers and what keeps every
+/// byte a character. Only bytes at or above `0x80` reach this on the decode
+/// path, since every lower byte is valid UTF-8 on its own.
+const fn windows_1252(byte: u8) -> char {
+    match byte {
+        0x80 => '\u{20AC}',
+        0x82 => '\u{201A}',
+        0x83 => '\u{0192}',
+        0x84 => '\u{201E}',
+        0x85 => '\u{2026}',
+        0x86 => '\u{2020}',
+        0x87 => '\u{2021}',
+        0x88 => '\u{02C6}',
+        0x89 => '\u{2030}',
+        0x8A => '\u{0160}',
+        0x8B => '\u{2039}',
+        0x8C => '\u{0152}',
+        0x8E => '\u{017D}',
+        0x91 => '\u{2018}',
+        0x92 => '\u{2019}',
+        0x93 => '\u{201C}',
+        0x94 => '\u{201D}',
+        0x95 => '\u{2022}',
+        0x96 => '\u{2013}',
+        0x97 => '\u{2014}',
+        0x98 => '\u{02DC}',
+        0x99 => '\u{2122}',
+        0x9A => '\u{0161}',
+        0x9B => '\u{203A}',
+        0x9C => '\u{0153}',
+        0x9E => '\u{017E}',
+        0x9F => '\u{0178}',
+        // Every other byte, the five the classic table leaves undefined
+        // among them, is the code point of the same number.
+        other => other as char,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TextLine, decoded, windows_1252};
+    use crate::media::text::TextBytes;
+
+    fn line(bytes: &[u8]) -> TextLine {
+        TextLine::from_bytes(0, TextBytes::from_bytes(bytes).expect("a page")).expect("a line")
+    }
+
+    #[test]
+    fn text_as_read_is_the_range_it_was_read_into() {
+        let page =
+            TextBytes::from_bytes("8=FIX.4.4|58=caf\u{e9}|10=0|".as_bytes()).expect("a page");
+        let (body, count) = decoded(page.clone()).expect("text");
+        assert_eq!(count, 0);
+        assert!(std::sync::Arc::ptr_eq(
+            body.page().unwrap(),
+            page.page().unwrap()
+        ));
+        assert_eq!((body.start(), body.end()), (page.start(), page.end()));
+    }
+
+    #[test]
+    fn one_latin_1_byte_among_utf_8_decodes_alone() {
+        // `caf\xE9` beside a UTF-8 `\u{e9}`: the valid run is kept, and the
+        // lone byte reads as the one character it is.
+        let read = line(b"58=caf\xE9 caf\xC3\xA9|10=0|");
+        assert_eq!(read.body(), "58=caf\u{e9} caf\u{e9}|10=0|");
+        assert_eq!(read.decoded_byte_size(), 1);
+    }
+
+    #[test]
+    fn a_wholly_windows_1252_line_reads_byte_for_byte() {
+        let read = line(b"\x80 \x93quoted\x94 \x96 na\xEFve");
+        assert_eq!(
+            read.body(),
+            "\u{20AC} \u{201C}quoted\u{201D} \u{2013} na\u{ef}ve"
+        );
+        assert_eq!(read.decoded_byte_size(), 5);
+    }
+
+    #[test]
+    fn the_five_undefined_bytes_read_as_the_controls_of_their_number() {
+        for byte in [0x81_u8, 0x8D, 0x8F, 0x90, 0x9D] {
+            assert_eq!(windows_1252(byte), byte as char);
+            let read = line(&[b'a', byte, b'b']);
+            assert_eq!(read.body(), format!("a{}b", byte as char));
+            assert_eq!(read.decoded_byte_size(), 1);
+        }
+    }
+
+    #[test]
+    fn a_character_cut_in_two_reads_as_the_bytes_that_are_left() {
+        // The first two bytes of a three-byte `\u{20AC}`, as a byte limit
+        // would leave them: not `U+FFFD`, the two characters those bytes are.
+        let read = line(b"58=\xE2\x82");
+        assert_eq!(read.body(), "58=\u{e2}\u{201A}");
+        assert_eq!(read.decoded_byte_size(), 2);
+    }
+
+    #[test]
+    fn captures_take_the_same_decode_and_count_with_the_body() {
+        let mut read = line(b"body \xE9");
+        read.set_captures(vec![
+            Some(TextBytes::from_bytes(b"caf\xE9").expect("a page")),
+            None,
+            Some(TextBytes::from_bytes(b"plain").expect("a page")),
+        ])
+        .expect("captures");
+        assert_eq!(read.capture(0), Some("caf\u{e9}"));
+        assert_eq!(read.capture(1), None);
+        assert_eq!(read.capture(2), Some("plain"));
+        assert_eq!(read.capture(3), None);
+        assert_eq!(read.decoded_byte_size(), 2);
+        read.set_body(TextBytes::from_bytes(b"clean").expect("a page"))
+            .expect("a body");
+        assert_eq!(read.body(), "clean");
+        assert_eq!(read.decoded_byte_size(), 1, "the captures' count stays");
     }
 }

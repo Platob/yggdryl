@@ -1,7 +1,7 @@
 # The decisions the TextLine adaptation rests on
 
-Nine decisions and three amendments, settled while the FIX layer was moved onto
-the text reader that landed in `main`. Each is one rule, and the module doc
+Ten decisions and three amendments, settled while the FIX layer was moved onto
+the text reader that landed in `main`, and then made text. Each is one rule, and the module doc
 named beside it is where the rule is written down.
 
 They are here rather than in a scratchpad because they are the contract the work
@@ -11,7 +11,9 @@ find the answer without archaeology.
 
 Decisions 1-7 were settled before the work began, from five reader reports that
 measured both sides against the branch's own fixtures. Decision 8 was settled
-when the codec's entry point changed, decision 9 when its paths did. The
+when the codec's entry point changed, decision 9 when its paths did, and
+decision 10 when the line became text - written, like the others, before the
+code that keeps it. The
 amendments record where a decision turned out to over-claim once it met the
 code - which is the part most worth keeping.
 
@@ -368,3 +370,129 @@ lookup.
 suites re-spelled; a case proving a bare decimal reaches a child named `0` and
 answers none otherwise; a case proving one spelling reaches the same member
 through the message and through the registry.
+
+## 10. A line is text, and what arrived as something else is decoded where the line is made
+
+**Rule.** A `TextLine`'s body is text. `TextLine::body` answers `&str`, and it
+can, because the line is made text where it is made: `TextLine::from_bytes`
+and `set_body` take the bytes the reader cut, and where those are not valid UTF-8
+they are decoded once into a page of their own - every valid UTF-8 run kept as
+it is, and every byte of every invalid run read as the character Windows-1252
+gives it. A body that was valid UTF-8, which is every line of every capture this
+crate holds, costs nothing: the same page, the same range, no byte read twice
+beyond the validation. A body that was not costs one allocation, for that line.
+
+The row-header captures take the same decode, because a capture is text the
+header wrote and a line half text would be two readings of one line. The
+refusal a non-UTF-8 capture used to raise - `expected a UTF-8 row-header
+capture` - goes, with the branch that raised it.
+
+The Arrow twin follows: the row's `body` column is `utf8`, required, and a
+lifted entry column is `utf8`, nullable. What the reader answers as text it
+declares as text; a `binary` column over bytes proven to be text would be a
+second reading, and every consumer of it - the FIX batch reader, the row
+writer, a caller reading a frame - would validate again what the reader
+already validated. Writes consume only a non-null `utf8` body, and a batch
+carrying a `binary` body is refused naming what was expected.
+
+`TextEntry` stays a pair of ranges of the page (shape C of the three the
+handover named): `key()` and `value()` answer `Cow<str>` infallibly, borrowed
+wherever the range is text and owned only where it is not, and `key_bytes()`
+and `value_bytes()` answer the ranges for the reader that needs offsets - the
+FIX codec re-slicing a data field to the length its `Len` field stated, or
+re-emitting a frame byte for byte. On a line the reader made, the borrowed
+case is the only case: the scanner cuts a range at `=`, at a separator, at
+whitespace and at the punctuation a transport closed a line with, all of
+them ASCII, so no range it cuts ever divides a character. The owned case is
+left for a page a caller built from bytes of their own.
+
+`TextLine::decoded_byte_size` says how many bytes of the line as read were not
+UTF-8 and were decoded; `0` for a line that was text as read. It is the one
+fact the decode keeps, so a reader auditing a capture can find the lines the
+reader repaired without decoding them again.
+
+**The table.** Windows-1252 as the WHATWG encoding standard has it: `0x00`-`0x7F`
+are themselves, `0xA0`-`0xFF` are `U+00A0`-`U+00FF`, and `0x80`-`0x9F` are the
+classic table's punctuation, currency and letters, with the five bytes the
+classic table leaves undefined - `0x81`, `0x8D`, `0x8F`, `0x90`, `0x9D` - read
+as the C1 controls of the same number rather than refused. A byte the wire
+held is a fact, and the reader never writes `U+FFFD` for one, because a
+replacement character is the absence of a fact where the line had one.
+
+**Why per byte rather than per line.** A capture is mostly UTF-8 with an odd
+Latin-1 byte far more often than it is wholly Windows-1252 - a name a
+Windows tool wrote into a log a Linux service otherwise wrote in UTF-8 - and
+decoding a valid `é` (`C3 A9`) as `Ã©` because a lone `0xE9` stands elsewhere
+on the line would destroy what was right to repair what was wrong. A wholly
+Windows-1252 line has no valid multi-byte run to keep and decodes byte for
+byte, so the per-byte rule reads it exactly as a per-line rule would. What
+neither rule can do is tell `C3 A9` written as two Latin-1 letters from one
+UTF-8 `é`; the reader takes the UTF-8 reading, because it is the encoding
+the row's schema declares.
+
+**Why one rule and no option.** A `TextOptions` charset would be a knob for a
+case nobody has: this crate's captures are UTF-8 with stray bytes, and
+Windows-1252 is the one decode of a stray byte that loses nothing, since it
+maps every byte to one character. A capture in another encoding whole is a
+different input with its own argument, and it can have its own option then.
+
+**Why the decode comes last.** Everything the reader does to a line's bytes
+before the line exists - the row-header match, `lstrip`/`rstrip`, the
+direction, `max_record_byte_size`, `dropped_byte_size`, adjacent
+deduplication - is a fact of the bytes as read, in bytes as read, and stays
+so. A limit stated in bytes bounds the wire, not the decode: a body of N
+wire bytes decodes to as many as 3N. A truncation that cut a multi-byte
+character in two leaves its orphan bytes invalid, and they decode as the
+Windows-1252 characters they are - `E2 82` reads `â‚` - which is the honest
+answer to a reader that asked for N bytes and got them.
+
+**What it collides with, and how each is settled.**
+
+- *Decision 2's stated length.* A data field's `Len` counts wire bytes, and
+  the codec re-slices the value to it in page offsets. On a line the reader
+  made, the page is the wire wherever the wire was text, so the length lands
+  where it landed before - the 264 messages of the equivalence snapshot among
+  them. Where the wire was not text, the decoded value is longer than its
+  stated length, the length reaches no boundary the frame stated, and it is
+  not honoured - exactly as any stated length that reaches no boundary is not
+  (`fd76e05`): the value stays what the frame cut. That is a loss, and it is
+  named here rather than hidden: a binary data field on a line that was not
+  UTF-8 is read as text to the separator, and the line's
+  `decoded_byte_size` says the line was decoded. The codec's own byte doors -
+  `parse_fix_line`, `parse_ullink_line`, `own_pairs` - take bytes as given
+  and decode nothing, so a caller holding the wire still reads it as the wire.
+- *Byte-for-byte re-emission.* `FixMsg::into_bytes` re-emits the entries, and
+  the entries are ranges of the line's page, so a message read from a text
+  line re-emits that line's text: the wire as received wherever the wire was
+  text, and the decode of it where it was not. `.wire` in the snapshot cannot
+  move, because the corpus is UTF-8 throughout.
+- *The `Lossy` anomaly.* It keeps its meaning - a value that is not text
+  reaches the row as a decode of it - and it keeps its fixture, which goes
+  through the byte door. It cannot arise from a line the reader made, because
+  that line was text before the codec read it; that a line was decoded is the
+  line's fact, `decoded_byte_size`, and not a message's.
+- *Decision 5.* An entry is still a range of the line, and the line is still
+  the line; the decode happens before the line exists, so nothing here makes
+  an entry carry bytes the line does not.
+
+**Written in:** `media/text/line.rs`, on `TextLine`, with the table beside
+the decode; `media/text/entry.rs`, on the two accessors; `docs/media/text.md`.
+**Fixtures:** a line with one Latin-1 byte among UTF-8, decoded to the one
+character; a wholly Windows-1252 line; each of the five bytes the classic
+table leaves undefined; a line `max_record_byte_size` cut inside a
+character; a capture holding an invalid byte, reaching its typed column
+decoded; a data field carrying an invalid byte read through the text reader,
+which stays as the frame cut it and raises no `Lossy`, beside the same line
+through `parse_fix_line`, which reads the wire and does; the equivalence
+snapshot, unmoved; the Python and Node record dictionaries, answering `str`.
+
+**What it costs.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `media/text/line.rs` | `body()` answers `&str`, `body_bytes()` the range; `from_bytes`/`set_body` decode; `decoded_byte_size` | the page and offsets of every UTF-8 line |
+| `media/text/arrow.rs`, `plan.rs`, `batch.rs` | `body` and lifted columns `utf8`; the writer consumes `utf8`; captures decoded at `convert` | wire-byte counts: `dropped_byte_size`, `max_record_byte_size` |
+| `media/text/entry.rs` | `key()`/`value()` answer `Cow<str>`; `key_bytes()`/`value_bytes()` the ranges | every range the scanner cuts |
+| `fix/` | call sites read the ranges through the `_bytes` accessors | the equivalence snapshot; the byte-door fixture in `tests/fix/message.rs` |
+| Python, Node | `body`, `key`, `value`, captures answer text; `key_bytes`/`value_bytes` beside them; `decoded_byte_size` | argument order and error semantics |
+| docs, `AGENTS.md` | `body: utf8`; the examples read text | |

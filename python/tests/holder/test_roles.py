@@ -70,8 +70,8 @@ class TestTheNameComposesTheHandle:
         # The rows are the decoded ones, dated by the location holding the
         # coded bytes, because that is the layer that has a modification time.
         assert [(row["body"], row["mtime"]) for row in handle.read_records()] == [
-            (b"symbol,price", MTIME),
-            (b"AAPL,1", MTIME),
+            ("symbol,price", MTIME),
+            ("AAPL,1", MTIME),
         ]
 
     def test_a_file_url_composes_exactly_as_the_path_does(

@@ -75,8 +75,8 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
 
     # Records read the same way, decoding as the batches are pulled.
     assert [row["body"] for row in source.read_records()] == [
-        b"[INFO] alpha",
-        b"[WARN] beta",
+        "[INFO] alpha",
+        "[WARN] beta",
     ]
 
     # A name declaring nothing but the coding answers the coded handle itself.

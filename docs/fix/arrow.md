@@ -41,13 +41,13 @@ One column of frames in, batches out, the capture's own columns still in front o
     let capture = DataType::from_fields([
         DataType::Utf8.required_field("url"),
         DataType::Int64.required_field("rownum"),
-        DataType::Binary.required_field("body"),
+        DataType::Utf8.required_field("body"),
     ])?
     .required_field("line");
     let values = Scalar::from_sequence([Scalar::from_sequence([
         Scalar::from("file:///capture.log"),
         Scalar::from(7_i64),
-        Scalar::from(b"recv 8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec()),
+        Scalar::from("recv 8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|"),
     ])]);
     let batch = yggdryl::arrow::batch_from_value(&capture, &values)?;
     let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
@@ -96,10 +96,10 @@ One column of frames in, batches out, the capture's own columns still in front o
             "senderSessionId": pa.array(["0123abcd", None], pa.utf8()),
             "body": pa.array(
                 [
-                    b"recv 8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|",
-                    b"8=FIX.4.4|35=D|11=ORDER-2|55=MSFT|10=0|",
+                    "recv 8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|",
+                    "8=FIX.4.4|35=D|11=ORDER-2|55=MSFT|10=0|",
                 ],
-                pa.binary(),
+                pa.string(),
             ),
         }
     )
@@ -142,8 +142,8 @@ One column of frames in, batches out, the capture's own columns still in front o
       url: arrow.vectorFromArray(['file:///capture.log'], new arrow.Utf8()),
       rownum: arrow.vectorFromArray([7n], new arrow.Int64()),
       body: arrow.vectorFromArray(
-        [Buffer.from('recv 8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|')],
-        new arrow.Binary(),
+        ['recv 8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|'],
+        new arrow.Utf8(),
       ),
     })
 
@@ -171,7 +171,7 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 
 | Pin | Builder | Default | Says |
 | --- | --- | --- | --- |
-| `payload_column` | `with_payload_column` | `body` (`DEFAULT_PAYLOAD_COLUMN`) | which column carries the bytes |
+| `payload_column` | `with_payload_column` | `body` (`DEFAULT_PAYLOAD_COLUMN`) | which column carries the frames: `utf8`, as the [text reader emits its rows](../media/text.md#row-schema), and `binary` accepted too on intake, for a capture another producer landed as bytes |
 | `separator` | `with_separator` | `SOH` (`0x01`) | the separator a re-emitted line is written with, which is what `write_arrow_reader` writes; reading takes none, because a line already said which byte separated its fields |
 | `branch` | `with_branch` | none | the dialect, so no row infers one |
 | `version` | `with_version` | none | the version values are translated at, never what a column is called; unpinned, each row answers for itself |
@@ -273,11 +273,11 @@ Messages to batches, with one stage between them: the lifecycle stamps four mess
 
 ## A column is the caller speaking per row
 
-One column carries the bytes; four more supply, per row, arguments the byte readers already take per call, and every other column is offered to the message by name. A separator is not among them: which byte separated a frame's fields is what the line itself said, so no row states it.
+One column carries the frames; four more supply, per row, arguments the byte readers already take per call, and every other column is offered to the message by name. A separator is not among them: which byte separated a frame's fields is what the line itself said, so no row states it.
 
 | Column | Supplies |
 | --- | --- |
-| the payload column, named by the codec | the bytes parsed |
+| the payload column, named by the codec | the frame parsed |
 | `branch` | the dialect |
 | `beginstring` | the source version |
 | `direction` | the direction, stated |
@@ -336,13 +336,13 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
     use std::sync::Arc;
     use yggdryl::{DataType, FixCodec, FixRegistry, Scalar};
 
-    let body = br#"[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]"#;
+    let body = r#"[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]"#;
     let field = DataType::from_fields([
         DataType::Int64.required_field("rownum"),
-        DataType::Binary.required_field("body"),
+        DataType::Utf8.required_field("body"),
     ])?.required_field("capture");
     let rows = Scalar::from_sequence([Scalar::from_sequence([
-        Scalar::from(7_i64), Scalar::from(body.to_vec()),
+        Scalar::from(7_i64), Scalar::from(body),
     ])]);
     let batch = yggdryl::arrow::batch_from_value(&field, &rows)?;
     let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
@@ -365,8 +365,8 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
     import pyarrow as pa
     from yggdryl.fix import FixCodec, FixRegistry
 
-    body = b'[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]'
-    source = pa.table({"rownum": pa.array([7], pa.int64()), "body": pa.array([body], pa.binary())})
+    body = '[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]'
+    source = pa.table({"rownum": pa.array([7], pa.int64()), "body": pa.array([body], pa.string())})
     registry = FixRegistry()
     registry.with_ulbridge_fields()
     result = FixCodec(registry).parse_text_arrow_reader(source.to_reader()).read_all()
@@ -382,17 +382,17 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
     const arrow = require('apache-arrow')
     const { BatchReader, fix } = require('yggdryl')
 
-    const body = Buffer.from('[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]')
+    const body = '[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]'
     const source = new arrow.Table({
       rownum: arrow.vectorFromArray([7n], new arrow.Int64()),
-      body: arrow.vectorFromArray([body], new arrow.Binary()),
+      body: arrow.vectorFromArray([body], new arrow.Utf8()),
     })
     const registry = new fix.FixRegistry()
     registry.withUlbridgeFields()
     const result = new fix.FixCodec(registry).parseTextArrowReader(BatchReader.from(source)).intoTable()
     assert.equal(result.numRows, 2)
     assert.deepEqual([...result.getChild('rownum')], [7n, 7n])
-    assert.ok([...result.getChild('body')].every((held) => Buffer.from(held).equals(body)))
+    assert.deepEqual([...result.getChild('body')], [body, body])
     ```
 
 ## Rows are messages again, and messages rows
@@ -511,12 +511,12 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
     let codec = FixCodec::new(registry);
 
     // A report stating what was done and what was left: the rest is implied.
-    let report = b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|";
-    let capture = DataType::from_fields([DataType::Binary.required_field("body")])?.required_field("line");
+    let report = "8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|";
+    let capture = DataType::from_fields([DataType::Utf8.required_field("body")])?.required_field("line");
     let source = || -> yggdryl::Result<_> {
         let batch = yggdryl::arrow::batch_from_value(
             &capture,
-            &Scalar::from_sequence([Scalar::from_sequence([Scalar::from(report.to_vec())])]),
+            &Scalar::from_sequence([Scalar::from_sequence([Scalar::from(report)])]),
         )?;
         Ok(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
     };
@@ -556,8 +556,8 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
     codec = FixCodec(registry)
 
     # A report stating what was done and what was left: the rest is implied.
-    report = b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|"
-    capture = pa.table({"body": pa.array([report], pa.binary())})
+    report = "8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|"
+    capture = pa.table({"body": pa.array([report], pa.string())})
 
     bare = codec.parse_text_arrow_reader(capture.to_reader()).read_all()
     filled = codec.enrich_messages_arrow_reader(
@@ -585,9 +585,9 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
     const codec = new fix.FixCodec(registry)
 
     // A report stating what was done and what was left: the rest is implied.
-    const report = Buffer.from('8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|')
+    const report = '8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|'
     const capture = () => BatchReader.from(new arrow.Table({
-      body: arrow.vectorFromArray([report], new arrow.Binary()),
+      body: arrow.vectorFromArray([report], new arrow.Utf8()),
     }))
 
     const bare = codec.parseTextArrowReader(capture()).intoTable()
@@ -679,7 +679,7 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
 - A fill is row-only: never an entry, never in `nofixentries`, never re-emitted by `write_arrow_reader`, never in `msghash`.
 - A batch's bytes are read once from the payload column's offsets and spread evenly over its rows, so a large batch splits into equal row counts; a bulk configuration row's whole charge rides on its first message.
 - A `batch_byte_size` of `0` or `1` is a batch a row: the target is where a batch closes, never a bound a row must fit under.
-- `parse_text_arrow_reader` on a source with no column named as the payload column, or one holding neither text nor bytes under it -> refused before a row is read, naming the column. `parse_text_line` has no column to name: a line's body is a typed field, so a line carrying no bytes is a row holding an empty message and nothing else is refusable.
+- `parse_text_arrow_reader` on a source with no column named as the payload column, or one holding neither text nor bytes under it -> refused before a row is read, naming the column. `parse_text_line` has no column to name: a line's body is a typed field, so a line whose body is empty is a row holding an empty message and nothing else is refusable.
 - `messages` on a source whose schema makes no root field -> one error item; a later batch of another schema -> a conflict item; a row that is not a FIX row -> an error item; each fuses the stream.
 - `arrow_reader` under a schema the message cannot fill whole -> the row's own refusal, at that row; an `Err` item in its stream - a line `parse_lines` refused - yields the completed prefix, then the error, and fuses the reader, so a capture wanting every line as a row reads through `parse_text_arrow_reader`.
 - `arrow_reader` over messages carrying no arrival record - built by hand, or read back from rows holding only lifted columns - charges each the leaves of its row, so `enrich_messages_arrow_reader` over a lifted-only projection is bounded by the same target.

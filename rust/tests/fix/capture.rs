@@ -523,7 +523,9 @@ fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
     }
 
     let lines: Vec<TextLine> = [WILDCARD, WORKING]
-        .map(|body| TextLine::new(0, TextBytes::from_bytes(body.as_bytes()).unwrap()))
+        .map(|body| {
+            TextLine::from_bytes(0, TextBytes::from_bytes(body.as_bytes()).unwrap()).unwrap()
+        })
         .into();
     let read = codec
         .parse_text_lines(lines)

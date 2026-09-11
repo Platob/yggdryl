@@ -3959,8 +3959,17 @@ export type JsTextEntries = TextEntries
 
 /** One key and value a line declared, with whatever it nested. */
 export declare class TextEntry {
-  get key(): Buffer
-  get value(): Buffer
+  /** The key, as text. */
+  get key(): string
+  /** The value, as text. */
+  get value(): string
+  /** The key as the bytes of its range, copied. */
+  get keyBytes(): Buffer
+  /**
+   * The value as the bytes of its range, copied: what a reader working in
+   * offsets - a data field re-sliced to its stated length - reads.
+   */
+  get valueBytes(): Buffer
   get entries(): TextEntries | null
   toString(): string
 }
@@ -3977,9 +3986,12 @@ export declare class TextLine {
    * contract and `FixCodec`'s `captureNames` is what names it.
    *
    * The body is copied into a page this line owns, once: every key and
-   * value a message read from it records is a range of that page.
+   * value a message read from it records is a range of that page. A
+   * `string` body is its UTF-8; a `Buffer` body that is not UTF-8 is
+   * decoded as the core decodes one, each invalid byte as its Windows-1252
+   * character, and `decodedByteSize` counts them.
    */
-  constructor(index: number, body: Buffer, captures?: Array<string | null>)
+  constructor(index: number, body: string | Buffer, captures?: Array<string | null>)
   /**
    * The physical line number within the object, from zero.
    *
@@ -4002,9 +4014,16 @@ export declare class TextLine {
   /**
    * The line, with whatever was read off its front removed.
    *
-   * Copied across this boundary, as every byte value here is.
+   * Text, always: what the constructor or the reader decoded.
    */
-  get body(): Buffer
+  get body(): string
+  /**
+   * How many bytes of the line as read were not UTF-8 and were decoded.
+   *
+   * Zero for a line that was text as read; the body's count and the
+   * captures' together.
+   */
+  get decodedByteSize(): number
   /** Which way the line moved. */
   get direction(): string | null
   /** How many bytes of this record went over the retained limit. */
@@ -4013,7 +4032,7 @@ export declare class TextLine {
    * The row header's named captures, in the order the expression declares
    * them.
    */
-  get captures(): Array<Buffer | null>
+  get captures(): Array<string | null>
   /** The key/value tree this line carries. */
   get entries(): TextEntries | null
   /** The entry a path reaches, or `null`. */
@@ -4021,7 +4040,7 @@ export declare class TextLine {
   /** The entry a path reaches, raising absence. */
   entryByPath(path: string | FieldPath): TextEntry
   /** Set the value a path reaches, creating what is not there. */
-  setEntryByPath(path: string | FieldPath, value: Buffer): void
+  setEntryByPath(path: string | FieldPath, value: string | Buffer): void
   /** Remove the entry a path reaches. */
   removeEntryByPath(path: string | FieldPath): TextEntry | null
   toString(): string

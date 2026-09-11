@@ -1316,6 +1316,16 @@ fix_read_bytes: fix.FixMsg = next(fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|")
 fix_read_lines: fix.FixMessages = fix_reader.parse_lines([b"8=FIX.4.4|35=D|10=0|", bytearray()])
 fix_read_line: fix.FixMessages = fix_reader.parse_text_line(TextLine(0, b"35=D|"))
 fix_read_text_lines: fix.FixMessages = fix_reader.parse_text_lines([TextLine(0, b"35=D|")])
+text_line_text: TextLine = TextLine(1, "35=D|", ["FIX.4.4", None])
+text_line_body: str = text_line_text.body
+text_line_decoded: int = text_line_text.decoded_byte_size
+text_line_captures: tuple[str | None, ...] = text_line_text.captures
+text_line_text.set_entry_by_path("58", "text")
+text_line_text.set_entry_by_path("58", memoryview(b"bytes"))
+text_entry_value: str = text_line_text.entry_by_path("58").value
+text_entry_value_bytes: bytes = text_line_text.entry_by_path("58").value_bytes
+text_entry_key: str = text_line_text.entry_by_path("58").key
+text_entry_key_bytes: bytes = text_line_text.entry_by_path("58").key_bytes
 fix_read_config: fix.FixMessages = fix_reader.parse_ulconfig_line(b'{"Name":"Router"}')
 fix_read_frame: fix.FixMsg = fix_reader.parse_fix_line(b"8=FIX.4.4")
 fix_read_bridge: fix.FixMsg = fix_reader.parse_ullink_line(b"#SYMBOL=TTF")

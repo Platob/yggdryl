@@ -4,10 +4,12 @@
 //! twice: a path is a core `FieldPath`, a line is a core `TextLine`, and a
 //! lookup is the core lookup.
 
+use std::borrow::Cow;
+
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyStopIteration, PyTypeError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyTuple, PyType};
+use pyo3::types::{PyBytes, PyString, PyTuple, PyType};
 
 use yggdryl::media::text::{TextBytes, TextEntries, TextEntry, TextLine, TextLines};
 use yggdryl::{FieldPath, FieldSegment};
@@ -35,6 +37,21 @@ fn py_bytes<'py>(py: Python<'py>, bytes: &[u8]) -> PyResult<Bound<'py, PyBytes>>
     PyBytes::new_with(py, bytes.len(), |target| {
         target.copy_from_slice(bytes);
         Ok(())
+    })
+}
+
+/// One page from whatever spelling of a line's bytes the caller used.
+///
+/// A `str` is its UTF-8; `bytes`, `bytearray` and `memoryview` are read as
+/// they are, and the core decodes what is not UTF-8 among them where the
+/// line is made. The page is copied once, here.
+fn page_from_value(value: &Bound<'_, PyAny>, refusal: &str) -> PyResult<TextBytes> {
+    if let Ok(text) = value.cast::<PyString>() {
+        let text = text.to_cow()?;
+        return TextBytes::from_bytes(text.as_bytes()).map_err(value_error);
+    }
+    crate::text::codec::with_python_bytes(value, refusal, |bytes| {
+        TextBytes::from_bytes(bytes).map_err(value_error)
     })
 }
 
@@ -200,14 +217,29 @@ impl PyTextEntry {
 
 #[pymethods]
 impl PyTextEntry {
+    /// The key, as text.
     #[getter]
-    fn key<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        py_bytes(py, self.inner.key().as_bytes())
+    fn key(&self) -> Cow<'_, str> {
+        self.inner.key()
     }
 
+    /// The value, as text.
     #[getter]
-    fn value<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        py_bytes(py, self.inner.value().as_bytes())
+    fn value(&self) -> Cow<'_, str> {
+        self.inner.value()
+    }
+
+    /// The key as the bytes of its range, for a reader that works in offsets.
+    #[getter]
+    fn key_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        py_bytes(py, self.inner.key_bytes().as_bytes())
+    }
+
+    /// The value as the bytes of its range: a FIX data field re-sliced to
+    /// the length its `Len` field stated, or a frame re-emitted byte for byte.
+    #[getter]
+    fn value_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        py_bytes(py, self.inner.value_bytes().as_bytes())
     }
 
     #[getter]
@@ -328,12 +360,21 @@ impl PyTextLine {
     /// contract and `FixCodec(capture_names=...)` is what names it.
     ///
     /// The body is copied into a page this line owns, once: every key and
-    /// value a message read from it records is a range of that page.
+    /// value a message read from it records is a range of that page. A `str`
+    /// body is its UTF-8; bytes that are not UTF-8 are decoded here, as the
+    /// core decodes every line it reads, and `decoded_byte_size` counts them.
     #[new]
     #[pyo3(signature = (index, body, captures=None))]
-    fn new(index: u64, body: &[u8], captures: Option<Vec<Option<String>>>) -> PyResult<Self> {
-        let page = TextBytes::from_bytes(body).map_err(value_error)?;
-        let mut line = TextLine::new(index, page);
+    fn new(
+        index: u64,
+        body: &Bound<'_, PyAny>,
+        captures: Option<Vec<Option<String>>>,
+    ) -> PyResult<Self> {
+        let page = page_from_value(
+            body,
+            "a line body must be str, bytes, bytearray, or memoryview",
+        )?;
+        let mut line = TextLine::from_bytes(index, page).map_err(value_error)?;
         if let Some(held) = captures {
             let mut read = Vec::with_capacity(held.len());
             for capture in held {
@@ -344,7 +385,7 @@ impl PyTextLine {
                     None => None,
                 });
             }
-            line.set_captures(read);
+            line.set_captures(read).map_err(value_error)?;
         }
         Ok(Self::from_core(line))
     }
@@ -376,10 +417,17 @@ impl PyTextLine {
             .map(crate::enums::PyMimeType::from_core)
     }
 
-    /// The line, with whatever was read off its front removed.
+    /// The line, with whatever was read off its front removed, as text.
     #[getter]
-    fn body<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        py_bytes(py, self.inner.body().as_bytes())
+    fn body(&self) -> &str {
+        self.inner.body()
+    }
+
+    /// How many bytes of the line as read were not UTF-8 and were decoded;
+    /// zero for a line that was text as read.
+    #[getter]
+    fn decoded_byte_size(&self) -> u64 {
+        self.inner.decoded_byte_size()
     }
 
     /// Which way the line moved.
@@ -398,10 +446,11 @@ impl PyTextLine {
     /// them.
     #[getter]
     fn captures<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        let mut captures: Vec<Py<PyAny>> = Vec::with_capacity(self.inner.captures().len());
-        for capture in self.inner.captures() {
-            captures.push(match capture {
-                Some(value) => py_bytes(py, value.as_bytes())?.into_any().unbind(),
+        let count = self.inner.captures().len();
+        let mut captures: Vec<Py<PyAny>> = Vec::with_capacity(count);
+        for index in 0..count {
+            captures.push(match self.inner.capture(index) {
+                Some(text) => text.into_pyobject(py)?.into_any().unbind(),
                 None => py.None(),
             });
         }
@@ -434,9 +483,18 @@ impl PyTextLine {
     }
 
     /// Set the value a path reaches, creating what is not there.
-    fn set_entry_by_path(&mut self, path: &Bound<'_, PyAny>, value: &[u8]) -> PyResult<()> {
+    ///
+    /// A `str` value is its UTF-8; bytes are taken as given.
+    fn set_entry_by_path(
+        &mut self,
+        path: &Bound<'_, PyAny>,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
         let path = core_path_from_value(path)?;
-        let value = TextBytes::from_bytes(value).map_err(value_error)?;
+        let value = page_from_value(
+            value,
+            "an entry value must be str, bytes, bytearray, or memoryview",
+        )?;
         self.inner
             .set_entry_by_path(&path, value)
             .map_err(value_error)

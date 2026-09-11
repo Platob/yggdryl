@@ -2247,7 +2247,9 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
     ];
     let lines: Vec<TextLine> = rows
         .iter()
-        .map(|row| TextLine::new(0, TextBytes::from_bytes(row).expect("a capture page")))
+        .map(|row| {
+            TextLine::from_bytes(0, TextBytes::from_bytes(row).expect("a capture page")).unwrap()
+        })
         .collect();
 
     // One line at a time, lazily: the iterator is the stream.

@@ -574,7 +574,7 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
     // no bytes is a row holding an empty message, which is the one answer the
     // two doors share.
     let mut silent = codec
-        .parse_text_line(&TextLine::new(0, TextBytes::default()))
+        .parse_text_line(&TextLine::from_bytes(0, TextBytes::default()).unwrap())
         .unwrap();
     let empty = silent.next().unwrap().unwrap();
     assert!(silent.next().is_none());
@@ -785,12 +785,15 @@ fn a_line_is_read_by_its_captures_and_a_bare_body_reads_as_the_byte_reader_does(
     // A line and the captures its header declared, in that order; `None` is a
     // capture the header stated and this line did not match.
     let line = |body: &[u8], captures: [Option<&str>; 2]| {
-        TextLine::new(0, page(body)).with_captures(
-            captures
-                .iter()
-                .map(|held| held.map(|text| page(text.as_bytes())))
-                .collect(),
-        )
+        TextLine::from_bytes(0, page(body))
+            .unwrap()
+            .with_captures(
+                captures
+                    .iter()
+                    .map(|held| held.map(|text| page(text.as_bytes())))
+                    .collect(),
+            )
+            .unwrap()
     };
     let one = |line: &TextLine| -> FixMsg {
         let mut messages = codec.parse_text_line(line).unwrap();
@@ -829,7 +832,7 @@ fn a_line_is_read_by_its_captures_and_a_bare_body_reads_as_the_byte_reader_does(
 
     // A bulk document is many messages, and the stream door yields each.
     let read: Vec<_> = FixCodec::new(config_registry())
-        .parse_text_lines([TextLine::new(0, page(BULK_CONFIG))])
+        .parse_text_lines([TextLine::from_bytes(0, page(BULK_CONFIG)).unwrap()])
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert_eq!(read.len(), 2);
@@ -859,8 +862,10 @@ const PLUGIN_CAPTURES: [&str; 2] = ["pluginid", "prevpluginid"];
 /// before it where the line states one.
 fn plugin_line(body: &[u8], plugin: Option<&str>, previous: Option<&str>) -> TextLine {
     let page = |text: &str| TextBytes::from_bytes(text.as_bytes()).unwrap();
-    TextLine::new(0, TextBytes::from_bytes(body).unwrap())
+    TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap())
+        .unwrap()
         .with_captures(vec![plugin.map(page), previous.map(page)])
+        .unwrap()
 }
 
 /// The one message one line reads as.
@@ -1334,7 +1339,9 @@ fn a_payload_column_spelled_pluginid_is_the_payload_and_names_no_dialect() {
     // about them can reach a dialect.
     let lines: Vec<TextLine> = bodies
         .iter()
-        .map(|body| TextLine::new(0, TextBytes::from_bytes(body.as_bytes()).unwrap()))
+        .map(|body| {
+            TextLine::from_bytes(0, TextBytes::from_bytes(body.as_bytes()).unwrap()).unwrap()
+        })
         .collect();
     let alone: Vec<FixMsg> = lines.iter().map(|line| one_of(&codec, line)).collect();
 

@@ -715,7 +715,7 @@ fn a_batch_read_lands_at_the_newest_version_when_asked() {
     assert_eq!(column(&read, VERSION_TAG), "4.2");
 
     // The line door composes the same way.
-    let line = TextLine::new(0, TextBytes::from_bytes(REPORT).expect("a page"));
+    let line = TextLine::from_bytes(0, TextBytes::from_bytes(REPORT).expect("a page")).unwrap();
     let message = codec
         .parse_text_line(&line)
         .expect("a readable line")

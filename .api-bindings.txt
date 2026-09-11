@@ -7,8 +7,8 @@
 ### python: yggdryl
   FieldPath: __hash__, __len__, __reduce__, __repr__, __richcmp__, __str__, is_root, join, name, parent, root, segments, stable_hash
   TextEntries: __getitem__, __len__, __repr__, __str__, entry_by_path, get_entry_by_path
-  TextEntry: __repr__, __richcmp__, __str__, entries, key, value
-  TextLine: __init__(index, body, captures=None), __repr__, __richcmp__, __str__, body, bodytype, captures, direction, dropped_byte_size, entries, entry_by_path, get_entry_by_path, index, remove_entry_by_path, set_entry_by_path, timestamp, url
+  TextEntry: __repr__, __richcmp__, __str__, entries, key, key_bytes, value, value_bytes
+  TextLine: __init__(index, body: str | bytes | bytearray | memoryview, captures=None), __repr__, __richcmp__, __str__, body, bodytype, captures, decoded_byte_size, direction, dropped_byte_size, entries, entry_by_path, get_entry_by_path, index, remove_entry_by_path, set_entry_by_path(path, value: str | bytes | bytearray | memoryview), timestamp, url
   TextLines: __iter__, __next__
   ArrowValue: as_py, cast, column_size, field, from_py, into_arrow_array, into_arrow_batch, into_arrow_reader, into_arrow_scalar, into_arrow_table, into_numpy, into_pandas, into_polars, into_scalar, is_consumed, is_streamed, row_size, shape
   AsciiEnum: __contains__, __eq__, __iter__, __len__, __repr__, from_json, from_logical_name, get, get_member, insert, into_intenum, into_json, into_members, member_name, members, name, prebuilt, remove
@@ -244,10 +244,10 @@
   TextEntries
     instance: at, entryByPath, getEntryByPath, length, toArray, toString
   TextEntry
-    instance: entries, key, toString, value
+    instance: entries, key, keyBytes, toString, value, valueBytes
   TextLine
-    constructor: new TextLine(index: number, body: Buffer, captures?: Array<string | null>)
-    instance: body, bodytype, captures, direction, droppedByteSize, entries, entryByPath, getEntryByPath, index, removeEntryByPath, setEntryByPath, timestamp, toString, url
+    constructor: new TextLine(index: number, body: string | Buffer, captures?: Array<string | null>)
+    instance: body, bodytype, captures, decodedByteSize, direction, droppedByteSize, entries, entryByPath, getEntryByPath, index, removeEntryByPath, setEntryByPath, timestamp, toString, url
   TextLineIterator
     instance: next; IOBase.readTextLines(options?) answers one
   Statement

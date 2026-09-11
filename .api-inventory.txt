@@ -1750,8 +1750,10 @@ pub struct TextEntry
   pub const fn new(key: TextBytes, value: TextBytes) -> Self
   pub fn with_entries(self, entries: TextEntries) -> Self
   pub const fn with_marked(self, marked: bool) -> Self
-  pub const fn key(&self) -> &TextBytes
-  pub const fn value(&self) -> &TextBytes
+  pub fn key(&self) -> Cow<'_, str>
+  pub fn value(&self) -> Cow<'_, str>
+  pub const fn key_bytes(&self) -> &TextBytes
+  pub const fn value_bytes(&self) -> &TextBytes
   pub fn set_value(&mut self, value: TextBytes)
   pub const fn marked(&self) -> bool
   pub const fn entries(&self) -> Option<&TextEntries>
@@ -1775,7 +1777,7 @@ pub struct TextEntries
 
 ### yggdryl::media::text::line  [rust\src\media\text\line.rs]
 pub struct TextLine
-  pub fn new(index: u64, body: TextBytes) -> Self
+  pub fn from_bytes(index: u64, body: TextBytes) -> Result<Self>
   pub const fn index(&self) -> u64
   pub const fn set_index(&mut self, index: u64)
   pub fn url(&self) -> Option<&Url>
@@ -1787,15 +1789,18 @@ pub struct TextLine
   pub const fn bodytype(&self) -> Option<&MimeType>
   pub fn set_bodytype(&mut self, bodytype: Option<MimeType>)
   pub fn with_bodytype(self, bodytype: MimeType) -> Self
-  pub const fn body(&self) -> &TextBytes
-  pub fn set_body(&mut self, body: TextBytes)
+  pub fn body(&self) -> &str
+  pub const fn body_bytes(&self) -> &TextBytes
+  pub fn set_body(&mut self, body: TextBytes) -> Result<()>
+  pub const fn decoded_byte_size(&self) -> u64
   pub const fn direction(&self) -> Option<&'static str>
   pub const fn set_direction(&mut self, direction: Option<&'static str>)
   pub const fn dropped_byte_size(&self) -> Option<u64>
   pub const fn set_dropped_byte_size(&mut self, size: Option<u64>)
   pub fn captures(&self) -> &[Option<TextBytes>]
-  pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>)
-  pub fn with_captures(self, captures: Vec<Option<TextBytes>>) -> Self
+  pub fn capture(&self, index: usize) -> Option<&str>
+  pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()>
+  pub fn with_captures(self, captures: Vec<Option<TextBytes>>) -> Result<Self>
   pub const fn entries(&self) -> Option<&TextEntries>
   pub const fn entries_mut(&mut self) -> Option<&mut TextEntries>
   pub fn set_entries(&mut self, entries: Option<TextEntries>)

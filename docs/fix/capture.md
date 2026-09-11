@@ -796,7 +796,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
     let capture = DataType::from_fields([
         DataType::Utf8.required_field("url"),
         DataType::Int64.required_field("rownum"),
-        DataType::Binary.required_field("body"),
+        DataType::Utf8.required_field("body"),
     ])?
     .required_field("line");
 
@@ -823,7 +823,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
             [
                 Field("url", DataType("utf8"), nullable=False),
                 Field("rownum", DataType("int64"), nullable=False),
-                Field("body", DataType("binary"), nullable=False),
+                Field("body", DataType("utf8"), nullable=False),
             ]
         ),
         nullable=False,
@@ -850,7 +850,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
       [
         fields.utf8('url', { nullable: false }),
         fields.int64('rownum', { nullable: false }),
-        fields.binary('body', { nullable: false }),
+        fields.utf8('body', { nullable: false }),
       ],
       { nullable: false },
     )
