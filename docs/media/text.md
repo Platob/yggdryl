@@ -289,8 +289,13 @@ carries `G L` and `ABBN SW` whole, and `58=` is a pair carrying nothing rather
 than no pair at all. A key inside a frame is a key however the writer spelled
 it - `NoAllocs[0].79`, `#INSTRUMENT[DESCRIPTION]`, `Msg Type` and a second `#`
 on a key already marked are all names, the space among them because the FIX name
-fold ignores it exactly as it ignores `_` - though it is still a name and not
-prose, so a log's remark carrying bytes no name carries states no field.
+fold ignores it exactly as it ignores `_`. It is still a run of name bytes and
+stops at the first byte no name holds, so a log's remark reading `sent >> seq=7`
+after the frame states only `seq`. The space costs one thing and the cost is
+stated rather than dodged: a remark spelled in nothing but words is such a run,
+so `trailing note=x` after a frame is a field keyed `trailing note`. No rule
+available to a scanner separates it from `Msg Type` - the scanner holds no
+dictionary - and a reader that holds one answers nothing for it.
 
 Everywhere else - a sentence, a transport's prefix in front of a frame, a bare
 run of attributes, a line that ran its fields together with spaces - a value

@@ -257,6 +257,53 @@ fn a_row_reads_back_into_the_message_that_made_it() {
 }
 
 #[test]
+fn a_data_field_that_is_not_text_reaches_a_row_as_the_decode_a_row_can_hold() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    // The one line a row cannot say what arrived on: `RawData(96)` carrying
+    // bytes no text holds. Its length is stated, because that is what a data
+    // field is for.
+    let line: &[u8] = b"8=FIX.4.4\x0135=D\x0195=4\x0196=\xff\xfe A\x0110=000\x01";
+    let parsed = reader.parse_fix_line(line).unwrap();
+
+    // The message read from the line holds the bytes and re-emits them.
+    let arrived = parsed
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 96)
+        .expect("the data field");
+    assert_eq!(arrived.value().as_bytes(), b"\xff\xfe A");
+    assert_eq!(parsed.into_bytes(1), line);
+
+    // The row spells that value as text, because a column a reader can read
+    // is what a row is for, so the message the row makes re-emits the decode
+    // rather than the bytes. That is the whole of what a row cannot carry.
+    let row = parsed.into_row(&schema).unwrap();
+    let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(
+        held.entries()
+            .iter()
+            .find(|entry| entry.tag() == 96)
+            .expect("the data field")
+            .value()
+            .as_bytes(),
+        "\u{FFFD}\u{FFFD} A".as_bytes(),
+    );
+    assert_ne!(held.into_bytes(1), line);
+
+    // And both say so, which is the point: an anomaly a caller can see beats
+    // a row that quietly differs from the line that made it.
+    let stated = |message: &FixMsg| -> Vec<String> {
+        message.anomalies().map(|held| held.to_string()).collect()
+    };
+    assert_eq!(
+        stated(&parsed),
+        ["96 (96) reaches the row as a lossy decode"]
+    );
+    assert_eq!(stated(&held), stated(&parsed));
+}
+
+#[test]
 fn a_row_carrying_its_captures_own_columns_returns_to_its_schema_whole() {
     let (registry, reader) = reader();
     // Nullable, because a message parsed on its own states none of them.

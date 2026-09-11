@@ -215,6 +215,24 @@ pub use schema::{
 /// The absent branch occupies four zero bytes in every standard identifier.
 const STANDARD_BRANCH_DIGEST: u32 = 0;
 
+/// A branch digest as everything outside this crate holds it.
+///
+/// The XXH32 is a `u32` and every carrier of it is an `i32`, which is the
+/// same four bytes read as signed: the digest's exact width, and the widest
+/// signed integer every exchange format this crate writes can hold, Avro
+/// having no unsigned one. A digest above `i32::MAX` therefore reads
+/// negative, and reads back as itself.
+#[allow(clippy::cast_possible_wrap)]
+pub(super) const fn signed(digest: u32) -> i32 {
+    digest as i32
+}
+
+/// The same four bytes read back as the digest they are.
+#[allow(clippy::cast_sign_loss)]
+pub(super) const fn unsigned(branch: i32) -> u32 {
+    branch as u32
+}
+
 /// The dictionary one FIX field belongs to.
 ///
 /// A branch separates the FIX specification's own fields from a venue's:
@@ -386,15 +404,16 @@ impl FixBranch {
         self.name.is_empty()
     }
 
-    /// The same identity an arrival entry stores, read signed.
+    /// The same identity, read signed.
     ///
-    /// Four bytes either way: this is the reading an entry's `branch` column
-    /// carries and the one [`FixRegistry::branch_by_digest`] takes, so a
-    /// capture's column joins to a declaration with nothing in between. A
-    /// digest above `i32::MAX` reads negative here and is the same digest.
+    /// Four bytes either way: this is the reading the store's branch manifest
+    /// publishes and the one [`FixRegistry::branch_by_digest`] takes, so a
+    /// reader holding a digest joins to a declaration with nothing in
+    /// between. A digest above `i32::MAX` reads negative here and is the same
+    /// digest.
     #[must_use]
     pub const fn digest_signed(&self) -> i32 {
-        entry::signed(self.digest())
+        signed(self.digest())
     }
 
     /// The cached XXH32 identity of the canonical spelling.
@@ -554,7 +573,7 @@ impl FixId {
 
     /// The identifier of `tag` in the standard branch.
     pub const fn standard(tag: i32) -> Self {
-        Self::new(tag, entry::signed(STANDARD_BRANCH_DIGEST))
+        Self::new(tag, signed(STANDARD_BRANCH_DIGEST))
     }
 
     /// Builds an identifier from a branch and tag.
@@ -638,7 +657,7 @@ impl FixId {
     /// [`Self::branch`] read unsigned, which is [`FixBranch::digest`]'s own
     /// reading of the same four bytes.
     pub const fn branch_digest(self) -> u32 {
-        entry::unsigned(self.branch)
+        unsigned(self.branch)
     }
 
     /// Returns whether this identifier is in the standard branch.

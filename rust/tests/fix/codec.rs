@@ -1027,7 +1027,13 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
             .and_then(Scalar::as_sequence)
             .and_then(|occurrence| occurrence.iter().find_map(Scalar::as_sequence));
     }
-    assert!(depth > 1, "the openers nested rather than flattening");
+    // As deep as a schema may nest and no deeper, which is the bound this
+    // case exists to pin: the openers past it are members of the deepest
+    // occurrence rather than another level of it, so two thousand of them
+    // build a wide row instead of exhausting the stack. Sixty-five levels
+    // because the party's own occurrence is the one the reader opened at
+    // depth zero, and sixty-four more are what it may open under it.
+    assert_eq!(depth, 65, "the openers nested to the bound and stopped");
 }
 
 #[test]
@@ -1152,6 +1158,96 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
         alone.as_value().as_sequence().expect("a row")[at].as_str(),
         Some("345")
     );
+}
+
+#[test]
+fn a_stated_length_is_honoured_only_where_it_ends_a_segment_the_frame_cut() {
+    let reader = reader();
+    let value = |frame: &[u8], tag: i32| -> Vec<u8> {
+        let message = reader
+            .parse_fix_line(frame)
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(
+            message.into_bytes(b'|'),
+            frame,
+            "a data field re-emits the bytes the frame carried"
+        );
+        message
+            .entries()
+            .iter()
+            .find(|entry| entry.tag() == tag)
+            .unwrap_or_else(|| panic!("tag {tag}"))
+            .value()
+            .as_bytes()
+            .to_vec()
+    };
+
+    // The length is what a data field is for: the frame's separator stands
+    // inside the value and the count is what reaches past it.
+    assert_eq!(
+        value(b"8=FIX.4.4|9=0|35=D|95=5|96=AB|CD|10=000|", 96),
+        b"AB|CD"
+    );
+
+    // A count that stops in the middle of the value is honoured by nothing:
+    // the frame's own cut is kept, because widening to a byte the frame never
+    // separated at would truncate the field and drop what stood past it from
+    // the message and from the wire alike.
+    assert_eq!(value(b"8=FIX.4.4|35=D|95=2|96=ABCDE|10=000|", 96), b"ABCDE");
+    // Nor one that reaches past everything the line wrote.
+    assert_eq!(
+        value(b"8=FIX.4.4|35=D|95=99|96=ABCDE|10=000|", 96),
+        b"ABCDE"
+    );
+
+    // `XmlData` takes the trailer instead where the count lands nowhere,
+    // because a bridge writes it last and a log that printed each control
+    // byte as a glyph carries more bytes than the bridge counted.
+    assert_eq!(
+        value(b"8=FIX.4.4|35=D|212=5|213=ABCDEFGH|10=0|", 213),
+        b"ABCDEFGH"
+    );
+    // Including a count landing inside the checksum's own key, which is the
+    // one that costs a message its trailer: the entry after any span at all
+    // is the tag-keyed `10` the frame closes with, so `10` being a tag is no
+    // evidence that the span ended a segment.
+    let trailered: &[u8] = b"8=FIX.4.4|35=D|212=7|213=A|B|C|10=000|";
+    assert_eq!(value(trailered, 213), b"A|B|C");
+    assert_eq!(
+        reader
+            .parse_fix_line(trailered)
+            .unwrap()
+            .by_tag(10)
+            .unwrap()
+            .as_str(),
+        Some("000"),
+        "the checksum is still the message's"
+    );
+}
+
+#[test]
+fn a_frame_reader_takes_the_frame_and_leaves_the_transports_own_pairs() {
+    let reader = reader();
+    // One bound for every door: a log line printing its own `k=v` in front of
+    // the frame it quoted states neither field, whether the line arrives at
+    // the row reader or here. The line still said them - `TextEntries` keeps
+    // every pair it saw - but a message that swallowed them would answer them
+    // by name and re-emit them as its own.
+    let line: &[u8] = b"ts=12|thread=7|8=FIX.4.4|35=D|11=A1|10=000|";
+    let message = reader.parse_fix_line(line).unwrap();
+    let keys: Vec<&str> = message
+        .entries()
+        .iter()
+        .map(|entry| entry.key().as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(keys, ["8", "35", "11", "10"]);
+    assert!(message.get_by_name("ts").is_none());
+    assert_eq!(message.into_bytes(b'|'), b"8=FIX.4.4|35=D|11=A1|10=000|");
+
+    // A body that opens at its own first pair is bounded at zero, so nothing
+    // a caller hands in whole is dropped.
+    let bare: &[u8] = b"8=FIX.4.4|35=D|11=A1|10=000|";
+    assert_eq!(reader.parse_fix_line(bare).unwrap().into_bytes(b'|'), bare);
 }
 
 #[test]

@@ -460,8 +460,10 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
     };
     // The key and the value are the ranges of the line the entry names, read
     // as the text a `Utf8` column holds - lossily where a data field's bytes
-    // are not text, which is the one place a row cannot say what arrived and
-    // `anomalies()` says so.
+    // are not text, which is the one place a row cannot say what arrived. It
+    // says that it cannot: the decode leaves the replacement character, and
+    // `anomalies()` reads it as the `Lossy` it is, on the parsed message and
+    // on one rebuilt from this row alike.
     Ok(crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
         crate::Scalar::from(entry.key_text()),
@@ -615,6 +617,16 @@ impl super::FixMsg {
     /// read from, and a row without that column has no entries. Nothing is
     /// parsed again: this is what makes a batch of rows a stream of messages
     /// at the cost of the values it already holds.
+    ///
+    /// The round trip is byte for byte over every capture this crate is
+    /// tested against, and it is exact for an entry whose bytes are text -
+    /// which is every entry a log wrote. It cannot be for one whose bytes are
+    /// not: the row spells a key and a value as `Utf8` because a column a
+    /// reader can read is what a row is for, and a `data` field carrying
+    /// bytes no text holds reaches that column as the decode of them. A
+    /// message read from a line keeps the bytes and re-emits them; the same
+    /// message read back out of a row re-emits the decode, and
+    /// [`Self::anomalies`] reports the `Lossy` that says so on both.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {

@@ -20,6 +20,9 @@ use super::msg::FixMsg;
 use super::{FixId, MsgType};
 use crate::{DataType, Field, Scalar};
 
+/// The replacement character a lossy decode leaves behind.
+const REPLACEMENT: char = '\u{FFFD}';
+
 /// One disagreement between what arrived and what the row made of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FixAnomaly<'msg> {
@@ -50,12 +53,16 @@ pub enum FixAnomaly<'msg> {
         /// What the row holds.
         held: usize,
     },
-    /// An entry's value is not text, so the row's spelling of it is a decode.
+    /// The row's spelling of an entry's value is a decode of it, not the
+    /// value.
     ///
     /// A `data` field's bytes are not text, and every column holding one holds
-    /// a lossy decode so the row stays readable. The entry keeps the bytes, so
-    /// the wire it re-emits is exact and the row's text is what cannot be read
-    /// back as the value.
+    /// a lossy decode so the row stays readable. A message read from a line
+    /// keeps the bytes, so the wire it re-emits is exact and only the row's
+    /// text is short of the value; a message read back out of a row holds that
+    /// text and nothing else, and it says so here too - the replacement
+    /// character is the decode's own mark, and reading it as one costs only a
+    /// message that really carried a `U+FFFD` an anomaly it can explain.
     Lossy {
         /// The tag the key named.
         tag: i32,
@@ -92,7 +99,7 @@ impl fmt::Display for FixAnomaly<'_> {
                 "{name} ({tag}) states {stated} occurrences and holds {held}"
             ),
             Self::Lossy { tag, key } => {
-                write!(formatter, "{key} ({tag}) decoded lossily and is not text")
+                write!(formatter, "{key} ({tag}) reaches the row as a lossy decode")
             }
         }
     }
@@ -351,7 +358,16 @@ impl<'msg> FixAnomalies<'msg> {
             .get_mut(&entry.tag())
             .and_then(GroupCursor::next);
         let numeric = self.numeric_value(entry, group.as_ref());
-        if entry.value().as_str().is_none() {
+        // Both readings of the same fact, because a message reaches here two
+        // ways: parsed from a line it still holds the bytes of, or rebuilt
+        // from a row that holds only the text those bytes decoded to. The
+        // first says its row is a decode by carrying bytes no text holds; the
+        // second by carrying the replacement character the decode left.
+        if entry
+            .value()
+            .as_str()
+            .is_none_or(|text| text.contains(REPLACEMENT))
+        {
             return Some(FixAnomaly::Lossy {
                 tag: entry.tag(),
                 key: entry.key().as_str().unwrap_or_default(),

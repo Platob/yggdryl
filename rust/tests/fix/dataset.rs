@@ -507,19 +507,18 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             .position(|held| body(&text_names, held).contains(&format!("|{key}")))
             .unwrap_or_else(|| panic!("a bridge row spelling {key}"))
     };
-    // What the line spelled, minus the punctuation a log closed it with: a row
-    // a transport wrapped in parentheses states the session name and not the
+    // What the line spelled, minus the paren a log wrapped the row in: the
+    // capture writes `ULTOSESSIONNAME=ULMSG_BROKER_BDG_DMZ_CLI)` inside a
+    // parenthesised remark, and the session name is the name and not the
     // paren, so one column holds one spelling of one value however the line
-    // that carried it was decorated.
+    // that carried it was decorated. Only the `)` is given back, because only
+    // the `)` is what this capture closed a value with - a value that ended
+    // anywhere else would be a truncation and has to fail here.
     let spelled = |row: usize, key: &str| {
         body(&text_names, &text[row])
             .split('|')
             .find_map(|pair| pair.strip_prefix(key))
-            .map(|value| {
-                value
-                    .trim_end_matches([' ', '\t', ']', ')', '}', ',', ';'])
-                    .to_owned()
-            })
+            .map(|value| value.trim_end_matches(')').to_owned())
             .expect(key)
     };
     let bridged = stating("ULFROMSESSIONNAME=");

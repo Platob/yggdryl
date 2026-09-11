@@ -208,9 +208,27 @@ impl Slot {
 /// reference counts and no byte.
 #[derive(Clone)]
 pub(super) struct FixPair {
-    key: TextBytes,
+    key: PairKey,
     value: TextBytes,
     arrival: PairArrival,
+}
+
+/// The key a pair fills its row under.
+///
+/// Two shapes because there are two kinds of key and only one of them is a
+/// fact about a line. A pair the line wrote is keyed by the range that wrote
+/// it, which costs a reference count and no byte. A pair a *reading* built is
+/// keyed by a path that appears nowhere in the line - `NOPARTYIDS[0].PARTYID`
+/// out of one packed value - so it is bytes somebody has to hold, and holding
+/// them as bytes is one allocation where wrapping them in a page of their own
+/// would be that allocation, a copy of it and a counted page nothing ever
+/// counts: a rendered key is read as `&[u8]` by the build and by nothing else.
+#[derive(Clone)]
+enum PairKey {
+    /// A range of the line this pair arrived on.
+    Ranged(TextBytes),
+    /// A path a reading rendered, which names no range of any line.
+    Rendered(Vec<u8>),
 }
 
 /// What one pair records.
@@ -230,30 +248,35 @@ impl FixPair {
     /// One pair the line wrote.
     pub(super) const fn own(key: TextBytes, value: TextBytes) -> Self {
         Self {
-            key,
+            key: PairKey::Ranged(key),
             value,
             arrival: PairArrival::Own,
         }
     }
 
     /// One pair a reading built beside an arrival already recorded.
-    pub(super) const fn read(key: TextBytes, value: TextBytes) -> Self {
+    ///
+    /// The key is the path the reading rendered, owned as the bytes it is.
+    pub(super) const fn read(key: Vec<u8>, value: TextBytes) -> Self {
         Self {
-            key,
+            key: PairKey::Rendered(key),
             value,
             arrival: PairArrival::Read,
         }
     }
 
-    /// Makes this pair the one that records `packed`, the pair a line wrote
-    /// and this one reads.
-    pub(super) fn reads(&mut self, packed: Self) {
-        self.arrival = PairArrival::Packed(packed.key, packed.value);
+    /// Makes this pair the one that records the pair a line wrote and this
+    /// one reads.
+    pub(super) fn reads(&mut self, key: TextBytes, value: TextBytes) {
+        self.arrival = PairArrival::Packed(key, value);
     }
 
     /// The key the row fills under.
     pub(super) fn key(&self) -> &[u8] {
-        self.key.as_bytes()
+        match &self.key {
+            PairKey::Ranged(key) => key.as_bytes(),
+            PairKey::Rendered(key) => key,
+        }
     }
 
     /// The value, exactly as the line holds it.
@@ -263,18 +286,20 @@ impl FixPair {
 
     /// What this pair records, where it records one.
     fn arrived(&self) -> Option<Arrived> {
-        match &self.arrival {
-            PairArrival::Own => Some(Arrived {
-                key: self.key.clone(),
+        match (&self.arrival, &self.key) {
+            (PairArrival::Own, PairKey::Ranged(key)) => Some(Arrived {
+                key: key.clone(),
                 value: self.value.clone(),
                 named: true,
             }),
-            PairArrival::Packed(key, value) => Some(Arrived {
+            (PairArrival::Packed(key, value), _) => Some(Arrived {
                 key: key.clone(),
                 value: value.clone(),
                 named: false,
             }),
-            PairArrival::Read => None,
+            // A rendered key is a reading and never an arrival, which is the
+            // whole of what `read` records.
+            (PairArrival::Own | PairArrival::Read, _) => None,
         }
     }
 }

@@ -182,6 +182,42 @@ fn document(value: &[u8]) -> bool {
     line::trim_ascii(value).first() == Some(&b'<')
 }
 
+/// The width of the separator standing at `at`, when one does.
+///
+/// A frame separates its fields with a raw `SOH`, a pipe, or one of the
+/// spellings a log escapes a `SOH` in, and one line may mix them. A
+/// whitespace run is deliberately not in this vocabulary: a data field's own
+/// bytes hold spaces, and a frame that named no separator at all never stated
+/// a length worth widening to.
+fn separator_width(page: &[u8], at: usize) -> Option<usize> {
+    let tail = page.get(at..)?;
+    if matches!(tail.first(), Some(&SOH | &b'|')) {
+        return Some(1);
+    }
+    line::SOH_MARKERS
+        .iter()
+        .find(|marker| tail.starts_with(marker))
+        .map(|marker| marker.len())
+}
+
+/// Whether `span` ends a segment this frame actually cut.
+///
+/// A frame's segment ends where its separator begins or where the frame does,
+/// and both are readable from what the line already answered: the separator
+/// standing at `span`, an entry whose value ends there - which is the same
+/// fact for a segment that stated a field - or the data field's own cut,
+/// where the stated count and the frame agree. Anything else names a byte in
+/// the middle of something, and there the frame's own cut is the only reading
+/// that loses nothing.
+fn cut_at(entry: &TextEntry, rest: &[TextEntry], span: usize) -> bool {
+    entry.value().end() as usize == span
+        || rest.iter().any(|held| held.value().end() as usize == span)
+        || entry
+            .key()
+            .page()
+            .is_some_and(|page| separator_width(page, span).is_some())
+}
+
 /// Where a data field's value ends, when it is read to a length rather than
 /// left where the frame cut it.
 ///
@@ -191,13 +227,21 @@ fn document(value: &[u8]) -> bool {
 /// whatever the widened span swallowed was a reading of the value's own text
 /// rather than a field of the frame.
 ///
-/// The stated length is honoured where it lands on a boundary the frame itself
-/// states - the span ends the frame, or the next field after it is keyed by a
-/// tag - which is what a frame looks like after a data field and what a row
-/// written inside one never does. A stated length that lands nowhere reads the
-/// value to the trailer instead, for `XmlData` only, because a bridge writes it
-/// last and a log that printed each control byte as a glyph carries more bytes
-/// than the bridge counted; any other data field keeps the span the frame cut.
+/// The stated length is honoured only where it lands on a boundary the frame
+/// itself states: the span has to end a segment the frame cut - the data
+/// field's own, or one of the segments the widening swallows - and what
+/// follows has to be the frame again, either nothing or a field keyed by a
+/// tag. Both halves are needed. A count that lands mid-value would otherwise
+/// truncate the field and drop the bytes past it from the message and from
+/// the wire it re-emits, and a count that lands inside the checksum's own key
+/// would swallow the trailer whole, because the entry after any span at all
+/// is usually the tag-keyed `10` the frame closes with.
+///
+/// A stated length that lands nowhere reads the value to the trailer instead,
+/// for `XmlData` only, because a bridge writes it last and a log that printed
+/// each control byte as a glyph carries more bytes than the bridge counted;
+/// any other data field keeps the span the frame cut, which is what the frame
+/// itself said and the only reading that loses nothing.
 fn data_end(
     entry: &TextEntry,
     stated: Option<&Arrived>,
@@ -206,21 +250,18 @@ fn data_end(
     xml: bool,
 ) -> Option<usize> {
     let opens = entry.key().end() as usize + 1;
-    let bound = entries
-        .last()
-        .map_or(opens, |held| held.value().end() as usize);
     let stated = stated
         .and_then(|held| std::str::from_utf8(held.value()).ok())
         .and_then(|text| text.parse::<usize>().ok());
-    if let Some(span) = stated.and_then(|length| opens.checked_add(length)) {
+    if let Some(span) = stated.and_then(|length| opens.checked_add(length))
+        && cut_at(entry, &entries[after..], span)
+    {
         let next = entries[after..]
             .iter()
             .find(|held| held.key().start() as usize >= span);
         match next {
-            None if span <= bound => return Some(span),
-            Some(held) if held.key().as_bytes().iter().all(u8::is_ascii_digit) => {
-                return Some(span);
-            }
+            None => return Some(span),
+            Some(held) if tag_keyed(held) && !held.key().is_empty() => return Some(span),
             _ => {}
         }
     }
@@ -555,8 +596,7 @@ impl FixCodec {
         let digest = self.memo.dialect(plugin, || {
             self.registry.branch_named(plugin).map(FixBranch::digest)
         })?;
-        self.registry
-            .get_branch_by_digest(super::entry::signed(digest))
+        self.registry.get_branch_by_digest(super::signed(digest))
     }
 
     /// The tier one row's keys resolve in: the dialect its `pluginid` named,
@@ -668,6 +708,8 @@ impl FixCodec {
     fn parse_page_with(&self, page: &TextBytes, extras: RowExtras<'_>) -> Result<FixMessages> {
         let row = page.as_bytes();
         let entries = TextEntries::from_bytes(page).unwrap_or_default();
+        // A row that carries no payload at all opens past its own end, so the
+        // frame reading gets nothing and the document readers below answer.
         let opens = line::payload_at(row).unwrap_or(row.len());
         let framed = framed_entries(entries.as_slice(), page.start() as usize + opens);
         if framed.first().is_some_and(tag_keyed) {
@@ -718,7 +760,7 @@ impl FixCodec {
     pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
         let entries = TextEntries::from_bytes(&page).unwrap_or_default();
-        self.frame_with(entries.as_slice(), RowExtras::NONE)
+        self.frame_with(bounded(&page, &entries), RowExtras::NONE)
     }
 
     /// One numeric frame, from the entries the line answered for it.
@@ -770,7 +812,7 @@ impl FixCodec {
     pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
         let entries = TextEntries::from_bytes(&page).unwrap_or_default();
-        self.bridge_with(entries.as_slice(), RowExtras::NONE)
+        self.bridge_with(bounded(&page, &entries), RowExtras::NONE)
     }
 
     /// [`Self::parse_ullink_line`], with what the row stated beside its row.
@@ -823,13 +865,12 @@ impl FixCodec {
                 .and_then(|code| self.declared_message(code, branch)),
         };
         for (key, held, whole) in &kept {
-            let packed = FixPair::own(key.clone(), held.value.clone());
             if *whole {
                 // Verbatim means whole: the twinned `#` key is its own key
                 // and the packed value is its value, so no group rendering
                 // rewrites either - a group name opening with `#` resolves
                 // in no dictionary anyway.
-                resolved.push(packed);
+                resolved.push(FixPair::own(key.clone(), held.value.clone()));
                 continue;
             }
             match group_index(key.as_bytes()) {
@@ -855,10 +896,10 @@ impl FixCodec {
                     // record of the pair the bridge actually wrote; the rest
                     // are that same arrival, read further.
                     if let Some(first) = resolved.get_mut(opened) {
-                        first.reads(packed);
+                        first.reads(key.clone(), held.value.clone());
                     }
                 }
-                _ => resolved.push(packed),
+                _ => resolved.push(FixPair::own(key.clone(), held.value.clone())),
             }
         }
         (tier.message, resolved)
@@ -1049,11 +1090,10 @@ impl FixCodec {
                 // The rendered path is the key the builder nests by and no
                 // range of the line names it, which is why it fills a field
                 // and records nothing: the pair it was read out of is the
-                // arrival, and the caller pins that on the first of these.
-                _ => match TextBytes::from_bytes(rendered(member.as_bytes())) {
-                    Ok(key) => out.push(FixPair::read(key, held.clone())),
-                    Err(_) => continue,
-                },
+                // arrival, and the caller pins that on the first of these. It
+                // is also why it is held as the bytes it is - one allocation
+                // for the path, none for a page nothing counts.
+                _ => out.push(FixPair::read(rendered(member.as_bytes()), held.clone())),
             }
         }
     }
@@ -1649,6 +1689,17 @@ fn fixml_pairs(body: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
 /// bounded by the frame: a log line printing `ts=…` and `thread=…` in front of
 /// the frame it quoted states neither field, and a message that swallowed them
 /// would answer them by name and re-emit them.
+///
+/// One bound for every door. The row reader, the frame reader and the bridge
+/// reader all take a line, so a prefix means the same thing at each of them,
+/// and a body that opens at its own first pair is bounded at zero and reads
+/// exactly as it did.
+fn bounded<'entries>(page: &TextBytes, entries: &'entries TextEntries) -> &'entries [TextEntry] {
+    let opens = line::payload_at(page.as_bytes()).unwrap_or(0);
+    framed_entries(entries.as_slice(), page.start() as usize + opens)
+}
+
+/// [`bounded`], against a bound a caller already located.
 fn framed_entries(entries: &[TextEntry], opens: usize) -> &[TextEntry] {
     let at = entries
         .iter()
@@ -1782,7 +1833,6 @@ fn trimmed(bytes: &TextBytes, start: usize, end: usize) -> TextBytes {
     bytes.slice(start, end).unwrap_or_default()
 }
 
-/// Whether a group declares a member spelled `key`, by name or by tag.
 /// Whether a group declares a member spelled `key`, by name or by tag.
 fn declares(declared: &[Field], key: &[u8]) -> bool {
     let Ok(key) = std::str::from_utf8(key) else {

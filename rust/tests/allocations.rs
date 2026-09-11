@@ -1598,19 +1598,182 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// That is worth stating plainly, because the change was expected to save two
 /// allocations a pair and did not. It could not: this line's keys are four
 /// bytes and its values one or two, so both halves fitted `SmolStr`'s inline
-/// buffer and the copies the entry stopped making were never allocations here.
-/// What stopped is the copying itself, which these counts cannot see and
-/// `an_entry_is_a_range_of_its_line_and_the_message_holds_the_branch` asserts
-/// directly: every key and value is the line's own bytes at the line's own
-/// offsets, so a data field carrying three kilobytes now costs what a two-byte
-/// `Side` costs, where an owned copy charged for every byte of it.
+/// buffer and the copies the entry stopped making were never allocations at
+/// these widths. Where they were is a value too wide for that buffer, and
+/// that is pinned next door, in
+/// [`a_wide_value_costs_a_message_what_a_narrow_one_does`]: the same pair
+/// counts with three-kilobyte values cost exactly what two-byte values cost,
+/// which an owned copy could not have managed.
 ///
 /// The five are one page the line is copied into, and the lists the two-stage
 /// read holds - what the line said, and what the build folds in. The page is
-/// what a message owning its bytes costs when it is handed a borrowed slice
-/// and nothing owned one already; a caller holding a decoded line already has
-/// that page, and hands it over instead of paying for it.
+/// what a message owning its bytes costs when it is handed a borrowed slice,
+/// and every public reader here is handed one, so this is a cost this shape
+/// adds and every caller pays. Removing it means a door that takes the page a
+/// decoded line already holds, which is the entry point the next step lands
+/// and not something to claim before it exists.
 const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 27), (16, 42), (64, 92)];
+
+/// A dictionary of `count` `Utf8` fields, tagged from 2000.
+///
+/// Text rather than integers, because what is measured next door is a
+/// *value's width*: a field that only types a number never carries three
+/// kilobytes, so a numeric dictionary could not state the case at all.
+fn fix_text_registry(count: usize) -> FixRegistry {
+    let mut msgtype = DataType::Utf8.nullable_field("MsgType");
+    msgtype.as_fix_mut().set_tag(35).expect("a static tag");
+    let generated = (0..count).map(|index| {
+        let mut field = DataType::Utf8.nullable_field(format!("Text{index:04}"));
+        let tag = i32::try_from(2_000 + index).expect("a small tag");
+        field.as_fix_mut().set_tag(tag).expect("a generated tag");
+        field
+    });
+    FixRegistry::from_fields(std::iter::once(msgtype).chain(generated))
+        .expect("the generated dictionary has no conflict")
+}
+
+/// A framed body of `pairs` pairs whose every value is `width` bytes wide.
+fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
+    let mut line = b"35=D".to_vec();
+    for index in 0..pairs.saturating_sub(1) {
+        line.extend_from_slice(format!("|{}=", 2_000 + index).as_bytes());
+        line.resize(line.len() + width, b'x');
+    }
+    line.push(b'|');
+    line
+}
+
+/// What the *width* of a value costs the arrival record: nothing.
+///
+/// This is the claim the entries-over-ranges change exists for, and the one
+/// [`FIX_LINE_COSTS`] cannot state, because its keys and values all fitted
+/// `SmolStr`'s inline buffer and so were never allocations to begin with.
+/// Here they do not fit: the same pair counts, once with two-byte values and
+/// once with values three kilobytes wide.
+///
+/// The wide reading costs exactly one allocation more *per pair*, and that
+/// one is the row's own: a typed `Utf8` column holds the value it was given,
+/// and a column is what a row is for. The entry beside it adds nothing at
+/// all, because a key and a value are ranges of the page the line was read
+/// into and a range is two offsets whatever it spans. Under the shape this
+/// replaced the entry copied the value too, so the slope was two per pair
+/// rather than one - and it copied every one of those kilobytes besides,
+/// which no count sees and every capture pays.
+///
+/// Two pair counts and two widths, because one of each could tell neither a
+/// per-message cost from a per-pair one nor a cost that scales with a value
+/// from one that does not.
+const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 2] = [(4, (27, 30)), (16, (42, 57))];
+
+#[test]
+fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
+    let codec = FixCodec::new(Arc::new(fix_text_registry(64)));
+    for (pairs, (narrow, wide)) in WIDE_VALUE_COSTS {
+        for (width, each) in [(2, narrow), (3_072, wide)] {
+            let line = fix_text_line(pairs, width);
+            costs(
+                &format!("a {pairs}-pair line whose values are {width} bytes wide"),
+                each,
+                || {
+                    black_box(
+                        codec
+                            .parse_fix_line(black_box(&line))
+                            .expect("a readable line"),
+                    );
+                },
+            );
+        }
+        // The whole of the difference, stated as the rule rather than as two
+        // numbers a reader has to subtract: one column per wide value, and
+        // nothing for the entry that names the same bytes.
+        assert_eq!(
+            wide - narrow,
+            pairs - 1,
+            "a {pairs}-pair line paid more than one allocation per wide value"
+        );
+    }
+}
+
+/// A dictionary whose `Parties` group declares `members` members.
+///
+/// A packed occurrence is read against what the group declares, so the
+/// declaration is what decides how many rendered keys one packed value
+/// becomes - which is the number the case below grows against.
+fn fix_group_registry(members: usize) -> FixRegistry {
+    let declared = (0..members).map(|index| {
+        let mut field = DataType::Utf8.nullable_field(format!("Member{index:04}"));
+        let tag = i32::try_from(3_000 + index).expect("a small tag");
+        field.as_fix_mut().set_tag(tag).expect("a generated tag");
+        field
+    });
+    let item = DataType::from_fields(declared)
+        .expect("a struct item")
+        .required_field("item");
+    let mut parties = DataType::list(item).nullable_field("Parties");
+    parties
+        .as_fix_mut()
+        .set_counter(453)
+        .expect("a static counter");
+    let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
+    counter.as_fix_mut().set_tag(453).expect("a static tag");
+    let mut msgtype = DataType::Utf8.nullable_field("MsgType");
+    msgtype.as_fix_mut().set_tag(35).expect("a static tag");
+    let mut registry = FixRegistry::from_fields([msgtype, counter])
+        .expect("the generated dictionary has no conflict");
+    registry
+        .insert_definition(yggdryl::FixCategory::Groups, parties)
+        .expect("the group definition");
+    registry
+}
+
+/// One bridge row packing `members` members into a single occurrence.
+fn fix_packed_line(members: usize) -> Vec<u8> {
+    let mut line = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=".to_vec();
+    for index in 0..members {
+        if index > 0 {
+            line.extend_from_slice(b"\x04\x03");
+        }
+        line.extend_from_slice(format!("MEMBER{index:04}=v{index}").as_bytes());
+    }
+    line
+}
+
+/// What unpacking one packed occurrence costs, by how many members it packs.
+///
+/// The path decision 5 is about, and the one the plain frame above never
+/// reaches. A bridge writes a whole occurrence into one value and the reader
+/// unpacks it into `NOPARTYIDS[0].MEMBER0000` and its siblings, which are
+/// keys no range of the line names - so they are the one thing on this path
+/// that has to be built rather than pointed at.
+///
+/// Each is exactly one allocation: the path, held as the bytes it is. That is
+/// the whole reason a rendered key is not a `TextBytes` - wrapping one in a
+/// counted page of its own is three, the rendered vector, a copy of it and
+/// the page, and the page is then only ever borrowed back as a slice. Two
+/// more per member, measured, on the very path decision 5 names the cost of.
+///
+/// Four members and sixteen, because the number that matters is the slope,
+/// and the rest of it is the row a wider group builds.
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 61), (16, 95)];
+
+#[test]
+fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
+    for (members, each) in PACKED_MEMBER_COSTS {
+        let codec = FixCodec::new(Arc::new(fix_group_registry(members)));
+        let line = fix_packed_line(members);
+        costs(
+            &format!("a packed occurrence of {members} members"),
+            each,
+            || {
+                black_box(
+                    codec
+                        .parse_ullink_line(black_box(&line))
+                        .expect("a readable row"),
+                );
+            },
+        );
+    }
+}
 
 #[test]
 fn a_fix_message_read_from_a_line_costs_what_its_pairs_cost() {

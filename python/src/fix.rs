@@ -746,10 +746,11 @@ impl PyFixRegistry {
 
     /// The branch one digest resolves to, or `None`.
     ///
-    /// An arrival entry carries its dialect as the digest `branch`, so this is
-    /// the table that turns a capture's column back into the branch it was
-    /// read under. The digest is one way, which is why the registry publishes
-    /// the resolution rather than leaving a reader to reproduce the hash.
+    /// A branch's digest is what the store's branch manifest publishes beside
+    /// the declaration, so this is the table that turns one back into the
+    /// dialect it names. The derivation is one way, which is why the registry
+    /// publishes the resolution rather than leaving a reader to reproduce the
+    /// hash.
     fn get_branch_by_digest(&self, digest: i32) -> Option<PyFixBranch> {
         self.inner
             .get_branch_by_digest(digest)

@@ -542,13 +542,15 @@ impl FixRegistry {
 
     /// Returns the branch one digest names, or `None`.
     ///
-    /// The reverse of the digest an entry stores: a capture's `branch` column
-    /// joins to a whole dialect declaration through this, which is what makes
-    /// the capture self-describing rather than merely legible. The argument is
-    /// the entry's own signed reading of the XXH32, so a digest above
-    /// `i32::MAX` arrives negative and resolves exactly as it stored.
+    /// The reverse of the derivation a branch's digest is: the store's own
+    /// branch manifest publishes that digest beside the whole declaration, and
+    /// this is how a reader holding one turns it back into the dialect. The
+    /// derivation is a one-way XXH32 over the folded name, so publishing the
+    /// resolution is the only way a reader can join at all. The argument is
+    /// the signed reading the manifest writes, so a digest above `i32::MAX`
+    /// arrives negative and resolves exactly as it was stored.
     pub fn get_branch_by_digest(&self, digest: i32) -> Option<&FixBranch> {
-        self.branches.get(&super::entry::unsigned(digest))
+        self.branches.get(&super::unsigned(digest))
     }
 
     /// Returns the branch one digest names, raising absence.
@@ -557,12 +559,8 @@ impl FixRegistry {
     ///
     /// Returns absence naming the digest when no branch carries it.
     pub fn branch_by_digest(&self, digest: i32) -> Result<&FixBranch> {
-        self.get_branch_by_digest(digest).ok_or_else(|| {
-            absent(format_args!(
-                "branch #{:08x}",
-                super::entry::unsigned(digest)
-            ))
-        })
+        self.get_branch_by_digest(digest)
+            .ok_or_else(|| absent(format_args!("branch #{:08x}", super::unsigned(digest))))
     }
 
     /// Returns the branch `name` reaches, canonically or by an alias.

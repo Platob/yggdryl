@@ -275,14 +275,18 @@ impl LineSeparator {
     ///
     /// A byte a line holds is not a byte a line separated with, and position
     /// alone cannot tell the two apart: `MSGTYPE=P Report Ack|SYMBOL=AAPL`
-    /// holds a space before its first pipe and separates nothing with it,
-    /// while `8=FIX.4.4 35=D 58=a|b 10=0` holds a pipe inside a value and
-    /// separates nothing with that, so it named nothing at all. What separates
-    /// two fields has a field
-    /// after it, read as [`segment_span`] reads every other segment of a
-    /// frame - or closes the line, which is how a wire message ends - so the
-    /// two lines answer the pipe and the space respectively and each keeps the
-    /// value the other would have cut.
+    /// holds a space before its first pipe and separated nothing with it.
+    /// What separates two fields has a field after it, read as
+    /// [`segment_span`] reads every other segment of a frame - or closes the
+    /// line, which is how a wire message ends. So that line answers the pipe
+    /// and keeps `P Report Ack` whole, which is the value the earlier space
+    /// would have cut.
+    ///
+    /// This decides only whether a candidate separated anything;
+    /// [`Self::for_line`] still ranks the ones that did by position, and
+    /// whitespace never names a frame however early it stands. So a line
+    /// running its fields together with spaces named nothing, and falls to
+    /// the loose rule whatever else it holds.
     fn separates(self, line: &[u8]) -> Option<usize> {
         let mut at = 0;
         let mut first = None;
@@ -733,11 +737,13 @@ fn loose_span(line: &[u8], start: usize, equals: usize) -> PairSpan {
 /// guessed at. Two bounds keep a segment that states no field from becoming
 /// one. The key is a name or a tag, indexed and dotted where the writer
 /// indexed and dotted it - `NoAllocs[0].79`, `#INSTRUMENT[DESCRIPTION]`,
-/// `Msg Type` - but never a sentence: the tail of `10=0<SOH> sent >> seq=7`
-/// states the note's `seq` and no field keyed `sent >> seq`. And the value
-/// gives back the punctuation a transport closed the line with, the `)` on a
-/// bridge row a log wrapped in parentheses, so one column holds one spelling
-/// of one value however the line that carried it was decorated.
+/// `Msg Type`. A key runs on name bytes and stops at the first byte no name
+/// holds, so `10=0<SOH> sent >> seq=7` states the note's `seq` and no field
+/// keyed `sent >> seq`; a remark spelled entirely in words does state one,
+/// which is what admitting the space costs and [`is_segment_key`] argues.
+/// And the value gives back the punctuation a transport closed the line with,
+/// the `)` on a bridge row a log wrapped in parentheses, so one column holds
+/// one spelling of one value however the line that carried it was decorated.
 fn segment_span(line: &[u8], start: usize, end: usize) -> Option<PairSpan> {
     let mut key_at = start;
     while key_at < end && line[key_at].is_ascii_whitespace() {
@@ -765,11 +771,20 @@ fn segment_span(line: &[u8], start: usize, end: usize) -> Option<PairSpan> {
 ///
 /// A frame widens which bytes a key may hold - a bridge indexes and qualifies
 /// its keys, a renderer spells one `Msg Type`, and `[`, `]`, `.` and a space
-/// are part of the name each wrote - never whether a key is a name at all. A
-/// space is in that list because the FIX name fold ignores it exactly as it
-/// ignores `_` and `-`, so a frame stating `Msg Type=D` stated `MsgType`; a
-/// sentence still states no field, because a sentence holds bytes no name
-/// holds.
+/// are part of the name each wrote - never whether a key is a name at all.
+///
+/// The space is the one that costs something, and the cost is stated rather
+/// than dodged. A renderer that spells `Msg Type=D` spelled `MsgType`, because
+/// the fold every name resolves by drops a space exactly as it drops `_` and
+/// `-`, and reading that segment as prose would lose a field the frame plainly
+/// wrote. The price is that a remark spelled entirely in words is a key too:
+/// a frame's tail reading ` trailing note=x` states a field keyed
+/// `trailing note`, where ` sent >> seq=7` states only `seq`, because `>`
+/// is a byte no name holds. Both are what a run of name bytes in front of an
+/// `=` looks like, and no rule this walk may hold - it knows no dictionary -
+/// tells the renderer's key from the log's sentence. What a key *means* is
+/// the reader's, and a reader holding a dictionary answers nothing for
+/// `trailing note`.
 ///
 /// A second mark is part of the key. A bridge marks a key to say it restates
 /// one it already wrote, and marks a restatement of a marked key again: the
@@ -825,8 +840,12 @@ fn is_segment_key(key: &[u8]) -> bool {
 /// A frame's segment states one field or it states prose - a log's own remark
 /// after the frame it quoted - and prose here is read the way prose is read
 /// anywhere: `10=0<SOH> sent >> seq=7` states the frame's `10` and the note's
-/// `seq`, and no field keyed `sent >> seq`. Only the frame's own walk stops
-/// where the frame does; nothing the line said is dropped.
+/// `seq`, and no field keyed `sent >> seq`. Where the remark is spelled in
+/// nothing but words, the frame's own segment reading claims it -
+/// `10=0<SOH> trailing note=x` states a field keyed `trailing note` - which is
+/// what admitting a space into a key costs and [`is_segment_key`] argues.
+/// Only the frame's own walk stops where the frame does; nothing the line
+/// said is dropped.
 ///
 /// An empty value is a pair inside a frame and is not one outside it. `58=`
 /// standing between two separators says the line wrote the field and gave it
@@ -1295,17 +1314,34 @@ mod tests {
     fn a_segment_that_states_no_field_is_prose_and_reads_as_prose() {
         // A key is a name or a tag, indexed where the writer indexed it and
         // spaced where a renderer spaced it - the fold that reads `Msg Type`
-        // as `MsgType` ignores a space exactly as it ignores `_`. The frame
-        // widens which bytes a key may hold, never whether a key is a name, so
-        // a log's remark carrying bytes no name carries states no field, and
-        // the pair it does state is still read.
+        // as `MsgType` ignores a space exactly as it ignores `_`, and a frame
+        // that spelled the field that way spelled a field.
+        assert_eq!(
+            read(b"8=FIX.4.4\x01Msg Type=D\x0110=0\x01"),
+            ["8=FIX.4.4", "Msg Type=D", "10=0"]
+        );
+        // The frame widens which bytes a key may hold, never whether a key is
+        // a name, so a remark carrying bytes no name carries states no field
+        // and the pair it does state is still read.
         assert_eq!(
             read(b"8=FIX.4.4\x0135=D\x0158=hello world\x0110=0\x01 sent >> seq=7"),
             ["8=FIX.4.4", "35=D", "58=hello world", "10=0", "seq=7"]
         );
+        // And this is what the space costs, asserted rather than avoided: a
+        // remark spelled in nothing but words is a run of name bytes in front
+        // of an `=`, so the frame's own segment reading claims it whole. No
+        // rule available here separates it from the renderer's key above -
+        // this walk holds no dictionary - and a reader that holds one answers
+        // nothing for `trailing note`.
         assert_eq!(
-            read(b"8=FIX.4.4\x01Msg Type=D\x0110=0\x01"),
-            ["8=FIX.4.4", "Msg Type=D", "10=0"]
+            read(b"8=FIX.4.4\x0135=D\x0158=hello world\x0110=0\x01 trailing note=x"),
+            [
+                "8=FIX.4.4",
+                "35=D",
+                "58=hello world",
+                "10=0",
+                "trailing note=x"
+            ]
         );
     }
 
@@ -1323,8 +1359,8 @@ mod tests {
         assert_eq!(
             read(b"8=FIX.4.4 35=D 58=a|b 10=0"),
             ["8=FIX.4.4", "35=D", "58=a", "10=0"],
-            "the pipe stands inside a value, and a space names no frame, so \
-             the loose rule reads the line"
+            "a space stands in front of the pipe and names no frame, so \
+             nothing was named and the loose rule reads the line"
         );
         // A wire message ends with its separator, so a line closing on one
         // named it as plainly as a field after one would.

@@ -773,7 +773,7 @@ view, including `branch`, `id`, `tag`, `tags`, `aliases`, `description`,
 | Crossing | Rule |
 | --- | --- |
 | tag key | a `number`, coerced once and checked exactly |
-| branch digests | `branchByDigest` / `getBranchByDigest` take the number an arrival entry carries and answer the branch's name; only a declared branch resolves |
+| branch digests | `branchByDigest` / `getBranchByDigest` take the number a branch digests to, as the store's branch manifest publishes it, and answer the branch's name; only a declared branch resolves. Nothing in this binding answers that number yet - the Python view does, through `FixBranch.digest()` |
 | `FixMsg.arrivals()` | `[tag, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them; the dialect is the message's own `branch`, not each pair's |
 | name or path key | a `string`; omitted branches use the core's deterministic best match; a colon-bearing string is a name |
 | branch, identifier | `string`, parsed by the core `FixBranch` and `FixId` |

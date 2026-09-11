@@ -829,13 +829,11 @@ fn branch_into_value(branch: &FixBranch) -> Result<Scalar> {
     let mut record = vec![
         ("name", Scalar::from(branch.name())),
         // The published join key, not a cache: the folded-name derivation is
-        // a one-way XXH32, so an external reader joining a capture's `branch`
-        // column to this manifest could not reproduce it otherwise. Spelled
-        // and typed exactly as that column is.
-        (
-            "branch",
-            Scalar::from(super::entry::signed(branch.digest())),
-        ),
+        // a one-way XXH32, so an external reader holding a branch digest and
+        // wanting the declaration behind it could not reproduce this
+        // otherwise. Signed, because that is the widest integer every exchange
+        // format this crate writes can hold.
+        ("branch", Scalar::from(super::signed(branch.digest()))),
         ("version", Scalar::from(branch.version())),
     ];
     // Written only when there are any, so a dictionary that declares no
@@ -916,14 +914,11 @@ fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
                 path: "branch".into(),
                 reason: "a branch digest must fit an int32".into(),
             })?;
-        if super::entry::unsigned(declared) != branch.digest() {
+        if super::unsigned(declared) != branch.digest() {
             return Err(Error::InvalidRecord {
                 path: branch.name().into(),
                 reason: crate::text::expected_got(
-                    format_args!(
-                        "the derived digest {}",
-                        super::entry::signed(branch.digest())
-                    ),
+                    format_args!("the derived digest {}", super::signed(branch.digest())),
                     format_args!("declared digest {declared}"),
                 ),
             });

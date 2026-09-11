@@ -173,7 +173,7 @@ Within a scalar lookup kind, omission of a branch tries standard canonical keys,
 | `branch_of(FixId)` | Borrowed declaration for an identifier's branch |
 | `branch_named(name)` | Canonical name first, then an alias |
 | `branches()` | Lazy branch declarations |
-| `get_branch_by_digest(i32)` / `branch_by_digest(i32)` | The branch named by an arrival's signed digest |
+| `get_branch_by_digest(i32)` / `branch_by_digest(i32)` | The branch named by a signed branch digest, as `FixBranch::digest_signed` answers it and `branches.json` publishes it |
 | `set_branch(FixBranch)` | Install or replace a declaration atomically |
 
 ## Accessors

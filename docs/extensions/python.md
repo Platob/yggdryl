@@ -1325,7 +1325,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | CRUD | `create_definition`, `definition`, `update_definition`, `remove_definition`; `definitions` iterates one category lazily |
 | locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; category folders contain standard definitions directly and branch definitions under `<branch>/` |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
-| branch digests | `branch_by_digest` / `get_branch_by_digest` take the `int` an arrival entry carries and answer the `FixBranch` it names; only a declared branch resolves |
+| branch digests | `branch_by_digest` / `get_branch_by_digest` take the `int` a branch digests to - `FixBranch.digest()`, and what the store's branch manifest publishes - and answer the `FixBranch` it names; only a declared branch resolves |
 | `FixMsg.entries()` | `(tag, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them; the dialect is the message's own `branch`, not each pair's |
 | `FixMsg` | equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and `FixMsg.from_row(schema, row, registry=None)` reads a fixed row back, entries included |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; its wire code remains complete UTF-8 text |

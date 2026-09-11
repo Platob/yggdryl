@@ -27,23 +27,6 @@
 
 use crate::media::text::TextBytes;
 
-/// A branch digest as a row stores it.
-///
-/// The XXH32 is a `u32` and the column is an `i32`, which is the same four
-/// bytes read as signed: the digest's exact width, and the widest signed
-/// integer every exchange format this crate writes can hold, Avro having no
-/// unsigned one. A digest above `i32::MAX` therefore reads negative.
-#[allow(clippy::cast_possible_wrap)]
-pub(super) const fn signed(digest: u32) -> i32 {
-    digest as i32
-}
-
-/// The same four bytes read back as the digest they are.
-#[allow(clippy::cast_sign_loss)]
-pub(super) const fn unsigned(branch: i32) -> u32 {
-    branch as u32
-}
-
 /// One key/value pair as it arrived, beside the field it named.
 ///
 /// Every part is present. `tag` is `0` when the key named no field, which is

@@ -35,6 +35,15 @@
 //! twice would mean a deliberate change to the entry column has to be
 //! re-blessed in two places. The entries above are the owner.
 //!
+//! One thing is asserted here rather than pinned, because it is an identity
+//! and not an answer: every message fills a row and is read back out of it,
+//! and the message that comes back has the same entries, the same digest, the
+//! same wire and the same row. That is what says the entries column carries
+//! the whole arrival record, and it is how deleting a column that used to be
+//! copied back verbatim is judged - a fact missed on the way back shows
+//! nowhere else. Two lines refuse the trip and refused it before any of this;
+//! they are named in the assertion so a third cannot appear quietly.
+//!
 //! The file is one `key<TAB>value` a line. Values are rendered by the crate's
 //! own canonical spellings - [`into_json_scalar`] for a column, the wire bytes
 //! for a frame - with every byte outside printable ASCII escaped, so a control
@@ -58,6 +67,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use yggdryl::fix::{ENTRIES_COLUMN, UNMAPPED_COLUMN};
 use yggdryl::holder::Buffer;
@@ -110,6 +120,12 @@ fn escaped(bytes: &[u8]) -> String {
 #[derive(Default)]
 struct Pinned {
     records: Vec<(String, String)>,
+    /// The messages whose row would not read back, and why.
+    ///
+    /// Not a snapshot line, because it is not an answer this file pins - it
+    /// is the standing exception to an identity every other message honours,
+    /// and it is counted here so that a second one cannot appear quietly.
+    unread: Vec<String>,
 }
 
 impl Pinned {
@@ -143,12 +159,36 @@ impl Pinned {
 
     /// One message, whole: what it is, what arrived, what the dictionary made
     /// of it, and what it re-emits.
-    fn message(&mut self, at: &str, message: &FixMsg, schema: &Field) {
+    ///
+    /// The row round trip is asserted here rather than pinned, because it is
+    /// an identity and not an answer: a message that fills a row and is read
+    /// back out of it is the same message. Asserting it over every capture is
+    /// what says the entries column carries the whole arrival record - and it
+    /// is the check the `branch` column's deletion rests on, since a column
+    /// that was copied back verbatim can only be missed on the way back.
+    fn message(&mut self, at: &str, codec: &FixCodec, message: &FixMsg, schema: &Field) {
         self.push(format!("{at}.type"), message.as_field().name().to_owned());
         self.push(format!("{at}.digest"), format!("{:032x}", message.digest()));
         self.push(format!("{at}.wire"), escaped(&message.into_bytes(b'|')));
         self.entries(at, "", message.entries());
         let row = message.into_row(schema).expect("a message fills its row");
+        match FixMsg::from_row(Arc::clone(codec.registry()), schema, &row) {
+            Ok(held) => {
+                assert_eq!(held.entries(), message.entries(), "{at}: the arrivals");
+                assert_eq!(
+                    escaped(&held.into_bytes(b'|')),
+                    escaped(&message.into_bytes(b'|')),
+                    "{at}: the wire a row re-emits"
+                );
+                assert_eq!(held.digest(), message.digest(), "{at}: the digest");
+                assert_eq!(
+                    held.into_row(schema).expect("a message fills its row"),
+                    row,
+                    "{at}: the row it makes"
+                );
+            }
+            Err(refused) => self.unread.push(format!("{at}: {refused}")),
+        }
         let values = row.as_sequence().expect("a row is a sequence");
         for (column, value) in schema.fields().iter().zip(values) {
             let name = column.name();
@@ -192,7 +232,7 @@ impl Pinned {
                     Ok(message)
                 }
             }) {
-                Ok(message) => self.message(&at, &message, schema),
+                Ok(message) => self.message(&at, codec, &message, schema),
                 Err(refused) => self.push(format!("{at}.refused"), refused.to_string()),
             }
         }
@@ -535,7 +575,7 @@ fn capture(pinned: &mut Pinned) {
             answered += 1;
             let at = format!("{at}:{ordinal}");
             match message {
-                Ok(message) => pinned.message(&at, &message, &schema),
+                Ok(message) => pinned.message(&at, &codec, &message, &schema),
                 Err(refused) => pinned.push(format!("{at}.refused"), refused.to_string()),
             }
         }
@@ -570,6 +610,35 @@ fn read() -> Pinned {
 #[test]
 fn the_codec_answers_what_it_answered() {
     let pinned = read();
+    // Every message here also fills a row and is read back out of it, which
+    // is the identity `from_row` exists for and the only thing that says the
+    // entries column carries the whole arrival record - a column that is
+    // copied back verbatim can only be missed on the way back, so deleting
+    // one is judged here.
+    //
+    // Two lines do not honour it, and neither did before any of this: both
+    // are a group whose row `into_row` writes and `from_row` will not read,
+    // and the row value each fills is the same one the codec answered before
+    // - a null occurrence under a non-nullable item, and a sub-occurrence
+    // carrying a member its declared struct has no field for. That is the
+    // two halves of the row door disagreeing about one shape, not a reading
+    // that moved, so they are counted here rather than repaired: counted so a
+    // third cannot appear quietly, and named so nobody reads the round trip
+    // as unconditional.
+    assert_eq!(
+        pinned.unread,
+        [
+            "frames[028]:0: invalid record value at $.fix.parties[0].party: \
+             non-nullable field received null",
+            "frames[031]:0: invalid record value at \
+             $.fix.parties[0].party.ptyssubgrp[0].ptyssub: struct requires 2 fields, got 3 values",
+            "verbatim[028]:0: invalid record value at $.fix.parties[0].party: \
+             non-nullable field received null",
+            "verbatim[031]:0: invalid record value at \
+             $.fix.parties[0].party.ptyssubgrp[0].ptyssub: struct requires 2 fields, got 3 values",
+        ],
+        "the rows that will not read back"
+    );
     let path = snapshot_path();
     if std::env::var_os(WRITE).is_some() {
         std::fs::write(&path, pinned.rendered()).expect("the snapshot is writable");
