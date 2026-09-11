@@ -373,10 +373,22 @@ impl DataType {
             Self::FixedSizeBinary(width) => {
                 validate_non_negative("FixedSizeBinary", "width", *width)
             }
-            // The variant is public, so a caller can build a fixed string
-            // with no width the constructor would have refused. This is where
-            // that stops, before it reaches a boundary.
-            Self::String(parameters) => parameters.validate(),
+            // The variant is public, so a caller can build a string the
+            // constructor would have refused for want of a width, or one it
+            // would have redirected to the variant that already spells it.
+            // This is where both stop, before either reaches a boundary: a
+            // `String` that renders as `utf8` and compares unequal to
+            // `DataType::Utf8` is one fact with two spellings.
+            Self::String(parameters) => {
+                parameters.validate()?;
+                match super::string::redirect(*parameters)? {
+                    Some(canonical) => Err(invalid(
+                        "string",
+                        format_smolstr!("expected {canonical}, got a second spelling of it"),
+                    )),
+                    None => Ok(()),
+                }
+            }
             Self::List(field)
             | Self::ListView(field)
             | Self::LargeList(field)

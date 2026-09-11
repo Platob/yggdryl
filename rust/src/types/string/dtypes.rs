@@ -47,15 +47,7 @@ impl DataType {
     pub fn string(parameters: impl Into<StringParameters>) -> Result<Self> {
         let parameters = parameters.into();
         parameters.validate()?;
-        if parameters.charset() == Charset::Ascii {
-            return ascii_redirect(parameters);
-        }
-        if parameters.charset().is_utf8() && parameters.is_plain() {
-            if let Some(plain) = plain_utf8(parameters.layout()) {
-                return Ok(plain);
-            }
-        }
-        Ok(Self::String(parameters))
+        Ok(redirect(parameters)?.unwrap_or(Self::String(parameters)))
     }
 
     /// The parameters every string datatype declares, `None` for the rest.
@@ -119,6 +111,27 @@ impl DataType {
     pub fn charset(&self) -> Option<Charset> {
         self.string_parameters().map(StringParameters::charset)
     }
+}
+
+/// The datatype another variant already spells for these parameters.
+///
+/// `None` is a string only [`DataType::String`] names. `Some` is one that
+/// another variant already names, and returning it is what keeps a fact to one
+/// spelling: `string` *is* [`DataType::Utf8`] rather than a second way to
+/// write it. `Err` is US-ASCII in a shape the [`DataType::Ascii`] family has
+/// no room for.
+///
+/// [`DataType::string`] takes the answer and [`DataType::validate`] refuses
+/// anything that has one, so the two doors cannot disagree about which
+/// spelling is canonical.
+pub(crate) fn redirect(parameters: StringParameters) -> Result<Option<DataType>> {
+    if parameters.charset() == Charset::Ascii {
+        return ascii_redirect(parameters).map(Some);
+    }
+    if parameters.charset().is_utf8() && parameters.is_plain() {
+        return Ok(plain_utf8(parameters.layout()));
+    }
+    Ok(None)
 }
 
 /// The plain UTF-8 datatype one layout already has, if it has one.

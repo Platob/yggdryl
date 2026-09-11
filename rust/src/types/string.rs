@@ -50,6 +50,7 @@ mod parser;
 mod scalars;
 
 pub(crate) use arrow::{arrow_storage, describes_storage};
+pub(crate) use dtypes::redirect;
 pub use fields::*;
 pub use parameters::{STRING_EXTENSION_NAME, StringParameters};
 pub use scalars::{FixedUtf8, LargeUtf8, LargeUtf8View, Text, TextValue, Utf8, Utf8View};

@@ -337,12 +337,28 @@ fn a_fixed_string_pads_its_storage_and_reads_back_trimmed() {
 
 #[test]
 fn a_string_restates_into_another_layout_without_copying_its_characters() {
-    let source = DataType::Utf8.scalar("AAPL").unwrap();
-    let target = DataType::from_str("largestring(windows-1252)").unwrap();
+    // Long enough to be heap storage: below smol_str's 23-byte inline buffer a
+    // rewrite copies the bytes into the new value and no pointer identity
+    // could be observed, so a short value cannot witness this claim at all.
+    const LONG: &str = "a value well past the twenty-three byte inline buffer";
+    assert!(LONG.len() > 23);
+
+    let source = DataType::Utf8.scalar(LONG).unwrap();
+    let origin = source.as_str().unwrap().as_ptr();
+    let target = DataType::from_str("large_string(windows-1252)").unwrap();
     let restated = target.scalar(source).unwrap();
-    assert_eq!(restated.as_str(), Some("AAPL"));
+    assert_eq!(restated.as_str(), Some(LONG));
     assert_eq!(restated.id(), DataTypeId::LargeString);
     assert_eq!(restated.dtype().unwrap(), target);
+    // The layout is the offset width, not the bytes: the rewrite adopts the
+    // storage handle rather than copying the characters.
+    assert!(
+        std::ptr::eq(restated.as_str().unwrap().as_ptr(), origin),
+        "restating a layout should share its storage"
+    );
+
+    let short = DataType::Utf8.scalar("AAPL").unwrap();
+    assert_eq!(target.scalar(short).unwrap().as_str(), Some("AAPL"));
 }
 
 #[test]
@@ -389,6 +405,49 @@ fn a_string_value_survives_the_scalar_wire_format() {
         serde_json::to_string(&Scalar::from("AAPL")).unwrap(),
         r#"{"type":"string","value":"AAPL"}"#
     );
+}
+
+#[test]
+fn a_hand_built_second_spelling_of_a_plain_string_is_refused() {
+    // The variant is public, so a caller can build what the constructor would
+    // have redirected. Such a value renders as the datatype it duplicates and
+    // compares unequal to it, so `from_str(d.to_string())` would not answer
+    // `d` - one fact with two spellings. `validate` is where that stops.
+    for (parameters, canonical) in [
+        (StringParameters::utf8(StringLayout::String), "utf8"),
+        (
+            StringParameters::utf8(StringLayout::LargeString),
+            "large_utf8",
+        ),
+        (
+            StringParameters::utf8(StringLayout::StringView),
+            "utf8_view",
+        ),
+        (
+            StringParameters::new(StringLayout::String, Charset::Ascii),
+            "ascii",
+        ),
+    ] {
+        let shadow = DataType::String(parameters);
+        let refusal = shadow.validate().unwrap_err().to_string();
+        assert!(
+            refusal.contains(canonical),
+            "the refusal should name {canonical}: {refusal}"
+        );
+        // The constructor answers the canonical spelling for the same input,
+        // so the two doors cannot disagree about which spelling is canonical.
+        assert_eq!(DataType::string(parameters).unwrap().to_string(), canonical);
+    }
+
+    // What only `DataType::String` spells still validates.
+    for spelling in [
+        "utf8(32)",
+        "string(windows-1252)",
+        "large_utf8_view",
+        "fixed_utf8(8)",
+    ] {
+        DataType::from_str(spelling).unwrap().validate().unwrap();
+    }
 }
 
 #[test]
