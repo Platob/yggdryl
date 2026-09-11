@@ -187,11 +187,14 @@ fn count_of(value: &Scalar) -> Result<Scalar> {
 
 /// Whether a datatype's empty value has a spelling of no characters at all.
 fn holds_empty_payload(dtype: &DataType) -> bool {
+    // Only the variable-width ones: a fixed width and a coded vocabulary both
+    // have a length no empty element satisfies.
     matches!(
         dtype,
         DataType::Utf8
             | DataType::LargeUtf8
             | DataType::Utf8View
+            | DataType::Ascii
             | DataType::Binary
             | DataType::LargeBinary
             | DataType::BinaryView

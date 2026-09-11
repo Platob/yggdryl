@@ -760,9 +760,21 @@ fn only_a_field_that_refuses_absence_reads_an_empty_element_as_a_value() {
         Scalar::from_sequence([Scalar::from(Vec::<u8>::new())])
     );
 
-    // A number has no empty spelling, so absence stays absence and is refused.
-    let size = Field::from_str("row: struct<size: int64 not null> not null").unwrap();
-    assert!(from_xml_scalar_with_field("<row><size/></row>", &size).is_err());
+    // ASCII text reads the same way; a width and a coded vocabulary do not,
+    // because neither has a value of no characters at all.
+    let ascii = Field::from_str("row: struct<code: ascii not null> not null").unwrap();
+    assert_eq!(
+        from_xml_scalar_with_field("<row><code/></row>", &ascii).unwrap(),
+        Scalar::from_sequence([DataType::Ascii.scalar(Scalar::from("")).unwrap()])
+    );
+    for spelling in ["int64", "fixed_ascii(2)", "country"] {
+        let field =
+            Field::from_str(&format!("row: struct<v: {spelling} not null> not null")).unwrap();
+        assert!(
+            from_xml_scalar_with_field("<row><v/></row>", &field).is_err(),
+            "{spelling} has no value of no characters at all"
+        );
+    }
 }
 
 #[test]
