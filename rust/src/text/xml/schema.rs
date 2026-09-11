@@ -12,15 +12,17 @@
 //! | no occurrence at all | a non-null list | the empty list |
 //! | `<tag/>`, no character data | a non-null text or byte field | the empty value |
 //! | the parts of an interval | an interval | its counts, read as integers |
+//! | a `[type, value]` pair | a union | the type id, read as an integer |
 //!
 //! The empty element is there because XML spells absence and the empty string
 //! the same way, so only a field that refuses absence settles which one was
 //! written. An element the document leaves out entirely is still absence, and
 //! the value contract still refuses it.
 //!
-//! The interval is there because it is the one leaf the value contract reads
-//! no text for: its parts are counts of months, days and nanoseconds rather
-//! than a spelling, and XML writes every leaf as character data.
+//! The interval and the union type id are there because they are the values
+//! the contract reads no text for: an interval's parts are counts of months,
+//! days and nanoseconds and a union's type id names a declared branch, while
+//! XML writes every leaf as character data.
 //!
 //! Every other reading - a string that is a number, a record ordered into a
 //! row, an absent nullable element - belongs to the value contract
@@ -139,6 +141,28 @@ fn shaped_for(value: Scalar, dtype: &DataType, nullable: bool) -> Result<Scalar>
                 .map(Scalar::from_sequence),
             None => count_of(&value),
         },
+        // A union is the pair its type id opens, and that id names a branch
+        // rather than spelling a value.
+        DataType::Union(fields, _) => {
+            let Some([type_id, payload]) = value.as_sequence() else {
+                return Ok(value);
+            };
+            let type_id = count_of(type_id)?;
+            let branch = type_id
+                .as_i128()
+                .and_then(|id| i8::try_from(id).ok())
+                .and_then(|id| {
+                    fields
+                        .iter()
+                        .find_map(|(candidate, branch)| (candidate == id).then_some(branch))
+                });
+            let payload = match branch {
+                Some(branch) => shaped(payload.clone(), branch)?,
+                // An undeclared id is the value contract's refusal to name.
+                None => payload.clone(),
+            };
+            Ok(Scalar::from_sequence([type_id, payload]))
+        }
         DataType::Dictionary(dictionary) => shaped_for(value, dictionary.value(), nullable),
         DataType::RunEndEncoded(encoded) => shaped(value, encoded.values()),
         _ => Ok(value),

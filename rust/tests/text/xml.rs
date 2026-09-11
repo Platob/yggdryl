@@ -5,6 +5,7 @@ use yggdryl::{
     DataType, DataTypeId, Error, Field, MimeType, Scalar, TimeUnit, Url, from_xml_scalar,
     from_xml_scalar_with_field, into_xml_scalar,
 };
+use yggdryl::{Timezone, UnionMode};
 
 struct OneByte<R>(R);
 
@@ -762,4 +763,160 @@ fn only_a_field_that_refuses_absence_reads_an_empty_element_as_a_value() {
     // A number has no empty spelling, so absence stays absence and is refused.
     let size = Field::from_str("row: struct<size: int64 not null> not null").unwrap();
     assert!(from_xml_scalar_with_field("<row><size/></row>", &size).is_err());
+}
+
+#[test]
+fn every_leaf_kind_survives_the_character_data_it_is_written_as() {
+    // One value per kind a `Scalar` holds, through the document and back under
+    // the field that declares it: XML carries them all as character data, and
+    // the field is what restores the exact value.
+    fn round_trip(name: &str, dtype: DataType, value: Scalar) {
+        let field = DataType::from_fields([dtype.clone().required_field("v")])
+            .unwrap()
+            .required_field("row");
+        let canonical = dtype
+            .scalar(value)
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        let natural = field
+            .into_natural_value(Scalar::from_sequence([canonical.clone()]))
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        let document = Scalar::from_record([("row", natural)]).unwrap();
+
+        let encoded = into_xml_scalar(&document).unwrap_or_else(|error| panic!("{name}: {error}"));
+        let decoded = from_xml_scalar_with_field(&encoded, &field)
+            .unwrap_or_else(|error| panic!("{name}: {encoded}: {error}"));
+        assert_eq!(
+            decoded.as_sequence().unwrap()[0],
+            canonical,
+            "{name} read back from {encoded}"
+        );
+    }
+
+    round_trip("bool", DataType::Boolean, Scalar::from(true));
+    round_trip("int8", DataType::Int8, Scalar::from(-8_i64));
+    round_trip(
+        "uint64",
+        DataType::UInt64,
+        Scalar::from(18_446_744_073_709_551_615_u64),
+    );
+    round_trip("float16", DataType::Float16, Scalar::from(1.5_f64));
+    round_trip("float32", DataType::Float32, Scalar::from(1.5_f64));
+    round_trip("float64", DataType::Float64, Scalar::from(-0.25_f64));
+    round_trip(
+        "decimal32",
+        DataType::decimal32(9, 2).unwrap(),
+        Scalar::from(125_i64),
+    );
+    round_trip(
+        "decimal256",
+        DataType::decimal256(40, 4).unwrap(),
+        Scalar::from(125_i64),
+    );
+    round_trip("utf8", DataType::Utf8, Scalar::from("a b"));
+    round_trip("ascii", DataType::Ascii, Scalar::from("AB"));
+    round_trip("country", DataType::Country, Scalar::from("FR"));
+    round_trip("currency", DataType::Currency, Scalar::from("EUR"));
+    round_trip(
+        "uuid",
+        DataType::Uuid,
+        Scalar::from("67e55044-10b1-426f-9247-bb680e5fe0c8"),
+    );
+    round_trip(
+        "url",
+        DataType::Url,
+        Scalar::from("https://example.com/a?b=1"),
+    );
+    round_trip("version", DataType::Version, Scalar::from("1.2.3"));
+    round_trip("date32", DataType::Date32, Scalar::from("2026-08-15"));
+    round_trip("date64", DataType::Date64, Scalar::from("2026-08-15"));
+    round_trip(
+        "time32",
+        DataType::Time32(TimeUnit::Second),
+        Scalar::from("12:03:04"),
+    );
+    round_trip(
+        "time64",
+        DataType::Time64(TimeUnit::Nanosecond),
+        Scalar::from("12:03:04.000000005"),
+    );
+    round_trip(
+        "datetime naive",
+        DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::NAIVE,
+        },
+        Scalar::from("2026-08-15T12:03:04.000005"),
+    );
+    round_trip(
+        "datetime zoned",
+        DataType::DateTime64 {
+            unit: TimeUnit::Millisecond,
+            timezone: Timezone::UTC,
+        },
+        Scalar::from("2026-08-15T12:03:04Z"),
+    );
+    round_trip(
+        "duration32",
+        DataType::Duration32(TimeUnit::Second),
+        Scalar::from(90_i64),
+    );
+    round_trip(
+        "duration64",
+        DataType::Duration64(TimeUnit::Nanosecond),
+        Scalar::from(90_i64),
+    );
+    round_trip("binary", DataType::Binary, Scalar::from(vec![0_u8, 255]));
+    round_trip(
+        "fixed binary",
+        DataType::FixedSizeBinary(2),
+        Scalar::from(vec![1_u8, 2]),
+    );
+    round_trip(
+        "list",
+        DataType::list(DataType::Int64.required_field("item")),
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
+    );
+    round_trip(
+        "struct",
+        DataType::from_fields([DataType::Int64.required_field("n")]).unwrap(),
+        Scalar::from_sequence([Scalar::from(3_i64)]),
+    );
+    round_trip(
+        "dictionary",
+        DataType::dictionary(DataType::Int32, DataType::Utf8).unwrap(),
+        Scalar::from("x"),
+    );
+    round_trip(
+        "map",
+        DataType::map_of(DataType::Utf8, DataType::Int64, false).unwrap(),
+        Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).unwrap(),
+    );
+    round_trip(
+        "union",
+        DataType::union(
+            [
+                (0_i8, DataType::Int64.required_field("n")),
+                (1_i8, DataType::Utf8.required_field("s")),
+            ],
+            UnionMode::Dense,
+        )
+        .unwrap(),
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("x")]),
+    );
+    round_trip(
+        "geometry",
+        DataType::geometry(None).unwrap(),
+        Scalar::from(vec![
+            1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]),
+    );
+    round_trip(
+        "run end",
+        DataType::run_end_encoded(
+            DataType::Int32.required_field("run_ends"),
+            DataType::Utf8.required_field("values"),
+        )
+        .unwrap(),
+        Scalar::from("x"),
+    );
 }
