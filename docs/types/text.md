@@ -1,20 +1,96 @@
-# Text & bytes
+# Strings & bytes
 
-Three UTF-8 spellings, four binary spellings, the version and URL values, and the regex that turns named captures into a schema.
+One string family in five layouts, four binary spellings, the version and URL values, and the regex that turns named captures into a schema.
 
 ## Contract
+
+A string is a layout, the [charset](../charset/index.md) its bytes are written
+in, and how long its values may be. Each layout has two spellings: the `string`
+name is the general one, and the `utf8` name is the same layout when its
+charset is UTF-8, which is the default. Case, `_`, `-` and spaces are ignored,
+so `large_utf8`, `largeutf8` and `LargeString` are one datatype.
+
+| layout | UTF-8 spelling | general spelling | with a charset | Arrow storage |
+| --- | --- | --- | --- | --- |
+| 32-bit offsets | `utf8` | `string` | `string(windows-1252)` | `Utf8` / `Binary` |
+| fixed width | `fixed_utf8(n)` | `fixed_string(n)` | `fixed_string(windows-1252,8)` | `FixedSizeBinary(n)` |
+| view | `utf8_view` | `string_view` | `string_view(windows-1252)` | `Utf8View` / `BinaryView` |
+| 64-bit offsets | `large_utf8` | `large_string` | `large_string(windows-1252)` | `LargeUtf8` / `LargeBinary` |
+| view, large | `large_utf8_view` | `large_string_view` | `large_string_view(windows-1252)` | `Utf8View` / `BinaryView` |
+
+Unbounded UTF-8 in the first, third and fourth rows is `Utf8`, `Utf8View` and
+`LargeUtf8` - the datatypes Arrow itself names - so `string` *is* `utf8` rather
+than a second spelling of it. Unbounded US-ASCII is [`ascii`](ascii.md), and
+`fixed_string(us-ascii,n)` is `ascii(n)`: that repertoire has a family of its
+own, and one fact has one owner.
 
 | spelling | datatype | also parsed as |
 | --- | --- | --- |
 | `utf8` | `Utf8` | `string`, `str`, `text`, `varchar`, `nvarchar`, `char`, `character varying` |
+| `utf8(n)` | a string of at most `n` bytes | `varchar(n)`, `string(n)` |
+| `fixed_utf8(n)` | a string of exactly `n` bytes | `char(n)`, `fixed_string(n)` |
 | `large_utf8` | `LargeUtf8` | `large_string` |
 | `utf8_view` | `Utf8View` | `string_view` |
+| `large_utf8_view` | a large-declared view | `large_string_view` |
 | `binary` | `Binary` | `bytes`, `varbinary`, `blob`, `bytea` |
 | `large_binary` | `LargeBinary` | - |
 | `binary_view` | `BinaryView` | - |
 | `fixed_size_binary(n)` | `FixedSizeBinary(n)` | `fixed_binary(n)` |
 | `version` | `Version` | - |
 | `url` | `Url` | - |
+
+## Charsets and bounds
+
+A bound counts **stored bytes**, not scalars: that is what the buffer holds and
+what Arrow's offsets measure. One number carries both readings - the exact
+width on a fixed layout, the maximum on every other - because a string is one
+shape or the other.
+
+```rust
+use yggdryl::types::StringLayout;
+use yggdryl::{Charset, DataType};
+
+// A charset or a bound is what makes a string its own datatype.
+let latin = DataType::from_str("string(windows-1252,32)")?;
+let parameters = latin.string_parameters().expect("a string datatype");
+assert_eq!(parameters.layout(), StringLayout::String);
+assert_eq!(parameters.charset(), Charset::Cp1252);
+assert_eq!(parameters.max(), Some(32));
+
+// Plain UTF-8 is the datatype it already was.
+assert_eq!(DataType::from_str("string")?, DataType::Utf8);
+// And every string answers one question about its charset.
+assert_eq!(DataType::Utf8.charset(), Some(Charset::Utf8));
+assert_eq!(DataType::Ascii.charset(), Some(Charset::Ascii));
+
+// The bound is bytes: five scalars are five windows-1252 bytes and seven UTF-8 ones.
+let bounded = DataType::from_str("string(windows-1252,5)")?;
+assert_eq!(bounded.scalar("Grüße")?.as_str(), Some("Grüße"));
+assert!(DataType::from_str("utf8(5)")?.scalar("Grüße").is_err());
+```
+
+A value holds UTF-8 whatever charset it arrived in - the bytes are decoded once,
+at the seam - and remembers the charset it is *written* in, so it goes back out
+the way it came. Bytes arriving at a column that names a charset are
+transcribed rather than refused: an unassigned byte reads as its ISO 8859-1
+scalar, which is what the WHATWG Encoding Standard's own index maps it to.
+
+```rust
+use yggdryl::{DataType, Scalar};
+
+let dtype = DataType::from_str("string(windows-1252)")?;
+let value = dtype.scalar(Scalar::from(vec![0x47_u8, 0x72, 0xFC, 0xDF, 0x65]))?;
+assert_eq!(value.as_str(), Some("Grüße"));
+
+// `0x81` is unassigned in windows-1252, and still reads.
+let recovered = dtype.scalar(Scalar::from(vec![0x6F_u8, 0x6B, 0x81]))?;
+assert_eq!(recovered.as_str(), Some("ok\u{0081}"));
+```
+
+Arrow is told the truth about the bytes: UTF-8 rides its string layouts, every
+other charset rides the matching binary layout, and what Arrow cannot say - the
+charset, the bound, and which of the two view layouts this is, since Arrow has
+one - rides the `yggdryl.string` extension document on the field.
 
 ## Use
 
@@ -222,8 +298,14 @@ native Version example corpus.
 - Invalid regex syntax -> datatype error.
 - An expression beyond the shared datatype recursion limit -> datatype error.
 - `fixed_size_binary(-1)` -> refused, the width must be non-negative.
-- `varchar(255)`, `binary(16)` -> the length parses and is dropped, the datatype stays variable.
-- Case, `_`, `-` and spaces are ignored in a spelling, so `LargeUtf8` and `large_utf8` are one [datatype](datatype.md).
+- `varchar(255)` -> `utf8(255)`; a string length is a bound this crate stores.
+- `binary(16)` -> the length parses and is dropped; a binary layout holds no bound.
+- `char(8)` -> `fixed_utf8(8)`, blank-padded as SQL means it; a bare `char` declares no width and so is `utf8`.
+- `fixed_string` with no width -> refused; the width is what makes a string fixed.
+- `utf8(windows-1252)` -> refused; the `utf8` spellings declare their charset in the name.
+- `string_view(us-ascii)` -> refused by name; US-ASCII text is [`ascii`](ascii.md)'s.
+- Text a declared charset has no bytes for -> held as a value, refused when the column is written, naming the scalar. The value door counts rather than judges, because [`transcribe`](../charset/index.md) recovers damage precisely by answering scalars the charset does not assign.
+- Case, `_`, `-` and spaces are ignored in a spelling, so `LargeUtf8`, `large_utf8` and `large_string` are one [datatype](datatype.md).
 - Bytes merged with text -> bytes win, text wins next, per the merge order in [Field](field.md).
 - `005.0.000` -> the canonical `5`; trailing zero components are omitted.
 - A version whose major or minor exceeds `255`, or whose major is not a decimal number -> refused at the first bad byte.

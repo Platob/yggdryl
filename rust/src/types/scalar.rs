@@ -53,8 +53,8 @@ use super::floating::scalars::{Float16, Float32, Float64, Floating};
 use super::geospatial::Geospatial;
 use super::integer::scalars::Integer;
 use super::nested::{Children, Mapping, Nested, Record, Sequence};
+use super::string::Text;
 use super::temporal::scalars::{Temporal, temporal_key};
-use super::text::Text;
 use super::uuid::Uuid;
 use super::version::Version;
 
@@ -243,11 +243,26 @@ impl Serialize for Scalar {
                     &Pair(&value.coefficient(), &value.scale()),
                 ),
             },
-            Self::Text(value) => match value {
-                Text::Utf8(value) => tagged(serializer, "string", &value.as_str()),
-                Text::LargeUtf8(value) => tagged(serializer, "large_utf8", &value.as_str()),
-                Text::Utf8View(value) => tagged(serializer, "utf8_view", &value.as_str()),
-            },
+            // The ordinary string - UTF-8, no width - writes its characters
+            // under its layout's own tag, which is what it always wrote. A
+            // charset or a width is what makes a value carry more than that,
+            // and those write the whole declaration rather than half of it.
+            Self::Text(value) if value.charset().is_utf8() && value.width().is_none() => {
+                match value {
+                    Text::Utf8(value) => tagged(serializer, "string", &value.as_str()),
+                    Text::LargeUtf8(value) => tagged(serializer, "large_utf8", &value.as_str()),
+                    Text::Utf8View(value) => tagged(serializer, "utf8_view", &value.as_str()),
+                    Text::LargeUtf8View(value) => {
+                        tagged(serializer, "large_utf8_view", &value.as_str())
+                    }
+                    Text::FixedUtf8(_) => unreachable!("a fixed string carries its width"),
+                }
+            }
+            Self::Text(value) => tagged(
+                serializer,
+                "encoded_string",
+                &super::string::TextRepresentation::from(value),
+            ),
             Self::Ascii(value) => match value {
                 AsciiFamily::Ascii(value) => tagged(serializer, "ascii", &value.as_str()),
                 AsciiFamily::FixedAscii(value) => tagged(
@@ -463,6 +478,8 @@ impl<'de> Deserialize<'de> for Scalar {
             String(SmolStr),
             LargeUtf8(SmolStr),
             Utf8View(SmolStr),
+            LargeUtf8View(SmolStr),
+            EncodedString(super::string::TextRepresentation),
             Ascii(SmolStr),
             FixedAscii(SmolStr, i32),
             Country(SmolStr),
@@ -520,11 +537,17 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralValue::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
             StructuralValue::String(value) => Ok(Self::from(value)),
             StructuralValue::LargeUtf8(value) => Ok(Self::Text(Text::LargeUtf8(
-                super::text::LargeUtf8::new(value),
+                super::string::LargeUtf8::new(value),
             ))),
             StructuralValue::Utf8View(value) => Ok(Self::Text(Text::Utf8View(
-                super::text::Utf8View::new(value),
+                super::string::Utf8View::new(value),
             ))),
+            StructuralValue::LargeUtf8View(value) => Ok(Self::Text(Text::LargeUtf8View(
+                super::string::LargeUtf8View::new(value),
+            ))),
+            StructuralValue::EncodedString(value) => Text::try_from(value)
+                .map(Self::Text)
+                .map_err(D::Error::custom),
             StructuralValue::Ascii(value) => super::ascii::Ascii::new(value)
                 .map(|value| Self::Ascii(AsciiFamily::Ascii(value)))
                 .map_err(D::Error::custom),
@@ -873,9 +896,10 @@ impl Scalar {
             Self::Temporal(Temporal::Duration32(_)) => DataTypeId::Duration32,
             Self::Temporal(Temporal::Duration64(_)) => DataTypeId::Duration64,
             Self::Temporal(Temporal::Interval(_)) => DataTypeId::Interval,
-            Self::Text(Text::Utf8(_)) => DataTypeId::Utf8,
-            Self::Text(Text::LargeUtf8(_)) => DataTypeId::LargeUtf8,
-            Self::Text(Text::Utf8View(_)) => DataTypeId::Utf8View,
+            // A string names the layout it is stored in, and names it under
+            // the charset it is written in: plain UTF-8 is the identifier it
+            // always was, and anything else is the string family's own.
+            Self::Text(text) => text.identifier(),
             Self::Ascii(AsciiFamily::Ascii(_)) => DataTypeId::Ascii,
             Self::Ascii(AsciiFamily::FixedAscii(_)) => DataTypeId::FixedAscii,
             Self::Ascii(AsciiFamily::Country(_)) => DataTypeId::Country,
@@ -935,8 +959,10 @@ impl Scalar {
             Self::Decimal(Decimal::D128(_)) => "d128",
             Self::Decimal(Decimal::D256(_)) => "d256",
             Self::Text(Text::Utf8(_)) => "string",
+            Self::Text(Text::FixedUtf8(_)) => "fixed_string",
             Self::Text(Text::LargeUtf8(_)) => "large_utf8",
             Self::Text(Text::Utf8View(_)) => "utf8_view",
+            Self::Text(Text::LargeUtf8View(_)) => "large_utf8_view",
             Self::Ascii(AsciiFamily::Ascii(_)) => "ascii",
             Self::Ascii(AsciiFamily::FixedAscii(_)) => "fixed_ascii",
             Self::Ascii(AsciiFamily::Country(_)) => "country",

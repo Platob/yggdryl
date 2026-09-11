@@ -52,7 +52,7 @@ fn parser_accepts_flexible_sql_whitespace_and_doubled_quotes() {
 
     let single_quoted = Field::from_str("'owner''s code'   VARCHAR(32)").unwrap();
     assert_eq!(single_quoted.name(), "owner's code");
-    assert_eq!(single_quoted.dtype(), &DataType::Utf8);
+    assert_eq!(single_quoted.dtype().to_string(), "utf8(32)");
 
     let double_quoted = Field::from_str(r#""desk""label" STRING"#).unwrap();
     assert_eq!(double_quoted.name(), "desk\"label");

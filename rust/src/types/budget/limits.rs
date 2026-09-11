@@ -342,6 +342,10 @@ impl MaterializationBudget {
                     .map_err(|_| invalid_value("a fixed binary width within usize", width))?;
                 self.add_fixed_rows(rows, width)?;
             }
+            // A string's cost is its layout's: a fixed width is that width
+            // per row, a view is one sixteen-byte descriptor, and the two
+            // variable layouts are their offset runs.
+            DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
             DataType::Null
             | DataType::FixedSizeList(..)
             | DataType::Struct(_)
@@ -452,6 +456,10 @@ impl MaterializationBudget {
                     .map_err(|_| invalid_value("a fixed binary width within usize", width))?;
                 self.add_fixed_rows(rows, width)?;
             }
+            // A string's cost is its layout's: a fixed width is that width
+            // per row, a view is one sixteen-byte descriptor, and the two
+            // variable layouts are their offset runs.
+            DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
             DataType::FixedSizeList(child, size) => {
                 let size = usize::try_from(*size)
                     .map_err(|_| invalid_value("a fixed list size within usize", size))?;
@@ -504,6 +512,28 @@ impl MaterializationBudget {
             self.add_fixed_rows(rows, 4)?;
         }
         Ok(())
+    }
+
+    /// Charge one string column against the layout it declares.
+    fn add_string_rows(
+        &mut self,
+        rows: usize,
+        parameters: crate::types::StringParameters,
+    ) -> Result<()> {
+        use crate::types::StringLayout;
+
+        if let Some(width) = parameters.fixed() {
+            return self.add_fixed_rows(rows, width as usize);
+        }
+        match parameters.layout() {
+            StringLayout::String => self.add_offsets(rows, 4),
+            StringLayout::LargeString => self.add_offsets(rows, 8),
+            StringLayout::StringView | StringLayout::LargeStringView => {
+                self.add_fixed_rows(rows, 16)
+            }
+            // The fixed layout answered above; it is the only one with a width.
+            StringLayout::FixedString => self.add_offsets(rows, 4),
+        }
     }
 
     fn add_offsets(&mut self, rows: usize, width: usize) -> Result<()> {

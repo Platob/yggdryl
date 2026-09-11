@@ -375,14 +375,26 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
 
 #[test]
 fn a_declared_sql_length_is_a_length() {
-    // The length says nothing this crate's variable storage stores, but a
-    // declaration no storage could have meant is malformed input.
-    for accepted in ["varchar(10)", "char(1)", "binary(16)", "varbinary(4)"] {
-        assert!(accepted.parse::<DataType>().is_ok(), "{accepted}");
+    // A string length is a bound this crate stores; a binary one still says
+    // nothing its variable storage holds. Either way a declaration no storage
+    // could have meant is malformed input.
+    assert_eq!(
+        "varchar(10)".parse::<DataType>().unwrap().to_string(),
+        "utf8(10)"
+    );
+    assert_eq!(
+        "char(1)".parse::<DataType>().unwrap().to_string(),
+        "fixed_utf8(1)"
+    );
+    for accepted in ["binary(16)", "varbinary(4)"] {
+        assert_eq!(accepted.parse::<DataType>().unwrap(), DataType::Binary);
     }
-    for malformed in ["varchar(0)", "char(-1)", "binary(-1)", "varbinary(0)"] {
+    for malformed in ["binary(-1)", "varbinary(0)"] {
         let refused = malformed.parse::<DataType>().unwrap_err().to_string();
         assert!(refused.contains("positive number of bytes"), "{refused}");
+    }
+    for malformed in ["varchar(0)", "char(-1)"] {
+        assert!(malformed.parse::<DataType>().is_err(), "{malformed}");
     }
 }
 

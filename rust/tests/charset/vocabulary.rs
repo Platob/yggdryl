@@ -154,3 +154,62 @@ fn a_media_type_declaration_is_what_selects_a_charset() {
     let url = yggdryl::Url::from_str("file:///trades.csv").unwrap();
     assert_eq!(Charset::from_url(&url), Charset::Utf8);
 }
+
+#[test]
+fn three_doors_read_a_damaged_payload_three_ways() {
+    // `0x81` is one of the five bytes windows-1252 leaves unassigned.
+    let damaged = b"ok\x81";
+    assert!(Charset::Cp1252.decode(damaged).is_err());
+    assert_eq!(Charset::Cp1252.decode_lossy(damaged), "ok\u{FFFD}");
+    // The permissive door recovers rather than replaces: ISO 8859-1 assigns
+    // every byte, and for these five it is what the WHATWG Encoding
+    // Standard's own index answers.
+    assert_eq!(Charset::Cp1252.transcribe(damaged), "ok\u{0081}");
+
+    // Bytes offered as UTF-8 that are not UTF-8 still read.
+    assert!(Charset::Utf8.decode(b"caf\xe9").is_err());
+    assert_eq!(Charset::Utf8.decode_lossy(b"caf\xe9"), "caf\u{FFFD}");
+    assert_eq!(Charset::Utf8.transcribe(b"caf\xe9"), "café");
+
+    // A lone surrogate is not a scalar in any encoding, so there is nothing
+    // to transcribe it to and the permissive door replaces it too.
+    assert_eq!(Charset::Utf16Le.transcribe(b"\x00\xd8"), "\u{FFFD}");
+
+    // A charset that assigns every byte has nothing to recover.
+    for charset in [Charset::Latin1, Charset::Cp437, Charset::MacRoman] {
+        assert_eq!(charset.transcribe(damaged), charset.decode_lossy(damaged));
+    }
+}
+
+#[test]
+fn a_stored_length_is_counted_rather_than_built() {
+    // Four scalars: four bytes in windows-1252, five in UTF-8.
+    assert_eq!(Charset::Cp1252.encoded_len("café"), 4);
+    assert_eq!(Charset::Utf8.encoded_len("café"), 5);
+    // UTF-16 counts its units, surrogate pairs included.
+    assert_eq!(Charset::Utf16Le.encoded_len("a😀"), 6);
+
+    // Whatever it counts, it is the length the encoder writes.
+    for charset in Charset::ALL {
+        for text in ["", "AAPL", "café", "Grüße"] {
+            if let Ok(encoded) = charset.encode(text) {
+                assert_eq!(
+                    charset.encoded_len(text),
+                    encoded.len(),
+                    "{charset} {text:?}"
+                );
+            }
+        }
+    }
+
+    // It counts rather than judges: a scalar the charset has no byte for
+    // still occupies the byte it would occupy, because that is what a bound
+    // asks about, and refusing here would make `transcribe` unusable - the
+    // scalars it recovers are exactly the ones the charset does not assign.
+    assert_eq!(Charset::Cp1252.encoded_len("ok東京"), 4);
+    assert!(Charset::Cp1252.encode("ok東京").is_err());
+    assert_eq!(
+        Charset::Cp1252.encoded_len(&Charset::Cp1252.transcribe(b"ok\x81")),
+        3
+    );
+}

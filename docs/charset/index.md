@@ -17,7 +17,7 @@
 | Owns | `Charset`, `charset::Decoder`, `charset::Reader`, `charset::Writer`, `charset::Transcoded` |
 | Charsets | `utf-8`, `utf-16le`, `utf-16be`, `us-ascii`, `iso-8859-1`, `iso-8859-2`, `iso-8859-15`, `windows-1250`, `windows-1251`, `windows-1252`, `ibm437`, `ibm850`, `macintosh` |
 | Select | `Charset::from_str` for a name or alias; `Charset::from_media_type` and `Charset::from_url` for what a resource declares; `Charset::from_bom` for what a payload declares about itself |
-| Operations | `decode`/`encode` for whole buffers, `reader`/`writer` for streams, `decoder` for chunks |
+| Operations | `decode`/`decode_lossy`/`transcribe`/`encode` for whole buffers, `encoded_len` for the stored length alone, `reader`/`writer` for streams, `decoder` for chunks |
 | Borrow | An all-ASCII payload is already UTF-8, so `decode` and `encode` borrow it; asserted in the counting allocator |
 | Composes | Any [`IOBase`](../holder/index.md) through `Transcoded`, over or under a [`Coded`](../coding/index.md) handle; `Transcoded` is itself an `IOBase` |
 | Seek | Through `Transcoded`, by resume points recorded in one pass; the value is materialized only by an explicit `open` or a positional write |
@@ -118,7 +118,7 @@ A resource declares its charset on its [media type](../uri/path.md), the way it 
 
 ## Reading what cannot be read
 
-`decode` refuses a byte the charset leaves unassigned and names where it is. `decode_lossy` reads the same bytes and replaces what it cannot, which is what a capture of arbitrary wire lines wants and never what a stored column wants.
+Three doors, one verb. `decode` refuses a byte the charset leaves unassigned and names where it is. `decode_lossy` reads the same bytes and marks each fault with `U+FFFD`, which is what a capture of arbitrary wire lines wants and never what a stored column wants. `transcribe` reads every byte it can: an unassigned byte becomes the scalar ISO 8859-1 gives it - which for the five bytes `windows-1252` leaves unassigned is what the WHATWG Encoding Standard's own index answers - and bytes offered as UTF-8 that are not UTF-8 are read as ISO 8859-1 rather than replaced. It is the door a [`string(...)` column](../types/text.md) reads its values through.
 
 === "Rust"
 
@@ -128,6 +128,9 @@ A resource declares its charset on its [media type](../uri/path.md), the way it 
     let error = Charset::Cp1252.decode(b"ok\x81").unwrap_err();
     assert!(matches!(error, Error::Codec { format: "windows-1252", position: 2, .. }));
     assert_eq!(Charset::Cp1252.decode_lossy(b"ok\x81"), "ok\u{FFFD}");
+    assert_eq!(Charset::Cp1252.transcribe(b"ok\x81"), "ok\u{0081}");
+    // Bytes that are not the UTF-8 they claim to be still read.
+    assert_eq!(Charset::Utf8.transcribe(b"caf\xe9"), "café");
     ```
 
 === "Python"
@@ -159,7 +162,9 @@ A resource declares its charset on its [media type](../uri/path.md), the way it 
 - Bare `utf-16` -> `Err`. RFC 2781 reads an unmarked stream as big-endian and the WHATWG Encoding Standard reads it as little-endian, so the name is ambiguous rather than defaulted; `utf-16le`, `utf-16be`, and `Charset::from_bom` are the three unambiguous answers.
 - `iso-8859-1` -> ISO 8859-1, never `windows-1252`. The two differ over `0x80..=0x9F`, so a value that answered one for the other would put a smart quote where a control character was written. A browser's `TextDecoder` resolves that label the other way.
 - `Charset::from_bom` -> the charset and the mark's byte length; the mark is never stripped on a caller's behalf, so `decode` of a marked payload begins with `U+FEFF`. The [structured-text](../text/index.md) plan is the one place a mark is treated as framing.
-- An unassigned byte -> `Err` naming the charset, the byte position, and the byte. Only `windows-1250`, `windows-1251` and `windows-1252` leave any unassigned; every other charset here answers for all 256.
+- An unassigned byte -> `Err` naming the charset, the byte position, and the byte. Only `windows-1250`, `windows-1251` and `windows-1252` leave any unassigned; every other charset here answers for all 256, so for those three doors `transcribe` and `decode_lossy` answer the same text.
+- A lone UTF-16 surrogate -> `U+FFFD` from `transcribe` too: it is not a scalar in any encoding, so there is nothing to transcribe it to.
+- `encoded_len` -> the bytes the charset stores that text in, counted without building them. It counts rather than judges: a scalar the charset has no byte for still occupies the one it would occupy, because that is what a [length bound](../types/text.md) is asking. `encode` is the one door that refuses such a scalar, and it refuses it where the bytes are written.
 - A scalar the charset has no byte for -> `Err` naming the scalar as `U+XXXX`. Every scalar has a UTF-16 form, so the Unicode forms never refuse an encode.
 - `Charset::Utf8` through `reader`, `writer` or `Transcoded` -> the bytes pass through unchanged and are not revalidated, exactly as `Codec::Identity` leaves bytes alone. `decode` is the validating door.
 

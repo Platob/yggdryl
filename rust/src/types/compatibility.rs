@@ -352,6 +352,9 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         // and the cast trims the padding.
         D::LargeUtf8
         | D::Utf8View
+        // A foreign engine has no charset to declare, so a string exchanges
+        // as the characters it holds and the cast encodes them as UTF-8.
+        | D::String(_)
         | D::Ascii
         | D::FixedAscii(_)
         | D::Country
@@ -454,6 +457,9 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // and the cast trims the padding.
         D::LargeUtf8
         | D::Utf8View
+        // A foreign engine has no charset to declare, so a string exchanges
+        // as the characters it holds and the cast encodes them as UTF-8.
+        | D::String(_)
         | D::Ascii
         | D::FixedAscii(_)
         | D::Country
@@ -548,6 +554,9 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // and the cast trims the padding.
         D::LargeUtf8
         | D::Utf8View
+        // A foreign engine has no charset to declare, so a string exchanges
+        // as the characters it holds and the cast encodes them as UTF-8.
+        | D::String(_)
         | D::Ascii
         | D::FixedAscii(_)
         | D::Country
@@ -650,6 +659,9 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         // every Iceberg reader must see `USD`, never the padded bytes.
         D::LargeUtf8
         | D::Utf8View
+        // A foreign engine has no charset to declare, so a string exchanges
+        // as the characters it holds and the cast encodes them as UTF-8.
+        | D::String(_)
         | D::Ascii
         | D::FixedAscii(_)
         | D::Country

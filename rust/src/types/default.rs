@@ -225,6 +225,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::LargeBinary
             | DataType::BinaryView
             | DataType::Utf8
+            | DataType::String(_)
             | DataType::LargeUtf8
             | DataType::Utf8View
             | DataType::Ascii
@@ -330,6 +331,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::Utf8
         | D::LargeUtf8
         | D::Utf8View
+        | D::String(_)
         | D::Ascii
         | D::FixedAscii(_)
         | D::Country

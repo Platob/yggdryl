@@ -7,10 +7,10 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use super::{
     BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialType,
-    IntegerType, MapType, NestedType, RunEndEncodedType, TemporalType, TextType, TimeUnit,
-    UnionFields, UnionMode,
+    IntegerType, MapType, NestedType, RunEndEncodedType, StringLayout, StringParameters,
+    TemporalType, TimeUnit, UnionFields, UnionMode,
 };
-use crate::{Error, Field, Timezone};
+use crate::{Charset, Error, Field, Timezone};
 
 #[test]
 fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
@@ -31,8 +31,15 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
     let temporal_family = TemporalType::try_from(&temporal).unwrap();
     assert_eq!(temporal_family.into_dtype().unwrap(), temporal);
 
-    let text = TextType::try_from(&DataType::LargeUtf8).unwrap();
-    assert_eq!(DataType::from(text), DataType::LargeUtf8);
+    let text = DataType::LargeUtf8.string_parameters().unwrap();
+    assert_eq!(text.layout(), StringLayout::LargeString);
+    assert_eq!(DataType::string(text).unwrap(), DataType::LargeUtf8);
+
+    let encoded = StringParameters::new(StringLayout::StringView, Charset::Cp1252);
+    assert_eq!(
+        DataType::string(encoded).unwrap().string_parameters(),
+        Some(encoded)
+    );
 
     let ascii = DataType::FixedAscii(7);
     let ascii_family = AsciiFamilyType::try_from(&ascii).unwrap();

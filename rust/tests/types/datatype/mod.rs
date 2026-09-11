@@ -9,4 +9,5 @@ mod nested;
 mod parser;
 mod scalar;
 mod serde;
+mod string;
 mod temporal;

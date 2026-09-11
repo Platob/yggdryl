@@ -568,6 +568,17 @@ fn text_rank(dtype: &DataType) -> Option<TextRank> {
         DataType::Utf8 => Some(TextRank::Utf8),
         DataType::Utf8View => Some(TextRank::Utf8View),
         DataType::LargeUtf8 => Some(TextRank::LargeUtf8),
+        // A string ranks at the layout it stores in, never below UTF-8: the
+        // charset and the bound are what one schema declares and the other
+        // may not, and a merge answers the type that holds both sides' values
+        // rather than one side's storage. Two schemas that agree never reach
+        // here, so nothing that could be kept is being dropped.
+        DataType::String(parameters) => Some(match parameters.layout() {
+            crate::types::StringLayout::StringView => TextRank::Utf8View,
+            crate::types::StringLayout::LargeString
+            | crate::types::StringLayout::LargeStringView => TextRank::LargeUtf8,
+            _ => TextRank::Utf8,
+        }),
         _ => None,
     }
 }

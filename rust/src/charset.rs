@@ -430,6 +430,70 @@ impl Charset {
         }
     }
 
+    /// Decode a complete buffer, transcribing what it cannot read exactly.
+    ///
+    /// This is the permissive door, and it recovers rather than replaces
+    /// wherever a recovery is defined rather than guessed:
+    ///
+    /// * A byte a single-byte charset leaves unassigned reads as the scalar
+    ///   ISO 8859-1 gives it. Every byte has one, and for the five bytes
+    ///   `windows-1252` leaves unassigned it is exactly what the WHATWG
+    ///   Encoding Standard's own index answers - so this is the transcription,
+    ///   not a fallback.
+    /// * Bytes offered as UTF-8 that are not UTF-8 are read as ISO 8859-1
+    ///   instead, which is what a mislabelled Western export nearly always is
+    ///   and which assigns every byte. A payload that really was broken UTF-8
+    ///   reads as mojibake rather than as `U+FFFD`, and that is the trade:
+    ///   this door never loses a byte, and [`Charset::decode_lossy`] is the
+    ///   one that marks damage where it is.
+    /// * A broken UTF-16 sequence has no byte-wise reading at all - a lone
+    ///   surrogate is not a scalar in any encoding - so those become
+    ///   `U+FFFD`, exactly as [`Charset::decode_lossy`] leaves them.
+    ///
+    /// The three doors are one verb with three contracts:
+    /// [`Charset::decode`] refuses and says where, [`Charset::decode_lossy`]
+    /// marks each fault with `U+FFFD`, and this one reads every byte it can.
+    ///
+    /// ```
+    /// use yggdryl::Charset;
+    ///
+    /// // `0x81` is unassigned in windows-1252; ISO 8859-1 gives it `U+0081`.
+    /// assert!(Charset::Cp1252.decode(b"ok\x81").is_err());
+    /// assert_eq!(Charset::Cp1252.decode_lossy(b"ok\x81"), "ok\u{FFFD}");
+    /// assert_eq!(Charset::Cp1252.transcribe(b"ok\x81"), "ok\u{0081}");
+    ///
+    /// // Bytes that are not the UTF-8 they claim to be still read.
+    /// assert_eq!(Charset::Utf8.transcribe(b"caf\xe9"), "café");
+    /// ```
+    pub fn transcribe(self, input: &[u8]) -> Cow<'_, str> {
+        match self {
+            // Valid UTF-8 is itself; anything else is read as the single-byte
+            // charset that assigns every byte, which is what a mislabelled
+            // Western export is.
+            Self::Utf8 => match unicode::utf8_decode(input) {
+                Ok(text) => text,
+                Err(_) => Self::Latin1.decode_lossy(input),
+            },
+            // A lone surrogate is not a scalar anywhere, so there is nothing
+            // to transcribe it to.
+            Self::Utf16Le | Self::Utf16Be => self.decode_lossy(input),
+            // US-ASCII assigns no byte above `0x7F`, and ISO 8859-1 assigns
+            // every one of them, so a high byte reads as the Latin-1 scalar.
+            Self::Ascii => Self::Latin1.decode_lossy(input),
+            _ => match self.table() {
+                Some(table) if table.is_complete() => self.decode_lossy(input),
+                Some(table) => {
+                    let mut target = String::new();
+                    match table.transcribe_into(input, &mut target) {
+                        Ok(()) => Cow::Owned(target),
+                        Err(_) => self.decode_lossy(input),
+                    }
+                }
+                None => self.decode_lossy(input),
+            },
+        }
+    }
+
     /// Decode a complete buffer onto the end of `target`.
     ///
     /// # Errors
@@ -490,6 +554,43 @@ impl Charset {
                 Some(table) => table.encode(input),
                 None => Ok(Cow::Borrowed(input.as_bytes())),
             },
+        }
+    }
+
+    /// How many bytes this charset stores `input` in, without storing them.
+    ///
+    /// A length bound counts stored bytes, and the stored length is a
+    /// property of the text and the charset rather than of any buffer - so
+    /// asking for it costs a walk of the scalars and no allocation at all,
+    /// where [`Charset::encode`] would build the bytes to measure them.
+    ///
+    /// It counts rather than judges: a scalar this charset has no byte for
+    /// still occupies the one byte it would occupy, because that is what a
+    /// bound is asking about. Whether the bytes can be written at all is
+    /// [`Charset::encode`]'s question, answered where they are written - and
+    /// it has to be that way round, because [`Charset::transcribe`] recovers
+    /// damage precisely by answering scalars the charset does not assign.
+    ///
+    /// ```
+    /// use yggdryl::Charset;
+    ///
+    /// // Four scalars: four bytes in windows-1252, five in UTF-8.
+    /// assert_eq!(Charset::Cp1252.encoded_len("café"), 4);
+    /// assert_eq!(Charset::Utf8.encoded_len("café"), 5);
+    /// // A surrogate pair is two UTF-16 units, which is four bytes.
+    /// assert_eq!(Charset::Utf16Le.encoded_len("a😀"), 6);
+    /// ```
+    #[must_use]
+    pub fn encoded_len(self, input: &str) -> usize {
+        match self {
+            Self::Utf8 => input.len(),
+            Self::Utf16Le | Self::Utf16Be => input.chars().map(char::len_utf16).sum::<usize>() * 2,
+            // Every other charset here is one byte per scalar, so the count
+            // is the scalar count and the ASCII prefix is already counted.
+            _ => {
+                let leading = ascii_len(input.as_bytes());
+                leading + input[leading..].chars().count()
+            }
         }
     }
 

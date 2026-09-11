@@ -41,6 +41,7 @@ binding first.
 | datatype variant | `types/` family module, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
 | logical name | `DataType::LOGICAL_NAMES` only; resolves to an existing datatype, adds no variant |
 | codec | `coding/<name>.rs` (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
+| string layout | a `StringLayout` variant + `DataTypeId` appended + `types/string/` (parameters, redirect, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
 | charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant -> interop both directions -> bench -> bindings -> `docs/charset/` |
 | storage backend | `holder/<name>/` with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `media/<name>/` free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
@@ -114,6 +115,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
+| `types/string.rs` + `types/string/` | the `StringLayout` vocabulary beside `StringParameters`, the five layouts' datatypes, values, Arrow projection, and grammar. Every string this crate has - `utf8`, `large_utf8`, `utf8_view`, `ascii`, `ascii(n)` - answers `DataType::string_parameters` here |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside its implementations: `ascii`/`single_byte`/`unicode` own the codecs, generated `tables.rs` owns the code pages, `Decoder`/`Reader`/`Writer` the chunked doors, `Transcoded` the decoding handle. Fused rather than split like `codec.rs`/`coding/`, because no single code page is a public module of its own |
 | `media/` | record routing and settings; `{ipc,parquet,avro}/` each own free functions over `IOBase` plus a stateful wrapper |
 | `media/text/` | `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering |
@@ -672,12 +674,14 @@ change to `media/iceberg/`.
 `charset/`, and every byte that becomes text anywhere else.
 
 - **Text crosses the boundary once.** A byte payload is decoded at intake -
-  by a `Transcoded` handle, by `text::io::Plan`, by `TextOptions::charset`, or
-  by a direct `Charset::decode` - and everything past that point is `str`,
-  `Scalar::Utf8`, or an Arrow string array whose bytes are already UTF-8.
-  Nothing below `Scalar` carries a charset, nothing re-decodes, and no cast,
-  digest, or record layer branches on one per row. A layer that wants a charset
-  argument wants the wrong seam: wrap the handle instead.
+  by a `Transcoded` handle, by `text::io::Plan`, by `TextOptions::charset`, by
+  a `string(...)` column's own value contract, or by a direct `Charset::decode`
+  - and everything past that point is `str` or UTF-8 bytes. Nothing re-decodes,
+  and no cast, digest, or record layer branches on a charset per row. A layer
+  that wants a charset argument wants the wrong seam: wrap the handle instead.
+  A `string(...)` value does carry the charset it is *written* in, so it goes
+  back out the way it came - but it holds UTF-8 while it is here, and `as_str`
+  on it is infallible.
 - `Charset` is the one vocabulary and the only place a name selects an
   implementation. Intake accepts every documented alias case-insensitively;
   past it nothing sees a string. Two refusals are deliberate and are contract,
@@ -697,12 +701,18 @@ change to `media/iceberg/`.
   decoded, and the borrow is asserted in the counting allocator rather than
   argued. A charset that broke it would need its own scan and its own line
   splitter.
-- `decode` refuses and names the charset, the byte position, and the byte or
-  scalar found there, through `Error::Codec` - no new error variant, and the
-  charset's canonical name in `format`. `decode_lossy` is the separate
-  contract a capture of arbitrary wire bytes needs and never what a stored
-  column gets. There is no lossy *encode*: a scalar a charset cannot spell is
-  unrepresentable input, which fails.
+- Three doors, one verb: `decode` refuses and names the charset, the byte
+  position, and the byte or scalar found there, through `Error::Codec` - no new
+  error variant, and the charset's canonical name in `format`. `decode_lossy`
+  marks each fault with `U+FFFD` and is what a capture of arbitrary wire bytes
+  needs. `transcribe` reads every byte it can - an unassigned byte as its
+  ISO 8859-1 scalar, non-UTF-8 offered as UTF-8 as ISO 8859-1 - and is what a
+  `string(...)` column's values arrive through. There is no lossy *encode*: a
+  scalar a charset cannot spell is unrepresentable input, which fails.
+  `encoded_len` answers the stored length without building the bytes, and it
+  counts rather than judges - a scalar with no byte still occupies the one it
+  would occupy - so a length bound costs a walk and `encode` stays the single
+  authority on whether bytes can be written at all.
 - Tables are generated from Python's codec registry by
   `scripts/generate_charset_tables.py` and never edited by hand; a wrong scalar
   is a silently corrupted column. `scripts/check_charset_interop.py` checks
@@ -716,6 +726,58 @@ change to `media/iceberg/`.
   captures under `TextOptions::charset` and leaves `body` exactly as written.
   Reading a whole resource in one charset is `Transcoded`, not a second option
   on every reader.
+
+## Strings
+
+`types/string.rs` + `types/string/` own the family; these bind a change to any
+of the five layouts or to what a string declares.
+
+- **One family, five layouts, one charset each.** `StringLayout` names the
+  layouts, `StringParameters` is a layout beside its charset and its bound, and
+  `DataType::string` is the only constructor. There is no second door: a
+  `DataType::String` built by hand can hold parameters the constructor would
+  have redirected or refused, exactly as every other parameterized variant can,
+  and `validate` is what catches it before a boundary.
+- **The constructor redirects, so one fact has one spelling.** Unbounded UTF-8
+  in the three layouts Arrow names is `Utf8`, `LargeUtf8`, `Utf8View`;
+  US-ASCII is `Ascii` or `FixedAscii(n)`, which own that repertoire's value
+  contract and every code above it. So `DataType::String` is only ever a string
+  that declares something those cannot say, and a US-ASCII shape the ASCII
+  family has no room for - a view, a maximum - is refused by name rather than
+  becoming a second kind of ASCII column. `string_parameters` reads back for
+  all of them, which is what makes "which charset is this column in" one
+  question rather than six.
+- **Two spellings, one layout.** The `string` name is the general one and the
+  `utf8` name is what the same layout is called when its charset is UTF-8, so
+  `large_string` and `large_utf8` parse to one thing and a value renders under
+  whichever name its charset earns. The grammar's fold drops underscores, so
+  `largeutf8` is that spelling too.
+- **The bound counts stored bytes, and one number carries both readings**: the
+  exact width on `FixedString`, the maximum on every other layout. Bytes,
+  because that is what the buffer holds and what Arrow's offsets measure; a
+  scalar count would make a bound a walk of the value. `Charset::encoded_len`
+  counts it without building the bytes. Whether those bytes can be written is
+  the write seam's question, not the value door's: a value read back through
+  `transcribe` carries scalars the charset does not assign - that is what
+  recovering damage means - so refusing it here would make the permissive read
+  useless, and the refusal names the scalar where it is written instead.
+- **A value holds UTF-8 and remembers its charset.** Decoding happens at the
+  seam, as everywhere else; what a `Text` value keeps is the charset it is
+  *written* in, so it goes back out the way it came without the column being
+  read twice. `as_str` is therefore infallible on every string value there is.
+- **Arrow gets the truth about the bytes.** UTF-8 rides Arrow's string
+  layouts; every other charset rides the matching *binary* layout, because the
+  bytes are not UTF-8 and an Arrow reader told otherwise reads mojibake and
+  calls it text. What Arrow cannot say - the charset, the bound, and which of
+  the two view layouts this is, since Arrow has one - rides the
+  `yggdryl.string` extension document. A document over a storage it does not
+  describe is a foreign field wearing our name and imports as its storage.
+- **Bytes arriving at a `string(...)` column are transcribed, not refused.**
+  `Charset::transcribe` is the permissive door: an unassigned byte reads as its
+  ISO 8859-1 scalar, and bytes offered as UTF-8 that are not UTF-8 read as ISO
+  8859-1. The plain `utf8` datatypes stay strict - they are Arrow's types and
+  Arrow guarantees UTF-8 - so the split is the declaration: a column that names
+  a charset is a column that expects legacy bytes.
 
 ## Structured codecs
 

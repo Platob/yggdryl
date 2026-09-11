@@ -25,8 +25,8 @@ pub mod protocol;
 mod regex;
 mod scalar;
 pub(crate) mod serde;
+pub mod string;
 pub mod temporal;
-pub mod text;
 mod typed;
 pub mod url;
 pub mod uuid;
@@ -79,9 +79,10 @@ pub use nested::*;
 pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
 pub use scalar::{Scalar, ScalarFamily, ScalarValue};
+pub(crate) use string::trim_padding;
+pub use string::*;
 pub use temporal::scalars::TemporalFamily;
 pub use temporal::*;
-pub use text::*;
 pub use typed::{
     FieldRecord, FieldScalar, FieldType, TypedField, TypedFieldRef, UncheckedFieldScalar,
 };

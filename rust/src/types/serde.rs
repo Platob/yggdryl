@@ -108,6 +108,14 @@ enum DataTypeRef<'a> {
     Utf8 {},
     LargeUtf8 {},
     Utf8View {},
+    String {
+        layout: crate::types::StringLayout,
+        charset: crate::Charset,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fixed: Option<u32>,
+    },
     Ascii {},
     FixedAscii {
         width: i32,
@@ -247,6 +255,15 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Utf8 => Self::Utf8 {},
             D::LargeUtf8 => Self::LargeUtf8 {},
             D::Utf8View => Self::Utf8View {},
+            D::String(parameters) => {
+                let parameters = *parameters;
+                Self::String {
+                    layout: parameters.layout(),
+                    charset: parameters.charset(),
+                    max: parameters.max(),
+                    fixed: parameters.fixed(),
+                }
+            }
             D::Ascii => Self::Ascii {},
             D::FixedAscii(width) => Self::FixedAscii { width: *width },
             D::Country => Self::Country {},
@@ -366,6 +383,14 @@ enum DataTypeValue {
     Utf8 {},
     LargeUtf8 {},
     Utf8View {},
+    String {
+        layout: crate::types::StringLayout,
+        charset: crate::Charset,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fixed: Option<u32>,
+    },
     Ascii {},
     FixedAscii {
         width: i32,
@@ -490,6 +515,18 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Utf8 {} => Self::Utf8,
             DataTypeValue::LargeUtf8 {} => Self::LargeUtf8,
             DataTypeValue::Utf8View {} => Self::Utf8View,
+            DataTypeValue::String {
+                layout,
+                charset,
+                max,
+                fixed,
+            } => {
+                let mut parameters = crate::types::StringParameters::new(layout, charset);
+                if let Some(bound) = fixed.or(max) {
+                    parameters = parameters.try_with_bound(bound)?;
+                }
+                Self::string(parameters)?
+            }
             DataTypeValue::Ascii {} => Self::Ascii,
             DataTypeValue::FixedAscii { width } => Self::ascii(width)?,
             DataTypeValue::Country {} => Self::Country,
@@ -677,6 +714,24 @@ impl DataType {
                 tag("fixed_ascii");
                 entries.push((key("width"), Scalar::from(*width)));
             }
+            D::String(parameters) => {
+                let parameters = *parameters;
+                tag("string");
+                entries.push((
+                    key("layout"),
+                    Scalar::from(SmolStr::new_static(parameters.layout().as_str())),
+                ));
+                entries.push((
+                    key("charset"),
+                    Scalar::from(SmolStr::new_static(parameters.charset().as_str())),
+                ));
+                if let Some(max) = parameters.max() {
+                    entries.push((key("max"), Scalar::from(max)));
+                }
+                if let Some(fixed) = parameters.fixed() {
+                    entries.push((key("fixed"), Scalar::from(fixed)));
+                }
+            }
             D::List(field) => {
                 tag("list");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
@@ -820,6 +875,15 @@ impl DataType {
             text.parse()
         };
         let width = |name: &str| -> Result<i32> { integer(at(name), name) };
+        let bound = |name: &str| -> Result<u32> {
+            u32::try_from(integer(at(name), name)?).map_err(|_| {
+                invalid(
+                    &format!("$.{name}"),
+                    "a byte bound",
+                    "an out-of-range value",
+                )
+            })
+        };
         let child = |name: &str| -> Result<Field> {
             let held = at(name)
                 .ok_or_else(|| invalid(&format!("$.{name}"), "a field mapping", "nothing"))?;
@@ -899,6 +963,23 @@ impl DataType {
             "interval" => Self::Interval(unit("unit")?),
             "fixed_size_binary" => Self::fixed_size_binary(width("width")?)?,
             "fixed_ascii" => Self::ascii(width("width")?)?,
+            "string" => {
+                let name = |field: &str| -> Result<SmolStr> {
+                    at(field)
+                        .and_then(Scalar::as_str)
+                        .map(SmolStr::new)
+                        .ok_or_else(|| invalid(&format!("$.{field}"), "a name", "nothing"))
+                };
+                let layout = crate::types::StringLayout::from_str(&name("layout")?)?;
+                let charset = crate::Charset::from_str(&name("charset")?)?;
+                let mut parameters = crate::types::StringParameters::new(layout, charset);
+                if at("max").is_some() {
+                    parameters = parameters.try_with_bound(bound("max")?)?;
+                } else if at("fixed").is_some() {
+                    parameters = parameters.try_with_bound(bound("fixed")?)?;
+                }
+                Self::string(parameters)?
+            }
             "list" => Self::list(child("field")?),
             "list_view" => Self::list_view(child("field")?),
             "fixed_size_list" => Self::fixed_size_list(child("field")?, width("length")?)?,

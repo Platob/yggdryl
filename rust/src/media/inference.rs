@@ -43,7 +43,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::{AsciiFamily, Bytes, Decimal, Geospatial, Integer, Nested, Temporal, Text};
+use crate::types::{AsciiFamily, Bytes, Decimal, Geospatial, Integer, Nested, Temporal};
 use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
@@ -189,9 +189,10 @@ impl Scalar {
             Self::Decimal(Decimal::D256(value)) => {
                 decimal_dtype(value.coefficient(), value.scale(), DecimalWidth::D256)
             }
-            Self::Text(Text::Utf8(_)) => Ok(DataType::Utf8),
-            Self::Text(Text::LargeUtf8(_)) => Ok(DataType::LargeUtf8),
-            Self::Text(Text::Utf8View(_)) => Ok(DataType::Utf8View),
+            // A string value already declares its layout, its charset and
+            // its width, so the inferred datatype is what the value says it
+            // is rather than a guess over its characters.
+            Self::Text(text) => crate::ScalarFamily::dtype(text),
             Self::Ascii(AsciiFamily::Ascii(_)) => Ok(DataType::Ascii),
             Self::Ascii(AsciiFamily::FixedAscii(value)) => DataType::ascii(value.width()),
             Self::Ascii(AsciiFamily::Country(_)) => Ok(DataType::Country),

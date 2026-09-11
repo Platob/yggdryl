@@ -10,6 +10,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Field, Result};
 
+use super::string::StringLayout;
 use super::{DataType, TimeUnit};
 use crate::EdgeAlgorithm;
 
@@ -80,6 +81,7 @@ impl fmt::Display for DataType {
             D::Utf8 => formatter.write_str("utf8"),
             D::LargeUtf8 => formatter.write_str("large_utf8"),
             D::Utf8View => formatter.write_str("utf8_view"),
+            D::String(parameters) => fmt::Display::fmt(parameters, formatter),
             D::Ascii => formatter.write_str("ascii"),
             D::FixedAscii(width) => write!(formatter, "ascii({width})"),
             D::Country => formatter.write_str("country"),
@@ -354,16 +356,36 @@ impl<'a> Parser<'a> {
             }
             "largebinary" => DataType::LargeBinary,
             "binaryview" => DataType::BinaryView,
-            "utf8" | "string" | "str" | "text" | "varchar" | "nvarchar" | "char" | "character"
-            | "charactervarying" => {
-                if keyword == "character" {
-                    self.consume_word("varying");
-                }
-                self.ignore_optional_length()?;
-                DataType::Utf8
+            // One family, two spellings each, and one grammar over both: an
+            // optional charset, then an optional bound that reads as the
+            // width on a fixed layout and as the maximum on every other.
+            "utf8" | "string" | "str" | "text" | "varchar" | "nvarchar" | "charactervarying" => {
+                self.parse_string(StringLayout::String, &keyword)?
             }
-            "largeutf8" | "largestring" => DataType::LargeUtf8,
-            "utf8view" | "stringview" => DataType::Utf8View,
+            "largeutf8" | "largestring" => {
+                self.parse_string(StringLayout::LargeString, &keyword)?
+            }
+            "utf8view" | "stringview" => self.parse_string(StringLayout::StringView, &keyword)?,
+            "largeutf8view" | "largestringview" => {
+                self.parse_string(StringLayout::LargeStringView, &keyword)?
+            }
+            "fixedutf8" | "fixedstring" => {
+                self.parse_string(StringLayout::FixedString, &keyword)?
+            }
+            // SQL's `char(n)` is blank-padded to exactly n bytes, which is
+            // the fixed layout. A width is what makes a string fixed, so a
+            // bare `char` - which is what FIX's own type is called and what
+            // Arrow's debug spelling prints - is the variable one, and so is
+            // `character varying` however it is punctuated.
+            "char" | "character" | "nchar" => {
+                let fixed = !(keyword == "character" && self.consume_word("varying"))
+                    && self.peek_opening().is_some();
+                let layout = match fixed {
+                    true => StringLayout::FixedString,
+                    false => StringLayout::String,
+                };
+                self.parse_string(layout, &keyword)?
+            }
 
             "uuid" => DataType::Uuid,
             "version" => DataType::Version,

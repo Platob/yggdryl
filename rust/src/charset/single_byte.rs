@@ -154,3 +154,44 @@ impl SingleByte {
         Ok(())
     }
 }
+
+impl SingleByte {
+    /// Whether this charset assigns all 256 bytes.
+    ///
+    /// A complete charset has nothing to transcribe: every byte already reads
+    /// as a scalar of its own, so the permissive door and the lossy one
+    /// answer the same text.
+    pub(super) fn is_complete(&self) -> bool {
+        self.widths.iter().all(|width| *width != 0)
+    }
+
+    /// Decode into a target, reading an unassigned byte as its ISO 8859-1
+    /// scalar rather than replacing it.
+    ///
+    /// Only the three Windows code pages leave any byte unassigned, and each
+    /// of those bytes is a C1 control in ISO 8859-1 - which is exactly what
+    /// the WHATWG Encoding Standard's own index maps them to.
+    pub(super) fn transcribe_into(&self, input: &[u8], target: &mut String) -> Result<()> {
+        target.reserve(input.len());
+        let mut index = 0;
+        while index < input.len() {
+            let run = ascii_len(&input[index..]);
+            if run > 0 {
+                target.push_utf8(&input[index..index + run])?;
+                index += run;
+                continue;
+            }
+            let byte = input[index];
+            let slot = usize::from(byte) - 0x80;
+            if usize::from(self.widths[slot]) == 0 {
+                // ISO 8859-1 maps `0x80..=0xFF` onto `U+0080..=U+00FF`, so
+                // the scalar is the byte and needs no table to find.
+                target.push(char::from(byte));
+            } else {
+                target.push(self.scalars[slot]);
+            }
+            index += 1;
+        }
+        Ok(())
+    }
+}

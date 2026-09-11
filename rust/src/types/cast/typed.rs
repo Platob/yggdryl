@@ -117,14 +117,14 @@ typed_array!(
     crate::types::bytes::FixedSizeBinaryType,
     arrow_array::FixedSizeBinaryArray
 );
-typed_array!(crate::types::text::Utf8Type, arrow_array::StringArray);
+typed_array!(crate::types::string::Utf8Type, arrow_array::StringArray);
 typed_array!(crate::types::version::VersionType, arrow_array::StringArray);
 typed_array!(
-    crate::types::text::LargeUtf8Type,
+    crate::types::string::LargeUtf8Type,
     arrow_array::LargeStringArray
 );
 typed_array!(
-    crate::types::text::Utf8ViewType,
+    crate::types::string::Utf8ViewType,
     arrow_array::StringViewArray
 );
 // Variable ASCII stores as binary; a fixed width as fixed binary.

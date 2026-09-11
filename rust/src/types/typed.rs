@@ -696,7 +696,7 @@ impl<'a> FieldScalar<'a> {
     /// [`Display`](fmt::Display) writes. A value that spells no text of its
     /// own, such as a row or an interval, writes its family's own form.
     pub fn into_str(self) -> SmolStr {
-        match crate::types::text::text_from_value(&self.value) {
+        match crate::types::string::text_from_value(&self.value) {
             Some(Ok(text)) => text,
             _ => format_smolstr!("{self}"),
         }
@@ -776,7 +776,7 @@ impl<'a> FieldScalar<'a> {
 /// each writing what its family prints - the hex of a payload, an interval's
 /// components, a row as its sequence.
 fn write_value(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Result {
-    match crate::types::text::text_from_value(value) {
+    match crate::types::string::text_from_value(value) {
         Some(Ok(text)) => formatter.write_str(&text),
         Some(Err(_)) | None => match value {
             Scalar::Null => formatter.write_str("null"),
@@ -1095,9 +1095,9 @@ static_field_constructor!(super::temporal::Date64Type, DataType::Date64);
 static_field_constructor!(super::bytes::BinaryType, DataType::Binary);
 static_field_constructor!(super::bytes::LargeBinaryType, DataType::LargeBinary);
 static_field_constructor!(super::bytes::BinaryViewType, DataType::BinaryView);
-static_field_constructor!(super::text::Utf8Type, DataType::Utf8);
-static_field_constructor!(super::text::LargeUtf8Type, DataType::LargeUtf8);
-static_field_constructor!(super::text::Utf8ViewType, DataType::Utf8View);
+static_field_constructor!(super::string::Utf8Type, DataType::Utf8);
+static_field_constructor!(super::string::LargeUtf8Type, DataType::LargeUtf8);
+static_field_constructor!(super::string::Utf8ViewType, DataType::Utf8View);
 static_field_constructor!(super::ascii::AsciiType, DataType::Ascii);
 static_field_constructor!(super::ascii::CountryType, DataType::Country);
 static_field_constructor!(super::ascii::CurrencyType, DataType::Currency);

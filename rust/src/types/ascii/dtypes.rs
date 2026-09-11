@@ -613,11 +613,7 @@ pub(crate) fn ascii_free_text(bytes: &[u8]) -> Result<&str> {
 /// fold at each code's call site - and the variable shape passes `None`.
 #[inline]
 pub(crate) fn ascii_text_sized(width: Option<usize>, bytes: &[u8]) -> Result<&str> {
-    let end = bytes
-        .iter()
-        .rposition(|byte| *byte != 0)
-        .map_or(0, |last| last + 1);
-    let text = &bytes[..end];
+    let text = crate::types::string::trim_padding(bytes);
     if let Some(position) = text.iter().position(|byte| *byte == 0) {
         return Err(ascii_refusal(
             width,

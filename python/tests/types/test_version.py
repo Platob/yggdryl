@@ -152,7 +152,7 @@ def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
     assert not hasattr(types, "msgtype")
     assert not hasattr(types, "MsgTypeField")
     assert "msgtype" not in enums.DATA_TYPE_IDS
-    assert len(enums.DATA_TYPE_IDS) == 61
+    assert len(enums.DATA_TYPE_IDS) == 66
     assert enums.DATA_TYPE_IDS.index("url") == 59
     with pytest.raises(ValueError):
         DataType("msgtype")

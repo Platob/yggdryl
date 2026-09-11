@@ -1076,6 +1076,11 @@ fn feed_cell(
         ),
         DataType::Float64 => write_float(digester, downcast::<Float64Array>(array)?.value(index)),
         DataType::Utf8 => write_string(digester, downcast::<StringArray>(array)?.value(index)),
+        // A string digests as its characters, whatever charset holds them:
+        // the digest is of the value, and the charset is how it is stored.
+        DataType::String(parameters) => {
+            write_string(digester, &string_text(*parameters, array, index)?);
+        }
         DataType::LargeUtf8 => {
             write_string(digester, downcast::<LargeStringArray>(array)?.value(index));
         }
@@ -1264,3 +1269,38 @@ pub(crate) fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
 
 #[cfg(test)]
 mod tests;
+
+/// The characters one string cell holds, transcribed out of its charset.
+///
+/// This is the same text [`crate::Scalar`] would hold for the cell, so an
+/// Arrow column and the values read out of it digest alike.
+fn string_text(
+    parameters: crate::types::StringParameters,
+    array: &dyn Array,
+    index: usize,
+) -> Result<std::borrow::Cow<'_, str>> {
+    use crate::types::StringLayout;
+
+    let bytes: &[u8] = if parameters.is_fixed() {
+        // Trailing NUL is the padding, not the text.
+        crate::types::trim_padding(downcast::<FixedSizeBinaryArray>(array)?.value(index))
+    } else if parameters.charset().is_utf8() {
+        match parameters.layout() {
+            StringLayout::LargeString => downcast::<LargeStringArray>(array)?.value(index),
+            StringLayout::StringView | StringLayout::LargeStringView => {
+                downcast::<StringViewArray>(array)?.value(index)
+            }
+            _ => downcast::<StringArray>(array)?.value(index),
+        }
+        .as_bytes()
+    } else {
+        match parameters.layout() {
+            StringLayout::LargeString => downcast::<LargeBinaryArray>(array)?.value(index),
+            StringLayout::StringView | StringLayout::LargeStringView => {
+                downcast::<BinaryViewArray>(array)?.value(index)
+            }
+            _ => downcast::<BinaryArray>(array)?.value(index),
+        }
+    };
+    Ok(parameters.charset().transcribe(bytes))
+}

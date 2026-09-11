@@ -402,7 +402,9 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
 
 #[test]
 fn every_scalar_family_exposes_its_leaf_contract() {
-    use crate::types::{ascii, bytes, decimal, geospatial, integer, nested, temporal, text, uuid};
+    use crate::types::{
+        ascii, bytes, decimal, geospatial, integer, nested, string, temporal, uuid,
+    };
     use crate::{
         AsciiValue, BytesValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue,
         TemporalValue, TextValue,
@@ -429,7 +431,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(milliseconds.count(), 2_000);
     assert_eq!(milliseconds.unit(), TimeUnit::Millisecond);
 
-    let text = text::LargeUtf8::new("AAPL");
+    let text = string::LargeUtf8::new("AAPL");
     assert_eq!(TextValue::as_str(&text), "AAPL");
     assert_eq!(ScalarValue::dtype(&text).unwrap(), DataType::LargeUtf8);
 
@@ -470,7 +472,9 @@ fn every_scalar_family_exposes_its_leaf_contract() {
 
 #[test]
 fn concrete_leaves_preserve_their_physical_identity() {
-    use crate::types::{ascii, bytes, decimal, geospatial, integer, nested, temporal, text, uuid};
+    use crate::types::{
+        ascii, bytes, decimal, geospatial, integer, nested, string, temporal, uuid,
+    };
 
     let integer = integer::Int32::new(-7);
     assert_eq!(integer.get(), -7);
@@ -487,11 +491,11 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(datetime.timezone(), Timezone::UTC);
     assert!(temporal::Date32::new(0, TimeUnit::Second, Timezone::NAIVE).is_err());
 
-    let utf8 = text::Utf8::new("東京");
-    let view = text::Utf8View::new("東京");
+    let utf8 = string::Utf8::new("東京");
+    let view = string::Utf8View::new("東京");
     assert_eq!(utf8.as_str(), view.as_str());
     assert_eq!(
-        serde_json::from_str::<text::Utf8>(&serde_json::to_string(&utf8).unwrap()).unwrap(),
+        serde_json::from_str::<string::Utf8>(&serde_json::to_string(&utf8).unwrap()).unwrap(),
         utf8
     );
 
@@ -533,7 +537,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
 #[test]
 fn tier_two_families_keep_exact_members_and_logical_identity() {
     use crate::Floating;
-    use crate::types::{ascii, bytes, decimal, geospatial, integer, nested, temporal, text};
+    use crate::types::{ascii, bytes, decimal, geospatial, integer, nested, string, temporal};
 
     let signed = integer::Integer::I32(integer::Int32::new(7));
     let unsigned = integer::Integer::U8(integer::UInt8::new(7));
@@ -549,8 +553,8 @@ fn tier_two_families_keep_exact_members_and_logical_identity() {
     assert_eq!(narrow, wide);
     assert_eq!(narrow.to_string(), "12.50");
 
-    let utf8 = text::Text::Utf8(text::Utf8::new("same"));
-    let large = text::Text::LargeUtf8(text::LargeUtf8::new("same"));
+    let utf8 = string::Text::Utf8(string::Utf8::new("same"));
+    let large = string::Text::LargeUtf8(string::LargeUtf8::new("same"));
     assert_eq!(utf8, large);
 
     let binary = bytes::Bytes::Binary(bytes::Binary::from(vec![1, 2]));

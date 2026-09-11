@@ -504,12 +504,20 @@ pub(crate) fn reserve_cast_output_payload(
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     match target_type {
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => reserve_formatted_payload(
-            array,
-            selection,
-            matches!(target_type, DataType::Utf8View),
-            budget,
-        ),
+        // A string's payload is its characters whatever charset writes them:
+        // every charset here is at most one byte per scalar above US-ASCII,
+        // so the UTF-8 rendering is the reservation's upper bound.
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View | DataType::String(_) => {
+            reserve_formatted_payload(
+                array,
+                selection,
+                matches!(target_type, DataType::Utf8View)
+                    || target_type
+                        .string_parameters()
+                        .is_some_and(|parameters| parameters.layout().is_view()),
+                budget,
+            )
+        }
         DataType::Binary | DataType::LargeBinary => {
             let mut bytes = 0usize;
             selection.try_for_each(array.len(), |index| {

@@ -154,11 +154,31 @@ pub enum DataTypeId {
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
     Isin,
+    /// A string with 32-bit offsets declaring a charset, a bound, or both.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    String,
+    /// A string of one fixed, padded byte width.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    FixedString,
+    /// A string in the view layout declaring a charset, a bound, or both.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    StringView,
+    /// A string with 64-bit offsets declaring a charset, a bound, or both.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeString,
+    /// A string in the view layout, declared large.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeStringView,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 61] = [
+    pub const ALL: [Self; 66] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -220,6 +240,11 @@ impl DataTypeId {
         Self::MsgDirection,
         Self::Url,
         Self::Isin,
+        Self::String,
+        Self::FixedString,
+        Self::StringView,
+        Self::LargeString,
+        Self::LargeStringView,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -300,6 +325,11 @@ impl DataTypeId {
             Self::Geography => "geography",
             Self::Version => "version",
             Self::Url => "url",
+            Self::String => "string",
+            Self::FixedString => "fixed_string",
+            Self::StringView => "string_view",
+            Self::LargeString => "large_string",
+            Self::LargeStringView => "large_string_view",
         }
     }
 
@@ -352,9 +382,16 @@ impl DataTypeId {
             Self::Binary | Self::FixedSizeBinary | Self::LargeBinary | Self::BinaryView => {
                 DataTypeKind::Bytes
             }
-            Self::Utf8 | Self::LargeUtf8 | Self::Utf8View | Self::Version | Self::Url => {
-                DataTypeKind::Text
-            }
+            Self::Utf8
+            | Self::LargeUtf8
+            | Self::Utf8View
+            | Self::String
+            | Self::FixedString
+            | Self::StringView
+            | Self::LargeString
+            | Self::LargeStringView
+            | Self::Version
+            | Self::Url => DataTypeKind::Text,
             Self::Ascii
             | Self::FixedAscii
             // A registered code is fixed-width ASCII text with an identity,
@@ -400,6 +437,11 @@ impl DataTypeId {
                 | Self::Interval
                 | Self::FixedSizeBinary
                 | Self::FixedAscii
+                | Self::String
+                | Self::FixedString
+                | Self::StringView
+                | Self::LargeString
+                | Self::LargeStringView
                 | Self::List
                 | Self::ListView
                 | Self::FixedSizeList
@@ -598,7 +640,7 @@ mod tests {
 
     #[test]
     fn the_ascii_family_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 61);
+        assert_eq!(DataTypeId::ALL.len(), 66);
         for id in [
             DataTypeId::Ascii,
             DataTypeId::FixedAscii,

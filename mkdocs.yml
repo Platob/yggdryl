@@ -138,7 +138,7 @@ nav:
       - Cast: types/cast.md
     - Families:
       - Numeric & temporal: types/numeric.md
-      - Text & bytes: types/text.md
+      - Strings & bytes: types/text.md
       - ASCII: types/ascii.md
       - UUID: types/uuid.md
       - Nested: types/nested.md

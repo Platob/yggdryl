@@ -13,9 +13,9 @@ use arrow_schema::{
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::{
-    ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, URL_EXTENSION_NAME, UUID_EXTENSION_NAME,
-    VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME, arrow_dtype_to_ffi, arrow_extension_parts,
-    code_for_extension, is_variant_storage,
+    ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, STRING_EXTENSION_NAME, StringParameters,
+    URL_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME,
+    arrow_dtype_to_ffi, arrow_extension_parts, code_for_extension, is_variant_storage,
 };
 use crate::types::{Field, FieldRef};
 use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
@@ -405,6 +405,9 @@ pub(crate) enum RecognizedExtension {
     /// under `yggdryl.ascii` are an `ascii(3)`, and neither imports as the
     /// other.
     Code(DataType),
+    /// The `yggdryl.string` extension: a layout, a charset and a bound over
+    /// the Arrow storage that layout and charset lay out.
+    String(DataType),
     /// The canonical `arrow.uuid` over `FixedSizeBinary(16)`.
     Uuid,
     /// The canonical version text over Utf8.
@@ -425,7 +428,7 @@ impl RecognizedExtension {
                     DataType::Geometry(Arc::new(geospatial))
                 }
             }
-            Self::Ascii(dtype) | Self::Code(dtype) => dtype,
+            Self::Ascii(dtype) | Self::Code(dtype) | Self::String(dtype) => dtype,
             Self::Uuid => DataType::Uuid,
             Self::Version => DataType::Version,
             Self::Url => DataType::Url,
@@ -493,6 +496,27 @@ pub(crate) fn recognized_arrow_extension(
             }
             _ => None,
         }),
+        // A string declares everything about itself in its document, so the
+        // storage is checked against what that document lays out: our name
+        // over a storage it does not describe is a foreign field wearing it,
+        // and that imports as its storage rather than as a string.
+        STRING_EXTENSION_NAME => {
+            let Some(document) = document else {
+                return Ok(None);
+            };
+            let parameters = StringParameters::from_extension_json(document).map_err(|error| {
+                Error::InvalidMetadataValue {
+                    key: SmolStr::new_static(EXTENSION_TYPE_METADATA_KEY),
+                    reason: format_smolstr!("{error}"),
+                }
+            })?;
+            if !crate::types::describes_storage(parameters, storage)? {
+                return Ok(None);
+            }
+            Ok(Some(RecognizedExtension::String(DataType::string(
+                parameters,
+            )?)))
+        }
         UUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
                 .then_some(RecognizedExtension::Uuid))

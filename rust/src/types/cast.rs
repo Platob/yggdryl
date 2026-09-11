@@ -969,6 +969,26 @@ impl ArrayCastPlan {
                     ),
                 });
             }
+            // A string in a charset of its own is a re-encoding away from
+            // every storage but its own. Arrow's kernel would happily
+            // reinterpret one byte buffer as another - a UTF-8 column into a
+            // windows-1252 one, unchanged - and the column would read back as
+            // mojibake, so the pair is refused by name until the string cast
+            // lands. A source already in exactly this string passes through.
+            (DataType::String(parameters), source)
+                if !(parameters.charset().is_utf8()
+                    || (source == expected
+                        && matches!(
+                            source_extension,
+                            Some(RecognizedExtension::String(existing)) if existing == dtype
+                        ))) =>
+            {
+                ArrayCastKind::DeferredUnsupported {
+                    reason: format!(
+                        "casting {source:?} into {dtype} would have to re-encode its bytes,                          which is a value transformation rather than a framing change"
+                    ),
+                }
+            }
             // Anything Arrow's own kernel can cast, it casts - including the
             // wrapper and layout changes around non-Struct values: a list to
             // a view list, a fixed-size list to a variable one, a dictionary
@@ -1376,7 +1396,14 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
     };
     match (target.dtype(), source) {
         (DataType::Variant, RecognizedExtension::Variant) => Ok(()),
-        (_, RecognizedExtension::Ascii(_) | RecognizedExtension::Code(_)) => Ok(()),
+        // A string source is text: another string re-encodes it, a plain
+        // text target takes its characters, and bytes keep what was stored.
+        (
+            _,
+            RecognizedExtension::Ascii(_)
+            | RecognizedExtension::Code(_)
+            | RecognizedExtension::String(_),
+        ) => Ok(()),
         // A UUID source is sixteen bytes: a UUID target re-validates them,
         // text renders them, and bytes keep them.
         (_, RecognizedExtension::Uuid) => Ok(()),

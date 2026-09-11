@@ -82,8 +82,10 @@ pub enum Charset  (#[non_exhaustive])
   pub fn byte_of(self, scalar: char) -> Option<u8>
   pub fn decode(self, input: &[u8]) -> Result<Cow<'_, str>>
   pub fn decode_lossy(self, input: &[u8]) -> Cow<'_, str>
+  pub fn transcribe(self, input: &[u8]) -> Cow<'_, str>
   pub fn decode_into(self, input: &[u8], target: &mut String) -> Result<()>
   pub fn decode_bytes_into(self, input: &[u8], target: &mut Vec<u8>) -> Result<()>
+  pub fn encoded_len(self, input: &str) -> usize
   pub fn encode(self, input: &str) -> Result<Cow<'_, [u8]>>
   pub fn encode_into(self, input: &str, target: &mut Vec<u8>) -> Result<()>
   pub const fn decoder(self) -> Decoder
@@ -2745,9 +2747,10 @@ pub type NullField = TypedField<scalar::Null>;
   pub type FixedSizeBinaryField = TypedField<binary::FixedSizeBinary>;
   pub type LargeBinaryField = TypedField<binary::LargeBinary>;
   pub type BinaryViewField = TypedField<binary::BinaryView>;
-  pub type Utf8Field = TypedField<binary::Utf8>;
-  pub type LargeUtf8Field = TypedField<binary::LargeUtf8>;
-  pub type Utf8ViewField = TypedField<binary::Utf8View>;
+  pub type Utf8Field = TypedField<string::Utf8>;
+  pub type LargeUtf8Field = TypedField<string::LargeUtf8>;
+  pub type Utf8ViewField = TypedField<string::Utf8View>;
+  pub type StringField = TypedField<string::String>;
   pub type AsciiField = TypedField<ascii::Ascii>;
   pub type FixedAsciiField = TypedField<ascii::FixedAscii>;
   pub type CountryField = TypedField<ascii::Country>;
@@ -3397,18 +3400,79 @@ pub enum TemporalFamily
   pub const fn is_temporal(&self) -> bool
   pub fn temporal_dtype(&self) -> Option<DataType>
 
-### yggdryl::types::text  [rust\src\types\text\scalars.rs]
+### yggdryl::types::string  [rust\src\types\string.rs]
+pub enum StringLayout  (#[non_exhaustive])
+  pub const ALL: [Self; 5] = [ Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, ];
+  pub const fn as_str(self) -> &'static str
+  pub const fn as_utf8_str(self) -> &'static str
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn id(self) -> DataTypeId
+  pub const fn is_fixed(self) -> bool
+  pub const fn is_view(self) -> bool
+  pub const fn is_large(self) -> bool
+
+### yggdryl::types::string::parameters  [rust\src\types\string\parameters.rs]
+pub const STRING_EXTENSION_NAME: &str = "yggdryl.string";
+pub struct StringParameters
+  pub const fn new(layout: StringLayout, charset: Charset) -> Self
+  pub const fn utf8(layout: StringLayout) -> Self
+  pub const fn layout(self) -> StringLayout
+  pub const fn charset(self) -> Charset
+  pub const fn bound(self) -> Option<u32>
+  pub const fn fixed(self) -> Option<u32>
+  pub const fn max(self) -> Option<u32>
+  pub const fn is_fixed(self) -> bool
+  pub const fn is_bounded(self) -> bool
+  pub const fn is_plain(self) -> bool
+  pub const fn with_layout(mut self, layout: StringLayout) -> Self
+  pub const fn with_charset(mut self, charset: Charset) -> Self
+  pub fn try_with_bound(mut self, bound: u32) -> Result<Self>
+  pub const fn without_bound(mut self) -> Self
+  pub fn validate(self) -> Result<()>
+  pub fn extension_json(self) -> String
+  pub fn from_extension_json(value: &str) -> Result<Self>
+
+### yggdryl::types::string::dtypes  [rust\src\types\string\dtypes.rs]
+impl DataType
+  pub fn string(parameters: impl Into<StringParameters>) -> Result<Self>
+  pub fn string_parameters(&self) -> Option<StringParameters>
+  pub fn is_string(&self) -> bool
+  pub fn charset(&self) -> Option<Charset>
+
+### yggdryl::types::string::scalars  [rust\src\types\string\scalars.rs]
 pub trait TextValue: ScalarValue
+  pub const LAYOUT: StringLayout
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
-  pub struct Utf8  // and LargeUtf8, Utf8View
+  pub fn charset(&self) -> Charset
+  pub struct Utf8  // and Utf8View, LargeUtf8, LargeUtf8View
   pub fn new(value: impl Into<SmolStr>) -> Self
+  pub fn from_bytes(value: &[u8], charset: Charset) -> Self
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
+  pub const fn charset(&self) -> Charset
+  pub fn with_charset(mut self, charset: Charset) -> Self
+  pub fn encode(&self) -> Result<Cow<'_, [u8]>>
   pub fn into_inner(self) -> SmolStr
-  pub enum Text
+  pub struct FixedUtf8
+  pub fn new(value: impl Into<SmolStr>, width: u32, charset: Charset) -> Result<Self>
+  pub fn from_bytes(value: &[u8], charset: Charset) -> Self
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
+  pub const fn charset(&self) -> Charset
+  pub const fn width(&self) -> u32
+  pub fn encode(&self) -> Result<Vec<u8>>
+  pub fn into_inner(self) -> SmolStr
+  pub enum Text  (#[non_exhaustive])
+  pub fn as_str(&self) -> &str
+  pub fn storage(&self) -> &SmolStr
+  pub const fn charset(&self) -> Charset
+  pub const fn layout(&self) -> StringLayout
+  pub const fn width(&self) -> Option<u32>
+  pub const fn identifier(&self) -> DataTypeId
+  pub fn encode(&self) -> Result<Cow<'_, [u8]>>
+  pub fn from_bytes(value: &[u8], parameters: StringParameters) -> Self
+  pub fn restated(&self, parameters: StringParameters) -> Result<Self>
 
 ### yggdryl::types::typed  [rust\src\types\typed.rs]
 pub struct FieldScalar<'a>

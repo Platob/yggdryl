@@ -90,6 +90,14 @@ pub enum DataType {
     LargeUtf8,
     /// UTF-8 view layout.
     Utf8View,
+    /// A string declaring its charset, its length bound, or both.
+    ///
+    /// The three variants above are what a string is when it declares
+    /// nothing beyond its layout, so they are what [`Self::string`] answers
+    /// for unbounded UTF-8 and this variant is every other string. The
+    /// parameters ride inline: a layout, a charset and one bound are two
+    /// bytes and a number, which is cheaper to carry than to point at.
+    String(super::string::StringParameters),
     /// Variable-width ASCII text.
     Ascii,
     /// ASCII text padded with trailing NUL to a fixed byte width.
@@ -253,6 +261,7 @@ impl DataType {
             Self::Utf8 => DataTypeId::Utf8,
             Self::LargeUtf8 => DataTypeId::LargeUtf8,
             Self::Utf8View => DataTypeId::Utf8View,
+            Self::String(parameters) => parameters.layout().id(),
             Self::Ascii => DataTypeId::Ascii,
             Self::FixedAscii(_) => DataTypeId::FixedAscii,
             Self::Country => DataTypeId::Country,
@@ -364,6 +373,10 @@ impl DataType {
             Self::FixedSizeBinary(width) => {
                 validate_non_negative("FixedSizeBinary", "width", *width)
             }
+            // The variant is public, so a caller can build a fixed string
+            // with no width the constructor would have refused. This is where
+            // that stops, before it reaches a boundary.
+            Self::String(parameters) => parameters.validate(),
             Self::List(field)
             | Self::ListView(field)
             | Self::LargeList(field)
@@ -484,6 +497,7 @@ impl Ord for DataType {
                     scale: right_scale,
                 },
             ) => (left_precision, left_scale).cmp(&(right_precision, right_scale)),
+            (D::String(left), D::String(right)) => left.cmp(right),
             (D::Map(left), D::Map(right)) => left.cmp(right),
             (D::RunEndEncoded(left), D::RunEndEncoded(right)) => left.cmp(right),
             (D::Geometry(left), D::Geometry(right)) | (D::Geography(left), D::Geography(right)) => {
@@ -564,6 +578,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::TimeInForce => 56,
         DataType::Url => 57,
         DataType::Isin => 58,
+        DataType::String(_) => 59,
     }
 }
 

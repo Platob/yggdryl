@@ -28,8 +28,10 @@ use yggdryl::types::decimal::{Decimal, Decimal32, Decimal64};
 use yggdryl::types::geospatial::{Geography, Geometry, Geospatial};
 use yggdryl::types::integer::Integer;
 use yggdryl::types::nested::Nested;
+use yggdryl::types::string::{
+    LargeUtf8, LargeUtf8View, StringLayout, StringParameters, Text, Utf8, Utf8View,
+};
 use yggdryl::types::temporal::{Interval, Temporal};
-use yggdryl::types::text::{LargeUtf8, Text, Utf8View};
 use yggdryl::{
     ArrowCast, DataType as CoreDataType, Enum, Error as CoreError, Field as CoreField, Float16,
     Float32, Float64, I256, Scalar, TemporalFamily, TimeUnit, Timezone,
@@ -327,21 +329,43 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         Scalar::Decimal(Decimal::D256(value)) => {
             decimal_pickle_state(py, "d256", &value.coefficient().to_string(), value.scale())
         }
-        Scalar::Text(Text::Utf8(value)) => tagged_pickle_state(
-            py,
-            "string",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
-        Scalar::Text(Text::LargeUtf8(value)) => tagged_pickle_state(
-            py,
-            "large_utf8",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
-        Scalar::Text(Text::Utf8View(value)) => tagged_pickle_state(
-            py,
-            "utf8_view",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
+        // The ordinary string - UTF-8, no width - pickles its characters
+        // under its layout's own tag. A charset or a width is what makes a
+        // value carry more than that, and those pickle the whole declaration.
+        Scalar::Text(value) if value.charset().is_utf8() && value.width().is_none() => {
+            let tag = match value {
+                Text::LargeUtf8(_) => "large_utf8",
+                Text::Utf8View(_) => "utf8_view",
+                Text::LargeUtf8View(_) => "large_utf8_view",
+                _ => "string",
+            };
+            tagged_pickle_state(
+                py,
+                tag,
+                Some(PyString::new(py, value.as_str()).into_any().unbind()),
+            )
+        }
+        Scalar::Text(value) => {
+            let layout = PyString::new(py, value.layout().as_str())
+                .into_any()
+                .unbind();
+            let charset = PyString::new(py, value.charset().as_str())
+                .into_any()
+                .unbind();
+            let width = value
+                .width()
+                .unwrap_or(0)
+                .into_pyobject(py)?
+                .clone()
+                .into_any()
+                .unbind();
+            let text = PyString::new(py, value.as_str()).into_any().unbind();
+            tagged_pickle_state(
+                py,
+                "encoded_string",
+                Some(pickle_tuple(py, vec![layout, charset, width, text])?),
+            )
+        }
         Scalar::Ascii(AsciiFamily::Ascii(value)) => tagged_pickle_state(
             py,
             "ascii",
@@ -649,6 +673,23 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "utf8_view" => payload()?
             .extract::<String>()
             .map(|value| Scalar::Text(Text::Utf8View(Utf8View::new(value)))),
+        "large_utf8_view" => payload()?
+            .extract::<String>()
+            .map(|value| Scalar::Text(Text::LargeUtf8View(LargeUtf8View::new(value)))),
+        "encoded_string" => {
+            let (layout, charset, width, text) =
+                payload()?.extract::<(String, String, u32, String)>()?;
+            let layout = StringLayout::from_str(&layout).map_err(value_error)?;
+            let charset = yggdryl::Charset::from_str(&charset).map_err(value_error)?;
+            let mut parameters = StringParameters::new(layout, charset);
+            if width > 0 {
+                parameters = parameters.try_with_bound(width).map_err(value_error)?;
+            }
+            Text::Utf8(Utf8::new(text))
+                .restated(parameters)
+                .map(Scalar::Text)
+                .map_err(value_error)
+        }
         "ascii" => Ascii::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Ascii(AsciiFamily::Ascii(value)))
             .map_err(value_error),

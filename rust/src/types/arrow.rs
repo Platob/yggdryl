@@ -24,6 +24,7 @@ use super::ascii::{
 use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
+use super::string::STRING_EXTENSION_NAME;
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 use super::url::URL_EXTENSION_NAME;
 use super::uuid::UUID_EXTENSION_NAME;
@@ -401,6 +402,7 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
+            R::String(parameters) => super::string::arrow_storage(*parameters)?,
             R::Ascii => Self::Binary,
             R::FixedAscii(width) => {
                 validate_non_negative("FixedAscii", "width", *width)?;
@@ -543,6 +545,7 @@ impl TryFrom<DataType> for ArrowDataType {
             R::Utf8 => Self::Utf8,
             R::LargeUtf8 => Self::LargeUtf8,
             R::Utf8View => Self::Utf8View,
+            R::String(parameters) => super::string::arrow_storage(parameters)?,
             R::Ascii => Self::Binary,
             R::FixedAscii(width) => {
                 validate_non_negative("FixedAscii", "width", width)?;
@@ -728,6 +731,9 @@ pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, S
             Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))
         }
         DataType::Ascii | DataType::FixedAscii(_) => Some((ASCII_EXTENSION_NAME, String::new())),
+        // A charset, a length bound, and which of the two view layouts this
+        // is: three facts Arrow has nowhere to put, so all three ride here.
+        DataType::String(parameters) => Some((STRING_EXTENSION_NAME, parameters.extension_json())),
         DataType::Uuid => Some((UUID_EXTENSION_NAME, String::new())),
         DataType::Version => Some((VERSION_EXTENSION_NAME, String::new())),
         DataType::Url => Some((URL_EXTENSION_NAME, String::new())),

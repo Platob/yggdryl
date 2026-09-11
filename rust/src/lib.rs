@@ -129,7 +129,7 @@ pub use types::protocol::{
 pub use types::{
     AsciiEnum, AsciiType, BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
     GeospatialParameters, GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType,
-    TemporalType, TextType, UnionFields, UrlField, UrlType, Version, VersionField, VersionType,
+    TemporalType, UnionFields, UrlField, UrlType, Version, VersionField, VersionType,
 };
 pub use types::{
     AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRecord,

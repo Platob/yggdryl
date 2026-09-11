@@ -197,6 +197,48 @@ fn columns() -> Vec<(Field, Scalar)> {
                 Scalar::Null,
             ]),
         ),
+        // The five string layouts, each declaring something Arrow cannot:
+        // a charset, a width, or which view layout it is.
+        (
+            Field::new(
+                "string",
+                DataType::from_str("string(windows-1252)").unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([Scalar::from("Grüße"), Scalar::from("AAPL"), Scalar::Null]),
+        ),
+        (
+            Field::new(
+                "fixed_string",
+                DataType::from_str("fixedstring(windows-1252,8)").unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([Scalar::from("café"), Scalar::Null]),
+        ),
+        (
+            Field::new(
+                "string_view",
+                DataType::from_str("utf8view(32)").unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
+        ),
+        (
+            Field::new(
+                "large_string",
+                DataType::from_str("largestring(iso-8859-15)").unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([Scalar::from("20 €"), Scalar::Null]),
+        ),
+        (
+            Field::new(
+                "large_string_view",
+                DataType::from_str("largeutf8view").unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
+        ),
         (
             Field::new("ascii(4)", DataType::FixedAscii(4), true),
             Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("F"), Scalar::Null]),

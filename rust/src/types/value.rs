@@ -18,12 +18,12 @@ use crate::types::integer::{
     canonical_signed, canonical_unsigned, integer_from_text, validate_integer_tuple,
     validate_signed, validate_unsigned,
 };
+use crate::types::string::text_from_value;
 use crate::types::temporal::{validate_date64, validate_time};
-use crate::types::text::text_from_value;
 use crate::types::{
-    AsciiFamily, Bytes, Decimal, Decimal32, Decimal64, Decimal128, Geospatial, Interval, Temporal,
-    Text, ascii_bytes, ascii_free_text, ascii_text, code_cell_text, default_value_for_field,
-    uuid_bytes, uuid_parse, value_is_logically_null,
+    AsciiFamily, Bytes, Decimal, Decimal32, Decimal64, Decimal128, Geospatial, Interval,
+    StringParameters, Temporal, Text, ascii_bytes, ascii_free_text, ascii_text, code_cell_text,
+    default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null,
 };
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
@@ -457,6 +457,19 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
         D::Utf8 | D::LargeUtf8 | D::Utf8View if !matches!(value, Scalar::Text(_)) => {
             Some(text_from_value(value)?.map(Scalar::from))
         }
+        // A string column stores that same spelling, and bytes arriving at
+        // one are read through the charset the column declares: the payload
+        // is that charset by definition, so decoding it here is what the
+        // declaration is for. The decode is the permissive one, because a
+        // legacy export with one bad byte is a file that still has to be
+        // read, and the strict door is [`Charset::decode`].
+        D::String(parameters) if !matches!(value, Scalar::Text(_)) => match value {
+            Scalar::Bytes(bytes) => Some(Ok(Scalar::Text(Text::from_bytes(
+                bytes.as_bytes(),
+                *parameters,
+            )))),
+            _ => Some(text_from_value(value)?.map(Scalar::from)),
+        },
         // A byte column stores one payload, however the value spells it. The
         // declared layout is the offset width, which the restatement below
         // retags without copying the payload.
@@ -766,6 +779,22 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 _ => unreachable!("text datatype matched above"),
             };
             Ok((canonical, true))
+        }
+        // A string is one layout, one charset and one bound, and a value
+        // already stored in all three is its own canonical form. Anything
+        // else adopts the source's storage handle rather than copying its
+        // characters into a second buffer.
+        D::String(parameters) => {
+            let Scalar::Text(source) = value else {
+                return canonicalization_failure(dtype);
+            };
+            if string_matches(*parameters, source) {
+                check_string_bound(*parameters, source.as_str())?;
+                return Ok((value.clone(), false));
+            }
+            let restated = source.restated(*parameters)?;
+            check_string_bound(*parameters, restated.as_str())?;
+            Ok((Scalar::Text(restated), true))
         }
         // The canonical ASCII spelling is the trimmed string; bytes and a
         // string carrying trailing NULs are rewritten here. A value already
@@ -1291,6 +1320,42 @@ fn canonicalize_slice(
     Ok(None)
 }
 
+/// Whether a string value is already stored the way its column declares.
+fn string_matches(parameters: StringParameters, value: &Text) -> bool {
+    value.layout() == parameters.layout()
+        && value.charset() == parameters.charset()
+        && value.width() == parameters.fixed()
+}
+
+/// Check one string against the maximum its column declares.
+///
+/// The bound counts stored bytes, which `Charset::encoded_len` answers
+/// without building them. Whether those bytes can be written at all belongs
+/// to the write seam, not here: a value read back through
+/// `Charset::transcribe` carries scalars the charset does not assign - that
+/// is what recovering damage means - and refusing it at the value door would
+/// make the permissive read useless.
+///
+/// A fixed width is checked where the value is built, because the padding is
+/// built there too.
+fn check_string_bound(parameters: StringParameters, text: &str) -> Result<()> {
+    let Some(max) = parameters.max() else {
+        return Ok(());
+    };
+    let charset = parameters.charset();
+    let stored = charset.encoded_len(text);
+    if stored > max as usize {
+        return Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: crate::text::expected_got(
+                format_args!("at most {max} bytes of {charset}"),
+                format_smolstr!("{stored}"),
+            ),
+        });
+    }
+    Ok(())
+}
+
 fn canonicalization_failure<T>(dtype: &DataType) -> Result<T> {
     Err(Error::InvalidRecord {
         path: SmolStr::new_static("$"),
@@ -1479,6 +1544,11 @@ fn validate_dtype_value(
         D::Utf8 | D::LargeUtf8 | D::Utf8View => {
             require(matches!(value, Scalar::Text(_)), dtype.name(), value)
         }
+        D::String(parameters) => match value {
+            Scalar::Text(text) => check_string_bound(*parameters, text.as_str())
+                .map_err(|error| ValidationFailure::new(reason_of(&error))),
+            _ => Err(expected(dtype.name(), value)),
+        },
         // Text or bytes, both under the one ASCII rule naming the width.
         D::Ascii | D::FixedAscii(_) => match ascii_bytes(value) {
             Some(bytes) => match dtype.ascii_width() {
