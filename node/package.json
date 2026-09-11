@@ -1,6 +1,6 @@
 {
   "name": "yggdryl",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Native Yggdryl schemas, fields, Arrow interop, URIs, and structured codecs for Node.js",
   "license": "Apache-2.0",
   "repository": {

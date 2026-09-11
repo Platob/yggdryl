@@ -4,7 +4,7 @@
 use std::hint::black_box;
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, RecordBatch, StringArray};
+use arrow_array::{ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
 use yggdryl::{ArrowCast, ArrowCastOptions, AsciiEnum, DataType, Field};
 
@@ -62,18 +62,37 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    // The padded column under the ASCII root's own schema, so the render
-    // sees the extension identity exactly as a stored column carries it.
-    let padded = target
+    // The other source: a fixed binary column is padded storage, so every
+    // cell is read through the width's rule and the column is rebuilt as the
+    // text it holds. This is what the text path above no longer pays.
+    let slots: ArrayRef = Arc::new(
+        FixedSizeBinaryArray::try_from_iter((0..ROWS).map(|index| {
+            let mut slot = [0_u8; 4];
+            slot[..3].copy_from_slice(codes[index % codes.len()].as_bytes());
+            slot
+        }))
+        .expect("every code fits the slot"),
+    );
+    group.bench_function("fixed_binary_to_ascii32_ingest", |bencher| {
+        bencher.iter(|| {
+            black_box(&target)
+                .cast_arrow_array(Arc::clone(&slots), ArrowCastOptions::new().with_safe(false))
+                .expect("the padded codes fit the width")
+        });
+    });
+
+    // The stored column under the ASCII root's own schema, so the render sees
+    // the extension identity exactly as a stored column carries it.
+    let stored = target
         .cast_arrow_array(Arc::clone(&text), ArrowCastOptions::new().with_safe(false))
         .expect("the codes fit the width");
     let batch = RecordBatch::try_new(
         root([DataType::FixedAscii(4).required_field("ccy")])
             .into_arrow_schema()
             .expect("the benchmark root is valid"),
-        vec![padded],
+        vec![stored],
     )
-    .expect("the padded column matches its schema");
+    .expect("the stored column matches its schema");
     let text_root = root([DataType::Utf8.required_field("ccy")]);
     group.bench_function("ascii32_to_utf8_render", |bencher| {
         bencher.iter(|| {

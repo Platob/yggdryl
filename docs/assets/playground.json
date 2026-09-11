@@ -1,11 +1,11 @@
 {
-  "version": "0.1.3",
+  "version": "0.2.0",
   "widths": [
     {
       "dtype": "ascii",
       "asciiWidth": null,
       "kind": "ascii",
-      "arrow": "Binary",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.ascii",
       "extensionDocument": "",
       "call": "fields.struct('row', [fields.ascii('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
@@ -14,90 +14,90 @@
       "dtype": "ascii(2)",
       "asciiWidth": 2,
       "kind": "ascii",
-      "arrow": "FixedSizeBinary[2]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.ascii",
-      "extensionDocument": "",
+      "extensionDocument": "{\"width\":2}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 2)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "ascii(3)",
       "asciiWidth": 3,
       "kind": "ascii",
-      "arrow": "FixedSizeBinary[3]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.ascii",
-      "extensionDocument": "",
+      "extensionDocument": "{\"width\":3}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 3)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "ascii(4)",
       "asciiWidth": 4,
       "kind": "ascii",
-      "arrow": "FixedSizeBinary[4]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.ascii",
-      "extensionDocument": "",
+      "extensionDocument": "{\"width\":4}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "ascii(8)",
       "asciiWidth": 8,
       "kind": "ascii",
-      "arrow": "FixedSizeBinary[8]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.ascii",
-      "extensionDocument": "",
+      "extensionDocument": "{\"width\":8}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 8)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "ascii(12)",
       "asciiWidth": 12,
       "kind": "ascii",
-      "arrow": "FixedSizeBinary[12]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.ascii",
-      "extensionDocument": "",
+      "extensionDocument": "{\"width\":12}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 12)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "ascii(16)",
       "asciiWidth": 16,
       "kind": "ascii",
-      "arrow": "FixedSizeBinary[16]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.ascii",
-      "extensionDocument": "",
+      "extensionDocument": "{\"width\":16}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 16)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "country",
       "asciiWidth": 2,
       "kind": "ascii",
-      "arrow": "FixedSizeBinary[2]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.country",
-      "extensionDocument": "",
+      "extensionDocument": "{\"width\":2}",
       "call": "fields.struct('row', [fields.country('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "currency",
       "asciiWidth": 3,
       "kind": "ascii",
-      "arrow": "FixedSizeBinary[3]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.currency",
-      "extensionDocument": "",
+      "extensionDocument": "{\"width\":3}",
       "call": "fields.struct('row', [fields.currency('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "mic",
       "asciiWidth": 4,
       "kind": "ascii",
-      "arrow": "FixedSizeBinary[4]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.mic",
-      "extensionDocument": "",
+      "extensionDocument": "{\"width\":4}",
       "call": "fields.struct('row', [fields.mic('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "cfi",
       "asciiWidth": 6,
       "kind": "ascii",
-      "arrow": "FixedSizeBinary[6]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.cfi",
-      "extensionDocument": "",
+      "extensionDocument": "{\"width\":6}",
       "call": "fields.struct('row', [fields.cfi('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     }
   ],
@@ -110,12 +110,12 @@
       "call": "const stored = fields.struct('row', [fields.ascii('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83,
-        68
+        "U",
+        "S",
+        "D"
       ],
-      "storageHex": "55 53 44",
-      "storageEscaped": "USD",
+      "storageHex": "0U 0S 0D",
+      "storageEscaped": "\\x0U\\x0S\\x0D",
       "readBack": "USD"
     },
     {
@@ -126,36 +126,36 @@
       "call": "const stored = fields.struct('row', [fields.ascii('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['a note of any length at all'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        97,
-        32,
-        110,
-        111,
-        116,
-        101,
-        32,
-        111,
-        102,
-        32,
-        97,
-        110,
-        121,
-        32,
-        108,
-        101,
-        110,
-        103,
-        116,
-        104,
-        32,
-        97,
-        116,
-        32,
-        97,
-        108,
-        108
+        "a",
+        " ",
+        "n",
+        "o",
+        "t",
+        "e",
+        " ",
+        "o",
+        "f",
+        " ",
+        "a",
+        "n",
+        "y",
+        " ",
+        "l",
+        "e",
+        "n",
+        "g",
+        "t",
+        "h",
+        " ",
+        "a",
+        "t",
+        " ",
+        "a",
+        "l",
+        "l"
       ],
-      "storageHex": "61 20 6e 6f 74 65 20 6f 66 20 61 6e 79 20 6c 65 6e 67 74 68 20 61 74 20 61 6c 6c",
-      "storageEscaped": "a note of any length at all",
+      "storageHex": "0a 0  0n 0o 0t 0e 0  0o 0f 0  0a 0n 0y 0  0l 0e 0n 0g 0t 0h 0  0a 0t 0  0a 0l 0l",
+      "storageEscaped": "\\x0a\\x0 \\x0n\\x0o\\x0t\\x0e\\x0 \\x0o\\x0f\\x0 \\x0a\\x0n\\x0y\\x0 \\x0l\\x0e\\x0n\\x0g\\x0t\\x0h\\x0 \\x0a\\x0t\\x0 \\x0a\\x0l\\x0l",
       "readBack": "a note of any length at all"
     },
     {
@@ -193,16 +193,9 @@
       "label": "trailing NULs",
       "input": "USD\u0000",
       "inputLiteral": "'USD\\x00'",
-      "call": "const stored = fields.struct('row', [fields.ascii('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USD\\x00'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
-      "ok": true,
-      "storage": [
-        85,
-        83,
-        68
-      ],
-      "storageHex": "55 53 44",
-      "storageEscaped": "USD",
-      "readBack": "USD"
+      "call": "fields.struct('row', [fields.ascii('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USD\\x00'], new arrow.Utf8()) }))",
+      "ok": false,
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text, got a NUL byte at 3"
     },
     {
       "dtype": "ascii",
@@ -212,12 +205,12 @@
       "call": "const stored = fields.struct('row', [fields.ascii('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['usd'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        117,
-        115,
-        100
+        "u",
+        "s",
+        "d"
       ],
-      "storageHex": "75 73 64",
-      "storageEscaped": "usd",
+      "storageHex": "0u 0s 0d",
+      "storageEscaped": "\\x0u\\x0s\\x0d",
       "readBack": "usd"
     },
     {
@@ -228,11 +221,11 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 2)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83
+        "U",
+        "S"
       ],
-      "storageHex": "55 53",
-      "storageEscaped": "US",
+      "storageHex": "0U 0S",
+      "storageEscaped": "\\x0U\\x0S",
       "readBack": "US"
     },
     {
@@ -243,11 +236,11 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 2)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['FR'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        70,
-        82
+        "F",
+        "R"
       ],
-      "storageHex": "46 52",
-      "storageEscaped": "FR",
+      "storageHex": "0F 0R",
+      "storageEscaped": "\\x0F\\x0R",
       "readBack": "FR"
     },
     {
@@ -258,11 +251,11 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 2)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['DE'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        68,
-        69
+        "D",
+        "E"
       ],
-      "storageHex": "44 45",
-      "storageEscaped": "DE",
+      "storageHex": "0D 0E",
+      "storageEscaped": "\\x0D\\x0E",
       "readBack": "DE"
     },
     {
@@ -272,12 +265,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 2)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0
-      ],
-      "storageHex": "00 00",
-      "storageEscaped": "\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -288,11 +278,11 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 2)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['GB'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        71,
-        66
+        "G",
+        "B"
       ],
-      "storageHex": "47 42",
-      "storageEscaped": "GB",
+      "storageHex": "0G 0B",
+      "storageEscaped": "\\x0G\\x0B",
       "readBack": "GB"
     },
     {
@@ -327,15 +317,9 @@
       "label": "trailing NULs",
       "input": "U\u0000",
       "inputLiteral": "'U\\x00'",
-      "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 2)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['U\\x00'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
-      "ok": true,
-      "storage": [
-        85,
-        0
-      ],
-      "storageHex": "55 00",
-      "storageEscaped": "U\\0",
-      "readBack": "U"
+      "call": "fields.struct('row', [fields.fixedAscii('ccy', 2)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['U\\x00'], new arrow.Utf8()) }))",
+      "ok": false,
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 2 bytes, got a NUL byte at 1"
     },
     {
       "dtype": "ascii(2)",
@@ -345,11 +329,11 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 2)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['us'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        117,
-        115
+        "u",
+        "s"
       ],
-      "storageHex": "75 73",
-      "storageEscaped": "us",
+      "storageHex": "0u 0s",
+      "storageEscaped": "\\x0u\\x0s",
       "readBack": "us"
     },
     {
@@ -360,12 +344,12 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 3)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83,
-        68
+        "U",
+        "S",
+        "D"
       ],
-      "storageHex": "55 53 44",
-      "storageEscaped": "USD",
+      "storageHex": "0U 0S 0D",
+      "storageEscaped": "\\x0U\\x0S\\x0D",
       "readBack": "USD"
     },
     {
@@ -376,12 +360,12 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 3)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['EUR'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        69,
-        85,
-        82
+        "E",
+        "U",
+        "R"
       ],
-      "storageHex": "45 55 52",
-      "storageEscaped": "EUR",
+      "storageHex": "0E 0U 0R",
+      "storageEscaped": "\\x0E\\x0U\\x0R",
       "readBack": "EUR"
     },
     {
@@ -392,12 +376,12 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 3)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['JPY'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        74,
-        80,
-        89
+        "J",
+        "P",
+        "Y"
       ],
-      "storageHex": "4a 50 59",
-      "storageEscaped": "JPY",
+      "storageHex": "0J 0P 0Y",
+      "storageEscaped": "\\x0J\\x0P\\x0Y",
       "readBack": "JPY"
     },
     {
@@ -407,13 +391,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 3)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00",
-      "storageEscaped": "\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -424,12 +404,12 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 3)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['GBP'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        71,
-        66,
-        80
+        "G",
+        "B",
+        "P"
       ],
-      "storageHex": "47 42 50",
-      "storageEscaped": "GBP",
+      "storageHex": "0G 0B 0P",
+      "storageEscaped": "\\x0G\\x0B\\x0P",
       "readBack": "GBP"
     },
     {
@@ -464,16 +444,9 @@
       "label": "trailing NULs",
       "input": "US\u0000",
       "inputLiteral": "'US\\x00'",
-      "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 3)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US\\x00'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
-      "ok": true,
-      "storage": [
-        85,
-        83,
-        0
-      ],
-      "storageHex": "55 53 00",
-      "storageEscaped": "US\\0",
-      "readBack": "US"
+      "call": "fields.struct('row', [fields.fixedAscii('ccy', 3)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US\\x00'], new arrow.Utf8()) }))",
+      "ok": false,
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 3 bytes, got a NUL byte at 2"
     },
     {
       "dtype": "ascii(3)",
@@ -483,12 +456,12 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 3)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['usd'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        117,
-        115,
-        100
+        "u",
+        "s",
+        "d"
       ],
-      "storageHex": "75 73 64",
-      "storageEscaped": "usd",
+      "storageHex": "0u 0s 0d",
+      "storageEscaped": "\\x0u\\x0s\\x0d",
       "readBack": "usd"
     },
     {
@@ -499,13 +472,12 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83,
-        68,
-        0
+        "U",
+        "S",
+        "D"
       ],
-      "storageHex": "55 53 44 00",
-      "storageEscaped": "USD\\0",
+      "storageHex": "0U 0S 0D",
+      "storageEscaped": "\\x0U\\x0S\\x0D",
       "readBack": "USD"
     },
     {
@@ -516,13 +488,12 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['EUR'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        69,
-        85,
-        82,
-        0
+        "E",
+        "U",
+        "R"
       ],
-      "storageHex": "45 55 52 00",
-      "storageEscaped": "EUR\\0",
+      "storageHex": "0E 0U 0R",
+      "storageEscaped": "\\x0E\\x0U\\x0R",
       "readBack": "EUR"
     },
     {
@@ -533,13 +504,12 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['JPY'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        74,
-        80,
-        89,
-        0
+        "J",
+        "P",
+        "Y"
       ],
-      "storageHex": "4a 50 59 00",
-      "storageEscaped": "JPY\\0",
+      "storageHex": "0J 0P 0Y",
+      "storageEscaped": "\\x0J\\x0P\\x0Y",
       "readBack": "JPY"
     },
     {
@@ -550,13 +520,12 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['GBP'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        71,
-        66,
-        80,
-        0
+        "G",
+        "B",
+        "P"
       ],
-      "storageHex": "47 42 50 00",
-      "storageEscaped": "GBP\\0",
+      "storageHex": "0G 0B 0P",
+      "storageEscaped": "\\x0G\\x0B\\x0P",
       "readBack": "GBP"
     },
     {
@@ -566,14 +535,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00 00",
-      "storageEscaped": "\\0\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -584,13 +548,13 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USDT'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83,
-        68,
-        84
+        "U",
+        "S",
+        "D",
+        "T"
       ],
-      "storageHex": "55 53 44 54",
-      "storageEscaped": "USDT",
+      "storageHex": "0U 0S 0D 0T",
+      "storageEscaped": "\\x0U\\x0S\\x0D\\x0T",
       "readBack": "USDT"
     },
     {
@@ -625,17 +589,9 @@
       "label": "trailing NULs",
       "input": "USD\u0000",
       "inputLiteral": "'USD\\x00'",
-      "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USD\\x00'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
-      "ok": true,
-      "storage": [
-        85,
-        83,
-        68,
-        0
-      ],
-      "storageHex": "55 53 44 00",
-      "storageEscaped": "USD\\0",
-      "readBack": "USD"
+      "call": "fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USD\\x00'], new arrow.Utf8()) }))",
+      "ok": false,
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 4 bytes, got a NUL byte at 3"
     },
     {
       "dtype": "ascii(4)",
@@ -645,13 +601,12 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['usd'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        117,
-        115,
-        100,
-        0
+        "u",
+        "s",
+        "d"
       ],
-      "storageHex": "75 73 64 00",
-      "storageEscaped": "usd\\0",
+      "storageHex": "0u 0s 0d",
+      "storageEscaped": "\\x0u\\x0s\\x0d",
       "readBack": "usd"
     },
     {
@@ -662,17 +617,13 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 8)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['AAPL'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        65,
-        65,
-        80,
-        76,
-        0,
-        0,
-        0,
-        0
+        "A",
+        "A",
+        "P",
+        "L"
       ],
-      "storageHex": "41 41 50 4c 00 00 00 00",
-      "storageEscaped": "AAPL\\0\\0\\0\\0",
+      "storageHex": "0A 0A 0P 0L",
+      "storageEscaped": "\\x0A\\x0A\\x0P\\x0L",
       "readBack": "AAPL"
     },
     {
@@ -682,18 +633,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 8)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00 00 00 00 00 00",
-      "storageEscaped": "\\0\\0\\0\\0\\0\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -704,17 +646,17 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 8)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['GOOGL.US'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        71,
-        79,
-        79,
-        71,
-        76,
-        46,
-        85,
-        83
+        "G",
+        "O",
+        "O",
+        "G",
+        "L",
+        ".",
+        "U",
+        "S"
       ],
-      "storageHex": "47 4f 4f 47 4c 2e 55 53",
-      "storageEscaped": "GOOGL.US",
+      "storageHex": "0G 0O 0O 0G 0L 0. 0U 0S",
+      "storageEscaped": "\\x0G\\x0O\\x0O\\x0G\\x0L\\x0.\\x0U\\x0S",
       "readBack": "GOOGL.US"
     },
     {
@@ -749,21 +691,9 @@
       "label": "trailing NULs",
       "input": "AAPL\u0000\u0000",
       "inputLiteral": "'AAPL\\x00\\x00'",
-      "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 8)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['AAPL\\x00\\x00'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
-      "ok": true,
-      "storage": [
-        65,
-        65,
-        80,
-        76,
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "41 41 50 4c 00 00 00 00",
-      "storageEscaped": "AAPL\\0\\0\\0\\0",
-      "readBack": "AAPL"
+      "call": "fields.struct('row', [fields.fixedAscii('ccy', 8)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['AAPL\\x00\\x00'], new arrow.Utf8()) }))",
+      "ok": false,
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 8 bytes, got a NUL byte at 4"
     },
     {
       "dtype": "ascii(8)",
@@ -773,17 +703,13 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 8)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['aapl'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        97,
-        97,
-        112,
-        108,
-        0,
-        0,
-        0,
-        0
+        "a",
+        "a",
+        "p",
+        "l"
       ],
-      "storageHex": "61 61 70 6c 00 00 00 00",
-      "storageEscaped": "aapl\\0\\0\\0\\0",
+      "storageHex": "0a 0a 0p 0l",
+      "storageEscaped": "\\x0a\\x0a\\x0p\\x0l",
       "readBack": "aapl"
     },
     {
@@ -794,21 +720,21 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 12)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US0378331005'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83,
-        48,
-        51,
-        55,
-        56,
-        51,
-        51,
-        49,
-        48,
-        48,
-        53
+        "U",
+        "S",
+        "0",
+        "3",
+        "7",
+        "8",
+        "3",
+        "3",
+        "1",
+        "0",
+        "0",
+        "5"
       ],
-      "storageHex": "55 53 30 33 37 38 33 33 31 30 30 35",
-      "storageEscaped": "US0378331005",
+      "storageHex": "0U 0S 00 03 07 08 03 03 01 00 00 05",
+      "storageEscaped": "\\x0U\\x0S\\x00\\x03\\x07\\x08\\x03\\x03\\x01\\x00\\x00\\x05",
       "readBack": "US0378331005"
     },
     {
@@ -819,21 +745,21 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 12)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['GB0002634946'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        71,
-        66,
-        48,
-        48,
-        48,
-        50,
-        54,
-        51,
-        52,
-        57,
-        52,
-        54
+        "G",
+        "B",
+        "0",
+        "0",
+        "0",
+        "2",
+        "6",
+        "3",
+        "4",
+        "9",
+        "4",
+        "6"
       ],
-      "storageHex": "47 42 30 30 30 32 36 33 34 39 34 36",
-      "storageEscaped": "GB0002634946",
+      "storageHex": "0G 0B 00 00 00 02 06 03 04 09 04 06",
+      "storageEscaped": "\\x0G\\x0B\\x00\\x00\\x00\\x02\\x06\\x03\\x04\\x09\\x04\\x06",
       "readBack": "GB0002634946"
     },
     {
@@ -843,22 +769,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 12)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00 00 00 00 00 00 00 00 00 00",
-      "storageEscaped": "\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -869,21 +782,21 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 12)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US0378331005'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83,
-        48,
-        51,
-        55,
-        56,
-        51,
-        51,
-        49,
-        48,
-        48,
-        53
+        "U",
+        "S",
+        "0",
+        "3",
+        "7",
+        "8",
+        "3",
+        "3",
+        "1",
+        "0",
+        "0",
+        "5"
       ],
-      "storageHex": "55 53 30 33 37 38 33 33 31 30 30 35",
-      "storageEscaped": "US0378331005",
+      "storageHex": "0U 0S 00 03 07 08 03 03 01 00 00 05",
+      "storageEscaped": "\\x0U\\x0S\\x00\\x03\\x07\\x08\\x03\\x03\\x01\\x00\\x00\\x05",
       "readBack": "US0378331005"
     },
     {
@@ -918,25 +831,9 @@
       "label": "trailing NULs",
       "input": "US037833\u0000\u0000\u0000\u0000",
       "inputLiteral": "'US037833\\x00\\x00\\x00\\x00'",
-      "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 12)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US037833\\x00\\x00\\x00\\x00'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
-      "ok": true,
-      "storage": [
-        85,
-        83,
-        48,
-        51,
-        55,
-        56,
-        51,
-        51,
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "55 53 30 33 37 38 33 33 00 00 00 00",
-      "storageEscaped": "US037833\\0\\0\\0\\0",
-      "readBack": "US037833"
+      "call": "fields.struct('row', [fields.fixedAscii('ccy', 12)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US037833\\x00\\x00\\x00\\x00'], new arrow.Utf8()) }))",
+      "ok": false,
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 12 bytes, got a NUL byte at 8"
     },
     {
       "dtype": "ascii(12)",
@@ -946,21 +843,21 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 12)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['us0378331005'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        117,
-        115,
-        48,
-        51,
-        55,
-        56,
-        51,
-        51,
-        49,
-        48,
-        48,
-        53
+        "u",
+        "s",
+        "0",
+        "3",
+        "7",
+        "8",
+        "3",
+        "3",
+        "1",
+        "0",
+        "0",
+        "5"
       ],
-      "storageHex": "75 73 30 33 37 38 33 33 31 30 30 35",
-      "storageEscaped": "us0378331005",
+      "storageHex": "0u 0s 00 03 07 08 03 03 01 00 00 05",
+      "storageEscaped": "\\x0u\\x0s\\x00\\x03\\x07\\x08\\x03\\x03\\x01\\x00\\x00\\x05",
       "readBack": "us0378331005"
     },
     {
@@ -971,25 +868,21 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 16)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US0378331005'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83,
-        48,
-        51,
-        55,
-        56,
-        51,
-        51,
-        49,
-        48,
-        48,
-        53,
-        0,
-        0,
-        0,
-        0
+        "U",
+        "S",
+        "0",
+        "3",
+        "7",
+        "8",
+        "3",
+        "3",
+        "1",
+        "0",
+        "0",
+        "5"
       ],
-      "storageHex": "55 53 30 33 37 38 33 33 31 30 30 35 00 00 00 00",
-      "storageEscaped": "US0378331005\\0\\0\\0\\0",
+      "storageHex": "0U 0S 00 03 07 08 03 03 01 00 00 05",
+      "storageEscaped": "\\x0U\\x0S\\x00\\x03\\x07\\x08\\x03\\x03\\x01\\x00\\x00\\x05",
       "readBack": "US0378331005"
     },
     {
@@ -999,26 +892,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 16)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
-      "storageEscaped": "\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -1029,25 +905,25 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 16)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US0378331005XNAS'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83,
-        48,
-        51,
-        55,
-        56,
-        51,
-        51,
-        49,
-        48,
-        48,
-        53,
-        88,
-        78,
-        65,
-        83
+        "U",
+        "S",
+        "0",
+        "3",
+        "7",
+        "8",
+        "3",
+        "3",
+        "1",
+        "0",
+        "0",
+        "5",
+        "X",
+        "N",
+        "A",
+        "S"
       ],
-      "storageHex": "55 53 30 33 37 38 33 33 31 30 30 35 58 4e 41 53",
-      "storageEscaped": "US0378331005XNAS",
+      "storageHex": "0U 0S 00 03 07 08 03 03 01 00 00 05 0X 0N 0A 0S",
+      "storageEscaped": "\\x0U\\x0S\\x00\\x03\\x07\\x08\\x03\\x03\\x01\\x00\\x00\\x05\\x0X\\x0N\\x0A\\x0S",
       "readBack": "US0378331005XNAS"
     },
     {
@@ -1082,29 +958,9 @@
       "label": "trailing NULs",
       "input": "US0378331005\u0000\u0000\u0000\u0000",
       "inputLiteral": "'US0378331005\\x00\\x00\\x00\\x00'",
-      "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 16)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US0378331005\\x00\\x00\\x00\\x00'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
-      "ok": true,
-      "storage": [
-        85,
-        83,
-        48,
-        51,
-        55,
-        56,
-        51,
-        51,
-        49,
-        48,
-        48,
-        53,
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "55 53 30 33 37 38 33 33 31 30 30 35 00 00 00 00",
-      "storageEscaped": "US0378331005\\0\\0\\0\\0",
-      "readBack": "US0378331005"
+      "call": "fields.struct('row', [fields.fixedAscii('ccy', 16)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US0378331005\\x00\\x00\\x00\\x00'], new arrow.Utf8()) }))",
+      "ok": false,
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 16 bytes, got a NUL byte at 12"
     },
     {
       "dtype": "ascii(16)",
@@ -1114,25 +970,21 @@
       "call": "const stored = fields.struct('row', [fields.fixedAscii('ccy', 16)], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['us0378331005'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        117,
-        115,
-        48,
-        51,
-        55,
-        56,
-        51,
-        51,
-        49,
-        48,
-        48,
-        53,
-        0,
-        0,
-        0,
-        0
+        "u",
+        "s",
+        "0",
+        "3",
+        "7",
+        "8",
+        "3",
+        "3",
+        "1",
+        "0",
+        "0",
+        "5"
       ],
-      "storageHex": "75 73 30 33 37 38 33 33 31 30 30 35 00 00 00 00",
-      "storageEscaped": "us0378331005\\0\\0\\0\\0",
+      "storageHex": "0u 0s 00 03 07 08 03 03 01 00 00 05",
+      "storageEscaped": "\\x0u\\x0s\\x00\\x03\\x07\\x08\\x03\\x03\\x01\\x00\\x00\\x05",
       "readBack": "us0378331005"
     },
     {
@@ -1143,11 +995,11 @@
       "call": "const stored = fields.struct('row', [fields.country('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['US'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83
+        "U",
+        "S"
       ],
-      "storageHex": "55 53",
-      "storageEscaped": "US",
+      "storageHex": "0U 0S",
+      "storageEscaped": "\\x0U\\x0S",
       "readBack": "US"
     },
     {
@@ -1158,11 +1010,11 @@
       "call": "const stored = fields.struct('row', [fields.country('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['FR'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        70,
-        82
+        "F",
+        "R"
       ],
-      "storageHex": "46 52",
-      "storageEscaped": "FR",
+      "storageHex": "0F 0R",
+      "storageEscaped": "\\x0F\\x0R",
       "readBack": "FR"
     },
     {
@@ -1172,12 +1024,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.country('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0
-      ],
-      "storageHex": "00 00",
-      "storageEscaped": "\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -1188,11 +1037,11 @@
       "call": "const stored = fields.struct('row', [fields.country('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['GB'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        71,
-        66
+        "G",
+        "B"
       ],
-      "storageHex": "47 42",
-      "storageEscaped": "GB",
+      "storageHex": "0G 0B",
+      "storageEscaped": "\\x0G\\x0B",
       "readBack": "GB"
     },
     {
@@ -1202,7 +1051,7 @@
       "inputLiteral": "'USA'",
       "call": "fields.struct('row', [fields.country('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USA'], new arrow.Utf8()) }))",
       "ok": false,
-      "error": "incompatible Arrow record schema: row 0 of column ccy: invalid record value at $: expected ASCII text of at most 2 bytes, got 3 bytes"
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 2 bytes, got 3 bytes"
     },
     {
       "dtype": "country",
@@ -1211,7 +1060,7 @@
       "inputLiteral": "'FÉ'",
       "call": "fields.struct('row', [fields.country('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['FÉ'], new arrow.Utf8()) }))",
       "ok": false,
-      "error": "incompatible Arrow record schema: row 0 of column ccy: invalid record value at $: expected ASCII text of at most 2 bytes, got a non-ASCII byte 0xC3 at 1"
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 2 bytes, got a non-ASCII byte 0xC3 at 1"
     },
     {
       "dtype": "country",
@@ -1221,11 +1070,11 @@
       "call": "const stored = fields.struct('row', [fields.country('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['us'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        117,
-        115
+        "u",
+        "s"
       ],
-      "storageHex": "75 73",
-      "storageEscaped": "us",
+      "storageHex": "0u 0s",
+      "storageEscaped": "\\x0u\\x0s",
       "readBack": "us"
     },
     {
@@ -1236,12 +1085,12 @@
       "call": "const stored = fields.struct('row', [fields.currency('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        85,
-        83,
-        68
+        "U",
+        "S",
+        "D"
       ],
-      "storageHex": "55 53 44",
-      "storageEscaped": "USD",
+      "storageHex": "0U 0S 0D",
+      "storageEscaped": "\\x0U\\x0S\\x0D",
       "readBack": "USD"
     },
     {
@@ -1252,12 +1101,12 @@
       "call": "const stored = fields.struct('row', [fields.currency('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['EUR'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        69,
-        85,
-        82
+        "E",
+        "U",
+        "R"
       ],
-      "storageHex": "45 55 52",
-      "storageEscaped": "EUR",
+      "storageHex": "0E 0U 0R",
+      "storageEscaped": "\\x0E\\x0U\\x0R",
       "readBack": "EUR"
     },
     {
@@ -1267,13 +1116,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.currency('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00",
-      "storageEscaped": "\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -1284,12 +1129,12 @@
       "call": "const stored = fields.struct('row', [fields.currency('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['GBP'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        71,
-        66,
-        80
+        "G",
+        "B",
+        "P"
       ],
-      "storageHex": "47 42 50",
-      "storageEscaped": "GBP",
+      "storageHex": "0G 0B 0P",
+      "storageEscaped": "\\x0G\\x0B\\x0P",
       "readBack": "GBP"
     },
     {
@@ -1299,7 +1144,7 @@
       "inputLiteral": "'USDT'",
       "call": "fields.struct('row', [fields.currency('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USDT'], new arrow.Utf8()) }))",
       "ok": false,
-      "error": "incompatible Arrow record schema: row 0 of column ccy: invalid record value at $: expected ASCII text of at most 3 bytes, got 4 bytes"
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 3 bytes, got 4 bytes"
     },
     {
       "dtype": "currency",
@@ -1308,7 +1153,7 @@
       "inputLiteral": "'USÉ'",
       "call": "fields.struct('row', [fields.currency('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['USÉ'], new arrow.Utf8()) }))",
       "ok": false,
-      "error": "incompatible Arrow record schema: row 0 of column ccy: invalid record value at $: expected ASCII text of at most 3 bytes, got a non-ASCII byte 0xC3 at 2"
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 3 bytes, got a non-ASCII byte 0xC3 at 2"
     },
     {
       "dtype": "currency",
@@ -1318,12 +1163,12 @@
       "call": "const stored = fields.struct('row', [fields.currency('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['usd'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        117,
-        115,
-        100
+        "u",
+        "s",
+        "d"
       ],
-      "storageHex": "75 73 64",
-      "storageEscaped": "usd",
+      "storageHex": "0u 0s 0d",
+      "storageEscaped": "\\x0u\\x0s\\x0d",
       "readBack": "usd"
     },
     {
@@ -1334,13 +1179,13 @@
       "call": "const stored = fields.struct('row', [fields.mic('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['XNAS'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        88,
-        78,
-        65,
-        83
+        "X",
+        "N",
+        "A",
+        "S"
       ],
-      "storageHex": "58 4e 41 53",
-      "storageEscaped": "XNAS",
+      "storageHex": "0X 0N 0A 0S",
+      "storageEscaped": "\\x0X\\x0N\\x0A\\x0S",
       "readBack": "XNAS"
     },
     {
@@ -1351,13 +1196,13 @@
       "call": "const stored = fields.struct('row', [fields.mic('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['XPAR'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        88,
-        80,
-        65,
-        82
+        "X",
+        "P",
+        "A",
+        "R"
       ],
-      "storageHex": "58 50 41 52",
-      "storageEscaped": "XPAR",
+      "storageHex": "0X 0P 0A 0R",
+      "storageEscaped": "\\x0X\\x0P\\x0A\\x0R",
       "readBack": "XPAR"
     },
     {
@@ -1367,14 +1212,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.mic('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00 00",
-      "storageEscaped": "\\0\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -1385,13 +1225,13 @@
       "call": "const stored = fields.struct('row', [fields.mic('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['XLON'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        88,
-        76,
-        79,
-        78
+        "X",
+        "L",
+        "O",
+        "N"
       ],
-      "storageHex": "58 4c 4f 4e",
-      "storageEscaped": "XLON",
+      "storageHex": "0X 0L 0O 0N",
+      "storageEscaped": "\\x0X\\x0L\\x0O\\x0N",
       "readBack": "XLON"
     },
     {
@@ -1401,7 +1241,7 @@
       "inputLiteral": "'XNASD'",
       "call": "fields.struct('row', [fields.mic('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['XNASD'], new arrow.Utf8()) }))",
       "ok": false,
-      "error": "incompatible Arrow record schema: row 0 of column ccy: invalid record value at $: expected ASCII text of at most 4 bytes, got 5 bytes"
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 4 bytes, got 5 bytes"
     },
     {
       "dtype": "mic",
@@ -1410,7 +1250,7 @@
       "inputLiteral": "'XPÄR'",
       "call": "fields.struct('row', [fields.mic('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['XPÄR'], new arrow.Utf8()) }))",
       "ok": false,
-      "error": "incompatible Arrow record schema: row 0 of column ccy: invalid record value at $: expected ASCII text of at most 4 bytes, got a non-ASCII byte 0xC3 at 2"
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 4 bytes, got a non-ASCII byte 0xC3 at 2"
     },
     {
       "dtype": "mic",
@@ -1420,13 +1260,13 @@
       "call": "const stored = fields.struct('row', [fields.mic('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['xnas'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        120,
-        110,
-        97,
-        115
+        "x",
+        "n",
+        "a",
+        "s"
       ],
-      "storageHex": "78 6e 61 73",
-      "storageEscaped": "xnas",
+      "storageHex": "0x 0n 0a 0s",
+      "storageEscaped": "\\x0x\\x0n\\x0a\\x0s",
       "readBack": "xnas"
     },
     {
@@ -1437,15 +1277,15 @@
       "call": "const stored = fields.struct('row', [fields.cfi('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['ESVUFR'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        69,
-        83,
-        86,
-        85,
-        70,
-        82
+        "E",
+        "S",
+        "V",
+        "U",
+        "F",
+        "R"
       ],
-      "storageHex": "45 53 56 55 46 52",
-      "storageEscaped": "ESVUFR",
+      "storageHex": "0E 0S 0V 0U 0F 0R",
+      "storageEscaped": "\\x0E\\x0S\\x0V\\x0U\\x0F\\x0R",
       "readBack": "ESVUFR"
     },
     {
@@ -1456,15 +1296,15 @@
       "call": "const stored = fields.struct('row', [fields.cfi('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['DBFTFR'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        68,
-        66,
-        70,
-        84,
-        70,
-        82
+        "D",
+        "B",
+        "F",
+        "T",
+        "F",
+        "R"
       ],
-      "storageHex": "44 42 46 54 46 52",
-      "storageEscaped": "DBFTFR",
+      "storageHex": "0D 0B 0F 0T 0F 0R",
+      "storageEscaped": "\\x0D\\x0B\\x0F\\x0T\\x0F\\x0R",
       "readBack": "DBFTFR"
     },
     {
@@ -1474,16 +1314,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.cfi('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00 00 00 00",
-      "storageEscaped": "\\0\\0\\0\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -1494,15 +1327,15 @@
       "call": "const stored = fields.struct('row', [fields.cfi('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['OCASPS'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        79,
-        67,
-        65,
-        83,
-        80,
-        83
+        "O",
+        "C",
+        "A",
+        "S",
+        "P",
+        "S"
       ],
-      "storageHex": "4f 43 41 53 50 53",
-      "storageEscaped": "OCASPS",
+      "storageHex": "0O 0C 0A 0S 0P 0S",
+      "storageEscaped": "\\x0O\\x0C\\x0A\\x0S\\x0P\\x0S",
       "readBack": "OCASPS"
     },
     {
@@ -1512,7 +1345,7 @@
       "inputLiteral": "'ESVUFRX'",
       "call": "fields.struct('row', [fields.cfi('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['ESVUFRX'], new arrow.Utf8()) }))",
       "ok": false,
-      "error": "incompatible Arrow record schema: row 0 of column ccy: invalid record value at $: expected ASCII text of at most 6 bytes, got 7 bytes"
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 6 bytes, got 7 bytes"
     },
     {
       "dtype": "cfi",
@@ -1521,7 +1354,7 @@
       "inputLiteral": "'ESVUFÉ'",
       "call": "fields.struct('row', [fields.cfi('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['ESVUFÉ'], new arrow.Utf8()) }))",
       "ok": false,
-      "error": "incompatible Arrow record schema: row 0 of column ccy: invalid record value at $: expected ASCII text of at most 6 bytes, got a non-ASCII byte 0xC3 at 5"
+      "error": "incompatible Arrow record schema: field \"ccy\" row 0: expected ASCII text of at most 6 bytes, got a non-ASCII byte 0xC3 at 5"
     },
     {
       "dtype": "cfi",
@@ -1531,15 +1364,15 @@
       "call": "const stored = fields.struct('row', [fields.cfi('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['esvufr'], new arrow.Utf8()) }))\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
       "storage": [
-        101,
-        115,
-        118,
-        117,
-        102,
-        114
+        "e",
+        "s",
+        "v",
+        "u",
+        "f",
+        "r"
       ],
-      "storageHex": "65 73 76 75 66 72",
-      "storageEscaped": "esvufr",
+      "storageHex": "0e 0s 0v 0u 0f 0r",
+      "storageEscaped": "\\x0e\\x0s\\x0v\\x0u\\x0f\\x0r",
       "readBack": "esvufr"
     }
   ],

@@ -965,7 +965,7 @@ test('a strict stream refuses at the pull, and a missing column at the build', (
   )
 })
 
-test('an ASCII column pads on the way in and trims on the way out', () => {
+test('an ASCII column stores the text it is given and reads it back', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
   const declared = fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false })
@@ -976,11 +976,12 @@ test('an ASCII column pads on the way in and trims on the way out', () => {
   handle.overwriteArrowTable(codes(['USD', 'EUR']), options)
   // The identity survives the IPC stream, so the stored field is the ASCII width.
   assert.ok(handle.readArrowField().equals(declared))
-  // Arrow JS sees the storage: the padded fixed width. Every string rendering
-  // trims, so reading under a declared text column is the core cast that
-  // turns the padding back into the text that went in.
+  // Arrow JS sees the storage, which is the text: the width bounds the value
+  // and no buffer pads to it, so a reader that never heard of the extension
+  // reads the codes.
   const stored = handle.readArrowReader().intoTable().getChild('ccy')
-  assert.deepEqual([...stored.get(0)], [0x55, 0x53, 0x44, 0])
+  assert.equal(stored.type.toString(), 'Utf8')
+  assert.deepEqual([...stored], ['USD', 'EUR'])
   const text = fields.struct('row', [fields.utf8('ccy')], { nullable: false })
   assert.deepEqual(
     [...handle.readRecords(handle.recordOptions().withField(text))].map((row) => row.ccy),
@@ -1003,14 +1004,11 @@ test('a variable ASCII column stores the bytes it is given', () => {
 
   handle.overwriteArrowTable(notes(['a', 'much longer note']), options)
   assert.ok(handle.readArrowField().equals(declared))
-  // No width, so no padding: the stored bytes are the value's own, and Arrow
-  // JS sees the variable binary the extension sits over.
+  // The same text storage a width uses, declaring no width: Arrow JS sees
+  // the strings the values are.
   const stored = handle.readArrowReader().intoTable().getChild('note')
-  assert.equal(stored.type.toString(), 'Binary')
-  assert.deepEqual([...stored].map((value) => Buffer.from(value).toString()), [
-    'a',
-    'much longer note',
-  ])
+  assert.equal(stored.type.toString(), 'Utf8')
+  assert.deepEqual([...stored], ['a', 'much longer note'])
   const text = fields.struct('row', [fields.utf8('note')], { nullable: false })
   assert.deepEqual(
     [...handle.readRecords(handle.recordOptions().withField(text))].map((row) => row.note),
