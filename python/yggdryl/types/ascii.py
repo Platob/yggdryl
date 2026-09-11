@@ -60,7 +60,7 @@ def fixed_ascii(
     nullable: bool = True,
     metadata: MetadataInput = None,
 ) -> FixedAsciiField:
-    """ASCII text padded with trailing NUL to exactly ``width`` bytes.
+    """ASCII text of at most ``width`` bytes, stored as the text it is.
 
     Raises:
         ValueError: when ``width`` is not at least one byte.

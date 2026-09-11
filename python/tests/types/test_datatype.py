@@ -542,64 +542,68 @@ def test_a_registered_code_carries_its_identity_across_arrow() -> None:
     ccy = Field("ccy", "currency")
     arrow_field = ccy.into_arrow()
 
-    assert arrow_field.type == pa.binary(3)
+    # The storage is text, so any reader reads the codes; the width the
+    # standard fixes rides the extension metadata document instead.
+    assert arrow_field.type == pa.string()
     assert arrow_field.metadata == {
         b"ARROW:extension:name": b"yggdryl.currency",
-        b"ARROW:extension:metadata": b"",
+        b"ARROW:extension:metadata": b'{"width":3}',
     }
     assert Field.from_arrow(arrow_field) == ccy
 
-    # The same three bytes under the width's own name are the width, and
-    # under no name at all are a plain fixed binary.
+    # The same text under the width's own name is the width, and under no
+    # name at all is plain text.
     assert Field.from_arrow(Field("ccy", DataType.ascii(3)).into_arrow()) == Field(
         "ccy", DataType.ascii(3)
     )
-    assert Field.from_arrow(pa.field("ccy", pa.binary(3))) == Field(
-        "ccy", "fixed_size_binary(3)"
+    assert Field.from_arrow(pa.field("ccy", pa.string())) == Field("ccy", "utf8")
+    # A code declaring a width that is not its own is not that code.
+    mismatched = pa.field("ccy", pa.string()).with_metadata(
+        {
+            b"ARROW:extension:name": b"yggdryl.currency",
+            b"ARROW:extension:metadata": b'{"width":4}',
+        }
     )
+    assert Field.from_arrow(mismatched).dtype == DataType("utf8")
 
-    assert ccy.arrow_scalar("USD") == pa.scalar(b"USD", pa.binary(3))
-    assert ccy.cast_arrow_array(pa.array(["USD", "EU"])).to_pylist() == [
-        b"USD",
-        b"EU\x00",
-    ]
+    assert ccy.arrow_scalar("USD") == pa.scalar("USD", pa.string())
+    assert ccy.cast_arrow_array(pa.array(["USD", "EU"])).to_pylist() == ["USD", "EU"]
     with pytest.raises(ValueError, match="at most 3 bytes"):
         ccy.cast_arrow_array(pa.array(["EURO"]))
 
 
-def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> None:
+def test_a_fixed_ascii_width_bounds_its_text_and_stores_no_padding() -> None:
     ascii32 = DataType.ascii(4)
     ccy = Field("ccy", ascii32)
 
-    assert ascii32.into_arrow() == pa.binary(4)
+    assert ascii32.into_arrow() == pa.string()
     arrow_field = ccy.into_arrow()
-    assert arrow_field.type == pa.binary(4)
+    assert arrow_field.type == pa.string()
     assert arrow_field.metadata == {
         b"ARROW:extension:name": b"yggdryl.ascii",
-        b"ARROW:extension:metadata": b"",
+        b"ARROW:extension:metadata": b'{"width":4}',
     }
     assert Field.from_arrow(arrow_field) == ccy
-    assert Field.from_arrow(pa.field("ccy", pa.binary(4))) == Field(
-        "ccy", "fixed_size_binary(4)"
-    )
+    assert Field.from_arrow(pa.field("ccy", pa.string())) == Field("ccy", "utf8")
 
-    assert ascii32.arrow_scalar("USD") == pa.scalar(b"USD\x00", pa.binary(4))
-    assert ascii32.arrow_scalar(b"USD\x00") == pa.scalar(b"USD\x00", pa.binary(4))
-    assert ascii32.arrow_scalar(None) == pa.scalar(None, pa.binary(4))
-    assert ccy.arrow_scalar("EUR") == pa.scalar(b"EUR\x00", pa.binary(4))
+    assert ascii32.arrow_scalar("USD") == pa.scalar("USD", pa.string())
+    # A byte value is padded storage, so its trailing NUL is read off.
+    assert ascii32.arrow_scalar(b"USD\x00") == pa.scalar("USD", pa.string())
+    assert ascii32.arrow_scalar(None) == pa.scalar(None, pa.string())
+    assert ccy.arrow_scalar("EUR") == pa.scalar("EUR", pa.string())
     assert ascii32.default_scalar().as_py() == ""
     assert ascii32.default_pyhint() is str
-    assert ascii32.default_arrow_scalar() == pa.scalar(b"\x00" * 4, pa.binary(4))
+    assert ascii32.default_arrow_scalar() == pa.scalar("", pa.string())
 
-    padded = ccy.cast_arrow_array(pa.array(["USD", None]))
-    assert padded.type == pa.binary(4)
-    assert padded.to_pylist() == [b"USD\x00", None]
+    codes = ccy.cast_arrow_array(pa.array(["USD", None]))
+    assert codes.type == pa.string()
+    assert codes.to_pylist() == ["USD", None]
     # A datatype casts as a required column: nulls fill with the default.
     filled = ascii32.cast_arrow_array(pa.array(["USD", None]))
-    assert filled.to_pylist() == [b"USD\x00", b"\x00" * 4]
+    assert filled.to_pylist() == ["USD", ""]
 
     row = DataType.from_fields([Field("ccy", "utf8")])
-    stored = pa.record_batch([padded], schema=pa.schema([arrow_field]))
+    stored = pa.record_batch([codes], schema=pa.schema([arrow_field]))
     assert row.cast_arrow_batch(stored).column(0).to_pylist() == ["USD", None]
 
     with pytest.raises(ValueError, match="at most 4 bytes"):
@@ -621,25 +625,25 @@ def test_variable_ascii_stores_the_bytes_it_is_given() -> None:
     note = DataType("ascii")
     field = Field("note", note)
 
-    # No width, so no padding: variable ASCII is Arrow's variable binary under
-    # the same extension name, told apart from the fixed form by its storage.
-    assert note.into_arrow() == pa.binary()
+    # Variable ASCII is the same text storage under the same extension name,
+    # told apart from a width by the document: it declares none.
+    assert note.into_arrow() == pa.string()
     arrow_field = field.into_arrow()
-    assert arrow_field.type == pa.binary()
+    assert arrow_field.type == pa.string()
     assert arrow_field.metadata == {
         b"ARROW:extension:name": b"yggdryl.ascii",
         b"ARROW:extension:metadata": b"",
     }
     assert Field.from_arrow(arrow_field) == field
-    assert Field.from_arrow(pa.field("note", pa.binary())) == Field("note", "binary")
+    assert Field.from_arrow(pa.field("note", pa.string())) == Field("note", "utf8")
 
-    assert note.arrow_scalar("free text") == pa.scalar(b"free text", pa.binary())
+    assert note.arrow_scalar("free text") == pa.scalar("free text", pa.string())
     assert note.default_scalar().as_py() == ""
     assert note.default_pyhint() is str
-    assert note.default_arrow_scalar() == pa.scalar(b"", pa.binary())
+    assert note.default_arrow_scalar() == pa.scalar("", pa.string())
 
     stored = field.cast_arrow_array(pa.array(["a", "much longer note", None]))
-    assert stored.to_pylist() == [b"a", b"much longer note", None]
+    assert stored.to_pylist() == ["a", "much longer note", None]
     row = DataType.from_fields([Field("note", "utf8")])
     batch = pa.record_batch([stored], schema=pa.schema([arrow_field]))
     assert row.cast_arrow_batch(batch).column(0).to_pylist() == [

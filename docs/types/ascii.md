@@ -4,15 +4,27 @@ Variable and fixed-width ASCII text, the registered codes, packed integers, and 
 
 ## Contract
 
-| Spelling | Width | Arrow storage, extension |
-| --- | ---: | --- |
-| `ascii` | none | `binary`, `yggdryl.ascii` |
-| `ascii(n)` | `n` | `fixed_size_binary(n)`, `yggdryl.ascii` |
-| `country`, ISO 3166-1 alpha-2 | 2 | `fixed_size_binary(2)`, `yggdryl.country` |
-| `currency`, ISO 4217 | 3 | `fixed_size_binary(3)`, `yggdryl.currency` |
-| `mic`, ISO 10383 | 4 | `fixed_size_binary(4)`, `yggdryl.mic` |
-| `cfi`, ISO 10962 | 6 | `fixed_size_binary(6)`, `yggdryl.cfi` |
-| `isin`, ISO 6166 | 12 | `fixed_size_binary(12)`, `yggdryl.isin` |
+Every shape stores Arrow `utf8`. ASCII is a subset of UTF-8, so the bytes a
+code column writes are the bytes any UTF-8 reader expects: the column crosses
+Arrow, Parquet, Avro and Iceberg as a string, with no conversion and nothing
+to trim. The width is a **bound on the value**, not a stride in the buffer, so
+the storage does not state it and the extension metadata document does.
+
+| Spelling | Width | Arrow storage, extension | Extension metadata |
+| --- | ---: | --- | --- |
+| `ascii` | none | `utf8`, `yggdryl.ascii` | *(empty)* |
+| `ascii(n)` | `n` | `utf8`, `yggdryl.ascii` | `{"width":n}` |
+| `country`, ISO 3166-1 alpha-2 | 2 | `utf8`, `yggdryl.country` | `{"width":2}` |
+| `currency`, ISO 4217 | 3 | `utf8`, `yggdryl.currency` | `{"width":3}` |
+| `mic`, ISO 10383 | 4 | `utf8`, `yggdryl.mic` | `{"width":4}` |
+| `cfi`, ISO 10962 | 6 | `utf8`, `yggdryl.cfi` | `{"width":6}` |
+| `isin`, ISO 6166 | 12 | `utf8`, `yggdryl.isin` | `{"width":12}` |
+
+The document is the width's one owner: a code declaring a width other than its
+own is not that code, and a `yggdryl.ascii` stating no width is the variable
+form. A value is ASCII text - every byte at most `0x7F` - of at most the
+width, with no NUL byte; a byte column entering one of these is padded storage
+by construction, so its trailing NUL is read off on the way in.
 
 ## Use
 
@@ -23,12 +35,12 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, RecordBatch, StringArray};
+    use arrow_array::{Array, ArrayRef, RecordBatch, StringArray};
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{ArrowCast, DataType, DataTypeKind, Field, Scalar};
 
-    // Two shapes: text of any length, and text padded to one fixed width.
+    // Two shapes: text of any length, and text bounded by one fixed width.
     assert_eq!(DataType::from_str("ascii")?, DataType::Ascii);
     assert_eq!(DataType::ascii(3)?, DataType::FixedAscii(3));
     assert_eq!(DataType::from_str("ascii(12)")?, DataType::FixedAscii(12));
@@ -40,7 +52,7 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     assert_eq!(DataType::Utf8.ascii_width(), None);
     assert!(DataType::ascii(0).is_err());
 
-    // A registered code is a datatype, not a name over a width: it stores the
+    // A registered code is a datatype, not a name over a width: it declares the
     // width its standard fixes and displays as itself.
     let currency = DataType::currency();
     assert_eq!(DataType::from_str("currency")?, currency);
@@ -70,53 +82,57 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
         ]
     );
 
-    // A code rides its own Arrow extension, so the identity survives the trip.
+    // A code rides its own Arrow extension, so the identity survives the trip,
+    // and the document carries the width the storage no longer states.
     let venue = Field::new("venue", DataType::Mic, false);
     let arrow = venue.clone().into_arrow()?;
-    assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(4));
+    assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.mic");
+    assert_eq!(arrow.metadata()["ARROW:extension:metadata"], r#"{"width":4}"#);
     assert_eq!(Field::from_arrow(&arrow)?, venue);
 
-    // Storage pads to the width; every string rendering trims the padding.
+    // Storage is the value: a shorter code is stored short, not padded out.
     let ccy = Field::new("ccy", DataType::FixedAscii(4), false);
     let stored = scalar_array(&ccy, &Scalar::from("USD"))?;
-    let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
-    assert_eq!(bytes.value(0), b"USD\0");
+    let chars = stored.as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(chars.value(0), "USD");
     assert_eq!(
         scalar_value(&ccy, stored.as_ref())?,
         DataType::FixedAscii(4).scalar("USD")?
     );
 
-    // The Arrow field is `fixed_size_binary(4)` under the `yggdryl.ascii` name.
+    // The Arrow field is `utf8` under the `yggdryl.ascii` name, and the
+    // document is what tells a width from the variable form.
     let arrow = ccy.clone().into_arrow()?;
-    assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(4));
+    assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.ascii");
-    assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "");
+    assert_eq!(arrow.metadata()["ARROW:extension:metadata"], r#"{"width":4}"#);
     assert_eq!(Field::from_arrow(&arrow)?, ccy);
 
-    // The variable form is the same extension over Arrow's `Binary`: no width,
-    // so no padding, and the storage is the bytes the value is.
+    // The variable form is the same extension over the same `utf8`, declaring
+    // no width at all.
     let note = Field::new("note", DataType::Ascii, false);
     let arrow = note.clone().into_arrow()?;
-    assert_eq!(arrow.data_type(), &ArrowDataType::Binary);
+    assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.ascii");
+    assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "");
     assert_eq!(Field::from_arrow(&arrow)?, note);
     let free = scalar_array(&note, &Scalar::from("a note of any length at all"))?;
-    let free = free.as_any().downcast_ref::<BinaryArray>().unwrap();
-    assert_eq!(free.value(0), b"a note of any length at all");
+    let free = free.as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(free.value(0), "a note of any length at all");
 
-    // A cast into the width pads; the stored column read under `utf8` trims.
+    // A cast into the width validates and keeps the column it was given: the
+    // target storage is the source storage, so there is nothing to rebuild.
     let text: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EU"]));
     let exact = yggdryl::ArrowCastOptions::new().with_safe(false);
-    let padded = ccy.cast_arrow_array(text, exact)?;
-    let bytes = padded.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
-    assert_eq!(bytes.value(1), b"EU\0\0");
+    let codes = ccy.cast_arrow_array(Arc::clone(&text), exact)?;
+    assert!(Arc::ptr_eq(&codes, &text));
     let row = DataType::from_fields([ccy.clone()])?.required_field("row");
-    let batch = RecordBatch::try_new(row.into_arrow_schema()?, vec![padded])?;
-    let text = DataType::from_fields([DataType::Utf8.required_field("ccy")])?.required_field("row");
-    let trimmed = text.cast_arrow_batch(batch, exact)?;
-    let trimmed = trimmed.column(0).as_any().downcast_ref::<StringArray>().unwrap();
-    assert_eq!(trimmed.value(1), "EU");
+    let batch = RecordBatch::try_new(row.into_arrow_schema()?, vec![codes])?;
+    let plain = DataType::from_fields([DataType::Utf8.required_field("ccy")])?.required_field("row");
+    let plain = plain.cast_arrow_batch(batch, exact)?;
+    let plain = plain.column(0).as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(plain.value(1), "EU");
 
     // A width merged with the variable form drops the width, and either
     // merged with text is text.
@@ -139,7 +155,7 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
 
     from yggdryl import DataType, Field, types
 
-    # Two shapes: text of any length, and text padded to one fixed width.
+    # Two shapes: text of any length, and text bounded by one fixed width.
     note = DataType("ascii")
     ascii32 = DataType.ascii(4)
     assert note.id == "ascii"
@@ -155,7 +171,7 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     assert types.fixed_ascii("ccy", 3).dtype == DataType.ascii(3)
     assert types.ascii("note").dtype == note
 
-    # A registered code is a datatype, not a name over a width: it stores the
+    # A registered code is a datatype, not a name over a width: it declares the
     # width its standard fixes and displays as itself.
     currency = DataType("currency")
     assert str(currency) == "currency"
@@ -172,42 +188,46 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     with pytest.raises(ValueError, match="check digit"):
         DataType("isin").scalar("US0378331006")
 
-    # A code rides its own Arrow extension, so the identity survives the trip.
+    # A code rides its own Arrow extension, so the identity survives the trip,
+    # and the document carries the width the storage no longer states.
     venue = types.mic("venue", nullable=False)
     venue_arrow = venue.into_arrow()
-    assert venue_arrow.type == pa.binary(4)
+    assert venue_arrow.type == pa.string()
     assert venue_arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.mic"
+    assert venue_arrow.metadata[b"ARROW:extension:metadata"] == b'{"width":4}'
     assert Field.from_arrow(venue_arrow) == venue
 
-    # Storage pads to the width; every string rendering trims the padding.
+    # Storage is the value: a shorter code is stored short, not padded out.
     ccy = Field("ccy", ascii32, nullable=False)
-    assert ccy.arrow_scalar("USD") == pa.scalar(b"USD\x00", pa.binary(4))
+    assert ccy.arrow_scalar("USD") == pa.scalar("USD", pa.string())
     assert ccy.default_scalar().as_py() == ""
 
-    # The Arrow field is `fixed_size_binary(4)` under the `yggdryl.ascii` name.
+    # The Arrow field is `utf8` under the `yggdryl.ascii` name, and the
+    # document is what tells a width from the variable form.
     arrow = ccy.into_arrow()
-    assert arrow.type == pa.binary(4)
+    assert arrow.type == pa.string()
     assert arrow.metadata == {
         b"ARROW:extension:name": b"yggdryl.ascii",
-        b"ARROW:extension:metadata": b"",
+        b"ARROW:extension:metadata": b'{"width":4}',
     }
     assert Field.from_arrow(arrow) == ccy
 
-    # The variable form is the same extension over Arrow's variable binary: no
-    # width, so no padding, and the storage is the bytes the value is.
+    # The variable form is the same extension over the same `utf8`, declaring
+    # no width at all.
     free = types.ascii("note", nullable=False)
     free_arrow = free.into_arrow()
-    assert free_arrow.type == pa.binary()
+    assert free_arrow.type == pa.string()
     assert free_arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.ascii"
+    assert free_arrow.metadata[b"ARROW:extension:metadata"] == b""
     assert Field.from_arrow(free_arrow) == free
     assert free.arrow_scalar("a note of any length at all") == pa.scalar(
-        b"a note of any length at all", pa.binary()
+        "a note of any length at all", pa.string()
     )
 
-    # A cast into the width pads; the stored column read under `utf8` trims.
-    padded = ccy.cast_arrow_array(pa.array(["USD", "EU"]))
-    assert padded.to_pylist() == [b"USD\x00", b"EU\x00\x00"]
-    stored = pa.record_batch([padded], schema=pa.schema([arrow]))
+    # A cast into the width validates and keeps the text it was given.
+    codes = ccy.cast_arrow_array(pa.array(["USD", "EU"]))
+    assert codes.to_pylist() == ["USD", "EU"]
+    stored = pa.record_batch([codes], schema=pa.schema([arrow]))
     text = DataType.from_fields([types.utf8("ccy")])
     assert text.cast_arrow_batch(stored).column(0).to_pylist() == ["USD", "EU"]
 
@@ -229,7 +249,7 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     const arrow = require('apache-arrow')
     const { DataType, fields } = require('yggdryl')
 
-    // Two shapes: text of any length, and text padded to one fixed width.
+    // Two shapes: text of any length, and text bounded by one fixed width.
     const note = new DataType('ascii')
     const ascii32 = DataType.ascii(4)
     assert.equal(note.id, 'ascii')
@@ -244,7 +264,7 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     assert.ok(fields.fixedAscii('ccy', 3).dtype.equals(DataType.ascii(3)))
     assert.equal(fields.ascii('note').dtype.id, 'ascii')
 
-    // A registered code is a datatype, not a name over a width: it stores the
+    // A registered code is a datatype, not a name over a width: it declares the
     // width its standard fixes and displays as itself.
     const currency = new DataType('currency')
     assert.equal(currency.id, 'currency')
@@ -256,17 +276,19 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
       [2, 3, 4, 6, 12],
     )
 
-    // A code rides its own Arrow extension, so the identity survives the trip.
+    // A code rides its own Arrow extension, so the identity survives the trip,
+    // and the document carries the width the storage no longer states.
     const venue = fields.struct('row', [fields.mic('venue', { nullable: false })], {
       nullable: false,
     })
     const venueArrow = venue.castArrow(
       new arrow.Table({ venue: arrow.vectorFromArray(['XPAR'], new arrow.Utf8()) }),
     ).schema.fields[0]
-    assert.equal(String(venueArrow.type), 'FixedSizeBinary[4]')
+    assert.equal(String(venueArrow.type), 'Utf8')
     assert.equal(venueArrow.metadata.get('ARROW:extension:name'), 'yggdryl.mic')
+    assert.equal(venueArrow.metadata.get('ARROW:extension:metadata'), '{"width":4}')
 
-    // Storage pads to the width; every string rendering trims the padding.
+    // Storage is the value: a shorter code is stored short, not padded out.
     const row = fields.struct('row', [fields.fixedAscii('ccy', 4, { nullable: false })], {
       nullable: false,
     })
@@ -274,20 +296,21 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     const codes = (values) =>
       new arrow.Table({ ccy: arrow.vectorFromArray(values, new arrow.Utf8()) })
     const stored = row.castArrow(codes(['USD', 'EU']))
-    assert.deepEqual([...stored.getChild('ccy').get(1)], [0x45, 0x55, 0, 0])
+    assert.equal(stored.getChild('ccy').get(1), 'EU')
 
-    // The Arrow field is `FixedSizeBinary[4]` under the `yggdryl.ascii` name,
-    // and a column carrying that identity reads under `utf8` as trimmed text.
+    // The Arrow field is `Utf8` under the `yggdryl.ascii` name, and the
+    // document is what tells a width from the variable form.
     const field = stored.schema.fields[0]
-    assert.equal(String(field.type), 'FixedSizeBinary[4]')
+    assert.equal(String(field.type), 'Utf8')
     assert.equal(field.metadata.get('ARROW:extension:name'), 'yggdryl.ascii')
+    assert.equal(field.metadata.get('ARROW:extension:metadata'), '{"width":4}')
     const text = fields.struct('row', [fields.utf8('ccy', { nullable: false })], {
       nullable: false,
     })
     assert.deepEqual([...text.castArrow(stored).getChild('ccy')], ['USD', 'EU'])
 
-    // The variable form is the same extension over Arrow's `Binary`: no width,
-    // so no padding, and the storage is the bytes the value is.
+    // The variable form is the same extension over the same `utf8`, declaring
+    // no width at all.
     const notes = fields.struct('row', [fields.ascii('note', { nullable: false })], {
       nullable: false,
     })
@@ -296,11 +319,8 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
         note: arrow.vectorFromArray(['a note of any length at all'], new arrow.Utf8()),
       }),
     )
-    assert.equal(String(free.schema.fields[0].type), 'Binary')
-    assert.equal(
-      Buffer.from(free.getChild('note').get(0)).toString(),
-      'a note of any length at all',
-    )
+    assert.equal(String(free.schema.fields[0].type), 'Utf8')
+    assert.equal(free.getChild('note').get(0), 'a note of any length at all')
 
     // A width merged with the variable form drops the width, and either merged
     // with text is text.
@@ -568,9 +588,10 @@ the wire value rather than a name for it, exactly as `side` is.
 
 - `ascii(0)` -> refused, `at least 1 byte, got 0`.
 - A byte past `0x7F`, a NUL, or a value longer than the width -> refused naming the width (`at most 4 bytes`), and the row in a cast.
-- Stored under `ascii(n)` -> padded with trailing NUL to `n`; every string rendering trims the padding back.
+- Stored under `ascii(n)` -> the value's own text in `utf8`; `n` bounds it and no buffer pads to it, so a column of `n`-byte codes costs its text plus one offset a row.
 - Canonical scalar -> the trimmed string; bytes and text carrying trailing NULs are accepted and canonicalize to it.
-- `fixed_size_binary(3)` under `yggdryl.currency` -> `currency`; under `yggdryl.ascii` -> `ascii(3)`; plain, or carrying a document -> imports as it is.
+- `utf8` under `yggdryl.currency` declaring `{"width":3}` -> `currency`; declaring any other width, or none -> imports as `utf8`. Under `yggdryl.ascii`, `{"width":3}` -> `ascii(3)` and no width -> `ascii`. Plain `utf8` -> `utf8`.
+- A byte column cast into one of these is padded storage by construction, so its trailing NUL is read off; a text column that passes the value rule is kept as it is, buffers and all.
 - `isin` -> two letters, nine alphanumerics and one digit that closes the eleven before it (ISO 6166's Luhn over the letters expanded to their alphabet positions); a check digit that does not close the number -> refused, `the check digit does not close the number`, because a number failing its own checksum is a typo, not a security. Lower case -> the upper case it spells, since the check digit reads a letter by position and cannot tell the two apart. `Isin::is_valid` and `Isin::closing_digit` answer the rule without building a value.
 - An Arrow cast into `isin` is held to the canonical spelling - upper case, closed by its check digit - and refused otherwise, because a column's bytes are what every reader digests; only a scalar read folds the case.
 - `isin` names no vocabulary: the space is open, so `AsciiEnum::from_logical_name("isin")` answers an enum of no members and no Python code class declares it.

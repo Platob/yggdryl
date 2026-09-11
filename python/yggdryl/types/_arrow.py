@@ -619,8 +619,8 @@ def _arrow_scalar_value(
             )
         return scalar.as_py()
     # A leaf crosses under its native datatype through the core scalar
-    # boundary, so storage such as an ASCII width's padding never reaches
-    # Python.
+    # boundary, so a value arrives as what its datatype says it is rather
+    # than as the storage it was read out of.
     return Scalar.from_arrow_scalar(
         scalar, NativeField("value", plan.dtype, nullable=True)
     ).as_py()

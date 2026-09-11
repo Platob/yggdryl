@@ -119,7 +119,7 @@ One column of frames in, batches out, the capture's own columns still in front o
     assert held.column("symbol").to_pylist() == ["AAPL", "MSFT"]
     assert held.column("url")[0].as_py() == "file:///capture.log"
     # The verb in front of the frame beats the direction the codec defaults to.
-    assert held.column("msgdirection").to_pylist() == [b"RECV", b"SENT"]
+    assert held.column("msgdirection").to_pylist() == ["RECV", "SENT"]
     # The row's clock stamps the message, and a capture named after a field
     # fills it - where the row stated one.
     assert held.column("timestamp").cast(pa.timestamp("us", "UTC")).to_pylist() == clocks

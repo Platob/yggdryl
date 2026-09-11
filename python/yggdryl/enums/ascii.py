@@ -118,14 +118,14 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
         code = dtype.ascii_packed(value)
         member = int.__new__(cls, code)
         member._value_ = code
-        # The stored spelling, which is the padded value read back trimmed.
+        # The spelling the code packs, read back out of the packed integer.
         member._text = dtype.ascii_value(code)
         return member
 
     # -- what a member says of itself ---------------------------------------
 
     def into_str(self) -> str:
-        """The ASCII value this member codes, without the storage padding."""
+        """The ASCII value this member codes, without the packing's padding."""
 
         return self._text
 
