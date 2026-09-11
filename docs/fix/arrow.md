@@ -712,26 +712,29 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
 
 ## Performance
 
-`fix/pipeline`, the whole path a desk takes over a bridge's own log: `rust/tests/fix/ulbridge.log`, a second of a ULBridge's capture beside every shape a bridge writes - a Jolokia exchange whose answer is a configuration document, FIXML behind a verb, frames spelled with `^A` and `<SOH>`, a `35=UL` frame packing a group inside a group, bridge rows of a hundred named keys, a statistics line, an empty body - repeated 64 times: 7,232 lines, 7,296 rows (7,232 messages; the empty body is a row and not a message), 11.0 MB. Every stage runs over the same corpus on its own, so a figure is per line of a real capture rather than of one shape. Release build, one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.94.1 release (thin LTO, one codegen unit); the codec pinned to the bridge's dialect.
+`fix/pipeline`, the whole path a desk takes over a bridge's own log: `rust/tests/fix/ulbridge.log`, a second of a ULBridge's capture beside every shape a bridge writes - a Jolokia exchange whose answer is a configuration document, FIXML behind a verb, frames spelled with `^A` and `<SOH>`, a `35=UL` frame packing a group inside a group, bridge rows of a hundred named keys, a statistics line, an empty body - repeated 64 times: 7,232 lines, 7,296 rows (7,232 messages; the empty body is a row and not a message), 11.0 MB. Every stage runs over the same corpus on its own, so a figure is per line of a real capture rather than of one shape. Release build, one Windows 11 machine, AMD Ryzen 5 150, 6 cores, 24 GiB; rustc 1.96.1 release (thin LTO, one codegen unit); the codec pinned to the bridge's dialect. The noise floor on this machine, one binary measured twice, is 0.1% on `text_read` and about 2% on the two codec stages.
 
 | stage | estimate | throughput | per line, row or message |
 | --- | --- | --- | --- |
-| `text_read`, the row header framed, each line numbered, classified and read for its direction | 160 ms | 68.6 MB/s | 22.2 us |
-| `parse_text_arrow_reader`, the whole path into fixed rows | 1.82 s | 6.1 MB/s | 249 us |
-| `parse_lines`, the codec alone over the framed bodies | 859 ms | 12.8 MB/s | 119 us |
+| `text_read`, the row header framed, each line numbered, classified and read for its direction | 193 ms | 57.2 MB/s | 26.7 us |
+| `parse_text_arrow_reader`, the whole path into fixed rows | 2.34 s | 4.7 MB/s | 323 us |
+| `parse_lines`, the codec alone over the framed bodies | 1.16 s | 9.5 MB/s | 160 us |
+| `parse_text_lines_pluginid`, the line reader with each row naming its plugin | 1.19 s | 9.3 MB/s | 164 us |
 
 The text stage is under a tenth of the whole and the codec just under a half; the rest is the row landing in Arrow.
 
-These three are slower than they were before a frame decided where a value ends and an entry became a range of its line, measured on one container against the commit those changes began from: `text_read` by 16%, `parse_text_arrow_reader` by 9%, `parse_lines` by 30%. `text_read` runs no FIX code at all, so its share is the scanner's: `LineSeparator::for_line` ranks four candidates by position where it used to stop at the first that answered, and ranking means asking each one where it first separated a field. That reading is the one [`inspect`, `classify` and `entry_spans` now share](../media/text.md), which is what stopped them being three answers to one question - and what it costs is stated here rather than left for a reader to discover. What a message costs after it is built, each pass over fresh clones of the 7,232 messages, so every number is the pass over a message the stream just built:
+Measured on the same machine against the commit the frame reading began from, `text_read` is 5% slower, `parse_text_arrow_reader` 6% and `parse_lines` 12%, down from 18%, 16% and 24% before the scan was made to pay once. What remains is attributed rather than argued, by the `text_scan` group of the text benchmark and the `fix/line` group of this one, which measure the scan and the codec shape by shape. On the text path the separator choice is back below where it was, and the two validations a line pays to be text - once where the line is made, once where its body becomes the row's `utf8` column - are the rest of the 5%. On the codec path the builder is 60-90% of every shape and unchanged; the difference is in front of it, where a bridge row of a hundred pairs is read into a tree of counted ranges of its page in about 21 us where the old reader split it into borrowed slices in about 4 us, and where each pair then crosses one more stage on its way to the builder. That is the cost of decisions 2 and 5: every key and value a message records is a range of the line it came from, so a data field re-slices to its stated length and a frame re-emits byte for byte without a copy, and it is paid on every pair whether or not a reader ever asks for the range. It goes only with a reader that builds the codec's pairs from the scanner's spans without the tree between them, which is a change to what an entry is and not to how fast it is read.
+
+What a message costs after it is built, each pass over fresh clones of the 7,232 messages, so every number is the pass over a message the stream just built:
 
 | pass | estimate | per message |
 | --- | --- | --- |
-| `into_row`, the message read against the fixed schema | 220 ms | 30.5 us |
-| `arrow_reader`, the rows landed in batches | 458 ms | 63.3 us |
-| `enrich_messages`, the rules that fill what a message implies | 516 ms | 71.4 us |
-| `into_latest`, the row restated at the dictionary's newest version | 551 ms | 76.2 us |
-| `lifecycle`, the stamp that joins a message to its order's life | 166 ms | 22.9 us |
-| `digest`, the message's identity | 28.8 ms | 3.98 us |
+| `into_row`, the message read against the fixed schema | 362 ms | 50.0 us |
+| `arrow_reader`, the rows landed in batches | 622 ms | 86.0 us |
+| `enrich_messages`, the rules that fill what a message implies | 774 ms | 107 us |
+| `into_latest`, the row restated at the dictionary's newest version | 875 ms | 121 us |
+| `lifecycle`, the stamp that joins a message to its order's life | 231 ms | 32.0 us |
+| `digest`, the message's identity | 29.6 ms | 4.10 us |
 
 A row pays `into_row` and its share of the batch; it pays for enrichment, the restatement and the lifecycle only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call). Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection; the batch is the rows canonicalized and built into one `RecordBatch`, of which the arrival record is the one nested column. Enrichment is the rule table walked once, most of it lookups that answer nothing on a message that stated everything, and each answer a write into the row; the restatement is every child resolved against the dictionary once and the rules its fields carry read borrowed; the lifecycle is two digests, a chain lookup and one write of three stamps. The digest is a hash over the arrival record and nothing else.
 
