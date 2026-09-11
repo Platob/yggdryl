@@ -66,7 +66,7 @@ use std::hash::{Hash, Hasher};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::ascii::iso;
+use crate::types::temporal::iso;
 use crate::{Error, Result, Scalar};
 
 /// The two bytes that open a placeholder.

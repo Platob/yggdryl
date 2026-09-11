@@ -14,8 +14,6 @@ use crate::{Charset, Error, Field, Timezone};
 
 #[test]
 fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
-    use super::ascii::dtypes::AsciiType as AsciiFamilyType;
-
     let integer = IntegerType::try_from(&DataType::UInt32).unwrap();
     assert_eq!(integer.id(), crate::DataTypeId::UInt32);
     assert_eq!(DataType::from(integer), DataType::UInt32);
@@ -41,9 +39,16 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
         Some(encoded)
     );
 
-    let ascii = DataType::FixedAscii(7);
-    let ascii_family = AsciiFamilyType::try_from(&ascii).unwrap();
-    assert_eq!(ascii_family.into_dtype().unwrap(), ascii);
+    // The ASCII repertoire has no family enum of its own: `DataTypeId` names
+    // the exact variant and `string_parameters` answers the layout, charset
+    // and bound, so a third listing would only be one more thing to disagree.
+    let ascii = DataType::ascii(7).unwrap();
+    assert_eq!(ascii.id(), crate::DataTypeId::FixedAscii);
+    assert_eq!(ascii.ascii_width(), Some(7));
+    let parameters = ascii.string_parameters().unwrap();
+    assert_eq!(parameters.charset(), Charset::Ascii);
+    assert_eq!(parameters.fixed(), Some(7));
+    assert_eq!(DataType::string(parameters).unwrap(), ascii);
 
     let bytes = DataType::FixedSizeBinary(16);
     let bytes_family = BytesType::try_from(&bytes).unwrap();

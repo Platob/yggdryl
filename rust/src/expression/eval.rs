@@ -740,7 +740,7 @@ fn scalar_text(value: &Scalar) -> Option<Cow<'_, str>> {
 /// row, which the vectorized tier does not pay.
 fn calendar_part(value: &Scalar, function: Function) -> Scalar {
     use crate::types::Temporal;
-    use crate::types::ascii::iso;
+    use crate::types::temporal::iso;
 
     let text = match value {
         Scalar::Temporal(Temporal::Date32(date)) => iso::format_date(date.count()),

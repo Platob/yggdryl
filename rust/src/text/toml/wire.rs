@@ -409,9 +409,9 @@ fn write_temporal<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         }
         Scalar::Temporal(Temporal::DateTime64(value)) => {
             let text = if value.timezone().is_naive() {
-                crate::types::ascii::iso::format_datetime(value.count(), value.unit())
+                crate::types::temporal::iso::format_datetime(value.count(), value.unit())
             } else {
-                crate::types::ascii::iso::format_timestamp(
+                crate::types::temporal::iso::format_timestamp(
                     value.count(),
                     value.unit(),
                     &value.timezone(),
@@ -434,7 +434,7 @@ fn write_duration<W: Write>(
     zone: &Timezone,
 ) -> Result<()> {
     if zone.is_naive() {
-        if let Some(text) = crate::types::ascii::iso::format_duration(count, unit) {
+        if let Some(text) = crate::types::temporal::iso::format_duration(count, unit) {
             return write_quoted(writer, &text);
         }
     } else {
@@ -450,7 +450,7 @@ fn write_time<W: Write>(writer: &mut W, count: i64, unit: TimeUnit, zone: &Timez
             "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
         ));
     }
-    let Some(text) = crate::types::ascii::iso::format_time(count, unit) else {
+    let Some(text) = crate::types::temporal::iso::format_time(count, unit) else {
         write!(writer, "{count}")?;
         return Ok(());
     };

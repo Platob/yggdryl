@@ -4,9 +4,8 @@
 pub(crate) mod casts;
 
 mod dictionary;
-pub mod dtypes;
+mod dtypes;
 mod fields;
-pub(crate) mod iso;
 mod scalars;
 mod vocabulary;
 

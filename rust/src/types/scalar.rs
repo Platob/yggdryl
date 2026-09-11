@@ -302,24 +302,27 @@ impl Serialize for Scalar {
             },
             // A temporal is its classic ISO spelling wherever it has one; a
             // reading with no classic spelling keeps its structural parts.
-            Self::Temporal(Temporal::Date32(value)) => match super::iso::format_date(value.count())
-            {
-                Some(spelled) if value.unit() == TimeUnit::Day && value.timezone().is_naive() => {
-                    tagged(serializer, "date32", &spelled)
+            Self::Temporal(Temporal::Date32(value)) => {
+                match super::temporal::iso::format_date(value.count()) {
+                    Some(spelled)
+                        if value.unit() == TimeUnit::Day && value.timezone().is_naive() =>
+                    {
+                        tagged(serializer, "date32", &spelled)
+                    }
+                    _ => tagged(
+                        serializer,
+                        "date32",
+                        &Triple(&value.count(), &value.unit(), &value.timezone()),
+                    ),
                 }
-                _ => tagged(
-                    serializer,
-                    "date32",
-                    &Triple(&value.count(), &value.unit(), &value.timezone()),
-                ),
-            },
+            }
             Self::Temporal(Temporal::Date64(value)) => tagged(
                 serializer,
                 "date64",
                 &Triple(&value.count(), &value.unit(), &value.timezone()),
             ),
             Self::Temporal(Temporal::Time32(value)) => {
-                match super::iso::format_time(i64::from(value.count()), value.unit()) {
+                match super::temporal::iso::format_time(i64::from(value.count()), value.unit()) {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "time32", &spelled)
                     }
@@ -331,7 +334,7 @@ impl Serialize for Scalar {
                 }
             }
             Self::Temporal(Temporal::Time64(value)) => {
-                match super::iso::format_time(value.count(), value.unit()) {
+                match super::temporal::iso::format_time(value.count(), value.unit()) {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "time64", &spelled)
                     }
@@ -344,9 +347,13 @@ impl Serialize for Scalar {
             }
             Self::Temporal(Temporal::DateTime64(value)) => {
                 let spelled = if value.timezone().is_naive() {
-                    super::iso::format_datetime(value.count(), value.unit())
+                    super::temporal::iso::format_datetime(value.count(), value.unit())
                 } else {
-                    super::iso::format_timestamp(value.count(), value.unit(), &value.timezone())
+                    super::temporal::iso::format_timestamp(
+                        value.count(),
+                        value.unit(),
+                        &value.timezone(),
+                    )
                 };
                 match spelled {
                     Some(spelled) => tagged(serializer, "datetime64", &spelled),
@@ -358,7 +365,8 @@ impl Serialize for Scalar {
                 }
             }
             Self::Temporal(Temporal::Duration32(value)) => {
-                match super::iso::format_duration(i64::from(value.count()), value.unit()) {
+                match super::temporal::iso::format_duration(i64::from(value.count()), value.unit())
+                {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "duration32", &spelled)
                     }
@@ -370,7 +378,7 @@ impl Serialize for Scalar {
                 }
             }
             Self::Temporal(Temporal::Duration64(value)) => {
-                match super::iso::format_duration(value.count(), value.unit()) {
+                match super::temporal::iso::format_duration(value.count(), value.unit()) {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "duration64", &spelled)
                     }
@@ -598,43 +606,53 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralValue::Date32(Temporal32::Triple(count, unit, zone)) => {
                 Self::date32_in(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::Date32(Temporal32::Iso(spelled)) => super::iso::parse_date(&spelled)
-                .map(Self::date32)
-                .map_err(D::Error::custom),
+            StructuralValue::Date32(Temporal32::Iso(spelled)) => {
+                super::temporal::iso::parse_date(&spelled)
+                    .map(Self::date32)
+                    .map_err(D::Error::custom)
+            }
             StructuralValue::Date64(Temporal64::Triple(count, unit, zone)) => {
                 Self::date64_in(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::Date64(Temporal64::Iso(spelled)) => super::iso::parse_date(&spelled)
-                .map(|days| Self::date64(i64::from(days) * 86_400_000))
-                .map_err(D::Error::custom),
+            StructuralValue::Date64(Temporal64::Iso(spelled)) => {
+                super::temporal::iso::parse_date(&spelled)
+                    .map(|days| Self::date64(i64::from(days) * 86_400_000))
+                    .map_err(D::Error::custom)
+            }
             StructuralValue::Time32(Temporal32::Triple(count, unit, zone)) => {
                 Self::time32(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::Time32(Temporal32::Iso(spelled)) => super::iso::parse_time(&spelled)
-                .and_then(|(count, unit)| {
-                    i32::try_from(count)
-                        .map(|count| (count, unit))
-                        .map_err(|_| Error::InvalidRecord {
-                            path: SmolStr::new_static("$"),
-                            reason: SmolStr::new(format!("time count {count} does not fit time32")),
-                        })
-                })
-                .and_then(|(count, unit)| Self::time32(count, unit, Timezone::NAIVE))
-                .map_err(D::Error::custom),
+            StructuralValue::Time32(Temporal32::Iso(spelled)) => {
+                super::temporal::iso::parse_time(&spelled)
+                    .and_then(|(count, unit)| {
+                        i32::try_from(count)
+                            .map(|count| (count, unit))
+                            .map_err(|_| Error::InvalidRecord {
+                                path: SmolStr::new_static("$"),
+                                reason: SmolStr::new(format!(
+                                    "time count {count} does not fit time32"
+                                )),
+                            })
+                    })
+                    .and_then(|(count, unit)| Self::time32(count, unit, Timezone::NAIVE))
+                    .map_err(D::Error::custom)
+            }
             StructuralValue::Time64(Temporal64::Triple(count, unit, zone)) => {
                 Self::time64(count, unit, zone).map_err(D::Error::custom)
             }
-            StructuralValue::Time64(Temporal64::Iso(spelled)) => super::iso::parse_time(&spelled)
-                .and_then(|(count, unit)| Self::time64(count, unit, Timezone::NAIVE))
-                .map_err(D::Error::custom),
+            StructuralValue::Time64(Temporal64::Iso(spelled)) => {
+                super::temporal::iso::parse_time(&spelled)
+                    .and_then(|(count, unit)| Self::time64(count, unit, Timezone::NAIVE))
+                    .map_err(D::Error::custom)
+            }
             StructuralValue::DateTime64(Temporal64::Triple(count, unit, zone)) => {
                 Self::datetime64(count, unit, zone).map_err(D::Error::custom)
             }
             StructuralValue::DateTime64(Temporal64::Iso(spelled)) => {
-                super::iso::parse_timestamp(&spelled)
+                super::temporal::iso::parse_timestamp(&spelled)
                     .and_then(|(count, unit, zone)| Self::datetime64(count, unit, zone))
                     .or_else(|_| {
-                        super::iso::parse_datetime(&spelled).and_then(|(count, unit)| {
+                        super::temporal::iso::parse_datetime(&spelled).and_then(|(count, unit)| {
                             Self::datetime64(count, unit, Timezone::NAIVE)
                         })
                     })
@@ -647,7 +665,7 @@ impl<'de> Deserialize<'de> for Scalar {
                 Self::duration32(count, unit).map_err(D::Error::custom)
             }
             StructuralValue::Duration32(Temporal32::Iso(spelled)) => {
-                super::iso::parse_duration(&spelled)
+                super::temporal::iso::parse_duration(&spelled)
                     .and_then(|(count, unit)| {
                         i32::try_from(count)
                             .map(|count| (count, unit))
@@ -668,7 +686,7 @@ impl<'de> Deserialize<'de> for Scalar {
                 Self::duration64(count, unit).map_err(D::Error::custom)
             }
             StructuralValue::Duration64(Temporal64::Iso(spelled)) => {
-                super::iso::parse_duration(&spelled)
+                super::temporal::iso::parse_duration(&spelled)
                     .and_then(|(count, unit)| Self::duration64(count, unit))
                     .map_err(D::Error::custom)
             }

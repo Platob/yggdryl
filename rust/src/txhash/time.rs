@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use smol_str::format_smolstr;
 
-use crate::types::ascii::iso;
+use crate::types::temporal::iso;
 use crate::types::temporal::scalars::nanoseconds_per;
 use crate::{Error, Result, Scalar, TemporalFamily, TimeUnit};
 

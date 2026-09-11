@@ -17,7 +17,7 @@ use crate::arrow::BatchReader;
 use crate::holder::Buffer;
 use crate::holder::Holder;
 use crate::media::IORecordOptions;
-use crate::types::ascii::iso;
+use crate::types::temporal::iso;
 use crate::{Charset, Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
 use crate::{Cursor, IOBase};
 
