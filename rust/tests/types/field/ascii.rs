@@ -9,8 +9,9 @@ use arrow_array::{
 };
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema};
+use yggdryl::types::string;
 use yggdryl::types::{
-    AsciiField, CfiField, CountryField, CurrencyField, FixedAsciiField, MicField, ascii,
+    AsciiField, CfiField, CountryField, CurrencyField, FixedAsciiField, MicField,
 };
 use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, FieldScalar};
 
@@ -18,17 +19,17 @@ use super::typed::assert_typed_marker;
 
 #[test]
 fn ascii_markers_cover_the_widths_and_the_codes() {
-    assert_typed_marker::<ascii::FixedAsciiType>(DataType::FixedAscii(4));
-    assert_typed_marker::<ascii::FixedAsciiType>(DataType::FixedAscii(8));
-    assert_typed_marker::<ascii::FixedAsciiType>(DataType::FixedAscii(16));
-    assert_typed_marker::<ascii::CountryType>(DataType::Country);
-    assert_typed_marker::<ascii::CurrencyType>(DataType::Currency);
-    assert_typed_marker::<ascii::MicType>(DataType::Mic);
-    assert_typed_marker::<ascii::CfiType>(DataType::Cfi);
+    assert_typed_marker::<string::FixedAsciiType>(DataType::FixedAscii(4));
+    assert_typed_marker::<string::FixedAsciiType>(DataType::FixedAscii(8));
+    assert_typed_marker::<string::FixedAsciiType>(DataType::FixedAscii(16));
+    assert_typed_marker::<string::CountryType>(DataType::Country);
+    assert_typed_marker::<string::CurrencyType>(DataType::Currency);
+    assert_typed_marker::<string::MicType>(DataType::Mic);
+    assert_typed_marker::<string::CfiType>(DataType::Cfi);
 
     // The variable shape is parameterless, so it has a static constructor;
     // the fixed one carries a width and takes its datatype through `try_new`.
-    assert_typed_marker::<ascii::AsciiType>(DataType::Ascii);
+    assert_typed_marker::<string::AsciiType>(DataType::Ascii);
     assert_eq!(AsciiField::new("note", true).dtype(), &DataType::Ascii);
     let ccy = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), false).unwrap();
     assert_eq!(ccy.dtype(), &DataType::FixedAscii(4));

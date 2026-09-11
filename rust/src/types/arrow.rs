@@ -17,14 +17,14 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Field, Result};
 
-use super::ascii::{
-    ASCII_EXTENSION_NAME, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH,
-    MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_extension_name,
-};
 use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
 use super::string::STRING_EXTENSION_NAME;
+use super::string::{
+    ASCII_EXTENSION_NAME, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH,
+    MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_extension_name,
+};
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 use super::url::URL_EXTENSION_NAME;
 use super::uuid::UUID_EXTENSION_NAME;

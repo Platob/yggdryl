@@ -402,9 +402,7 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
 
 #[test]
 fn every_scalar_family_exposes_its_leaf_contract() {
-    use crate::types::{
-        ascii, bytes, decimal, geospatial, integer, nested, string, temporal, uuid,
-    };
+    use crate::types::{bytes, decimal, geospatial, integer, nested, string, temporal, uuid};
     use crate::{
         AsciiValue, BytesValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue,
         TemporalValue, TextValue,
@@ -439,8 +437,8 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(BytesValue::as_bytes(&bytes), [1, 2, 3]);
     assert_eq!(ScalarValue::dtype(&bytes).unwrap(), DataType::BinaryView);
 
-    let currency = ascii::Currency::new("USD").unwrap();
-    assert_eq!(<ascii::Currency as AsciiValue>::WIDTH, Some(3));
+    let currency = string::Currency::new("USD").unwrap();
+    assert_eq!(<string::Currency as AsciiValue>::WIDTH, Some(3));
     assert_eq!(AsciiValue::as_str(&currency), "USD");
 
     let geometry =
@@ -472,9 +470,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
 
 #[test]
 fn concrete_leaves_preserve_their_physical_identity() {
-    use crate::types::{
-        ascii, bytes, decimal, geospatial, integer, nested, string, temporal, uuid,
-    };
+    use crate::types::{bytes, decimal, geospatial, integer, nested, string, temporal, uuid};
 
     let integer = integer::Int32::new(-7);
     assert_eq!(integer.get(), -7);
@@ -499,13 +495,13 @@ fn concrete_leaves_preserve_their_physical_identity() {
         utf8
     );
 
-    let ascii = ascii::Ascii::new("FIX").unwrap();
-    let currency = ascii::Currency::new("USD").unwrap();
+    let ascii = string::Ascii::new("FIX").unwrap();
+    let currency = string::Currency::new("USD").unwrap();
     assert_eq!(ascii.as_str(), "FIX");
     assert_eq!(currency.as_str(), "USD");
-    assert!(ascii::Ascii::new("café").is_err());
-    assert!(ascii::FixedAscii::new("", 0).is_err());
-    assert!(ascii::Cfi::new("TOO-LONG").is_err());
+    assert!(string::Ascii::new("café").is_err());
+    assert!(string::FixedAscii::new("", 0).is_err());
+    assert!(string::Cfi::new("TOO-LONG").is_err());
 
     let binary = bytes::Binary::from(vec![0, 1, 0xff]);
     let binary_view = bytes::BinaryView::from(vec![0, 1, 0xff]);
@@ -537,7 +533,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
 #[test]
 fn tier_two_families_keep_exact_members_and_logical_identity() {
     use crate::Floating;
-    use crate::types::{ascii, bytes, decimal, geospatial, integer, nested, string, temporal};
+    use crate::types::{bytes, decimal, geospatial, integer, nested, string, temporal};
 
     let signed = integer::Integer::I32(integer::Int32::new(7));
     let unsigned = integer::Integer::U8(integer::UInt8::new(7));
@@ -561,8 +557,8 @@ fn tier_two_families_keep_exact_members_and_logical_identity() {
     let view = bytes::Bytes::BinaryView(bytes::BinaryView::from(vec![1, 2]));
     assert_eq!(binary, view);
 
-    let ascii = ascii::AsciiFamily::Ascii(ascii::Ascii::new("USD").unwrap());
-    let currency = ascii::AsciiFamily::Currency(ascii::Currency::new("USD").unwrap());
+    let ascii = string::AsciiFamily::Ascii(string::Ascii::new("USD").unwrap());
+    let currency = string::AsciiFamily::Currency(string::Currency::new("USD").unwrap());
     assert_eq!(ascii, currency);
 
     let mut point = vec![1, 1, 0, 0, 0];

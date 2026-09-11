@@ -6,7 +6,7 @@ use std::hash::{Hash, Hasher};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
-use super::dtypes::ISIN_WIDTH;
+use super::codes::ISIN_WIDTH;
 use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
 
 /// Borrowing access shared by every ASCII representation.

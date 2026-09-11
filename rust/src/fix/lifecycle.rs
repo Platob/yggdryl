@@ -55,7 +55,7 @@ use smol_str::SmolStr;
 
 use crate::txhash::{TxHash, unix_from_scalar};
 use crate::types::State;
-use crate::types::ascii::AsciiFamily;
+use crate::types::string::AsciiFamily;
 use crate::{DigestAlgorithm, Result, Scalar, TimeUnit};
 
 use super::msg::FixMsg;

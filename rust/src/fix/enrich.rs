@@ -48,7 +48,7 @@
 //! a wrong number nobody can tell from a sent one.
 
 use crate::Scalar;
-use crate::types::ascii::AsciiFamily;
+use crate::types::string::AsciiFamily;
 use crate::types::{AsciiEnum, Isin, State};
 
 use super::msg::FixMsg;

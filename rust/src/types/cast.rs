@@ -37,7 +37,6 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::types::ascii::casts::{ingest_ascii_array, ingest_code_array, render_ascii_text};
 use crate::types::bytes::casts::bridges_through_binary;
 use crate::types::cast::text::{holds_text, ingest_text_values};
 use crate::types::decimal::casts::holds_decimal;
@@ -47,6 +46,7 @@ use crate::types::nested::casts::{
     exposed_logical_null_count, fill_nulls, folded_field_mapping, is_logically_null,
     is_reconcilable_nested, list_child, union_mode_matches,
 };
+use crate::types::string::casts::{ingest_ascii_array, ingest_code_array, render_ascii_text};
 use crate::types::temporal::casts::{
     holds_temporal, ingest_temporal_text, is_temporal_arrow, render_temporal_text,
 };

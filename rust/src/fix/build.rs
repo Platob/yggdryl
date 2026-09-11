@@ -37,7 +37,7 @@ use super::{
 };
 use crate::media::text::TextBytes;
 use crate::types::State;
-use crate::types::ascii::AsciiFamily;
+use crate::types::string::AsciiFamily;
 use crate::{DataType, Field, Result, Scalar, Version};
 
 /// What a key resolved to, before any field is built.

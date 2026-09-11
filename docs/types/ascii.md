@@ -598,7 +598,7 @@ the wire value rather than a name for it, exactly as `side` is.
 
     ```bash
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::ascii datatype::coded field::ascii
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::ascii types::tests::ascii types::tests::ascii_enum
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::string::ascii types::tests::ascii types::tests::ascii_enum
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^ascii/'
     ```
 

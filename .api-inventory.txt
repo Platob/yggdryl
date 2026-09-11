@@ -2556,7 +2556,7 @@ pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Se
   pub fn apply_arrow_reader( &self, inner: crate::arrow::BatchReader, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<crate::arrow::BatchReader>
   pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
-### yggdryl::types::ascii  [rust\src\types\ascii\dtypes.rs]
+### yggdryl::types::string  [rust\src\types\string\codes.rs]
 pub fn ascii(width: i32) -> Result<Self>
   pub const fn ascii_width(&self) -> Option<i32>
   pub const fn is_ascii(&self) -> bool
@@ -2585,7 +2585,7 @@ pub const CODES: &'static [(&'static str, DataType, i32)] = &[("country", DataTy
   pub const fn code_name(&self) -> Option<&'static str>
   pub const fn is_code(&self) -> bool
 
-### yggdryl::types::ascii  [rust\src\types\ascii\scalars.rs]
+### yggdryl::types::string  [rust\src\types\string\ascii.rs]
 pub trait AsciiValue: ScalarValue
   const WIDTH: Option<i32>;
   pub fn as_str(&self) -> &str
@@ -2620,7 +2620,7 @@ pub trait BytesValue: ScalarValue
   pub fn as_bytes(&self) -> &[u8]
   pub fn storage(&self) -> &Arc<[u8]>
 
-### yggdryl::types::vocabulary  [rust\src\types\ascii\vocabulary.rs]
+### yggdryl::types::string  [rust\src\types\string\registries.rs]
 pub const CURRENCIES: &'static [&'static str]
   pub const COUNTRIES: &'static [&'static str]
   pub const MICS: &'static [&'static str]

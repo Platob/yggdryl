@@ -22,7 +22,6 @@ use pyo3::{IntoPyObjectExt, PyTypeInfo};
 use yggdryl::arrow::{
     array_from_value, array_to_value, batch_from_value, batch_to_value, scalar_array, scalar_value,
 };
-use yggdryl::types::ascii::{Ascii, AsciiFamily, Cfi, Country, Currency, FixedAscii, Isin, Mic};
 use yggdryl::types::bytes::{BinaryView, Bytes, FixedSizeBinary, LargeBinary};
 use yggdryl::types::decimal::{Decimal, Decimal32, Decimal64};
 use yggdryl::types::geospatial::{Geography, Geometry, Geospatial};
@@ -32,6 +31,7 @@ use yggdryl::types::string::{
     LargeUtf8, LargeUtf8View, StringLayout, StringParameters, Text, Utf8, Utf8View,
 };
 use yggdryl::types::temporal::{Interval, Temporal};
+use yggdryl::types::{Ascii, AsciiFamily, Cfi, Country, Currency, FixedAscii, Isin, Mic};
 use yggdryl::{
     ArrowCast, DataType as CoreDataType, Enum, Error as CoreError, Field as CoreField, Float16,
     Float32, Float64, I256, Scalar, TemporalFamily, TimeUnit, Timezone,

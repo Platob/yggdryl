@@ -43,7 +43,6 @@ use smol_str::SmolStr;
 
 use crate::{DataType, DataTypeId, DataTypeKind, Error, I256, Result, TimeUnit, Timezone};
 
-use super::ascii::AsciiFamily;
 use super::boolean::Boolean;
 use super::bytes::Bytes;
 use super::decimal::Decimal;
@@ -53,6 +52,7 @@ use super::floating::scalars::{Float16, Float32, Float64, Floating};
 use super::geospatial::Geospatial;
 use super::integer::scalars::Integer;
 use super::nested::{Children, Mapping, Nested, Record, Sequence};
+use super::string::AsciiFamily;
 use super::string::Text;
 use super::temporal::scalars::{Temporal, temporal_key};
 use super::uuid::Uuid;
@@ -556,27 +556,27 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralValue::EncodedString(value) => Text::try_from(value)
                 .map(Self::Text)
                 .map_err(D::Error::custom),
-            StructuralValue::Ascii(value) => super::ascii::Ascii::new(value)
+            StructuralValue::Ascii(value) => super::string::Ascii::new(value)
                 .map(|value| Self::Ascii(AsciiFamily::Ascii(value)))
                 .map_err(D::Error::custom),
             StructuralValue::FixedAscii(value, width) => {
-                super::ascii::FixedAscii::new(value, width)
+                super::string::FixedAscii::new(value, width)
                     .map(|value| Self::Ascii(AsciiFamily::FixedAscii(value)))
                     .map_err(D::Error::custom)
             }
-            StructuralValue::Country(value) => super::ascii::Country::new(value)
+            StructuralValue::Country(value) => super::string::Country::new(value)
                 .map(|value| Self::Ascii(AsciiFamily::Country(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Currency(value) => super::ascii::Currency::new(value)
+            StructuralValue::Currency(value) => super::string::Currency::new(value)
                 .map(|value| Self::Ascii(AsciiFamily::Currency(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Mic(value) => super::ascii::Mic::new(value)
+            StructuralValue::Mic(value) => super::string::Mic::new(value)
                 .map(|value| Self::Ascii(AsciiFamily::Mic(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Cfi(value) => super::ascii::Cfi::new(value)
+            StructuralValue::Cfi(value) => super::string::Cfi::new(value)
                 .map(|value| Self::Ascii(AsciiFamily::Cfi(value)))
                 .map_err(D::Error::custom),
-            StructuralValue::Isin(value) => super::ascii::Isin::new(value)
+            StructuralValue::Isin(value) => super::string::Isin::new(value)
                 .map(|value| Self::Ascii(AsciiFamily::Isin(value)))
                 .map_err(D::Error::custom),
             StructuralValue::Uuid(value) => Uuid::from_bytes(value.as_bytes())

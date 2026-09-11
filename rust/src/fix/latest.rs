@@ -44,7 +44,7 @@ use super::replacements::{FixFillEntry, FixFillValue, FixFills, FixReplacementEn
 use super::schema::item_fields;
 use super::{FixPedigree, FixRegistry, occurrence_name};
 use crate::types::State;
-use crate::types::ascii::AsciiFamily;
+use crate::types::string::AsciiFamily;
 use crate::{DataType, Field, Result, Scalar, Version};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
