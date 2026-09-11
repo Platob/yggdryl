@@ -9,7 +9,13 @@
 //! | one root element | the root itself | the root's content is the value |
 //! | one `<tag>` occurrence | a list | a list holding that one value |
 //! | no occurrence at all | a non-null list | the empty list |
+//! | `<tag/>`, no character data | a non-null text or byte field | the empty value |
 //! | the parts of an interval | an interval | its counts, read as integers |
+//!
+//! The empty element is there because XML spells absence and the empty string
+//! the same way, so only a field that refuses absence settles which one was
+//! written. An element the document leaves out entirely is still absence, and
+//! the value contract still refuses it.
 //!
 //! The interval is there because it is the one leaf the value contract reads
 //! no text for: its parts are counts of months, days and nanoseconds rather
@@ -44,11 +50,17 @@ pub(super) fn shaped_document(document: Scalar, field: &Field) -> Result<Scalar>
 
 /// Restate one XML value in the shape `field` declares.
 pub(super) fn shaped(value: Scalar, field: &Field) -> Result<Scalar> {
-    shaped_for(value, field.dtype())
+    shaped_for(value, field.dtype(), field.is_nullable())
 }
 
-fn shaped_for(value: Scalar, dtype: &DataType) -> Result<Scalar> {
+fn shaped_for(value: Scalar, dtype: &DataType, nullable: bool) -> Result<Scalar> {
     if value.is_null() {
+        // `<a/>` and `<a></a>` are one document, so an element with no
+        // character data is absence until a field refuses absence; then the
+        // empty payload is the only thing it can have been.
+        if !nullable && holds_empty_payload(dtype) {
+            return Ok(Scalar::from(""));
+        }
         return Ok(value);
     }
     match dtype {
@@ -126,7 +138,7 @@ fn shaped_for(value: Scalar, dtype: &DataType) -> Result<Scalar> {
                 .map(Scalar::from_sequence),
             None => count_of(&value),
         },
-        DataType::Dictionary(dictionary) => shaped_for(value, dictionary.value()),
+        DataType::Dictionary(dictionary) => shaped_for(value, dictionary.value(), nullable),
         DataType::RunEndEncoded(encoded) => shaped(value, encoded.values()),
         _ => Ok(value),
     }
@@ -146,6 +158,19 @@ fn count_of(value: &Scalar) -> Result<Scalar> {
             ),
         )
     })
+}
+
+/// Whether a datatype's empty value has a spelling of no characters at all.
+fn holds_empty_payload(dtype: &DataType) -> bool {
+    matches!(
+        dtype,
+        DataType::Utf8
+            | DataType::LargeUtf8
+            | DataType::Utf8View
+            | DataType::Binary
+            | DataType::LargeBinary
+            | DataType::BinaryView
+    )
 }
 
 /// Whether a datatype frames a list of values.

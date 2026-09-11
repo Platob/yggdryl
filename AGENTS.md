@@ -682,9 +682,11 @@ change to `media/iceberg/`.
   a second root, and a name XML cannot spell are refused. Only the five predefined
   entities and character references resolve - no declared entity is ever expanded.
   Every leaf is character data, so a `Field` is what types one, and it is also
-  what reads the three shapes a document cannot spell: the root element's name,
-  one occurrence of a repeated element as a one-item list, and no occurrence at
-  all as the empty list.
+  what reads the shapes a document cannot spell: the root element's name, one
+  occurrence of a repeated element as a one-item list, no occurrence at all as
+  the empty list, an empty element as the empty text or byte value where the
+  field refuses absence, and an interval's parts as counts. An element the
+  document leaves out is still absence.
 - Limits bound bytes, depth, nodes, documents, aliases, and hard recursion;
   errors name format and byte position; streaming fails at the failing item under
   backpressure.

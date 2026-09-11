@@ -733,3 +733,35 @@ fn character_data_arrives_with_its_line_endings_normalized() {
         value
     );
 }
+
+#[test]
+fn only_a_field_that_refuses_absence_reads_an_empty_element_as_a_value() {
+    let nullable = Field::from_str("row: struct<note: utf8> not null").unwrap();
+    let required = Field::from_str("row: struct<note: utf8 not null> not null").unwrap();
+
+    // One document, two readings, and the field is what settles which.
+    assert_eq!(
+        from_xml_scalar_with_field("<row><note/></row>", &nullable).unwrap(),
+        Scalar::from_sequence([Scalar::Null])
+    );
+    assert_eq!(
+        from_xml_scalar_with_field("<row><note/></row>", &required).unwrap(),
+        Scalar::from_sequence([Scalar::from("")])
+    );
+
+    // An element the document leaves out is still absence, which the value
+    // contract refuses under the same field.
+    assert!(from_xml_scalar_with_field("<row/>", &required).is_err());
+
+    // Bytes read the same way, because base64 spells an empty payload with no
+    // characters at all.
+    let payload = Field::from_str("row: struct<payload: binary not null> not null").unwrap();
+    assert_eq!(
+        from_xml_scalar_with_field("<row><payload/></row>", &payload).unwrap(),
+        Scalar::from_sequence([Scalar::from(Vec::<u8>::new())])
+    );
+
+    // A number has no empty spelling, so absence stays absence and is refused.
+    let size = Field::from_str("row: struct<size: int64 not null> not null").unwrap();
+    assert!(from_xml_scalar_with_field("<row><size/></row>", &size).is_err());
+}

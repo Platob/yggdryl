@@ -164,7 +164,7 @@
     parse: loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None)
   text.xml
     exports: Buffer, Destination, Readable, Source, Writable, dump, dumps, loads
-    document: one root element, so a decoded document is a one-entry mapping keyed by its name; an attribute keys behind '@', an element's own character data keys '#text', a repeated element is a list, and an empty element is None
+    document: one root element, so a decoded document is a one-entry mapping keyed by its name; an attribute keys behind '@', an element's own character data keys '#text', a repeated element is a list, and an empty element is None until a field that refuses absence reads it as the empty value
     output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes
     parse: loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None); every leaf is text until `field` types it
   text.yaml

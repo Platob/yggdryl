@@ -253,3 +253,35 @@ fn xml_rows_are_read_from_whatever_element_a_document_names() {
         quotes().into_scalar().expect("the rows decode")
     );
 }
+
+#[test]
+fn an_empty_string_column_survives_the_element_that_spells_it() {
+    let root = DataType::from_fields([DataType::Utf8.required_field("note")])
+        .expect("the root datatype is valid")
+        .required_field("row");
+    let rows = Scalar::from_sequence([
+        Scalar::from_sequence([Scalar::from("")]),
+        Scalar::from_sequence([Scalar::from("x")]),
+    ]);
+    let mut target = handle("notes.xml");
+    target
+        .write_arrow_value(
+            ArrowValue::from_rows(&root, &rows).expect("the rows materialize"),
+            IOMode::Overwrite,
+        )
+        .expect("the rows write");
+
+    // `<note></note>` is absence in XML, and only the non-null column says
+    // which absence it was.
+    assert_eq!(
+        target
+            .read_arrow_value(Some(&root))
+            .expect("the rows read")
+            .into_scalar()
+            .expect("the rows decode"),
+        ArrowValue::from_rows(&root, &rows)
+            .expect("the rows materialize")
+            .into_scalar()
+            .expect("the rows decode")
+    );
+}

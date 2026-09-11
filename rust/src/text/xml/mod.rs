@@ -59,12 +59,16 @@
 //! # What XML cannot say
 //!
 //! `<a/>` and `<a></a>` are one document, so an element with no character data
-//! is absence and an empty string reads back as [`Scalar::Null`]. A document
-//! also has no framing around a repeated element, so one occurrence is one
-//! value until a field declares a list, and it has no spelling for an empty
-//! one at all. A declared [`Field`] reads all three - the root element's own
-//! name, one occurrence as a one-item list, no occurrence as the empty list -
-//! and that is the whole of what a shape is read from here.
+//! is absence, and a schema-free read of an empty string answers
+//! [`Scalar::Null`]. A document also has no framing around a repeated element,
+//! so one occurrence is one value, and no spelling at all for an empty list.
+//!
+//! A declared [`Field`] is what reads those back, and the only thing a shape
+//! is ever read from here: it names the root element, takes one occurrence of
+//! a repeated element as a one-item list, takes no occurrence as the empty
+//! list where a list may not be absent, and takes an empty element as the
+//! empty text or byte value where that field may not be absent either. An
+//! element the document leaves out entirely is still absence.
 
 use std::borrow::Borrow;
 use std::io::{Read, Write};
