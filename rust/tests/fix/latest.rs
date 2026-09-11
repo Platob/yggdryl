@@ -3,6 +3,7 @@
 //! stands in for it, the wire untouched, and a second pass changing nothing.
 
 use super::OneMessage;
+use super::path;
 
 use std::sync::Arc;
 
@@ -477,7 +478,7 @@ fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
         "the counter states the count"
     );
     assert_eq!(
-        latest.by_path("parties.1.partyrole").unwrap(),
+        latest.by_path(&path("parties[1].partyrole")).unwrap(),
         &Scalar::from(3)
     );
     // The fill itself, untouched and under its newest spelling.
@@ -533,19 +534,21 @@ fn a_group_fill_merges_into_the_occurrence_whose_constants_match() {
     assert_eq!(parties.len(), 1);
     assert_eq!(integer(&latest, 453), Some(1));
     assert_eq!(
-        latest.by_path("parties.0.partyid").unwrap(),
+        latest.by_path(&path("parties[0].partyid")).unwrap(),
         &Scalar::from("CLR")
     );
     assert_eq!(
-        latest.by_path("parties.0.partyrole").unwrap(),
+        latest.by_path(&path("parties[0].partyrole")).unwrap(),
         &Scalar::from(4)
     );
     assert_eq!(
-        latest.by_path("parties.0.ptyssubgrp.0.partysubid").unwrap(),
+        latest
+            .by_path(&path("parties[0].ptyssubgrp[0].partysubid"))
+            .unwrap(),
         &Scalar::from("ACCT")
     );
     assert_eq!(
-        latest.by_path("parties.0.nopartysubids").unwrap(),
+        latest.by_path(&path("parties[0].nopartysubids")).unwrap(),
         &Scalar::from(1)
     );
 
@@ -553,15 +556,17 @@ fn a_group_fill_merges_into_the_occurrence_whose_constants_match() {
     let alone = restated(&reader, b"8=FIX.4.2|35=D|11=A|440=ACCT|10=0|");
     assert_eq!(occurrences(&alone, "parties").len(), 1);
     assert_eq!(
-        alone.by_path("parties.0.partyrole").unwrap(),
+        alone.by_path(&path("parties[0].partyrole")).unwrap(),
         &Scalar::from(4)
     );
     assert_eq!(
-        alone.by_path("parties.0.ptyssubgrp.0.partysubid").unwrap(),
+        alone
+            .by_path(&path("parties[0].ptyssubgrp[0].partysubid"))
+            .unwrap(),
         &Scalar::from("ACCT")
     );
     assert!(
-        alone.get_by_path("parties.0.partyid").is_none(),
+        alone.get_by_path(&path("parties[0].partyid")).is_none(),
         "the occurrence holds the filled members alone"
     );
 
@@ -574,7 +579,7 @@ fn a_group_fill_merges_into_the_occurrence_whose_constants_match() {
     let parties = occurrences(&stated, "parties");
     assert_eq!(parties.len(), 1);
     assert_eq!(
-        stated.by_path("parties.0.partyid").unwrap(),
+        stated.by_path(&path("parties[0].partyid")).unwrap(),
         &Scalar::from("OTHER")
     );
 }
@@ -605,11 +610,11 @@ fn a_join_and_a_from_read_the_other_tags_at_the_same_level() {
     );
     assert_eq!(integer(&hop, 627), Some(1));
     assert_eq!(
-        hop.by_path("hopgrp.0.hopcompid").unwrap(),
+        hop.by_path(&path("hopgrp[0].hopcompid")).unwrap(),
         &Scalar::from("ONBEHALF")
     );
     assert_eq!(
-        hop.by_path("hopgrp.0.hopsendingtime").unwrap(),
+        hop.by_path(&path("hopgrp[0].hopsendingtime")).unwrap(),
         hop.by_tag(370).unwrap()
     );
     assert!(!hop.by_tag(370).unwrap().is_null());
@@ -652,11 +657,13 @@ fn a_rule_scoped_to_message_types_and_to_groups_applies_only_there() {
         b"8=FIX.4.2|35=J|70=A1|78=1|NoAllocs[0].79=ACCT|NoAllocs[0].119=1000|10=0|",
     );
     assert_eq!(
-        grouped.by_path("allocgrp.0.allocsettlcurramt").unwrap(),
+        grouped
+            .by_path(&path("allocgrp[0].allocsettlcurramt"))
+            .unwrap(),
         &Scalar::from(1000.0_f64)
     );
     assert_eq!(
-        grouped.by_path("allocgrp.0.settlcurramt").unwrap(),
+        grouped.by_path(&path("allocgrp[0].settlcurramt")).unwrap(),
         &Scalar::from(1000.0_f64),
         "the source stays"
     );

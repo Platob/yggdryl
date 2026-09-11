@@ -18,6 +18,11 @@ use crate::{
     FixLineage, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MimeType, Scalar, Version,
 };
 
+/// One path, resolved once, as every FIX navigator now takes it.
+fn fpath(spelling: &str) -> crate::FieldPath {
+    crate::FieldPath::from_str(spelling).unwrap_or_else(|error| panic!("{spelling}: {error}"))
+}
+
 /// The venue dictionary every branched case is written against.
 fn cme() -> FixBranch {
     FixBranch::from_str("cme").unwrap()
@@ -2144,9 +2149,11 @@ fn specialized_and_generic_accessors_answer_alike_for_every_key() {
         .unwrap_err();
     assert!(matches!(&by_name, Error::Absent { path, .. } if path == "name \"absent\""));
     let by_path = registry
-        .field_by_path("Symbol.absent", Some(&FixBranch::STANDARD))
+        .field_by_path(&fpath("Symbol.absent"), Some(&FixBranch::STANDARD))
         .unwrap_err();
-    assert!(matches!(&by_path, Error::Absent { path, .. } if path == "path \"Symbol.absent\""));
+    // A path renders its own canonical spelling, so the absence names the
+    // reading rather than quoting a string nobody resolved.
+    assert!(matches!(&by_path, Error::Absent { path, .. } if path == "path Symbol.absent"));
     assert_eq!(
         registry.field(1).unwrap_err().to_string(),
         by_tag.to_string()
@@ -2192,34 +2199,34 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     );
     assert_eq!(
         registry
-            .field_by_path("Parties.PartyID", Some(&FixBranch::STANDARD))
+            .field_by_path(&fpath("Parties.PartyID"), Some(&FixBranch::STANDARD))
             .unwrap(),
         &party_id
     );
     assert_eq!(
         registry
-            .field_by_path("parties.PartyRole", Some(&FixBranch::STANDARD))
+            .field_by_path(&fpath("parties.PartyRole"), Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "PartyRole"
     );
     assert_eq!(
         registry
-            .field_by_path("Instrument.Symbol", Some(&FixBranch::STANDARD))
+            .field_by_path(&fpath("Instrument.Symbol"), Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "Symbol"
     );
     assert_eq!(
         registry
-            .field_by_path("INSTRUMENT.SecurityID", Some(&FixBranch::STANDARD))
+            .field_by_path(&fpath("INSTRUMENT.SecurityID"), Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "SecurityID"
     );
     assert_eq!(
         registry.get_field("Instrument.Symbol"),
-        registry.get_field_by_path("Instrument.Symbol", Some(&FixBranch::STANDARD))
+        registry.get_field_by_path(&fpath("Instrument.Symbol"), Some(&FixBranch::STANDARD))
     );
     assert!(registry.contains("Parties.PartyID"));
     // A member is reached through its parent only: the registry does not
@@ -2234,24 +2241,69 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     // `Parties.PartyID` on a dictionary that stores its members folded,
     // which is every dictionary this crate writes.
     assert_eq!(
-        registry.get_field_by_path("Parties.partyid", Some(&FixBranch::STANDARD)),
-        registry.get_field_by_path("Parties.PartyID", Some(&FixBranch::STANDARD)),
+        registry.get_field_by_path(&fpath("Parties.partyid"), Some(&FixBranch::STANDARD)),
+        registry.get_field_by_path(&fpath("Parties.PartyID"), Some(&FixBranch::STANDARD)),
     );
     assert_eq!(
         registry
-            .get_field_by_path("Parties.PARTY_ID", Some(&FixBranch::STANDARD))
+            .get_field_by_path(&fpath("Parties.PARTY_ID"), Some(&FixBranch::STANDARD))
             .map(Field::name),
         Some("PartyID"),
     );
     assert!(
         registry
-            .get_field_by_path("Instrument.Absent", Some(&FixBranch::STANDARD))
+            .get_field_by_path(&fpath("Instrument.Absent"), Some(&FixBranch::STANDARD))
             .is_none()
     );
     assert!(
         registry
-            .get_field_by_path("Absent.Symbol", Some(&FixBranch::STANDARD))
+            .get_field_by_path(&fpath("Absent.Symbol"), Some(&FixBranch::STANDARD))
             .is_none()
+    );
+}
+
+#[test]
+fn one_spelling_reaches_a_member_through_the_message_and_through_the_registry() {
+    // The asymmetry this replaces: the registry wanted `Parties.PartyID` and
+    // the message wanted `Parties.0.PartyID`, so neither string worked on the
+    // other side. Now one does, because a schema answers the item every
+    // occurrence of a group holds.
+    let registry = committed();
+    let message = FixCodec::new(Arc::clone(&registry))
+        .parse_fix_line(b"8=FIX.4.4|35=D|453=1|448=BUYSIDE|447=D|452=1|10=0|")
+        .expect("a readable frame");
+    let member = fpath("Parties[0].PartyID");
+    assert_eq!(
+        registry
+            .field_by_path(&member, Some(&FixBranch::STANDARD))
+            .expect("the member the schema declares")
+            .as_fix()
+            .tag()
+            .unwrap(),
+        Some(448)
+    );
+    assert_eq!(
+        message.by_path(&member).expect("the occurrence's value"),
+        &Scalar::from("BUYSIDE")
+    );
+
+    // A bare decimal is a name and not a position, exactly as it is one layer
+    // down where a text line's entry keyed `55` is reached by the path `55`.
+    assert!(message.get_by_path(&fpath("Parties.0.PartyID")).is_none());
+    assert!(
+        registry
+            .get_field_by_path(&fpath("Parties.0.PartyID"), Some(&FixBranch::STANDARD))
+            .is_none()
+    );
+
+    // A position past what the message carried is absence and not an error,
+    // and a negative one counts back from the end as the grammar states.
+    assert!(message.get_by_path(&fpath("Parties[7].PartyID")).is_none());
+    assert_eq!(
+        message
+            .by_path(&fpath("Parties[-1].PartyID"))
+            .expect("the last occurrence"),
+        &Scalar::from("BUYSIDE")
     );
 }
 
@@ -2730,35 +2782,35 @@ fn a_message_resolves_values_through_its_registry() {
     assert_eq!(msg.by_name("9999").unwrap(), &Scalar::from("custom"));
     // A path descends a component by name and a group by index.
     assert_eq!(
-        msg.by_path("Instrument.symbol").unwrap(),
+        msg.by_path(&fpath("Instrument.symbol")).unwrap(),
         &Scalar::from("AAPL")
     );
     assert_eq!(
-        msg.by_path("Parties.1.PartyID").unwrap(),
+        msg.by_path(&fpath("Parties[1].PartyID")).unwrap(),
         &Scalar::from("CLIENT")
     );
     assert_eq!(
-        msg.by_path("parties.0.PartyRole").unwrap(),
+        msg.by_path(&fpath("parties[0].PartyRole")).unwrap(),
         &Scalar::from(1)
     );
-    assert_eq!(msg.by_path("Parties").unwrap().len(), 2);
+    assert_eq!(msg.by_path(&fpath("Parties")).unwrap().len(), 2);
     assert!(
-        msg.get_by_path("Parties.PartyID").is_none(),
+        msg.get_by_path(&fpath("Parties.PartyID")).is_none(),
         "a group member needs its index"
     );
-    assert!(msg.get_by_path("Parties.2.PartyID").is_none());
-    assert!(msg.get_by_path("OrderQty.deeper").is_none());
+    assert!(msg.get_by_path(&fpath("Parties[2].PartyID")).is_none());
+    assert!(msg.get_by_path(&fpath("OrderQty.deeper")).is_none());
     assert!(
         msg.get_by_tag(55).is_none(),
         "Symbol is nested, not a root child"
     );
     // A member the registry does not know resolves its unique local spelling.
     assert_eq!(
-        msg.by_path("Parties.0.PartyID").unwrap(),
+        msg.by_path(&fpath("Parties[0].PartyID")).unwrap(),
         &Scalar::from("BROKER")
     );
     assert_eq!(
-        msg.by_path("Parties.0.partyid").unwrap(),
+        msg.by_path(&fpath("Parties[0].partyid")).unwrap(),
         &Scalar::from("BROKER")
     );
     assert!(msg.get_by_tag(-1).is_none());
@@ -2768,20 +2820,38 @@ fn a_message_resolves_values_through_its_registry() {
         assert_eq!(msg.get(tag), msg.get_by_tag(tag), "{tag}");
         assert_eq!(msg.value(tag).ok(), msg.by_tag(tag).ok(), "{tag}");
     }
-    for name in [
-        "OrderQty",
-        "qty",
-        "Instrument.Symbol",
-        "Parties.1.PartyID",
-        "absent",
-    ] {
-        assert_eq!(msg.get(name), msg.get_by_path(name), "{name}");
-        assert_eq!(msg.value(name).ok(), msg.by_path(name).ok(), "{name}");
+    // The generic pair matches the specialized one for every key: a name
+    // reaches what the name door reaches, and a key spelling more than one
+    // segment reaches what the path door reaches once that key is read.
+    for name in ["OrderQty", "qty", "absent"] {
+        assert_eq!(msg.get(name), msg.get_by_name(name), "{name}");
+        assert_eq!(msg.value(name).ok(), msg.by_name(name).ok(), "{name}");
+    }
+    for spelling in ["Instrument.Symbol", "Parties[1].PartyID"] {
+        assert_eq!(
+            msg.get(spelling),
+            msg.get_by_path(&fpath(spelling)),
+            "{spelling}"
+        );
+        assert_eq!(
+            msg.value(spelling).ok(),
+            msg.by_path(&fpath(spelling)).ok(),
+            "{spelling}"
+        );
+    }
+    // A path of one named segment is that name lookup, which is what makes
+    // the two doors one reading rather than two.
+    for name in ["OrderQty", "qty", "absent"] {
+        assert_eq!(
+            msg.get_by_path(&fpath(name)),
+            msg.get_by_name(name),
+            "{name}"
+        );
     }
     let error = msg.by_tag(55).unwrap_err();
     assert!(matches!(&error, Error::Absent { expected: "fix value", path } if path == "tag 55"));
-    let error = msg.by_path("absent.x").unwrap_err();
-    assert!(matches!(&error, Error::Absent { path, .. } if path == "path \"absent.x\""));
+    let error = msg.by_path(&fpath("absent.x")).unwrap_err();
+    assert!(matches!(&error, Error::Absent { path, .. } if path == "path absent.x"));
 
     // Equality and hashing follow the schema and the value.
     let same = FixMsg::with_registry(Arc::clone(&registry), root, msg.as_value().clone()).unwrap();
@@ -4514,7 +4584,9 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
 #[test]
 fn a_group_path_reaches_members_and_skips_its_occurrence_component() {
     let registry = committed();
-    let member = registry.field_by_path("Parties.PartyID", None).unwrap();
+    let member = registry
+        .field_by_path(&fpath("Parties.PartyID"), None)
+        .unwrap();
     assert_eq!(member.as_fix().tag().unwrap(), Some(448));
     assert_eq!(member.name(), "partyid");
     assert_eq!(registry.field_by_tag(453).unwrap().name(), "nopartyids");
@@ -4528,16 +4600,20 @@ fn a_group_path_reaches_members_and_skips_its_occurrence_component() {
         };
         for child in item.fields() {
             let path = format!("{}.{}", field.name(), child.name());
-            let reached = registry.field_by_path(&path, None).unwrap();
+            let reached = registry.field_by_path(&fpath(&path), None).unwrap();
             assert_eq!(reached, child, "{path}");
         }
     }
     assert!(
         registry
-            .get_field_by_path("Parties.Party.PartyRole", None)
+            .get_field_by_path(&fpath("Parties.Party.PartyRole"), None)
             .is_none()
     );
-    assert!(registry.get_field_by_path("Parties.Party", None).is_none());
+    assert!(
+        registry
+            .get_field_by_path(&fpath("Parties.Party"), None)
+            .is_none()
+    );
 }
 
 #[test]

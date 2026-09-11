@@ -13,6 +13,7 @@
 //! closes.
 
 use super::OneMessage;
+use super::path;
 
 use std::sync::Arc;
 
@@ -266,11 +267,11 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     );
     // One MBean produces one message, with standard FIX fields on their own tags.
     assert_eq!(
-        config.by_path("SenderCompID").unwrap(),
+        config.by_path(&path("SenderCompID")).unwrap(),
         &Scalar::from("ULB_BKRBDG"),
     );
     assert_eq!(
-        config.by_path("MBeanType").unwrap(),
+        config.by_path(&path("MBeanType")).unwrap(),
         &Scalar::from("Plugin"),
     );
 
@@ -425,11 +426,15 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
         .expect("the document the line carries");
     // Standard FIX and bridge attributes share the configuration's flat row.
     assert_eq!(
-        message.get_by_path("SenderCompID").and_then(Scalar::as_str),
+        message
+            .get_by_path(&path("SenderCompID"))
+            .and_then(Scalar::as_str),
         Some("CLI.PROD.TRD")
     );
     assert_eq!(
-        message.get_by_path("Version").and_then(Scalar::as_str),
+        message
+            .get_by_path(&path("Version"))
+            .and_then(Scalar::as_str),
         Some("4.7.0")
     );
     // A `[Jolokia]` in the prose opens no document: only an object whose first
@@ -473,7 +478,7 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
     let message = held[0].into_fixmsg(&codec).expect("a typed message");
     assert_eq!(
         message
-            .get_by_path("PriorityLevel")
+            .get_by_path(&path("PriorityLevel"))
             .and_then(Scalar::as_i64),
         Some(5)
     );

@@ -408,12 +408,17 @@ pub(super) fn fill_field<'registry>(
     if key.is_empty() || super::field::parse_tag(key).is_some() {
         return None;
     }
-    let named = registry
-        .get_field_by_path(key, Some(branch))
-        .or_else(|| {
-            (!branch.is_standard())
-                .then(|| registry.get_field_by_path(key, Some(&FixBranch::STANDARD)))
-                .flatten()
+    // The key arrived on a line, so the path it states is read here, at the
+    // one boundary that has a string: everything below takes it resolved.
+    let path = crate::FieldPath::from_str(key).ok();
+    let named = path
+        .as_ref()
+        .and_then(|path| {
+            registry.get_field_by_path(path, Some(branch)).or_else(|| {
+                (!branch.is_standard())
+                    .then(|| registry.get_field_by_path(path, Some(&FixBranch::STANDARD)))
+                    .flatten()
+            })
         })
         .or_else(|| registry.get_field_by_name(key, None));
     if let Some(field) = named {
@@ -803,9 +808,11 @@ impl<'registry> Builder<'registry> {
         let field = if let Some(tag) = super::field::parse_tag(key) {
             self.by_tag(tag)
         } else {
-            self.by_path(key, self.branch).or_else(|| {
+            // The key is a wire spelling, so this is where it becomes a path.
+            let path = crate::FieldPath::from_str(key).ok()?;
+            self.by_path(&path, self.branch).or_else(|| {
                 (!self.branch.is_standard())
-                    .then(|| self.by_path(key, &super::FixBranch::STANDARD))
+                    .then(|| self.by_path(&path, &super::FixBranch::STANDARD))
                     .flatten()
             })
         }?;
@@ -815,9 +822,9 @@ impl<'registry> Builder<'registry> {
         Some((field, tag))
     }
 
-    /// One name looked for in exactly one dictionary.
-    fn by_path(&self, key: &str, branch: &FixBranch) -> Option<&'registry Field> {
-        self.registry.get_field_by_path(key, Some(branch))
+    /// One path looked for in exactly one dictionary.
+    fn by_path(&self, path: &crate::FieldPath, branch: &FixBranch) -> Option<&'registry Field> {
+        self.registry.get_field_by_path(path, Some(branch))
     }
 
     /// A pinned dialect may fall back to standard fields, never another venue.

@@ -706,8 +706,8 @@ pub struct FixMsg
   pub fn by_tag(&self, tag: i32) -> Result<&Scalar>
   pub fn get_by_name(&self, name: &str) -> Option<&Scalar>
   pub fn by_name(&self, name: &str) -> Result<&Scalar>
-  pub fn get_by_path(&self, path: &str) -> Option<&Scalar>
-  pub fn by_path(&self, path: &str) -> Result<&Scalar>
+  pub fn get_by_path(&self, path: &FieldPath) -> Option<&Scalar>  (an indexed segment takes one occurrence: `Parties[0].PartyID`)
+  pub fn by_path(&self, path: &FieldPath) -> Result<&Scalar>
   pub fn get<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Scalar>
   pub fn value<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Scalar>
   pub fn set<'key>(&mut self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<()>  (row only; typed by the field the key reaches, replaced in place or appended; a bare unknown tag appends a nullable utf8 child named by its decimal; failure leaves the message unchanged)
@@ -805,8 +805,8 @@ pub struct FixRegistry
   pub fn field_by_tag(&self, tag: i32) -> Result<&Field>
   pub fn get_field_by_name(&self, name: &str, branch: Option<&FixBranch>) -> Option<&Field>
   pub fn field_by_name(&self, name: &str, branch: Option<&FixBranch>) -> Result<&Field>
-  pub fn get_field_by_path(&self, path: &str, branch: Option<&FixBranch>) -> Option<&Field>
-  pub fn field_by_path(&self, path: &str, branch: Option<&FixBranch>) -> Result<&Field>
+  pub fn get_field_by_path(&self, path: &FieldPath, branch: Option<&FixBranch>) -> Option<&Field>  (a schema has no positions, so an indexed segment answers the item every occurrence holds)
+  pub fn field_by_path(&self, path: &FieldPath, branch: Option<&FixBranch>) -> Result<&Field>
   pub fn get_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field>
   pub fn field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field>
   pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool

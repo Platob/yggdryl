@@ -1,5 +1,7 @@
 //! One Ullink CBlock configuration, read into a dictionary and message roots.
 
+use super::path;
+
 use std::path::PathBuf;
 
 use std::sync::Arc;
@@ -2059,7 +2061,7 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
     );
     assert_eq!(
         message
-            .by_path("hedgegroups.0.hedgecurrency")
+            .by_path(&path("hedgegroups[0].hedgecurrency"))
             .expect("the group's own currency")
             .as_str(),
         Some("XAU"),

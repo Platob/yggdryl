@@ -420,7 +420,7 @@ test('absence throws with the core message, its get twin answers null', () => {
     /^Error: expected a fix field at "identifier 5001:#[0-9a-f]{8}", got nothing$/,
   )
   assert.throws(() => registry.fieldByName('Nope', ''), /name \\"Nope\\"/)
-  assert.throws(() => registry.fieldByPath('Symbol.absent', ''), /path \\"Symbol.absent\\"/)
+  assert.throws(() => registry.fieldByPath('Symbol.absent', ''), /path Symbol\.absent/)
   assert.throws(() => registry.field(9999), /tag 9999/)
   assert.equal(registry.getFieldByName('Nope', ''), null)
   assert.equal(registry.getFieldById('5001:cme'), null)
@@ -774,7 +774,7 @@ test('a message resolves through the registry it carries', () => {
   assert.equal(message.byId('55:').asJs(), 'AAPL')
   assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
   assert.equal(message.byTag(38).toString(), '100.0')
-  assert.equal(message.byPath('parties.0.partyid').asJs(), 'BROKER')
+  assert.equal(message.byPath('parties[0].partyid').asJs(), 'BROKER')
   // An unknown tag is retained under its rendered name, never dropped.
   assert.equal(message.byTag(9999).asJs(), 'custom')
   // An identifier is exact: a dictionary this message does not speak misses.
@@ -794,7 +794,7 @@ test('a message resolves through the registry it carries', () => {
     /^Error: expected a fix value at "identifier 5001:#[0-9a-f]{8}", got nothing$/,
   )
   assert.throws(() => message.byName('nope'), /name \\"nope\\"/)
-  assert.throws(() => message.byPath('parties.partyid'), /path \\"parties.partyid\\"/)
+  assert.throws(() => message.byPath('parties.partyid'), /path parties\.partyid/)
   assert.throws(() => message.at(55n), {
     name: 'TypeError',
     message: 'key must be a number tag or a string name, got BigInt',
@@ -1144,10 +1144,10 @@ test('a message restates at the dictionary\'s newest version', () => {
   assert.equal(latest.byTag(47).toJSON(), 'A')
   // ExecBroker and ClientID are two parties, in tag order, counted.
   assert.equal(latest.byTag(453).asJs(), 2)
-  assert.equal(latest.byPath('parties.0.partyid').asJs(), 'BRKR')
-  assert.equal(latest.byPath('parties.0.partyrole').asJs(), 1)
-  assert.equal(latest.byPath('parties.1.partyid').asJs(), 'CLIENT1')
-  assert.equal(latest.byPath('parties.1.partyrole').asJs(), 3)
+  assert.equal(latest.byPath('parties[0].partyid').asJs(), 'BRKR')
+  assert.equal(latest.byPath('parties[0].partyrole').asJs(), 1)
+  assert.equal(latest.byPath('parties[1].partyid').asJs(), 'CLIENT1')
+  assert.equal(latest.byPath('parties[1].partyrole').asJs(), 3)
   // The fill under its newest spelling, reachable by the old one too.
   assert.equal(latest.byTag(32).asJs(), 100)
   assert.equal(latest.byName('LastShares').asJs(), 100)

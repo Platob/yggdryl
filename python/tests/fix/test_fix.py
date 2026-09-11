@@ -496,7 +496,7 @@ def test_registry_absence_is_a_key_error_carrying_the_core_message(
 
     with pytest.raises(KeyError) as by_path:
         seed.field_by_path("Symbol.absent", "")
-    assert 'path \\"Symbol.absent\\"' in by_path.value.args[0]
+    assert "path Symbol.absent" in by_path.value.args[0]
 
     with pytest.raises(KeyError):
         seed[9999]
@@ -1114,7 +1114,7 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert message.by_id("55:").as_py() == "AAPL"
     assert message.by_name("symbol").as_py() == "AAPL"
     assert message.by_tag(38).as_py() == 100.0
-    assert message.by_path("parties.0.partyid").as_py() == "BROKER"
+    assert message.by_path("parties[0].partyid").as_py() == "BROKER"
     # An unknown tag is retained under its rendered name, never dropped.
     assert message.by_tag(9999).as_py() == "custom"
     # An identifier is exact: a dictionary this message does not speak misses.
@@ -1141,7 +1141,7 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert 'name \\"nope\\"' in by_name.value.args[0]
     with pytest.raises(KeyError) as by_path:
         message.by_path("Parties.PartyID")
-    assert 'path \\"Parties.PartyID\\"' in by_path.value.args[0]
+    assert "path Parties.PartyID" in by_path.value.args[0]
     with pytest.raises(TypeError, match="not bool"):
         message[True]
     # A malformed identifier is the native parse failure, never a miss.
@@ -1272,7 +1272,7 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     restored = pickle.loads(pickle.dumps(message))
     assert restored == message
     assert restored.registry == seed
-    assert restored.by_path("parties.0.partyid").as_py() == "BROKER"
+    assert restored.by_path("parties[0].partyid").as_py() == "BROKER"
 
     assert repr(message) == 'FixMsg("NewOrderSingle", 5 values)'
     assert repr(seed) == f"FixRegistry({6241 + CRATED} fields)"
@@ -1473,10 +1473,10 @@ def test_a_message_restates_at_the_dictionarys_newest_version(seed: FixRegistry)
     assert latest.by_tag(47).as_py() == "A"
     # ExecBroker and ClientID are two parties, in tag order, counted.
     assert latest.by_tag(453).as_py() == 2
-    assert latest.by_path("parties.0.partyid").as_py() == "BRKR"
-    assert latest.by_path("parties.0.partyrole").as_py() == 1
-    assert latest.by_path("parties.1.partyid").as_py() == "CLIENT1"
-    assert latest.by_path("parties.1.partyrole").as_py() == 3
+    assert latest.by_path("parties[0].partyid").as_py() == "BRKR"
+    assert latest.by_path("parties[0].partyrole").as_py() == 1
+    assert latest.by_path("parties[1].partyid").as_py() == "CLIENT1"
+    assert latest.by_path("parties[1].partyrole").as_py() == 3
     # The fill under its newest spelling, reachable by the old one too.
     assert latest.by_tag(32).as_py() == 100.0
     assert latest.by_name("LastShares").as_py() == 100.0

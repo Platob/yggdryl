@@ -19,7 +19,7 @@ use smol_str::format_smolstr;
 use super::{FixBranch, FixId, FixKey, FixPedigree};
 use crate::types::folds_equal;
 use crate::xxhash::Xxh64;
-use crate::{Error, Field, IOBase, Result, Url, Version};
+use crate::{Error, Field, FieldPath, FieldSegment, IOBase, Result, Url, Version};
 
 const NAME_SEED: u64 = 0x4e41_4d45_5f46_4958;
 const ALIAS_SEED: u64 = 0x414c_4941_535f_4649;
@@ -71,21 +71,38 @@ impl Mix {
 /// not allow now that the occurrence carries the component's name. The exact
 /// walk still runs under the list, because it is the cheap answer and the
 /// common one.
-pub(super) fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
-    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
-        return descend(item, path);
-    }
-    if let Some(held) = field.get_field_by_path(path) {
-        return Some(held);
-    }
-    let (head, rest) = match path.split_once('.') {
-        None => (path, None),
-        Some((head, rest)) => (head, Some(rest)),
+pub(super) fn descend<'field>(
+    field: &'field Field,
+    segments: &[FieldSegment],
+) -> Option<&'field Field> {
+    let Some((head, rest)) = segments.split_first() else {
+        return Some(field);
     };
-    let child = folded_child(field, head)?;
-    match rest {
-        None => Some(child),
-        Some(rest) => descend(child, rest),
+    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
+        // A group's occurrence is transparent in a schema: every one of them
+        // has the field the item declares, so an index states which
+        // occurrence a caller means without changing which field that is.
+        let rest = if matches!(head, FieldSegment::Index(_)) {
+            rest
+        } else {
+            segments
+        };
+        return descend(item, rest);
+    }
+    let child = folded_child(field, segment_name(head)?)?;
+    descend(child, rest)
+}
+
+/// The name a segment states, where it states one.
+///
+/// A schema is addressed by name: a position says which occurrence of a group
+/// a caller means, and every occurrence holds the same field, so a position
+/// names no child here and is spent by the list it stands on.
+fn segment_name(segment: &FieldSegment) -> Option<&str> {
+    match segment {
+        FieldSegment::Field(name) => Some(name.as_str()),
+        FieldSegment::Key(key) => key.value().as_str(),
+        FieldSegment::Index(_) => None,
     }
 }
 
@@ -397,15 +414,45 @@ impl FixRegistry {
             .ok_or_else(|| absent(FixKey::Name(name)))
     }
 
-    /// Returns the field a dotted path reaches.
+    /// One key read as a name, and as the path it spells where it spells one.
     ///
-    /// The optional branch applies only to the registry root; nested segments
-    /// continue through [`Field::get_field_by_path`].
-    pub fn get_field_by_path(&self, path: &str, branch: Option<&FixBranch>) -> Option<&Field> {
-        if let Some(field) = self.get_field_by_name(path, branch) {
+    /// A name costs no parse, which is what nearly every key is. A key
+    /// holding more than one segment is a reading a caller wrote down, and
+    /// reading it is this door's job rather than a second door's.
+    fn named_or_path(&self, key: &str) -> Option<&Field> {
+        if let Some(field) = self.get_field_by_name(key, None) {
             return Some(field);
         }
-        let (head, rest) = path.split_once('.')?;
+        let path = FieldPath::from_str(key).ok()?;
+        (path.segments().len() > 1)
+            .then(|| self.get_field_by_path(&path, None))
+            .flatten()
+    }
+
+    /// Returns the field a resolved path reaches.
+    ///
+    /// The path is the crate's one grammar, already parsed, and the same
+    /// spelling a message is addressed by: a schema states one item type for
+    /// a list, so an indexed segment answers that item - every occurrence of
+    /// a group has the field the item declares - and `Parties[0].PartyID`
+    /// therefore reaches the member here as well as in the message that
+    /// carries it.
+    ///
+    /// The optional branch applies only to the registry root; nested segments
+    /// continue through [`descend`], which recurses through a group's
+    /// occurrence without consuming one.
+    pub fn get_field_by_path(
+        &self,
+        path: &FieldPath,
+        branch: Option<&FixBranch>,
+    ) -> Option<&Field> {
+        let (head, rest) = path.segments().split_first()?;
+        let head = segment_name(head)?;
+        if rest.is_empty() {
+            if let Some(field) = self.get_field_by_name(head, branch) {
+                return Some(field);
+            }
+        }
         let mut roots = [
             crate::FixCategory::Messages,
             crate::FixCategory::Components,
@@ -417,13 +464,16 @@ impl FixRegistry {
         if roots.next().is_some() {
             return None;
         }
+        if rest.is_empty() {
+            return Some(root);
+        }
         descend(root, rest)
     }
 
-    /// Returns the field a dotted path reaches, raising absence.
-    pub fn field_by_path(&self, path: &str, branch: Option<&FixBranch>) -> Result<&Field> {
+    /// Returns the field a resolved path reaches, raising absence.
+    pub fn field_by_path(&self, path: &FieldPath, branch: Option<&FixBranch>) -> Result<&Field> {
         self.get_field_by_path(path, branch)
-            .ok_or_else(|| absent(format_args!("path {path:?}")))
+            .ok_or_else(|| absent(format_args!("path {path}")))
     }
 
     /// Returns the field a tag, identifier, name, or dotted path reaches.
@@ -431,7 +481,7 @@ impl FixRegistry {
         match key.into() {
             FixKey::Tag(tag) => self.get_field_by_tag(tag),
             FixKey::Id(id) => self.get_field_by_id(id),
-            FixKey::Name(name) => self.get_field_by_path(name, None),
+            FixKey::Name(name) => self.named_or_path(name),
         }
     }
 
@@ -440,7 +490,17 @@ impl FixRegistry {
         match key.into() {
             FixKey::Tag(tag) => self.field_by_tag(tag),
             FixKey::Id(id) => self.field_by_id(id),
-            FixKey::Name(name) => self.field_by_path(name, None),
+            FixKey::Name(name) => {
+                if let Some(field) = self.get_field_by_name(name, None) {
+                    return Ok(field);
+                }
+                // Where the key spells a path, the path door is the reading
+                // that was attempted, so its absence is the one to raise.
+                match FieldPath::from_str(name) {
+                    Ok(path) if path.segments().len() > 1 => self.field_by_path(&path, None),
+                    _ => Err(absent(FixKey::Name(name))),
+                }
+            }
         }
     }
 

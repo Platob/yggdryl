@@ -14,6 +14,7 @@
 //! both can answer.
 
 use super::OneMessage;
+use super::path as fpath;
 
 use std::sync::Arc;
 
@@ -545,13 +546,13 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
         ("NeedReload", Scalar::from(false)),
         ("State", Scalar::from("logged")),
     ] {
-        assert_eq!(message.by_path(path).unwrap(), &expected, "{path}");
+        assert_eq!(message.by_path(&fpath(path)).unwrap(), &expected, "{path}");
     }
     // A stated null is an absence, and an array is kept as the JSON it is.
-    assert!(message.get_by_path("BackupHost").is_none());
+    assert!(message.get_by_path(&fpath("BackupHost")).is_none());
     assert!(
         message
-            .by_path("ExtendedActions")
+            .by_path(&fpath("ExtendedActions"))
             .unwrap()
             .as_str()
             .is_some_and(|held| held.contains("send-test-request"))

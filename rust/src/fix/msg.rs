@@ -11,7 +11,7 @@ use super::anomaly::FixAnomalies;
 use super::build::stated;
 use super::entry::FixEntry;
 use super::{FixBranch, FixId, FixKey, FixRegistry};
-use crate::{DataType, Error, Field, Result, Scalar, Version};
+use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Version};
 
 /// A FIX message value, resolved against one registry.
 ///
@@ -963,21 +963,24 @@ impl FixMsg {
             .ok_or_else(|| absent(FixKey::Name(name)))
     }
 
-    /// Returns the value a dotted path reaches.
+    /// Returns the value a resolved path reaches.
     ///
-    /// The whole string is tried as a name first. Otherwise the first segment
-    /// resolves as [`Self::get_by_name`] does and each further segment
-    /// descends: into a Struct child by name - the registry's canonical
-    /// spelling first, then an exact match - or, when the value at hand is
-    /// the sequence a List field holds, a decimal segment indexes one entry.
-    /// A repeating group is that List of Structs, so reaching one member
-    /// needs the entry's index: `Parties.0.PartyID`.
-    pub fn get_by_path(&self, path: &str) -> Option<&Scalar> {
-        if let Some(value) = self.get_by_name(path) {
-            return Some(value);
-        }
-        let mut segments = path.split('.');
-        let index = self.child_index(&self.field, segments.next()?)?;
+    /// The path is the crate's one grammar, already parsed: nothing here
+    /// splits a string, so a run addressing the same member a million times
+    /// resolves the path once. A named segment resolves as
+    /// [`Self::get_by_name`] does - the registry's canonical spelling first,
+    /// then an exact match, under the codec's dialect before the standard
+    /// branch - and an indexed segment takes one occurrence of the List a
+    /// repeating group is, which is what reaching a member needs:
+    /// `Parties[0].PartyID`.
+    ///
+    /// A bare decimal is a name and not a position, exactly as it is one
+    /// layer down where a text line's entry keyed `55` is reached by the path
+    /// `55`. A path of one named segment is [`Self::get_by_name`].
+    pub fn get_by_path(&self, path: &FieldPath) -> Option<&Scalar> {
+        let mut segments = path.segments().iter();
+        let first = segments.next()?;
+        let index = self.segment_index(&self.field, first)?;
         let mut field = self.field.fields().get(index)?;
         let mut value = self.value.get(index)?;
         for segment in segments {
@@ -986,25 +989,29 @@ impl FixMsg {
         Some(value)
     }
 
-    /// Returns the value a dotted path reaches, raising absence.
+    /// Returns the value a resolved path reaches, raising absence.
     ///
     /// # Errors
     ///
     /// Returns a typed absence naming the path.
-    pub fn by_path(&self, path: &str) -> Result<&Scalar> {
+    pub fn by_path(&self, path: &FieldPath) -> Result<&Scalar> {
         self.get_by_path(path)
-            .ok_or_else(|| absent(format_args!("path {path:?}")))
+            .ok_or_else(|| absent(format_args!("path {path}")))
     }
 
-    /// Returns the value a tag, an identifier or a name reaches.
+    /// Returns the value a tag, an identifier, a name or a path reaches.
     ///
     /// Matches the key once and redirects: a tag to [`Self::get_by_tag`], an
-    /// identifier to [`Self::get_by_id`], a name to [`Self::get_by_path`].
+    /// identifier to [`Self::get_by_id`], a name to [`Self::get_by_name`] -
+    /// and, only where that reached nothing and the key spells more than one
+    /// segment, to [`Self::get_by_path`] with the path that key states. The
+    /// reading a caller writes down is resolved here, which is why the door
+    /// that takes one already resolved is the one a loop should use.
     pub fn get<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Scalar> {
         match key.into() {
             FixKey::Tag(tag) => self.get_by_tag(tag),
             FixKey::Id(id) => self.get_by_id(id),
-            FixKey::Name(name) => self.get_by_path(name),
+            FixKey::Name(name) => self.named_or_path(name),
         }
     }
 
@@ -1019,7 +1026,17 @@ impl FixMsg {
         match key.into() {
             FixKey::Tag(tag) => self.by_tag(tag),
             FixKey::Id(id) => self.by_id(id),
-            FixKey::Name(name) => self.by_path(name),
+            FixKey::Name(name) => {
+                if let Some(value) = self.get_by_name(name) {
+                    return Ok(value);
+                }
+                // Where the key spells a path, the path door is the reading
+                // that was attempted, so its absence is the one to raise.
+                match FieldPath::from_str(name) {
+                    Ok(path) if path.segments().len() > 1 => self.by_path(&path),
+                    _ => Err(absent(FixKey::Name(name))),
+                }
+            }
         }
     }
 
@@ -1071,17 +1088,47 @@ impl FixMsg {
         named_index(&self.field, name)
     }
 
-    /// One step of a path: into a Struct child by name, or into a List entry
-    /// by index.
+    /// One key read as a name, and as the path it spells where it spells one.
+    ///
+    /// A name costs no parse, which is what nearly every key is. A key
+    /// holding more than one segment is a reading a caller wrote down, and
+    /// reading it is this door's job rather than a second door's.
+    fn named_or_path(&self, key: &str) -> Option<&Scalar> {
+        if let Some(value) = self.get_by_name(key) {
+            return Some(value);
+        }
+        let path = FieldPath::from_str(key).ok()?;
+        (path.segments().len() > 1)
+            .then(|| self.get_by_path(&path))
+            .flatten()
+    }
+
+    /// The position one named segment reaches under `parent`.
+    ///
+    /// Where a segment's name is resolved, and the only place FIX's own
+    /// naming enters a path: the grammar states which child is wanted and
+    /// this states which child that is. An indexed segment names no child, so
+    /// it reaches nothing here - a position is answered by [`Self::descend`],
+    /// which knows whether it is standing on a list.
+    fn segment_index(&self, parent: &Field, segment: &FieldSegment) -> Option<usize> {
+        match segment {
+            FieldSegment::Field(name) => self.child_index(parent, name),
+            FieldSegment::Key(key) => self.child_index(parent, key.value().as_str()?),
+            FieldSegment::Index(_) => None,
+        }
+    }
+
+    /// One step of a path: into a Struct child by name, or into one
+    /// occupancy of the List a repeating group is.
     fn descend<'value>(
         &self,
         field: &'value Field,
         value: &'value Scalar,
-        segment: &str,
+        segment: &FieldSegment,
     ) -> Option<(&'value Field, &'value Scalar)> {
         match field.dtype() {
             DataType::Struct(_) => {
-                let index = self.child_index(field, segment)?;
+                let index = self.segment_index(field, segment)?;
                 Some((field.fields().get(index)?, value.get(index)?))
             }
             DataType::List(item)
@@ -1089,10 +1136,19 @@ impl FixMsg {
             | DataType::FixedSizeList(item, _)
             | DataType::ListView(item)
             | DataType::LargeListView(item) => {
-                if segment.is_empty() || !segment.bytes().all(|byte| byte.is_ascii_digit()) {
+                let FieldSegment::Index(position) = segment else {
                     return None;
-                }
-                Some((item.as_ref(), value.get(segment.parse().ok()?)?))
+                };
+                // A negative index counts back from the end, as the grammar
+                // states it: the last occurrence is `[-1]` whatever a message
+                // happened to carry.
+                let held = value.as_sequence()?;
+                let at = if *position < 0 {
+                    held.len().checked_sub(position.unsigned_abs() as usize)?
+                } else {
+                    usize::try_from(*position).ok()?
+                };
+                Some((item.as_ref(), value.get(at)?))
             }
             _ => None,
         }

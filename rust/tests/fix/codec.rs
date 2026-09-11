@@ -1,6 +1,7 @@
 //! The codec's readers, over the committed dictionary and a real capture.
 
 use super::OneMessage;
+use super::path;
 
 use std::sync::Arc;
 
@@ -135,27 +136,33 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
     let message = reader.parse_fix_line(wire).unwrap();
     assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
     assert_eq!(
-        message.by_path("Parties.0.PartyID").unwrap().as_str(),
+        message
+            .by_path(&path("Parties[0].PartyID"))
+            .unwrap()
+            .as_str(),
         Some("A")
     );
     assert_eq!(
-        message.by_path("Parties.1.PartyID").unwrap().as_str(),
+        message
+            .by_path(&path("Parties[1].PartyID"))
+            .unwrap()
+            .as_str(),
         Some("B")
     );
     assert_eq!(
-        message.by_path("Parties.0.NoPartySubIDs").unwrap(),
+        message.by_path(&path("Parties[0].NoPartySubIDs")).unwrap(),
         &Scalar::from(2_i32)
     );
     assert_eq!(
         message
-            .by_path("Parties.0.PtysSubGrp.1.PartySubID")
+            .by_path(&path("Parties[0].PtysSubGrp[1].PartySubID"))
             .unwrap()
             .as_str(),
         Some("CLIENT")
     );
     assert_eq!(
         message
-            .by_path("Parties.1.PtysSubGrp.0.PartySubID")
+            .by_path(&path("Parties[1].PtysSubGrp[0].PartySubID"))
             .unwrap()
             .as_str(),
         Some("OTHER")
@@ -183,14 +190,34 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
 fn numeric_group_member_anomalies_keep_omitted_and_repeated_occurrences_aligned() {
     let wire = b"35=D|453=5|448=OMITTED|448=INVALID|452=bogus|448=VALID|452=1|448=OMITTED2|448=OVERFLOW|452=2147483648|10=0|";
     let message = reader().parse_fix_line(wire).unwrap();
-    assert!(message.by_path("Parties.0.PartyRole").unwrap().is_null());
-    assert!(message.by_path("Parties.1.PartyRole").unwrap().is_null());
+    assert!(
+        message
+            .by_path(&path("Parties[0].PartyRole"))
+            .unwrap()
+            .is_null()
+    );
+    assert!(
+        message
+            .by_path(&path("Parties[1].PartyRole"))
+            .unwrap()
+            .is_null()
+    );
     assert_eq!(
-        message.by_path("Parties.2.PartyRole").unwrap(),
+        message.by_path(&path("Parties[2].PartyRole")).unwrap(),
         &Scalar::from(1_i32)
     );
-    assert!(message.by_path("Parties.3.PartyRole").unwrap().is_null());
-    assert!(message.by_path("Parties.4.PartyRole").unwrap().is_null());
+    assert!(
+        message
+            .by_path(&path("Parties[3].PartyRole"))
+            .unwrap()
+            .is_null()
+    );
+    assert!(
+        message
+            .by_path(&path("Parties[4].PartyRole"))
+            .unwrap()
+            .is_null()
+    );
     let anomalies: Vec<_> = message.anomalies().collect();
     assert_eq!(
         anomalies,
@@ -267,7 +294,10 @@ fn an_unknown_numeric_group_member_closes_the_scope_without_losing_pairs() {
     let wire = b"35=D|453=1|448=A|9999=outside|447=D|55=AAPL|10=0|";
     let message = reader.parse_fix_line(wire).unwrap();
     assert_eq!(
-        message.by_path("Parties.0.PartyID").unwrap().as_str(),
+        message
+            .by_path(&path("Parties[0].PartyID"))
+            .unwrap()
+            .as_str(),
         Some("A")
     );
     assert_eq!(message.by_tag(9999).unwrap().as_str(), Some("outside"));
@@ -706,7 +736,9 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
         .unwrap();
     assert_eq!(typed.by_tag(35).unwrap().as_str(), Some("s"));
     assert_eq!(
-        typed.by_path("SideCrossOrdModGrp.0.ClOrdID").unwrap(),
+        typed
+            .by_path(&path("SideCrossOrdModGrp[0].ClOrdID"))
+            .unwrap(),
         &Scalar::from("X")
     );
 }
@@ -780,7 +812,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
         let parties = message.by_name("parties").unwrap().as_sequence().unwrap().to_vec();
         assert_eq!(parties.len(), 1, "{spelled}: {parties:?}");
         assert_eq!(
-            message.by_path("Parties.0.PartyID").unwrap().as_str(),
+            message.by_path(&path("Parties[0].PartyID")).unwrap().as_str(),
             Some("BARE"),
             "{spelled}"
         );
@@ -840,7 +872,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     let message = reader.one_line(counted, false).unwrap();
     assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
     assert_eq!(
-        message.by_path("Parties.0.PartyID").unwrap(),
+        message.by_path(&path("Parties[0].PartyID")).unwrap(),
         &Scalar::from("B")
     );
     let at = message
@@ -865,7 +897,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
 |#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
     let message = reader.one_line(restated, false).unwrap();
     assert_eq!(
-        message.by_path("Parties.0.PartyID").unwrap(),
+        message.by_path(&path("Parties[0].PartyID")).unwrap(),
         &Scalar::from("A")
     );
     assert!(message.as_field().index_of("#nopartyids").is_none());
@@ -892,16 +924,16 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     let message = reader.one_line(closed, false).unwrap();
     assert_eq!(
         message
-            .by_path("Parties.0.PtysSubGrp.0.PartySubID")
+            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubID"))
             .unwrap(),
         &Scalar::from("a")
     );
     assert_eq!(
-        message.by_path("Parties.0.PartyID").unwrap(),
+        message.by_path(&path("Parties[0].PartyID")).unwrap(),
         &Scalar::from("X")
     );
     assert_eq!(
-        message.by_path("Parties.1.PartyID").unwrap(),
+        message.by_path(&path("Parties[1].PartyID")).unwrap(),
         &Scalar::from("Y")
     );
     let members = |path: &str| -> Vec<String> {
@@ -959,19 +991,19 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     let message = reader.one_line(open, false).unwrap();
     assert_eq!(
         message
-            .by_path("Parties.0.PtysSubGrp.0.PartySubID")
+            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubID"))
             .unwrap(),
         &Scalar::from("a")
     );
     assert_eq!(
         message
-            .by_path("Parties.0.PtysSubGrp.0.PartySubIDType")
+            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubIDType"))
             .unwrap()
             .as_i64(),
         Some(1)
     );
     assert_eq!(
-        message.by_path("Parties.0.PartyID").unwrap(),
+        message.by_path(&path("Parties[0].PartyID")).unwrap(),
         &Scalar::from("X")
     );
     let party = message
@@ -991,12 +1023,15 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
 |NOPARTYIDS[0]=PARTYID=X\x04\x03 \x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03PARTYROLE=1\x04\x03";
     let message = reader.one_line(spaced, false).unwrap();
     assert_eq!(
-        message.by_path("Parties.0.PartyRole").unwrap().as_i64(),
+        message
+            .by_path(&path("Parties[0].PartyRole"))
+            .unwrap()
+            .as_i64(),
         Some(1)
     );
     assert_eq!(
         message
-            .by_path("Parties.0.PtysSubGrp.0.PartySubIDType")
+            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubIDType"))
             .unwrap()
             .as_i64(),
         Some(1)
@@ -1019,7 +1054,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     assert_eq!(arrived, ["MSGTYPE", "NOPARTYIDS", "NOPARTYIDS[0]"]);
     let mut depth = 0;
     let mut level = message
-        .get_by_path("Parties.0.PtysSubGrp")
+        .get_by_path(&path("Parties[0].PtysSubGrp"))
         .and_then(Scalar::as_sequence);
     while let Some(held) = level {
         depth += 1;
@@ -1049,26 +1084,28 @@ fn an_implicit_run_nests_a_declared_group_at_every_depth_and_lifts_what_no_level
     let message = reader.one_line(row, false).unwrap();
     assert_eq!(
         message
-            .by_path("TrdCapRptSideGrp.0.Parties.0.PtysSubGrp.0.PartySubID")
+            .by_path(&path(
+                "TrdCapRptSideGrp[0].Parties[0].PtysSubGrp[0].PartySubID"
+            ))
             .unwrap(),
         &Scalar::from("a")
     );
     assert_eq!(
         message
-            .by_path("TrdCapRptSideGrp.0.Parties.0.PartyID")
+            .by_path(&path("TrdCapRptSideGrp[0].Parties[0].PartyID"))
             .unwrap(),
         &Scalar::from("X")
     );
     assert_eq!(
         message
-            .by_path("TrdCapRptSideGrp.0.Parties.0.PartyRole")
+            .by_path(&path("TrdCapRptSideGrp[0].Parties[0].PartyRole"))
             .unwrap()
             .as_i64(),
         Some(1)
     );
     assert_eq!(
         message
-            .by_path("TrdCapRptSideGrp.0.Parties.1.PartyID")
+            .by_path(&path("TrdCapRptSideGrp[0].Parties[1].PartyID"))
             .unwrap(),
         &Scalar::from("Y")
     );
@@ -1262,7 +1299,10 @@ fn a_mark_is_judged_where_a_row_is_split_and_nowhere_else() {
 |NOPARTYIDS[0]=PARTYID=a\x04\x03#NOPARTYSUBIDS[0]=PARTYSUBID=s\x04\x03PARTYSUBIDTYPE=1\x04\x03\x04\x03PARTYROLE=1\x04\x03";
     let message = reader.one_line(packed, false).unwrap();
     assert_eq!(
-        message.by_path("Parties.0.PartyRole").unwrap().as_i64(),
+        message
+            .by_path(&path("Parties[0].PartyRole"))
+            .unwrap()
+            .as_i64(),
         Some(1)
     );
     let party = message
@@ -1489,11 +1529,11 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
     // stated, beside the group the occurrences reach.
     assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
     assert_eq!(
-        message.by_path("Parties.0.PartyRole").unwrap(),
+        message.by_path(&path("Parties[0].PartyRole")).unwrap(),
         &Scalar::from(1_i32)
     );
     assert_eq!(
-        message.by_path("Parties.1.PartyRole").unwrap(),
+        message.by_path(&path("Parties[1].PartyRole")).unwrap(),
         &Scalar::from(17_i32)
     );
     // A member lives in its occurrence and nowhere else: nothing is flat at
@@ -1926,7 +1966,7 @@ fn separatorless_group_inference_uses_only_direct_members() {
     // the bytes inside it.
     assert_eq!(
         message
-            .by_path("parties.0.venueflag")
+            .by_path(&path("parties[0].venueflag"))
             .expect("the residue the group kept")
             .as_str(),
         Some("XSymbol=TTF")
@@ -1973,7 +2013,7 @@ fn separatorless_group_inference_uses_only_direct_members() {
     // wrote and nothing about how it was read.
     assert_eq!(
         numeric_name
-            .by_path("minimalparties.0.partyid")
+            .by_path(&path("minimalparties[0].partyid"))
             .expect("the one unsplit member")
             .as_str(),
         Some("BUYSIDEPARTYROLE=1")

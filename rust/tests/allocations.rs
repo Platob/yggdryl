@@ -29,8 +29,8 @@ use std::sync::Arc;
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::types::{MsgDirection, UncheckedFieldScalar};
 use yggdryl::{
-    DataType, DataTypeId, Field, FieldRecord, FieldScalar, FixBranch, FixCode, FixCodec, FixId,
-    FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType, PythonKind,
+    DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixBranch, FixCode, FixCodec,
+    FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType, PythonKind,
     PythonMetadata, Scalar, TimeUnit, Timezone, Version,
 };
 
@@ -372,8 +372,11 @@ fn a_fix_registry_lookup_allocates_nothing() {
         let _ = black_box(registry.get_field(65));
         let _ = black_box(registry.get_field(vendor));
     });
+    // Resolved once, outside the closure, because that is where a path is
+    // read: what the lookup itself costs is nothing.
+    let absent_member = FieldPath::from_str("Symbol.absent").expect("a path");
     free("get_field_by_path member", || {
-        let _ = black_box(registry.get_field_by_path("Symbol.absent", Some(&standard)));
+        let _ = black_box(registry.get_field_by_path(&absent_member, Some(&standard)));
     });
     free("contains", || {
         let _ = black_box(registry.contains("Symbol"));
@@ -727,8 +730,9 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     free("get_by_name", || {
         let _ = black_box(msg.get_by_name("ticker"));
     });
+    let absent_member = FieldPath::from_str("Symbol.absent").expect("a path");
     free("get_by_path", || {
-        let _ = black_box(msg.get_by_path("Symbol.absent"));
+        let _ = black_box(msg.get_by_path(&absent_member));
     });
 }
 

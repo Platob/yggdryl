@@ -63,7 +63,7 @@ test('pinned numeric fields and groups use their own branch and scalar types', (
       assert.equal(message.branch, branch)
       assert.equal(message.byName(`No${name}Rows`).asJs(), 1)
       assert.equal(message.field.fieldByPath(`No${name}Rows`).dtype.toString(), 'int32')
-      assert.equal(message.byPath(`${name}Rows.0.${name}ID`).asJs(), member)
+      assert.equal(message.byPath(`${name}Rows[0].${name}ID`).asJs(), member)
       assert.equal(message.byName(`${name}Value`).asJs(), tail)
       assert.equal(message.field.fieldByPath(`${name}Value`).dtype.toString(), dtype)
       assert.equal(message.byTag(55).asJs(), 'AAPL')

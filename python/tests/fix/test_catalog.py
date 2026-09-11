@@ -476,7 +476,7 @@ def test_numeric_fields_and_groups_follow_the_pinned_branch(scoped: bool, branch
     wire = b"35=X|6000=1|6001=42|6002=7|55=AAPL|10=0|"
     message = codec.parse_fix_line(wire)
     assert message.by_name(f"No{name}Rows").as_py() == 1
-    assert message.by_path(f"{name}Rows.0.{name}ID").as_py() == member
+    assert message.by_path(f"{name}Rows[0].{name}ID").as_py() == member
     assert message.by_name(f"{name}Value").as_py() == tail
     assert message.field.field_by_path(f"{name}Value").dtype == DataType(dtype)
     assert message.by_tag(55).as_py() == "AAPL"

@@ -1,5 +1,7 @@
 //! FIX category storage and atomic catalog mutations.
 
+use super::path as fpath;
+
 use std::path::PathBuf;
 use yggdryl::holder::local::Folder;
 use yggdryl::{
@@ -642,7 +644,7 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
         assert_eq!(group.name(), "Parties");
         assert_eq!(
             target
-                .field_by_path("NewOrderSingle.Parties.PartyID", None)
+                .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
                 .unwrap()
                 .as_fix()
                 .code_name("B"),
@@ -684,7 +686,7 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
         "NewOrderSingle.Parties.PartyID",
         "IncomingOrder.Parties.PartyID",
     ] {
-        let field = target.field_by_path(path, None).unwrap();
+        let field = target.field_by_path(&fpath(path), None).unwrap();
         assert_eq!(field.as_fix().code_name("B"), Some("Broker"), "{path}");
         assert_eq!(field.as_fix().code_name("C"), Some("Client"), "{path}");
     }
@@ -741,14 +743,14 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
         "NewOrderSingle.Parties.Extra",
     ] {
         assert_eq!(
-            target.field_by_path(path, None).unwrap().dtype(),
+            target.field_by_path(&fpath(path), None).unwrap().dtype(),
             &DataType::Int32,
             "{path}"
         );
     }
     assert_eq!(
         target
-            .field_by_path("NewOrderSingle.Parties.PartyID", None)
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
             .unwrap()
             .as_fix()
             .code_name("C"),
@@ -791,7 +793,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .update_definition(FixCategory::Components, component)
         .unwrap();
     let DataType::List(item) = registry
-        .field_by_path("NewOrderSingle.Parties", None)
+        .field_by_path(&fpath("NewOrderSingle.Parties"), None)
         .unwrap()
         .dtype()
     else {
@@ -808,7 +810,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .unwrap();
     assert_eq!(
         registry
-            .field_by_path("NewOrderSingle.Parties.PartyID", None)
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
             .unwrap()
             .as_fix()
             .description(),
@@ -827,7 +829,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .unwrap();
     assert_eq!(
         registry
-            .field_by_path("NewOrderSingle.Parties", None)
+            .field_by_path(&fpath("NewOrderSingle.Parties"), None)
             .unwrap()
             .as_fix()
             .description(),
@@ -883,12 +885,12 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
         }
     }
     let partyid = registry
-        .field_by_path("NewOrderSingle.Parties.PartyID", None)
+        .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
         .unwrap();
     assert_eq!(partyid.name(), "PartyID");
     assert_eq!(partyid.as_fix().description(), Some("Replaced metadata"));
     let group = registry
-        .field_by_path("NewOrderSingle.Parties", None)
+        .field_by_path(&fpath("NewOrderSingle.Parties"), None)
         .unwrap();
     assert_eq!(group.name(), "Parties");
     assert_eq!(group.as_fix().description(), Some("Replaced metadata"));
@@ -928,7 +930,7 @@ fn folded_field_updates_keep_canonical_names_and_refresh_references() {
     assert_eq!(canonical.as_fix().tags().unwrap(), [9001]);
     assert!(std::ptr::eq(registry.field(9001).unwrap(), canonical));
     for path in ["Instrument.Symbol", "NewOrderSingle.Instrument.Symbol"] {
-        let occurrence = registry.field_by_path(path, None).unwrap();
+        let occurrence = registry.field_by_path(&fpath(path), None).unwrap();
         assert_eq!(occurrence.name(), "symbol");
         assert_eq!(occurrence.as_fix().field_ref(), Some("symbol"));
         assert_eq!(occurrence.as_fix().tags().unwrap(), [9001]);
@@ -1131,7 +1133,7 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
     assert_eq!(registry.msgtype("NOS", None).unwrap().as_str(), "D");
     assert_eq!(
         registry
-            .field_by_path("EnumReport.Header.MsgType", None)
+            .field_by_path(&fpath("EnumReport.Header.MsgType"), None)
             .unwrap()
             .as_fix()
             .code_value("NOS"),
@@ -1149,7 +1151,7 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
     registry.insert(changed).unwrap();
     assert_eq!(
         registry
-            .field_by_path("EnumReport.Header.MsgType", None)
+            .field_by_path(&fpath("EnumReport.Header.MsgType"), None)
             .unwrap()
             .as_fix()
             .description(),
@@ -1162,7 +1164,7 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
     assert!(registry.get_msgtype("NOS", None).is_none());
     assert!(
         registry
-            .field_by_path("EnumReport.Header.MsgType", None)
+            .field_by_path(&fpath("EnumReport.Header.MsgType"), None)
             .unwrap()
             .as_fix()
             .codes()

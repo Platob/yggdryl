@@ -312,7 +312,7 @@ names are folded; `display` keeps the specification's spelling.
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{DataType, FixCategory, FixRegistry};
+    use yggdryl::{DataType, FixCategory, FixRegistry, FieldPath};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
@@ -320,7 +320,7 @@ names are folded; `display` keeps the specification's spelling.
     let parties = registry.definition(FixCategory::Groups, "Parties", None)?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert!(!registry.definition(FixCategory::Components, "Party", None)?.fields().is_empty());
-    assert_eq!(registry.field_by_path("Parties.PartyID", None)?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?, None)?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("PartyID", None)?.as_fix().tag()?, Some(448));
     ```
 
@@ -363,7 +363,7 @@ names are folded; `display` keeps the specification's spelling.
 - A tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` on a named branch, canonical or alternate -> refused naming `fix:branch` and both bounds, from a setter, a read, an insert, or a shard load.
 - `FixBranch::from_str("standard")` -> an ordinary named branch whose `is_standard()` is `false`; only the empty name is the standard branch.
 - `FixId::from_parts` takes the branch by reference and `set_id` takes the branch and the tag, so neither clones a branch.
-- `get_field_by_path` traverses a declared group without an occurrence index; a message value uses an index, for example `Parties.0.PartyID`.
+- `get_field_by_path` traverses a declared group with or without an occurrence: a schema states one item type, so `Parties[0].PartyID` and `Parties.PartyID` reach the same field, and the first is the spelling a message value takes.
 - A shared count tag can describe different group layouts. A message singleton selects its own group context; an ambiguous registry-wide counter lookup fails.
 
 ## Commands

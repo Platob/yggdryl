@@ -25,7 +25,7 @@ use std::thread::ThreadId;
 
 use napi::JsValue as _;
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Env, FromNapiValue, Function, FunctionRef, Generator,
+    Buffer, ClassInstance, Either, Env, FromNapiValue, Function, FunctionRef, Generator,
     JsObjectValue as _, Object, Result, Status, Unknown, ValueType,
 };
 use napi_derive::napi;
@@ -39,7 +39,7 @@ use yggdryl::{
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::iomedia::JsBatchReader;
 use crate::text::codec::JsScalar;
-use crate::text_line::JsTextLine;
+use crate::text_line::{JsFieldPath, JsTextLine, path_from_input};
 use crate::types::field::JsField;
 use crate::{exact_i32, exact_i64, napi_error, napi_type_error};
 
@@ -565,9 +565,10 @@ impl JsFixRegistry {
     #[napi]
     pub fn get_field_by_path(
         &self,
-        path: String,
+        path: Either<String, &JsFieldPath>,
         branch: Option<String>,
     ) -> Result<Option<JsField>> {
+        let path = path_from_input(path)?;
         let branch = branch.as_deref().map(branch_from_js).transpose()?;
         Ok(self
             .inner
@@ -576,9 +577,19 @@ impl JsFixRegistry {
             .map(JsField::from_core))
     }
 
-    /// The field a dotted path reaches through a component or a group.
-    #[napi]
-    pub fn field_by_path(&self, path: String, branch: Option<String>) -> Result<JsField> {
+    /// The field a path reaches through a component or a group.
+    ///
+    /// A position is spelled the way the one grammar spells it -
+    /// `Parties[0].PartyID` - and a schema answers the item every occurrence
+    /// of a group holds, so that spelling reaches the member here as well as
+    /// in a message.
+    #[napi(ts_args_type = "path: string | FieldPath, branch?: string")]
+    pub fn field_by_path(
+        &self,
+        path: Either<String, &JsFieldPath>,
+        branch: Option<String>,
+    ) -> Result<JsField> {
+        let path = path_from_input(path)?;
         let branch = branch.as_deref().map(branch_from_js).transpose()?;
         self.inner
             .field_by_path(&path, branch.as_ref())
@@ -1014,18 +1025,24 @@ impl JsFixMsg {
             .map_err(napi_error)
     }
 
-    /// The value a dotted path reaches, or `null`.
-    #[napi]
-    pub fn get_by_path(&self, path: String) -> Option<JsScalar> {
-        self.inner
+    /// The value a path reaches, or `null`.
+    #[napi(ts_args_type = "path: string | FieldPath")]
+    pub fn get_by_path(&self, path: Either<String, &JsFieldPath>) -> Result<Option<JsScalar>> {
+        let path = path_from_input(path)?;
+        Ok(self
+            .inner
             .get_by_path(&path)
             .cloned()
-            .map(JsScalar::from_core)
+            .map(JsScalar::from_core))
     }
 
-    /// The value a dotted path reaches.
-    #[napi]
-    pub fn by_path(&self, path: String) -> Result<JsScalar> {
+    /// The value a path reaches.
+    ///
+    /// A position is spelled the way the one grammar spells it:
+    /// `Parties[0].PartyID`.
+    #[napi(ts_args_type = "path: string | FieldPath")]
+    pub fn by_path(&self, path: Either<String, &JsFieldPath>) -> Result<JsScalar> {
+        let path = path_from_input(path)?;
         self.inner
             .by_path(&path)
             .map(|value| JsScalar::from_core(value.clone()))

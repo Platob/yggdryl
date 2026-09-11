@@ -14,6 +14,8 @@
 //! one shape, with enrichment on, and the two readings are required to agree
 //! line for line.
 
+use super::path;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -708,46 +710,48 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
         // the group the dictionary files under `Parties`.
         assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(6_i32));
         let parties = message
-            .by_path("Parties")
+            .by_path(&path("Parties"))
             .unwrap()
             .as_sequence()
             .expect("parties");
         assert_eq!(parties.len(), 6);
         assert_eq!(
-            message.by_path("Parties.0.PartyID").unwrap(),
+            message.by_path(&path("Parties[0].PartyID")).unwrap(),
             &Scalar::from("HIGH_TOUCH")
         );
         assert_eq!(
-            message.by_path("Parties.1.PartyID").unwrap(),
+            message.by_path(&path("Parties[1].PartyID")).unwrap(),
             &Scalar::from("SWXCCP")
         );
     }
     // Flattened, the sub-identifier group is a group of the row.
     assert_eq!(
-        flat.by_path("PtysSubGrp.0.PartySubID").unwrap(),
+        flat.by_path(&path("PtysSubGrp[0].PartySubID")).unwrap(),
         &Scalar::from("trader1")
     );
     // Packed inside the party, it is the party's own: reached through it,
     // typed through its own field - `contactname` is the code set's
     // spelling of 9 - and absent from a party that packed none.
     assert_eq!(
-        nested.by_path("Parties.0.PtysSubGrp.0.PartySubID").unwrap(),
+        nested
+            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubID"))
+            .unwrap(),
         &Scalar::from("trader1")
     );
     assert_eq!(
         nested
-            .by_path("Parties.0.PtysSubGrp.0.PartySubIDType")
+            .by_path(&path("Parties[0].PtysSubGrp[0].PartySubIDType"))
             .unwrap()
             .as_i64(),
         Some(9)
     );
     assert!(
         nested
-            .get_by_path("Parties.1.PtysSubGrp")
+            .get_by_path(&path("Parties[1].PtysSubGrp"))
             .is_none_or(Scalar::is_null)
     );
     assert!(
-        nested.get_by_tag(802).is_none() && nested.get_by_path("PtysSubGrp").is_none(),
+        nested.get_by_tag(802).is_none() && nested.get_by_path(&path("PtysSubGrp")).is_none(),
         "no sub-identifier counter or group at the row level"
     );
     // The row nests three deep; the arrival record nests as the bridge wrote
@@ -845,7 +849,7 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
         &Scalar::from(200_i64)
     );
     assert_eq!(
-        message.by_path("CurrentPort").unwrap(),
+        message.by_path(&path("CurrentPort")).unwrap(),
         &Scalar::from(9726_i64)
     );
     // A wildcard read answers for every plugin, one message each, and every
@@ -863,9 +867,14 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     ] {
         let held = messages
             .iter()
-            .find(|message| message.get_by_path("Name").and_then(Scalar::as_str) == Some(name))
+            .find(|message| {
+                message.get_by_path(&path("Name")).and_then(Scalar::as_str) == Some(name)
+            })
             .unwrap_or_else(|| panic!("a message for {name}"));
-        assert_eq!(held.by_path("CurrentPort").unwrap(), &Scalar::from(port));
+        assert_eq!(
+            held.by_path(&path("CurrentPort")).unwrap(),
+            &Scalar::from(port)
+        );
     }
     // An error answer states its error.
     let error = find(r#""error_type":"javax.management.InstanceNotFoundException""#);
@@ -910,12 +919,15 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     assert_eq!(rows[row_of(nulls)][column(55)].as_str(), Some("HOLN"));
     let message = read(nulls);
     assert_eq!(
-        message.by_path("Parties.0.PartyID").unwrap(),
+        message.by_path(&path("Parties[0].PartyID")).unwrap(),
         &Scalar::from("TRADER2")
     );
     // A coded member is the code's value, typed: `11` is an order origination trader.
     assert_eq!(
-        message.by_path("Parties.0.PartyRole").unwrap().as_i64(),
+        message
+            .by_path(&path("Parties[0].PartyRole"))
+            .unwrap()
+            .as_i64(),
         Some(11)
     );
 
@@ -1124,7 +1136,7 @@ fn a_trade_capture_frame_nests_every_group_its_payload_packs() {
     );
     assert_eq!(
         message
-            .by_path("TrdInstrmtLegGrp.0.LegPreAllocGrp.0.LegAllocQty")
+            .by_path(&path("TrdInstrmtLegGrp[0].LegPreAllocGrp[0].LegAllocQty"))
             .unwrap()
             .as_f64(),
         Some(600.0)
@@ -1144,13 +1156,15 @@ fn a_trade_capture_frame_nests_every_group_its_payload_packs() {
     // after one carrying sub-identifiers is still a party of its own.
     let party = |index: usize, member: &str| {
         message
-            .by_path(&format!("TrdCapRptSideGrp.0.Parties.{index}.{member}"))
+            .by_path(&path(&format!(
+                "TrdCapRptSideGrp[0].Parties[{index}].{member}"
+            )))
             .unwrap_or_else(|error| panic!("party {index} {member}: {error}"))
             .clone()
     };
     assert_eq!(
         message
-            .by_path("TrdCapRptSideGrp.0.Parties")
+            .by_path(&path("TrdCapRptSideGrp[0].Parties"))
             .unwrap()
             .as_sequence()
             .map(<[Scalar]>::len),
@@ -1174,7 +1188,7 @@ fn a_trade_capture_frame_nests_every_group_its_payload_packs() {
     assert_eq!(party(4, "PartyID").as_str(), Some("DGVG"));
     for (index, sub) in [(1, "TRADER ONE"), (2, "EXAMPLEBK"), (3, "EXAMPLECO")] {
         assert_eq!(
-            party(index, "PtysSubGrp.0.PartySubID").as_str(),
+            party(index, "PtysSubGrp[0].PartySubID").as_str(),
             Some(sub),
             "party {index}"
         );
@@ -1184,7 +1198,7 @@ fn a_trade_capture_frame_nests_every_group_its_payload_packs() {
         Some(2)
     );
     assert_eq!(
-        party(5, "PtysSubGrp.1.PartySubID").as_str(),
+        party(5, "PtysSubGrp[1].PartySubID").as_str(),
         Some("5493000EXAMPLE00000H")
     );
     assert!(

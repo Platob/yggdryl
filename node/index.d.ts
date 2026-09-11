@@ -1475,10 +1475,15 @@ export declare class FixMsg {
   getByName(name: string): JsScalar | null
   /** The value of the root child a name reaches. */
   byName(name: string): JsScalar
-  /** The value a dotted path reaches, or `null`. */
-  getByPath(path: string): JsScalar | null
-  /** The value a dotted path reaches. */
-  byPath(path: string): JsScalar
+  /** The value a path reaches, or `null`. */
+  getByPath(path: string | FieldPath): JsScalar | null
+  /**
+   * The value a path reaches.
+   *
+   * A position is spelled the way the one grammar spells it:
+   * `Parties[0].PartyID`.
+   */
+  byPath(path: string | FieldPath): JsScalar
   /**
    * The value a tag or a name reaches in the standard branch tier, or
    * `null`.
@@ -1766,9 +1771,16 @@ export declare class FixRegistry {
   /** The field a canonical name or alias names, ASCII case folded. */
   fieldByName(name: string, branch?: string | undefined | null): JsField
   /** The field a dotted path reaches through a component or a group, or `null`. */
-  getFieldByPath(path: string, branch?: string | undefined | null): JsField | null
-  /** The field a dotted path reaches through a component or a group. */
-  fieldByPath(path: string, branch?: string | undefined | null): JsField
+  getFieldByPath(path: string | JsFieldPath, branch?: string | undefined | null): JsField | null
+  /**
+   * The field a path reaches through a component or a group.
+   *
+   * A position is spelled the way the one grammar spells it -
+   * `Parties[0].PartyID` - and a schema answers the item every occurrence
+   * of a group holds, so that spelling reaches the member here as well as
+   * in a message.
+   */
+  fieldByPath(path: string | FieldPath, branch?: string): JsField
   /** The field a tag or name reaches by deterministic best match, or `null`. */
   getField(key: number | string): JsField | null
   /** The field a tag or name reaches by deterministic best match. */

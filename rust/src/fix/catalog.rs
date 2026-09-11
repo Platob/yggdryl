@@ -859,7 +859,8 @@ impl FixRegistry {
     /// let members = extended.fields().iter().cloned().chain([note]);
     /// extended.set_dtype(DataType::from_fields(members)?)?;
     /// assert!(!registry.add_definition(FixCategory::Components, extended)?, "merged");
-    /// assert_eq!(registry.field_by_path("Order.Party.PartyNote", None)?.dtype(), &DataType::Utf8);
+    /// let member = yggdryl::FieldPath::from_str("Order.Party.PartyNote")?;
+    /// assert_eq!(registry.field_by_path(&member, None)?.dtype(), &DataType::Utf8);
     /// assert_eq!(registry.definition(FixCategory::Components, "Party", None)?.field_len(), 2);
     /// # Ok(())
     /// # }

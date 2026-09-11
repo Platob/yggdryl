@@ -2,6 +2,8 @@
 //! and `merge_with`, which fold into what is stored where the strict verbs
 //! replace or refuse.
 
+use super::path as fpath;
+
 use yggdryl::{DataType, Error, Field, FixCategory, FixId, FixRegistry};
 
 fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
@@ -312,12 +314,12 @@ fn a_component_extended_by_a_member_is_seen_extended_by_every_reference() {
         "Parties.PartyNote",
         "NewOrderSingle.Parties.PartyNote",
     ] {
-        let member = registry.field_by_path(path, None).unwrap();
+        let member = registry.field_by_path(&fpath(path), None).unwrap();
         assert_eq!(member.as_fix().tag().unwrap(), Some(9002), "{path}");
         assert_eq!(member.as_fix().field_ref(), Some("partynote"), "{path}");
     }
     let parties = registry
-        .field_by_path("NewOrderSingle.Parties", None)
+        .field_by_path(&fpath("NewOrderSingle.Parties"), None)
         .unwrap();
     assert_eq!(names(occurrence(parties)), ["PartyID", "PartyNote"]);
     assert_eq!(
@@ -393,7 +395,7 @@ fn a_group_occurrence_is_extended_where_its_members_live() {
     assert_eq!(names(party), ["PartyID", "PartyNote"]);
     assert_eq!(
         registry
-            .field_by_path("NewOrderSingle.Parties.PartyNote", None)
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyNote"), None)
             .unwrap()
             .dtype(),
         &DataType::Utf8
@@ -601,7 +603,7 @@ fn merging_a_dictionary_folds_its_definitions_rather_than_replacing_them() {
     assert_eq!(party.description(), Some("stored wording"));
     assert_eq!(
         target
-            .field_by_path("NewOrderSingle.Parties.PartyNote", None)
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyNote"), None)
             .unwrap()
             .as_fix()
             .tag()
@@ -703,7 +705,7 @@ fn a_member_stated_inline_agrees_with_the_reference_stored_for_it() {
     assert_eq!(party.fields()[0].as_fix().field_ref(), Some("partyid"));
     assert_eq!(
         registry
-            .field_by_path("NewOrderSingle.Parties.PartyNote", None)
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyNote"), None)
             .unwrap()
             .dtype(),
         &DataType::Utf8
@@ -772,7 +774,7 @@ fn a_required_spelling_folds_into_a_nullable_referenced_field_keeping_its_shape(
         stored
     ));
     for path in ["Party.PartyID", "NewOrderSingle.Parties.PartyID"] {
-        let member = registry.field_by_path(path, None).unwrap();
+        let member = registry.field_by_path(&fpath(path), None).unwrap();
         assert_eq!(member.as_fix().tags().unwrap(), [9001], "{path}");
         assert!(member.is_nullable(), "{path}");
     }

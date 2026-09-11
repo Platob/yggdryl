@@ -186,7 +186,7 @@ def _message_get_by_name() -> object:
 
 
 def _message_get_by_path() -> object:
-    return MESSAGE.get_by_path("Parties.0.PartyID")
+    return MESSAGE.get_by_path("Parties[0].PartyID")
 
 
 def _message_branch() -> object:
@@ -237,7 +237,7 @@ BRIDGE_REGISTRY.with_ulbridge_fields()
 BRIDGE_CODEC = FixCodec(BRIDGE_REGISTRY, branch="ulbridge")
 NUMERIC_GROUP = b"8=FIX.4.4|35=D|453=1|448=BROKER|447=D|452=1|10=0|"
 assert CODEC.parse_fix_line(NUMERIC_GROUP).by_tag(453).as_py() == 1
-assert CODEC.parse_fix_line(NUMERIC_GROUP).by_path("Parties.0.PartyID").as_py() == "BROKER"
+assert CODEC.parse_fix_line(NUMERIC_GROUP).by_path("Parties[0].PartyID").as_py() == "BROKER"
 assert FixRegistry.from_json(CATALOG_JSON) == CATALOG
 assert pickle.loads(CATALOG_PICKLE) == CATALOG
 

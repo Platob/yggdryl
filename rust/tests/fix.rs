@@ -98,6 +98,15 @@ mod warned {
 }
 
 /// Immutable seed fixtures share parsing and compiled plans within this binary.
+/// One path, resolved once, as every FIX navigator now takes it.
+///
+/// A position is written the way the one grammar writes it -
+/// `Parties[0].PartyID` - and reaches the same member through a message and
+/// through the registry that declares it.
+fn path(spelling: &str) -> yggdryl::FieldPath {
+    yggdryl::FieldPath::from_str(spelling).unwrap_or_else(|error| panic!("{spelling}: {error}"))
+}
+
 fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
     static REGISTRY: std::sync::OnceLock<std::sync::Arc<yggdryl::FixRegistry>> =
         std::sync::OnceLock::new();

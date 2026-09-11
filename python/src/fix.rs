@@ -34,7 +34,7 @@ use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::media::iceberg::folder_holder_from_value;
 use crate::text::codec::{PythonWriter, with_python_bytes};
-use crate::text_line::PyTextLine;
+use crate::text_line::{PyTextLine, core_path_from_value};
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
 use crate::uri::core_url_from_value;
@@ -665,23 +665,34 @@ impl PyFixRegistry {
             .map_err(|error| absent(&error))
     }
 
-    /// The field a dotted path reaches through a component or a group.
+    /// The field a path reaches through a component or a group.
     #[pyo3(signature = (path, branch=None))]
-    fn get_field_by_path(&self, path: &str, branch: Option<&str>) -> PyResult<Option<PyField>> {
+    fn get_field_by_path(
+        &self,
+        path: &Bound<'_, PyAny>,
+        branch: Option<&str>,
+    ) -> PyResult<Option<PyField>> {
+        let path = core_path_from_value(path)?;
         let branch = branch.map(branch_from_py).transpose()?;
         Ok(self
             .inner
-            .get_field_by_path(path, branch.as_ref())
+            .get_field_by_path(&path, branch.as_ref())
             .cloned()
             .map(PyField::from_inner))
     }
 
-    /// The field a dotted path reaches through a component or a group.
+    /// The field a path reaches through a component or a group.
+    ///
+    /// A position is spelled the way the one grammar spells it -
+    /// ``Parties[0].PartyID`` - and a schema answers the item every
+    /// occurrence of a group holds, so that spelling reaches the member here
+    /// as well as in a message.
     #[pyo3(signature = (path, branch=None))]
-    fn field_by_path(&self, path: &str, branch: Option<&str>) -> PyResult<PyField> {
+    fn field_by_path(&self, path: &Bound<'_, PyAny>, branch: Option<&str>) -> PyResult<PyField> {
+        let path = core_path_from_value(path)?;
         let branch = branch.map(branch_from_py).transpose()?;
         self.inner
-            .field_by_path(path, branch.as_ref())
+            .field_by_path(&path, branch.as_ref())
             .map(|field| PyField::from_inner(field.clone()))
             .map_err(|error| absent(&error))
     }
@@ -1518,15 +1529,20 @@ impl PyFixMsg {
             .map_err(|error| absent(&error))
     }
 
-    /// The value a dotted path reaches, or `None`.
-    fn get_by_path(&self, path: &str) -> Option<PyScalar> {
-        Self::answered(self.inner.get_by_path(path))
+    /// The value a path reaches, or `None`.
+    fn get_by_path(&self, path: &Bound<'_, PyAny>) -> PyResult<Option<PyScalar>> {
+        let path = core_path_from_value(path)?;
+        Ok(Self::answered(self.inner.get_by_path(&path)))
     }
 
-    /// The value a dotted path reaches.
-    fn by_path(&self, path: &str) -> PyResult<PyScalar> {
+    /// The value a path reaches.
+    ///
+    /// A position is spelled the way the one grammar spells it:
+    /// ``Parties[0].PartyID``.
+    fn by_path(&self, path: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
+        let path = core_path_from_value(path)?;
         self.inner
-            .by_path(path)
+            .by_path(&path)
             .map(|value| PyScalar::from_inner(value.clone()))
             .map_err(|error| absent(&error))
     }
