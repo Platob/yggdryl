@@ -280,15 +280,23 @@ impl MaterializationBudget {
             | DataType::Date32
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
-            | DataType::Decimal32 { .. }
-            | DataType::Mic => self.add_fixed_rows(rows, 4)?,
-            DataType::Country => self.add_fixed_rows(rows, 2)?,
-            DataType::Currency => self.add_fixed_rows(rows, 3)?,
-            DataType::Cfi => self.add_fixed_rows(rows, 6)?,
-            DataType::Isin => self.add_fixed_rows(rows, 12)?,
-            DataType::Side | DataType::MsgDirection => self.add_fixed_rows(rows, 4)?,
-            DataType::State => self.add_fixed_rows(rows, 10)?,
-            DataType::TimeInForce => self.add_fixed_rows(rows, 8)?,
+            | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+            // A registered code is fixed US-ASCII storage at the width its
+            // standard fixes. The variants stay spelled out so this match
+            // keeps refusing to compile when a datatype is added; the number
+            // they charge is read from `fixed_byte_width`, which owns it,
+            // rather than restated here.
+            DataType::Country
+            | DataType::Currency
+            | DataType::Mic
+            | DataType::Cfi
+            | DataType::Isin
+            | DataType::Side
+            | DataType::MsgDirection
+            | DataType::State
+            | DataType::TimeInForce => {
+                self.add_fixed_rows(rows, dtype.fixed_byte_width().unwrap_or_default())?;
+            }
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64
@@ -381,15 +389,23 @@ impl MaterializationBudget {
             | DataType::Date32
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
-            | DataType::Decimal32 { .. }
-            | DataType::Mic => self.add_fixed_rows(rows, 4)?,
-            DataType::Country => self.add_fixed_rows(rows, 2)?,
-            DataType::Currency => self.add_fixed_rows(rows, 3)?,
-            DataType::Cfi => self.add_fixed_rows(rows, 6)?,
-            DataType::Isin => self.add_fixed_rows(rows, 12)?,
-            DataType::Side | DataType::MsgDirection => self.add_fixed_rows(rows, 4)?,
-            DataType::State => self.add_fixed_rows(rows, 10)?,
-            DataType::TimeInForce => self.add_fixed_rows(rows, 8)?,
+            | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+            // A registered code is fixed US-ASCII storage at the width its
+            // standard fixes. The variants stay spelled out so this match
+            // keeps refusing to compile when a datatype is added; the number
+            // they charge is read from `fixed_byte_width`, which owns it,
+            // rather than restated here.
+            DataType::Country
+            | DataType::Currency
+            | DataType::Mic
+            | DataType::Cfi
+            | DataType::Isin
+            | DataType::Side
+            | DataType::MsgDirection
+            | DataType::State
+            | DataType::TimeInForce => {
+                self.add_fixed_rows(rows, dtype.fixed_byte_width().unwrap_or_default())?;
+            }
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64

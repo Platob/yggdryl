@@ -192,17 +192,14 @@ impl PrimitiveType {
             // below by name rather than written as bytes that are not UTF-8.
             DataType::String(parameters) if is_text_storage(*parameters) => Self::String,
             // Iceberg has `string` and `fixed[n]` and nothing that carries a
-            // code's identity, so a code writes as the text it is.
-            DataType::Country
-            | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin
+            // code's identity, so every registered code writes as the text
+            // it is - asked through the accessor that knows which they are.
+            code if code.is_code() => Self::String,
             // A URL orders by its canonical text, so writing it as text loses
             // nothing but the name of the type - unlike `version`, whose
             // numeric ordering text cannot carry, and which Iceberg therefore
             // still refuses.
-            | DataType::Url => Self::String,
+            DataType::Url => Self::String,
             DataType::Uuid => Self::Uuid,
             // Iceberg's `binary` has no maximum, so a bound is dropped here;
             // the cast on the way in already held every value to it.

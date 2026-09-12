@@ -316,10 +316,9 @@ fn unique_name(name: &str, counter: &usize) -> SmolStr {
 fn spells_string(dtype: &DataType) -> bool {
     match dtype {
         DataType::String(parameters) => is_text_storage(*parameters),
-        DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi | DataType::Isin => {
-            true
-        }
-        _ => false,
+        // Every registered code, asked through the accessor that knows which
+        // they are rather than named five at a time here.
+        code => code.is_code(),
     }
 }
 

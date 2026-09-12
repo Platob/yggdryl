@@ -64,6 +64,11 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
     if let DataType::String(parameters) = dtype {
         return is_text_storage(*parameters);
     }
+    // Iceberg has `string` and nothing that carries a code's identity, so
+    // every registered code is portable as the text it is.
+    if dtype.is_code() {
+        return true;
+    }
     matches!(
         dtype,
         DataType::Boolean
@@ -77,11 +82,6 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
                 unit: TimeUnit::Microsecond | TimeUnit::Nanosecond,
                 ..
             }
-            | DataType::Country
-            | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin
             | DataType::Uuid
             | DataType::Bytes(_)
     )
@@ -126,9 +126,7 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         DataType::String(parameters) if is_text_storage(*parameters) => {
             OfficialDatum::string(value.as_str()?)
         }
-        DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi | DataType::Isin => {
-            OfficialDatum::string(value.as_str()?)
-        }
+        code if code.is_code() => OfficialDatum::string(value.as_str()?),
         // An identifier is a `uuid` datum, built from the sixteen bytes the
         // canonical spelling parses to.
         DataType::Uuid => {
@@ -191,10 +189,12 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
         {
             Scalar::from(value.as_str())
         }
-        (
-            DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi | DataType::Isin,
-            OfficialPrimitiveLiteral::String(value),
-        ) => Scalar::from(value.as_str()),
+        // A bound is read off a column, so it becomes the value the column
+        // holds: the pruner compares a code against a code, never against
+        // the bare text a string bound carries.
+        (code, OfficialPrimitiveLiteral::String(value)) if code.is_code() => {
+            code.scalar(value.as_str()).ok()?
+        }
         (DataType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
             Scalar::from(crate::types::uuid_text(&value.to_be_bytes()))
         }
@@ -240,9 +240,7 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
         DataType::String(parameters) if is_text_storage(*parameters) => {
             OfficialPrimitiveType::String
         }
-        DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi | DataType::Isin => {
-            OfficialPrimitiveType::String
-        }
+        code if code.is_code() => OfficialPrimitiveType::String,
         DataType::Uuid => OfficialPrimitiveType::Uuid,
         DataType::Bytes(parameters) => match parameters.fixed() {
             None => OfficialPrimitiveType::Binary,

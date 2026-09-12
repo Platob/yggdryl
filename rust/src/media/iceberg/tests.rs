@@ -1101,14 +1101,16 @@ mod types {
             DataType::fixed_ascii(8).unwrap(),
             DataType::fixed_ascii(12).unwrap(),
             DataType::fixed_ascii(16).unwrap(),
-            DataType::Country,
-            DataType::Currency,
-            DataType::Mic,
-            DataType::Cfi,
-        ] {
+        ]
+        .into_iter()
+        // And every registered code, read from the one listing rather than
+        // named four at a time here.
+        .chain(DataType::CODES.iter().map(|(_, dtype, _)| dtype.clone()))
+        {
             assert_eq!(
                 PrimitiveType::from_dtype(&dtype).unwrap(),
-                PrimitiveType::String
+                PrimitiveType::String,
+                "{dtype}"
             );
         }
     }
@@ -1136,13 +1138,20 @@ mod types {
             (DataType::Currency, "USD"),
             (DataType::Mic, "XPAR"),
             (DataType::Cfi, "ESVUFR"),
+            (DataType::Isin, "US0378331005"),
+            (DataType::Side, "1"),
+            (DataType::MsgDirection, "SENT"),
+            (DataType::State, "0"),
+            (DataType::TimeInForce, "GTC"),
         ] {
             assert!(crate::media::iceberg::value::is_portable(&dtype), "{dtype}");
-            let scalar = crate::Scalar::from(value);
-            let bytes = crate::media::iceberg::value::single_value(&scalar, &dtype)
+            // A bound is read off a column, so the value it encodes is the
+            // one the column holds: a code with a vocabulary stores its own
+            // spelling, which is what the reader will compare against.
+            let exact = dtype.scalar(crate::Scalar::from(value)).unwrap();
+            let bytes = crate::media::iceberg::value::single_value(&exact, &dtype)
                 .unwrap_or_else(|| panic!("{dtype} must encode a bound"));
-            assert_eq!(bytes, value.as_bytes(), "{dtype}");
-            let exact = dtype.scalar(scalar).unwrap();
+            assert_eq!(bytes, exact.as_str().unwrap().as_bytes(), "{dtype}");
             assert_eq!(
                 crate::media::iceberg::value::single_to_value(&bytes, &dtype),
                 Some(exact),

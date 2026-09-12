@@ -438,6 +438,37 @@ fn every_code_stores_the_width_its_standard_fixes() {
             .cast_arrow_array(text(&[sample]), ArrowCastOptions::new().with_safe(false))
             .unwrap();
         assert_eq!(cast.as_ref(), stored.as_ref(), "{name}");
+
+        // And the column's own storage ingests without re-padding or
+        // refusing: the plan asks `is_code`, so a code added to the listing
+        // is planned without being named again.
+        let again = field
+            .cast_arrow_array(
+                Arc::clone(&stored),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap_or_else(|error| panic!("{name} did not ingest its own bytes: {error}"));
+        assert_eq!(again.as_ref(), stored.as_ref(), "{name}");
+
+        // A value past the width is refused at the code's own width, naming
+        // the row it was in - one refusal shape for all nine, where the four
+        // FIX codes used to fall to Arrow's builder complaint instead.
+        let over = "X".repeat(*width + 1);
+        let refused = field
+            .cast_arrow_array(
+                text(&[over.as_str()]),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refused.contains(&format!("at most {width} bytes, got {} bytes", over.len())),
+            "{name}: {refused}"
+        );
+        assert!(
+            refused.contains("row 0 of column code"),
+            "{name}: {refused}"
+        );
     }
 }
 

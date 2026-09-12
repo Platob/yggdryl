@@ -464,11 +464,13 @@ assert!(MsgDirection::from_spelling("sideways").is_err());
 - `isin` -> two letters, nine alphanumerics and one digit that closes the eleven before it (ISO 6166's Luhn over the letters expanded to their alphabet positions); a check digit that does not close the number -> refused, `the check digit does not close the number`. Lower case -> the upper case it spells. `Isin::is_valid` and `Isin::closing_digit` answer the rule without building a value.
 - An Arrow cast into `isin` is held to the canonical spelling - upper case, closed by its check digit - and refused otherwise, because a column's bytes are what every reader digests; only a scalar read folds the case.
 - `isin` names no vocabulary: `StringEnum::from_logical_name("isin")` answers an enum of no members and no Python code class declares it.
+- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar. `isin` and `state` are the two exceptions, because their value door gates the space rather than holding it - a check digit closes one and a published vocabulary spells the other - so neither has a neutral member, and `default_value` refuses naming the code rather than answering a value no registry issued.
 - A cast refusal under `safe` -> null, which a required column fills with the default; under strict -> the row and the column, for a code exactly as for a string ([Cast](cast.md)).
 - [Merged](field.md) widening: a code beside itself -> kept; beside `fixed_ascii(n)`, `ascii` or `utf8` -> that string; beside `fixed_size_binary(n)` of its width -> those bytes.
 - [Merged](field.md) narrowing (`upscale=false`): a code beside any plainer shape storing it -> the code; beside narrower text -> that text.
 - `currency` beside `country` -> `fixed_ascii(3)` widening and `fixed_ascii(2)` narrowing, the plain text both fit, never one code holding the other's values.
-- Iceberg, Spark, Polars, pandas, Avro, filter literals -> text, [rewritten](datatype.md) to `string`/`utf8`.
+- Iceberg, Spark, Polars, pandas, Avro, filter literals -> text, [rewritten](datatype.md) to `string`/`utf8`. Every registered code, not a subset: the listing each of these paths reads is `DataType::CODES`, through `DataType::is_code` and `DataType::fixed_byte_width`, so a code cannot be spellable in one and unspellable in the next.
+- An Arrow cast into any code -> one fixed binary column padded to the code's own width, from a fixed binary source of that width or from anything Arrow renders as text; anything else -> refused naming the code and the source.
 - `ascii_packed` on a variable string, on UTF-8, or on a width past 16 bytes -> refused, `at most 16 bytes`.
 - `ascii_packed` -> an `i32`, an `i64`, or a whole `i128` by width, and the integer a stable hash hashes.
 - A `StringEnum` on a string that is not fixed US-ASCII of at most sixteen bytes -> refused by name at `set_string_enum` and `into_members`; error kind `string-enum`.
