@@ -1,8 +1,8 @@
 # FIX: direction, components, many messages a row, plugins, one enriching pass, identifiers and uuids
 
-Twelve pieces of work on `claude/charset-module-utf8-ascii-cp1252-q1xby7`
-(PR #107; four gates green at `f4e8def6`, the corpus anonymized at
-`139984e8`, this file committed after it), each a design change with its
+Twelve pieces of work from `main` (PR #107 merged at `aa6566f6`, four gates
+green there; the corpus anonymized at `ab124516`), on one new branch, each a
+design change with its
 own decision in `DECISIONS.md` written before the code that keeps it, in this
 order because each one moves what the next one reads:
 
