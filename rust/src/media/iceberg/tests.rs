@@ -1140,7 +1140,6 @@ mod types {
             (DataType::Cfi, "ESVUFR"),
             (DataType::Isin, "US0378331005"),
             (DataType::Side, "1"),
-            (DataType::MsgDirection, "SENT"),
             (DataType::State, "0"),
             (DataType::TimeInForce, "GTC"),
         ] {

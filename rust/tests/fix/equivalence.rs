@@ -508,15 +508,14 @@ fn restatements() -> Vec<Vec<u8>> {
 }
 
 /// The text options the bridge's own log is read under, exactly as the
-/// dataset suite reads it: its own row header, in UTC, every line numbered,
-/// classified and read for its direction.
+/// dataset suite reads it: its own row header, in UTC, every line numbered
+/// and classified.
 fn reading() -> RecordOptions {
     let mut options = TextOptions::new()
         .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
         .expect("the bridge's row header compiles")
         .with_timezone(Timezone::UTC);
     options.start_rownum = Some(1);
-    options.parse_direction = true;
     options.parse_mimetype = true;
     options.into()
 }

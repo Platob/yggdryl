@@ -29,7 +29,7 @@ use yggdryl::types::integer::Integer;
 use yggdryl::types::nested::Nested;
 use yggdryl::types::string::{Code, Str, StringLayout, StringParameters};
 use yggdryl::types::temporal::{Interval, Temporal};
-use yggdryl::types::{Cfi, Country, Currency, Isin, Mic, MsgDirection, Side, State, TimeInForce};
+use yggdryl::types::{Cfi, Country, Currency, Isin, Mic, Side, State, TimeInForce};
 use yggdryl::{
     ArrowCast, DataType as CoreDataType, Enum, Error as CoreError, Field as CoreField, Float16,
     Float32, Float64, I256, Scalar, TemporalFamily, TimeUnit, Timezone,
@@ -646,9 +646,6 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "side" => Side::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Code(Code::Side(value)))
-            .map_err(value_error),
-        "msgdirection" => MsgDirection::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::MsgDirection(value)))
             .map_err(value_error),
         "state" => State::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Code(Code::State(value)))

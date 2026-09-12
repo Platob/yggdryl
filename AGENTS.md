@@ -117,7 +117,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
-| `types/string.rs` + `types/string/` | every string the crate has, one family: the `StringLayout` vocabulary beside `StringParameters`, the one string datatype `DataType::String` and the one string value `Str` in `scalars.rs`, the nine registered codes' values in `code.rs` and their identities and widths in `codes.rs`, the `field:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)` and `string(windows-1252,32)` are all spellings of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::fixed_byte_width` and `is_code` instead, because it is an identity with a storage rather than a charset |
+| `types/string.rs` + `types/string/` | every string the crate has, one family: the `StringLayout` vocabulary beside `StringParameters`, the one string datatype `DataType::String` and the one string value `Str` in `scalars.rs`, the eight registered codes' values in `code.rs` and their identities and widths in `codes.rs`, the `field:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)` and `string(windows-1252,32)` are all spellings of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::fixed_byte_width` and `is_code` instead, because it is an identity with a storage rather than a charset |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside its implementations: `ascii`/`single_byte`/`unicode` own the codecs, generated `tables.rs` owns the code pages, `Decoder`/`Reader`/`Writer` the chunked doors, `Transcoded` the decoding handle. Fused rather than split like `codec.rs`/`coding/`, because no single code page is a public module of its own |
 | `media/` | record routing and settings; `{ipc,parquet,avro}/` each own free functions over `IOBase` plus a stateful wrapper |
 | `media/text/` | `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering |
@@ -754,7 +754,7 @@ of the five layouts or to what a string declares.
   parameterized variant can hold what its constructor refuses, and `validate`
   is what catches it before a boundary. `string_parameters` reads back for
   every string, which is what makes "which charset is this column in" one
-  question. The nine registered codes are not strings: a currency is three
+  question. The eight registered codes are not strings: a currency is three
   ASCII bytes with an identity, so it is `DataType::Currency`, kind `Code`,
   answers `is_code` and `fixed_byte_width`, and never `string_parameters`.
 - **Three spellings, one layout.** The `string` name is the general one, the

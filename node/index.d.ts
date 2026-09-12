@@ -1180,9 +1180,11 @@ export declare class FixCodec {
    * called, in the order a line answers them, which is what lets
    * `parseTextLine` read a capture by position rather than by name;
    * `nullValues` are the spellings that mean nothing was
-   * sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
-   * or `"unknown"`; `batchByteSize` is the raw bytes one Arrow batch
-   * targets, the core's 128 MiB when unstated.
+   * sent; `direction` is the code of tag 385's set an unmarked line
+   * takes on the batch door, any spelling of one - `"S"`, `"Send"`,
+   * `"R"` - the core's `Send` code when unstated and no pin at all when
+   * empty; `batchByteSize` is the raw bytes one Arrow batch targets, the
+   * core's 128 MiB when unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this codec resolves against, sharing it. */
@@ -1202,10 +1204,10 @@ export declare class FixCodec {
   /** The spellings that mean nothing was sent. */
   get nullValues(): Array<string>
   /**
-   * The direction an unmarked line takes: `"sent"`, `"recv"` or
-   * `"unknown"`.
+   * The code of tag 385's set an unmarked line takes on the batch door,
+   * or `null` where no pin fills silence.
    */
-  get direction(): string
+  get direction(): string | null
   /**
    * The raw bytes one Arrow batch targets.
    *
@@ -2642,10 +2644,6 @@ export declare class MimeType {
   static inferBytes(line: Buffer): MimeType
   /** Classify one captured text line, without a dictionary. */
   static inferText(line: string): MimeType
-  /** Read which way one captured byte line moved. */
-  static inferBytesDirection(line: Buffer): string | null
-  /** Read which way one captured text line moved. */
-  static inferTextDirection(line: string): string | null
   /** Parse a MIME/extension string or cheaply clone another native value. */
   constructor(value?: MimeTypeInput | undefined | null)
   /** Infer from a native wrapper or MIME/extension string. */
@@ -4091,8 +4089,6 @@ export declare class TextLine {
    * captures' together.
    */
   get decodedByteSize(): number
-  /** Which way the line moved. */
-  get direction(): string | null
   /** How many bytes of this record went over the retained limit. */
   get droppedByteSize(): number | null
   /**
@@ -5159,8 +5155,9 @@ export interface FixCodecOptions {
   /** The spellings that mean "nothing was sent". */
   nullValues?: Array<string>
   /**
-   * What an unmarked line took: `sent`, `recv`, or `unknown`; `sent` when
-   * unstated.
+   * The code of tag 385's set an unmarked line takes on the batch door,
+   * any spelling of one; the core's `Send` code when unstated, no pin
+   * when empty.
    */
   direction?: string
   /** The raw bytes one Arrow batch targets; the core's 128 MiB when unstated. */

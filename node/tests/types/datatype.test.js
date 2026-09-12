@@ -351,7 +351,6 @@ test('a registered code is its own datatype over its standard width', () => {
     ['isin', 12],
     // The FIX codes store the width their standard fixes, one letter or not.
     ['side', 4],
-    ['msgdirection', 4],
     ['state', 10],
     ['timeinforce', 8],
   ]) {
@@ -499,7 +498,6 @@ test('a prebuilt vocabulary names the ISO codes a column carries', () => {
     'currency',
     'exchange',
     'mic',
-    'msgdirection',
     'side',
     'state',
     'timeinforce',

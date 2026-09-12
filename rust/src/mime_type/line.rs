@@ -1331,7 +1331,7 @@ fn skip_to(document: &[u8], mut at: usize, wanted: u8) -> Option<usize> {
 /// carries no such key of its own - so the echo is the whole of the reading. A
 /// failed read echoes it too, which is right: an error is a read that came
 /// back rather than one that went out.
-fn ulconfig_answered(document: &[u8]) -> bool {
+pub(crate) fn ulconfig_answered(document: &[u8]) -> bool {
     memchr::memmem::find(document, JOLOKIA_REQUEST_KEY).is_some()
 }
 

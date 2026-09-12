@@ -151,11 +151,11 @@ LOGICAL_NAMES = {
 # The tags the standard declares as code sets and the crate types with a
 # datatype of their own. Honouring the declaration, not guessing at one: the
 # code set stays the field's vocabulary, and the datatype is how a value of it
-# is stored. Tag 385 is here because a direction is what every capture in this
-# crate carries on its own lines, so it is read far more often than it arrives.
-# Tags 39 and 150 are the order's state: their two code sets agree on every
-# value they share, and the crate's own `state` type reads either.
-CODED_TAGS = {39: "state", 54: "side", 150: "state", 385: "msgdirection"}
+# is stored. Tags 39 and 150 are the order's state: their two code sets agree
+# on every value they share, and the crate's own `state` type reads either.
+# Tag 385, `MsgDirection`, is typed as any coded field is - text carrying its
+# code set - and the registry reads it (decision 14).
+CODED_TAGS = {39: "state", 54: "side", 150: "state"}
 
 
 def folded(name: str) -> str:

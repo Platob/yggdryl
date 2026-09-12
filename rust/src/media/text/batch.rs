@@ -137,11 +137,6 @@ fn value_of(
             }
             None => Scalar::Null,
         },
-        TextSource::Direction => line.direction().map_or(Scalar::Null, |direction| {
-            DataType::MsgDirection
-                .scalar(Scalar::from(direction))
-                .unwrap_or(Scalar::Null)
-        }),
         TextSource::BodyType => Scalar::from(
             line.bodytype()
                 .unwrap_or(&crate::MimeType::OCTET_STREAM)
@@ -180,7 +175,7 @@ fn capture_value(
 /// spelling but this crate's own would make the reverse direction useless.
 /// Meaning stays exact - a matched column is read at the plan's own datatype,
 /// and nothing here guesses what a value means, only what a column is called.
-const ALIASES: [(&str, &[&str]); 7] = [
+const ALIASES: [(&str, &[&str]); 6] = [
     ("url", &["source", "uri", "path", "file", "location"]),
     (
         "rownum",
@@ -190,7 +185,6 @@ const ALIASES: [(&str, &[&str]); 7] = [
         "mtime",
         &["timestamp", "time", "ts", "written_at", "event_time"],
     ),
-    ("direction", &["dir", "way"]),
     (
         "mimetype",
         &["bodytype", "content_type", "contenttype", "media_type"],
@@ -211,7 +205,6 @@ const fn default_name_of(source: &TextSource) -> Option<&'static str> {
         TextSource::Url => "url",
         TextSource::Rownum => "rownum",
         TextSource::Timestamp => "mtime",
-        TextSource::Direction => "direction",
         TextSource::BodyType => "mimetype",
         TextSource::Body => "body",
         TextSource::DroppedByteSize => "dropped_byte_size",
@@ -399,21 +392,6 @@ fn apply(
         TextSource::Timestamp => {
             if let Some(held) = value.as_temporal() {
                 line.set_timestamp(Some(i128::from(held.count())));
-            }
-        }
-        TextSource::Direction => {
-            if let Some(text) = value.as_str() {
-                // The vocabulary is closed, so what a line carries is one of
-                // its own constants rather than the caller's bytes.
-                const KNOWN: [&str; 2] = [
-                    crate::types::MsgDirection::SENT,
-                    crate::types::MsgDirection::RECV,
-                ];
-                line.set_direction(
-                    KNOWN
-                        .into_iter()
-                        .find(|known| known.eq_ignore_ascii_case(text)),
-                );
             }
         }
         TextSource::BodyType => {

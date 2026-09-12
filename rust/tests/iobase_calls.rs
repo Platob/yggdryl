@@ -110,7 +110,6 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
         .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
         .expect("the bridge's row header compiles")
         .with_timezone(Timezone::UTC);
-    options.parse_direction = true;
     options.parse_mimetype = true;
     let options: RecordOptions = options.into();
     let codec = FixCodec::new(Arc::new(

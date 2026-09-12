@@ -233,7 +233,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
 
 ### yggdryl::root::datatype_id  [rust\src\datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 61] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::MsgDirection, Self::Url, Self::Isin, ];
+  pub const ALL: [Self; 60] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, ];  (every discriminant explicit; 58 was msgdirection, retired; decision 14)
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8
@@ -656,7 +656,8 @@ pub struct FixCodec
   pub fn new(registry: Arc<FixRegistry>) -> Self
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn version(&self) -> Option<Version>
-  pub const fn direction(&self) -> Option<&'static str>
+  pub fn direction(&self) -> Option<&str>  (the code of tag 385's set an unmarked line takes on the batch door; the set's Send code by default; decision 14)
+  pub fn msgdirection(&self) -> &MsgDirection  (the registry's reading of tag 385, compiled once)
   pub const fn batch_byte_size(&self) -> u64
   pub fn payload_column(&self) -> &str
   pub const fn separator(&self) -> Option<u8>
@@ -665,7 +666,7 @@ pub struct FixCodec
   pub const fn with_separator(mut self, separator: u8) -> Self
   pub fn with_payload_column(mut self, column: impl Into<SmolStr>) -> Self
   pub fn with_capture_names<I, S>(mut self, names: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (what a run's row-header captures are called, resolved once and read by position)
-  pub const fn with_direction(mut self, direction: Option<&'static str>) -> Self  (the direction an unmarked line takes; default `SENT`)
+  pub fn try_with_direction(mut self, code: Option<&str>) -> Result<Self>  (any spelling of a code of tag 385's set, resolved once; None or empty = no pin; a spelling outside the set refused naming it)
   pub const fn with_batch_byte_size(mut self, bytes: u64) -> Self
   pub fn with_null_values<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: Into<String>
   pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]>
@@ -826,6 +827,17 @@ pub enum FixCategory { Fields, Components, Groups }  (a message is a component c
   pub fn from_str(value: &str) -> Result<Self>
   impl Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize, FromStr, Display, AsRef<str> for FixCategory
 
+### yggdryl::fix::MsgDirection  [rust\src\fix\direction.rs]
+pub struct MsgDirection  (the registry's reading of tag 385: its code set and which code the prose in front of a payload names; decision 14. Built by FixRegistry::msgdirection, compiled once by FixCodec::new; no public constructor)
+  pub const fn field(&self) -> &Field  (tag 385 as a built message carries it: the dictionary's field non-null, else a utf8 field carrying the tag)
+  pub fn sent(&self) -> &str  (the set's `Send` code, else `S`)
+  pub fn recv(&self) -> &str  (the set's `Receive` code, else `R`)
+  pub fn codes(&self) -> impl Iterator<Item = &str>  (every code of the set in the dictionary's order; `S`, `R` where the dictionary declares none)
+  pub fn code(&self, spelling: &str) -> Option<&str>  (a value, name or alias of the set, ASCII case folded, as the code; None outside the set)
+  pub fn read_bytes(&self, line: &[u8]) -> Option<&str>  (the verb in front of the payload, else the half a document states of itself; both verbs or neither = None)
+  pub fn read_text(&self, line: &str) -> Option<&str>
+  impl Clone, Debug for MsgDirection
+
 ### yggdryl::fix::MsgType  [rust\src\fix\msgtype.rs]
 pub struct MsgType  (registry-owned non-null Struct Field with a compiled group path index; no public constructor)
   pub fn stable_hash(&self) -> u64
@@ -856,6 +868,7 @@ impl FixRegistry
 ### yggdryl::fix::registry  [rust\src\fix\registry.rs]
 pub struct FixRegistry
   pub fn stable_hash(&self) -> u64
+  pub fn msgdirection(&self) -> MsgDirection  (the reading of tag 385 as the registry holds it now; decision 14)
   pub fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
   pub fn get_field_by_id(&self, id: FixId) -> Option<&Field>
@@ -1853,8 +1866,6 @@ pub struct TextLine
   pub const fn body_bytes(&self) -> &TextBytes
   pub fn set_body(&mut self, body: TextBytes) -> Result<()>
   pub const fn decoded_byte_size(&self) -> u64
-  pub const fn direction(&self) -> Option<&'static str>
-  pub const fn set_direction(&mut self, direction: Option<&'static str>)
   pub const fn dropped_byte_size(&self) -> Option<u64>
   pub const fn set_dropped_byte_size(&mut self, size: Option<u64>)
   pub fn captures(&self) -> &[Option<TextBytes>]
@@ -3385,7 +3396,7 @@ pub enum StringLayout  (#[non_exhaustive]; String, FixedString, StringView, Larg
   pub const fn is_fixed(self) -> bool
   pub const fn is_view(self) -> bool
   pub const fn is_large(self) -> bool
-pub use code::{Cfi, Code, CodeValue, Country, Currency, Isin, Mic, MsgDirection, Side, State, TimeInForce};  pub use dictionary::StringEnum;  pub use fields::*;  pub use parameters::{STRING_EXTENSION_NAME, StringParameters};  pub use scalars::{INLINE_CAPACITY, Str};  (re-exported at yggdryl::types; Code, CodeValue, Str, StringEnum and StringType also at the crate root)
+pub use code::{Cfi, Code, CodeValue, Country, Currency, Isin, Mic, Side, State, TimeInForce};  pub use dictionary::StringEnum;  pub use fields::*;  pub use parameters::{STRING_EXTENSION_NAME, StringParameters};  pub use scalars::{INLINE_CAPACITY, Str};  (re-exported at yggdryl::types; Code, CodeValue, Str, StringEnum and StringType also at the crate root)
 
 ### yggdryl::types::string::parameters  [rust\src\types\string\parameters.rs]
 pub const STRING_EXTENSION_NAME: &str = "yggdryl.string";
@@ -3450,7 +3461,7 @@ pub trait CodeValue: ScalarValue
   const WIDTH: usize;
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr
-pub struct Country  // and Currency, Mic, Cfi, Isin, Side, MsgDirection, State, TimeInForce: one validated code each, SmolStr storage, serde transparent
+pub struct Country  // and Currency, Mic, Cfi, Isin, Side, State, TimeInForce: one validated code each, SmolStr storage, serde transparent
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
@@ -3467,15 +3478,7 @@ pub struct Country  // and Currency, Mic, Cfi, Isin, Side, MsgDirection, State, 
   pub fn is_failed(&self) -> bool  // State only
   pub fn read(spelling: &str) -> Result<Self>  // State only
   pub fn from_spelling(spelling: &str) -> Option<Self>  // State only
-  pub const SENT: &'static str = "SENT";  // MsgDirection only
-  pub const RECV: &'static str = "RECV";  // MsgDirection only
-  pub fn from_spelling(spelling: &str) -> Result<Option<&'static str>>  // MsgDirection only: sent|s|send, recv|r|receive, unknown|"" -> None; ASCII case folded; the one list of spellings both bindings read
-  pub fn infer_bytes(line: &[u8]) -> Option<&'static str>  // MsgDirection only
-  pub fn infer_text(line: &str) -> Option<&'static str>  // MsgDirection only
-  pub fn split_bytes(line: &[u8]) -> (Option<&'static str>, &[u8])  // MsgDirection only
-  pub fn split_text(line: &str) -> (Option<&'static str>, &str)  // MsgDirection only
-  pub fn at_payload(line: &[u8], payload_at: usize, default: Option<&'static str>) -> Option<&'static str>  // MsgDirection only
-pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Side, MsgDirection, State, TimeInForce; 32 bytes; derived Eq/Ord/Hash, identity first then text; ScalarFamily with KIND = DataTypeKind::Code; Scalar::from(Code) -> Scalar::Code)
+pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Side, State, TimeInForce; 32 bytes; derived Eq/Ord/Hash, identity first then text; ScalarFamily with KIND = DataTypeKind::Code; Scalar::from(Code) -> Scalar::Code)
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
   pub const fn width(&self) -> usize
@@ -3484,7 +3487,7 @@ pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Side, MsgD
 
 ### yggdryl::types::string::codes  [rust\src\types\string\codes.rs]
 impl DataType
-  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("side", DataType::Side, 4), ("msgdirection", DataType::MsgDirection, 4), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8)];
+  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("side", DataType::Side, 4), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8)];
   pub const fn country() -> Self
   pub const fn currency() -> Self
   pub const fn mic() -> Self
@@ -3518,24 +3521,22 @@ impl StringEnum
   pub const COUNTRIES: &'static [&'static str]
   pub const MICS: &'static [&'static str]
   pub const SIDES: &'static [&'static str]
-  pub const DIRECTIONS: &'static [&'static str] = &["RECV", "SENT"];
   pub const STATES: &'static [&'static str]
   pub const TIMESINFORCE: &'static [&'static str]
-  pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // currency, country, mic, exchange, side, msgdirection, state, timeinforce
+  pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // currency, country, mic, exchange, side, state, timeinforce
   pub fn from_logical_name(name: &str) -> Result<Self>
   pub fn prebuilt_values(name: &str) -> &'static [&'static str]
 
 ### yggdryl::types::string::fields  [rust\src\types\string\fields.rs]
 pub struct StringType  (field marker "string" over DataType::String(_); re-exported at the crate root)
   pub type StringField = TypedField<StringType>;
-pub struct CountryType  // and CurrencyType, MicType, CfiType, IsinType, SideType, MsgDirectionType, StateType, TimeInForceType: the nine code markers (country, currency, mic, cfi, isin, side, msgdirection, state, timeinforce)
+pub struct CountryType  // and CurrencyType, MicType, CfiType, IsinType, SideType, StateType, TimeInForceType: the eight code markers (country, currency, mic, cfi, isin, side, state, timeinforce)
   pub type CountryField = TypedField<CountryType>;
   pub type CurrencyField = TypedField<CurrencyType>;
   pub type MicField = TypedField<MicType>;
   pub type CfiField = TypedField<CfiType>;
   pub type IsinField = TypedField<IsinType>;
   pub type SideField = TypedField<SideType>;
-  pub type MsgDirectionField = TypedField<MsgDirectionType>;
   pub type StateField = TypedField<StateType>;
   pub type TimeInForceField = TypedField<TimeInForceType>;
 impl Field

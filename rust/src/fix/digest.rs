@@ -97,9 +97,10 @@ impl FixMsg {
     /// Computed on every call and stored nowhere. Two calls answer the same
     /// value because the entries do not change, and a cached digest is a fact
     /// that a later edit makes a lie - the invalidation rule that would
-    /// prevent it costs more than the walk it saves. [`Direction`] is the
-    /// opposite case and *is* stored, because the bytes it is read from are
-    /// gone by the time anyone could ask again.
+    /// prevent it costs more than the walk it saves. A direction is the
+    /// opposite case and *is* stored - as tag 385 on the row, decision 14 -
+    /// because the bytes it is read from are gone by the time anyone could
+    /// ask again.
     ///
     /// 128 bits rather than 64. A day of capture is comfortably a billion
     /// messages, and the birthday bound puts a 64-bit digest into collision
@@ -114,8 +115,6 @@ impl FixMsg {
     /// A message built from a schema and a value has no entries and digests
     /// as the empty walk - the same answer for every such message, which is
     /// correct: none of them arrived.
-    ///
-    /// [`Direction`]: crate::types::MsgDirection
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {

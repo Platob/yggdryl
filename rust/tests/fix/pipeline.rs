@@ -95,7 +95,6 @@ fn text_options() -> TextOptions {
         .expect("the row header compiles")
         .with_timezone(Timezone::UTC);
     options.start_rownum = Some(1);
-    options.parse_direction = true;
     options.parse_mimetype = true;
     options
 }
@@ -195,22 +194,14 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     // carried either. `seqNum` is, since no fixed column is spelled so, and
     // it fills `msgseqnum` besides.
     assert_eq!(
-        &names[..9],
+        &names[..8],
         [
-            "url",
-            "rownum",
-            "mtime",
-            "direction",
-            "mimetype",
-            "body",
-            "threadId",
-            "seqNum",
-            "level"
+            "url", "rownum", "mtime", "mimetype", "body", "threadId", "seqNum", "level"
         ],
         "{names:?}"
     );
     assert_eq!(
-        &names[9..12],
+        &names[8..11],
         ["beginstring", "bodylength", "msgtype"],
         "{names:?}"
     );
@@ -228,9 +219,9 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
             "{once} is one column"
         );
     }
-    // The text reader's `direction` and FIX's own `msgdirection` are two
-    // names, so both are here.
+    // Which way a line moved is FIX's own `msgdirection` (decision 14).
     assert!(names.contains(&"msgdirection"), "{names:?}");
+    assert!(!names.contains(&"direction"), "{names:?}");
     assert_eq!(
         &names[names.len() - 2..],
         ["nofixentries", "nounmappedfixentries"]
@@ -359,22 +350,15 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     assert_eq!(mimetype[0].as_deref(), Some("application/octet-stream"));
     assert_eq!(mimetype[1].as_deref(), Some("text/key-value"));
 
-    // Which way each line moved: the verb in front of the frame, and the
-    // document's own statement that it came back.
-    let direction = text_column(&read, "direction");
-    assert_eq!(direction[HEARTBEAT_ROW].as_deref(), Some("SENT"));
-    assert_eq!(direction[FILL_ROW].as_deref(), Some("RECV"));
-    assert_eq!(direction[RESPONSE_ROW].as_deref(), Some("RECV"));
-    assert_eq!(direction[2], None, "a sentence states no direction");
-    // And the column read as a parameter is still carried into the row: FIX's
-    // own `msgdirection` - a name of its own beside the text reader's
-    // `direction` - agrees with the text reader's wherever the text reader
-    // answered, and fills the default where it did not.
+    // Which way each line moved is FIX's own tag 385 (decision 14): the
+    // verb in front of the frame, the document's own statement that it came
+    // back, and the codec's pin where a line stated nothing - a sentence
+    // states no direction, and on the batch door the pin fills it.
     let fix_direction = tag_text(&read, yggdryl::MSGDIRECTION_TAG_NAME.0);
-    assert_eq!(fix_direction[HEARTBEAT_ROW].as_deref(), Some("SENT"));
-    assert_eq!(fix_direction[FILL_ROW].as_deref(), Some("RECV"));
-    assert_eq!(fix_direction[RESPONSE_ROW].as_deref(), Some("RECV"));
-    assert_eq!(fix_direction[2].as_deref(), Some("SENT"));
+    assert_eq!(fix_direction[HEARTBEAT_ROW].as_deref(), Some("S"));
+    assert_eq!(fix_direction[FILL_ROW].as_deref(), Some("R"));
+    assert_eq!(fix_direction[RESPONSE_ROW].as_deref(), Some("R"));
+    assert_eq!(fix_direction[2].as_deref(), Some("S"));
 }
 
 #[test]

@@ -4,7 +4,6 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyTuple};
-use yggdryl::types::MsgDirection as CoreMsgDirection;
 use yggdryl::{MediaType as CoreMediaType, MimeType as CoreMimeType};
 
 use crate::uri::path_string_from_value;
@@ -94,22 +93,6 @@ impl PyMimeType {
             "a captured line must be bytes, bytearray, or memoryview",
             |line| Ok(Self::from_core(CoreMimeType::infer_bytes(line))),
         )
-    }
-
-    /// Read which way one captured byte line moved.
-    #[staticmethod]
-    fn infer_bytes_direction(line: &Bound<'_, PyAny>) -> PyResult<Option<&'static str>> {
-        crate::text::codec::with_python_bytes(
-            line,
-            "a captured line must be bytes, bytearray, or memoryview",
-            |line| Ok(CoreMsgDirection::infer_bytes(line)),
-        )
-    }
-
-    /// Read which way one captured text line moved.
-    #[staticmethod]
-    fn infer_text_direction(line: &str) -> Option<&'static str> {
-        CoreMsgDirection::infer_text(line)
     }
 
     /// Classify one captured text line, without a dictionary.

@@ -414,10 +414,12 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
         '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
     )
     assert MimeType.infer_text(answered) == MimeType.ULCONFIG
-    assert MimeType.infer_text_direction(answered) == "RECV"
     assert FixCodec.infer_msgtype_text(answered) == "read"
+    # Which way it moved is FIX's own tag 385, filled on every door.
+    codec = FixCodec(FixRegistry())
+    assert next(codec.parse_line(answered.encode())).by_tag(385).as_py() == "R"
     asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
-    assert MimeType.infer_text_direction(asked) == "SENT"
+    assert next(codec.parse_line(asked.encode())).by_tag(385).as_py() == "S"
 
 
 def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> None:
@@ -1683,8 +1685,8 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema.name == "FixMessage"
     # The crate's own columns are spelled the same way, with the FIX-style
     # spelling kept as the display: twenty of them after the trailer, then
-    # FIX's own `msgdirection`, read from the line rather than the wire, then
-    # the two lists.
+    # FIX's own `msgdirection`, read from the line where the wire states
+    # none, then the two lists.
     assert fix_schema_tags()[-(CRATED + 1) :] == [*CRATE_TAGS, 385]
     assert [child.fix.tag for child in schema][-(CRATED + 3) :] == [
         *CRATE_TAGS,
@@ -2090,7 +2092,7 @@ def test_a_rows_pluginid_fills_its_field_and_selects_nothing(
     # `prevpluginid` but a column of that name.
     spoken = pa.table(
         {
-            "direction": pa.array(["SENT", "RECV"], pa.utf8()),
+            "msgdirection": pa.array(["Send", "R"], pa.utf8()),
             "pluginid": pa.array(["venue", "vnu"], pa.utf8()),
             "body": pa.array(
                 [
@@ -2103,12 +2105,12 @@ def test_a_rows_pluginid_fills_its_field_and_selects_nothing(
         }
     )
     spoken = codec.parse_text_arrow_reader(spoken).read_all()
-    # `direction` is a parameter of the row and no fixed column is spelled so,
-    # which is why it is carried in front; FIX's own `msgdirection` is the
-    # column it fills, so both names are here.
-    assert spoken.schema.names[:2] == ["direction", "body"]
-    assert spoken.schema.names.count("direction") == 1
+    # A stated `msgdirection` is the row's direction, read as a parameter and
+    # stored as the code of the set: FIX's own column carries it and no
+    # second column repeats it.
+    assert spoken.schema.names[:1] == ["body"]
     assert spoken.schema.names.count("msgdirection") == 1
+    assert spoken.column("msgdirection").to_pylist() == ["S", "R"]
     assert spoken.column("sendersessionname").to_pylist() == [None, "OMS_X1_OrderOut"]
     assert spoken.column("targetsessionname").to_pylist() == [None, "ULMSG_BROKER_BDG_DMZ_CLI"]
     assert spoken.column("sendersessionid").to_pylist() == [None, None]

@@ -29,22 +29,29 @@ const SHARED_NAME: &str = "value";
 /// leaking one per datatype a fixed cost rather than a leak.
 const INTERN_LIMIT: usize = 1 << 12;
 
+/// One slot per discriminant byte an identifier can carry: the highest one
+/// stated, plus one. A retired number (58, decision 14) is an empty slot,
+/// because a discriminant is a wire contract and never moves to close a gap.
+const PREBUILT_SLOTS: usize = DataTypeId::Isin.as_u8() as usize + 1;
+
 /// One nullable field per parameter-free leaf datatype, by [`DataTypeId::as_u8`].
 ///
 /// The parser owns which name spells which datatype, so each slot parses the
 /// identifier's canonical name rather than restating that table here; a slot
 /// whose name parses to another identifier - the 128-bit integer widths,
-/// which no datatype answers - stays empty.
-static PREBUILT: LazyLock<[Option<Field>; DataTypeId::ALL.len()]> = LazyLock::new(|| {
-    DataTypeId::ALL.map(|id| {
+/// which no datatype answers - stays empty, as does a retired number's.
+static PREBUILT: LazyLock<[Option<Field>; PREBUILT_SLOTS]> = LazyLock::new(|| {
+    let mut table: [Option<Field>; PREBUILT_SLOTS] = std::array::from_fn(|_| None);
+    for id in DataTypeId::ALL {
         if id.is_parameterized() {
-            return None;
+            continue;
         }
-        DataType::from_str(id.as_str())
+        table[usize::from(id.as_u8())] = DataType::from_str(id.as_str())
             .ok()
             .filter(|dtype| dtype.id() == id)
-            .map(|dtype| Field::new(SHARED_NAME, dtype, true))
-    })
+            .map(|dtype| Field::new(SHARED_NAME, dtype, true));
+    }
+    table
 });
 
 /// One nullable field per plain unbounded UTF-8 layout.

@@ -330,10 +330,12 @@ test('protocol and MsgType inference stays native and shallow', () => {
     '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",' +
     '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
   assert.ok(MimeType.inferText(answered).equals(MimeType.ULCONFIG))
-  assert.equal(MimeType.inferTextDirection(answered), 'RECV')
   assert.equal(fix.FixCodec.inferMsgtypeText(answered), 'read')
+  // Which way it moved is FIX's own tag 385, filled on every door.
+  const codec = new fix.FixCodec(new fix.FixRegistry())
+  assert.equal(codec.parseLine(Buffer.from(answered)).next().value.byTag(385).asJs(), 'R')
   const asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
-  assert.equal(MimeType.inferTextDirection(asked), 'SENT')
+  assert.equal(codec.parseLine(Buffer.from(asked)).next().value.byTag(385).asJs(), 'S')
 })
 
 test('one namespace: a reused name merges and a reused tag stands beside its holder', () => {
@@ -1331,7 +1333,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'nounmappedfixentries')
   assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
   // The crate's own facts close the columns, and FIX's own `MsgDirection`
-  // after them, because no message carries it on the wire.
+  // after them, because it is read off the line where the wire states none.
   assert.deepEqual(fix.schemaTags().slice(-21), [
     65000, 65001, 65002, 65003, 65004, 65005, 65006, 65007, 65008, 65009,
     65010, 65011, 65012, 65013, 65014, 65015, 65016, 65017, 65018, 65019,

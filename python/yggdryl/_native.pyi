@@ -145,10 +145,6 @@ class MimeType:
     @staticmethod
     def infer_text(line: str) -> MimeType: ...
     @staticmethod
-    def infer_bytes_direction(line: bytes | bytearray | memoryview) -> str | None: ...
-    @staticmethod
-    def infer_text_direction(line: str) -> str | None: ...
-    @staticmethod
     def from_value(value: MimeType | str) -> MimeType: ...
     @staticmethod
     def from_str(value: str) -> MimeType: ...
@@ -533,7 +529,7 @@ class Scalar:
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
         "d256", "string", "fixed_string", "string_view", "large_string",
         "large_string_view", "country", "currency", "mic", "cfi", "isin",
-        "side", "msgdirection", "state", "timeinforce", "uuid", "version",
+        "side", "state", "timeinforce", "uuid", "version",
         "url", "enum", "bytes", "fixed_size_binary", "large_binary",
         "binary_view", "geospatial",
         "geography", "date32", "date64", "time32", "time64", "datetime64",
@@ -3450,8 +3446,6 @@ class TextLine:
     @property
     def decoded_byte_size(self) -> int: ...
     @property
-    def direction(self) -> str | None: ...
-    @property
     def dropped_byte_size(self) -> int | None: ...
     @property
     def captures(self) -> tuple[str | None, ...]: ...
@@ -4843,7 +4837,7 @@ class FixCodec:
         payload_column: str = "body",
         capture_names: Sequence[str] | None = None,
         null_values: Sequence[str] | None = None,
-        direction: str = "sent",
+        direction: str | None = None,
         batch_byte_size: int | None = None,
     ) -> None: ...
     @property
@@ -4857,7 +4851,7 @@ class FixCodec:
     @property
     def null_values(self) -> list[str]: ...
     @property
-    def direction(self) -> str: ...
+    def direction(self) -> str | None: ...
     @property
     def batch_byte_size(self) -> int: ...
     @staticmethod

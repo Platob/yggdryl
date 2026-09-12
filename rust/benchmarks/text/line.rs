@@ -8,7 +8,6 @@ use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{
     TextBytes, TextEntries, TextOptions, into_arrow_batch, read_text_lines,
 };
-use yggdryl::types::MsgDirection;
 use yggdryl::{IOMedia, MimeType, Url};
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 500);
@@ -318,11 +317,12 @@ pub(crate) fn text_scan_benchmarks(criterion: &mut Criterion) {
         ),
     ];
 
+    let reading = yggdryl::FixRegistry::new().msgdirection();
     let mut group = criterion.benchmark_group("text_scan");
     for (shape, body) in &shapes {
         group.throughput(Throughput::Bytes(body.len() as u64));
         group.bench_function(format!("{shape}/payload"), |bencher| {
-            bencher.iter(|| MsgDirection::split_bytes(black_box(body)));
+            bencher.iter(|| reading.read_bytes(black_box(body)));
         });
         group.bench_function(format!("{shape}/classify"), |bencher| {
             bencher.iter(|| MimeType::infer_bytes(black_box(body)));

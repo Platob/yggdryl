@@ -85,7 +85,6 @@ impl fmt::Display for DataType {
             D::Side => formatter.write_str("side"),
             D::State => formatter.write_str("state"),
             D::TimeInForce => formatter.write_str("timeinforce"),
-            D::MsgDirection => formatter.write_str("msgdirection"),
             D::Uuid => formatter.write_str("uuid"),
             D::Version => formatter.write_str("version"),
             D::Url => formatter.write_str("url"),

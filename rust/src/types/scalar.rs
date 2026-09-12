@@ -453,8 +453,6 @@ impl<'de> Deserialize<'de> for Scalar {
             Cfi(SmolStr),
             Isin(SmolStr),
             Side(SmolStr),
-            #[serde(rename = "msgdirection")]
-            MsgDirection(SmolStr),
             State(SmolStr),
             #[serde(rename = "timeinforce")]
             TimeInForce(SmolStr),
@@ -521,9 +519,6 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map_err(D::Error::custom),
             StructuralValue::Side(value) => super::string::Side::new(value)
                 .map(|value| Self::Code(Code::Side(value)))
-                .map_err(D::Error::custom),
-            StructuralValue::MsgDirection(value) => super::string::MsgDirection::new(value)
-                .map(|value| Self::Code(Code::MsgDirection(value)))
                 .map_err(D::Error::custom),
             // A state is read by its spelling, exactly as a column reads it.
             StructuralValue::State(value) => super::string::State::read(&value)

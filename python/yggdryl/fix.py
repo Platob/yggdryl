@@ -39,8 +39,9 @@ turns one captured line into a lazy :class:`FixMessages` stream and
 the lines a text reader answers, the line's own body and clock beside the
 row-header captures that state its ``pluginid`` and ``beginstring`` -
 ``capture_names`` is what says which capture is which, once for the whole
-run, and a ``direction`` capture is the one only
-:meth:`FixCodec.parse_text_arrow_reader` has a column to put in. Every message
+run, and a ``msgdirection`` capture or column states the direction FIX's
+own tag 385 carries, filled from the verb in front of the payload where the
+row states none. Every message
 it builds opens with ``beginstring`` - the wire's own, else the version the
 message was read at - and closes with the
 crate's ``timestamp``: the row's own clock where the capture stated one, else

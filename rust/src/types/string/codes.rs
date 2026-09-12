@@ -50,9 +50,6 @@ pub(crate) const ISIN_EXTENSION_NAME: &str = "yggdryl.isin";
 /// The Arrow extension name of FIX's side of a trade.
 pub(crate) const SIDE_EXTENSION_NAME: &str = "yggdryl.side";
 
-/// The Arrow extension name of a captured line's direction.
-pub(crate) const DIRECTION_EXTENSION_NAME: &str = "yggdryl.msgdirection";
-
 /// The Arrow extension name of a thing's state.
 pub(crate) const STATE_EXTENSION_NAME: &str = "yggdryl.state";
 
@@ -83,12 +80,6 @@ pub(crate) const ISIN_WIDTH: usize = 12;
 /// five, so four is room without waste.
 pub(crate) const SIDE_WIDTH: usize = 4;
 
-/// The storage width of a captured line's direction.
-///
-/// `SENT` and `RECV`, spelled out rather than abbreviated because the stored
-/// bytes are what a reader sees.
-pub(crate) const DIRECTION_WIDTH: usize = 4;
-
 /// The storage width of a thing's state.
 ///
 /// Two decimal digits of rank and up to eight name bytes. Ten because the
@@ -113,7 +104,6 @@ impl DataType {
         ("cfi", DataType::Cfi, CFI_WIDTH),
         ("isin", DataType::Isin, ISIN_WIDTH),
         ("side", DataType::Side, SIDE_WIDTH),
-        ("msgdirection", DataType::MsgDirection, DIRECTION_WIDTH),
         ("state", DataType::State, STATE_WIDTH),
         ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
     ];
@@ -211,7 +201,6 @@ impl DataType {
             Self::Cfi => Some("cfi"),
             Self::Isin => Some("isin"),
             Self::Side => Some("side"),
-            Self::MsgDirection => Some("msgdirection"),
             Self::State => Some("state"),
             Self::TimeInForce => Some("timeinforce"),
             _ => None,
@@ -241,7 +230,6 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
         DataType::Cfi => Some(CFI_EXTENSION_NAME),
         DataType::Isin => Some(ISIN_EXTENSION_NAME),
         DataType::Side => Some(SIDE_EXTENSION_NAME),
-        DataType::MsgDirection => Some(DIRECTION_EXTENSION_NAME),
         DataType::State => Some(STATE_EXTENSION_NAME),
         DataType::TimeInForce => Some(TIMEINFORCE_EXTENSION_NAME),
         _ => None,
@@ -261,12 +249,8 @@ pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
         CFI_EXTENSION_NAME => DataType::Cfi,
         ISIN_EXTENSION_NAME => DataType::Isin,
         SIDE_EXTENSION_NAME => DataType::Side,
-        DIRECTION_EXTENSION_NAME => DataType::MsgDirection,
         STATE_EXTENSION_NAME => DataType::State,
         TIMEINFORCE_EXTENSION_NAME => DataType::TimeInForce,
-        // The name this datatype was first published under, so a column
-        // written before the rename still reads as what it is.
-        "yggdryl.direction" => DataType::MsgDirection,
         _ => return None,
     };
     (usize::try_from(width).is_ok_and(|width| dtype.fixed_byte_width() == Some(width)))
@@ -307,7 +291,6 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Cfi => code_text::<CFI_WIDTH>(bytes),
         DataType::Isin => code_text::<ISIN_WIDTH>(bytes),
         DataType::Side => code_text::<SIDE_WIDTH>(bytes),
-        DataType::MsgDirection => code_text::<DIRECTION_WIDTH>(bytes),
         DataType::State => code_text::<STATE_WIDTH>(bytes),
         DataType::TimeInForce => code_text::<TIMEINFORCE_WIDTH>(bytes),
         _ => Err(code_refusal(dtype)),

@@ -733,7 +733,6 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Cfi
         | D::Isin
         | D::Side
-        | D::MsgDirection
         | D::State
         | D::TimeInForce => {
             if matches!(value, Scalar::Code(code) if code.datatype() == *dtype) {
@@ -750,7 +749,6 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::Cfi => Code::Cfi(crate::types::Cfi::new(text)?),
                 D::Isin => Code::Isin(crate::types::Isin::new(text)?),
                 D::Side => Code::Side(crate::types::Side::new(text)?),
-                D::MsgDirection => Code::MsgDirection(crate::types::MsgDirection::new(text)?),
                 // A state is read by its spelling: the wire code, the
                 // specification's name or a stored value all reach the one
                 // ranked value, and a spelling that names no state is refused
@@ -1431,7 +1429,6 @@ fn validate_dtype_value(
         | D::Cfi
         | D::Isin
         | D::Side
-        | D::MsgDirection
         | D::State
         | D::TimeInForce => match ascii_bytes(value) {
             Some(bytes) => code_cell_text(dtype, bytes)

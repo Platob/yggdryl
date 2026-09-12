@@ -235,7 +235,6 @@ export type DataTypeId =
   | 'side'
   | 'state'
   | 'timeinforce'
-  | 'msgdirection'
   | 'uuid'
   | 'version'
   | 'url'
@@ -318,7 +317,6 @@ interface DataTypeKindById {
   side: 'code'
   state: 'code'
   timeinforce: 'code'
-  msgdirection: 'code'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -692,8 +690,6 @@ export type CfiField = FieldOf<'cfi', string>
 export type IsinField = FieldOf<'isin', string>
 /** FIX Side(54), the one-character order side, in four bytes. */
 export type SideField = FieldOf<'side', string>
-/** The verb in front of a FIX payload - SENT or RECV - in four bytes. */
-export type MsgDirectionField = FieldOf<'msgdirection', string>
 /** An order state ranked from the first to the terminal ones, in ten bytes. */
 export type StateField = FieldOf<'state', string>
 /** FIX TimeInForce(59), the spelled instruction, in eight bytes. */
@@ -958,7 +954,6 @@ export interface FieldsNamespace {
   cfi(name: string, options?: FieldOptions): CfiField
   isin(name: string, options?: FieldOptions): IsinField
   side(name: string, options?: FieldOptions): SideField
-  msgdirection(name: string, options?: FieldOptions): MsgDirectionField
   state(name: string, options?: FieldOptions): StateField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
@@ -1487,13 +1482,6 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'side', string, N, O>
-  msgdirection<
-    const N extends string,
-    const O extends FieldOptionsInput = undefined,
-  >(
-    name: N,
-    options?: O,
-  ): NamedField<'msgdirection', string, N, O>
   state<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,

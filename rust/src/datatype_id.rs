@@ -18,151 +18,150 @@ use crate::{Error, Result};
 /// Use [`DataTypeKind`] through [`Self::kind`] when only the family matters.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
+#[repr(u8)]
 pub enum DataTypeId {
     /// Null values.
-    Null,
+    Null = 0,
     /// Boolean values.
-    Boolean,
+    Boolean = 1,
     /// Signed 8-bit integers.
-    Int8,
+    Int8 = 2,
     /// Signed 16-bit integers.
-    Int16,
+    Int16 = 3,
     /// Signed 32-bit integers.
-    Int32,
+    Int32 = 4,
     /// Signed 64-bit integers.
-    Int64,
+    Int64 = 5,
     /// Unsigned 8-bit integers.
-    UInt8,
+    UInt8 = 6,
     /// Unsigned 16-bit integers.
-    UInt16,
+    UInt16 = 7,
     /// Unsigned 32-bit integers.
-    UInt32,
+    UInt32 = 8,
     /// Unsigned 64-bit integers.
-    UInt64,
+    UInt64 = 9,
     /// Signed 128-bit integers.
     ///
     /// Arrow has no 128-bit integer layout, so no [`crate::DataType`] answers
     /// this identifier. It names the width [`crate::types::integer::Int128`] stores and
     /// the canonical identity a negative integer of any width carries into
     /// [`crate::Scalar::write_bytes`].
-    Int128,
+    Int128 = 10,
     /// Unsigned 128-bit integers.
     ///
     /// The unsigned half of the pair [`Self::Int128`] documents.
-    UInt128,
+    UInt128 = 11,
     /// IEEE 16-bit floating point.
-    Float16,
+    Float16 = 12,
     /// IEEE 32-bit floating point.
-    Float32,
+    Float32 = 13,
     /// IEEE 64-bit floating point.
-    Float64,
+    Float64 = 14,
     /// A 64-bit datetime with a resolution and explicit timezone marker.
-    DateTime64,
+    DateTime64 = 15,
     /// Days since the Unix epoch.
-    Date32,
+    Date32 = 16,
     /// Milliseconds since the Unix epoch representing whole days.
-    Date64,
+    Date64 = 17,
     /// 32-bit time of day.
-    Time32,
+    Time32 = 18,
     /// 64-bit time of day.
-    Time64,
+    Time64 = 19,
     /// 32-bit elapsed time.
-    Duration32,
+    Duration32 = 20,
     /// 64-bit elapsed time.
-    Duration64,
+    Duration64 = 21,
     /// Calendar interval.
-    Interval,
+    Interval = 22,
     /// Bytes with 32-bit offsets, under any bound.
-    Binary,
+    Binary = 23,
     /// Bytes of one fixed width.
-    FixedSizeBinary,
+    FixedSizeBinary = 24,
     /// Bytes with 64-bit offsets.
-    LargeBinary,
+    LargeBinary = 25,
     /// Bytes in the view layout.
-    BinaryView,
+    BinaryView = 26,
     /// A string with 32-bit offsets, in any charset, with any bound.
     ///
     /// The five string layouts sit where the five text identifiers they
     /// replaced sat, so every later number - and every digest tag - stays
     /// what it was; this one is the number UTF-8 text always fed.
-    String,
+    String = 27,
     /// A string of one fixed, padded byte width.
-    FixedString,
+    FixedString = 28,
     /// A string in the view layout.
-    StringView,
+    StringView = 29,
     /// A string with 64-bit offsets.
-    LargeString,
+    LargeString = 30,
     /// A string in the view layout, declared large.
-    LargeStringView,
+    LargeStringView = 31,
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
-    Country,
+    Country = 32,
     /// ISO 4217: a currency code, three ASCII bytes.
-    Currency,
+    Currency = 33,
     /// ISO 10383: a market identifier code, four ASCII bytes.
-    Mic,
+    Mic = 34,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
-    Cfi,
+    Cfi = 35,
     /// One 128-bit universally unique identifier.
-    Uuid,
+    Uuid = 36,
     /// Variable list with 32-bit offsets.
-    List,
+    List = 37,
     /// Variable list-view with 32-bit offsets.
-    ListView,
+    ListView = 38,
     /// Fixed-length list.
-    FixedSizeList,
+    FixedSizeList = 39,
     /// Variable list with 64-bit offsets.
-    LargeList,
+    LargeList = 40,
     /// Variable list-view with 64-bit offsets.
-    LargeListView,
+    LargeListView = 41,
     /// Ordered struct fields.
-    Struct,
+    Struct = 42,
     /// Tagged union fields.
-    Union,
+    Union = 43,
     /// Dictionary-encoded values.
-    Dictionary,
+    Dictionary = 44,
     /// Exact decimal backed by 32 bits.
-    Decimal32,
+    Decimal32 = 45,
     /// Exact decimal backed by 64 bits.
-    Decimal64,
+    Decimal64 = 46,
     /// Exact decimal backed by 128 bits.
-    Decimal128,
+    Decimal128 = 47,
     /// Exact decimal backed by 256 bits.
-    Decimal256,
+    Decimal256 = 48,
     /// Arrow map entries.
-    Map,
+    Map = 49,
     /// Run-end encoded values.
-    RunEndEncoded,
+    RunEndEncoded = 50,
     /// Self-describing semi-structured values.
-    Variant,
+    Variant = 51,
     /// Geospatial features on a planar coordinate system.
-    Geometry,
+    Geometry = 52,
     /// Geospatial features on the surface of a sphere or spheroid.
-    Geography,
+    Geography = 53,
     /// A canonical, numerically ordered software or protocol version.
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
-    Version,
+    Version = 54,
     /// FIX's side of a trade, four ASCII bytes.
-    Side,
+    Side = 55,
     /// What state one thing is in.
-    State,
+    State = 56,
     /// How long an order stands.
-    TimeInForce,
-    /// Which way a captured line moved, four ASCII bytes.
-    MsgDirection,
+    TimeInForce = 57,
     /// A validated, canonical location.
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
-    Url,
+    Url = 59,
     /// ISO 6166: a securities identification number, twelve ASCII bytes.
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
-    Isin,
+    Isin = 60,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 61] = [
+    pub const ALL: [Self; 60] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -221,7 +220,6 @@ impl DataTypeId {
         Self::Side,
         Self::State,
         Self::TimeInForce,
-        Self::MsgDirection,
         Self::Url,
         Self::Isin,
     ];
@@ -278,7 +276,6 @@ impl DataTypeId {
             Self::Side => "side",
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
-            Self::MsgDirection => "msgdirection",
             Self::Uuid => "uuid",
             Self::List => "list",
             Self::ListView => "list_view",
@@ -309,12 +306,13 @@ impl DataTypeId {
 
     /// Return this identifier's discriminant as one byte.
     ///
-    /// The number is the variant's position in the declaration order
-    /// [`Self::ALL`] lists, and it is a wire contract:
+    /// Every variant states its discriminant, and it is a wire contract:
     /// [`crate::Scalar::write_bytes`] writes it as the tag of every value, so
-    /// inserting a variant anywhere but the end changes stored digests. The
-    /// test pinning every value is what makes that a failure rather than a
-    /// surprise.
+    /// a number is never reused and never moves. A retired variant leaves its
+    /// number unused - 58 was `msgdirection`, retired with decision 14 - so
+    /// the byte is no longer the variant's position in [`Self::ALL`]; the
+    /// test pinning every value is what makes a moved number a failure rather
+    /// than a surprise.
     ///
     /// ```
     /// use yggdryl::DataTypeId;
@@ -373,8 +371,7 @@ impl DataTypeId {
             | Self::Isin
             | Self::Side
             | Self::State
-            | Self::TimeInForce
-            | Self::MsgDirection => DataTypeKind::Code,
+            | Self::TimeInForce => DataTypeKind::Code,
             Self::Uuid => DataTypeKind::Uuid,
             Self::List
             | Self::ListView
@@ -524,7 +521,7 @@ impl DataTypeId {
             Self::Currency => Some(3),
             Self::Cfi => Some(6),
             Self::Isin => Some(12),
-            Self::Side | Self::MsgDirection => Some(4),
+            Self::Side => Some(4),
             Self::TimeInForce => Some(8),
             Self::State => Some(10),
             Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
@@ -612,7 +609,7 @@ mod tests {
 
     #[test]
     fn the_strings_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 61);
+        assert_eq!(DataTypeId::ALL.len(), 60);
         for id in [
             DataTypeId::String,
             DataTypeId::FixedString,
@@ -669,44 +666,82 @@ mod tests {
     }
 
     #[test]
-    fn discriminants_are_the_declaration_order_and_are_pinned() {
-        // The byte `Scalar::write_bytes` writes as a value's tag. Inserting a
-        // variant anywhere but the end moves every later number and changes
-        // stored digests, which is what this pins.
-        for (index, id) in DataTypeId::ALL.into_iter().enumerate() {
-            assert_eq!(usize::from(id.as_u8()), index, "{id}");
+    fn every_discriminant_is_stated_and_pinned() {
+        // The byte `Scalar::write_bytes` writes as a value's tag. Every
+        // variant states its number, a retired one leaves its number unused
+        // (58 was `msgdirection`, decision 14), and this pins every byte so a
+        // moved or reused number is a failure rather than a surprise.
+        let pinned = [
+            (DataTypeId::Null, 0),
+            (DataTypeId::Boolean, 1),
+            (DataTypeId::Int8, 2),
+            (DataTypeId::Int16, 3),
+            (DataTypeId::Int32, 4),
+            (DataTypeId::Int64, 5),
+            (DataTypeId::UInt8, 6),
+            (DataTypeId::UInt16, 7),
+            (DataTypeId::UInt32, 8),
+            (DataTypeId::UInt64, 9),
+            (DataTypeId::Int128, 10),
+            (DataTypeId::UInt128, 11),
+            (DataTypeId::Float16, 12),
+            (DataTypeId::Float32, 13),
+            (DataTypeId::Float64, 14),
+            (DataTypeId::DateTime64, 15),
+            (DataTypeId::Date32, 16),
+            (DataTypeId::Date64, 17),
+            (DataTypeId::Time32, 18),
+            (DataTypeId::Time64, 19),
+            (DataTypeId::Duration32, 20),
+            (DataTypeId::Duration64, 21),
+            (DataTypeId::Interval, 22),
+            (DataTypeId::Binary, 23),
+            (DataTypeId::FixedSizeBinary, 24),
+            (DataTypeId::LargeBinary, 25),
+            (DataTypeId::BinaryView, 26),
+            (DataTypeId::String, 27),
+            (DataTypeId::FixedString, 28),
+            (DataTypeId::StringView, 29),
+            (DataTypeId::LargeString, 30),
+            (DataTypeId::LargeStringView, 31),
+            (DataTypeId::Country, 32),
+            (DataTypeId::Currency, 33),
+            (DataTypeId::Mic, 34),
+            (DataTypeId::Cfi, 35),
+            (DataTypeId::Uuid, 36),
+            (DataTypeId::List, 37),
+            (DataTypeId::ListView, 38),
+            (DataTypeId::FixedSizeList, 39),
+            (DataTypeId::LargeList, 40),
+            (DataTypeId::LargeListView, 41),
+            (DataTypeId::Struct, 42),
+            (DataTypeId::Union, 43),
+            (DataTypeId::Dictionary, 44),
+            (DataTypeId::Decimal32, 45),
+            (DataTypeId::Decimal64, 46),
+            (DataTypeId::Decimal128, 47),
+            (DataTypeId::Decimal256, 48),
+            (DataTypeId::Map, 49),
+            (DataTypeId::RunEndEncoded, 50),
+            (DataTypeId::Variant, 51),
+            (DataTypeId::Geometry, 52),
+            (DataTypeId::Geography, 53),
+            (DataTypeId::Version, 54),
+            (DataTypeId::Side, 55),
+            (DataTypeId::State, 56),
+            (DataTypeId::TimeInForce, 57),
+            (DataTypeId::Url, 59),
+            (DataTypeId::Isin, 60),
+        ];
+        assert_eq!(pinned.len(), DataTypeId::ALL.len());
+        for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {
+            assert_eq!(id, held, "declaration order");
+            assert_eq!(id.as_u8(), byte, "{id}");
         }
-        assert_eq!(DataTypeId::Null.as_u8(), 0);
-        assert_eq!(DataTypeId::Boolean.as_u8(), 1);
-        assert_eq!(DataTypeId::UInt64.as_u8(), 9);
-        assert_eq!(DataTypeId::Int128.as_u8(), 10);
-        assert_eq!(DataTypeId::UInt128.as_u8(), 11);
-        assert_eq!(DataTypeId::Float64.as_u8(), 14);
-        assert_eq!(DataTypeId::DateTime64.as_u8(), 15);
-        assert_eq!(DataTypeId::Date64.as_u8(), 17);
-        assert_eq!(DataTypeId::Time64.as_u8(), 19);
-        assert_eq!(DataTypeId::Duration64.as_u8(), 21);
-        assert_eq!(DataTypeId::Binary.as_u8(), 23);
-        // The five string layouts took the five slots the text identifiers
-        // they replaced held, so nothing after them moved.
-        assert_eq!(DataTypeId::String.as_u8(), 27);
-        assert_eq!(DataTypeId::FixedString.as_u8(), 28);
-        assert_eq!(DataTypeId::StringView.as_u8(), 29);
-        assert_eq!(DataTypeId::LargeString.as_u8(), 30);
-        assert_eq!(DataTypeId::LargeStringView.as_u8(), 31);
-        assert_eq!(DataTypeId::Country.as_u8(), 32);
-        assert_eq!(DataTypeId::Cfi.as_u8(), 35);
-        assert_eq!(DataTypeId::Uuid.as_u8(), 36);
-        assert_eq!(DataTypeId::List.as_u8(), 37);
-        assert_eq!(DataTypeId::Struct.as_u8(), 42);
-        assert_eq!(DataTypeId::Dictionary.as_u8(), 44);
-        assert_eq!(DataTypeId::Decimal256.as_u8(), 48);
-        assert_eq!(DataTypeId::Map.as_u8(), 49);
-        assert_eq!(DataTypeId::Geometry.as_u8(), 52);
-        assert_eq!(DataTypeId::Geography.as_u8(), 53);
-        assert_eq!(DataTypeId::Version.as_u8(), 54);
-        assert_eq!(DataTypeId::Url.as_u8(), 59);
-        assert_eq!(DataTypeId::Isin.as_u8(), 60);
+        assert!(
+            DataTypeId::ALL.iter().all(|id| id.as_u8() != 58),
+            "58 is retired and never reused"
+        );
         assert_eq!(DataTypeId::Isin.fixed_byte_width(), Some(12));
     }
 

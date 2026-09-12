@@ -8,7 +8,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
-| Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's own twenty, `msgdirection`, then `nofixentries` and `nounmappedfixentries` |
+| Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's own twenty, FIX's own `msgdirection`, then `nofixentries` and `nounmappedfixentries` |
 | Non-null | `beginstring`, `version`, `msghash`, `timestamp`, `unixpartition` - every built message [fills them](#every-message-is-dated-and-versioned); every other column is nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
 | Lossless | `nofixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
@@ -825,7 +825,7 @@ That is the rule the whole row keeps: what a message said can never fail the bat
 
 A line's URL, line number, timestamp and other capture fields lead its FIX columns. A bulk configuration can produce several message rows; each receives the same carried values from its source row.
 
-A carried column whose folded name a FIX column already takes - a `msgCtxId` capture beside `msgctxid`, a text reader's `msgtype` beside the FIX one - is dropped rather than renamed or duplicated: the FIX column is the one a reader spelling it means, and two columns of one name is not a schema. What it stated is not lost, because the row [fills that column from it](arrow.md#a-column-is-the-caller-speaking-per-row). `direction` and `msgdirection` are two names, so both are present.
+A carried column whose folded name a FIX column already takes - a `msgCtxId` capture beside `msgctxid`, a text reader's `msgtype` beside the FIX one - is dropped rather than renamed or duplicated: the FIX column is the one a reader spelling it means, and two columns of one name is not a schema. What it stated is not lost, because the row [fills that column from it](arrow.md#a-column-is-the-caller-speaking-per-row). A `msgdirection` column is the row's stated direction, read as a parameter and carried nowhere else.
 
 === "Rust"
 

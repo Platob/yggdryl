@@ -4,7 +4,6 @@ mod vocabulary;
 
 use napi::bindgen_prelude::{Buffer, ClassInstance, Either, Either3, Result};
 use napi_derive::napi;
-use yggdryl::types::MsgDirection as CoreMsgDirection;
 use yggdryl::{MediaType as CoreMediaType, MimeType as CoreMimeType};
 
 use crate::{napi_error, ordering_value};
@@ -64,18 +63,6 @@ impl JsMimeType {
     #[napi(factory)]
     pub fn infer_text(line: String) -> Self {
         Self::from_core(CoreMimeType::infer_text(&line))
-    }
-
-    /// Read which way one captured byte line moved.
-    #[napi]
-    pub fn infer_bytes_direction(line: Buffer) -> Option<String> {
-        CoreMsgDirection::infer_bytes(line.as_ref()).map(ToOwned::to_owned)
-    }
-
-    /// Read which way one captured text line moved.
-    #[napi]
-    pub fn infer_text_direction(line: String) -> Option<String> {
-        CoreMsgDirection::infer_text(&line).map(ToOwned::to_owned)
     }
 
     /// Parse a MIME/extension string or cheaply clone another native value.

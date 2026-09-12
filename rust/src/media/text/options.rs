@@ -135,9 +135,6 @@ pub struct TextOptions {
     pub parse_mtime: bool,
     /// Whether to classify each line and emit a `mimetype` column.
     pub parse_mimetype: bool,
-    /// Whether to read each line's direction, emit a `direction` column, and
-    /// take the marker off the body.
-    pub parse_direction: bool,
     /// Whether to drop a row whose body repeats the row before it.
     ///
     /// A capture tool that published a line twice publishes it twice in a
@@ -194,7 +191,6 @@ impl TextOptions {
             start_rownum: None,
             parse_mtime: true,
             parse_mimetype: false,
-            parse_direction: false,
             dedup_adjacent: false,
             rename_columns: BTreeMap::new(),
             framing: false,
@@ -585,7 +581,7 @@ impl TextOptions {
     /// One question, because every caller asking it is deciding whether the
     /// body it is about to hand on is the bytes it read.
     pub(crate) fn rewrites_body(&self) -> bool {
-        !self.lstrip.is_empty() || !self.rstrip.is_empty() || self.parse_direction
+        !self.lstrip.is_empty() || !self.rstrip.is_empty()
     }
 
     pub(crate) fn output_linesep(&self) -> &[u8] {

@@ -386,12 +386,6 @@ impl JsTextLine {
         i64::try_from(self.inner.decoded_byte_size()).unwrap_or(i64::MAX)
     }
 
-    /// Which way the line moved.
-    #[napi(getter)]
-    pub fn direction(&self) -> Option<String> {
-        self.inner.direction().map(ToOwned::to_owned)
-    }
-
     /// How many bytes of this record went over the retained limit.
     #[napi(getter)]
     pub fn dropped_byte_size(&self) -> Option<i64> {

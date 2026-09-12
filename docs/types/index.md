@@ -22,7 +22,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 | Core | [Cast](cast.md) | The field as cast target, over Scalar rows, Arrow arrays, and record batches |
 | Families | [Numeric & temporal](numeric.md) | Boolean, integer, floating, decimal, and the temporal vocabulary |
 | Families | [Strings & bytes](text.md) | The string family (five layouts, any charset, one bound), the byte family (four layouts), `Str` and `Bytes`, the version and URL values, regex-capture schema inference |
-| Families | [Codes](codes.md) | The nine registered codes, `ascii_packed`, `StringEnum` and the ISO listings, the `state` lifecycle, `msgdirection` |
+| Families | [Codes](codes.md) | The eight registered codes, `ascii_packed`, `StringEnum` and the ISO listings, the `state` lifecycle |
 | Families | [UUID](uuid.md) | The 128-bit identifier over `fixed_size_binary(16)` storage |
 | Families | [Nested](nested.md) | Children, dictionary and run-end encodings, unions |
 | Families | [Geospatial](geospatial.md) | Variant, geometry, geography, and the WKB reader |

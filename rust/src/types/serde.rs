@@ -127,11 +127,9 @@ enum DataTypeRef<'a> {
     Cfi {},
     Isin {},
     Side {},
-    // Both spellings are one word on the wire, so neither takes the
-    // snake_case the rest of this enum derives.
-    #[serde(rename = "msgdirection")]
-    MsgDirection {},
     State {},
+    // One word on the wire, so it does not take the snake_case the rest
+    // of this enum derives.
     #[serde(rename = "timeinforce")]
     TimeInForce {},
     Uuid {},
@@ -274,7 +272,6 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Cfi => Self::Cfi {},
             D::Isin => Self::Isin {},
             D::Side => Self::Side {},
-            D::MsgDirection => Self::MsgDirection {},
             D::State => Self::State {},
             D::TimeInForce => Self::TimeInForce {},
             D::Uuid => Self::Uuid {},
@@ -400,10 +397,6 @@ enum DataTypeValue {
     Cfi {},
     Isin {},
     Side {},
-    // Both spellings are one word on the wire, so neither takes the
-    // snake_case the rest of this enum derives.
-    #[serde(rename = "msgdirection")]
-    MsgDirection {},
     #[serde(rename = "state")]
     State {},
     #[serde(rename = "timeinforce")]
@@ -522,7 +515,6 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Cfi {} => Self::Cfi,
             DataTypeValue::Isin {} => Self::Isin,
             DataTypeValue::Side {} => Self::Side,
-            DataTypeValue::MsgDirection {} => Self::MsgDirection,
             DataTypeValue::State {} => Self::State,
             DataTypeValue::TimeInForce {} => Self::TimeInForce,
             DataTypeValue::Uuid {} => Self::Uuid,
@@ -648,7 +640,6 @@ impl DataType {
             D::Cfi => tag("cfi"),
             D::Isin => tag("isin"),
             D::Side => tag("side"),
-            D::MsgDirection => tag("msgdirection"),
             D::State => tag("state"),
             D::TimeInForce => tag("timeinforce"),
             D::Uuid => tag("uuid"),
@@ -921,7 +912,6 @@ impl DataType {
             "cfi" => Self::Cfi,
             "isin" => Self::Isin,
             "side" => Self::Side,
-            "msgdirection" => Self::MsgDirection,
             "state" => Self::State,
             "timeinforce" => Self::TimeInForce,
             "uuid" => Self::Uuid,

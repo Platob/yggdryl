@@ -68,8 +68,7 @@ use crate::mime_type::line;
 use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 use super::build::{
-    BEGINSTRING_COLUMN, Builder, CLOCK_COLUMN, DIRECTION_COLUMN, Fill, FixPair, RowExtras,
-    root_name, version_of,
+    BEGINSTRING_COLUMN, Builder, CLOCK_COLUMN, Fill, FixPair, RowExtras, root_name, version_of,
 };
 use super::memo::Memo;
 use super::{FixMessages, FixMsg, FixRegistry};
@@ -367,9 +366,10 @@ enum CaptureRole {
     Version,
     /// The clock that stamps the message.
     Clock,
-    /// The direction the line moved.
-    Direction,
     /// A capture whose name reaches a field, beside the field it fills.
+    /// A capture named `msgdirection` is one of these: tag 385 is a field
+    /// like any other (decision 14), and a fill never overrides what the
+    /// line stated.
     Fill(Field, i32),
     /// A capture this codec has no use for, which is most of them.
     Silent,
@@ -384,9 +384,6 @@ impl CaptureRole {
         }
         if is(CLOCK_COLUMN) {
             return Self::Clock;
-        }
-        if is(DIRECTION_COLUMN) {
-            return Self::Direction;
         }
         codec
             .fill_target(name)
@@ -412,8 +409,11 @@ pub struct FixCodec {
     /// nothing reads a line's typed fields and no captures at all.
     captures: Arc<[CaptureRole]>,
     null_values: Vec<String>,
-    /// The direction a line with no verb in front of its payload took.
-    direction: Option<&'static str>,
+    /// The code a line with no verb in front of its payload takes on the
+    /// batch door: a code of tag 385's set, or none.
+    direction: Option<SmolStr>,
+    /// The registry's reading of tag 385, compiled once (decision 14).
+    msgdirection: Arc<super::MsgDirection>,
     /// The raw bytes one Arrow batch of messages targets.
     batch_byte_size: u64,
     /// The `BeginString` child every built message carries, resolved once:
@@ -462,6 +462,8 @@ impl FixCodec {
     #[must_use]
     pub fn new(registry: Arc<FixRegistry>) -> Self {
         let beginstring = super::build::beginstring_field(&registry);
+        let msgdirection = registry.msgdirection();
+        let direction = Some(SmolStr::new(msgdirection.sent()));
         Self {
             registry,
             version: None,
@@ -472,7 +474,8 @@ impl FixCodec {
                 .iter()
                 .map(|spelling| (*spelling).to_owned())
                 .collect(),
-            direction: Some(crate::types::MsgDirection::SENT),
+            direction,
+            msgdirection: Arc::new(msgdirection),
             batch_byte_size: Self::DEFAULT_BATCH_BYTE_SIZE,
             beginstring,
             memo: Arc::new(Memo::new()),
@@ -491,10 +494,17 @@ impl FixCodec {
         self.version
     }
 
-    /// The direction a line with no verb in front of its payload takes.
+    /// The code a line with no verb in front of its payload takes on the
+    /// batch door, a code of tag 385's set; `None` is no pin.
     #[must_use]
-    pub const fn direction(&self) -> Option<&'static str> {
-        self.direction
+    pub fn direction(&self) -> Option<&str> {
+        self.direction.as_deref()
+    }
+
+    /// The registry's reading of tag 385, as this codec compiled it.
+    #[must_use]
+    pub fn msgdirection(&self) -> &super::MsgDirection {
+        &self.msgdirection
     }
 
     /// The raw bytes one Arrow batch of messages targets.
@@ -561,7 +571,7 @@ impl FixCodec {
     ///
     /// A line carries its captures by position, in the order its header
     /// declares them, so this is the boundary that decides what each position
-    /// means: the version, the clock, the direction, a field a capture's
+    /// means: the version, the clock, a field a capture's
     /// name reaches, or nothing. Pass what
     /// [`TextOptions::capture_names`] answers for the options the lines were
     /// read under, and every line of the run is then read without one name
@@ -602,25 +612,44 @@ impl FixCodec {
         self
     }
 
-    /// Sets the direction a line with no verb in front of its payload takes.
+    /// Sets the code a line with no verb in front of its payload takes on
+    /// the batch door.
     ///
-    /// `SENT` by default: a session's own log is written by the side doing
-    /// the sending, so its unmarked lines are the ones it sent and its
-    /// inbound lines are the ones it bothered to mark. A capture taken from
-    /// the other side sets `RECV`, and one whose silence really means unknown
-    /// sets `None`. Any verb a line does carry beats this, and so does a
-    /// `direction` column a record or a batch row states.
+    /// The set's `Send` code by default - `S` in the specification's set:
+    /// a session's own log is written by the side doing the sending, so its
+    /// unmarked lines are the ones it sent and its inbound lines are the
+    /// ones it bothered to mark. A capture taken from the other side pins
+    /// the `Receive` code, and one whose silence really means unknown pins
+    /// `None` or the empty text. Any verb a line does carry beats this, and
+    /// so does a `msgdirection` column a batch row states.
     ///
-    /// The value is stored as the `msgdirection` column holds it, so it is
-    /// [`MsgDirection::SENT`](crate::types::MsgDirection::SENT),
-    /// [`MsgDirection::RECV`](crate::types::MsgDirection::RECV) or `None`
-    /// and nothing else; a spelling from outside the crate crosses
-    /// [`MsgDirection::from_spelling`](crate::types::MsgDirection::from_spelling)
-    /// first, which is the one place the spellings are listed.
-    #[must_use]
-    pub const fn with_direction(mut self, direction: Option<&'static str>) -> Self {
-        self.direction = direction;
-        self
+    /// `code` is any spelling of a code of tag 385's set - its value, its
+    /// name, an alias - resolved once here through
+    /// [`MsgDirection::code`](super::MsgDirection::code); the pin is stored
+    /// as the code itself.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the spelling and the set when the
+    /// set holds no such code.
+    pub fn try_with_direction(mut self, code: Option<&str>) -> Result<Self> {
+        let Some(spelling) = code.map(str::trim).filter(|held| !held.is_empty()) else {
+            self.direction = None;
+            return Ok(self);
+        };
+        let Some(code) = self.msgdirection.code(spelling) else {
+            let codes: Vec<&str> = self.msgdirection.codes().collect();
+            return Err(Error::Parse {
+                target: "msgdirection",
+                position: 0,
+                reason: crate::text::expected_got(
+                    format_args!("one of {}", codes.join(", ")),
+                    format_args!("{spelling:?}"),
+                ),
+            });
+        };
+        self.direction = Some(SmolStr::new(code));
+        Ok(self)
     }
 
     /// Sets the raw bytes one Arrow batch of messages targets.
@@ -761,7 +790,6 @@ impl FixCodec {
     /// | --- | --- |
     /// | [`body`](TextLine::body) | the bytes read, as the range they already are |
     /// | [`timestamp`](TextLine::timestamp) | the clock that stamps the message |
-    /// | [`direction`](TextLine::direction) | the direction, before the payload's own verb and this codec's pin |
     /// | [`captures`](TextLine::captures) | the version and every field a capture's name reaches, by the positions [`Self::with_capture_names`] resolved |
     ///
     /// A line that states none of them reads exactly as its bytes would,
@@ -784,11 +812,7 @@ impl FixCodec {
                     let Some(held) = text(at) else { continue };
                     cells.push((field.clone(), *tag, Scalar::from(held)));
                 }
-                // A direction has no home on a message: it is a fact about
-                // the line, and only the batch reader has a column to put it
-                // in. The capture is named so it cannot silently become a
-                // fill on a field of that name.
-                CaptureRole::Direction | CaptureRole::Silent => {}
+                CaptureRole::Silent => {}
             }
         }
         // The line's own clock where the read gave it one - a consumed capture
@@ -810,6 +834,8 @@ impl FixCodec {
             version,
             clock: clock.as_ref(),
             fills: &fills,
+            direction: None,
+            direction_pin: None,
         };
         let page = line.body_bytes();
         if page.is_empty() {
@@ -849,6 +875,20 @@ impl FixCodec {
             .unwrap_or_else(|_| FixMessages::one(self.empty_with(extras)))
     }
 
+    /// What a byte door states beside the line it was handed whole: the
+    /// direction the reading names, and nothing else (decision 14).
+    ///
+    /// The single-dialect doors take one frame as bytes and locate it
+    /// themselves, so the reading locates it once more here; they are not
+    /// the per-row path, which resolves the direction where it located the
+    /// frame.
+    fn read_extras(&self, body: &[u8]) -> RowExtras<'_> {
+        RowExtras {
+            direction: self.msgdirection.read_bytes(body),
+            ..RowExtras::NONE
+        }
+    }
+
     /// A row nobody could read, which is still a row - dated and versioned as
     /// every row is, by what the row itself stated.
     fn empty_with(&self, extras: RowExtras<'_>) -> FixMsg {
@@ -881,6 +921,23 @@ impl FixCodec {
         let (entries, frame_at) = TextEntries::from_bytes_direct_located(page);
         let entries = entries.unwrap_or_default();
         let opens = line::payload_at_or_document(row, frame_at).unwrap_or(row.len());
+        // The row's stated direction, else the reading over the prose in
+        // front of the payload - or the half a document states of itself -
+        // else the pin the door supplied (decision 14). Resolved here, where
+        // the payload was located, so the frame is located once.
+        let direction = extras.direction.or_else(|| {
+            let prefix = &row[..opens.min(row.len())];
+            self.msgdirection.read_prefix(prefix).or_else(|| {
+                let stated = (frame_at.is_none() && opens < row.len())
+                    .then(|| line::ulconfig_answered(&row[opens..]));
+                self.msgdirection.stated(stated)
+            })
+        });
+        let extras = RowExtras {
+            direction: direction.or(extras.direction_pin),
+            direction_pin: None,
+            ..extras
+        };
         let framed = framed_entries(entries.as_slice(), page.start() as usize + opens);
         if framed.first().is_some_and(tag_keyed) {
             return self.frame_with(framed, extras).map(FixMessages::one);
@@ -930,7 +987,7 @@ impl FixCodec {
     pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
         let entries = TextEntries::from_bytes_direct(&page).unwrap_or_default();
-        self.frame_with(bounded(&page, &entries), RowExtras::NONE)
+        self.frame_with(bounded(&page, &entries), self.read_extras(body))
     }
 
     /// One numeric frame, from the entries the line answered for it.
@@ -982,7 +1039,7 @@ impl FixCodec {
     pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
         let entries = TextEntries::from_bytes_direct(&page).unwrap_or_default();
-        self.bridge_with(bounded(&page, &entries), RowExtras::NONE)
+        self.bridge_with(bounded(&page, &entries), self.read_extras(body))
     }
 
     /// [`Self::parse_ullink_line`], with what the row stated beside its row.
@@ -1348,7 +1405,7 @@ impl FixCodec {
     /// Returns [`Error::Parse`] naming the byte position when the row is not
     /// well-formed XML, and the builder's refusal otherwise.
     pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg> {
-        self.fixml_with(body, RowExtras::NONE)
+        self.fixml_with(body, self.read_extras(body))
     }
 
     /// [`Self::parse_fixml_line`], with what the row stated beside its document.
@@ -1489,6 +1546,16 @@ impl FixCodec {
         }
         for fill in extras.fills {
             builder.fill(fill);
+        }
+        // Tag 385 as a built child, where the line stated none of its own:
+        // a fill, so a `385=` on the wire or a stated column stands.
+        if let Some(code) = extras.direction {
+            let value = Scalar::from(code);
+            builder.fill(&Fill {
+                field: self.msgdirection.field(),
+                tag: super::MSGDIRECTION_TAG_NAME.0,
+                value: &value,
+            });
         }
         let built = builder.finish(root_name(msgtype.as_deref()).as_str(), extras.clock)?;
         Ok(FixMsg::from_built(Arc::clone(&self.registry), built))

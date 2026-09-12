@@ -1,4 +1,4 @@
-//! Every string's field marker: the one family and the nine codes.
+//! Every string's field marker: the one family and the eight codes.
 //!
 //! One file because a marker is one line per datatype and the family is one
 //! family; splitting them would be two lists to keep in step rather than one.
@@ -18,11 +18,6 @@ define_field_types!(MicType, "mic", crate::DataType::Mic);
 define_field_types!(CfiType, "cfi", crate::DataType::Cfi);
 define_field_types!(IsinType, "isin", crate::DataType::Isin);
 define_field_types!(SideType, "side", crate::DataType::Side);
-define_field_types!(
-    MsgDirectionType,
-    "msgdirection",
-    crate::DataType::MsgDirection
-);
 define_field_types!(StateType, "state", crate::DataType::State);
 define_field_types!(TimeInForceType, "timeinforce", crate::DataType::TimeInForce);
 
@@ -38,8 +33,6 @@ pub type CfiField = TypedField<CfiType>;
 pub type IsinField = TypedField<IsinType>;
 /// A side-typed field: FIX's side of a trade.
 pub type SideField = TypedField<SideType>;
-/// A direction-typed field: which way a captured line moved.
-pub type MsgDirectionField = TypedField<MsgDirectionType>;
 /// A field declared as a thing's state.
 pub type StateField = TypedField<StateType>;
 /// A field declared as how long an order stands.

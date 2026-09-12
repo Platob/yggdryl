@@ -1,7 +1,7 @@
-"""The registered code field factories: nine identities, one width each.
+"""The registered code field factories: eight identities, one width each.
 
 The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, ``isin``,
-and FIX's own ``side``, ``msgdirection``, ``state`` and ``timeinforce`` - are
+and FIX's own ``side``, ``state`` and ``timeinforce`` - are
 datatypes of their own, each storing the width its standard fixes, so a code
 factory is not a fixed-width string wearing a name: the field it builds
 carries the code's identity across Arrow, answers ``is_code`` and
@@ -26,13 +26,12 @@ if TYPE_CHECKING:
     CfiField: TypeAlias = TypedField[Literal["cfi"], str]
     IsinField: TypeAlias = TypedField[Literal["isin"], str]
     SideField: TypeAlias = TypedField[Literal["side"], str]
-    MsgDirectionField: TypeAlias = TypedField[Literal["msgdirection"], str]
     StateField: TypeAlias = TypedField[Literal["state"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
 else:
     CountryField = CurrencyField = MicField = CfiField = IsinField = SideField = (
-        MsgDirectionField
-    ) = StateField = TimeInForceField = Field
+        StateField
+    ) = TimeInForceField = Field
 
 _COUNTRY = simple_dtype("country")
 _CURRENCY = simple_dtype("currency")
@@ -40,7 +39,6 @@ _MIC = simple_dtype("mic")
 _CFI = simple_dtype("cfi")
 _ISIN = simple_dtype("isin")
 _SIDE = simple_dtype("side")
-_DIRECTION = simple_dtype("msgdirection")
 _STATE = simple_dtype("state")
 _TIMEINFORCE = simple_dtype("timeinforce")
 
@@ -81,17 +79,6 @@ def side(name: str, *, nullable: bool = True, metadata: MetadataInput = None) ->
     return new_field(SideField, name, _SIDE, nullable, metadata)
 
 
-def msgdirection(
-    name: str,
-    *,
-    nullable: bool = True,
-    metadata: MetadataInput = None,
-) -> MsgDirectionField:
-    """Which way a captured line moved, as the packed four bytes."""
-
-    return new_field(MsgDirectionField, name, _DIRECTION, nullable, metadata)
-
-
 def state(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> StateField:
     """What state one thing is in, ranked so the stored bytes sort by lifecycle."""
 
@@ -115,7 +102,6 @@ __all__ = [
     "CurrencyField",
     "IsinField",
     "MicField",
-    "MsgDirectionField",
     "SideField",
     "StateField",
     "TimeInForceField",
@@ -124,7 +110,6 @@ __all__ = [
     "currency",
     "isin",
     "mic",
-    "msgdirection",
     "side",
     "state",
     "timeinforce",

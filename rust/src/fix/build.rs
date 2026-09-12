@@ -332,8 +332,10 @@ impl FixPair {
 pub(super) const BEGINSTRING_COLUMN: &str = "beginstring";
 /// The name a row states its own clock under, which stamps the message.
 pub(super) const CLOCK_COLUMN: &str = super::TIMESTAMP_TAG_NAME.1;
-/// The name a row states the direction its line moved under.
-pub(super) const DIRECTION_COLUMN: &str = "direction";
+/// The name a row states the direction its line moved under: tag 385's own
+/// (decision 14), so a stated `msgdirection` column is read as the direction
+/// and never as a fill.
+pub(super) const DIRECTION_COLUMN: &str = super::MSGDIRECTION_TAG_NAME.1;
 
 /// The version a `beginstring` states, as `BeginString` spells it.
 ///
@@ -371,6 +373,12 @@ pub(super) struct RowExtras<'row> {
     pub(super) clock: Option<&'row Scalar>,
     /// The row's own columns, resolved to the fields they fill.
     pub(super) fills: &'row [Fill<'row>],
+    /// The direction the row stated, as a code of tag 385's set: it outranks
+    /// the reading of the line (decision 14).
+    pub(super) direction: Option<&'row str>,
+    /// The code a line stating no direction takes - the codec's pin on the
+    /// batch door - and nothing on the line door, where silence is silence.
+    pub(super) direction_pin: Option<&'row str>,
 }
 
 /// One of a row's own columns, resolved to the field it fills.
@@ -394,6 +402,8 @@ impl RowExtras<'static> {
         version: None,
         clock: None,
         fills: &[],
+        direction: None,
+        direction_pin: None,
     };
 }
 

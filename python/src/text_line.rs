@@ -430,12 +430,6 @@ impl PyTextLine {
         self.inner.decoded_byte_size()
     }
 
-    /// Which way the line moved.
-    #[getter]
-    fn direction(&self) -> Option<&'static str> {
-        self.inner.direction()
-    }
-
     /// How many bytes of this record went over the retained limit.
     #[getter]
     fn dropped_byte_size(&self) -> Option<u64> {

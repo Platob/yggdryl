@@ -1326,7 +1326,7 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     separator=124,
     payload_column="line",
     null_values=["<none>"],
-    direction="recv",
+    direction="R",
     batch_byte_size=1 << 20,
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
@@ -1334,7 +1334,7 @@ fix_reader_version: str | None = fix_reader_pinned.version
 fix_reader_separator: int | None = fix_reader_pinned.separator
 fix_reader_payload_column: str = fix_reader_pinned.payload_column
 fix_reader_null_values: list[str] = fix_reader_pinned.null_values
-fix_reader_direction: str = fix_reader_pinned.direction
+fix_reader_direction: str | None = fix_reader_pinned.direction
 fix_reader_batch_byte_size: int = fix_reader_pinned.batch_byte_size
 fix_read_messages: fix.FixMessages = fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|")
 fix_read_text: fix.FixMsg = next(fix_read_messages)

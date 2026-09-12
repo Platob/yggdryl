@@ -19,7 +19,6 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyInt, PyIterator};
 
-use yggdryl::types::MsgDirection;
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField,
     FixCategory as CoreFixCategory, FixCodec as CoreFixCodec, FixField as CoreFixField,
@@ -1735,9 +1734,11 @@ impl PyFixCodec {
     /// called, in the order a line answers them, which is what lets
     /// `parse_text_line` read a capture by position rather than by name;
     /// `null_values` are the spellings that mean nothing was
-    /// sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
-    /// or `"unknown"`; `batch_byte_size` is the raw bytes one Arrow batch
-    /// targets, the core's 128 MiB when unstated.
+    /// sent; `direction` is the code of tag 385's set an unmarked line
+    /// takes on the batch door, any spelling of one - `"S"`, `"Send"`,
+    /// `"R"` - the core's `Send` code when unstated and no pin at all when
+    /// empty; `batch_byte_size` is the raw bytes one Arrow batch targets,
+    /// the core's 128 MiB when unstated.
     #[new]
     #[pyo3(signature = (
         registry=None,
@@ -1747,7 +1748,7 @@ impl PyFixCodec {
         payload_column="body",
         capture_names=None,
         null_values=None,
-        direction="sent",
+        direction=None,
         batch_byte_size=None,
     ))]
     #[allow(clippy::too_many_arguments)]
@@ -1758,13 +1759,15 @@ impl PyFixCodec {
         payload_column: &str,
         capture_names: Option<Vec<String>>,
         null_values: Option<Vec<String>>,
-        direction: &str,
+        direction: Option<&str>,
         batch_byte_size: Option<u64>,
     ) -> PyResult<Self> {
         let registry = registry_or_global(registry)?;
-        let mut inner = CoreFixCodec::new(Arc::clone(&registry))
-            .with_payload_column(payload_column)
-            .with_direction(direction_from_py(direction)?);
+        let mut inner =
+            CoreFixCodec::new(Arc::clone(&registry)).with_payload_column(payload_column);
+        if let Some(held) = direction {
+            inner = inner.try_with_direction(Some(held)).map_err(value_error)?;
+        }
         if let Some(held) = version {
             inner = inner.with_version(version_from_py(held)?);
         }
@@ -1814,13 +1817,11 @@ impl PyFixCodec {
         self.inner.null_values().to_vec()
     }
 
-    /// The direction an unmarked line takes: `"sent"`, `"recv"` or
-    /// `"unknown"`.
+    /// The code of tag 385's set an unmarked line takes on the batch door,
+    /// or `None` where no pin fills silence.
     #[getter]
-    fn direction(&self) -> String {
-        self.inner
-            .direction()
-            .map_or_else(|| "unknown".to_owned(), str::to_ascii_lowercase)
+    fn direction(&self) -> Option<&str> {
+        self.inner.direction()
     }
 
     /// The raw bytes one Arrow batch targets.
@@ -2188,14 +2189,6 @@ pub(crate) fn fix_schema_carrying(
     yggdryl::fix_schema_carrying(&carrier, &read)
         .map(PyField::from_inner)
         .map_err(value_error)
-}
-
-/// Read the direction an unmarked line takes, as the core spells it.
-///
-/// `"unknown"` is the third answer: a capture whose silence really means
-/// nothing, rather than the side that wrote it.
-fn direction_from_py(text: &str) -> PyResult<Option<&'static str>> {
-    MsgDirection::from_spelling(text).map_err(value_error)
 }
 
 /// One row's columns, in order, as tags.

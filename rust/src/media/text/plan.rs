@@ -26,8 +26,6 @@ pub(crate) enum TextSource {
     Rownum,
     /// When the record was written.
     Timestamp,
-    /// Which way the line moved.
-    Direction,
     /// What the line was classified as.
     BodyType,
     /// The line itself.
@@ -111,16 +109,6 @@ impl TextPlan {
                 mtime_dtype(),
                 true,
                 "When the record was written: its own captured timestamp, or the handle's modification time when it declares none.",
-            );
-        }
-        if options.parse_direction {
-            push(
-                &mut columns,
-                TextSource::Direction,
-                "direction",
-                DataType::MsgDirection,
-                true,
-                "Which way the line moved, read from the verb in front of it.",
             );
         }
         if options.parse_mimetype {

@@ -1,6 +1,6 @@
 # Codes
 
-The nine registered codes, the packed integer a fixed US-ASCII string or a code reads as, and the `StringEnum` vocabulary a field declares.
+The eight registered codes, the packed integer a fixed US-ASCII string or a code reads as, and the `StringEnum` vocabulary a field declares.
 
 A code is an identity with a storage, not a string with a charset: a currency is three US-ASCII bytes the way a [UUID](uuid.md) is sixteen binary ones. It is its own datatype, kind `code`, answers `is_code`, `code_name` and `fixed_byte_width`, and never `string_parameters`. Text of any length in that repertoire is the [`ascii` string](text.md).
 
@@ -14,7 +14,6 @@ A code is an identity with a storage, not a string with a charset: a currency is
 | `cfi`, ISO 10962 | 6 | `fixed_size_binary(6)`, `yggdryl.cfi` |
 | `isin`, ISO 6166 | 12 | `fixed_size_binary(12)`, `yggdryl.isin` |
 | `side`, FIX `Side(54)` | 4 | `fixed_size_binary(4)`, `yggdryl.side` |
-| `msgdirection`, which way a captured line moved | 4 | `fixed_size_binary(4)`, `yggdryl.msgdirection` |
 | `state`, a ranked lifecycle | 10 | `fixed_size_binary(10)`, `yggdryl.state` |
 | `timeinforce`, FIX `TimeInForce(59)` | 8 | `fixed_size_binary(8)`, `yggdryl.timeinforce` |
 
@@ -61,7 +60,6 @@ A code is an identity with a storage, not a string with a charset: a currency is
             // The FIX-facing codes, each at the width it needs: a state
             // carries two digits of rank before its name.
             ("side", DataType::Side, 4),
-            ("msgdirection", DataType::MsgDirection, 4),
             ("state", DataType::State, 10),
             ("timeinforce", DataType::TimeInForce, 8),
         ]
@@ -101,9 +99,9 @@ A code is an identity with a storage, not a string with a charset: a currency is
     assert currency.string_parameters is None
     assert currency != DataType.fixed_ascii(3)
     assert [(DataType(name).id, DataType(name).fixed_byte_width) for name in
-            ("country", "currency", "mic", "cfi", "isin", "side", "msgdirection", "state", "timeinforce")] == [
+            ("country", "currency", "mic", "cfi", "isin", "side", "state", "timeinforce")] == [
         ("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6), ("isin", 12),
-        ("side", 4), ("msgdirection", 4), ("state", 10), ("timeinforce", 8),
+        ("side", 4), ("state", 10), ("timeinforce", 8),
     ]
 
     # A value is the trimmed text, and carries its identity.
@@ -143,9 +141,9 @@ A code is an identity with a storage, not a string with a charset: a currency is
     assert.equal(currency.stringParameters, null)
     assert.ok(!currency.equals(DataType.fixedAscii(3)))
     assert.deepEqual(
-      ['country', 'currency', 'mic', 'cfi', 'isin', 'side', 'msgdirection', 'state', 'timeinforce']
+      ['country', 'currency', 'mic', 'cfi', 'isin', 'side', 'state', 'timeinforce']
         .map((name) => new DataType(name).fixedByteWidth),
-      [2, 3, 4, 6, 12, 4, 4, 10, 8],
+      [2, 3, 4, 6, 12, 4, 10, 8],
     )
 
     // A code rides its own Arrow extension, so the identity survives the trip.
@@ -433,32 +431,11 @@ assert!(State::from_spelling("Rejected").unwrap().is_failed());
 `timeinforce` is eight bytes over FIX's `TimeInForce(59)` code set, stored as
 the wire value rather than a name for it, exactly as `side` is.
 
-## Which way a line moved
-
-`msgdirection` is `SENT` or `RECV`, four bytes. `MsgDirection::from_spelling`
-reads a word a caller chose - `sent`, `s`, `send`; `recv`, `r`, `receive`;
-`unknown` and the empty text are `None` - folding ASCII case and nothing else.
-`MsgDirection::infer_bytes` reads the verb a transport wrote **in front of** a
-captured payload, never inside it, and answers nothing where the prefix carries
-both verbs or neither. A session's own log is written by the side doing the
-sending, so its unmarked lines are `SENT`.
-
-Rust only.
-
-```rust
-use yggdryl::types::MsgDirection;
-
-assert_eq!(MsgDirection::from_spelling("Sent")?, Some(MsgDirection::SENT));
-assert_eq!(MsgDirection::from_spelling("r")?, Some(MsgDirection::RECV));
-assert_eq!(MsgDirection::from_spelling("")?, None);
-assert!(MsgDirection::from_spelling("sideways").is_err());
-```
-
 ## Edges
 
 - A byte past `0x7F`, a NUL, or a value longer than the width -> refused naming the width (`at most 4 bytes`), and the row in a cast.
 - Stored under a code -> padded with trailing NUL to the width; every reading trims the padding back. Text carrying trailing NULs canonicalizes to the trimmed value.
-- `Scalar::kind()` -> the code's id: `currency`, `msgdirection`, `state`; a plain string's kind is its layout, `string` or `fixed_string`.
+- `Scalar::kind()` -> the code's id: `currency`, `side`, `state`; a plain string's kind is its layout, `string` or `fixed_string`.
 - `Code` equality, order and hash carry the identity first, then the text: `Side("1") != TimeInForce("1")`. A code and a plain string of the same bytes are two values.
 - `fixed_size_binary(3)` under `yggdryl.currency` -> `currency`; under `yggdryl.string` with a document -> the string it describes; plain -> imports as it is.
 - `isin` -> two letters, nine alphanumerics and one digit that closes the eleven before it (ISO 6166's Luhn over the letters expanded to their alphabet positions); a check digit that does not close the number -> refused, `the check digit does not close the number`. Lower case -> the upper case it spells. `Isin::is_valid` and `Isin::closing_digit` answer the rule without building a value.

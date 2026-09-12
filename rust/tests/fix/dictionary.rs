@@ -469,7 +469,9 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
         }
     }
     let total: usize = census.values().sum();
-    assert_eq!(total, 66, "surviving retypes: {census:?}");
+    // 66 before decision 14: tag 385 was retyped to `msgdirection` at 5.0.2
+    // and is text carrying its code set again, so the retype is gone.
+    assert_eq!(total, 65, "surviving retypes: {census:?}");
     assert_eq!(
         census
             .iter()
@@ -488,7 +490,6 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
             ("utf8", "currency", 3),
             ("utf8", "int32", 6),
             ("utf8", "mic", 3),
-            ("utf8", "msgdirection", 1),
             ("utf8", "side", 1),
             // `OrdStatus` and `ExecType`: the order's state, read as one type.
             ("utf8", "state", 2),
@@ -505,7 +506,7 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 5_660_470_085_040_439_013);
+    assert_eq!(registry.stable_hash(), 15_614_738_859_645_635_265);
     assert_eq!(registry.msgtypes().count(), 181);
     assert_eq!(registry.definitions(FixCategory::Components).count(), 928);
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 580);

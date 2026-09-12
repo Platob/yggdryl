@@ -14,6 +14,8 @@ mod dataset;
 mod dictionary;
 #[path = "fix/digest.rs"]
 mod digest;
+#[path = "fix/direction.rs"]
+mod direction;
 #[path = "fix/enrich.rs"]
 mod enrich;
 #[path = "fix/equivalence.rs"]

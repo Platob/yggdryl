@@ -164,6 +164,7 @@ ulbridge[001]:0.field.targetsessionname	"ULMSG_BROKER_BDG_DMZ_CLI"
 ulbridge[001]:0.field.isincode	"CH0012214059"
 ulbridge[001]:0.field.miccode	"XSWX"
 ulbridge[001]:0.field.state	"80FILLED"
+ulbridge[001]:0.field.msgdirection	"R"
 ulbridge[001].messages	1
 ulbridge[002]:0.type	unknown
 ulbridge[002]:0.digest	99aa06d3014798d86001c324468d497f
@@ -392,6 +393,7 @@ ulbridge[004]:0.field.targetsessionname	"ULMSG_BROKER_BDG_DMZ_CLI"
 ulbridge[004]:0.field.isincode	"CH0012214059"
 ulbridge[004]:0.field.miccode	"XSWX"
 ulbridge[004]:0.field.state	"80FILLED"
+ulbridge[004]:0.field.msgdirection	"S"
 ulbridge[004].messages	1
 ulbridge[005]:0.type	8
 ulbridge[005]:0.digest	6ed51fb64d51f8b6bdec655e2d92814a
@@ -531,6 +533,7 @@ ulbridge[005]:0.field.pluginid	"OMS_X1_TradeCapture"
 ulbridge[005]:0.field.isincode	"CH0012221716"
 ulbridge[005]:0.field.miccode	"XSWX"
 ulbridge[005]:0.field.state	"40PARTFILL"
+ulbridge[005]:0.field.msgdirection	"R"
 ulbridge[005].messages	1
 ulbridge[006]:0.type	executionreport
 ulbridge[006]:0.digest	d0f453996739eac13d7e84f614b0c1d5
@@ -1919,6 +1922,7 @@ ulbridge[020]:0.field.targetsessionname	"ULFilter"
 ulbridge[020]:0.field.isincode	"CH0012221716"
 ulbridge[020]:0.field.miccode	"XSWX"
 ulbridge[020]:0.field.state	"40PARTFILL"
+ulbridge[020]:0.field.msgdirection	"R"
 ulbridge[020].messages	1
 ulbridge[021]:0.type	executionreport
 ulbridge[021]:0.digest	75f12cb31cc6eaafcc46d97c58ca4de8
@@ -2163,6 +2167,7 @@ ulbridge[023]:0.field.pluginid	"OMS_X1_OrderOut"
 ulbridge[023]:0.field.isincode	"CH0012005267"
 ulbridge[023]:0.field.miccode	"XSWX"
 ulbridge[023]:0.field.state	"20NEW"
+ulbridge[023]:0.field.msgdirection	"R"
 ulbridge[023].messages	1
 ulbridge[024]:0.type	executionreport
 ulbridge[024]:0.digest	83d47aa321bdbb9d2625988b3c554604
@@ -2811,6 +2816,7 @@ ulbridge[030]:0.field.targetsessionname	"ULMSG_BROKER_BDG_DMZ_CLI"
 ulbridge[030]:0.field.isincode	"CH0012005267"
 ulbridge[030]:0.field.miccode	"XSWX"
 ulbridge[030]:0.field.state	"20NEW"
+ulbridge[030]:0.field.msgdirection	"R"
 ulbridge[030].messages	1
 ulbridge[031]:0.type	unknown
 ulbridge[031]:0.digest	99aa06d3014798d86001c324468d497f
@@ -3025,6 +3031,7 @@ ulbridge[033]:0.field.targetsessionname	"ULMSG_BROKER_BDG_DMZ_CLI"
 ulbridge[033]:0.field.isincode	"CH0012005267"
 ulbridge[033]:0.field.miccode	"XSWX"
 ulbridge[033]:0.field.state	"20NEW"
+ulbridge[033]:0.field.msgdirection	"S"
 ulbridge[033].messages	1
 ulbridge[034]:0.type	8
 ulbridge[034]:0.digest	237ce9ac5eea3c60fd60cda25943a2c3
@@ -3160,6 +3167,7 @@ ulbridge[034]:0.field.pluginid	"OMS_X1_TradeCapture"
 ulbridge[034]:0.field.isincode	"CH0012221716"
 ulbridge[034]:0.field.miccode	"XSWX"
 ulbridge[034]:0.field.state	"40TRADE"
+ulbridge[034]:0.field.msgdirection	"R"
 ulbridge[034].messages	1
 ulbridge[035]:0.type	executionreport
 ulbridge[035]:0.digest	e7f740fae253ff62993c877b7849d243
@@ -4551,6 +4559,7 @@ ulbridge[051]:0.field.targetsessionname	"ULFilter"
 ulbridge[051]:0.field.isincode	"CH0012221716"
 ulbridge[051]:0.field.miccode	"XSWX"
 ulbridge[051]:0.field.state	"40TRADE"
+ulbridge[051]:0.field.msgdirection	"R"
 ulbridge[051].messages	1
 ulbridge[052]:0.type	executionreport
 ulbridge[052]:0.digest	edc736a08e822f7d8ae2723cb8fe0a9d
@@ -4978,6 +4987,7 @@ ulbridge[055]:0.field.pluginid	"OMS_X1_TradeCapture"
 ulbridge[055]:0.field.isincode	"CH0012221716"
 ulbridge[055]:0.field.miccode	"XSWX"
 ulbridge[055]:0.field.state	"40PARTFILL"
+ulbridge[055]:0.field.msgdirection	"R"
 ulbridge[055].messages	1
 ulbridge[056]:0.type	executionreport
 ulbridge[056]:0.digest	ed66a2474b708076f8433192177dc7cb
@@ -6238,6 +6248,7 @@ ulbridge[069]:0.field.targetsessionname	"ULFilter"
 ulbridge[069]:0.field.isincode	"CH0012221716"
 ulbridge[069]:0.field.miccode	"XSWX"
 ulbridge[069]:0.field.state	"40PARTFILL"
+ulbridge[069]:0.field.msgdirection	"R"
 ulbridge[069].messages	1
 ulbridge[070]:0.type	executionreport
 ulbridge[070]:0.digest	5cc64e26178db6e2f2a6a532f150200e
@@ -6522,6 +6533,7 @@ ulbridge[072]:0.field.pluginid	"OMS_X1_TradeCapture"
 ulbridge[072]:0.field.isincode	"CH0012221716"
 ulbridge[072]:0.field.miccode	"XSWX"
 ulbridge[072]:0.field.state	"40TRADE"
+ulbridge[072]:0.field.msgdirection	"R"
 ulbridge[072].messages	1
 ulbridge[073]:0.type	executionreport
 ulbridge[073]:0.digest	2171106310d805cc7ae23297c13ac958
@@ -7913,6 +7925,7 @@ ulbridge[089]:0.field.targetsessionname	"ULFilter"
 ulbridge[089]:0.field.isincode	"CH0012221716"
 ulbridge[089]:0.field.miccode	"XSWX"
 ulbridge[089]:0.field.state	"40TRADE"
+ulbridge[089]:0.field.msgdirection	"R"
 ulbridge[089].messages	1
 ulbridge[090]:0.type	executionreport
 ulbridge[090]:0.digest	c8c85f1323d67171c2e597430eece638
@@ -8290,6 +8303,7 @@ ulbridge[097]:0.field.version	"5.0.2"
 ulbridge[097]:0.field.timestamp	"2026-08-14T14:46:40.101000000Z"
 ulbridge[097]:0.field.unixpartition	1786716000
 ulbridge[097]:0.field.pluginid	"Jolokia"
+ulbridge[097]:0.field.msgdirection	"R"
 ulbridge[097].messages	1
 ulbridge[098]:0.type	unknown
 ulbridge[098]:0.digest	833e97f6c9c307551433cb0c2e212a11
@@ -8320,6 +8334,7 @@ ulbridge[098]:0.field.version	"5.0.2"
 ulbridge[098]:0.field.timestamp	"2026-08-14T14:46:40.205000000Z"
 ulbridge[098]:0.field.unixpartition	1786716000
 ulbridge[098]:0.field.pluginid	"Jolokia"
+ulbridge[098]:0.field.msgdirection	"R"
 ulbridge[098]:1.type	unknown
 ulbridge[098]:1.digest	002ab176eba8f65811d047f78a828f8b
 ulbridge[098]:1.wire	MBean=com.ullink.ulbridge.sessioninterfaces.plugins:*|Operation=read|Status=200|SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_CLI,plugin-type=FIX,type=ConfigurationPlugin|MBeanType=ConfigurationPlugin|PluginType=FIX|$type=com.ullink.ulbridge.objects.PluginState|BeginString=FIX.4.2|Category=InterBridge|ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]|CurrentPort=9801|ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]}]|IncomingMsgSeqNum=40352|Name=ULMSG_BROKER_BDG_DMZ_CLI|OutgoingMsgSeqNum=40327|SenderCompID=ULB_DMZ_BROKER_BDG|State=logged|TargetCompID=ULB_CLI_BROKER_BDG|
@@ -8349,6 +8364,7 @@ ulbridge[098]:1.field.version	"5.0.2"
 ulbridge[098]:1.field.timestamp	"2026-08-14T14:46:40.205000000Z"
 ulbridge[098]:1.field.unixpartition	1786716000
 ulbridge[098]:1.field.pluginid	"Jolokia"
+ulbridge[098]:1.field.msgdirection	"R"
 ulbridge[098].messages	2
 ulbridge[099]:0.type	unknown
 ulbridge[099]:0.digest	95fa2b60fd30a4291c7cc544c56a5cfd
@@ -8363,6 +8379,7 @@ ulbridge[099]:0.field.version	"5.0.2"
 ulbridge[099]:0.field.timestamp	"2026-08-14T14:46:40.301000000Z"
 ulbridge[099]:0.field.unixpartition	1786716000
 ulbridge[099]:0.field.pluginid	"Jolokia"
+ulbridge[099]:0.field.msgdirection	"R"
 ulbridge[099].messages	1
 ulbridge[100]:0.type	unknown
 ulbridge[100]:0.digest	29c02d79c54c1468490c2b651c6a45a9
@@ -8426,6 +8443,7 @@ ulbridge[100]:0.field.pluginid	"OMS_X1_FIXML_Out"
 ulbridge[100]:0.field.isincode	"CH0012221716"
 ulbridge[100]:0.field.miccode	"XSWX"
 ulbridge[100]:0.field.state	"40PARTFILL"
+ulbridge[100]:0.field.msgdirection	"S"
 ulbridge[100].messages	1
 ulbridge[101]:0.type	unknown
 ulbridge[101]:0.digest	27fd8d066056f23973a931d1e5f285d6
@@ -8456,6 +8474,7 @@ ulbridge[101]:0.field.unixpartition	1786716000
 ulbridge[101]:0.field.sendersessionid	"e7254b13"
 ulbridge[101]:0.field.msgctxid	"9f0316669b"
 ulbridge[101]:0.field.pluginid	"OMS_X1_FIXML_In"
+ulbridge[101]:0.field.msgdirection	"R"
 ulbridge[101].messages	1
 ulbridge[102]:0.type	0
 ulbridge[102]:0.digest	13ad44e6cf85d1be05046be3db50369f
@@ -8481,6 +8500,7 @@ ulbridge[102]:0.field.version	"4.4"
 ulbridge[102]:0.field.timestamp	"2026-08-14T14:46:40.404000000Z"
 ulbridge[102]:0.field.unixpartition	1786716000
 ulbridge[102]:0.field.pluginid	"FIRM_X1_OrderIn"
+ulbridge[102]:0.field.msgdirection	"S"
 ulbridge[102].messages	1
 ulbridge[103]:0.type	1
 ulbridge[103]:0.digest	861ba2626ce18391bb2015841fac3c8e
@@ -8507,6 +8527,7 @@ ulbridge[103]:0.field.version	"4.4"
 ulbridge[103]:0.field.timestamp	"2026-08-14T14:46:40.409000000Z"
 ulbridge[103]:0.field.unixpartition	1786716000
 ulbridge[103]:0.field.pluginid	"OMS_X1_TradeCapture"
+ulbridge[103]:0.field.msgdirection	"R"
 ulbridge[103].messages	1
 ulbridge[104]:0.type	UL
 ulbridge[104]:0.digest	497fa4c4845957b0fff1bd0b371234be
@@ -8576,6 +8597,7 @@ ulbridge[104]:0.field.sendersessionname	"OMS_X1_TradeCapture"
 ulbridge[104]:0.field.targetsessionname	"ULMSG_BROKER_BDG_DMZ_CLI"
 ulbridge[104]:0.field.miccode	"XSWX"
 ulbridge[104]:0.field.state	"80FILLED"
+ulbridge[104]:0.field.msgdirection	"S"
 ulbridge[104].messages	1
 ulbridge[105]:0.type	A
 ulbridge[105]:0.digest	bb2fba7bd53d1af99cfafa4a973285cf
@@ -8608,6 +8630,7 @@ ulbridge[105]:0.field.unixpartition	1786716000
 ulbridge[105]:0.field.sendersessionid	"e7254b14"
 ulbridge[105]:0.field.msgctxid	"9f0316669c"
 ulbridge[105]:0.field.pluginid	"ULMSG_BROKER_BDG_DMZ_CLI"
+ulbridge[105]:0.field.msgdirection	"R"
 ulbridge[105].messages	1
 ulbridge[106]:0.type	D
 ulbridge[106]:0.digest	f5f75e5f9fe3eb3f9d3b5d48fb12ff5e
@@ -8688,6 +8711,7 @@ ulbridge[107]:0.field.unixpartition	1786716000
 ulbridge[107]:0.field.sendersessionid	"e7254b15"
 ulbridge[107]:0.field.msgctxid	"9f0316669d"
 ulbridge[107]:0.field.pluginid	"OMS_X1_OrderOut"
+ulbridge[107]:0.field.msgdirection	"S"
 ulbridge[107].messages	1
 ulbridge[108]:0.type	unknown
 ulbridge[108]:0.digest	99aa06d3014798d86001c324468d497f
@@ -8768,6 +8792,7 @@ ulbridge[111]:0.field.sendersessionname	"TRTN_FX_TradeCapture"
 ulbridge[111]:0.field.targetsessionname	"ULMSG_BROKER_TO_POSTTRADE"
 ulbridge[111]:0.field.isincode	"EZN11TD1F7K3"
 ulbridge[111]:0.field.state	"80FILLED"
+ulbridge[111]:0.field.msgdirection	"S"
 ulbridge[111].messages	1
 ulbridge[112]:0.type	n
 ulbridge[112]:0.digest	36e473c82b9d6605a55225527fed2415
@@ -8817,6 +8842,7 @@ ulbridge[112]:0.field.pluginid	"ULMSG_BROKER_BDG_DMZ_CLI"
 ulbridge[112]:0.field.isincode	"CH0012214059"
 ulbridge[112]:0.field.miccode	"XSWX"
 ulbridge[112]:0.field.state	"80FILLED"
+ulbridge[112]:0.field.msgdirection	"S"
 ulbridge[112].messages	1
 shapes[000].line	sending >> 8=FIX.4.2|9=176|35=D|11=ORDER-1|55=AAPL|54=1|10=203| << queued seq=1092
 shapes[000]:0.type	D
@@ -8841,6 +8867,7 @@ shapes[000]:0.field.version	"4.2"
 shapes[000]:0.field.symbolticker	"AAPL"
 shapes[000]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 shapes[000]:0.field.unixpartition	0
+shapes[000]:0.field.msgdirection	"S"
 shapes[000].messages	1
 shapes[001].line	raw 8=FIX.4.4|9=224|35=8|17=E1|37=O9|31=12.75|32=50|10=118|
 shapes[001]:0.type	8
@@ -8903,6 +8930,7 @@ shapes[003]:0.field.version	"4.2"
 shapes[003]:0.field.symbolticker	"TTF"
 shapes[003]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 shapes[003]:0.field.unixpartition	0
+shapes[003]:0.field.msgdirection	"S"
 shapes[003].messages	1
 shapes[004].line	8=FIX.4.4|35=D|11=ORDER-1|SYMBOL=AAPL|SIDE=1|10=000
 shapes[004]:0.type	D
@@ -9010,6 +9038,7 @@ shapes[010]:0.field.msghash	"CxKuDuOR/pic3dZ7jN9CVg=="
 shapes[010]:0.field.version	"5.0.2"
 shapes[010]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 shapes[010]:0.field.unixpartition	0
+shapes[010]:0.field.msgdirection	"R"
 shapes[010].messages	1
 shapes[011].line	Message rejected because : ignoring OMSSales expiry message
 shapes[011]:0.type	unknown
@@ -9628,6 +9657,7 @@ frames[034]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 frames[034]:0.field.version	"4.4"
 frames[034]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 frames[034]:0.field.unixpartition	0
+frames[034]:0.field.msgdirection	"R"
 frames[034].messages	1
 frames[035].line	recv 8=FIX.4.4^A9=61^A35=0^A49=XPAR^A10=017^A on session 3
 frames[035]:0.type	0
@@ -9647,6 +9677,7 @@ frames[035]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 frames[035]:0.field.version	"4.4"
 frames[035]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 frames[035]:0.field.unixpartition	0
+frames[035]:0.field.msgdirection	"R"
 frames[035].messages	1
 frames[036].line	recv 8=FIX.4.4\\x019=61\\x0135=0\\x0149=XPAR\\x0110=017\\x01 on session 3
 frames[036]:0.type	0
@@ -9666,6 +9697,7 @@ frames[036]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 frames[036]:0.field.version	"4.4"
 frames[036]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 frames[036]:0.field.unixpartition	0
+frames[036]:0.field.msgdirection	"R"
 frames[036].messages	1
 frames[037].line	recv 8=FIX.4.4<SOH>9=61<SOH>35=0<SOH>49=XPAR<SOH>10=017<SOH> on session 3
 frames[037]:0.type	0
@@ -9685,6 +9717,7 @@ frames[037]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 frames[037]:0.field.version	"4.4"
 frames[037]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 frames[037]:0.field.unixpartition	0
+frames[037]:0.field.msgdirection	"R"
 frames[037].messages	1
 frames[038].line	recv 8=FIX.4.4{SOH}9=61{SOH}35=0{SOH}49=XPAR{SOH}10=017{SOH} on session 3
 frames[038]:0.type	0
@@ -9704,6 +9737,7 @@ frames[038]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 frames[038]:0.field.version	"4.4"
 frames[038]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 frames[038]:0.field.unixpartition	0
+frames[038]:0.field.msgdirection	"R"
 frames[038].messages	1
 frames[039].line	8=FIX.4.2|35=UL|#SYMBOL=TTF|212=38|213=MSGTYPE=D|ORDERID=9|#ORDERID=9|#SIDE=1|10=0|
 frames[039]:0.type	UL
@@ -9815,6 +9849,7 @@ bridge[000]:0.field.version	"4.4"
 bridge[000]:0.field.symbolticker	"AAPL"
 bridge[000]:0.field.timestamp	"2024-01-02T10:15:30.000000000Z"
 bridge[000]:0.field.unixpartition	1704189600
+bridge[000]:0.field.msgdirection	"S"
 bridge[000].messages	1
 bridge[001].line	8=FIX.4.4|9=224|35=8|49=VENUE|56=BUYSIDE|37=O-9|17=E-1|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|64=20240104|10=118|
 bridge[001]:0.type	8
@@ -9930,6 +9965,7 @@ bridge[003]:0.field.version	"5.0.2"
 bridge[003]:0.field.symbolticker	"TTF"
 bridge[003]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 bridge[003]:0.field.unixpartition	0
+bridge[003]:0.field.msgdirection	"R"
 bridge[003].messages	1
 bridge[004].line	<FIXML><Order ClOrdID="ORDER-2" Side="1" OrdQty="50"/></FIXML>
 bridge[004]:0.type	unknown
@@ -9967,6 +10003,7 @@ bridge[005]:0.field.msghash	"1uFNMZgmE77rmx6cUxnjoQ=="
 bridge[005]:0.field.version	"5.0.2"
 bridge[005]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 bridge[005]:0.field.unixpartition	0
+bridge[005]:0.field.msgdirection	"R"
 bridge[005].messages	1
 bridge[006].line	no level printed by this plugin, and no pairs either
 bridge[006]:0.type	unknown
@@ -10002,6 +10039,7 @@ bridge[007]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 bridge[007]:0.field.version	"4.4"
 bridge[007]:0.field.timestamp	"2026-08-14T04:46:30.415655000Z"
 bridge[007]:0.field.unixpartition	1786680000
+bridge[007]:0.field.msgdirection	"S"
 bridge[007].messages	1
 bridge[008].line	2026-08-14 06:46:36.887 [653] [Spot_FX_TradeCapture] (INFO) Receiving : 8=FIX.4.2|9=0322|35=8|34=4507|49=VENUEADC|56=CLIENTFIS|52=20260814-04:46:36|1=client|6=547.771791547861|11=20260814_TP1_CLIENT_1003|14=982|15=INR|17=E-20260814-4507|31=547.77|32=982|37=O-20260814-1003|38=982|39=2|40=1|44=547.771791547861|48=XX0000000001|54=1|55=EXAMPLECO|58=Filled|59=0|60=20260814-04:46:36|75=20260814|150=2|151=0|10=197|
 bridge[008]:0.type	8
@@ -10072,6 +10110,7 @@ bridge[008]:0.field.symbolticker	"EXAMPLECO"
 bridge[008]:0.field.timestamp	"2026-08-14T04:46:36.000000000Z"
 bridge[008]:0.field.unixpartition	1786680000
 bridge[008]:0.field.state	"80FILLED"
+bridge[008]:0.field.msgdirection	"R"
 bridge[008].messages	1
 bridge[009].line	2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [Broker_DarkPool_TradeCapture] (DEBUG) RouteMessage : ACCOUNT=client|AVGPX=547.771791547861|CLORDID=20260814_TP1_CLIENT_1003|CUMQTY=982|CURRENCY=INR|EXECBROKER=BRKR|EXECTYPE=2|LASTPX=547.77|LASTQTY=982|LEAVESQTY=0|MSGTYPE=8|ORDERQTY=982|ORDSTATUS=2|ORDTYPE=1|SIDE=1|SYMBOL=EXAMPLECO|TRANSACTTIME=20260814-04:46:36|
 bridge[009]:0.type	8
@@ -11622,6 +11661,7 @@ verbatim[034]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 verbatim[034]:0.field.version	"4.4"
 verbatim[034]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 verbatim[034]:0.field.unixpartition	0
+verbatim[034]:0.field.msgdirection	"R"
 verbatim[034].messages	1
 verbatim[035].line	recv 8=FIX.4.4^A9=61^A35=0^A49=XPAR^A10=017^A on session 3
 verbatim[035]:0.type	0
@@ -11641,6 +11681,7 @@ verbatim[035]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 verbatim[035]:0.field.version	"4.4"
 verbatim[035]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 verbatim[035]:0.field.unixpartition	0
+verbatim[035]:0.field.msgdirection	"R"
 verbatim[035].messages	1
 verbatim[036].line	recv 8=FIX.4.4\\x019=61\\x0135=0\\x0149=XPAR\\x0110=017\\x01 on session 3
 verbatim[036]:0.type	0
@@ -11660,6 +11701,7 @@ verbatim[036]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 verbatim[036]:0.field.version	"4.4"
 verbatim[036]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 verbatim[036]:0.field.unixpartition	0
+verbatim[036]:0.field.msgdirection	"R"
 verbatim[036].messages	1
 verbatim[037].line	recv 8=FIX.4.4<SOH>9=61<SOH>35=0<SOH>49=XPAR<SOH>10=017<SOH> on session 3
 verbatim[037]:0.type	0
@@ -11679,6 +11721,7 @@ verbatim[037]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 verbatim[037]:0.field.version	"4.4"
 verbatim[037]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 verbatim[037]:0.field.unixpartition	0
+verbatim[037]:0.field.msgdirection	"R"
 verbatim[037].messages	1
 verbatim[038].line	recv 8=FIX.4.4{SOH}9=61{SOH}35=0{SOH}49=XPAR{SOH}10=017{SOH} on session 3
 verbatim[038]:0.type	0
@@ -11698,6 +11741,7 @@ verbatim[038]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
 verbatim[038]:0.field.version	"4.4"
 verbatim[038]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 verbatim[038]:0.field.unixpartition	0
+verbatim[038]:0.field.msgdirection	"R"
 verbatim[038].messages	1
 verbatim[039].line	8=FIX.4.2|35=UL|#SYMBOL=TTF|212=38|213=MSGTYPE=D|ORDERID=9|#ORDERID=9|#SIDE=1|10=0|
 verbatim[039]:0.type	UL

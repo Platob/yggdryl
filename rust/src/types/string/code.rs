@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use super::codes::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH,
-    STATE_WIDTH, TIMEINFORCE_WIDTH,
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
+    TIMEINFORCE_WIDTH,
 };
 use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
 
@@ -257,7 +257,6 @@ impl fmt::Display for Isin {
 }
 
 code_leaf!(Side, SIDE_WIDTH);
-code_leaf!(MsgDirection, DIRECTION_WIDTH);
 code_leaf!(State, STATE_WIDTH);
 code_leaf!(TimeInForce, TIMEINFORCE_WIDTH);
 
@@ -478,332 +477,6 @@ static STATE_NAMES: &[(&str, &str)] = &[
     ("unknown", "00UNKNOWN"),
 ];
 
-impl MsgDirection {
-    /// The direction a line moved when nothing in it says otherwise.
-    ///
-    /// A session's own log is written by the side doing the sending, so its
-    /// unmarked lines are the ones it sent and its inbound lines are the ones
-    /// it bothered to mark.
-    pub const SENT: &'static str = "SENT";
-
-    /// The direction of a line the transport marked as arriving.
-    pub const RECV: &'static str = "RECV";
-
-    /// Reads a direction a caller spelled, as a pin or an argument.
-    ///
-    /// The one place the spellings are listed, so a binding accepts exactly
-    /// what another does and the core stores nothing it did not read:
-    /// `sent`, `s` and `send` are [`Self::SENT`]; `recv`, `r` and `receive`
-    /// are [`Self::RECV`]; `unknown` and the empty text are `None`, the
-    /// direction nothing states. ASCII case is folded and nothing else is:
-    /// this reads a word a caller chose, where [`Self::infer_bytes`] reads
-    /// the prose a transport wrote in front of a line.
-    ///
-    /// ```
-    /// use yggdryl::types::MsgDirection;
-    ///
-    /// assert_eq!(MsgDirection::from_spelling("Sent")?, Some(MsgDirection::SENT));
-    /// assert_eq!(MsgDirection::from_spelling("r")?, Some(MsgDirection::RECV));
-    /// assert_eq!(MsgDirection::from_spelling("")?, None);
-    /// assert!(MsgDirection::from_spelling("sideways").is_err());
-    /// # Ok::<(), yggdryl::Error>(())
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`](crate::Error::Parse) naming the spelling
-    /// when it is none of the listed ones.
-    pub fn from_spelling(spelling: &str) -> Result<Option<&'static str>> {
-        if spelling.eq_ignore_ascii_case("sent")
-            || spelling.eq_ignore_ascii_case("s")
-            || spelling.eq_ignore_ascii_case("send")
-        {
-            return Ok(Some(Self::SENT));
-        }
-        if spelling.eq_ignore_ascii_case("recv")
-            || spelling.eq_ignore_ascii_case("r")
-            || spelling.eq_ignore_ascii_case("receive")
-        {
-            return Ok(Some(Self::RECV));
-        }
-        if spelling.is_empty() || spelling.eq_ignore_ascii_case("unknown") {
-            return Ok(None);
-        }
-        Err(crate::Error::Parse {
-            target: "msgdirection",
-            position: 0,
-            reason: crate::text::expected_got(
-                "one of sent, recv, unknown",
-                format_args!("{spelling:?}"),
-            ),
-        })
-    }
-
-    /// Reads which way one captured byte line moved.
-    ///
-    /// The verb is read **in front of the payload**, never inside it. Where a
-    /// message starts is where the transport's own prose stops, so a `sent`
-    /// inside a FIX `Text(58)`, a bridge value spelled `OUT=1`, or an XML
-    /// payload's own wording never becomes a direction.
-    ///
-    /// A prefix carrying both verbs, and one carrying neither, both answer
-    /// nothing: there is no verb the reading can prefer, and inventing one
-    /// would be a guess. Except where the payload is a document that states
-    /// its own half of an exchange - a
-    /// [bridge configuration](crate::MimeType::ULCONFIG) echoing back the
-    /// request it answers came back, and one that is a bare request went out.
-    /// A verb the transport wrote still wins over what the document says
-    /// about itself.
-    ///
-    /// ```
-    /// use yggdryl::types::MsgDirection;
-    ///
-    /// assert_eq!(
-    ///     MsgDirection::infer_bytes(b"sending >> 8=FIX.4.2|35=D|10=203|"),
-    ///     Some(MsgDirection::SENT)
-    /// );
-    /// assert_eq!(
-    ///     MsgDirection::infer_bytes(b"recv 8=FIX.4.4|35=0|10=017|"),
-    ///     Some(MsgDirection::RECV)
-    /// );
-    /// // A verb only inside the payload is the payload's word, not a marker.
-    /// assert_eq!(
-    ///     MsgDirection::infer_bytes(b"8=FIX.4.4|35=8|58=sent earlier|10=1|"),
-    ///     None
-    /// );
-    /// // English that merely contains the letters is not a marker.
-    /// assert_eq!(MsgDirection::infer_bytes(b"sending in session 3"), None);
-    /// assert_eq!(MsgDirection::infer_bytes(b"received out of order"), None);
-    ///
-    /// // A document answered by a status came back, and the words its own
-    /// // payload spells - `send-test-request` here - are never the marker.
-    /// let answered = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"name":"send-test-request"},"status":200}"#;
-    /// assert_eq!(MsgDirection::infer_bytes(answered), Some(MsgDirection::RECV));
-    /// let asked = br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#;
-    /// assert_eq!(MsgDirection::infer_bytes(asked), Some(MsgDirection::SENT));
-    /// ```
-    #[must_use]
-    pub fn infer_bytes(line: &[u8]) -> Option<&'static str> {
-        Self::split_bytes(line).0
-    }
-
-    /// Reads which way one captured text line moved.
-    #[must_use]
-    pub fn infer_text(line: &str) -> Option<&'static str> {
-        Self::infer_bytes(line.as_bytes())
-    }
-
-    /// Reads the direction and answers the line with its marker removed.
-    ///
-    /// Stripping is what makes the reading free downstream: the verb is
-    /// transport prose rather than payload, so a body that keeps it carries a
-    /// word no protocol sent. What is removed is the marker and the
-    /// whitespace after it, never the payload.
-    ///
-    /// ```
-    /// use yggdryl::types::MsgDirection;
-    ///
-    /// let (direction, body) = MsgDirection::split_bytes(b"sending >> 8=FIX.4.2|35=D|");
-    /// assert_eq!(direction, Some(MsgDirection::SENT));
-    /// assert_eq!(body, b">> 8=FIX.4.2|35=D|");
-    ///
-    /// // Nothing read is nothing removed.
-    /// let (none, whole) = MsgDirection::split_bytes(b"8=FIX.4.4|35=D|");
-    /// assert_eq!(none, None);
-    /// assert_eq!(whole, b"8=FIX.4.4|35=D|");
-    /// ```
-    #[must_use]
-    pub fn split_bytes(line: &[u8]) -> (Option<&'static str>, &[u8]) {
-        let (bound, stated) = crate::mime_type::line::payload(line);
-        let (marked, rest) = Self::split_within(line, bound.unwrap_or(line.len()));
-        // A document states its own half of an exchange, and states it with no
-        // marker to take off: what is read there leaves the line whole.
-        (marked.or_else(|| Self::stated(stated)), rest)
-    }
-
-    /// The direction a payload that states its own half of an exchange took.
-    ///
-    /// The reading is the document's, so the vocabulary stays here: the scan
-    /// answers which half it is and this names the half.
-    const fn stated(answered: Option<bool>) -> Option<&'static str> {
-        match answered {
-            Some(true) => Some(Self::RECV),
-            Some(false) => Some(Self::SENT),
-            None => None,
-        }
-    }
-
-    /// Reads which way a line moved, given where its payload starts.
-    ///
-    /// The reading is the same; what this adds is that the caller already
-    /// knows the offset. A reader has located the frame to parse it, and
-    /// locating it twice is the only cost the bounded reading has.
-    ///
-    /// The default fills silence and never overrides a statement: a line
-    /// carrying a verb answers that verb, a payload that states its own half
-    /// of an exchange answers that, and only a line stating neither - or
-    /// carrying both verbs, which is a line no reading can prefer one of -
-    /// takes the default. FIX parsing passes [`MsgDirection::SENT`], because a
-    /// session's own log is written by the side doing the sending and its
-    /// unmarked lines are the ones it sent.
-    ///
-    /// ```
-    /// use yggdryl::types::MsgDirection;
-    ///
-    /// let line = b"sending >> 8=FIX.4.2|35=D|58=received out of order|10=0|";
-    /// let at = 11; // where the reader found the frame
-    /// assert_eq!(
-    ///     MsgDirection::at_payload(line, at, Some(MsgDirection::SENT)),
-    ///     Some(MsgDirection::SENT),
-    ///     "the verb inside Text(58) is payload, not prose",
-    /// );
-    ///
-    /// // A line the transport did not mark takes the default, and a line
-    /// // with no default takes nothing.
-    /// let bare = b"8=FIX.4.2|35=D|10=0|";
-    /// assert_eq!(MsgDirection::at_payload(bare, 0, Some(MsgDirection::SENT)), Some(MsgDirection::SENT));
-    /// assert_eq!(MsgDirection::at_payload(bare, 0, None), None);
-    /// ```
-    #[must_use]
-    pub fn at_payload(
-        line: &[u8],
-        payload_at: usize,
-        default: Option<&'static str>,
-    ) -> Option<&'static str> {
-        Self::split_within(line, payload_at.min(line.len()))
-            .0
-            .or_else(|| Self::stated(crate::mime_type::line::payload(line).1))
-            .or(default)
-    }
-
-    /// The reading, over a prefix the caller has already bounded.
-    fn split_within(line: &[u8], bound: usize) -> (Option<&'static str>, &[u8]) {
-        let prefix = &line[..bound];
-        let mut found: Option<(&'static str, usize)> = None;
-        for (start, end, direction, selectable) in markers(prefix) {
-            // A bare `in` or `out` conflicts even where it could not be
-            // chosen: `sending in session 3` and `received out of order` are
-            // English, and a prefix carrying both verbs has none a reading
-            // can prefer.
-            if found.is_some_and(|(held, _)| held != direction) {
-                return (None, line);
-            }
-            if selectable {
-                // A bracketed marker owns its bracket, so the pair goes
-                // together; an unbracketed one owns only itself, which is why
-                // an arrow after it survives for an lstrip pattern to take.
-                let closed = matches!(
-                    (prefix.get(start.wrapping_sub(1)), line.get(end)),
-                    (Some(b'['), Some(b']')) | (Some(b'('), Some(b')')) | (Some(b'<'), Some(b'>'))
-                );
-                found.get_or_insert((direction, end + usize::from(closed)));
-            } else if found.is_none() {
-                found = Some((direction, usize::MAX));
-            }
-        }
-        match found {
-            Some((direction, end)) if end != usize::MAX => {
-                (Some(direction), trim_start(&line[end..]))
-            }
-            _ => (None, line),
-        }
-    }
-
-    /// Reads the direction and answers the text with its marker removed.
-    #[must_use]
-    pub fn split_text(line: &str) -> (Option<&'static str>, &str) {
-        let (direction, rest) = Self::split_bytes(line.as_bytes());
-        // The split lands after an ASCII verb, so the tail is still text.
-        (direction, std::str::from_utf8(rest).unwrap_or(line))
-    }
-}
-
-/// The verbs a transport marks a line with, longest first inside each
-/// direction so `received` is not read as `receive`.
-///
-/// Domain knowledge, written out where a reviewer can check it rather than
-/// inferred from spelling. The third element marks the two bare forms, which
-/// match under a stricter rule.
-const VERBS: [(&[u8], &str, bool); 13] = [
-    (b"sending", MsgDirection::SENT, false),
-    (b"sent", MsgDirection::SENT, false),
-    (b"send", MsgDirection::SENT, false),
-    (b"outbound", MsgDirection::SENT, false),
-    (b"outgoing", MsgDirection::SENT, false),
-    (b"out", MsgDirection::SENT, true),
-    (b"receiving", MsgDirection::RECV, false),
-    (b"received", MsgDirection::RECV, false),
-    (b"receive", MsgDirection::RECV, false),
-    (b"recv", MsgDirection::RECV, false),
-    (b"inbound", MsgDirection::RECV, false),
-    (b"incoming", MsgDirection::RECV, false),
-    (b"in", MsgDirection::RECV, true),
-];
-
-/// Every direction marker standing in one prefix, with its bounds.
-fn markers(prefix: &[u8]) -> impl Iterator<Item = (usize, usize, &'static str, bool)> + '_ {
-    (0..prefix.len()).filter_map(move |start| {
-        VERBS.iter().find_map(|(verb, direction, bare)| {
-            let end = start + verb.len();
-            if prefix.len() < end || !prefix[start..end].eq_ignore_ascii_case(verb) {
-                return None;
-            }
-            if !opens_marker(prefix, start) || !closes_marker(prefix, end) {
-                return None;
-            }
-            // A bare `in` or `out` is *chosen* only where a bracket opens it
-            // and a delimiter closes it, because that is the one shape a
-            // marker has and none of the shapes the same letters have
-            // otherwise: `direct:out` is a route endpoint and
-            // `MCFID-IN-XPAR` is a session name. It still counts against an
-            // opposite verb, which is what makes `sending in session 3`
-            // answer nothing rather than `SENT`.
-            Some((
-                start,
-                end,
-                *direction,
-                !*bare || bare_marker(prefix, start, end),
-            ))
-        })
-    })
-}
-
-/// Whether a marker may open at `start`.
-fn opens_marker(prefix: &[u8], start: usize) -> bool {
-    start == 0
-        || prefix
-            .get(start - 1)
-            .is_some_and(|byte| byte.is_ascii_whitespace() || matches!(byte, b'[' | b'(' | b'<'))
-}
-
-/// Whether a marker may close at `end`.
-fn closes_marker(prefix: &[u8], end: usize) -> bool {
-    prefix.get(end).is_none_or(|byte| {
-        byte.is_ascii_whitespace() || matches!(byte, b']' | b')' | b'>' | b':' | b',')
-    })
-}
-
-/// Whether a bare `in` or `out` stands as a marker rather than as English.
-fn bare_marker(prefix: &[u8], start: usize, end: usize) -> bool {
-    let opened = start == 0
-        || prefix
-            .get(start - 1)
-            .is_some_and(|byte| matches!(byte, b'[' | b'('));
-    let closed = prefix
-        .get(end)
-        .is_none_or(|byte| matches!(byte, b']' | b')' | b':'));
-    opened && closed
-}
-
-/// The bytes with leading ASCII whitespace removed.
-fn trim_start(line: &[u8]) -> &[u8] {
-    let mut start = 0;
-    while start < line.len() && line[start].is_ascii_whitespace() {
-        start += 1;
-    }
-    &line[start..]
-}
-
 /// One registered code, whichever registry it is drawn from.
 ///
 /// The identity leads: a currency and a country whose bytes agree are two
@@ -823,8 +496,6 @@ pub enum Code {
     Isin(Isin),
     /// FIX's side of a trade.
     Side(Side),
-    /// Which way a captured line moved.
-    MsgDirection(MsgDirection),
     /// What state one thing is in, ranked so the bytes sort by lifecycle.
     State(State),
     /// How long an order stands.
@@ -853,7 +524,6 @@ impl Code {
             Self::Cfi(value) => value.storage(),
             Self::Isin(value) => value.storage(),
             Self::Side(value) => value.storage(),
-            Self::MsgDirection(value) => value.storage(),
             Self::State(value) => value.storage(),
             Self::TimeInForce(value) => value.storage(),
         }
@@ -869,7 +539,6 @@ impl Code {
             Self::Cfi(_) => CFI_WIDTH,
             Self::Isin(_) => ISIN_WIDTH,
             Self::Side(_) => SIDE_WIDTH,
-            Self::MsgDirection(_) => DIRECTION_WIDTH,
             Self::State(_) => STATE_WIDTH,
             Self::TimeInForce(_) => TIMEINFORCE_WIDTH,
         }
@@ -885,7 +554,6 @@ impl Code {
             Self::Cfi(_) => DataTypeId::Cfi,
             Self::Isin(_) => DataTypeId::Isin,
             Self::Side(_) => DataTypeId::Side,
-            Self::MsgDirection(_) => DataTypeId::MsgDirection,
             Self::State(_) => DataTypeId::State,
             Self::TimeInForce(_) => DataTypeId::TimeInForce,
         }
@@ -901,7 +569,6 @@ impl Code {
             Self::Cfi(_) => DataType::Cfi,
             Self::Isin(_) => DataType::Isin,
             Self::Side(_) => DataType::Side,
-            Self::MsgDirection(_) => DataType::MsgDirection,
             Self::State(_) => DataType::State,
             Self::TimeInForce(_) => DataType::TimeInForce,
         }
@@ -975,7 +642,6 @@ code_value!(Mic, Mic, MIC_WIDTH);
 code_value!(Cfi, Cfi, CFI_WIDTH);
 code_value!(Isin, Isin, ISIN_WIDTH);
 code_value!(Side, Side, SIDE_WIDTH);
-code_value!(MsgDirection, MsgDirection, DIRECTION_WIDTH);
 code_value!(State, State, STATE_WIDTH);
 code_value!(TimeInForce, TimeInForce, TIMEINFORCE_WIDTH);
 

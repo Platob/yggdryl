@@ -22,8 +22,8 @@ use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
 use super::string::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH,
-    STATE_WIDTH, STRING_EXTENSION_NAME, TIMEINFORCE_WIDTH, code_extension_name, needs_extension,
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
+    STRING_EXTENSION_NAME, TIMEINFORCE_WIDTH, code_extension_name, needs_extension,
 };
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 use super::url::URL_EXTENSION_NAME;
@@ -400,7 +400,6 @@ impl TryFrom<&DataType> for ArrowDataType {
             R::Cfi => Self::FixedSizeBinary(CFI_WIDTH as i32),
             R::Isin => Self::FixedSizeBinary(ISIN_WIDTH as i32),
             R::Side => Self::FixedSizeBinary(SIDE_WIDTH as i32),
-            R::MsgDirection => Self::FixedSizeBinary(DIRECTION_WIDTH as i32),
             R::State => Self::FixedSizeBinary(STATE_WIDTH as i32),
             R::TimeInForce => Self::FixedSizeBinary(TIMEINFORCE_WIDTH as i32),
             R::Uuid => Self::FixedSizeBinary(16),
@@ -529,7 +528,6 @@ impl TryFrom<DataType> for ArrowDataType {
             R::Cfi => Self::FixedSizeBinary(CFI_WIDTH as i32),
             R::Isin => Self::FixedSizeBinary(ISIN_WIDTH as i32),
             R::Side => Self::FixedSizeBinary(SIDE_WIDTH as i32),
-            R::MsgDirection => Self::FixedSizeBinary(DIRECTION_WIDTH as i32),
             R::State => Self::FixedSizeBinary(STATE_WIDTH as i32),
             R::TimeInForce => Self::FixedSizeBinary(TIMEINFORCE_WIDTH as i32),
             R::Uuid => Self::FixedSizeBinary(16),
@@ -894,8 +892,8 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
         //
         // Which datatypes those are is asked of the function that answers it
         // rather than re-listed here. The list this used to spell had drifted
-        // five datatypes behind - `side`, `state`, `timeinforce`,
-        // `msgdirection` and every `string(...)` - and each of them fell to
+        // several datatypes behind - `side`, `state`, `timeinforce` and
+        // every `string(...)` - and each of them fell to
         // the plain arm below and crossed the C Data Interface as anonymous
         // storage, which is exactly what this arm exists to prevent.
         dtype if arrow_extension_parts(dtype).is_some() => {

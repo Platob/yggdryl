@@ -24,15 +24,14 @@ fn text(values: &[&str]) -> ArrayRef {
     Arc::new(StringArray::from(values.to_vec()))
 }
 
-/// The nine codes, each with its fixed width and one value its standard names.
-const CODED: [(&str, DataType, usize, &str); 9] = [
+/// The eight codes, each with its fixed width and one value its standard names.
+const CODED: [(&str, DataType, usize, &str); 8] = [
     ("country", DataType::Country, 2, "US"),
     ("currency", DataType::Currency, 3, "USD"),
     ("mic", DataType::Mic, 4, "XPAR"),
     ("cfi", DataType::Cfi, 6, "ESVUFR"),
     ("isin", DataType::Isin, 12, "US0378331005"),
     ("side", DataType::Side, 4, "1"),
-    ("msgdirection", DataType::MsgDirection, 4, "SENT"),
     ("state", DataType::State, 10, "20NEW"),
     ("timeinforce", DataType::TimeInForce, 8, "0"),
 ];
@@ -163,11 +162,7 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
             .ascii_packed(b"1")
             .unwrap()
     );
-    for (dtype, value) in [
-        (DataType::Side, "1"),
-        (DataType::MsgDirection, "SENT"),
-        (DataType::MsgDirection, "RECV"),
-    ] {
+    for (dtype, value) in [(DataType::Side, "1"), (DataType::Side, "2")] {
         let packed = dtype.ascii_packed(value.as_bytes()).unwrap();
         let read = dtype.ascii_value(packed).unwrap();
         assert_eq!(read.as_str(), value, "{dtype} {value}");
@@ -231,7 +226,7 @@ fn a_cast_into_a_code_pads_and_reading_it_back_trims() {
 fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
     // These declare a vocabulary exactly as `Mic` does: a venue's own message
     // type, and a side no version defines, are held rather than refused.
-    for (dtype, outside) in [(DataType::Side, "Z"), (DataType::MsgDirection, "BOTH")] {
+    for (dtype, outside) in [(DataType::Side, "Z"), (DataType::TimeInForce, "X")] {
         let stored = dtype.scalar(Scalar::from(outside)).unwrap();
         assert_eq!(stored.as_str(), Some(outside), "{dtype}");
         let packed = dtype.ascii_packed(outside.as_bytes()).unwrap();
@@ -242,7 +237,7 @@ fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
     // same members because it is a constant.
     for (name, count) in [
         ("side", StringEnum::SIDES.len()),
-        ("msgdirection", StringEnum::DIRECTIONS.len()),
+        ("timeinforce", StringEnum::TIMESINFORCE.len()),
     ] {
         let built = StringEnum::from_logical_name(name).unwrap();
         assert_eq!(built.len(), count, "{name}");
@@ -252,11 +247,10 @@ fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
             "{name}"
         );
     }
-    assert_eq!(StringEnum::DIRECTIONS, &["RECV", "SENT"][..]);
     // Every prebuilt member fits the width its own datatype fixes.
     for (name, dtype) in [
         ("side", DataType::Side),
-        ("msgdirection", DataType::MsgDirection),
+        ("timeinforce", DataType::TimeInForce),
     ] {
         StringEnum::from_logical_name(name)
             .unwrap()
@@ -267,12 +261,12 @@ fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
 
 #[test]
 fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
-    // A row whose line does not say which way it moved has no direction, and
-    // the crate already spells "no answer" one way.
-    assert!(!StringEnum::DIRECTIONS.contains(&"UNKNOWN"));
-    assert!(!StringEnum::DIRECTIONS.contains(&"NONE"));
+    // A row whose line does not say a side has none, and the crate already
+    // spells "no answer" one way.
+    assert!(!StringEnum::SIDES.contains(&"UNKNOWN"));
+    assert!(!StringEnum::SIDES.contains(&"NONE"));
 
-    let field = Field::new("direction", DataType::MsgDirection, true);
+    let field = Field::new("side", DataType::Side, true);
     let row = Field::new(
         "row",
         DataType::from_fields([field.clone()]).unwrap(),
@@ -287,7 +281,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     // and not the datatype's.
     let required = Field::new(
         "row",
-        DataType::from_fields([Field::new("direction", DataType::MsgDirection, false)]).unwrap(),
+        DataType::from_fields([Field::new("side", DataType::Side, false)]).unwrap(),
         false,
     );
     assert!(
@@ -334,62 +328,6 @@ fn a_coded_column_casts_to_text_and_back_and_refuses_a_number() {
             refused.to_string().contains(&dtype.to_string()),
             "{refused}"
         );
-    }
-}
-
-#[test]
-fn a_direction_is_the_verb_in_front_of_the_payload_and_nothing_else() {
-    use yggdryl::types::MsgDirection;
-
-    // Read, with the marker taken off the body.
-    for (line, direction, body) in [
-        (
-            "sending >> 8=FIX.4.2|9=176|35=D|10=203|",
-            Some(MsgDirection::SENT),
-            ">> 8=FIX.4.2|9=176|35=D|10=203|",
-        ),
-        (
-            "recv 8=FIX.4.4|35=0|10=017|",
-            Some(MsgDirection::RECV),
-            "8=FIX.4.4|35=0|10=017|",
-        ),
-        (
-            "Receiving XmlApi: <Execution ExecID='E1'/>",
-            Some(MsgDirection::RECV),
-            "XmlApi: <Execution ExecID='E1'/>",
-        ),
-        (
-            "[OUT] 8=FIX.4.4|35=D|",
-            Some(MsgDirection::SENT),
-            "8=FIX.4.4|35=D|",
-        ),
-        ("(in) ACCOUNT=A1", Some(MsgDirection::RECV), "ACCOUNT=A1"),
-    ] {
-        assert_eq!(MsgDirection::infer_text(line), direction, "{line}");
-        assert_eq!(MsgDirection::split_text(line).1, body, "{line}");
-    }
-
-    // Nothing read is nothing removed, and these are the shapes that must
-    // read nothing.
-    for line in [
-        // English that merely contains the letters.
-        "sending in session 3",
-        "received out of order",
-        // A route endpoint and a session name, where a word boundary alone
-        // would have been enough to get it wrong.
-        "direct:out 8=FIX.4.4|35=D|",
-        "MCFID-IN-XPAR 8=FIX.4.4|35=D|",
-        // Both verbs in one prefix: none a reading can prefer.
-        "sending and receiving 8=FIX.4.4|35=D|",
-        // A verb only inside the payload is the payload's word.
-        "8=FIX.4.4|35=8|58=sent earlier|10=1|",
-        "ACCOUNT=A1|TEXT=received late|",
-        // No verb at all.
-        "8=FIX.4.4|35=D|",
-        "no level printed by this plugin",
-    ] {
-        assert_eq!(MsgDirection::infer_text(line), None, "{line}");
-        assert_eq!(MsgDirection::split_text(line).1, line, "{line}");
     }
 }
 

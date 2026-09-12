@@ -867,7 +867,6 @@ def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
         "mic",
         "exchange",
         "side",
-        "msgdirection",
         "state",
         "timeinforce",
     }

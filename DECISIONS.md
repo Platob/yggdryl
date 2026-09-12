@@ -978,3 +978,88 @@ dictionary agreeing with `msgtypes()`; a snapshot carrying a `messages` key
 refused by name; the store writing a message under `components/` and reading
 it back equal; the CLI creating a message under `components` with
 `--msgtype`; the store call pin; the equivalence snapshot, unmoved.
+
+## 14. A direction is a FIX fact, and the registry owns it
+
+**Rule.** Which way a message moved is FIX's fact, published at tag 385
+as `MsgDirection` with the code set `R = Receive`, `S = Send`, and nothing
+else in the crate has one. `DataType::MsgDirection`, `DataTypeId::MsgDirection`,
+`Code::MsgDirection`, the `types::MsgDirection` value type with its `SENT`/`RECV`
+constants, `from_spelling`, `infer_bytes`, `infer_text`, `split_bytes`,
+`split_text`, `at_payload` and the verb table, `StringEnum::DIRECTIONS`, the
+`msgdirection` code name and its `DataType::CODES` and `LOGICAL_NAMES` rows,
+the serde tag, `MsgDirectionType`/`MsgDirectionField`, the Arrow extension
+`yggdryl.msgdirection` and the `yggdryl.direction` import, the text reader's
+`direction` column, `TextOptions::parse_direction`, `TextLine::direction`/
+`set_direction`, the marker stripping and the `direction`/`dir`/`way` column
+aliases are deleted. Tag 385 is typed by the dictionary as it types every
+coded field - `utf8` carrying its `fix:codes` - and `yggdryl::fix::MsgDirection`
+is the registry's reading of it: the code set tag 385 declares, extendable
+like any code set, beside the reading that names one code from the prose in
+front of a payload (today's verb table and the document statement, moved
+whole; decision 15 replaces them with rules the dictionary carries), held by
+`FixRegistry`, answered by `registry.msgdirection()`, and compiled once where
+a codec takes its registry (`FixCodec::new`). A registry without tag 385
+answers the specification's set, `R` and `S`, so a direction is never
+silently absent from a dictionary that did not ship the field.
+
+A message carries its direction as tag 385, a built child holding the code
+the reading matched, filled on every door - `parse_line`, `parse_text_line`,
+`parse_fix_line`, `parse_ullink_line`, `parse_ulconfig_line`, the batch
+reader - and the batch reader's precedence is: a stated 385 in the row, else
+the reading over the row's prefix, else the codec's pin, which is a code of
+the set. `FixCodec::direction` answers `Option<&str>`, the pin's code;
+`FixCodec::try_with_direction(code)` takes any spelling tag 35's rules
+already accept for a code - the value, the name, an alias - resolves it
+against the set once and refuses one the set does not hold, naming the set;
+`None` or the empty text is no pin. The default pin is `S`: a session's own
+log is written by the side doing the sending. The line door fills only what
+the reading matched and takes no pin, as today: a line that states nothing
+states nothing, and the pin is the batch reader's answer for a column every
+row must have. A bridge row does not inherit the direction of the frame the
+same plugin logged before it: a row states its own facts (decision 8), so a
+`RouteMessage` row with no verb answers the pin on the batch door and nothing
+on the line door. Named here because the prompt left it to decide, and pinned.
+
+`DataTypeId` retires discriminant 58 rather than reusing it: the enum states
+every discriminant explicitly, `ALL` is sixty entries, `Url` stays 59 and
+`Isin` 60, and the pin test states every byte rather than the index. The
+rule that a variant's byte is its index in `ALL` ends with this decision, and
+`as_u8`'s doc says so. `yggdryl.msgdirection` is no longer written; a stored
+column carrying it or `yggdryl.direction` imports as the `fixed_size_binary(4)`
+it is, which `docs/types/text.md` says under Edges.
+
+**Why.** A direction was two vocabularies for one fact: the text reader's
+`SENT`/`RECV` column, a packed datatype the crate invented, and FIX's own
+tag 385 with `R`/`S`, which the shipped dictionary already typed under the
+crate's datatype so the two disagreed on every value. Every capture reader
+in the crate reads a FIX log, and the verb in front of a frame is the
+transport saying which way the frame moved - which is what FIX's field
+means. One owner, FIX's, with FIX's codes; the text reader keeps to what a
+line is, and a datatype that existed for one column goes with the column.
+The registry owns the reading because the code set is the registry's: a
+dictionary that extends tag 385's set names the codes the reading can
+answer, and decision 15 puts the rules beside them.
+
+**What moves.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `datatype_id.rs`, `types/` | the variant, the value type, the code, the extension, the serde tag, the typed field, `DIRECTIONS`, `CODES`, `LOGICAL_NAMES` gone; explicit discriminants | every other discriminant; every other code |
+| `media/text/` | `direction` column, `parse_direction`, `TextLine::direction`, the strip, the aliases gone | every other column; the body's bytes now keep the verb, which is prose before the payload |
+| `fix/direction.rs` (new) | `MsgDirection`: the code set on 385 and the reading, compiled once | the verb table's answers, now spelled `S`/`R` |
+| `fix/codec.rs`, `batch.rs`, `build.rs` | 385 filled as a child on every door; the pin a code; `DIRECTION_COLUMN` is the 385 column | the entries, the wire, every other row column |
+| `config/fix/fields/3.json`, the generator | tag 385 typed `utf8`; `CODED_TAGS` loses 385 | every other document |
+| Python, Node | `FixCodec(direction=)` a code; `MimeType.infer_*_direction`, `TextLine.direction`, `types.msgdirection`, `DataType("msgdirection")` gone | argument order and error semantics elsewhere |
+| docs | `docs/types/codes.md` loses its section; `docs/fix/registry.md`, `arrow.md`, `capture.md`, `media/text.md`, `encode.md`, `types/text.md` re-spelled | |
+
+**Written in:** `fix/direction.rs`, on `MsgDirection`; `datatype_id.rs`, on
+`as_u8`; `docs/fix/registry.md`.
+**Fixtures:** every case of `rust/tests/types/datatype/coded.rs`'s direction
+test moved to `rust/tests/fix/direction.rs` with its answer spelled as a code;
+the batch precedence with a stated `msgdirection` column, a verb, and the pin;
+a pin refused by name; a registry without 385 answering `S`/`R`; `ALL.len()
+== 60` with every byte stated; a stored `yggdryl.msgdirection` column
+importing as its storage; the equivalence snapshot regenerated: every line
+whose prefix carries a verb, and every document that states its half, gains
+`.field.msgdirection`, and nothing else moves.

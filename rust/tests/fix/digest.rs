@@ -2,7 +2,6 @@
 
 use super::OneMessage;
 
-use yggdryl::types::MsgDirection;
 use yggdryl::{DataType, FixCodec, FixDedup, FixId, FixRegistry, Scalar};
 
 fn reader() -> FixCodec {
@@ -206,43 +205,6 @@ fn a_redelivery_of_one_order_is_one_order() {
             .digest(),
         amended.digest()
     );
-}
-
-#[test]
-fn a_direction_is_read_in_front_of_the_payload_and_never_inside_it() {
-    // A verb inside a `Text(58)` value is payload, and the offset the reader
-    // already computed is what keeps it out of the reading.
-    let line = b"sending >> 8=FIX.4.2|35=D|58=received out of order|10=0|";
-    let at = 11;
-    assert_eq!(
-        MsgDirection::at_payload(line, at, Some(MsgDirection::SENT)),
-        Some(MsgDirection::SENT)
-    );
-
-    // A line the transport marked as arriving answers so, default or not.
-    let arriving = b"receiving << 8=FIX.4.2|35=D|10=0|";
-    assert_eq!(
-        MsgDirection::at_payload(arriving, 13, Some(MsgDirection::SENT)),
-        Some(MsgDirection::RECV),
-        "a read verb always beats the default",
-    );
-
-    // Both verbs in one prefix is a line no reading can prefer one of, so it
-    // falls to the default exactly as silence does.
-    let both = b"sending a received copy >> 8=FIX.4.2|35=D|10=0|";
-    assert_eq!(
-        MsgDirection::at_payload(both, 26, Some(MsgDirection::SENT)),
-        Some(MsgDirection::SENT)
-    );
-    assert_eq!(MsgDirection::at_payload(both, 26, None), None);
-
-    // Silence takes the default, and no default is no answer.
-    let bare = b"8=FIX.4.2|35=D|10=0|";
-    assert_eq!(
-        MsgDirection::at_payload(bare, 0, Some(MsgDirection::RECV)),
-        Some(MsgDirection::RECV)
-    );
-    assert_eq!(MsgDirection::at_payload(bare, 0, None), None);
 }
 
 #[test]

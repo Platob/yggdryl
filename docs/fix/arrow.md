@@ -118,8 +118,9 @@ One column of frames in, batches out, the capture's own columns still in front o
     assert held.num_rows == 2, "one ordinary frame per input row"
     assert held.column("symbol").to_pylist() == ["AAPL", "MSFT"]
     assert held.column("url")[0].as_py() == "file:///capture.log"
-    # The verb in front of the frame beats the direction the codec defaults to.
-    assert held.column("msgdirection").to_pylist() == [b"RECV", b"SENT"]
+    # The verb in front of the frame beats the direction the codec defaults
+    # to; both are codes of tag 385's set.
+    assert held.column("msgdirection").to_pylist() == ["R", "S"]
     # The row's clock stamps the message, and a capture named after a field
     # fills it - where the row stated one.
     assert held.column("timestamp").cast(pa.timestamp("us", "UTC")).to_pylist() == clocks
@@ -671,7 +672,7 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
 
 - Ordinary unframed text produces a row holding an empty message; bulk parsing errors propagate, and output counts follow message expansion.
 - A carried column whose folded name a FIX column takes is dropped in front rather than renamed - two columns of one name is not a schema - and what it stated lands in that FIX column.
-- A `direction` column is read as a parameter *and* carried, so a row shows both the value supplied and the direction read, in `msgdirection` (385); the two are different names, so both are present.
+- A `msgdirection` column is the row's stated direction, read as a parameter - any spelling of a code of tag 385's set, stored as the code - and it outranks the reading of the line and the codec's pin; the FIX column carries it and no second column repeats it.
 - A `timestamp` column is the row's clock: it stamps the message, and a row stating none leaves the message to its own clocks, else the epoch.
 - A fill never overrides what the frame stated: a `seqNum` capture beside a frame carrying `34=` leaves `msgseqnum` to the frame.
 - A fill is row-only: never an entry, never in `nofixentries`, never re-emitted by `write_arrow_reader`, never in `msghash`.

@@ -996,32 +996,22 @@ fn a_right_edge_sequence_strips_in_order_too() {
 }
 
 #[test]
-fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() {
+fn the_classification_column_reads_the_line_and_leaves_the_body() {
     let source = Buffer::from_bytes(
         [
-            b"sending >> 8=FIX.4.2|9=176|35=D|10=203|
-"
-            .as_slice(),
-            b"recv ACCOUNT=A1|MSGTYPE=8|SYMBOL=AAPL
-"
-            .as_slice(),
-            b"level=INFO worker=3 took=12ms
-"
-            .as_slice(),
-            b"<Order ClOrdID='XML-1'/>
-"
-            .as_slice(),
-            b"no level printed by this plugin
-"
-            .as_slice(),
+            b"sending >> 8=FIX.4.2|9=176|35=D|10=203|\n".as_slice(),
+            b"recv ACCOUNT=A1|MSGTYPE=8|SYMBOL=AAPL\n".as_slice(),
+            b"level=INFO worker=3 took=12ms\n".as_slice(),
+            b"<Order ClOrdID='XML-1'/>\n".as_slice(),
+            b"no level printed by this plugin\n".as_slice(),
         ]
         .concat(),
     );
     let mut options = TextOptions::new();
     options.parse_mimetype = true;
-    options.parse_direction = true;
 
-    // The columns a classifying read declares, in order.
+    // The columns a classifying read declares, in order. A direction is
+    // FIX's fact and not the reader's (decision 14): no column carries one.
     let field = options.source_field().unwrap();
     let names: Vec<&str> = field
         .dtype()
@@ -1030,13 +1020,9 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
         .iter()
         .map(Field::name)
         .collect();
-    assert_eq!(names, ["url", "mtime", "direction", "mimetype", "body"]);
+    assert_eq!(names, ["url", "mtime", "mimetype", "body"]);
 
     let batches = collect(&source, options);
-    assert_eq!(
-        codes(&batches, "direction"),
-        [Some("SENT"), Some("RECV"), None, None, None]
-    );
     assert_eq!(
         texts(&batches, "mimetype"),
         [
@@ -1047,42 +1033,19 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
             Some("application/octet-stream"),
         ]
     );
-    // Reading the verb takes exactly the verb off the body: a body that kept
-    // it would carry a word no protocol sent. What it does *not* take is the
-    // rest of the transport's punctuation - the arrow here - because that was
-    // not used to read anything, and removing it is what an lstrip sequence
-    // is for.
+    // The body is the line as read, the transport's verb included: it is
+    // prose in front of the payload, and the codec reads it there.
     assert_eq!(
         bodies(&batches)[..2],
         [
-            b">> 8=FIX.4.2|9=176|35=D|10=203|".to_vec(),
-            b"ACCOUNT=A1|MSGTYPE=8|SYMBOL=AAPL".to_vec(),
+            b"sending >> 8=FIX.4.2|9=176|35=D|10=203|".to_vec(),
+            b"recv ACCOUNT=A1|MSGTYPE=8|SYMBOL=AAPL".to_vec(),
         ]
     );
     assert_eq!(
         bodies(&batches)[4],
         b"no level printed by this plugin".to_vec()
     );
-}
-
-/// One packed-ASCII column, read back with its padding gone.
-fn codes<'a>(batches: &'a [arrow_array::RecordBatch], name: &str) -> Vec<Option<&'a str>> {
-    batches
-        .iter()
-        .flat_map(|batch| {
-            let index = batch.schema().index_of(name).unwrap();
-            batch
-                .column(index)
-                .as_any()
-                .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
-                .unwrap()
-                .iter()
-                .map(|value| {
-                    value.map(|bytes| std::str::from_utf8(bytes).unwrap().trim_end_matches(' '))
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect()
 }
 
 /// One text column.
@@ -1137,8 +1100,9 @@ fn adjacent_rows_repeating_a_body_are_dropped_only_when_asked() {
     let prefixed = Buffer::from_bytes(
         b"sending >> 8=FIX.4.4|35=D|10=1|\nrecv >> 8=FIX.4.4|35=D|10=1|\n".to_vec(),
     );
-    let mut options = TextOptions::new().try_with_lstrip([r"^>>\s*"]).unwrap();
-    options.parse_direction = true;
+    let mut options = TextOptions::new()
+        .try_with_lstrip([r"^(?:sending|recv) >>\s*"])
+        .unwrap();
     options.dedup_adjacent = true;
     assert_eq!(bodies(&collect(&prefixed, options)).len(), 1);
 }
@@ -1512,7 +1476,6 @@ fn captures_are_typed_by_name_whatever_fixed_columns_precede_them() {
     // that count was wrong and a capture was parsed at another column's type.
     let mut options = options(r"^(?<seen>\d{4}-\d{2}-\d{2}) id=(?<id>\d+) ");
     options.parse_mimetype = true;
-    options.parse_direction = true;
     let batch = collect(&named("wide.log", b"2020-01-02 id=7 first\n"), options)
         .pop()
         .unwrap();
@@ -1795,10 +1758,8 @@ mod values {
         assert_eq!(line.index(), 7);
         line.set_timestamp(Some(1_700_000_000_000_000_000));
         line.set_dropped_byte_size(Some(12));
-        line.set_direction(Some("out"));
         assert_eq!(line.timestamp(), Some(1_700_000_000_000_000_000));
         assert_eq!(line.dropped_byte_size(), Some(12));
-        assert_eq!(line.direction(), Some("out"));
         assert_eq!(line.body(), "hello");
     }
 

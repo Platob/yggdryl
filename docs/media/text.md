@@ -15,7 +15,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
 | `start_rownum` / `startRownum` | optional signed 64-bit first row number; unset omits the column |
 | `parse_mtime` / `parseMtime` | emit `mtime`, filled by the row header's `mtime` capture or by the handle's own modification time; default `true` |
-| `parse_mimetype`, `parse_direction` | classify each record and add the column named, off by default |
+| `parse_mimetype` | classify each record and add the `mimetype` column, off by default |
 | `rename_columns` / `renameColumns` | emitted name for a column, keyed by its default name; a key naming no column is refused |
 | `lift_names` / `liftNames` | entry paths lifted into columns of their own, each named by its `as` alias where it writes one; unset lifts nothing beyond the row header's captures |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
@@ -141,7 +141,6 @@ The source field is complete before any source bytes are read.
 | `url` | `url` | nullable; the source location, and null for an unlocated buffer |
 | `rownum` | `int64` | present only when `start_rownum` is set; first value is exactly that setting |
 | `mtime` | `datetime64(ns, UTC)` | nullable; present unless `parse_mtime` is off |
-| `direction` | `msgdirection` | nullable; present only with `parse_direction` |
 | `mimetype` | `utf8` | present only with `parse_mimetype` |
 | `body` | `utf8` | required; the retained record as text: decoded at the transport under [a declared charset](#declaring-a-charset), else [where the line is made](#a-line-is-text) |
 | `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped; counts bytes as read, in the units the limit counts |
@@ -159,9 +158,9 @@ when the read goes on into a FIX batch.
 
 `mtime` says when the record was written, and has two sources for one column. A row header that declares an `mtime` capture dates each line from the line itself, and the capture fills the column rather than appearing beside it — so a capture spelled that way is read at `datetime64(ns, UTC)` whatever its own syntax suggests, and a reading that names no offset is resolved through `timezone`. A header that declares no such capture, or a line the header did not match, falls back to [`IOBase::mtime`](../holder/iobase/bytes.md#modification-time) — the handle's own modification time, read once per read and shared by every row. Neither available is null, which is what an unlocated buffer answers. Turning `parse_mtime` off removes the column, and frees the name for an ordinary capture.
 
-The two classification columns are the [capture readings](../fix/registry.md#classifying-a-captured-line) run over each record's body: what the line is, and which way it moved. They need no dictionary and cost one shallow scan per record, which is why they are opt-in per column — a read that only needs rows should not pay for them.
+The classification column is the [capture reading](../fix/registry.md#classifying-a-captured-line) run over each record's body: what the line is. It needs no dictionary and costs one shallow scan per record, which is why it is opt-in — a read that only needs rows should not pay for it. Which way a line moved is FIX's own fact, tag 385, and the [codec](../fix/decode.md) reads it from the prose in front of the payload; the reader states no direction of its own and takes nothing off the body.
 
-`parse_direction` also takes the marker off the body, because a verb in front of the payload is transport prose rather than payload. The reader states no message type of its own: a line's type is what its frame says, and reading a frame is the [codec's](../fix/decode.md) work rather than the classifier's.
+The reader states no message type of its own either: a line's type is what its frame says, and reading a frame is the [codec's](../fix/decode.md) work rather than the classifier's.
 
 [FIX decoding](../fix/decode.md) consumes these captured records through a lazy
 `FixMessages` iterator. One bulk ULconfig response can yield several flat

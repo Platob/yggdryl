@@ -31,7 +31,6 @@ use napi::bindgen_prelude::{
     JsObjectValue as _, Object, Result, Status, Unknown, ValueType,
 };
 use napi_derive::napi;
-use yggdryl::types::MsgDirection;
 use yggdryl::{
     Error as CoreError, Field as CoreField, FixCategory, FixCodec as CoreFixCodec,
     FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
@@ -1476,9 +1475,11 @@ impl JsFixCodec {
     /// called, in the order a line answers them, which is what lets
     /// `parseTextLine` read a capture by position rather than by name;
     /// `nullValues` are the spellings that mean nothing was
-    /// sent; `direction` is what an unmarked line took - `"sent"`, `"recv"`
-    /// or `"unknown"`; `batchByteSize` is the raw bytes one Arrow batch
-    /// targets, the core's 128 MiB when unstated.
+    /// sent; `direction` is the code of tag 385's set an unmarked line
+    /// takes on the batch door, any spelling of one - `"S"`, `"Send"`,
+    /// `"R"` - the core's `Send` code when unstated and no pin at all when
+    /// empty; `batchByteSize` is the raw bytes one Arrow batch targets, the
+    /// core's 128 MiB when unstated.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -1503,7 +1504,7 @@ impl JsFixCodec {
             inner = inner.with_null_values(held);
         }
         if let Some(held) = &options.direction {
-            inner = inner.with_direction(direction_from_js(held)?);
+            inner = inner.try_with_direction(Some(held)).map_err(napi_error)?;
         }
         if let Some(held) = options.batch_byte_size {
             let bytes = exact_i64(held, "batchByteSize")?;
@@ -1548,13 +1549,11 @@ impl JsFixCodec {
         self.inner.null_values().to_vec()
     }
 
-    /// The direction an unmarked line takes: `"sent"`, `"recv"` or
-    /// `"unknown"`.
+    /// The code of tag 385's set an unmarked line takes on the batch door,
+    /// or `null` where no pin fills silence.
     #[napi(getter)]
-    pub fn direction(&self) -> String {
-        self.inner
-            .direction()
-            .map_or_else(|| "unknown".to_owned(), str::to_ascii_lowercase)
+    pub fn direction(&self) -> Option<String> {
+        self.inner.direction().map(ToOwned::to_owned)
     }
 
     /// The raw bytes one Arrow batch targets.
@@ -1878,19 +1877,12 @@ pub struct FixCodecOptions {
     pub capture_names: Option<Vec<String>>,
     /// The spellings that mean "nothing was sent".
     pub null_values: Option<Vec<String>>,
-    /// What an unmarked line took: `sent`, `recv`, or `unknown`; `sent` when
-    /// unstated.
+    /// The code of tag 385's set an unmarked line takes on the batch door,
+    /// any spelling of one; the core's `Send` code when unstated, no pin
+    /// when empty.
     pub direction: Option<String>,
     /// The raw bytes one Arrow batch targets; the core's 128 MiB when unstated.
     pub batch_byte_size: Option<f64>,
-}
-
-/// Read the direction an unmarked line takes, as the core spells it.
-///
-/// `unknown` is the third answer: a capture whose silence really means
-/// nothing, rather than the side that wrote it.
-fn direction_from_js(text: &str) -> Result<Option<&'static str>> {
-    MsgDirection::from_spelling(text).map_err(napi_error)
 }
 
 /// Read one FIX version, or report the native parse failure.

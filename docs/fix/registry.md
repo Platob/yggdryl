@@ -889,7 +889,7 @@ Environment and default-folder resolution happen once, on the first global looku
 
 ## Classifying a captured line
 
-`MimeType` owns protocol inference; `FixCodec` owns shallow raw message-code inference, which requires no registry. `MsgDirection` owns direction inference and prefix splitting.
+`MimeType` owns protocol inference; `FixCodec` owns shallow raw message-code inference, which requires no registry. `FixRegistry::msgdirection` owns the reading of which way a line moved: FIX's own tag 385, its code set the dictionary's.
 
 | Recognized payload | Protocol |
 | --- | --- |
@@ -936,7 +936,7 @@ An ObjectName's `type=` property supplies its raw configuration type; otherwise 
 
 ### A direction is the verb in front of the payload
 
-`send`, `sending`, `sent`, and outbound markers identify `SENT`; receive and inbound markers identify `RECV`. A configuration response echoes `request` and is received; a request without an echo is sent.
+Which way a message moved is FIX's own fact, tag 385 `MsgDirection`, and nothing else in the crate has one (decision 14). The dictionary types the field as it types every coded field - text carrying the code set `R = Receive`, `S = Send`, extendable like any set - and `FixRegistry::msgdirection` answers the registry's reading of it, a `fix::MsgDirection`: `send`, `sending`, `sent` and outbound markers in the prose in front of the payload name the set's `Send` code; receive and inbound markers name its `Receive` code; a prefix carrying both, or neither, names nothing. A configuration response echoes `request` and came back; a request without an echo went out. Every door fills tag 385 from that reading where the wire states none - `parse_line`, `parse_text_line`, the single-dialect doors, the batch reader - and the batch reader's precedence is a stated `msgdirection` column, else the reading, else the codec's pin (`try_with_direction`, the `Send` code by default), which is a code of the set. `MsgDirection::code` resolves any spelling of a code - its value, its name, an alias - and a spelling outside the set is refused naming the set.
 
 ## Edges
 

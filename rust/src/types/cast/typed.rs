@@ -131,10 +131,6 @@ typed_array!(
     arrow_array::FixedSizeBinaryArray
 );
 typed_array!(
-    crate::types::string::MsgDirectionType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
     crate::types::string::StateType,
     arrow_array::FixedSizeBinaryArray
 );

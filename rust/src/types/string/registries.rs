@@ -224,7 +224,6 @@ impl StringEnum {
         ("mic", Self::MICS),
         ("exchange", Self::MICS),
         ("side", Self::SIDES),
-        ("msgdirection", Self::DIRECTIONS),
         ("state", Self::STATES),
         ("timeinforce", Self::TIMESINFORCE),
     ];

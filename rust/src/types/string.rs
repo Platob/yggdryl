@@ -11,7 +11,7 @@
 //! held to. [`crate::DataType::string`] builds the one string datatype,
 //! [`crate::DataType::String`], from them; `utf8`, `ascii`, `varchar(32)`
 //! and `char(8)` are spellings of it, never datatypes of their own.
-//! [`Str`] is the one string value, and the nine registered codes beside it
+//! [`Str`] is the one string value, and the eight registered codes beside it
 //! are identities with a storage rather than strings with a charset.
 //!
 //! ```
@@ -45,7 +45,7 @@ use crate::{DataTypeId, Error, Result};
 mod arrow;
 #[cfg(feature = "arrow")]
 pub(crate) mod casts;
-/// The nine registered codes' values.
+/// The eight registered codes' values.
 mod code;
 mod codes;
 mod dictionary;
@@ -57,15 +57,13 @@ mod registries;
 mod scalars;
 
 pub(crate) use arrow::{arrow_storage, describes_storage, is_text_storage, needs_extension};
-pub use code::{
-    Cfi, Code, CodeValue, Country, Currency, Isin, Mic, MsgDirection, Side, State, TimeInForce,
-};
+pub use code::{Cfi, Code, CodeValue, Country, Currency, Isin, Mic, Side, State, TimeInForce};
 // The padding is the payload a declared width stores, which a value answers
 // with or without an Arrow array around it.
 pub(crate) use codes::ascii_padded;
 pub(crate) use codes::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH,
-    STATE_WIDTH, TIMEINFORCE_WIDTH, ascii_bytes, ascii_text, code_cell_text, code_extension_name,
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
+    TIMEINFORCE_WIDTH, ascii_bytes, ascii_text, code_cell_text, code_extension_name,
     code_for_extension,
 };
 #[cfg(feature = "arrow")]

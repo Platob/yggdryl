@@ -70,7 +70,7 @@ pub use scalar::{Scalar, ScalarFamily, ScalarValue};
 pub use string::*;
 #[cfg(feature = "arrow")]
 pub(crate) use string::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
     TIMEINFORCE_WIDTH, code_refusal, code_text,
 };
 pub(crate) use string::{

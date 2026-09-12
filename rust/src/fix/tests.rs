@@ -349,7 +349,7 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
 
 #[test]
 fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
-    use crate::types::MsgDirection;
+    let reading = FixRegistry::new().msgdirection();
 
     const ANSWERED: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin":{"ExtendedActions":[{"name":"send-test-request","description":"Send a test request message.","parameters":[{"name":"test-request-id","description":"The outgoing test request ID to send"}]}]}},"status":200}"#;
     const ASKED: &[u8] =
@@ -357,20 +357,18 @@ fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
 
     // The document says which half it is, and the words inside it - `send`,
     // `outgoing`, `in` - are its own payload rather than a transport marker.
-    // Without the bound they would answer, and answer wrongly.
-    assert_eq!(
-        MsgDirection::infer_bytes(ANSWERED),
-        Some(MsgDirection::RECV)
-    );
-    assert_eq!(MsgDirection::infer_bytes(ASKED), Some(MsgDirection::SENT));
+    // Without the bound they would answer, and answer wrongly. The answer is
+    // a code of tag 385's set (decision 14).
+    assert_eq!(reading.read_bytes(ANSWERED), Some("R"));
+    assert_eq!(reading.read_bytes(ASKED), Some("S"));
     // An error is an answer that came back, not a request that went out.
     let failed =
         br#"{"request":{"mbean":"com.ullink.ulbridge:*","type":"read"},"error":"no such MBean"}"#;
-    assert_eq!(MsgDirection::infer_bytes(failed), Some(MsgDirection::RECV));
+    assert_eq!(reading.read_bytes(failed), Some("R"));
     // A write states a `value` of its own, and it is still what went out: the
     // echoed request is the reading, not the keys an answer happens to share.
     let write = br#"{"type":"write","mbean":"com.ullink.ulbridge:type=Bridge","attribute":"LogLevel","value":3}"#;
-    assert_eq!(MsgDirection::infer_bytes(write), Some(MsgDirection::SENT));
+    assert_eq!(reading.read_bytes(write), Some("S"));
     assert_eq!(MimeType::infer_bytes(write), MimeType::ULCONFIG);
     assert_eq!(FixCodec::infer_msgtype_bytes(write), Some(&b"Bridge"[..]));
 
@@ -378,45 +376,34 @@ fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
     let bulk = br#"[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin","type":"read"},"status":200},{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"status":200}]"#;
     assert_eq!(MimeType::infer_bytes(bulk), MimeType::ULCONFIG);
     assert_eq!(FixCodec::infer_msgtype_bytes(bulk), Some(&b"Plugin"[..]));
-    assert_eq!(MsgDirection::infer_bytes(bulk), Some(MsgDirection::RECV));
+    assert_eq!(reading.read_bytes(bulk), Some("R"));
 
     // The `type=` is read inside the ObjectName that states it, so a value
     // elsewhere spelling the same five bytes is that value's business.
     let quoting = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"Comment":"routed by ,type=Decoy"},"status":200}"#;
     assert_eq!(FixCodec::infer_msgtype_bytes(quoting), Some(&b"read"[..]));
 
-    // Nothing is stated, and nothing is taken off a line with no marker on it.
-    let (direction, body) = MsgDirection::split_bytes(ANSWERED);
-    assert_eq!(direction, Some(MsgDirection::RECV));
-    assert_eq!(body, ANSWERED);
-
-    // A verb the transport wrote outranks what the document says of itself,
-    // and reading it takes the marker off exactly as it does for a frame.
+    // A verb the transport wrote outranks what the document says of itself.
     let marked = [b"sending >> ".as_slice(), ANSWERED].concat();
-    let (direction, body) = MsgDirection::split_bytes(&marked);
-    assert_eq!(direction, Some(MsgDirection::SENT));
-    assert_eq!(body, [b">> ".as_slice(), ANSWERED].concat());
+    assert_eq!(reading.read_bytes(&marked), Some("S"));
     // The bound is the whole prefix, so a `[jolokia]` in the prose is prose.
     let stamped = [
         b"2026-08-14 09:12:03 INFO [jolokia] recv << ".as_slice(),
         ANSWERED,
     ]
     .concat();
-    assert_eq!(
-        MsgDirection::infer_bytes(&stamped),
-        Some(MsgDirection::RECV)
-    );
+    assert_eq!(reading.read_bytes(&stamped), Some("R"));
     assert_eq!(MimeType::infer_bytes(&stamped), MimeType::ULCONFIG);
     assert_eq!(
         FixCodec::infer_msgtype_bytes(&stamped),
         Some(&b"Plugin"[..])
     );
 
-    // The default fills silence and never overrides the statement.
-    assert_eq!(
-        MsgDirection::at_payload(ANSWERED, 0, Some(MsgDirection::SENT)),
-        Some(MsgDirection::RECV),
-    );
+    // The document's statement is filled as tag 385 on every door, and the
+    // codec's pin never overrides it.
+    let codec = FixCodec::new(Arc::new(FixRegistry::new()));
+    let message = codec.parse_line(ANSWERED).unwrap().next().unwrap().unwrap();
+    assert_eq!(message.by_tag(385).unwrap().as_str(), Some("R"));
 
     let named = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=ConfigurationPlugin","type":"read"},"status":200}"#;
     assert_eq!(
@@ -433,7 +420,7 @@ fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
     // quoting one is an ordinary JSON record.
     let quoted = br#"{"level":"INFO","message":"reloading com.ullink.ulbridge2.plugins.ULMsg"}"#;
     assert_eq!(MimeType::infer_bytes(quoted), MimeType::JSON);
-    assert_eq!(MsgDirection::infer_bytes(quoted), None);
+    assert_eq!(reading.read_bytes(quoted), None);
     // The namespace also has to stand inside the document rather than in the
     // prose in front of it, or the prose is what named it.
     let prose = br#"reloading com.ullink.ulbridge.sessioninterfaces.plugins:* {"level":"INFO"}"#;
@@ -4795,8 +4782,9 @@ fn every_committed_lineage_is_the_document_the_rust_writer_renders() {
     // adopted backward, and one more was a second statement about one dated
     // point. Two more since: `OrdStatus` and `ExecType` retyped to the crate's
     // `state`, which each lineage records, less the one the generic MsgType
-    // datatype's removal collapses back.
-    assert_eq!(entries, 1_803, "lineage entries");
+    // datatype's removal collapses back, less the one tag 385's retype to a
+    // direction datatype stated before decision 14 typed it as text again.
+    assert_eq!(entries, 1_802, "lineage entries");
 }
 
 /// Every tag and group one owned fill names is one the dictionary has.

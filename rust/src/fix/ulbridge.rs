@@ -556,12 +556,18 @@ struct RowStamp {
     clock: Option<Scalar>,
     /// The row's own columns, beside the field and tag each fills.
     fills: Vec<(Field, i32, Scalar)>,
+    /// The direction resolved for the row, a code of tag 385's set.
+    direction: Option<SmolStr>,
 }
 
 impl RowStamp {
     /// What a row stated, retained; nothing at all where it stated nothing.
     fn retained(extras: super::build::RowExtras<'_>) -> Option<Arc<Self>> {
-        if extras.version.is_none() && extras.clock.is_none() && extras.fills.is_empty() {
+        if extras.version.is_none()
+            && extras.clock.is_none()
+            && extras.fills.is_empty()
+            && extras.direction.is_none()
+        {
             return None;
         }
         Some(Arc::new(Self {
@@ -572,6 +578,7 @@ impl RowStamp {
                 .iter()
                 .map(|fill| (fill.field.clone(), fill.tag, fill.value.clone()))
                 .collect(),
+            direction: extras.direction.map(SmolStr::new),
         }))
     }
 }
@@ -874,6 +881,11 @@ impl UlPlugin {
             version: self.stamp.as_ref().and_then(|stamp| stamp.version),
             clock: self.stamp.as_ref().and_then(|stamp| stamp.clock.as_ref()),
             fills: &fills,
+            direction: self
+                .stamp
+                .as_ref()
+                .and_then(|stamp| stamp.direction.as_deref()),
+            direction_pin: None,
         };
         codec.build_pairs_with(&borrowed, extras)
     }
@@ -1108,7 +1120,11 @@ impl super::FixCodec {
     /// the document is not JSON. A conversion's own refusal is yielded by the
     /// iterator rather than raised here.
     pub fn parse_ulconfig_line(&self, body: &[u8]) -> Result<super::FixMessages> {
-        self.ulconfig_with(body, super::build::RowExtras::NONE)
+        let extras = super::build::RowExtras {
+            direction: self.msgdirection().read_bytes(body),
+            ..super::build::RowExtras::NONE
+        };
+        self.ulconfig_with(body, extras)
     }
 
     /// [`Self::parse_ulconfig_line`], with what the row stated beside its

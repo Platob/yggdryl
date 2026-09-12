@@ -406,7 +406,6 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("cfi", "ESVUFR"),
         ("isin", "US0378331005"),
         ("side", "1"),
-        ("msgdirection", "SENT"),
         ("state", "20NEW"),
         ("timeinforce", "GTC"),
     ]

@@ -142,6 +142,7 @@ mod component;
 mod constants;
 mod crated;
 mod digest;
+mod direction;
 mod document;
 mod enrich;
 mod entry;
@@ -180,6 +181,7 @@ pub use crated::{
     fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
+pub use direction::MsgDirection;
 pub use document::{Numbers, Words};
 pub use entry::FixEntry;
 pub use field::FixSpellings;

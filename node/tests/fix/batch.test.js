@@ -57,8 +57,10 @@ const REPORT = '8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|'
 function configRegistry() {
   const registry = new fix.FixRegistry()
   registry.withUlbridgeFields()
-  const direction = Field.from('MsgDirection: msgdirection')
+  // Tag 385 as the dictionary types it: text carrying its code set.
+  const direction = Field.from('MsgDirection: utf8')
   direction.fix.tag = 385
+  direction.set('fix:codes', '{"codes":[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]}')
   registry.insert(direction)
   return registry
 }
@@ -235,7 +237,7 @@ test('the codec answers the pins it was given', () => {
   assert.equal(bare.separator, null)
   assert.equal(bare.payloadColumn, 'body')
   assert.deepEqual(bare.nullValues, ['', 'null', '<null>'])
-  assert.equal(bare.direction, 'sent')
+  assert.equal(bare.direction, 'S')
   // The default target, stated once in the core and read here.
   assert.equal(bare.batchByteSize, 128 * 1024 * 1024)
 
@@ -244,7 +246,7 @@ test('the codec answers the pins it was given', () => {
     separator: PIPE,
     payloadColumn: 'line',
     nullValues: ['<none>'],
-    direction: 'RECV',
+    direction: 'Receive',
     batchByteSize: 4096,
   })
   assert.equal(pinned.version, '4.2')
@@ -253,10 +255,12 @@ test('the codec answers the pins it was given', () => {
   assert.equal(pinned.separator, PIPE)
   assert.equal(pinned.payloadColumn, 'line')
   assert.deepEqual(pinned.nullValues, ['<none>'])
-  assert.equal(pinned.direction, 'recv')
+  assert.equal(pinned.direction, 'R')
   assert.equal(pinned.batchByteSize, 4096)
-  assert.equal(new fix.FixCodec(registry, { direction: 'unknown' }).direction, 'unknown')
-  assert.throws(() => new fix.FixCodec(registry, { direction: 'sideways' }), /sent, recv, unknown/)
+  // The empty text is no pin; a spelling outside tag 385's set is refused
+  // naming the set.
+  assert.equal(new fix.FixCodec(registry, { direction: '' }).direction, null)
+  assert.throws(() => new fix.FixCodec(registry, { direction: 'sideways' }), /R, S/)
   assert.throws(() => new fix.FixCodec(registry, { batchByteSize: 1.5 }))
   // The payload column names a batch column; a line's body is its own, so
   // the line door reads the same frame without naming anything.

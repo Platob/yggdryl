@@ -29,8 +29,7 @@ use std::sync::Arc;
 use yggdryl::holder::Buffer;
 use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::types::{
-    Bytes, INLINE_BYTES, INLINE_CAPACITY, MsgDirection, Str, StringLayout, StringParameters,
-    UncheckedFieldScalar,
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringParameters, UncheckedFieldScalar,
 };
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
@@ -396,8 +395,9 @@ fn a_fix_registry_lookup_allocates_nothing() {
     free("infer_bytes_msgtype ULCONFIG", || {
         let _ = black_box(FixCodec::infer_msgtype_bytes(black_box(ULCONFIG)));
     });
-    free("infer_bytes_direction ULCONFIG", || {
-        let _ = black_box(MsgDirection::infer_bytes(black_box(ULCONFIG)));
+    let reading = registry.msgdirection();
+    free("read_bytes_direction ULCONFIG", || {
+        let _ = black_box(reading.read_bytes(black_box(ULCONFIG)));
     });
     free("iter", || {
         let _ = black_box(registry.iter().count());
@@ -1444,7 +1444,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 32] = [
+    let seeds: [(DataTypeId, Scalar); 31] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -1474,7 +1474,6 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("20NEW")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
-        (DataTypeId::MsgDirection, Scalar::from(MsgDirection::SENT)),
         (
             DataTypeId::Uuid,
             Scalar::from("123e4567-e89b-12d3-a456-426614174000"),

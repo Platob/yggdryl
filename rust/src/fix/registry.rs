@@ -1489,6 +1489,19 @@ impl PartialEq for FixRegistry {
 
 impl Eq for FixRegistry {}
 
+impl FixRegistry {
+    /// The registry's reading of tag 385: its code set and which code the
+    /// prose in front of a payload names (decision 14).
+    ///
+    /// Built from what the registry holds when asked, so a code set edited
+    /// on tag 385 is the set the next reading answers; a codec compiles it
+    /// once when it takes its registry.
+    #[must_use]
+    pub fn msgdirection(&self) -> super::MsgDirection {
+        super::MsgDirection::from_registry(self)
+    }
+}
+
 impl Hash for FixRegistry {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.len().hash(state);

@@ -292,7 +292,6 @@ impl MaterializationBudget {
             | DataType::Cfi
             | DataType::Isin
             | DataType::Side
-            | DataType::MsgDirection
             | DataType::State
             | DataType::TimeInForce => {
                 self.add_fixed_rows(rows, dtype.fixed_byte_width().unwrap_or_default())?;
@@ -401,7 +400,6 @@ impl MaterializationBudget {
             | DataType::Cfi
             | DataType::Isin
             | DataType::Side
-            | DataType::MsgDirection
             | DataType::State
             | DataType::TimeInForce => {
                 self.add_fixed_rows(rows, dtype.fixed_byte_width().unwrap_or_default())?;

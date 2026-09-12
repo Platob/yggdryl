@@ -418,9 +418,9 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
     // `DataType::into_arrow_ffi` documents that it "keeps an extension
     // identity - a code, a UUID, a version, a variant, a geospatial parameter
     // set". It used to promise that against a hand-written list of datatypes,
-    // which had drifted five behind: `side`, `state`, `timeinforce`,
-    // `msgdirection` and every `string(...)` fell through to the plain arm and
-    // crossed as anonymous storage. The listing is now the one function that
+    // which had drifted behind: `side`, `state`, `timeinforce` and every
+    // `string(...)` fell through to the plain arm and crossed as anonymous
+    // storage. The listing is now the one function that
     // answers which datatypes have an extension at all, so a datatype added
     // later cannot be added to one and forgotten in the other.
     let extension_typed = [
@@ -435,7 +435,6 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
         DataType::Side,
         DataType::State,
         DataType::TimeInForce,
-        DataType::MsgDirection,
         DataType::Uuid,
         DataType::Version,
         DataType::Url,

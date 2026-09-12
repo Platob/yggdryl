@@ -254,7 +254,7 @@ const pinnedVersion: string | null = pinned.version
 const pinnedSeparator: number | null = pinned.separator
 const pinnedPayloadColumn: string = pinned.payloadColumn
 const pinnedNullValues: string[] = pinned.nullValues
-const pinnedDirection: string = pinned.direction
+const pinnedDirection: string | null = pinned.direction
 const pinnedBatchByteSize: number = pinned.batchByteSize
 const fromText: FixMsg = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
 const fromBytes: FixMessages = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))

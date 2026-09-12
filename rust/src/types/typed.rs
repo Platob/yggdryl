@@ -1098,7 +1098,6 @@ static_field_constructor!(super::string::MicType, DataType::Mic);
 static_field_constructor!(super::string::CfiType, DataType::Cfi);
 static_field_constructor!(super::string::IsinType, DataType::Isin);
 static_field_constructor!(super::string::SideType, DataType::Side);
-static_field_constructor!(super::string::MsgDirectionType, DataType::MsgDirection);
 static_field_constructor!(super::string::StateType, DataType::State);
 static_field_constructor!(super::string::TimeInForceType, DataType::TimeInForce);
 static_field_constructor!(super::nested::VariantType, DataType::Variant);

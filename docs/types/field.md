@@ -500,7 +500,7 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 
 | alias | constructors |
 | --- | --- |
-| static datatype (`Int64Field`, `VariantField`, `UuidField`, `VersionField`, `UrlField`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`, `IsinField`, `SideField`, `MsgDirectionField`, `StateField`, `TimeInForceField`) | `new(name, nullable)`, infallible; `from_parts(name, nullable, metadata)` |
+| static datatype (`Int64Field`, `VariantField`, `UuidField`, `VersionField`, `UrlField`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`, `IsinField`, `SideField`, `StateField`, `TimeInForceField`) | `new(name, nullable)`, infallible; `from_parts(name, nullable, metadata)` |
 | parameterized (`StringField`, `BytesField`, `DateTime64Field`, `GeometryField`, `GeographyField`) | `try_new(name, dtype, nullable)`; `StringField` is every layout, charset and bound, `BytesField` every byte layout |
 | from a `Field` | `try_as_typed` borrows; `try_into_typed` consumes |
 | bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `types.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `types.bytes` / `fields.bytes`, `types.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `types.version` / `fields.version` |

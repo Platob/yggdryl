@@ -108,7 +108,7 @@
     "columns": 105,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 20,
+    "datatypes": 19,
     "versions": 10,
     "dtypes": [
       [
@@ -117,7 +117,7 @@
       ],
       [
         "utf8",
-        1930
+        1931
       ],
       [
         "float64",
@@ -181,10 +181,6 @@
       ],
       [
         "isin",
-        1
-      ],
-      [
-        "msgdirection",
         1
       ],
       [
@@ -147653,13 +147649,13 @@
       },
       {
         "dtype": {
-          "type": "msgdirection"
+          "type": "string"
         },
         "metadata": {
           "description": "Specifies the direction of the message.",
           "display": "MsgDirection",
           "fix:codes": "{\"codes\":[{\"value\":\"R\",\"name\":\"Receive\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Send\"}]}",
-          "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"msgdirection\",\"type\":{\"type\":\"string\"}},{\"since\":\"5.0.2\",\"name\":\"msgdirection\",\"type\":{\"type\":\"msgdirection\"}}]}",
+          "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"msgdirection\",\"type\":{\"type\":\"string\"}}]}",
           "fix:tag": "385"
         },
         "name": "msgdirection",
@@ -236315,7 +236311,7 @@
         "c": "msgdirection",
         "t": 385,
         "n": "MsgDirection",
-        "y": "msgdirection",
+        "y": "utf8",
         "x": "Specifies the direction of the message."
       },
       {
@@ -236567,6 +236563,20 @@
                 "type": "string"
               },
               "metadata": {
+                "description": "Specifies the direction of the message.",
+                "display": "MsgDirection",
+                "fix:codes": "{\"codes\":[{\"value\":\"R\",\"name\":\"Receive\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Send\"}]}",
+                "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"msgdirection\",\"type\":{\"type\":\"string\"}}]}",
+                "fix:tag": "385"
+              },
+              "name": "msgdirection",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
                 "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
                 "display": "Version",
                 "fix:tag": "65001"
@@ -236625,14 +236635,15 @@
         "2",
         "0",
         "2024-02-01T12:34:56.123000000Z",
+        "S",
         "4.4",
         "029",
         "2024-02-01T12:34:56.123000000Z"
       ],
       "mime": "text/fix",
       "msgtype": "D",
-      "direction": "SENT",
-      "size": 19,
+      "direction": "S",
+      "size": 20,
       "columns": [
         {
           "t": 35,

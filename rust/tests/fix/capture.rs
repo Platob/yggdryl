@@ -72,7 +72,6 @@ fn handle() -> Buffer {
 fn text() -> RecordOptions {
     let mut options = TextOptions::new();
     options.parse_mimetype = true;
-    options.parse_direction = true;
     options.into()
 }
 
@@ -366,17 +365,16 @@ fn the_batch_states_what_each_line_was_and_which_way_it_moved() {
         .expect("a batch")
         .expect("a batch");
 
-    // The capture's own columns lead the row and are carried through, which is
-    // what lets a monitor join a parsed capture back to its source by
-    // position.
-    let directions = column(&batch, "direction");
+    // Which way each line moved is FIX's own tag 385 (decision 14), a code
+    // of its set.
+    let directions = tag_column(&batch, 385);
     assert_eq!(directions.len(), CAPTURE.len());
     // The bridge row wrote `recv` in front of its frame, and a verb the
     // transport wrote wins over everything else.
-    assert_eq!(directions[3].as_str(), Some("RECV"));
+    assert_eq!(directions[3].as_str(), Some("R"));
     // The configuration document echoes back the request it answers, so it
     // came back rather than went out.
-    assert_eq!(directions[5].as_str(), Some("RECV"));
+    assert_eq!(directions[5].as_str(), Some("R"));
 
     // And the enrichment is visible in the columns, not just on the message.
     let leaves = tag_column(&batch, 151);

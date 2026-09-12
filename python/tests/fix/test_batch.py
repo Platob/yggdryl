@@ -66,8 +66,10 @@ REPORT = b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|"
 def _config_registry() -> FixRegistry:
     registry = FixRegistry()
     registry.with_ulbridge_fields()
-    direction = Field("MsgDirection", DataType("msgdirection"))
+    # Tag 385 as the dictionary types it: text carrying its code set.
+    direction = Field("MsgDirection", "utf8")
     direction.fix.tag = 385
+    direction.metadata["fix:codes"] = '{"codes":[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]}'
     registry.insert(direction)
     return registry
 
@@ -192,7 +194,7 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
     assert bare.separator is None
     assert bare.payload_column == "body"
     assert bare.null_values == ["", "null", "<null>"]
-    assert bare.direction == "sent"
+    assert bare.direction == "S"
     # The default target, stated once in the core and read here.
     assert bare.batch_byte_size == 128 * 1024 * 1024
 
@@ -202,17 +204,19 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
         separator=124,
         payload_column="line",
         null_values=["<none>"],
-        direction="RECV",
+        direction="Receive",
         batch_byte_size=4096,
     )
     assert pinned.version == "4.2"
     assert pinned.separator == 124
     assert pinned.payload_column == "line"
     assert pinned.null_values == ["<none>"]
-    assert pinned.direction == "recv"
+    assert pinned.direction == "R"
     assert pinned.batch_byte_size == 4096
-    assert FixCodec(seed, direction="unknown").direction == "unknown"
-    with pytest.raises(ValueError, match="sent, recv, unknown"):
+    # The empty text is no pin; a spelling outside tag 385's set is refused
+    # naming the set.
+    assert FixCodec(seed, direction="").direction is None
+    with pytest.raises(ValueError, match="R, S"):
         FixCodec(seed, direction="sideways")
     # The payload column names a batch column; a line's body is its own, so
     # the line door reads the same frame without naming anything.

@@ -337,7 +337,9 @@ function frameCase(registry, reader, schema, key, label, line) {
     value: held.value.toJSON(),
     mime: String(MimeType.inferBytes(bytes)),
     msgtype: msgtypeOf(bytes),
-    direction: MimeType.inferBytesDirection(bytes),
+    // Which way the line moved is FIX's own tag 385, filled by the codec's
+    // reading of the prose in front of the frame (decision 14).
+    direction: held.getByTag(385)?.asJs() ?? null,
     size: held.size,
     columns,
     arrivals: held.arrivals().map(([tag, key_, value]) => [String(tag), key_, value]),

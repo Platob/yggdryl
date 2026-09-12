@@ -456,7 +456,6 @@ impl PyDataType {
             "cfi" => CoreDataType::Cfi,
             "isin" => CoreDataType::Isin,
             "side" => CoreDataType::Side,
-            "msgdirection" => CoreDataType::MsgDirection,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,
             "uuid" => CoreDataType::Uuid,

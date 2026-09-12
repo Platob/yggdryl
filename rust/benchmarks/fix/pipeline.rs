@@ -69,7 +69,6 @@ fn text() -> RecordOptions {
         .expect("the row header compiles")
         .with_timezone(Timezone::UTC);
     options.start_rownum = Some(1);
-    options.parse_direction = true;
     options.parse_mimetype = true;
     options.into()
 }

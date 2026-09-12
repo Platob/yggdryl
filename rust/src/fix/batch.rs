@@ -22,7 +22,7 @@
 //!
 //! | group | columns |
 //! | --- | --- |
-//! | identity | `msgtype`, `branch`, `version`, `msghash`, `direction` |
+//! | identity | `msgtype`, `version`, `msghash`, `msgdirection` |
 //! | meaning | one per lifted facet, typed as that facet's field is typed |
 //! | arrival | `entries`, a list of `tag`/`branch`/`key`/`value` |
 //!
@@ -55,10 +55,11 @@ use arrow_array::types::{GenericBinaryType, GenericStringType};
 use arrow_array::{Array, ArrayRef, GenericByteArray, RecordBatch, StructArray};
 use arrow_schema::DataType as ArrowDataType;
 
+use smol_str::SmolStr;
+
 use crate::arrow::BatchReader;
 use crate::arrow::rows::{Closing, ROW_OVERHEAD, appended_bytes, canonical_closing_reader};
 use crate::arrow::value::value_from_array;
-use crate::types::MsgDirection;
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar};
 
 use super::build::{BEGINSTRING_COLUMN, CLOCK_COLUMN, DIRECTION_COLUMN, version_of};
@@ -83,7 +84,7 @@ impl FixCodec {
     /// The batch a text reader answers with is already the shape this wants -
     /// one row per line, the payload in the column
     /// [`Self::with_payload_column`] names and the capture's own `url`,
-    /// `rownum` and `direction` beside it - so this takes it whole rather than
+    /// `rownum` beside it - so this takes it whole rather than
     /// through a row-at-a-time boundary. The schema is decided before the
     /// first row, from the source's schema and the dictionary: the capture's
     /// own columns lead, the fixed FIX columns follow
@@ -94,20 +95,19 @@ impl FixCodec {
     /// same funnel as a line: the payload as [`Self::parse_line`] reads it,
     /// the `beginstring` and `timestamp` columns as
     /// [`Self::parse_text_line`] reads the captures of those names, the
-    /// `direction` column, which this reader alone reads, and every other
-    /// column named after a field the dictionary knows - `pluginid` among
-    /// them - filling that field where the line left it unsaid. `direction`
-    /// is a parameter to both readers even so, because a column the record
-    /// reader left to the fills would silently land on a field. Where each
+    /// `msgdirection` column as the direction the row states, and every
+    /// other column named after a field the dictionary knows - `pluginid`
+    /// among them - filling that field where the line left it unsaid. Where each
     /// column sits and which field it fills is decided once from the schema,
     /// so no row copies the codec or asks the dictionary a question the row
     /// before it asked. A line the reader
     /// refuses is a row holding an empty message, never a row lost, so a row
     /// in is a row out; a bulk configuration document is one row per MBean,
-    /// each repeating its source row's carried columns. The direction column
-    /// [`MSGDIRECTION_TAG_NAME`](super::MSGDIRECTION_TAG_NAME) names takes the row's
-    /// `direction` column, else the verb in front of its payload, else
-    /// [`Self::with_direction`].
+    /// each repeating its source row's carried columns. Tag 385, the column
+    /// [`MSGDIRECTION_TAG_NAME`](super::MSGDIRECTION_TAG_NAME) names, takes
+    /// the row's stated `msgdirection`, else the reading over the prose in
+    /// front of its payload, else [`Self::try_with_direction`]'s pin
+    /// (decision 14).
     ///
     /// Batches close on the raw bytes of the payload column, read once per
     /// input batch from its offsets and spread over the batch's rows, against
@@ -142,30 +142,16 @@ impl FixCodec {
         // configuration, each repeating its source row's carried columns and
         // the first carrying the row's whole charge.
         let rows = rows.flat_map(|held| {
-            let (messages, direction, front, charge) = match held {
+            let (messages, front, charge) = match held {
                 Ok(held) => held,
-                Err(error) => (FixMessages::from_result(Err(error)), None, Vec::new(), 0),
+                Err(error) => (FixMessages::from_result(Err(error)), Vec::new(), 0),
             };
             messages.enumerate().map(move |(index, message)| {
                 message.map(|message| {
                     let charge = if index == 0 { charge } else { 0 };
-                    (message, direction, front.clone(), charge)
+                    (message, front.clone(), charge)
                 })
             })
-        });
-        // The one column no message carries, found once: the direction is
-        // read from the line in front of the frame, which is gone by the time
-        // a row is built. Its two values are built once, as the column holds
-        // them.
-        let direction_at = super::schema::fix_column_of(&field, super::MSGDIRECTION_TAG_NAME.0);
-        let directions = direction_at.map(|at| {
-            let column = &field.fields()[at];
-            let held = |direction: &str| {
-                column
-                    .scalar(Scalar::from(direction))
-                    .unwrap_or(Scalar::Null)
-            };
-            (held(MsgDirection::SENT), held(MsgDirection::RECV))
         });
         // The rows are filled against the same schema the reader publishes; a
         // clone shares it rather than building a second one, and the tag each
@@ -176,14 +162,9 @@ impl FixCodec {
         let mut carried = 0_u64;
         let rows = rows.map(move |held| match held {
             Err(error) => Closing(Err(error), false),
-            Ok((message, direction, front, charge)) => {
+            Ok((message, front, charge)) => {
                 let closes = closes(&mut carried, charge, target);
-                let direction = match (direction, &directions) {
-                    (Some(MsgDirection::SENT), Some((sent, _))) => sent.clone(),
-                    (Some(MsgDirection::RECV), Some((_, recv))) => recv.clone(),
-                    _ => Scalar::Null,
-                };
-                let row = row_of(&message, &schema, &plan, direction_at, direction, front);
+                let row = row_of(&message, &schema, &plan, front);
                 Closing(row, closes)
             }
         });
@@ -408,8 +389,6 @@ fn row_of(
     message: &FixMsg,
     schema: &Field,
     plan: &[super::schema::Column],
-    direction_at: Option<usize>,
-    direction: Scalar,
     front: Vec<Scalar>,
 ) -> Result<Scalar> {
     // The row is the schema's whole width already: a carried column is named
@@ -418,9 +397,6 @@ fn row_of(
     let mut held = message.row_values(schema, plan)?;
     for (slot, value) in held.iter_mut().zip(front) {
         *slot = value;
-    }
-    if let Some(slot) = direction_at.and_then(|at| held.get_mut(at)) {
-        *slot = direction;
     }
     Ok(Scalar::from_sequence(held))
 }
@@ -541,6 +517,7 @@ struct Columns {
     /// The column the frame is read from, proven there and readable.
     payload: usize,
     beginstring: Option<usize>,
+    /// The column stating the row's direction: tag 385's own name.
     direction: Option<usize>,
     /// The column stating the row's own clock, which stamps the message.
     clock: Option<usize>,
@@ -607,16 +584,12 @@ struct Rows {
 }
 
 impl Rows {
-    /// One row of one batch as the messages it carries, the direction it moved
-    /// and the capture's own columns carried in front of it.
+    /// One row of one batch as the messages it carries and the capture's
+    /// own columns carried in front of it.
     ///
     /// An ordinary line is one message; a bulk configuration document is one
     /// per configuration, and the row's carried columns lead each of them.
-    fn row(
-        &self,
-        batch: &RecordBatch,
-        row: usize,
-    ) -> Result<(FixMessages, Option<&'static str>, Vec<Scalar>)> {
+    fn row(&self, batch: &RecordBatch, row: usize) -> Result<(FixMessages, Vec<Scalar>)> {
         let cell = |at: usize| {
             value_from_array(&self.columns.dtypes[at], batch.column(at).as_ref(), row)
                 .map_err(Error::from)
@@ -631,16 +604,14 @@ impl Rows {
         let payload = payload_bytes(&self.columns.dtypes[at], batch.column(at), row)?;
         let beginstring = stated(self.columns.beginstring)?;
         let clock = stated(self.columns.clock)?;
-        // The direction a row states outranks any reading of its line.
+        // The direction a row states outranks any reading of its line, and
+        // the codec's pin fills what neither states (decision 14).
         let direction = stated(self.columns.direction)?
             .and_then(|held| {
-                let text = held.as_str()?;
-                [MsgDirection::SENT, MsgDirection::RECV]
-                    .into_iter()
-                    .find(|known| known.eq_ignore_ascii_case(text))
+                held.as_str()
+                    .and_then(|text| self.codec.msgdirection().code(text))
             })
-            .or_else(|| MsgDirection::infer_bytes(&payload))
-            .or(self.codec.direction());
+            .map(SmolStr::new);
         // The cells that fill fields, read only where the row states them.
         let mut cells: Vec<(&Field, i32, Scalar)> = Vec::with_capacity(self.columns.fills.len());
         for (at, field, tag) in &self.columns.fills {
@@ -664,6 +635,8 @@ impl Rows {
                 .and_then(version_of),
             clock: clock.as_ref(),
             fills: &fills,
+            direction: direction.as_deref(),
+            direction_pin: self.codec.direction(),
         };
         let messages = self.codec.parse_bytes_with(extras, &payload);
         // By position: the columns kept were decided from the schema, and a
@@ -674,7 +647,7 @@ impl Rows {
             .iter()
             .map(|at| cell(*at))
             .collect::<Result<Vec<_>>>()?;
-        Ok((messages, direction, front))
+        Ok((messages, front))
     }
 
     /// The raw bytes each row of one batch is charged: the payload column's
@@ -688,7 +661,7 @@ impl Rows {
 }
 
 impl Iterator for Rows {
-    type Item = Result<(FixMessages, Option<&'static str>, Vec<Scalar>, u64)>;
+    type Item = Result<(FixMessages, Vec<Scalar>, u64)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -704,7 +677,7 @@ impl Iterator for Rows {
                 let (batch, ..) = self.held.as_ref()?;
                 return Some(
                     self.row(batch, row)
-                        .map(|(messages, direction, front)| (messages, direction, front, charge)),
+                        .map(|(messages, front)| (messages, front, charge)),
                 );
             }
             // The batch is spent, or none is held yet: the next one is pulled

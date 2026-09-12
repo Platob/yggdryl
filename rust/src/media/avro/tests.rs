@@ -2016,8 +2016,8 @@ mod records {
         // Avro has no fixed-width text, so a code spells `string` with no
         // logical type - the contrast with a UUID, which annotates `uuid`.
         // Every registered code, read from the one listing: this used to name
-        // four of them, and `side`, `state`, `timeinforce` and `msgdirection`
-        // were refused as unspellable by a column spelling that had drifted
+        // four of them, and `side`, `state` and `timeinforce` were refused as
+        // unspellable by a column spelling that had drifted
         // behind the family.
         let mut fields: Vec<_> = DataType::CODES
             .iter()

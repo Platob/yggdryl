@@ -237,7 +237,7 @@ const fn transports(charset: Charset) -> bool {
 /// Coding first, charset second - the order `text::io::Plan` composes in,
 /// and the only one that can: a coding wraps bytes, and a charset spells
 /// text in them. Everything above this - the line splitter, the row header,
-/// the strips, the direction, adjacent deduplication, the entries - reads the
+/// the strips, adjacent deduplication, the entries - reads the
 /// declared text, and `TextLine::from_bytes` finds every line text as read.
 /// The stream transcribes and never refuses, as the line never refuses: a
 /// byte the charset leaves unassigned reads as its C1 control, a lone
@@ -536,7 +536,6 @@ struct RawRow {
     body: Arc<Vec<u8>>,
     dropped_byte_size: Option<u64>,
     captures: Vec<Option<Vec<u8>>>,
-    direction: Option<&'static str>,
 }
 
 /// Physical lines or framed records parsed against one precomputed schema.
@@ -564,7 +563,6 @@ struct ParsedLine {
     body: Body,
     captures: Vec<Option<Vec<u8>>>,
     matched: bool,
-    direction: Option<&'static str>,
 }
 
 /// One physical line, possibly reduced after its header DFA proves no match.
@@ -605,11 +603,6 @@ struct RawRecord {
     body: Vec<u8>,
     decoded_size: u64,
     captures: Vec<Option<Vec<u8>>>,
-    /// The direction the first physical line of this record carried.
-    ///
-    /// A framed record spans several lines and the marker sits in front of
-    /// the first, which is the one the transport wrote it on.
-    direction: Option<&'static str>,
 }
 
 fn header_dfa(source: &str) -> Option<DFA<Vec<u32>>> {
@@ -770,17 +763,6 @@ impl<R: Read> RawRows<R> {
                 end = start + found.start();
             }
         }
-        // The direction marker is transport prose in front of the payload, so
-        // reading it takes it off the body: a body that kept it would carry a
-        // word no protocol sent.
-        let direction = if options.parse_direction {
-            let (direction, kept) = crate::types::MsgDirection::split_bytes(&body[start..end]);
-            start = end - kept.len();
-            direction
-        } else {
-            None
-        };
-
         let decoded_size = if options.rewrites_body() {
             u64::try_from(end - start).map_err(|_| Error::InvalidRecord {
                 path: format_smolstr!("$[{index}].body"),
@@ -802,7 +784,6 @@ impl<R: Read> RawRows<R> {
             },
             captures,
             matched,
-            direction,
         })
     }
 
@@ -977,7 +958,6 @@ impl RawRecord {
             index,
             body,
             captures,
-            direction,
             ..
         } = line;
         let retained = retained_size(limit, 0, body.bytes.len());
@@ -986,7 +966,6 @@ impl RawRecord {
             body: body.bytes[..retained].to_vec(),
             decoded_size: body.decoded_size,
             captures,
-            direction,
         }
     }
 
@@ -1019,7 +998,6 @@ impl RawRecord {
             body: Arc::new(self.body),
             dropped_byte_size,
             captures: self.captures,
-            direction: self.direction,
         }
     }
 }
@@ -1106,7 +1084,6 @@ impl TextLines {
         let body = TextBytes::from_whole_page(row.body)?;
         let mut line = TextLine::from_bytes(index, body)?;
         line.set_url(self.url.clone());
-        line.set_direction(row.direction);
         line.set_dropped_byte_size(row.dropped_byte_size);
 
         if self.reads_classification {

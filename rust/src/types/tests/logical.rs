@@ -32,7 +32,6 @@ fn registered() -> Vec<(&'static str, DataType)> {
         ("cfi", DataType::Cfi),
         ("isin", DataType::Isin),
         ("side", DataType::Side),
-        ("msgdirection", DataType::MsgDirection),
         ("state", DataType::State),
         ("timeinforce", DataType::TimeInForce),
         ("language", DataType::fixed_ascii(2).unwrap()),

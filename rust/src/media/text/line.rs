@@ -34,7 +34,6 @@ pub struct TextLine {
     /// Each text, by the same door.
     captures: Vec<Option<TextBytes>>,
     entries: Option<TextEntries>,
-    direction: Option<&'static str>,
     dropped_byte_size: Option<u64>,
     /// How many bytes of the body, and of the captures, were decoded.
     decoded_body: u64,
@@ -67,7 +66,6 @@ impl TextLine {
             body,
             captures: Vec::new(),
             entries: None,
-            direction: None,
             dropped_byte_size: None,
             decoded_body,
             decoded_captures: 0,
@@ -210,26 +208,6 @@ impl TextLine {
     #[must_use]
     pub const fn decoded_byte_size(&self) -> u64 {
         self.decoded_body + self.decoded_captures
-    }
-
-    /// Which way the line moved, when the marker was taken off the body.
-    ///
-    /// A field rather than an entry, because reading it removes the marker from
-    /// the body: a line that carried one has a different body than a line that
-    /// did not, and a fact that changes the body is not a key/value pair.
-    ///
-    /// The canonical spelling the direction vocabulary states, which is what
-    /// the column is built from. It is a borrowed constant rather than a value
-    /// because the vocabulary is closed and every line answers one of its
-    /// members.
-    #[must_use]
-    pub const fn direction(&self) -> Option<&'static str> {
-        self.direction
-    }
-
-    /// Set or clear the direction.
-    pub const fn set_direction(&mut self, direction: Option<&'static str>) {
-        self.direction = direction;
     }
 
     /// How many bytes of this record went over the retained limit.

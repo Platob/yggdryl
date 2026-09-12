@@ -212,7 +212,6 @@ function createFields(DataType, Field, native) {
     cfi: simple('cfi'),
     isin: simple('isin'),
     side: simple('side'),
-    msgdirection: simple('msgdirection'),
     state: simple('state'),
     timeinforce: simple('timeinforce'),
 

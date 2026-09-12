@@ -84,7 +84,6 @@ fn reading() -> RecordOptions {
         .expect("the bridge's row header compiles")
         .with_timezone(Timezone::UTC);
     options.start_rownum = Some(1);
-    options.parse_direction = true;
     options.parse_mimetype = true;
     options.into()
 }
@@ -297,7 +296,8 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
             next += 1;
             for &(index, tag) in &fixed {
                 if index == direction {
-                    // The batch reads the direction column; a record does not.
+                    // The batch door fills the codec's pin where a line states
+                    // no direction; the line door leaves it unsaid (decision 14).
                     continue;
                 }
                 let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
@@ -933,13 +933,11 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
         Some(11)
     );
 
-    // A marked frame states its direction in front of it.
+    // A marked frame states its direction in front of it, and the row
+    // carries it as FIX's own tag 385 (decision 14).
     let marked = find("|11=OD9EOEDJ401|55=HOLN|54=1|38=50|");
     assert_eq!(rows[row_of(marked)][column(35)].as_str(), Some("D"));
-    assert_eq!(
-        text[marked][at(&text_names, "direction")].as_str(),
-        Some(yggdryl::types::MsgDirection::SENT)
-    );
+    assert_eq!(rows[row_of(marked)][column(385)].as_str(), Some("S"));
 
     // A line with nothing after its header is still a row: dated, versioned,
     // and saying nothing else.

@@ -20,8 +20,17 @@ const BULK_CONFIG: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioni
 
 fn config_registry() -> Arc<FixRegistry> {
     let mut registry = FixRegistry::new().with_ulbridge_fields().unwrap();
-    let mut direction = DataType::MsgDirection.nullable_field("MsgDirection");
+    // Tag 385 as the dictionary types it: text carrying its code set
+    // (decision 14).
+    let mut direction = DataType::utf8().nullable_field("MsgDirection");
     direction.as_fix_mut().set_tag(385).unwrap();
+    direction
+        .as_fix_mut()
+        .set_codes(&[
+            yggdryl::FixCode::new("Receive", "R"),
+            yggdryl::FixCode::new("Send", "S"),
+        ])
+        .unwrap();
     registry.insert(direction).unwrap();
     Arc::new(registry)
 }
@@ -147,14 +156,14 @@ fn bulk_configuration_lines_expand_without_pulling_the_next_line() {
 fn expanded_configurations_repeat_the_source_columns_and_stated_direction() {
     let field = DataType::from_fields([
         DataType::Int64.required_field("rownum"),
-        DataType::utf8().required_field("direction"),
+        DataType::utf8().required_field("msgdirection"),
         DataType::binary().required_field("body"),
     ])
     .unwrap()
     .required_field("capture");
     let rows = Scalar::from_sequence([Scalar::from_sequence([
         Scalar::from(42_i64),
-        Scalar::from("RECV"),
+        Scalar::from("Receive"),
         Scalar::from(BULK_CONFIG.to_vec()),
     ])]);
     let source = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
@@ -168,7 +177,9 @@ fn expanded_configurations_repeat_the_source_columns_and_stated_direction() {
     for batch in batches {
         assert_eq!(batch.num_rows(), 1);
         assert_eq!(first_value(&batch, "rownum"), Scalar::from(42_i64));
-        assert_eq!(first_tag_value(&batch, 385).as_str(), Some("RECV"));
+        // A stated column is a spelling of a code of the set, stored as
+        // the code (decision 14).
+        assert_eq!(first_tag_value(&batch, 385).as_str(), Some("R"));
     }
 }
 
@@ -969,8 +980,7 @@ fn a_prevpluginid_capture_fills_its_field_and_nothing_derives_it() {
     // Without the column nothing fills it - not the plugin, not the
     // direction the line moved - and the same holds of the session names,
     // which are only ever what the line spells.
-    let mut unstated = plugin_line(body, Some("OMS_X1_TradeCapture"), None);
-    unstated.set_direction(Some(yggdryl::types::MsgDirection::RECV));
+    let unstated = plugin_line(body, Some("OMS_X1_TradeCapture"), None);
     let message = one_of(&codec, &unstated);
     for tag in [
         yggdryl::PREVPLUGINID_TAG_NAME.0,
