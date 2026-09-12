@@ -79,6 +79,9 @@ use single_byte::SingleByte;
 
 use crate::{Error, MediaType, Result, Url};
 
+/// The longest byte-order mark, which bounds what an intake reads to find one.
+pub(crate) const MARK_LEN: usize = bom::UTF8.len();
+
 /// The scalar a lossy decode puts in place of bytes it cannot read.
 pub(crate) const REPLACEMENT: char = '\u{FFFD}';
 
@@ -748,6 +751,36 @@ impl Charset {
         Decoder::new(self)
     }
 
+    /// Begin a chunked decode of this charset that never refuses.
+    ///
+    /// The same carry as [`Charset::decoder`], reading each complete run as
+    /// [`Charset::transcribe`] reads it: a byte a single-byte charset leaves
+    /// unassigned as the C1 control of its number, bytes offered as UTF-8 or
+    /// US-ASCII that are not what they were offered as by the one rule for a
+    /// stray byte, and a lone UTF-16 surrogate as `U+FFFD`. A sequence the
+    /// input cuts short at its very end is the one thing a chunked decode
+    /// cannot read byte-wise - it is still waiting for a continuation - so
+    /// [`Decoder::finish`] refuses it as it does for a strict decoder, and a
+    /// [`Charset::reader`]-shaped stream answers one `U+FFFD` per
+    /// sequence left, not one per byte.
+    ///
+    /// ```
+    /// use yggdryl::Charset;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut decoder = Charset::Cp1252.transcriber();
+    /// let mut text = String::new();
+    /// // `0x81` is unassigned in windows-1252, and a strict decoder refuses it.
+    /// decoder.push(b"ok\x81", &mut text)?;
+    /// assert_eq!(text, "ok\u{0081}");
+    /// decoder.finish()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub const fn transcriber(self) -> Decoder {
+        Decoder::transcribing(self)
+    }
+
     /// Wrap a reader so it yields UTF-8 bytes.
     ///
     /// Decoding is streaming: neither the encoded nor the decoded payload is
@@ -759,7 +792,7 @@ impl Charset {
         if self.is_utf8() {
             return Box::new(source);
         }
-        Box::new(Reader::new(self, source))
+        Box::new(Reader::new(self.decoder(), source))
     }
 
     /// Wrap a writer so UTF-8 bytes written to it are encoded in this charset.

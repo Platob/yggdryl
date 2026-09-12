@@ -90,6 +90,7 @@ pub enum Charset  (#[non_exhaustive])
   pub fn encode(self, input: &str) -> Result<Cow<'_, [u8]>>
   pub fn encode_into(self, input: &str, target: &mut Vec<u8>) -> Result<()>
   pub const fn decoder(self) -> Decoder
+  pub const fn transcriber(self) -> Decoder  (the same carry, reading each run as `transcribe` does; never refuses a byte)
   pub fn reader<'source, R: Read + 'source>(self, source: R) -> Box<dyn Read + 'source>
   pub fn writer<'target, W: Write + 'target>(self, target: W) -> Writer<'target>
 
@@ -103,9 +104,9 @@ pub struct Decoder
   pub fn finish(self) -> Result<()>
 
 ### yggdryl::charset::reader  [rust\src\charset\reader.rs]
-pub struct Reader<'source>
+pub struct Reader<R: Read>  (the source held unboxed, so `Send` follows from `R`; built by `Charset::reader` and, crate-privately, by the text record reader over a declared charset)
   pub const fn charset(&self) -> Charset
-  impl Read for Reader<'_>
+  impl<R: Read> Read for Reader<R>
 
 ### yggdryl::charset::writer  [rust\src\charset\writer.rs]
 pub struct Writer<'target>

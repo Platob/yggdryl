@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { MediaType, charset, enums } = require('yggdryl')
+const { IOBase, MediaType, charset, enums } = require('yggdryl')
 
 // The charsets whose WHATWG label decodes the same bytes the same way.
 //
@@ -95,4 +95,16 @@ test('a media type carries the charset it declares', () => {
   assert.equal(mutable.charset, 'iso-8859-1')
   mutable.setCharset(null)
   assert.equal(mutable.charset, null)
+})
+
+test('a declared charset is read by the record reader', () => {
+  // The record reader reads the declaration off the handle's media type and
+  // lays it over its transport, below the line splitter, so a body of one
+  // windows-1252 byte per scalar arrives as a string.
+  const wire = Buffer.from('Z\xfcrich premi\xe8r\n', 'latin1')
+  const handle = IOBase.fromBytes(wire)
+  handle.mediaType = 'text/plain;charset=windows-1252'
+  const [row] = [...handle.readRecords()]
+  assert.equal(typeof row.body, 'string')
+  assert.equal(row.body, 'Zürich premièr')
 })

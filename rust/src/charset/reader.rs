@@ -11,10 +11,14 @@ use crate::DEFAULT_STREAM_BATCH_SIZE;
 /// is buffered whole: one source chunk is decoded at a time and handed out
 /// before the next is fetched, so a multi-gigabyte file costs two buffers.
 ///
-/// A source that stops in the middle of a sequence fails on the read that
-/// reaches its end, rather than quietly returning short text.
-pub struct Reader<'source> {
-    source: Box<dyn Read + 'source>,
+/// The source is held as it was given rather than boxed, so the reader is
+/// `Send` exactly when its source is. What it does with a source that stops
+/// in the middle of a sequence is the decoder's: a strict one fails on the
+/// read that reaches the end, rather than quietly returning short text, and a
+/// transcribing one answers one `U+FFFD` per sequence left and ends
+/// cleanly.
+pub struct Reader<R: Read> {
+    source: R,
     decoder: Decoder,
     /// One chunk of source bytes, refilled in place.
     chunk: Vec<u8>,
@@ -26,12 +30,12 @@ pub struct Reader<'source> {
     drained: bool,
 }
 
-impl<'source> Reader<'source> {
-    /// Decode `source` as `charset`.
-    pub(super) fn new<R: Read + 'source>(charset: Charset, source: R) -> Self {
+impl<R: Read> Reader<R> {
+    /// Decode `source` through `decoder`.
+    pub(crate) fn new(decoder: Decoder, source: R) -> Self {
         Self {
-            source: Box::new(source),
-            decoder: charset.decoder(),
+            source,
+            decoder,
             chunk: vec![0; DEFAULT_STREAM_BATCH_SIZE],
             decoded: Vec::with_capacity(DEFAULT_STREAM_BATCH_SIZE),
             offset: 0,
@@ -45,7 +49,7 @@ impl<'source> Reader<'source> {
     }
 }
 
-impl Read for Reader<'_> {
+impl<R: Read> Read for Reader<R> {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         loop {
             if self.offset < self.decoded.len() {
@@ -63,14 +67,17 @@ impl Read for Reader<'_> {
             let filled = self.source.read(&mut self.chunk)?;
             if filled == 0 {
                 self.drained = true;
-                if self.decoder.is_pending() {
-                    return Err(io::Error::other(super::truncated(
-                        self.decoder.charset().as_str(),
-                        usize::try_from(self.decoder.consumed()).unwrap_or(usize::MAX),
-                        "a whole sequence",
-                    )));
-                }
-                return Ok(0);
+                // The source is done, so the decoder is: what it still holds
+                // is finished the way it was built to - a refusal, or the
+                // `U+FFFD` a transcribing decoder writes for the bytes left,
+                // which the loop hands out before answering the end. A copy
+                // is finished because finishing consumes, and the reader is
+                // still held.
+                self.decoder
+                    .clone()
+                    .finish_into(&mut self.decoded)
+                    .map_err(io::Error::other)?;
+                continue;
             }
             self.decoder
                 .push_bytes(&self.chunk[..filled], &mut self.decoded)

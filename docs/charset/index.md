@@ -17,7 +17,7 @@
 | Owns | `Charset`, `charset::Decoder`, `charset::Reader`, `charset::Writer`, `charset::Transcoded` |
 | Charsets | `utf-8`, `utf-16le`, `utf-16be`, `us-ascii`, `iso-8859-1`, `iso-8859-2`, `iso-8859-15`, `windows-1250`, `windows-1251`, `windows-1252`, `ibm437`, `ibm850`, `macintosh` |
 | Select | `Charset::from_str` for a name or alias; `Charset::from_media_type` and `Charset::from_url` for what a resource declares; `Charset::from_bom` for what a payload declares about itself |
-| Operations | `decode`/`decode_lossy`/`transcribe`/`encode` for whole buffers, `encoded_len` for the stored length alone, `reader`/`writer` for streams, `decoder` for chunks |
+| Operations | `decode`/`decode_lossy`/`transcribe`/`encode` for whole buffers, `encoded_len` for the stored length alone, `reader`/`writer` for streams, `decoder` for chunks and `transcriber` for chunks read as `transcribe` reads them |
 | Borrow | An all-ASCII payload is already UTF-8, so `decode` and `encode` borrow it; asserted in the counting allocator |
 | Composes | Any [`IOBase`](../holder/index.md) through `Transcoded`, over or under a [`Coded`](../coding/index.md) handle; `Transcoded` is itself an `IOBase` |
 | Seek | Through `Transcoded`, by resume points recorded in one pass; the value is materialized only by an explicit `open` or a positional write |
@@ -28,7 +28,7 @@
 
 ## Use
 
-Text crosses this boundary once. A byte payload is decoded at intake and everything past that point is `str`, a `Scalar::String`, or an Arrow string array; nothing re-decodes, and no layer branches on a charset per row.
+Text crosses this boundary once. A byte payload is decoded at intake - by a `Transcoded` handle, by the [structured plan](../text/index.md), by the [text record reader's](../media/text.md#declaring-a-charset) transport from the charset its handle's media type declares, or by a direct `decode` - and everything past that point is `str`, a `Scalar::String`, or an Arrow string array; nothing re-decodes, and no layer branches on a charset per row.
 
 === "Rust"
 
@@ -74,7 +74,7 @@ Text crosses this boundary once. A byte payload is decoded at intake and everyth
 
 ## Declaring a charset
 
-A resource declares its charset on its [media type](../uri/path.md), the way it declares its codings, so a reader needs no argument.
+A resource declares its charset on its [media type](../uri/path.md), the way it declares its codings, so a reader needs no argument. The structured codec and the [text record reader](../media/text.md#declaring-a-charset) both read the declaration where they build their transport, coding first and charset second, and neither takes a charset of its own: the media type is the one owner of which charset the bytes are in.
 
 === "Rust"
 

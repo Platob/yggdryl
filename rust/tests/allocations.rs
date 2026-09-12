@@ -26,7 +26,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
-use yggdryl::media::text::{TextBytes, TextLine};
+use yggdryl::holder::Buffer;
+use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::types::{
     Bytes, INLINE_BYTES, INLINE_CAPACITY, MsgDirection, Str, StringLayout, StringParameters,
     UncheckedFieldScalar,
@@ -1902,6 +1903,125 @@ fn a_fix_message_read_from_a_line_costs_what_its_pairs_cost() {
                         .expect("a readable line"),
                 );
             },
+        );
+    }
+}
+
+/// `rows` lines of the shape a bridge writes - [`fix_packed_line`]'s
+/// occurrence and a trailing text value - each holding one Latin-1 letter.
+///
+/// One high byte per line, because the declared read below is measured
+/// against this same text: a line the transport decoded must cost exactly
+/// what the same line arriving as UTF-8 costs, and an all-ASCII line would
+/// not exercise the transcode at all.
+fn bridge_lines(rows: usize) -> String {
+    let occurrence = String::from_utf8(fix_packed_line(4)).expect("the bridge shape is ASCII");
+    let mut text = String::new();
+    for index in 0..rows {
+        let _ = writeln!(text, "{occurrence}|TEXT=Z\u{fc}rich {index:04}");
+    }
+    text
+}
+
+/// What reading `rows` lines through [`read_text_lines`] allocates.
+fn text_lines_cost(source: &Buffer, rows: usize) -> usize {
+    let options = TextOptions::new();
+    // A buffer builds the location it answers `url` with once, on the first
+    // ask; that is the handle's own first read, two allocations, and not
+    // the reader's, so it is asked for before the count.
+    black_box(yggdryl::IOBase::url(source));
+    let (allocations, read) = counted(|| {
+        read_text_lines(black_box(source), black_box(&options))
+            .expect("a reader")
+            .fold(0, |seen, line| {
+                line.expect("a line");
+                seen + 1
+            })
+    });
+    assert_eq!(read, rows, "every line was read");
+    allocations
+}
+
+/// What `owned_handle`'s copy of a buffer costs, by how many rows it holds.
+///
+/// A text read over a buffer with no location re-opens it as a copy, staged
+/// through the memory filesystem, and that staging grows with the object:
+/// twenty-three allocations for anything under one 64 KiB window, three
+/// more for the 114 KiB that 1 024 rows are. It is measured beside the read
+/// and taken off it, because it is `main`'s and the transport's, not the
+/// reader's: the reader's own cost is what is left, and that is linear.
+const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
+
+/// What the read itself costs past the copy: eight once, and four a line.
+///
+/// Six of the eight are built before a byte is read - the cursor over the
+/// owned handle and the transport boxed around it, the options and the
+/// location each shared once, and the splitter's window - and two on the
+/// first pull, where the transport opens: the fetch buffer and the box the
+/// coding chain ends in. The four a line are the line's own vector as the
+/// splitter assembles it from the window it lends, the retained body cut
+/// from that, the record's copy of the body, and the shared box around it;
+/// a capture would be one more each, and this read declares none. The page
+/// the line is made on is the record's box, so the line adds nothing of its
+/// own, and the pull that finds the end adds nothing either. With the copy,
+/// the assertion below counts 95 for 16 rows and 4 130 for 1 024 - after the
+/// two the buffer's first `url` costs, which [`text_lines_cost`] asks for
+/// before the counter is armed and which are not in either number.
+const TEXT_LINES_ONCE: usize = 8;
+const TEXT_LINES_EACH: usize = 4;
+
+/// What a declared `windows-1252` read costs over the UTF-8 read of the same
+/// lines: the transport, and nothing a line.
+///
+/// Three for anything under one window - the reader's two 64 KiB buffers and
+/// the box around the reader - and one more for 1 024 rows, where the first
+/// chunk decodes to more than the 64 KiB its decoded buffer was reserved at
+/// and the buffer grows once. Once per reader, whatever the object's length
+/// past that: the buffer keeps its capacity across chunks.
+const DECLARED_COSTS: [(usize, usize); 2] = [(16, 3), (1_024, 4)];
+
+#[test]
+fn reading_text_lines_costs_a_constant_and_four_a_line() {
+    for (rows, copy) in OWNED_COPY_COSTS {
+        let text = bridge_lines(rows);
+        let source = Buffer::from_bytes(text.into_bytes())
+            .with_media_type(MediaType::from_str("text/plain").expect("a media type"));
+        let (staged, _) = counted(|| {
+            let mut staged = Buffer::new();
+            yggdryl::IOBase::copy_into(black_box(&source), &mut staged).expect("a copy");
+            black_box(staged);
+        });
+        assert_eq!(staged, copy, "the owned copy of {rows} rows");
+        assert_eq!(
+            text_lines_cost(&source, rows),
+            copy + TEXT_LINES_ONCE + TEXT_LINES_EACH * rows,
+            "reading {rows} UTF-8 rows"
+        );
+    }
+}
+
+#[test]
+fn a_declared_charset_costs_its_transport_and_nothing_a_line() {
+    // The claim decision 12 makes for the transport: nothing per line. The
+    // same lines, once as the UTF-8 they are and once as windows-1252 under
+    // a handle that declares it, differ by the transport alone.
+    for (rows, each) in DECLARED_COSTS {
+        let text = bridge_lines(rows);
+        let utf8 = Buffer::from_bytes(text.clone().into_bytes())
+            .with_media_type(MediaType::from_str("text/plain").expect("a media type"));
+        let declared = Buffer::from_bytes(
+            Charset::Cp1252
+                .encode(&text)
+                .expect("windows-1252 holds it")
+                .into_owned(),
+        )
+        .with_media_type(
+            MediaType::from_str("text/plain;charset=windows-1252").expect("a media type"),
+        );
+        assert_eq!(
+            text_lines_cost(&declared, rows) - text_lines_cost(&utf8, rows),
+            each,
+            "the transport over {rows} declared rows"
         );
     }
 }

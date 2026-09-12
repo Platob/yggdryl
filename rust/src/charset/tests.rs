@@ -322,6 +322,52 @@ fn a_chunked_decode_agrees_with_a_whole_one_at_every_split() {
             assert_eq!(decoded, text, "{charset} split at {split}");
         }
     }
+
+    // A wire with a fault refuses at the first fault either way: the same
+    // position, and the same reason, whichever chunk the fault lands in. A
+    // lead byte broken by another lead is the case a carry can mishandle,
+    // since the join reads the held lead alone and keeps the breaker; a
+    // sequence the wire cuts short at its end is the case `finish` answers,
+    // and it names where that sequence began, not where the input ended.
+    for (charset, wire) in [
+        (Charset::Utf8, b"\xc3\xc3\xa9".to_vec()),
+        (Charset::Utf8, b"\xe2\xe2\x82\xac".to_vec()),
+        (Charset::Utf16Le, b"\x00\xd8\x00\xd8\x00\xdc".to_vec()),
+        (Charset::Utf8, b"\xf0\x9f\x98\x80\xf0\x9f".to_vec()),
+        (Charset::Utf16Le, b"\x00\xd8\x00\xdc\x00\xd8".to_vec()),
+        (Charset::Utf16Be, b"\xd8\x00\xdc\x00\xd8".to_vec()),
+    ] {
+        let whole = charset.decode(&wire).unwrap_err().to_string();
+        for split in 0..=wire.len() {
+            let mut decoder = charset.decoder();
+            let mut decoded = String::new();
+            let chunked = decoder
+                .push(&wire[..split], &mut decoded)
+                .and_then(|()| decoder.push(&wire[split..], &mut decoded))
+                .and_then(|()| decoder.finish())
+                .unwrap_err()
+                .to_string();
+            assert_eq!(chunked, whole, "{charset} split at {split}");
+        }
+    }
+}
+
+#[test]
+fn a_held_lead_byte_broken_by_the_next_chunk_is_refused_as_a_whole_decode_refuses_it() {
+    // The held `C3` is refused at position 1, as it always was; the reason
+    // named the end of the input, though the input went on. It names the
+    // byte that broke the sequence now, as a decode of the whole does.
+    let whole = Charset::Utf8.decode(b"a\xc3\xc3\xa9").unwrap_err();
+    assert!(matches!(whole, Error::Codec { position: 1, .. }), "{whole}");
+    let mut decoder = Charset::Utf8.decoder();
+    let mut decoded = String::new();
+    decoder.push(b"a\xc3", &mut decoded).unwrap();
+    let chunked = decoder.push(b"\xc3\xa9", &mut decoded).unwrap_err();
+    assert_eq!(chunked.to_string(), whole.to_string());
+    assert!(
+        chunked.to_string().ends_with("got 0xc3"),
+        "the breaker, not the end of the input: {chunked}"
+    );
 }
 
 #[test]
@@ -587,4 +633,169 @@ fn valid_utf8_is_borrowed_under_utf8_and_under_us_ascii() {
         );
     }
     assert!(Charset::Ascii.decode("caf\u{e9}".as_bytes()).is_err());
+}
+
+#[test]
+fn a_chunked_refusal_is_measured_from_the_first_byte_the_decoder_was_fed() {
+    // The doc's promise: a position is counted from the first byte fed, not
+    // from the start of the chunk that held the byte.
+    let mut decoder = Charset::Utf8.decoder();
+    let mut decoded = String::new();
+    decoder.push(b"abcd", &mut decoded).unwrap();
+    let error = decoder.push(b"ef\xffgh", &mut decoded).unwrap_err();
+    assert!(
+        matches!(error, Error::Codec { position: 6, .. }),
+        "4 bytes then index 2 of the next chunk: {error}"
+    );
+
+    // Through the carry too: a lead byte held from one chunk is refused with
+    // the position it was fed at, once the next chunk shows it leads nothing.
+    let mut decoder = Charset::Utf8.decoder();
+    let mut decoded = String::new();
+    decoder.push(b"abc\xe2", &mut decoded).unwrap();
+    assert!(decoder.is_pending());
+    let error = decoder.push(b"\x82Z", &mut decoded).unwrap_err();
+    assert!(
+        matches!(error, Error::Codec { position: 3, .. }),
+        "the held lead byte was the fourth byte fed: {error}"
+    );
+}
+
+#[test]
+fn a_transcriber_reads_every_byte_a_decoder_refuses() {
+    // An unassigned byte of a Windows page as its C1 control.
+    let mut decoder = Charset::Cp1252.transcriber();
+    let mut decoded = String::new();
+    decoder.push(b"ok\x81", &mut decoded).unwrap();
+    decoder.finish().unwrap();
+    assert_eq!(decoded, "ok\u{81}");
+
+    // Bytes offered as UTF-8 that are not: rule one, per invalid run, with
+    // a valid sequence still joined across the boundary.
+    let mut decoder = Charset::Utf8.transcriber();
+    let mut decoded = String::new();
+    decoder.push(b"caf\xe9 caf\xc3", &mut decoded).unwrap();
+    decoder.push(b"\xa9 \x93x\x94", &mut decoded).unwrap();
+    decoder.finish().unwrap();
+    assert_eq!(decoded, "caf\u{e9} caf\u{e9} \u{201c}x\u{201d}");
+
+    // A lone surrogate has no byte-wise reading, so it is `U+FFFD`.
+    let mut decoder = Charset::Utf16Le.transcriber();
+    let mut decoded = String::new();
+    decoder.push(b"\x00\xd8A\x00", &mut decoded).unwrap();
+    decoder.finish().unwrap();
+    assert_eq!(decoded, "\u{FFFD}A");
+
+    // What it still refuses: a sequence the input cuts short at its very end
+    // is not read, and `finish` has nowhere to put the replacement.
+    let mut decoder = Charset::Utf8.transcriber();
+    let mut decoded = String::new();
+    decoder.push(b"caf\xc3", &mut decoded).unwrap();
+    assert!(decoder.finish().is_err());
+}
+
+/// A source that answers its bytes in two reads, split where the test says.
+struct Split<'bytes> {
+    parts: [&'bytes [u8]; 2],
+    next: usize,
+}
+
+impl Read for Split<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        // An empty part is skipped rather than answered: zero is the end of
+        // the source, and a split at either edge has an empty part.
+        while let Some(part) = self.parts.get(self.next) {
+            self.next += 1;
+            if !part.is_empty() {
+                buffer[..part.len()].copy_from_slice(part);
+                return Ok(part.len());
+            }
+        }
+        Ok(0)
+    }
+}
+
+#[test]
+fn a_transcribing_reader_agrees_with_a_whole_transcription_at_every_split() {
+    // The transport the text reader lays over a declared charset: whatever
+    // chunks the source answers in, the text is what `transcribe` answers
+    // for the whole buffer. A lone surrogate, an odd trailing byte, an
+    // unassigned byte and a stray byte among UTF-8 all included, since those
+    // are the bytes the two could disagree on.
+    let mut utf16 = Charset::Utf16Le
+        .encode("Gr\u{fc}\u{df}e ")
+        .unwrap()
+        .into_owned();
+    utf16.extend_from_slice(b"\x00\xd8");
+    utf16.extend_from_slice(&Charset::Utf16Le.encode(" \u{1F600} \u{3a9}").unwrap());
+    utf16.push(0x41);
+    let mut cp1252 = Charset::Cp1252
+        .encode("symbol,d\u{e9}sk")
+        .unwrap()
+        .into_owned();
+    cp1252.extend_from_slice(b"\x81 \x80\n");
+    let utf8 = b"caf\xe9 caf\xc3\xa9 \x93x\x94 \xe2\x82 z".to_vec();
+    // A lead byte broken by another lead, with the sequence the breaker
+    // begins completed by what follows: a join that reads the held lead
+    // alone leaves the breaker in the carry, and it has to be joined with
+    // what follows too rather than overwritten - `C3 C3 A9` is `Ãé`, not
+    // `Ã©`, and the lone high surrogate before a pair is `U+FFFD U+10000`.
+    assert_eq!(Charset::Utf8.transcribe(b"\xc3\xc3\xa9"), "\u{c3}\u{e9}");
+    assert_eq!(
+        Charset::Utf8.transcribe(b"\xe2\xe2\x82\xac"),
+        "\u{e2}\u{20ac}"
+    );
+    assert_eq!(
+        Charset::Utf16Le.transcribe(b"\x00\xd8\x00\xd8\x00\xdc"),
+        "\u{fffd}\u{10000}"
+    );
+    for (charset, wire) in [
+        (Charset::Utf16Le, utf16),
+        (Charset::Cp1252, cp1252),
+        (Charset::Utf8, utf8),
+        (Charset::Utf8, b"\xc3\xc3\xa9".to_vec()),
+        (Charset::Utf8, b"\xe2\xe2\x82\xac".to_vec()),
+        (Charset::Utf16Le, b"\x00\xd8\x00\xd8\x00\xdc".to_vec()),
+    ] {
+        let expected = charset.transcribe(&wire).into_owned();
+        for split in 0..=wire.len() {
+            let source = Split {
+                parts: [&wire[..split], &wire[split..]],
+                next: 0,
+            };
+            let mut decoded = String::new();
+            super::Reader::new(charset.transcriber(), source)
+                .read_to_string(&mut decoded)
+                .unwrap();
+            assert_eq!(decoded, expected, "{charset} split at {split}");
+        }
+    }
+}
+
+#[test]
+fn a_transcribing_reader_ends_a_cut_short_sequence_as_a_replacement() {
+    // The one place a chunked reading and a whole one part: bytes still
+    // waiting for a continuation when the source ends were never read, so
+    // the stream answers `U+FFFD` for them and ends cleanly, where a strict
+    // reader fails on the read that reaches the end.
+    let mut decoded = String::new();
+    super::Reader::new(
+        Charset::Utf8.transcriber(),
+        std::io::Cursor::new(b"caf\xc3".to_vec()),
+    )
+    .read_to_string(&mut decoded)
+    .unwrap();
+    assert_eq!(decoded, "caf\u{FFFD}");
+
+    let mut decoded = String::new();
+    super::Reader::new(
+        Charset::Utf16Le.transcriber(),
+        std::io::Cursor::new(b"A\x00\x00\xd8B".to_vec()),
+    )
+    .read_to_string(&mut decoded)
+    .unwrap();
+    assert_eq!(
+        decoded, "A\u{FFFD}\u{FFFD}",
+        "one for the unpaired surrogate, one for the half unit"
+    );
 }

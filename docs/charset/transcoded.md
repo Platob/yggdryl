@@ -20,7 +20,7 @@
 
 ## Use
 
-A handle that declares its charset needs nothing else: the record reader, the structured codec, and the digest all see UTF-8.
+A handle that declares its charset on its media type needs no wrapper for the [record reader](../media/text.md#declaring-a-charset) or the [structured codec](../text/index.md): both read the declaration where they build their transport. `Transcoded` is for the decoded bytes themselves - `read_all_bytes`, the digest, a cursor over the text - for [random access](#random-access) into them, and for a charset laid over a wrong declaration, `Transcoded::new(handle, Charset::Utf8)` around a stale `charset=iso-8859-1`. A `Transcoded` over a located file is re-opened by its location by the record reader, which reads the file raw under the wrapper's media type - the one with the charset removed - so a record read decodes nothing through it: declare on the media type instead.
 
 ```rust
 use yggdryl::charset::Transcoded;

@@ -43,12 +43,21 @@ pub(super) fn utf8_decode_into<const LOSSY: bool>(
 ///
 /// A genuinely invalid byte is not pending: it answers zero so the decode that
 /// follows reports it with its position rather than waiting forever for a
-/// continuation that would not fix it.
+/// continuation that would not fix it. Only the tail is judged, because only
+/// the tail can be cut short: a fault earlier in the input is the decode's
+/// to refuse or transcribe, and must not hide a sequence the boundary split
+/// after it - a transcribing decode reads on past the fault, and would
+/// otherwise read the held lead byte as a stray one.
 pub(super) fn utf8_pending(input: &[u8]) -> usize {
-    match std::str::from_utf8(input) {
-        Ok(_) => 0,
-        Err(error) if error.error_len().is_none() => input.len() - error.valid_up_to(),
-        Err(_) => 0,
+    // A sequence is at most four bytes, so one cut short is a lead byte
+    // among the last three followed only by continuation bytes.
+    let tail = &input[input.len().saturating_sub(3)..];
+    let Some(lead) = tail.iter().rposition(|byte| byte & 0xC0 != 0x80) else {
+        return 0;
+    };
+    match std::str::from_utf8(&tail[lead..]) {
+        Err(error) if error.error_len().is_none() => tail.len() - lead,
+        _ => 0,
     }
 }
 

@@ -10,7 +10,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 | `rowheader` | byte regex searched once per physical line; in framed mode a match starts a record |
 | `framing` | join physical lines into logical records; default `false`, and enabling it requires `rowheader` |
 | `leading_fragment` / `leadingFragment` | `keep`, `drop`, or `error` for lines before the first framed header; default `keep` |
-| `max_record_byte_size` / `maxRecordByteSize` | retained body byte limit per record, counted in bytes as read; unset is unlimited |
+| `max_record_byte_size` / `maxRecordByteSize` | retained body byte limit per record, counted in bytes as read - below the transport, so the wire where nothing is declared and the decoded text under a coding or a [declared charset](#declaring-a-charset); unset is unlimited |
 | `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding physical-line body edge |
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
 | `start_rownum` / `startRownum` | optional signed 64-bit first row number; unset omits the column |
@@ -143,8 +143,8 @@ The source field is complete before any source bytes are read.
 | `mtime` | `datetime64(ns, UTC)` | nullable; present unless `parse_mtime` is off |
 | `direction` | `msgdirection` | nullable; present only with `parse_direction` |
 | `mimetype` | `utf8` | present only with `parse_mimetype` |
-| `body` | `utf8` | required; the retained record as text, [decoded where the line is made](#a-line-is-text) |
-| `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped; counts bytes as read |
+| `body` | `utf8` | required; the retained record as text: decoded at the transport under [a declared charset](#declaring-a-charset), else [where the line is made](#a-line-is-text) |
+| `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped; counts bytes as read, in the units the limit counts |
 
 Named `rowheader` captures follow these columns and stay nullable in both modes,
 and the columns `lift_names` [lifts](#lifting-an-entry-into-a-column) follow
@@ -279,16 +279,20 @@ Windows-1252 line has no valid multi-byte run to keep and reads byte for byte
 either way. The row header's captures take the same decode, because a line
 half text would be two readings of one line, so a capture holding an invalid
 byte reaches its typed column decoded rather than refused. The header is
-still matched against the bytes as read, and a Unicode class matches
-characters: `[^\]]+` never matches a byte that is not one, so a header that
-must capture such a byte spells the class in bytes, `(?-u:[^\]]+)`.
+still matched against the bytes as read, and on an undeclared wire those are
+the wire's own: a Unicode class matches characters, so `[^\]]+` never matches
+a stray byte, and a header that must capture one off an undeclared wire spells
+the class in bytes, `(?-u:[^\]]+)`. Under a [declared charset](#declaring-a-charset)
+the header sees the declared text, and a class that must match `ü` is spelled
+in characters.
 
 The decode comes last. Everything the reader does before the line exists - the
 row-header match, `lstrip` / `rstrip`, the direction, `max_record_byte_size`,
 `dropped_byte_size`, adjacent deduplication - is a fact of the bytes as read,
-in bytes as read: the byte limit bounds the wire, not the decode, so a body of N
-wire bytes decodes to as many as 3N bytes of text, and `dropped_byte_size`
-stays a wire count. A limit that cut a multi-byte character in two leaves its
+in bytes as read, and where nothing is declared the bytes as read are the
+wire: the byte limit bounds the wire, not the decode, so a body of N wire
+bytes decodes to as many as 3N bytes of text, and `dropped_byte_size` stays a
+wire count. A limit that cut a multi-byte character in two leaves its
 orphan bytes invalid, and they decode as the Windows-1252 characters they are -
 `E2 82` reads `â‚` - which is the honest answer to a reader that asked for N
 bytes and got them.
@@ -348,6 +352,144 @@ reads that line's text, and [re-emits](../fix/encode.md) it. A data field whose
 stated length reaches no boundary of the decoded line is not honoured, exactly
 as any stated length that reaches no boundary is not: the value stays what the
 frame cut, and the line's `decoded_byte_size` says the line was decoded.
+
+### Declaring a charset
+
+The handle's media type declares the charset its bytes are in, the way it
+declares their codings: `Buffer::with_media_type` in Rust, `media_type` /
+`mediaType` set on any handle in Python and JavaScript, or the `charset=` a
+located resource's media type already carries. The reader reads
+the declaration once, where it builds its transport, and lays a transcribing
+stream decoder over the coding chain - coding first, charset second, the order
+the [structured plan](../text/index.md) composes in - so the line splitter,
+the row header, `lstrip` / `rstrip`, the direction, adjacent deduplication and
+the entries all read the declared text, and every line is text as read. UTF-8
+and US-ASCII are never wrapped: the line layer already reads both by [the rule
+for a stray byte](#a-line-is-text), so under either the transport is exactly
+the object it is with nothing declared. The stream transcribes and never
+refuses, as the line never refuses: a byte the declared charset leaves
+unassigned reads as the C1 control of its number, a lone UTF-16 surrogate as
+`U+FFFD`, and a sequence the source cuts short at its very end as one `U+FFFD`
+for the sequence that is left. The one byte-order mark taken off is the
+declared form's own - `FF FE` under `charset=utf-16le` - the declaration
+winning over the mark; every other mark is data, `FE FF` under that
+declaration the code unit it is, because a line refuses nothing and a mark for
+another form is a fact of the wire, where the [structured plan](../text/index.md)
+strips whatever mark it finds because a parser would refuse `U+FEFF`. No mark
+is read under UTF-8 either, wrapped as it never is: `EF BB BF` under
+`charset=utf-8` is the first three bytes of the first line exactly as it is
+undeclared.
+
+"Bytes as read" means below the transport, and the charset is transport. Under
+a declaration every count the reader takes in bytes - `max_record_byte_size`,
+`dropped_byte_size`, the size a limit is measured against - counts the decoded
+bytes, the units a coding already gives: a gzip'd capture's bytes as read were
+never its compressed bytes. `Zürich premièr` is 14 bytes on a `windows-1252`
+wire and 16 decoded, so a limit of 7 keeps `Zürich`, the first 7 decoded bytes,
+and reports 9 dropped, where a wire count would have kept `Zürich ` and dropped
+7. `decoded_byte_size` keeps its one meaning - how many bytes the reader read
+other than as declared - and is `0` on a declared line the byte limit did not
+cut inside a scalar: the reader did what the handle said and repaired nothing.
+A limit that lands inside one leaves the stray bytes the cut made, read and
+counted exactly as on an undeclared read (`ZÃ`, `5` dropped, `1` decoded in
+the [edges](#edges)). Whether a resource was declared is the handle's fact,
+`MediaType::charset`, not a per-line count.
+
+The header sees the declared text, so a class that must match `ü` is spelled
+in characters, `\S+`; the byte spelling is for the undeclared wire. The writer
+follows the same declaration - bodies are rendered through the charset's
+writer inside the coding writer, and an append compares the tail with the
+terminator as the charset spells it - or a declared handle would read its own
+UTF-8 back as legacy bytes.
+
+A declaration is believed. A media type set from a stale `Content-Type` -
+`charset=iso-8859-1` over UTF-8 bytes, a common server default - reads the
+mojibake it declares, `café` as `cafÃ©`, with `decoded_byte_size` `0`, where the
+undeclared read finds `é`. The override is the handle's media type, corrected,
+or [`Transcoded::new(handle, Charset::Utf8)`](../charset/transcoded.md) around
+it. There is still no charset option: which charset a resource is in is the
+handle's fact, not a second option on every reader.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::text::{TextOptions, read_text_lines};
+    use yggdryl::{Charset, MediaType};
+
+    // One windows-1252 byte per scalar on the wire: `ü` is `0xFC`, `è` is `0xE8`.
+    let wire = Charset::Cp1252.encode("Zürich premièr\n")?.into_owned();
+    assert_eq!(wire, b"Z\xfcrich premi\xe8r\n");
+
+    let declared = Buffer::from_bytes(wire.clone())
+        .with_media_type(MediaType::from_str("text/plain;charset=windows-1252")?);
+    let options = TextOptions::new().try_with_rowheader(r"^(?<city>\S+) ")?;
+    let line = read_text_lines(&declared, &options)?.next().unwrap()?;
+    // The transport read the declaration below the splitter: the header saw
+    // the text and a Unicode class matched `ü`, and the line repaired nothing.
+    assert_eq!(line.capture(0), Some("Zürich"));
+    assert_eq!(line.body(), "premièr");
+    assert_eq!(line.decoded_byte_size(), 0);
+
+    // Undeclared, the same bytes are the wire: each stray byte reads as the
+    // Windows-1252 character it is, and the line counts the two it read so.
+    let undeclared = Buffer::from_bytes(wire);
+    let line = read_text_lines(&undeclared, &TextOptions::new())?.next().unwrap()?;
+    assert_eq!(line.body(), "Zürich premièr");
+    assert_eq!(line.decoded_byte_size(), 2);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase, TextOptions
+
+    # One windows-1252 byte per scalar on the wire: `ü` is `0xFC`, `è` is `0xE8`.
+    wire = "Zürich premièr\n".encode("cp1252")
+    assert wire == b"Z\xfcrich premi\xe8r\n"
+
+    declared = IOBase.from_bytes(wire)
+    declared.media_type = "text/plain;charset=windows-1252"
+    options = TextOptions()
+    options.rowheader = r"^(?<city>\S+) "
+    [row] = declared.read_records(options=options)
+    # The transport read the declaration below the splitter: the header saw
+    # the text and a Unicode class matched `ü`.
+    assert row["city"] == "Zürich"
+    assert row["body"] == "premièr"
+
+    # Undeclared, the same bytes are the wire: each stray byte reads as the
+    # Windows-1252 character it is, and the line counts the two it read so.
+    [line] = IOBase.from_bytes(wire).read_text_lines()
+    assert line.body == "Zürich premièr"
+    assert line.decoded_byte_size == 2
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase, TextOptions } = require('yggdryl')
+
+    // One windows-1252 byte per scalar on the wire: `ü` is `0xFC`, `è` is `0xE8`.
+    const wire = Buffer.from('Z\xfcrich premi\xe8r\n', 'latin1')
+
+    const declared = IOBase.fromBytes(wire)
+    declared.mediaType = 'text/plain;charset=windows-1252'
+    const options = new TextOptions()
+    options.rowheader = '^(?<city>\\S+) '
+    const [row] = [...declared.readRecords(options)]
+    // The transport read the declaration below the splitter: the header saw
+    // the text and a Unicode class matched `ü`.
+    assert.equal(row.city, 'Zürich')
+    assert.equal(row.body, 'premièr')
+
+    // Undeclared, the same bytes are the wire: each stray byte reads as the
+    // Windows-1252 character it is, and the line counts the two it read so.
+    const [line] = [...IOBase.fromBytes(wire).readTextLines()]
+    assert.equal(line.body, 'Zürich premièr')
+    assert.equal(line.decodedByteSize, 2)
+    ```
 
 ### Entries and paths
 
@@ -522,8 +664,8 @@ without retaining it.
 
 | fact | value |
 | --- | --- |
-| what the bound counts | the body in bytes as read, including normalized separators - the wire, never the [decoded text](#a-line-is-text) |
-| omitted bytes | reported in `dropped_byte_size`, in bytes as read |
+| what the bound counts | the body in bytes as read, including normalized separators - the bytes below the transport: the wire where nothing is declared, never the [text a stray byte becomes](#a-line-is-text), and the decoded text under a coding or a [declared charset](#declaring-a-charset), which is what the transport handed up |
+| omitted bytes | reported in `dropped_byte_size`, in the same units |
 | `max_row_size`, `max_byte_size` | total result rows and total Arrow result memory; independent and unchanged |
 
 ## Writes
@@ -532,7 +674,9 @@ Writes stay physical-line operations, consuming the non-null `utf8` `body`
 column - `utf8`, `large_utf8` or `utf8_view`, or any of those behind a
 dictionary, which is what Arrow JS infers for a plain record's string and is
 unpacked once per batch - one spelling here - and appending
-the terminator. A batch carrying a `binary` body is refused naming what was
+the terminator, both written in the charset the handle's media type
+[declares](#declaring-a-charset) and as they are under UTF-8 or US-ASCII. A
+batch carrying a `binary` body is refused naming what was
 expected: a `binary` column may hold anything, and rendering one would write
 bytes no reader of the file could read back as the rows they were.
 
@@ -556,7 +700,10 @@ bytes no reader of the file could read back as the rows they were.
 - `body` holding the terminator -> write refused.
 - a `binary` `body` column -> write refused: `expected a utf8 body column, got Binary`.
 - a body or capture that is not UTF-8 -> [decoded](#a-line-is-text), never refused and never `U+FFFD`; `decoded_byte_size` counts the bytes it took.
-- `max_record_byte_size` cutting inside a multi-byte character -> the orphan bytes decode as the Windows-1252 characters they are; the count dropped is still the wire count.
+- `max_record_byte_size` cutting inside a multi-byte character -> the orphan bytes decode as the Windows-1252 characters they are; the count dropped is still in bytes as read. Under a declared charset the same: the limit counts decoded bytes and can land inside one scalar of the decoded text, and the stray bytes the cut made are read and counted exactly as on an undeclared read - `Zürich` declared `windows-1252` under a limit of `2` is the body `ZÃ`, `5` dropped, `decoded_byte_size` `1`. A declared line the limit did not cut inside a scalar counts `0`.
+- a handle declaring a charset other than UTF-8 or US-ASCII -> [decoded at the transport](#declaring-a-charset), below the splitter: the header, the strips and every byte count see the declared text, `decoded_byte_size` is `0` unless a limit cut inside a scalar, and a write encodes back into it. `us-ascii` is never wrapped: a stray byte under it reads by the one rule and is counted.
+- a mis-declared handle - `charset=iso-8859-1` over UTF-8 bytes -> the mojibake it declares, `café` as `cafÃ©`, with `decoded_byte_size` `0`; correct the media type, or wrap the handle in `Transcoded::new(handle, Charset::Utf8)`.
+- `utf-16le` with its `FF FE` mark -> the mark comes off and the rows read as they do without it; `FE FF` under that declaration is data, read as the code unit it is; an odd trailing byte reads `U+FFFD` and refuses nothing.
 - keyed merge -> unsupported; overwrite and append only.
 - `app.log.gz` or a folder mixing plain, gzip, and zstd leaves -> same options, one stream, no reopened handle and no retained prior page. The transport is read one [fetch window](../holder/iobase/bytes.md#fetch-window) at a time, whatever the decoder pulls.
 - `Text` handle -> options only, no line iterator or schema builder.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 import yggdryl
-from yggdryl import MediaType, charset
+from yggdryl import IOBase, MediaType, charset
 
 # The charset as this package spells it, and as ``codecs`` knows it.
 PYTHON_NAME = {
@@ -82,3 +82,15 @@ class TestCharsets:
         assert mutable.charset == "iso-8859-1"
         mutable.set_charset(None)
         assert mutable.charset is None
+
+    def test_a_declared_charset_is_read_by_the_record_reader(self) -> None:
+        # The record reader reads the declaration off the handle's media type
+        # and lays it over its transport, below the line splitter, so a body
+        # of one windows-1252 byte per scalar arrives as `str`.
+        wire = "Zürich premièr\n".encode("cp1252")
+        assert wire == b"Z\xfcrich premi\xe8r\n"
+        handle = IOBase.from_bytes(wire)
+        handle.media_type = "text/plain;charset=windows-1252"
+        [row] = handle.read_records()
+        assert isinstance(row["body"], str)
+        assert row["body"] == "Zürich premièr"

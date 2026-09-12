@@ -198,7 +198,15 @@ impl TextLine {
     /// Zero for a line that was text as read. The body's count and the
     /// captures' together, because both are bytes the line held; it is the
     /// one fact the decode keeps, so a reader auditing a capture can find the
-    /// lines that were repaired without decoding them again.
+    /// lines that were repaired without decoding them again. `0` under a
+    /// declared charset for a line the byte limit did not cut inside a
+    /// scalar: the transport read it as declared and the line repaired
+    /// nothing - whether a resource was declared is the handle's fact,
+    /// `MediaType::charset`, and not a per-line count. A limit that lands
+    /// inside one scalar of the decoded text leaves the stray bytes the cut
+    /// made, and the line reads and counts them exactly as on an undeclared
+    /// read: `Zürich` declared `windows-1252` under a limit of `2` is the
+    /// body `ZÃ` with `1` decoded.
     #[must_use]
     pub const fn decoded_byte_size(&self) -> u64 {
         self.decoded_body + self.decoded_captures

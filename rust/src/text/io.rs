@@ -286,7 +286,7 @@ fn decoded_with_format<H: IOBase + ?Sized>(
 }
 
 /// The longest byte-order mark, which bounds the replayed prefix.
-const MARK_LEN: usize = 3;
+const MARK_LEN: usize = crate::charset::MARK_LEN;
 
 /// Read until `target` is full or the source ends, answering what was filled.
 ///

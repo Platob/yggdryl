@@ -587,8 +587,10 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core
   paths.
 - Plain-text rows start with required `url: utf8` and `body: utf8` - a line is
-  text by construction, its bytes decoded once where the line is made, each
-  byte that is not UTF-8 read as the Windows-1252 character it is, and
+  text by construction - its bytes decoded at the transport in the charset the
+  handle's media type declares other than UTF-8 or US-ASCII, and otherwise
+  once where the line is made,
+  each byte that is not UTF-8 read as the Windows-1252 character it is,
   `TextLine::decoded_byte_size` counting them;
   `TextOptions.start_rownum: Option<i64>` inserts required `rownum: int64` between
   them and names its first value. `parse_mtime`, on by default, inserts nullable
@@ -679,8 +681,9 @@ change to `media/iceberg/`.
 `charset/`, and every byte that becomes text anywhere else.
 
 - **Text crosses the boundary once.** A byte payload is decoded at intake -
-  by a `Transcoded` handle, by `text::io::Plan`, by a `string(...)` column's
-  own value contract, or by a direct `Charset::decode` - and everything past
+  by a `Transcoded` handle, by `text::io::Plan`, by the record reader's
+  transport from the handle's media type, by a `string(...)` column's own
+  value contract, or by a direct `Charset::decode` - and everything past
   that point is `str` or UTF-8 bytes. Nothing re-decodes,
   and no cast, digest, or record layer branches on a charset per row. A layer
   that wants a charset argument wants the wrong seam: wrap the handle instead.
@@ -703,9 +706,9 @@ change to `media/iceberg/`.
 - Every charset agrees with US-ASCII below `0x80` except the UTF-16 pair, and
   that is load-bearing: `decode` and `encode` borrow an all-ASCII payload
   rather than transcoding it, a line scan splits on `\n` before anything is
-  decoded, and the borrow is asserted in the counting allocator rather than
-  argued. A charset that broke it would need its own scan and its own line
-  splitter.
+  transcribed, and after a declared charset is decoded, and the borrow is
+  asserted in the counting allocator rather than argued. A charset that broke
+  it would need its own scan and its own line splitter.
 - Three doors, one verb: `decode` refuses and names the charset, the byte
   position, and the byte or scalar found there, through `Error::Codec` - no new
   error variant, and the charset's canonical name in `format`. `decode_lossy`

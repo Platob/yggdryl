@@ -732,10 +732,13 @@ takes `main`'s instructions. The stream transcribes and never refuses, as
 decision 10 never refuses: a byte the declared charset leaves unassigned reads
 as the C1 control of its number, a lone surrogate as `U+FFFD`, and a Unicode
 sequence the source cuts short at its very end as `U+FFFD` for the bytes that
-are left. A byte-order mark that names the declared Unicode form is taken off,
-the declaration winning over the mark exactly as the structured plan has it; no
-mark is read where nothing was declared, so an undeclared `EF BB BF` stays the
-first three bytes of the first line as it does on `main`. The writer follows
+are left. A byte-order mark that names the declared UTF-16 form is taken off;
+every other mark is data - a mark of the other endianness under a declaration,
+and a UTF-8 mark under UTF-8, US-ASCII or no declaration at all, which stays
+the first three bytes of the first line as it does on `main`. The structured
+plan strips whatever mark it finds, because a parser would refuse `U+FEFF`; a
+line reader reads the wire, and a mark that is not the declared form's own is
+a fact of it. The writer follows
 the same declaration, or a declared handle would read its own UTF-8 back as
 legacy bytes: bodies are rendered through `Charset::writer` around the coding
 writer, and an append compares the tail against the terminator as encoded.
@@ -752,7 +755,11 @@ the undeclared case, where the transport is the wire. Second,
 other than as declared, so a reader auditing a capture can find the lines it
 repaired - and is `0` under a declaration: the reader did what the handle said
 and repaired nothing, and a file mis-declared as Windows-1252 reads as the
-mojibake it was declared to be. Whether a resource was declared is the
+mojibake it was declared to be. One edge is the limit's and not the
+declaration's: a `max_record_byte_size` that lands inside a decoded scalar
+leaves the stray bytes the cut made, and the line reads and counts them
+exactly as an undeclared read would - `Zürich` cut at two decoded bytes reads
+`ZÃ` and counts `1`. Whether a resource was declared is the
 handle's fact, `MediaType::charset`, and not a per-line count.
 
 **Why the transport and not the line, and not a resolved reading at the
@@ -773,7 +780,10 @@ cannot read UTF-16 at all. The transport touches nothing per line, reads
 UTF-16 because it decodes before it splits, composes with the codings the way
 the structured reader already does, and is the one door `owned_handle` cannot
 bypass, because it copies the media type onto the handle it re-opens. Its
-cost, stated: two 64 KiB buffers and one `Box` per declared reader, and two
+cost, stated: two 64 KiB buffers and one `Box` per declared reader - and one
+more allocation, per reader and never per line, where a resource runs past one
+window and its first chunk decodes longer than the window it was reserved for
+- and two
 `memcpy` passes over every byte of a declared resource (ASCII runs by the
 word-at-a-time scan, high bytes by one table entry each); a mostly-ASCII
 Western export pays those passes where a per-line page would borrow every
@@ -859,8 +869,9 @@ tripping through the writer with one wire byte per scalar, a `Transcoded`
 buffer needing nothing, a declared `us-ascii` handle over `caf\xe9` reading
 `café` with `decoded_byte_size` `1`; in the counting allocator, an absolute
 pin on `read_text_lines` over UTF-8 lines at 16 and at 1 024 rows with the
-per-line slope stated, and a declared read costing the same constant over the
-UTF-8 read of the same lines at both sizes; the equivalence snapshot, unmoved;
+per-line slope stated, and a declared read costing three allocations over the
+UTF-8 read of the same lines under one window and four past it, at 16 and at
+1 024 rows; the equivalence snapshot, unmoved;
 the Python and Node record dictionaries answering `str` for a declared body.
 
 **What it costs.**

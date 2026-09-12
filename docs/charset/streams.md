@@ -7,9 +7,9 @@
 | | |
 | --- | --- |
 | Owns | `charset::Decoder`, `charset::Reader`, `charset::Writer` |
-| Select | `Charset::decoder`, `Charset::reader`, `Charset::writer` |
+| Select | `Charset::decoder`, `Charset::transcriber`, `Charset::reader`, `Charset::writer` |
 | Retains | At most three bytes, the longest sequence a chunk boundary can split |
-| `Decoder` | `push` into a `String`, `push_bytes` into UTF-8 bytes, `finish` to refuse a payload that stops mid-sequence |
+| `Decoder` | `push` into a `String`, `push_bytes` into UTF-8 bytes, `finish` to refuse a payload that stops mid-sequence; built by `decoder` to refuse a byte it cannot read, or by `transcriber` to read every byte as `transcribe` does and refuse none |
 | `Reader` | `Read` yielding UTF-8; fails on the read that reaches a truncated end |
 | `Writer` | `Write` taking UTF-8; `finish` flushes and refuses a half-written scalar |
 | Python | Rust only; `charset.decode` and `charset.encode` are the whole-buffer doors |
