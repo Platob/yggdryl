@@ -621,7 +621,7 @@ impl super::FixRegistry {
             };
             let mut message = crate::DataType::from_fields([])?.required_field(canonical);
             message.as_fix_mut().set_msgtype(&value)?;
-            next.create_definition(crate::FixCategory::Messages, message)?;
+            next.create_definition(crate::FixCategory::Components, message)?;
         }
         // Resolution also rejects a code shared by several contextual definitions.
         next.msgtype(&value)?;

@@ -1,6 +1,6 @@
 # Explorer
 
-Search the native FIX catalog and inspect the fields, messages, components and groups it stores.
+Search the native FIX catalog and inspect the fields, components and groups it stores; a message is a component carrying `fix:msgtype`.
 
 ## Contract
 

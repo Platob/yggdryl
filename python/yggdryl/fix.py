@@ -99,8 +99,9 @@ field the file produces, :meth:`FixRegistry.dialects` lists the names any
 field or definition carries, and ``ULBRIDGE_DIALECT`` is the one this crate
 stamps itself, on :func:`fix_ulbridge_fields`.
 
-The registry stores scalar ``fields`` and named ``messages``, ``components``,
-and ``groups``. Enum codes remain inline in each field's ``fix:codes`` metadata.
+The registry stores scalar ``fields`` and named ``components`` and ``groups``;
+a message is a component carrying ``fix:msgtype``. Enum codes remain inline in
+each field's ``fix:codes`` metadata.
 Repeating counts such as ``NoPartyIDs`` are ``int32`` fields; ``Parties`` is a
 separate list of ``Party`` components. :class:`MsgType` borrows one immutable,
 registry-owned message definition and keeps its complete case-sensitive wire code.

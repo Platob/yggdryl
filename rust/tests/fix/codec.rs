@@ -350,7 +350,7 @@ fn nested_counter_anomalies_follow_each_counter_across_reordered_siblings() {
             .required_field("scopedcountermessage");
     message_type.as_fix_mut().set_msgtype("ZCNT").unwrap();
     scoped
-        .insert_definition(FixCategory::Messages, message_type)
+        .insert_definition(FixCategory::Components, message_type)
         .unwrap();
     let reader = FixCodec::new(Arc::new(scoped));
     let wire = b"35=ZCNT|453=2|448=A|539=2|524=RIGHT|802=invalid|523=LEFT|448=B|802=1|523=BLEFT|539=0|524=BRIGHT|55=AAPL|10=0|";
@@ -1386,7 +1386,7 @@ fn a_code_declared_under_another_name_is_a_second_message_and_the_bare_code_answ
     // Declared under another name: a second message, reached by its name and
     // carrying the code, while the bare code still answers the first holder.
     registry
-        .create_definition(FixCategory::Messages, declare("AllocIn"))
+        .create_definition(FixCategory::Components, declare("AllocIn"))
         .unwrap();
     assert_eq!(registry.msgtypes().count(), messages + 1);
     assert_eq!(registry.msgtype("J").unwrap().name(), standard);
@@ -1409,7 +1409,7 @@ fn a_code_declared_under_another_name_is_a_second_message_and_the_bare_code_answ
     // Re-declared under the same folded name: it folds into the stored one,
     // and no third message appears.
     let added = registry
-        .add_definition(FixCategory::Messages, declare("Alloc_In"))
+        .add_definition(FixCategory::Components, declare("Alloc_In"))
         .unwrap();
     assert!(!added, "merged, not added");
     assert_eq!(registry.msgtypes().count(), messages + 1);
@@ -2031,7 +2031,7 @@ fn separatorless_group_inference_uses_only_direct_members() {
         .required_field("minimalpartiesmessage");
     definition.as_fix_mut().set_msgtype("ZMIN").unwrap();
     scoped
-        .insert_definition(FixCategory::Messages, definition)
+        .insert_definition(FixCategory::Components, definition)
         .unwrap();
     let numeric_name = FixCodec::new(Arc::new(scoped))
         .one_line(

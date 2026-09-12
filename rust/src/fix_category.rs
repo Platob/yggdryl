@@ -7,6 +7,9 @@ use crate::{Error, Result};
 
 /// The independently named categories in a FIX registry.
 ///
+/// A message is a component carrying `fix:msgtype`; there is no fourth
+/// category for it (decision 13).
+///
 /// ```
 /// use yggdryl::{DataType, FixCategory, FixRegistry};
 /// # fn main() -> yggdryl::Result<()> {
@@ -23,9 +26,7 @@ use crate::{Error, Result};
 pub enum FixCategory {
     /// Tagged scalar wire fields, including repeating-group counters.
     Fields,
-    /// Complete message Struct definitions.
-    Messages,
-    /// Reusable Struct definitions.
+    /// Named Struct definitions; one carrying `fix:msgtype` is a message.
     Components,
     /// Lists of component occurrences, referencing a scalar counter.
     Groups,
@@ -33,13 +34,12 @@ pub enum FixCategory {
 
 impl FixCategory {
     /// Every category in public display order.
-    pub const ALL: [Self; 4] = [Self::Fields, Self::Messages, Self::Components, Self::Groups];
+    pub const ALL: [Self; 3] = [Self::Fields, Self::Components, Self::Groups];
 
     /// The canonical category and storage-folder name.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Fields => "fields",
-            Self::Messages => "messages",
             Self::Components => "components",
             Self::Groups => "groups",
         }
@@ -62,7 +62,7 @@ impl FromStr for FixCategory {
             .ok_or_else(|| Error::Parse {
                 target: "FIX category",
                 position: 0,
-                reason: crate::text::expected_got("fields, messages, components, or groups", value),
+                reason: crate::text::expected_got("fields, components, or groups", value),
             })
     }
 }

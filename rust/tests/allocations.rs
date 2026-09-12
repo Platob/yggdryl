@@ -462,7 +462,7 @@ fn registry_message_singletons_and_scoped_groups_are_borrowed() {
     .required_field("newordersingle");
     message.as_fix_mut().set_msgtype("D").unwrap();
     registry
-        .insert_definition(yggdryl::FixCategory::Messages, message)
+        .insert_definition(yggdryl::FixCategory::Components, message)
         .unwrap();
     let held = registry.msgtype("D").unwrap();
     let counter = 453;
@@ -491,7 +491,7 @@ fn fix_hash_state_allocation_is_constant_across_catalog_sizes() {
             .required_field("HashFixture");
         definition.as_fix_mut().set_msgtype("H").unwrap();
         registry
-            .create_definition(yggdryl::FixCategory::Messages, definition)
+            .create_definition(yggdryl::FixCategory::Components, definition)
             .unwrap();
         let held = registry.msgtype("H").unwrap();
         // Each call constructs one shared XXH3 state. The native structural

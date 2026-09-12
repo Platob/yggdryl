@@ -10,11 +10,12 @@ unreviewable. The provenance manifest records both checksums - the bytes read
 and the definitions produced - so CI can test for drift, and its second half
 needs no network at all.
 
-Orchestra's fields, components, groups and messages each have their own
-directory of native Field documents. Only wire fields have tags. A group
-references its ordinary int32 counter and contains a non-null component.
-Each field stores its enum records directly in fix:codes metadata. Datatypes
-resolve through the crate's logical-name table.
+Orchestra's fields, components and groups each have their own directory of
+native Field documents; a message is a component carrying ``fix:msgtype`` and
+is written into ``components/`` beside the others (decision 13). Only wire
+fields have tags. A group references its ordinary int32 counter and contains
+a non-null component. Each field stores its enum records directly in
+fix:codes metadata. Datatypes resolve through the crate's logical-name table.
 
 The dictionary carries every cross-version fact the crate restates a message
 with, so no table of them lives in Rust: a field FIX removed is present with
@@ -1457,9 +1458,12 @@ def assign_definition_tags(catalog: dict[str, list[dict[str, Any]]]) -> None:
     deriving a second one - so writing them here is what makes the identity the
     dictionary's rather than each reader's.
 
-    Assignment walks the categories in the core's own load order and each
-    category by name, so the tag a definition gets depends on the dictionary
-    and not on the order a source file happened to list it in.
+    Assignment walks components, then groups, then messages, each by name,
+    so the tag a definition gets depends on the dictionary and not on the
+    order a source file happened to list it in. Messages are written into
+    ``components/`` (decision 13) but are still assigned last: the order is
+    what places every tag the dictionary already states, and a message that
+    moved folders keeps the tag it stated.
     """
     span = DEFINITION_TAG_MAX - DEFINITION_TAG_MIN
     taken = {
@@ -1491,13 +1495,27 @@ def render_tree(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
     documents: dict[str, Any] = {
         f"fields/{shard}.json": held for shard, held in sorted(shards.items())
     }
-    for category in ("components", "groups", "messages"):
+    # A message is a component carrying `fix:msgtype`: its document lives in
+    # `components/` beside every other component (decision 13).
+    for category, folder in (("components", "components"), ("groups", "groups"), ("messages", "components")):
         for field in catalog[category]:
-            documents[f"{category}/{field['name']}.json"] = field
+            path = f"{folder}/{field['name']}.json"
+            if path in documents:
+                raise ValueError(f"a message and a component share one document: {path}")
+            documents[path] = field
     return {
         name: json.dumps(document, indent=2, ensure_ascii=False) + "\n"
         for name, document in sorted(documents.items())
     }
+
+
+def summary(catalog: dict[str, list[dict[str, Any]]]) -> str:
+    """The counts as the store holds them: messages among the components."""
+    components = len(catalog["components"]) + len(catalog["messages"])
+    return (
+        f"{len(catalog['fields'])} fields, {components} components "
+        f"({len(catalog['messages'])} of them messages), {len(catalog['groups'])} groups"
+    )
 
 
 def write_tree(out: pathlib.Path, documents: dict[str, str]) -> dict[str, str]:
@@ -1508,7 +1526,9 @@ def write_tree(out: pathlib.Path, documents: dict[str, str]) -> dict[str, str]:
             relative = stale.resolve().relative_to(out).as_posix()
             if relative not in documents:
                 stale.unlink()
-        if tree in {"primitive", "nested"}:
+        # The retired trees, `messages/` among them: a message document lives
+        # in `components/` (decision 13).
+        if tree in {"messages", "primitive", "nested"}:
             try:
                 (out / tree).rmdir()
             except FileNotFoundError:
@@ -1657,7 +1677,7 @@ def main() -> int:
             if actual != expected:
                 failures.append(f"changed {name}")
         expected_names = set(documents)
-        for category in (*catalog, "primitive", "nested"):
+        for category in ("fields", "components", "groups", "messages", "primitive", "nested"):
             for path in (out / category).glob("*.json"):
                 name = path.relative_to(out).as_posix()
                 if name not in expected_names:
@@ -1673,7 +1693,7 @@ def main() -> int:
         if failures:
             print("\n".join(failures), file=sys.stderr)
             return 1
-        print(f"verified {len(documents)} documents; " + ", ".join(f"{len(held)} {kind}" for kind, held in catalog.items()))
+        print(f"verified {len(documents)} documents; " + summary(catalog))
         return 0
     write_tree(out, documents)
 
@@ -1688,10 +1708,7 @@ def main() -> int:
         newline="\n",
     )
     write_constants(latest, parsed)
-    print(
-        f"wrote {len(written)} documents (" + ", ".join(f"{len(held)} {kind}" for kind, held in catalog.items()) + ") "
-        f"at FIX {latest['version']} EP{latest['ep']}"
-    )
+    print(f"wrote {len(written)} documents ({summary(catalog)}) at FIX {latest['version']} EP{latest['ep']}")
     return 0
 
 

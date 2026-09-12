@@ -13,7 +13,7 @@ use crate::{diff, quality, registry, schema, shell, style};
 /// What the dictionary tool was asked to do.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix messages create --input Order.json\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nField enums live in fix:codes metadata; --codes accepts that JSON document."
+    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix components create --input Order.json\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nField enums live in fix:codes metadata; --codes accepts that JSON document."
 )]
 pub enum Command {
     /// Tagged scalar fields, including int32 repeating-group counters.
@@ -21,12 +21,8 @@ pub enum Command {
         #[command(subcommand)]
         command: CategoryCommand,
     },
-    /// Message definitions: named structs with a FIX message type.
-    Messages {
-        #[command(subcommand)]
-        command: CategoryCommand,
-    },
-    /// Reusable named structs, including one occurrence of a group.
+    /// Named structs: one occurrence of a group, or a message when it
+    /// carries a FIX message type.
     Components {
         #[command(subcommand)]
         command: CategoryCommand,
@@ -130,7 +126,7 @@ pub enum CategoryCommand {
 /// Native Field intake; category semantics remain in the core registry.
 #[derive(Args)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields create NoPartyIDs int32 --tag 453\n  ygg fix fields create --input Side.json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix messages create Order 'struct<ClOrdID: utf8>' --msgtype D\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nField enum records belong to fix:codes metadata. --codes accepts compact JSON with value before name, for example {\"codes\":[{\"value\":\"1\",\"name\":\"Buy\"}]}."
+    after_help = "Examples:\n  ygg fix fields create NoPartyIDs int32 --tag 453\n  ygg fix fields create --input Side.json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix components create Order 'struct<ClOrdID: utf8>' --msgtype D\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nField enum records belong to fix:codes metadata. --codes accepts compact JSON with value before name, for example {\"codes\":[{\"value\":\"1\",\"name\":\"Buy\"}]}."
 )]
 pub struct DefinitionArgs {
     /// Canonical definition name, preserving its spelling.
@@ -160,16 +156,16 @@ pub struct DefinitionArgs {
     /// Compact inline enum JSON, with value before name: {"codes":[{"value":"1","name":"Buy"}]}.
     #[arg(long)]
     codes: Option<String>,
-    /// FIX message type for a message definition (for example, D).
+    /// FIX message type making a component a message (for example, D).
     #[arg(long)]
     msgtype: Option<String>,
-    /// Make the value required. Messages are always required.
+    /// Make the value required. A message is always required.
     #[arg(long)]
     required: bool,
 }
 
 impl DefinitionArgs {
-    fn field(&self, category: FixCategory) -> Result<Field> {
+    fn field(&self) -> Result<Field> {
         if let Some(path) = &self.input {
             return Field::from_json_bytes(&std::fs::read(path)?);
         }
@@ -185,7 +181,7 @@ impl DefinitionArgs {
                 path: name.into(),
             })?;
         let mut field = DataType::from_str(dtype)?.nullable_field(name);
-        field.set_nullable(!self.required && category != FixCategory::Messages);
+        field.set_nullable(!self.required && self.msgtype.is_none());
         if let Some(document) = &self.codes {
             field.set_metadata([("fix:codes", document.clone())])?;
             let codes = field
@@ -236,7 +232,6 @@ pub fn run(root: &Path, annotate: bool, command: Option<&Command>) -> Result<Exi
 fn execute(store: &mut registry::Store, annotate: bool, command: &Command) -> Result<ExitCode> {
     match command {
         Command::Fields { command } => category(store, FixCategory::Fields, command)?,
-        Command::Messages { command } => category(store, FixCategory::Messages, command)?,
         Command::Components { command } => category(store, FixCategory::Components, command)?,
         Command::Groups { command } => category(store, FixCategory::Groups, command)?,
         Command::Ingest {
@@ -302,8 +297,8 @@ fn category(
             Ok(())
         }
         CategoryCommand::Read { key, json } => registry::read(store, category, key, *json),
-        CategoryCommand::Create(args) => registry::create(store, category, args.field(category)?),
-        CategoryCommand::Update(args) => registry::update(store, category, args.field(category)?),
+        CategoryCommand::Create(args) => registry::create(store, category, args.field()?),
+        CategoryCommand::Update(args) => registry::update(store, category, args.field()?),
         CategoryCommand::Delete { key } => registry::delete(store, category, key),
     }
 }
@@ -388,12 +383,7 @@ fn ingest(
         let mut next = store.registry().clone();
         let mut added = 0;
         let mut replaced = 0;
-        for category in [
-            FixCategory::Fields,
-            FixCategory::Components,
-            FixCategory::Groups,
-            FixCategory::Messages,
-        ] {
+        for category in FixCategory::ALL {
             for field in parsed.definitions(category) {
                 if next.insert_definition(category, field.clone())?.is_some() {
                     replaced += 1;
@@ -426,7 +416,6 @@ fn interactive(store: &mut registry::Store) -> Result<()> {
 
     let commands: Vec<String> = [
         "fields",
-        "messages",
         "components",
         "groups",
         "ingest",

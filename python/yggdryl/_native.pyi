@@ -4608,7 +4608,7 @@ class MsgType:
 class FixRegistry:
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
-    """Scalar fields and named messages, components, and groups.
+    """Scalar fields and named components and groups; a message is a component carrying ``fix:msgtype``.
 
     A tag is an ``int`` that fits ``i32`` and never a ``bool``; an identifier
     is the ``int`` a field's ``fix.id`` answers, spelled only where the method

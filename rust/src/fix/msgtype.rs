@@ -24,7 +24,7 @@ const CHILD_DOMAIN: u64 = 0x4d53_475f_4348_4c44;
 /// let mut registry = FixRegistry::new();
 /// let mut field = DataType::from_fields([])?.required_field("Order");
 /// field.as_fix_mut().set_msgtype("D")?;
-/// registry.create_definition(FixCategory::Messages, field)?;
+/// registry.create_definition(FixCategory::Components, field)?;
 /// let message = registry.msgtype("D")?;
 /// assert_eq!(message.name(), "Order");
 /// assert_eq!(message.as_str(), "D");

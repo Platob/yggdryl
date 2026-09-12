@@ -79,7 +79,8 @@
 //!
 //! # Storage
 //!
-//! One IOBase folder contains `fields`, `messages`, `components`, `groups`.
+//! One IOBase folder contains `fields`, `components`, `groups`; a message is a
+//! component carrying `fix:msgtype`.
 //! Scalar fields use `<tag / 100>.json` arrays; other categories use
 //! `<name>.json` native Field documents.
 //!

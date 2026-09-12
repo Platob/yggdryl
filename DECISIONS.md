@@ -1,9 +1,12 @@
 # The decisions the TextLine adaptation rests on
 
-Twelve decisions and three amendments, settled while the FIX layer was moved
-onto the text reader that landed in `main`, then made text, then given one
-namespace, then met the charset layer. Each is one rule, and the module doc
-named beside it is where the rule is written down.
+Twenty-four decisions and three amendments, settled while the FIX layer was
+moved onto the text reader that landed in `main`, then made text, then given
+one namespace, then met the charset layer, and then - decisions 13 to 24 - had
+its messages folded into its components, its direction made FIX's, its rows
+read for every message they carry, its bridge configuration read as a plugin,
+its two passes made one, and its identities made UUIDs. Each is one rule, and
+the module doc named beside it is where the rule is written down.
 
 They are here rather than in a scratchpad because they are the contract the work
 was reviewed against: a later change that wants to move one of them has to argue
@@ -17,7 +20,9 @@ decision 10 when the line became text, decision 11 when the registry's branches
 went, and decision 12 when the charset layer and the text line met in one
 merge - each written, like the others, before the code that keeps it. The
 amendments record where a decision turned out to over-claim once it met the
-code - which is the part most worth keeping.
+code - which is the part most worth keeping. Decisions 13 to 24 were settled
+one per commit from `FIX_DIRECTION_MESSAGES_PROMPT.md`, each written before
+its code and each named in the commit that keeps it.
 
 ## 1. A frame narrows the scan; outside a frame the generic rule stands
 
@@ -895,3 +900,81 @@ see a charset and are the controls, and a regression above criterion's noise on
 `text_lines/decode/*`, `text_record_framing/oversized/*` or
 `fix/pipeline/{text_read,parse_text_arrow_reader,parse_lines}` falsifies the
 commit that shows it.
+
+## 13. A message is a component that names its code; the catalog has three categories
+
+**Rule.** `FixCategory` is `Fields`, `Components`, `Groups`. A message is a
+component whose `fix:msgtype` names the wire code it answers, and nothing
+else tells the two apart. The type map is the whole rule for what a
+definition is: a scalar datatype is a field, a `Struct` is a component, a
+`List` or `LargeList` of a non-null `Struct` is a group. `definition_category`
+answers by shape alone, `check_shape` holds each category to its shape, and
+the marker decides only whether a component is also a message. `MsgType`
+still wraps one; `msgtypes()` iterates the components carrying the marker in
+name order and `msgtype_at` indexes that list; `register_msgtype` creates its
+empty Struct in `Components`; the message-code map is decision 11's, unmoved
+- one namespace of codes, the bare code answering the holder tag 35's set
+names, else the first in name order. The store writes
+`components/<name>.json` for a message as for any component, loads
+`[Fields, Components, Groups]`, and a snapshot has exactly those three keys:
+`messages` is refused by name, as any key outside the three is. The
+generator writes the 181 message documents into `components/`, byte for byte
+what they were: a moved document keeps the `fix:tag` it states, so no derived
+tag moves and provenance changes only by path, and `--check` proves the
+layout.
+
+**Why.** A message was a Struct `Field` whose only difference from a
+component was the marker - `definition_category` and `MsgType::from_field`
+said so in code - and the catalog keyed both by `(category, folded name)`, so
+the category was the marker restated as a namespace. Two namespaces for one
+shape cost every walk a third arm: `get_field_by_path` tried three roots,
+`Hash`, `merge_catalog`, `definition_tag_in_use`, `LOAD_ORDER`, the CLI's
+`ingest` and the generator each listed the categories in an order of their
+own, and a component that gained the marker had to move between namespaces
+rather than gain a property. One category makes the marker a property of a
+component, which is what it is, and a reader asking "which components are
+messages" asks the marker rather than a folder.
+
+**The collision the fold could create.** A message and a component with one
+folded name would now be one key. Census of the shipped dictionary: none of
+the 181 message names folds equal to any of the 747 component names, because
+the generator reserves every published name before it claims one and
+suffixes a message `Message` on collision (`claim`). The census is the
+fixture: the shipped registry holds 928 components, 181 of them carrying
+`fix:msgtype`, and 580 groups, pinned wherever the old three counts were.
+Were a pair ever to collide, the generator's `Message` suffix is the answer
+and that pin is where it would show.
+
+**What moves.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `fix_category.rs` | three variants, `ALL: [Self; 3]`, the refusal names three | `as_str` = the folder name; `Serialize`/`Deserialize` |
+| `fix/catalog.rs` | `DefinitionField::from_field` reads the marker under `Components`; `index_messages` keeps the ordered list `msgtypes`/`msgtype_at` read; `message_position` answers only a marked component; `check_shape`, `definition_category`, `merge_catalog`, `definition_tag_in_use` two categories | the code map, the alias map, the counter map, `(category, name)` keys |
+| `fix/store.rs` | `LOAD_ORDER` three; the snapshot's three keys; `messages` refused by name | the shard arithmetic, compact references, the resolver, the crate-field rule |
+| `fix/registry.rs` | `Hash` walks `[Components, Groups]`; `get_field_by_path` tries two roots | every field index; `FixFieldIter` order |
+| `fix/crated.rs`, `fix/cfb.rs` | `register_msgtype` and the CBlock root land in `Components` | the code registration; the scope suffix rule |
+| `scripts/generate_fix_dictionary.py` | messages rendered into `components/`, assigned their derived tags last as before, so every stated tag stays; `--check` walks the three folders and reports a `messages/` folder as unexpected | every document's bytes; `provenance.json`'s checksums (paths move) |
+| `config/fix/messages/*` | moved to `config/fix/components/` | content |
+| `scripts/build_docs_fix.js`, `docs/assets/fix.json` | `catalog` has three keys; `kpi.messages` counts components carrying `fix:msgtype` | every other KPI |
+| `cli/` | no `messages` command tree; `--msgtype` on `components create` makes a message, which is required; `ingest` walks three | every other command |
+| Python, Node | `"messages"` is refused as a category; every test re-spelled | argument order and error semantics |
+| tests, benchmarks | `child_by_path=4` on write, `=3` on load; counts 928/580; every `Messages` re-spelled | the equivalence snapshot; the allocation pins |
+| docs | eight pages re-spelled: three categories, a message is a marked component | |
+
+**`stable_hash` moves.** The registry hash walked `[Messages, Components,
+Groups]` and now walks `[Components, Groups]` with the messages among the
+components in name order, so every registry holding a message hashes
+differently. Said here rather than hidden: the committed dictionary's hash is
+pinned as a literal in `rust/tests/fix/dictionary.rs`, and the pin is what a
+later change to the walk has to move on purpose.
+
+**Written in:** `fix_category.rs`, on the enum; `fix/catalog.rs`, on
+`definition_category`; `docs/fix/registry.md`.
+**Fixtures:** the census above as a count pin; a component given the marker
+through `update_definition` answering `msgtype` afterwards and a message
+whose marker is removed answering none; `msgtype_at` over the committed
+dictionary agreeing with `msgtypes()`; a snapshot carrying a `messages` key
+refused by name; the store writing a message under `components/` and reading
+it back equal; the CLI creating a message under `components` with
+`--msgtype`; the store call pin; the equivalence snapshot, unmoved.

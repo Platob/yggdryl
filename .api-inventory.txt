@@ -820,8 +820,8 @@ pub struct UlPlugin  (re-exported at the crate root beside UlPlugins and fix_ulb
   impl Iterator for UlPlugins  (Item = UlPlugin; also FusedIterator; lazy over shared Scalar)
 
 ### yggdryl::FixCategory  [rust\src\fix_category.rs]
-pub enum FixCategory { Fields, Messages, Components, Groups }
-  pub const ALL: [Self; 4]
+pub enum FixCategory { Fields, Components, Groups }  (a message is a component carrying fix:msgtype; decision 13)
+  pub const ALL: [Self; 3]
   pub const fn as_str(self) -> &'static str
   pub fn from_str(value: &str) -> Result<Self>
   impl Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize, FromStr, Display, AsRef<str> for FixCategory
@@ -839,8 +839,8 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
 impl FixRegistry
   pub fn get_msgtype(&self, spelling: &str) -> Option<&MsgType>  (one code namespace: the code's first holder answers a bare code)
   pub fn msgtype(&self, spelling: &str) -> Result<&MsgType>
-  pub fn msgtypes(&self) -> impl Iterator<Item = &MsgType>
-  pub fn msgtype_at(&self, index: usize) -> Option<&MsgType>
+  pub fn msgtypes(&self) -> impl Iterator<Item = &MsgType>  (the components carrying fix:msgtype, in name order)
+  pub fn msgtype_at(&self, index: usize) -> Option<&MsgType>  (by position in msgtypes)
   pub fn get_definition(&self, category: FixCategory, name: &str) -> Option<&Field>
   pub fn definition(&self, category: FixCategory, name: &str) -> Result<&Field>
   pub fn definitions(&self, category: FixCategory) -> impl Iterator<Item = &Field>

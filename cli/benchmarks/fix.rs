@@ -37,7 +37,7 @@ impl Fixture {
         let mut message = DataType::from_fields([DataType::utf8().nullable_field("ClOrdID")])?
             .required_field("Order");
         message.as_fix_mut().set_msgtype("D")?;
-        registry.create_definition(FixCategory::Messages, message)?;
+        registry.create_definition(FixCategory::Components, message)?;
         registry.write_into(&mut Folder::new(fixture.0.clone())?)?;
         Ok(fixture)
     }
@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fixture.measure("help baseline", &["--help"])?;
     for (category, name) in [
         ("fields", "54"),
-        ("messages", "Order"),
+        ("components", "Order"),
         ("components", "Party"),
         ("groups", "Parties"),
     ] {

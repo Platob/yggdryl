@@ -836,7 +836,7 @@ including `id`, `tag`, `tags`, `aliases`, `branches`, `description`, `codes`,
 | `fromHandle`, `writeInto` | an `IOBase`, a `Url`, or the string naming one |
 | `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive` is a read-only number |
 | iteration | registry tag-major, the tag's holder first, then by identifier; message in the root's declared order |
-| categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
+| categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
 | CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily; `addField` and `addDefinition` are the lenient twins, answering `true` when the field or definition arrived and `false` when it folded into a stored one |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; complete UTF-8 wire code |
 | `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction`, `batchByteSize`; `parseLine`, `parseTextLine`, `parseUlconfigLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
@@ -1146,8 +1146,8 @@ assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Orders')
   for a key that parses.
 - A missing FIX folder -> a registry holding only the crate's own fields.
 - A registry write -> `fields/<shard>.json` with the shard a tag's hundred,
-  and `messages/`, `components/` and `groups/` with every definition directly
-  below its category; membership travels inside each field's metadata, and
+  and `components/` and `groups/` with every definition directly below its
+  category, a message among the components; membership travels inside each field's metadata, and
   the crate's own fields are never written.
 - `message.getById`/`byId` -> exact: no fold, no tiering; a field the
   dictionary does not hold under the identifier misses.

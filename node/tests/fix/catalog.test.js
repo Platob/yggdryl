@@ -39,7 +39,7 @@ function catalog() {
   occurrence.fix.group = 'Parties'
   const counter = registry.field(453)
   counter.fix.fieldRef = 'NoPartyIDs'
-  registry.createDefinition('messages', message('NewOrderSingle', 'D', [counter, occurrence]))
+  registry.createDefinition('components', message('NewOrderSingle', 'D', [counter, occurrence]))
   return registry
 }
 
@@ -63,7 +63,7 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
   }
   assert.throws(() => registry.createDefinition('fields', tagged('PartyID', 9448)), /existing FIX definition/)
   assert.equal(registry.intoJson(), before)
-  for (const [category, name] of [['fields', 'PartyID'], ['components', 'Party'], ['groups', 'Parties'], ['messages', 'NewOrderSingle']]) {
+  for (const [category, name] of [['fields', 'PartyID'], ['components', 'Party'], ['groups', 'Parties'], ['components', 'NewOrderSingle']]) {
     const original = registry.definition(category, name)
     const changed = original.clone()
     changed.setName(name.toLowerCase())
@@ -86,7 +86,7 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
   t.after(() => fs.rmSync(folder, { recursive: true, force: true }))
   registry.writeInto(folder)
   assert.ok(fix.FixRegistry.fromHandle(folder).equals(registry))
-  for (const [category, name] of [['messages', 'NewOrderSingle'], ['groups', 'Parties'], ['components', 'Party'], ['fields', 'PartyID'], ['fields', 'NoPartyIDs']]) {
+  for (const [category, name] of [['components', 'NewOrderSingle'], ['groups', 'Parties'], ['components', 'Party'], ['fields', 'PartyID'], ['fields', 'NoPartyIDs']]) {
     assert.ok(registry.removeDefinition(category, name))
     assert.equal(registry.getDefinition(category, name), null)
     assert.equal(registry.removeDefinition(category, name), null)
@@ -117,10 +117,10 @@ test('addDefinition folds a definition into the one its name reaches', () => {
   assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
 
   // A message extends the same way and keeps its wire code.
-  const order = registry.definition('messages', 'NewOrderSingle')
+  const order = registry.definition('components', 'NewOrderSingle')
   order.setDtype(DataType.fromFields([...members(order), Field.from('Text: utf8')]))
-  assert.equal(registry.addDefinition('messages', order), false)
-  const held = registry.definition('messages', 'NewOrderSingle')
+  assert.equal(registry.addDefinition('components', order), false)
+  const held = registry.definition('components', 'NewOrderSingle')
   assert.equal(held.fix.msgtype, 'D')
   assert.deepEqual(members(held).map(member => member.name), ['NoPartyIDs', 'Parties', 'Text'])
 
@@ -152,9 +152,9 @@ test('inline codes and the complete native catalog survive snapshots', () => {
   vendor.fix.branches = ['venue']
   registry.insert(vendor)
   const document = registry.toJSON()
-  // Four categories and nothing else: a dictionary's membership is metadata
+  // Three categories and nothing else: a dictionary's membership is metadata
   // on the field it contributed to, so it travels inside `fields`.
-  assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups', 'messages'])
+  assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups'])
   assert.equal(document.fields.find(value => value.name === 'Vendor').metadata['fix:branches'], 'venue')
   const declared = fix.FixRegistry.fromJson(JSON.stringify(document))
   assert.deepEqual(declared.fieldByTag(9001).fix.branches, ['venue'])
@@ -170,9 +170,9 @@ test('inline codes and the complete native catalog survive snapshots', () => {
   assert.throws(() => declared.getGroupByCounter('453'), /into rust type `f64`/)
   assert.throws(() => registry.definitions('codesets'))
   const changed = registry.clone()
-  const definition = changed.definition('messages', 'NewOrderSingle')
+  const definition = changed.definition('components', 'NewOrderSingle')
   definition.fix.description = 'Different'
-  changed.updateDefinition('messages', definition)
+  changed.updateDefinition('components', definition)
   assert.equal(changed.equals(registry), false)
   assert.notEqual(changed.stableHash(), registry.stableHash())
 })
@@ -180,8 +180,11 @@ test('inline codes and the complete native catalog survive snapshots', () => {
 test('native category cursors release holds on exhaustion and early close', () => {
   const registry = catalog()
   const cursor = registry.definitions('components')[Symbol.iterator]()
-  assert.equal(cursor.next().value.name, 'Party')
+  // A message is a component (decision 13): the two iterate together, in
+  // name order.
+  assert.equal(cursor.next().value.name, 'NewOrderSingle')
   assert.throws(() => registry.insert(tagged('Extra', 9000)), /shared/)
+  assert.equal(cursor.next().value.name, 'Party')
   assert.equal(cursor.next().done, true)
   assert.equal(cursor.next().done, true)
   registry.insert(tagged('Extra', 9000))
@@ -190,14 +193,14 @@ test('native category cursors release holds on exhaustion and early close', () =
   const messages = registry.msgtypes()[Symbol.iterator]()
   messages.return()
   registry.insert(tagged('AfterClose', 9000))
-  assert.ok(registry.clone().removeDefinition('messages', 'NewOrderSingle'))
+  assert.ok(registry.clone().removeDefinition('components', 'NewOrderSingle'))
 })
 
 test('message singleton indices distinguish names from another wire code', () => {
   const registry = new fix.FixRegistry()
-  registry.createDefinition('messages', message('D', 'X'))
-  registry.createDefinition('messages', message('NewOrderSingle', 'D'))
-  registry.createDefinition('messages', message('BridgeReport', 'P Report Ack'))
+  registry.createDefinition('components', message('D', 'X'))
+  registry.createDefinition('components', message('NewOrderSingle', 'D'))
+  registry.createDefinition('components', message('BridgeReport', 'P Report Ack'))
   const values = [...registry.msgtypes()]
   assert.deepEqual(values.map(value => [value.name, value.asStr()]), [['BridgeReport', 'P Report Ack'], ['D', 'X'], ['NewOrderSingle', 'D']])
   assert.equal(registry.msgtype('D').name, 'NewOrderSingle')
@@ -213,15 +216,15 @@ test('message singleton indices distinguish names from another wire code', () =>
   projected.fix.msgtype = 'Changed'
   assert.equal(values[1].name, 'D')
   assert.equal(values[1].asStr(), 'X')
-  assert.equal(registry.definition('messages', 'D').fix.msgtype, 'X')
+  assert.equal(registry.definition('components', 'D').fix.msgtype, 'X')
   assert.throws(() => new fix.MsgType())
-  assert.throws(() => registry.createDefinition('messages', message('AnotherOrder', 'D')), /shared/)
+  assert.throws(() => registry.createDefinition('components', message('AnotherOrder', 'D')), /shared/)
   // One message-code namespace: a second message declaring a held code under
   // another name is a second message reached by its name, and the bare code
   // answers the message tag 35's code set names - none here, so the first
   // in name order - whichever arrived first.
   const second = registry.clone()
-  second.createDefinition('messages', message('AnotherOrder', 'D'))
+  second.createDefinition('components', message('AnotherOrder', 'D'))
   assert.equal(second.msgtype('D').name, 'AnotherOrder')
   assert.equal(second.msgtype('newordersingle').asStr(), 'D')
   assert.equal(second.msgtype('anotherorder').asStr(), 'D')

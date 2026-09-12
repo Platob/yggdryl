@@ -264,9 +264,9 @@ impl FixRegistry {
     /// version a run reads at is the codec's pin.
     ///
     /// The registry holds scalar wire fields under their tags and message
-    /// roots under the Messages category. Nested grammars contribute Groups
-    /// and Components definitions, with `fix:counter` linking each list to its
-    /// ordinary int32 field. Enumerations stay in each field's `fix:codes`
+    /// roots as components carrying `fix:msgtype`. Nested grammars contribute
+    /// Groups and Components definitions, with `fix:counter` linking each
+    /// list to its ordinary int32 field. Enumerations stay in each field's `fix:codes`
     /// metadata. Named definitions carry no `fix:tag`.
     ///
     /// No seed is taken: this answers what one file says. Folding it into a
@@ -559,7 +559,7 @@ impl<'doc> Parse<'doc> {
             .map_or_else(|| format!("message{scope}"), str::to_ascii_lowercase);
         root.set_name(named);
         root.as_fix_mut().set_msgtype(wire)?;
-        catalog_entry(registry, crate::FixCategory::Messages, root, &scope)?;
+        catalog_entry(registry, crate::FixCategory::Components, root, &scope)?;
         Ok(held)
     }
 

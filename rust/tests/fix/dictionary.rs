@@ -495,3 +495,18 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
         ]
     );
 }
+
+/// The committed dictionary's hash, pinned as a literal (decision 13).
+///
+/// The registry hash walks `[Components, Groups]` with the messages among
+/// the components in name order, so a change to that walk - or to any
+/// shipped document - moves this number on purpose, in the commit that
+/// says why.
+#[test]
+fn the_committed_dictionary_hashes_to_one_pinned_value() {
+    let registry = seed();
+    assert_eq!(registry.stable_hash(), 5_660_470_085_040_439_013);
+    assert_eq!(registry.msgtypes().count(), 181);
+    assert_eq!(registry.definitions(FixCategory::Components).count(), 928);
+    assert_eq!(registry.definitions(FixCategory::Groups).count(), 580);
+}

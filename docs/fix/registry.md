@@ -7,8 +7,7 @@
 | Category | Native definition | Identity |
 | --- | --- | --- |
 | `fields` | Tagged scalar `Field`; group counters are `int32` | The tag and the folded name together; the id is derived from the pair on every read, never stored |
-| `messages` | Non-null Struct `Field` owned by an immutable `MsgType` singleton | Folded name; `fix:msgtype` carries the complete wire code |
-| `components` | Named Struct `Field` | Folded name |
+| `components` | Named Struct `Field`; one carrying `fix:msgtype` is a message - non-null, owned by an immutable `MsgType` singleton, iterated by `msgtypes` | Folded name; `fix:msgtype` carries the complete wire code |
 | `groups` | Named List or LargeList of a non-null Struct occurrence | Folded name; `fix:counter` identifies a separate scalar field |
 
 | Aspect | Rule |
@@ -24,7 +23,7 @@
 | Membership | `fix:branches` lists the dialects that contributed a field - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
-| Snapshot | `into_json` / `from_json` preserve all four categories - `{fields, components, groups, messages}` - with each field's membership inside its metadata; stable hashes include that complete state |
+| Snapshot | `into_json` / `from_json` preserve the three categories - `{fields, components, groups}` and no other key - with each field's membership inside its metadata; stable hashes include that complete state |
 | Crate fields | `new()` holds this crate's [twenty fields](capture.md#the-crates-own-columns), standard tags from 65000, before anything is inserted, so every registry - loaded, built or left empty - resolves `timestamp` and `sendersessionid`; a [store](store.md) never writes them and reads past a stored copy |
 
 ## Use
@@ -57,7 +56,7 @@
     count.as_fix_mut().set_field_ref("NoPartyIDs")?;
     let mut order = DataType::from_fields([count, group])?.required_field("Order");
     order.as_fix_mut().set_msgtype("D")?;
-    registry.create_definition(FixCategory::Messages, order)?;
+    registry.create_definition(FixCategory::Components, order)?;
 
     assert_eq!(registry.field(453)?.dtype(), &DataType::Int32);
     assert_eq!(registry.field_by_path(&FieldPath::from_str("Order.Parties.PartyID")?)?.as_fix().tag()?, Some(448));
@@ -94,7 +93,7 @@
     count.fix.field_ref = "NoPartyIDs"
     order = Field("Order", DataType.from_fields([count, group]), nullable=False)
     order.fix.msgtype = "D"
-    registry.create_definition("messages", order)
+    registry.create_definition("components", order)
 
     assert registry.field(453).dtype == DataType("int32")
     assert registry.field_by_path("Order.Parties.PartyID").fix.tag == 448
@@ -131,7 +130,7 @@
     count.fix.fieldRef = 'NoPartyIDs'
     const order = fields.struct('Order', [count, group], { nullable: false })
     order.fix.msgtype = 'D'
-    registry.createDefinition('messages', order)
+    registry.createDefinition('components', order)
 
     assert.equal(registry.field(453).dtype.toString(), 'int32')
     assert.equal(registry.fieldByPath('Order.Parties.PartyID').fix.tag, 448)
@@ -875,7 +874,7 @@ A CBlock is read for what it says. A real one is megabytes over hundreds of thou
     assert.equal(message.compare(message.clone()), 0)
     ```
 
-Registration updates tag 35's inline vocabulary and creates an empty message Struct if no message owns that code. Codes may contain spaces and have no artificial width limit; empty text and control characters are refused. Python's `message.field` is read-only, while Node `asField()` returns an independent mutable projection that cannot alter the singleton.
+Registration updates tag 35's inline vocabulary and, if no message owns that code, creates an empty component carrying it in `components`. Codes may contain spaces and have no artificial width limit; empty text and control characters are refused. Python's `message.field` is read-only, while Node `asField()` returns an independent mutable projection that cannot alter the singleton.
 
 ## One default registry per process
 

@@ -236,7 +236,7 @@ def _catalog() -> FixRegistry:
     counter.fix.field_ref = "NoPartyIDs"
     message = Field("NewOrderSingle", DataType.from_fields([counter, group]), nullable=False)
     message.fix.msgtype = "D"
-    registry.create_definition("messages", message)
+    registry.create_definition("components", message)
     return registry
 
 
@@ -327,9 +327,9 @@ def _category_mutation(operation: str) -> FixRegistry:
     if operation == "create":
         message = Field("OrderCancel", DataType.from_fields([]), nullable=False)
         message.fix.msgtype = "F"
-        registry.create_definition("messages", message)
+        registry.create_definition("components", message)
     elif operation == "remove":
-        registry.remove_definition("messages", "NewOrderSingle")
+        registry.remove_definition("components", "NewOrderSingle")
     else:
         component = registry.definition("components", "Party")
         component.fix.description = "Reviewed"
@@ -420,7 +420,7 @@ def main() -> None:
         _measure("message into_latest", _message_into_latest, args.iterations)
         _measure("infer FIXML protocol", _infer_fixml_protocol, args.iterations)
         _measure("infer Ullink MsgType", _infer_ullink_msgtype, args.iterations)
-        for category in ("fields", "components", "groups", "messages"):
+        for category in ("fields", "components", "groups"):
             _measure(f"{category} iterator first", lambda category=category: next(SEED_REGISTRY.definitions(category)), args.iterations)
             _measure(f"{category} iterator drain", lambda category=category: list(SEED_REGISTRY.definitions(category)), max(1, args.iterations // 50))
         _measure("category group lookup", lambda: SEED_REGISTRY.definition("groups", "Parties"), args.iterations)

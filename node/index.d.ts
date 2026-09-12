@@ -1702,7 +1702,7 @@ export declare class FixRegistry {
    */
   static fromFields(fields: Array<JsField>): FixRegistry
   /**
-   * Load the fields, messages, components, and groups categories.
+   * Load the fields, components, and groups categories.
    *
    * `location` is an `IOBase` handle, a `Url`, or the string naming one, run
    * through the coercion every folder-shaped entry point uses. A folder that
@@ -1866,7 +1866,7 @@ export declare class FixRegistry {
   clone(): FixRegistry
   /** A one-line summary: the dictionary itself is reached by iterating it. */
   toString(): string
-  /** A complete native catalog snapshot: the four categories. */
+  /** A complete native catalog snapshot: the three categories. */
   toJSON(): any
   /** Load a complete native catalog snapshot. */
   static fromJson(input: string): FixRegistry

@@ -302,7 +302,7 @@ fn coded_catalog() -> FixRegistry {
         .required_field("Order");
     message.as_fix_mut().set_msgtype("D").unwrap();
     registry
-        .create_definition(FixCategory::Messages, message)
+        .create_definition(FixCategory::Components, message)
         .unwrap();
     registry
 }

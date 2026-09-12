@@ -257,7 +257,8 @@ function counts(records, catalog, row, dialects) {
     lineage,
     aliases,
     alternates,
-    messages: catalog.messages.length,
+    // A message is a component carrying `fix:msgtype` (decision 13).
+    messages: catalog.components.filter((field) => field.metadata?.['fix:msgtype'] !== undefined).length,
     components: catalog.components.length,
     columns: row.columns.length,
     memberships,

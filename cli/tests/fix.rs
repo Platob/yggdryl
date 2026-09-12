@@ -105,7 +105,7 @@ fn output_text(output: &Output) -> String {
 fn categories_expose_all_crud_operations_and_examples() {
     let workspace = Workspace::new();
     let help = output_text(&workspace.success(&["--help"]));
-    for category in ["fields", "messages", "components", "groups"] {
+    for category in ["fields", "components", "groups"] {
         assert!(help.contains(category), "{help}");
         let category_help = output_text(&workspace.success(&[category, "--help"]));
         for operation in ["list", "read", "create", "update", "delete"] {
@@ -116,7 +116,9 @@ fn categories_expose_all_crud_operations_and_examples() {
         assert!(create_help.contains("--input"));
         assert!(create_help.contains("Examples:"));
     }
-    for retired in ["list", "show", "set", "rm", "codesets"] {
+    // A message is a component carrying a message type (decision 13): the
+    // tree that named a fourth category is gone with it.
+    for retired in ["list", "show", "set", "rm", "codesets", "messages"] {
         workspace.failure(&[retired]);
     }
 }
@@ -147,19 +149,23 @@ fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
         .expect("component reference");
     workspace.input("groups", "create", &workspace.document(&group));
     workspace.success(&[
-        "messages",
+        "components",
         "create",
         "Order",
         "struct<ClOrdID: utf8>",
         "--msgtype",
         "D",
     ]);
+    // A message type makes the component a message, which is required.
+    let order = workspace.read("components", "Order");
+    assert!(!order.is_nullable());
+    assert_eq!(order.as_fix().msgtype(), Some("D"));
 
     for (category, name) in [
         ("fields", "Side"),
         ("components", "Party"),
         ("groups", "Parties"),
-        ("messages", "Order"),
+        ("components", "Order"),
     ] {
         let original = workspace.read(category, name);
         let path = workspace.document(&original);
@@ -187,7 +193,7 @@ fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
     workspace.failure(&["components", "delete", "Party"]);
     workspace.success(&["check"]);
     for (category, name) in [
-        ("messages", "Order"),
+        ("components", "Order"),
         ("groups", "Parties"),
         ("components", "Party"),
         ("fields", "Side"),

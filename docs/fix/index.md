@@ -36,7 +36,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | Order | Tag-major, the tag's holder first, then id: `FixFieldIter`, `next_field_after`, the bindings' iteration and the store all follow it, so the bare tag comes back to the field that held it across a round trip |
 | List properties | Comma-separated text; `aliases()` and `branches()` lazy slices, `tags()` a parsed `Vec`; empty list removes the key |
 | Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
-| Categories | `fields/` stores tagged scalar fields; `components/` reusable Structs; `groups/` Lists of components; `messages/` required Struct definitions |
+| Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `fix:msgtype`; `groups/` Lists of components |
 | Bindings | Python `field.fix` and [`yggdryl.fix`](../extensions/python.md); JavaScript `field.fix` and the [`fix` namespace](../extensions/javascript.md); the id crosses as an integer, membership as a list of strings |
 
 ## Use
@@ -364,9 +364,10 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 ## Nesting needs no second type
 
 `NoPartyIDs` is an `int32` field at tag 453. `Parties` is a separate List of the
-`Party` Struct, linked to that count through `fix:counter`. Fields, components,
-groups and messages are independently addressable registry categories; a group
-member is also a scalar field in the field catalog.
+`Party` Struct, linked to that count through `fix:counter`. Fields, components
+and groups are the three registry categories, a message being a component that
+carries `fix:msgtype`; a group member is also a scalar field in the field
+catalog.
 
 The published FIX component names guide the catalog: [FIX message structures](https://fixtrading.org/concepts-part1-messagestructures/)
 and [FIX Orchestra](https://github.com/FIXTradingCommunity/fix-orchestra-spec/blob/master/v1-0-STANDARD/orchestra_spec.md)

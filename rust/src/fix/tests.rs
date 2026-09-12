@@ -1400,7 +1400,7 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
         field
     };
     registry
-        .insert_definition(FixCategory::Messages, message("NewOrderSingle", "D"))
+        .insert_definition(FixCategory::Components, message("NewOrderSingle", "D"))
         .unwrap();
     assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
 
@@ -1408,7 +1408,7 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
     // into the stored one.
     assert!(
         !registry
-            .add_definition(FixCategory::Messages, message("new_order_single", "D"))
+            .add_definition(FixCategory::Components, message("new_order_single", "D"))
             .unwrap()
     );
     assert_eq!(registry.msgtypes().count(), 1);
@@ -1418,7 +1418,7 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
     // the first holder; the second is reached by its name.
     assert!(
         registry
-            .add_definition(FixCategory::Messages, message("VenueOrder", "D"))
+            .add_definition(FixCategory::Components, message("VenueOrder", "D"))
             .unwrap()
     );
     assert_eq!(registry.msgtypes().count(), 2);
@@ -1428,7 +1428,7 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
     assert_eq!(registry.msgtype("neworder_single").unwrap().as_str(), "D");
     assert_eq!(
         registry
-            .definitions(FixCategory::Messages)
+            .definitions(FixCategory::Components)
             .map(Field::name)
             .collect::<Vec<_>>(),
         ["NewOrderSingle", "VenueOrder"]
@@ -4507,8 +4507,8 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
     }
     assert_eq!(groups.len(), 580);
     assert_eq!(entries.len(), 580);
-    assert_eq!(registry.definitions(FixCategory::Components).count(), 747);
-    assert_eq!(registry.definitions(FixCategory::Messages).count(), 181);
+    assert_eq!(registry.definitions(FixCategory::Components).count(), 928);
+    assert_eq!(registry.msgtypes().count(), 181);
 }
 
 #[test]

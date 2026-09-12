@@ -420,13 +420,9 @@ impl FixRegistry {
                 return Some(field);
             }
         }
-        let mut roots = [
-            crate::FixCategory::Messages,
-            crate::FixCategory::Components,
-            crate::FixCategory::Groups,
-        ]
-        .into_iter()
-        .filter_map(|category| self.get_definition(category, head));
+        let mut roots = [crate::FixCategory::Components, crate::FixCategory::Groups]
+            .into_iter()
+            .filter_map(|category| self.get_definition(category, head));
         let root = roots.next()?;
         if roots.next().is_some() {
             return None;
@@ -1499,11 +1495,7 @@ impl Hash for FixRegistry {
         for field in self {
             field.hash(state);
         }
-        for category in [
-            crate::FixCategory::Messages,
-            crate::FixCategory::Components,
-            crate::FixCategory::Groups,
-        ] {
+        for category in [crate::FixCategory::Components, crate::FixCategory::Groups] {
             category.hash(state);
             self.catalog.iter(category).count().hash(state);
             for field in self.catalog.iter(category) {

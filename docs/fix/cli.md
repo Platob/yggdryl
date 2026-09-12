@@ -1,6 +1,6 @@
 # CLI
 
-`ygg fix` manages the native FIX catalog through explicit `fields`, `messages`, `components`, and `groups` command trees. Rust only: the wheel ships this compiled executable without a Python runtime in its execution path.
+`ygg fix` manages the native FIX catalog through explicit `fields`, `components`, and `groups` command trees; a message is a component created with `--msgtype`. Rust only: the wheel ships this compiled executable without a Python runtime in its execution path.
 
 ## Contract
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | Owner | `yggdryl-cli` parses arguments and renders results; the Rust registry owns schema validation, references, mutations, and persistence |
 | Root | `--root`, default `config/fix`; relative locations resolve against the working directory; a folder holding no catalog opens with only the crate's own fields rather than failing |
-| Categories | `fields`, `messages`, `components`, `groups` |
+| Categories | `fields`, `components`, `groups`; a message is a component carrying `fix:msgtype` |
 | Operations | Every category supports `list`, `read`, `create`, `update`, and `delete` |
 | Writes | Successful one-shot mutations save automatically; an interactive session saves only with `save` |
 | Keys | A field key is a decimal tag or a name; a named category's key is its definition name. The registry is one namespace: a key resolves the same way whatever dictionaries a definition belongs to, and no key spells an identity |
@@ -29,7 +29,7 @@ ygg fix --root config/fix fields list Party --limit 20
 ygg fix --root config/fix fields read 453 --json
 ygg fix --root config/fix groups read Parties --json
 ygg fix --root config/fix components read Party
-ygg fix --root config/fix messages list Order
+ygg fix --root config/fix components list Order
 ```
 
 `NoPartyIDs(453)` is an `int32` scalar; `Parties` is a separate List definition whose occurrence component is `Party`. Message reads show the native non-null Struct and its full `fix:msgtype` wire code.
@@ -72,7 +72,7 @@ A field key is a decimal tag or a name; named categories use their definition na
 | `--tag N` | Scalar fields, including group counters |
 | `--counter N` | Groups; identifies an existing `int32` scalar field |
 | `--component NAME` | Groups; identifies the existing occurrence component |
-| `--msgtype CODE` | Messages; full nonempty wire text, including spaces |
+| `--msgtype CODE` | Components; makes the component a message; full nonempty wire text, including spaces |
 | `--codes JSON` | Scalar inline enum metadata |
 | `--dialect NAME` | Membership: a dictionary this definition belongs to, recorded in `fix:branches`; repeat the flag for several. Names are lowercased, deduplicated and sorted; an empty name or one carrying a comma is refused |
 | `--description TEXT` | Definition metadata |
@@ -85,7 +85,7 @@ ygg fix --root scratch/catalog fields create NoPartyIDs int32 --tag 453
 ygg fix --root scratch/catalog fields create PartyID utf8 --tag 448
 ygg fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' --required
 ygg fix --root scratch/catalog groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
-ygg fix --root scratch/catalog messages create Order 'struct<ClOrdID: utf8>' --msgtype D
+ygg fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D
 ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes '{"codes":[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]}'
 ygg fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --dialect venue --dialect Desk
 ygg fix --root scratch/catalog fields read Desk_Value
@@ -110,7 +110,7 @@ ygg fix --root scratch/catalog components read Party --json
 Metadata changes refresh resolved references before publication. Delete dependents first; the group refers to its occurrence component and counter:
 
 ```bash
-ygg fix --root scratch/catalog messages delete Order
+ygg fix --root scratch/catalog components delete Order
 ygg fix --root scratch/catalog groups delete Parties
 ygg fix --root scratch/catalog components delete Party
 ygg fix --root scratch/catalog fields delete 448
@@ -156,7 +156,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 
 ## Edges
 
-- A catalog root holding no `fields/`, `components/`, `groups/`, or `messages/` folder loads with only the crate's own fields; a read does not create it.
+- A catalog root holding no `fields/`, `components/`, or `groups/` folder loads with only the crate's own fields; a read does not create it.
 - `create` refuses a duplicate even when its supplied document is identical.
 - `update` requires an existing identity and is a full replacement.
 - Scalar fields require tags; a named definition whose document states none takes the tag derived from its name, inside `[100000, 1100000)`.
@@ -188,7 +188,7 @@ Measured in release mode on Windows, AMD Ryzen 5 150 with 12 logical CPUs and Ru
 | --- | ---: |
 | `fix --help` baseline | 49.875 ms |
 | `fix fields read 54 --json` | 25.413 ms |
-| `fix messages read Order --json` | 20.648 ms |
+| `fix components read Order --json` | 20.648 ms |
 | `fix components read Party --json` | 22.805 ms |
 | `fix groups read Parties --json` | 28.229 ms |
 

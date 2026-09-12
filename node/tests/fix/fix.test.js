@@ -584,13 +584,13 @@ test('a malformed native shard names its location', (t) => {
   assert.throws(() => fix.FixRegistry.fromHandle(root), /0.json/)
 })
 
-test('a written catalog reloads all four categories', (t) => {
+test('a written catalog reloads all three categories', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const dictionary = path.join(root, 'dictionary')
   const reference = seed()
   reference.writeInto(dictionary)
-  assert.deepEqual(fs.readdirSync(dictionary).sort(), ['components', 'fields', 'groups', 'messages'])
+  assert.deepEqual(fs.readdirSync(dictionary).sort(), ['components', 'fields', 'groups'])
   const shards = fs.readdirSync(path.join(dictionary, 'fields'))
   assert.equal(shards.length, 65)
   // The crate's own fields are never written - a standard field from 65000
@@ -638,7 +638,7 @@ test('membership is stored on the field, in the one shard tree', (t) => {
   // Membership is metadata like any other: it is in the snapshot's fields
   // and nowhere else.
   const document = registry.toJSON()
-  assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups', 'messages'])
+  assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups'])
   assert.equal(document.fields.find((field) => field.name === 'TradeID').metadata['fix:branches'], 'cme')
 })
 

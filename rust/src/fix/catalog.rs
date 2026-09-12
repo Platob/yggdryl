@@ -47,9 +47,13 @@ impl DefinitionField {
         }
     }
 
+    /// A component carrying `fix:msgtype` is a message (decision 13): the
+    /// marker, not the category, decides whether it compiles as one.
     fn from_field(category: FixCategory, field: Field) -> Result<Self> {
         match category {
-            FixCategory::Messages => Ok(Self::Message(MsgType::from_field(field)?)),
+            FixCategory::Components if field.as_fix().msgtype().is_some() => {
+                Ok(Self::Message(MsgType::from_field(field)?))
+            }
             FixCategory::Groups => {
                 let plan = Arc::new(GroupPlan::from_field(&field)?);
                 Ok(Self::Group(field, plan))
@@ -90,6 +94,9 @@ pub(super) struct Catalog {
     /// Each wire code, and the message a bare code answers: the one named
     /// as tag 35's code set names the code, else the first in name order.
     message_codes: HashMap<SmolStr, usize>,
+    /// The components carrying `fix:msgtype`, in name order: what
+    /// `msgtypes` iterates and `msgtype_at` indexes.
+    messages: Vec<usize>,
     message_aliases: HashMap<u64, MessageAlias>,
     /// Each wire code, and the name tag 35's code set gives it.
     code_names: HashMap<SmolStr, SmolStr>,
@@ -162,6 +169,12 @@ impl Catalog {
     /// loaded answers the same message. A second message on the code is
     /// reached by its own name.
     fn index_messages(&mut self) {
+        self.messages = self
+            .order
+            .iter()
+            .copied()
+            .filter(|position| self.entries[*position].field.message().is_some())
+            .collect();
         let mut codes: HashMap<SmolStr, usize> = HashMap::new();
         for (position, entry) in self.entries.iter().enumerate() {
             let Some(message) = entry.field.message() else {
@@ -202,8 +215,10 @@ impl Catalog {
         if let Some(position) = self.message_codes.get(spelling) {
             return Some(*position);
         }
-        if let Some(position) = self.position(FixCategory::Messages, spelling) {
-            return Some(position);
+        if let Some(position) = self.position(FixCategory::Components, spelling) {
+            if self.entries[position].field.message().is_some() {
+                return Some(position);
+            }
         }
         let alias = self
             .message_aliases
@@ -279,7 +294,7 @@ impl Catalog {
             if category == FixCategory::Groups {
                 self.index_counters();
             }
-            if category == FixCategory::Messages {
+            if category == FixCategory::Components {
                 self.index_messages();
             }
             return Ok(Some(prior));
@@ -297,7 +312,7 @@ impl Catalog {
         if category == FixCategory::Groups {
             self.index_counters();
         }
-        if category == FixCategory::Messages {
+        if category == FixCategory::Components {
             self.index_messages();
         }
         Ok(None)
@@ -339,9 +354,7 @@ pub(super) fn not_scalar(field: &Field) -> Error {
 fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
     match category {
         FixCategory::Fields if field.dtype().is_nested() => Err(not_scalar(field)),
-        FixCategory::Messages | FixCategory::Components
-            if !matches!(field.dtype(), DataType::Struct(_)) =>
-        {
+        FixCategory::Components if !matches!(field.dtype(), DataType::Struct(_)) => {
             Err(invalid(field, "a Struct datatype"))
         }
         FixCategory::Groups if definition_category(field) != Some(FixCategory::Groups) => {
@@ -355,9 +368,11 @@ fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
 /// registry a definition without saying which it is.
 ///
 /// A repeating group is the one shape a List has in FIX - occurrences of a
-/// non-null Struct - and a message is a Struct that says which wire code it
-/// answers to; every other Struct is a component. A nested datatype that is
-/// none of these is no definition at all, and answers nothing.
+/// non-null Struct - and every Struct is a component, a message among them
+/// being the component whose `fix:msgtype` names a wire code (decision 13).
+/// The shape alone answers; the marker is a property of the component. A
+/// nested datatype that is neither is no definition at all, and answers
+/// nothing.
 pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
     match field.dtype() {
         DataType::List(item) | DataType::LargeList(item)
@@ -365,7 +380,6 @@ pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
         {
             Some(FixCategory::Groups)
         }
-        DataType::Struct(_) if field.as_fix().msgtype().is_some() => Some(FixCategory::Messages),
         DataType::Struct(_) => Some(FixCategory::Components),
         _ => None,
     }
@@ -541,20 +555,17 @@ impl FixRegistry {
             .ok_or_else(|| Error::absent("one FIX message type", format_args!("{spelling:?}")))
     }
 
-    /// Iterates registered message singletons in name order.
+    /// Iterates the components carrying `fix:msgtype`, in name order.
     pub fn msgtypes(&self) -> impl Iterator<Item = &MsgType> {
         self.catalog
-            .order
+            .messages
             .iter()
             .filter_map(|position| self.catalog.entries[*position].field.message())
     }
 
-    /// Borrows a message singleton by its stable name iteration position.
+    /// Borrows a message singleton by its position in [`Self::msgtypes`].
     pub fn msgtype_at(&self, index: usize) -> Option<&MsgType> {
-        let start = self.catalog.order.partition_point(|position| {
-            self.catalog.entries[*position].category < FixCategory::Messages
-        });
-        let position = *self.catalog.order.get(start.checked_add(index)?)?;
+        let position = *self.catalog.messages.get(index)?;
         self.catalog.entries[position].field.message()
     }
 
@@ -773,7 +784,7 @@ impl FixRegistry {
     /// party.as_fix_mut().set_component("Party")?;
     /// let mut order = DataType::from_fields([party])?.required_field("Order");
     /// order.as_fix_mut().set_msgtype("D")?;
-    /// registry.create_definition(FixCategory::Messages, order)?;
+    /// registry.create_definition(FixCategory::Components, order)?;
     ///
     /// // Extending the component is one call, and the message sees the member.
     /// let mut extended = registry.definition(FixCategory::Components, "Party")?.clone();
@@ -1059,17 +1070,13 @@ impl FixRegistry {
         if self.get_field_by_tag(tag).is_some() {
             return true;
         }
-        [
-            FixCategory::Components,
-            FixCategory::Groups,
-            FixCategory::Messages,
-        ]
-        .into_iter()
-        .any(|category| {
-            self.catalog
-                .iter(category)
-                .any(|held| held.as_fix().tag().ok().flatten() == Some(tag))
-        })
+        [FixCategory::Components, FixCategory::Groups]
+            .into_iter()
+            .any(|category| {
+                self.catalog
+                    .iter(category)
+                    .any(|held| held.as_fix().tag().ok().flatten() == Some(tag))
+            })
     }
 
     /// The tag a named definition takes, derived from its name.
@@ -1290,11 +1297,7 @@ impl FixRegistry {
         // references it on one side and states it inline on the other is
         // compared against it whatever category it belongs to.
         let mut folding = Vec::new();
-        for category in [
-            FixCategory::Components,
-            FixCategory::Groups,
-            FixCategory::Messages,
-        ] {
+        for category in [FixCategory::Components, FixCategory::Groups] {
             for field in other.catalog.iter(category) {
                 if documents.get(category, field.name()).is_none() {
                     self.fold_document(&mut documents, category, field)?;

@@ -637,14 +637,14 @@ def test_a_malformed_native_field_shard_is_located(tmp_path: pathlib.Path) -> No
         FixRegistry.from_handle(root)
 
 
-def test_registry_round_trips_through_the_four_categories(
+def test_registry_round_trips_through_the_three_categories(
     seed: FixRegistry, tmp_path: pathlib.Path
 ) -> None:
     root = tmp_path / "dictionary"
     seed.write_into(root)
 
     assert (root / "fields" / "0.json").is_file()
-    for category in ("fields", "messages", "components", "groups"):
+    for category in ("fields", "components", "groups"):
         assert len(list((root / category).glob("*.json"))) == len(
             list((SEED / category).glob("*.json"))
         )
@@ -927,7 +927,7 @@ def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
     assert len(registry) == len(fields) + CRATED
     assert [root.name for root in roots] == ["7"]
     # The message definition the file produces is stamped like its fields.
-    assert next(registry.definitions("messages")).fix.branches == ["bloomberg"]
+    assert next(registry.msgtypes()).field.fix.branches == ["bloomberg"]
     assert registry.dialects() == ["bloomberg"]
     # The registry form stamps nothing when no dialect is named.
     unstamped, _ = FixRegistry.from_cfb_file(path)

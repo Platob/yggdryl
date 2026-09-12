@@ -330,7 +330,7 @@ impl JsFixRegistry {
             .map_err(napi_error)
     }
 
-    /// Load the fields, messages, components, and groups categories.
+    /// Load the fields, components, and groups categories.
     ///
     /// `location` is an `IOBase` handle, a `Url`, or the string naming one, run
     /// through the coercion every folder-shaped entry point uses. A folder that
@@ -662,7 +662,7 @@ impl JsFixRegistry {
         format!("FixRegistry({} fields)", self.inner.len())
     }
 
-    /// A complete native catalog snapshot: the four categories.
+    /// A complete native catalog snapshot: the three categories.
     #[napi(js_name = "toJSON")]
     pub fn js_json(&self) -> Result<serde_json::Value> {
         serde_json::from_str(&self.inner.into_json().map_err(napi_error)?).map_err(napi_error)

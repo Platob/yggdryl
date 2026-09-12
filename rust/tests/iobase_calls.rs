@@ -62,14 +62,14 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     // a dictionary is one namespace, and what each dialect contributed
     // travels on the field it contributed to.
     costs(
-        "one field shard, four categories",
+        "one field shard, three categories",
         &calls,
-        "child_by_path=5",
+        "child_by_path=4",
         || {
             registry.write_into(&mut folder).unwrap();
         },
     );
-    costs("four category roots", &calls, "child_by_path=4", || {
+    costs("three category roots", &calls, "child_by_path=3", || {
         assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
     });
     folder.remove(true).unwrap();

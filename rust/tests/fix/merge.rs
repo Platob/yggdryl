@@ -51,7 +51,7 @@ fn catalog_with(members: impl IntoIterator<Item = Field>) -> FixRegistry {
         .required_field("NewOrderSingle");
     message.as_fix_mut().set_msgtype("D").unwrap();
     registry
-        .create_definition(FixCategory::Messages, message)
+        .create_definition(FixCategory::Components, message)
         .unwrap();
     registry
 }
@@ -378,7 +378,7 @@ fn a_component_extended_by_a_member_is_seen_extended_by_every_reference() {
         .unwrap();
     assert!(
         !registry
-            .add_definition(FixCategory::Messages, order)
+            .add_definition(FixCategory::Components, order)
             .unwrap()
     );
     let order = registry.msgtype("D").unwrap();
@@ -491,7 +491,7 @@ fn definition_merges_refuse_a_member_that_disagrees_atomically() {
     let mut recoded = registry.msgtype("D").unwrap().as_field().clone();
     recoded.as_fix_mut().set_msgtype("E").unwrap();
     let error = registry
-        .add_definition(FixCategory::Messages, recoded)
+        .add_definition(FixCategory::Components, recoded)
         .unwrap_err();
     assert!(error.is_conflict(), "{error}");
     assert_eq!(registry, before);
@@ -1294,7 +1294,7 @@ fn message_codes_live_in_one_namespace() {
     venue.as_fix_mut().set_msgtype("D").unwrap();
     assert!(
         registry
-            .add_definition(FixCategory::Messages, venue.clone())
+            .add_definition(FixCategory::Components, venue.clone())
             .unwrap()
     );
     assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
@@ -1306,7 +1306,7 @@ fn message_codes_live_in_one_namespace() {
     assert_eq!(registry.msgtypes().count(), 2);
     assert_eq!(
         registry
-            .definition(FixCategory::Messages, "VenueOrder")
+            .definition(FixCategory::Components, "VenueOrder")
             .unwrap()
             .as_fix()
             .msgtype(),
@@ -1321,7 +1321,7 @@ fn message_codes_live_in_one_namespace() {
     restated.as_fix_mut().set_msgtype("D").unwrap();
     assert!(
         !registry
-            .add_definition(FixCategory::Messages, restated)
+            .add_definition(FixCategory::Components, restated)
             .unwrap()
     );
     let order = registry.msgtype("D").unwrap();
@@ -1337,7 +1337,7 @@ fn message_codes_live_in_one_namespace() {
     let mut target = catalog();
     let mut source = FixRegistry::new();
     source
-        .create_definition(FixCategory::Messages, venue)
+        .create_definition(FixCategory::Components, venue)
         .unwrap();
     assert_eq!(target.merge_with(&source).unwrap(), (0, 0));
     assert_eq!(target.msgtype("D").unwrap().name(), "NewOrderSingle");
@@ -1363,7 +1363,7 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
     algo.as_fix_mut().set_msgtype("D").unwrap();
     assert!(
         registry
-            .add_definition(FixCategory::Messages, algo.clone())
+            .add_definition(FixCategory::Components, algo.clone())
             .unwrap()
     );
     assert_eq!(registry.msgtype("AlgoOrder").unwrap().as_str(), "D");
@@ -1387,7 +1387,7 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
     assert!(target.add_field(msgtype).unwrap());
     let mut source = FixRegistry::new();
     source
-        .create_definition(FixCategory::Messages, algo)
+        .create_definition(FixCategory::Components, algo)
         .unwrap();
     assert_eq!(target.merge_with(&source).unwrap(), (0, 0));
     assert_eq!(target.msgtype("AlgoOrder").unwrap().as_str(), "D");

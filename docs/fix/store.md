@@ -1,6 +1,6 @@
 # Store
 
-A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as four category directories. What each dialect contributed travels inside the document of the field it contributed to; nothing in the layout is keyed by a dialect.
+A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as three category directories; a message is a component carrying `fix:msgtype` and lives among the components. What each dialect contributed travels inside the document of the field it contributed to; nothing in the layout is keyed by a dialect.
 
 ## Contract
 
@@ -8,7 +8,7 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as four
 | --- | --- |
 | Owner | `FixRegistry::from_handle` and `write_into`; bindings redirect to the native loader/writer |
 | Fields | `fields/<tag / 100>.json`; each document is an array of tagged scalar fields, tag-major, the holder of a shared tag first |
-| Named definitions | `messages/<name>.json`, `components/<name>.json`, `groups/<name>.json`; one native `Field` per document, stating the `fix:tag` derived from the definition's name |
+| Named definitions | `components/<name>.json`, `groups/<name>.json`; a message is a component carrying `fix:msgtype` and is written beside the others; one native `Field` per document, stating the `fix:tag` derived from the definition's name |
 | Enums | Inline `fix:codes` metadata on each scalar field |
 | References | Compact native child fields retain reference metadata and use `Null` as the unresolved datatype; intake resolves them to canonical native fields |
 | Membership | `fix:branches` metadata inside each field and named definition document: the sorted, lowercase, comma-separated names of the dictionaries that contributed it; that document is the only place a dictionary is recorded |
@@ -22,7 +22,7 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as four
 
 ## Use
 
-The counter is a scalar field; a reusable component defines one occurrence and the group references it. This example writes all four categories, with one field naming the dialect that contributed it, and reloads the complete graph.
+The counter is a scalar field; a reusable component defines one occurrence and the group references it. This example writes all three categories, with one field naming the dialect that contributed it, and reloads the complete graph.
 
 === "Rust"
 
@@ -48,15 +48,15 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     registry.create_definition(FixCategory::Groups, group)?;
     let mut order = DataType::from_fields([])?.required_field("Order");
     order.as_fix_mut().set_msgtype("D")?;
-    registry.create_definition(FixCategory::Messages, order)?;
+    registry.create_definition(FixCategory::Components, order)?;
 
     registry.write_into(&mut root)?;
     assert!(path.join("fields/4.json").is_file());
     assert!(path.join("components/Party.json").is_file());
     assert!(path.join("groups/Parties.json").is_file());
-    assert!(path.join("messages/Order.json").is_file());
-    // The four category directories are the whole layout.
-    assert_eq!(std::fs::read_dir(&path)?.count(), 4);
+    assert!(path.join("components/Order.json").is_file());
+    // The three category directories are the whole layout.
+    assert_eq!(std::fs::read_dir(&path)?.count(), 3);
     let reloaded = FixRegistry::from_handle(&root)?;
     assert_eq!(reloaded, registry);
     assert_eq!(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
@@ -90,7 +90,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     registry.create_definition("groups", group)
     order = Field("Order", DataType.from_fields([]), nullable=False)
     order.fix.msgtype = "D"
-    registry.create_definition("messages", order)
+    registry.create_definition("components", order)
 
     with tempfile.TemporaryDirectory(prefix="ygg-doc-store-") as temporary:
         root = pathlib.Path(temporary) / "catalog"
@@ -98,9 +98,9 @@ The counter is a scalar field; a reusable component defines one occurrence and t
         assert (root / "fields/4.json").is_file()
         assert (root / "components/Party.json").is_file()
         assert (root / "groups/Parties.json").is_file()
-        assert (root / "messages/Order.json").is_file()
-        # The four category directories are the whole layout.
-        assert sorted(child.name for child in root.iterdir()) == ["components", "fields", "groups", "messages"]
+        assert (root / "components/Order.json").is_file()
+        # The three category directories are the whole layout.
+        assert sorted(child.name for child in root.iterdir()) == ["components", "fields", "groups"]
         reloaded = FixRegistry.from_handle(root)
         assert reloaded == registry
         assert reloaded.field_by_path("Parties.PartyID").fix.tag == 448
@@ -134,16 +134,16 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     registry.createDefinition('groups', group)
     const order = fields.struct('Order', [], { nullable: false })
     order.fix.msgtype = 'D'
-    registry.createDefinition('messages', order)
+    registry.createDefinition('components', order)
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-doc-store-'))
     try {
       registry.writeInto(root)
-      for (const file of ['fields/4.json', 'components/Party.json', 'groups/Parties.json', 'messages/Order.json']) {
+      for (const file of ['fields/4.json', 'components/Party.json', 'groups/Parties.json', 'components/Order.json']) {
         assert.ok(fs.existsSync(path.join(root, file)))
       }
-      // The four category directories are the whole layout.
-      assert.deepEqual(fs.readdirSync(root).sort(), ['components', 'fields', 'groups', 'messages'])
+      // The three category directories are the whole layout.
+      assert.deepEqual(fs.readdirSync(root).sort(), ['components', 'fields', 'groups'])
       const reloaded = fix.FixRegistry.fromHandle(root)
       assert.ok(reloaded.equals(registry))
       assert.equal(reloaded.fieldByPath('Parties.PartyID').fix.tag, 448)
@@ -162,9 +162,9 @@ Only scalar fields use numeric shards; alternate tags do not create additional c
 ```text
 <root>/fields/0.json
 <root>/fields/50.json
+<root>/components/Order.json
 <root>/components/Party.json
 <root>/groups/Parties.json
-<root>/messages/Order.json
 ```
 
 Tag 55 belongs in `fields/0.json`; tag 5001 belongs in `fields/50.json`, whichever dictionary defined it. Every field's canonical tag must agree with its document's shard. Two fields on one tag - a dialect's own name over a tag the specification holds - share the shard, the field the bare tag answers written first; a reader loads a shard in file order, so the holder survives a round trip. A field the specification alone defines states no `fix:branches`.
@@ -190,13 +190,13 @@ A dictionary is a membership, not a namespace: the store has no document for one
 
 ## Complete JSON snapshots
 
-`FixRegistry::into_json` and `from_json` use one object with `fields`, `components`, `groups`, and `messages` arrays and no other key. They reuse the folder store's compact references and resolver, so a snapshot retains named definitions, contextual groups, inline enums, and every field's membership; collecting ordinary scalar iteration does not preserve a catalog.
+`FixRegistry::into_json` and `from_json` use one object with `fields`, `components`, and `groups` arrays and no other key; a snapshot carrying a `messages` key is refused by name. They reuse the folder store's compact references and resolver, so a snapshot retains named definitions, contextual groups, inline enums, and every field's membership; collecting ordinary scalar iteration does not preserve a catalog.
 
 Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `toJSON`, and `clone` do the same; `stable_hash` / `stableHash` derives from native registry state, membership included like any other metadata.
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 747 components, 580 groups, and 181 messages: 1,573 JSON documents totaling 9,271,670 bytes. It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 named definitions states the tag derived from its name - `groups/parties.json` is 209321 - and no two share one. Thirty-eight of the fields are ones FIX has since removed, kept with the version that [removed them](registry.md#versions-are-a-filter-on-the-read); 37 carry [`fix:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all. No document states a `fix:branches` and no document states an id.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,271,670 bytes. It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 named definitions states the tag derived from its name - `groups/parties.json` is 209321 - and no two share one. Thirty-eight of the fields are ones FIX has since removed, kept with the version that [removed them](registry.md#versions-are-a-filter-on-the-read); 37 carry [`fix:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all. No document states a `fix:branches` and no document states an id.
 
 The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradingCommunity/orchestrations/blob/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml), with the [documented naming rules](registry.md#group-names). This is a complete resolved catalog workload, so its load/write timings are not comparable to a scalar-only seed or a small FIX-version subset.
 
@@ -374,7 +374,7 @@ Different processes and sample counts make these observed boundary costs, not a 
 
 The small boundary fixture contains two fields plus one component, group, and message. It is intentionally distinct from the full-seed Rust snapshot fixture.
 
-Root navigation is asserted with `Counted`: loading resolves the four category roots (`child_by_path=4`); writing a one-shard catalog resolves those four paths plus its shard (`child_by_path=5`). These counts cover the root handle only; document reads/writes occur on child handles and are outside that tally.
+Root navigation is asserted with `Counted`: loading resolves the three category roots (`child_by_path=3`); writing a one-shard catalog resolves those three paths plus its shard (`child_by_path=4`). These counts cover the root handle only; document reads/writes occur on child handles and are outside that tally.
 
 Regenerate with release bindings installed:
 

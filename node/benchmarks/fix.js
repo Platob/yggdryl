@@ -145,7 +145,7 @@ occurrence.fix.group = 'Parties'
 counter.fix.fieldRef = 'NoPartyIDs'
 const definition = fields.struct('NewOrderSingle', [counter, occurrence], { nullable: false })
 definition.fix.msgtype = 'D'
-catalog.createDefinition('messages', definition)
+catalog.createDefinition('components', definition)
 const snapshot = catalog.intoJson()
 // The lenient field verb, both answers: `party_id` folds to the stored
 // `PartyID` and merges into it, `Symbol` is a name nothing answers to.
@@ -247,7 +247,7 @@ try {
   benchmark('fix/message_into_latest', () => message.intoLatest())
   benchmark('fix/infer_fixml_protocol', () => MimeType.inferBytes(FIXML_LINE))
   benchmark('fix/infer_ullink_msgtype', () => fix.FixCodec.inferMsgtypeText(ULLINK_LINE))
-  for (const category of ['fields', 'components', 'groups', 'messages']) {
+  for (const category of ['fields', 'components', 'groups']) {
     benchmark(`fix/${category}_first`, () => {
       const iterator = catalog.definitions(category)[Symbol.iterator]()
       const first = iterator.next().value
@@ -298,8 +298,8 @@ try {
     const copy = catalog.clone()
     const empty = fields.struct('NewMessage', [], { nullable: false })
     empty.fix.msgtype = 'New Message Code'
-    copy.createDefinition('messages', empty)
-    return copy.removeDefinition('messages', 'NewMessage')
+    copy.createDefinition('components', empty)
+    return copy.removeDefinition('components', 'NewMessage')
   })
   benchmark('fix/numeric_group_parse', () => drain(codec.parseLine(Buffer.from('35=D|453=2|448=ONE|448=TWO|'))))
   benchmark('fix/message_into_row', () => message.intoRow(order))

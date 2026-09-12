@@ -14,11 +14,10 @@ use crate::text::Formatting;
 use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, Url};
 
 const SHARD_WIDTH: i32 = 100;
-const LOAD_ORDER: [FixCategory; 4] = [
+const LOAD_ORDER: [FixCategory; 3] = [
     FixCategory::Fields,
     FixCategory::Components,
     FixCategory::Groups,
-    FixCategory::Messages,
 ];
 
 pub(super) const fn shard_of(tag: i32) -> i32 {
@@ -254,12 +253,6 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
                 FixCategory::Fields => placeholder.as_fix_mut().set_field_ref(&name)?,
                 FixCategory::Groups => placeholder.as_fix_mut().set_group(&name)?,
                 FixCategory::Components => placeholder.as_fix_mut().set_component(&name)?,
-                _ => {
-                    return Err(Error::InvalidRecord {
-                        path: field.name().into(),
-                        reason: "expected a field, component, or group reference".into(),
-                    });
-                }
             }
             return Ok(placeholder);
         }
@@ -300,9 +293,10 @@ fn is_crate_field(field: &Field) -> bool {
 impl FixRegistry {
     /// Reads a complete registry snapshot from JSON.
     ///
-    /// `fields`, `messages`, `components`, and `groups` are arrays of native
-    /// Field documents. References resolve through the same bounded graph
-    /// loader as the store.
+    /// `fields`, `components`, and `groups` are arrays of native Field
+    /// documents; a message is a component carrying `fix:msgtype`, and any
+    /// other key - `messages` among them - is refused by name. References
+    /// resolve through the same bounded graph loader as the store.
     pub fn from_json(input: &str) -> Result<Self> {
         Self::from_snapshot(&crate::from_json_scalar(input)?)
     }
@@ -317,7 +311,7 @@ impl FixRegistry {
     /// let mut registry = FixRegistry::new();
     /// let mut message = DataType::from_fields([])?.required_field("Order");
     /// message.as_fix_mut().set_msgtype("D")?;
-    /// registry.create_definition(FixCategory::Messages, message)?;
+    /// registry.create_definition(FixCategory::Components, message)?;
     /// let restored = FixRegistry::from_json(&registry.into_json()?)?;
     /// assert_eq!(restored, registry);
     /// assert_eq!(restored.msgtype("D")?.name(), "Order");
@@ -366,7 +360,7 @@ impl FixRegistry {
             {
                 return Err(Error::InvalidRecord {
                     path: key.clone(),
-                    reason: "expected fields, messages, components, or groups".into(),
+                    reason: "expected fields, components, or groups".into(),
                 });
             }
         }
@@ -462,7 +456,7 @@ impl FixRegistry {
         Ok(())
     }
 
-    /// Loads fields, messages, components, and groups.
+    /// Loads fields, components, and groups.
     ///
     /// Scalar shards are arrays; named definitions are single native Field
     /// documents. References resolve once, with missing names and cycles

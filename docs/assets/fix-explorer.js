@@ -4,7 +4,7 @@
 // interpreting FIX bytes, resolving references, or rebuilding datatypes.
 ;(() => {
   const SOURCE = document.currentScript ? document.currentScript.src : ''
-  const CATEGORIES = ['fields', 'messages', 'components', 'groups']
+  const CATEGORIES = ['fields', 'components', 'groups']
   const PAGE_SIZE = 60
   let pending = null
   let controlId = 0
