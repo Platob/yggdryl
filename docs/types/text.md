@@ -92,6 +92,58 @@ other charset rides the matching binary layout, and what Arrow cannot say - the
 charset, the bound, and which of the two view layouts this is, since Arrow has
 one - rides the `yggdryl.string` extension document on the field.
 
+Each binding builds the same five layouts and reads back the same three facts -
+the charset, the exact width a fixed layout declares, the maximum every other
+one allows.
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, types
+
+    # A charset or a bound is what makes a string its own datatype.
+    latin = DataType.from_str("string(windows-1252,32)")
+    assert latin.id == "string"
+    assert latin.charset == "windows-1252"
+    assert latin.max_bytes == 32
+
+    # The factories build the same five layouts, and a bound is bytes.
+    assert types.string("note", "windows-1252", max_bytes=32).dtype == latin
+    assert types.fixed_string("ccy", "windows-1252", 8).dtype.fixed_bytes == 8
+    assert types.large_string_view("note", "windows-1252").dtype.id == "large_string_view"
+
+    # Plain UTF-8 is the datatype it already was.
+    assert DataType.from_str("string") == DataType("utf8")
+    assert types.string("note").dtype.id == "utf8"
+    assert DataType("ascii").charset == "us-ascii"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, fields } = require('yggdryl')
+
+    // A charset or a bound is what makes a string its own datatype.
+    const latin = DataType.fromString('string(windows-1252,32)')
+    assert.equal(latin.id, 'string')
+    assert.equal(latin.charset, 'windows-1252')
+    assert.equal(latin.maxBytes, 32)
+
+    // The factories build the same five layouts, and a bound is bytes.
+    assert.ok(fields.string('note', 'windows-1252', 32).dtype.equals(latin))
+    assert.equal(fields.fixedString('ccy', 'windows-1252', 8).dtype.fixedBytes, 8)
+    assert.equal(
+      fields.largeStringView('note', 'windows-1252').dtype.id,
+      'large_string_view',
+    )
+
+    // Plain UTF-8 is the datatype it already was.
+    assert.ok(DataType.fromString('string').equals(new DataType('utf8')))
+    assert.equal(fields.string('note').dtype.id, 'utf8')
+    assert.equal(new DataType('ascii').charset, 'us-ascii')
+    ```
+
 ## Use
 
 `DataType::from_regex` builds one Struct from a byte regex's named captures, in capture order.

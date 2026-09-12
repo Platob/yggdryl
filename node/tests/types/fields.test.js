@@ -230,6 +230,19 @@ test('typed field factories cover every native datatype variant', () => {
     ['mic', fields.mic('value')],
     ['cfi', fields.cfi('value')],
     ['isin', fields.isin('value')],
+    ['side', fields.side('value')],
+    ['msgdirection', fields.msgdirection('value')],
+    ['state', fields.state('value')],
+    ['timeinforce', fields.timeinforce('value')],
+    // A string in a charset the crate has no other name for. In UTF-8 each of
+    // these answers its plain spelling instead - string() is utf8 - because one
+    // datatype has one name, so the five string ids only exist over a charset
+    // that is not UTF-8.
+    ['string', fields.string('value', 'windows-1252')],
+    ['fixed_string', fields.fixedString('value', 'windows-1252', 8)],
+    ['string_view', fields.stringView('value', 'windows-1252')],
+    ['large_string', fields.largeString('value', 'windows-1252')],
+    ['large_string_view', fields.largeStringView('value', 'windows-1252')],
     ['uuid', fields.uuid('value')],
     ['version', fields.version('value')],
     ['url', fields.url('value')],
@@ -255,7 +268,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['geography', fields.geography('value', 'OGC:CRS84', 'vincenty')],
   ])
 
-  assert.equal(byId.size, 55)
+  assert.equal(byId.size, 64)
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
   // factories default the same way, so one declared schema cannot disagree

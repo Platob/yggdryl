@@ -13,9 +13,11 @@ use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, P
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple};
 use yggdryl::ArrowCast;
+use yggdryl::types::{StringLayout as CoreStringLayout, StringParameters as CoreStringParameters};
 use yggdryl::{
-    AsciiEnum as CoreAsciiEnum, DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm,
-    Scheme as CoreScheme, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
+    AsciiEnum as CoreAsciiEnum, Charset as CoreCharset, DataType as CoreDataType,
+    EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme, TimeUnit as CoreTimeUnit,
+    UnionMode as CoreUnionMode,
 };
 
 use crate::types::field::PyField;
@@ -642,6 +644,30 @@ impl PyDataType {
         Self::from_validated(inner)
     }
 
+    /// Creates a string datatype: a ``layout`` over a ``charset``, optionally
+    /// bounded.
+    ///
+    /// The bound is one number read two ways - exactly ``bound`` bytes under
+    /// ``fixed_string``, at most ``bound`` under every other layout - so the
+    /// layout is what says which it means.
+    ///
+    /// A string the crate already spells another way answers that spelling:
+    /// ``string("utf-8")`` is ``utf8`` and ``fixed_string("us-ascii", 4)`` is
+    /// ``ascii(4)``, because one datatype has one name.
+    #[staticmethod]
+    #[pyo3(signature = (charset, layout="string", bound=None))]
+    fn string(charset: &str, layout: &str, bound: Option<u32>) -> PyResult<Self> {
+        let layout = CoreStringLayout::from_str(layout).map_err(value_error)?;
+        let charset = CoreCharset::from_str(charset).map_err(value_error)?;
+        let parameters = CoreStringParameters::new(layout, charset);
+        let parameters = match bound {
+            Some(bound) => parameters.try_with_bound(bound).map_err(value_error)?,
+            None => parameters,
+        };
+        let inner = CoreDataType::string(parameters).map_err(value_error)?;
+        Self::from_validated(inner)
+    }
+
     /// Resolves a registered logical name such as ``currency`` or ``Price``
     /// to the datatype it spells, folding case, ``_``, ``-``, and spaces.
     #[staticmethod]
@@ -1215,6 +1241,40 @@ impl PyDataType {
     #[getter]
     fn is_string(&self) -> bool {
         self.inner.id().is_string()
+    }
+
+    /// The charset a string column's bytes are written in, ``None`` for every
+    /// datatype that is not a string.
+    ///
+    /// Every string has one, because UTF-8 is what a string with nothing
+    /// declared is in.
+    #[getter]
+    fn charset(&self) -> Option<&'static str> {
+        self.inner.charset().map(CoreCharset::as_str)
+    }
+
+    /// The exact stored width a fixed string layout declares, in bytes.
+    ///
+    /// ``None`` for a layout that is not fixed, and for every datatype that is
+    /// not a string. A bound is one number read two ways, and the layout is
+    /// what says which reading applies.
+    #[getter]
+    fn fixed_bytes(&self) -> Option<u32> {
+        self.inner
+            .string_parameters()
+            .and_then(CoreStringParameters::fixed)
+    }
+
+    /// The largest stored width a string layout allows, in bytes.
+    ///
+    /// ``None`` when the string declares no bound, for a fixed layout - whose
+    /// bound is exact rather than a maximum - and for every datatype that is
+    /// not a string.
+    #[getter]
+    fn max_bytes(&self) -> Option<u32> {
+        self.inner
+            .string_parameters()
+            .and_then(CoreStringParameters::max)
     }
 
     /// Whether the family is a fixed-width or exact number.

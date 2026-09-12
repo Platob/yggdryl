@@ -179,6 +179,63 @@ function createFields(DataType, Field, native) {
     mic: simple('mic'),
     cfi: simple('cfi'),
     isin: simple('isin'),
+    side: simple('side'),
+    msgdirection: simple('msgdirection'),
+    state: simple('state'),
+    timeinforce: simple('timeinforce'),
+
+    // A string is one layout over one charset. In UTF-8 each of these answers
+    // its plain spelling instead - string() is utf8 - because one datatype has
+    // one name, so these five only carry a charset the crate has no other name
+    // for. The bound is one number read two ways: exactly that many bytes under
+    // fixedString, at most that many under the rest.
+    string(name, charset = 'utf-8', maxBytes, value) {
+      if (isOptions(maxBytes)) {
+        value = maxBytes
+        maxBytes = undefined
+      }
+      return field(name, DataType.string(charset, 'string', maxBytes), value)
+    },
+    fixedString(name, charset, width, value) {
+      return field(
+        name,
+        DataType.string(charset, 'fixed_string', width),
+        value,
+      )
+    },
+    stringView(name, charset = 'utf-8', maxBytes, value) {
+      if (isOptions(maxBytes)) {
+        value = maxBytes
+        maxBytes = undefined
+      }
+      return field(
+        name,
+        DataType.string(charset, 'string_view', maxBytes),
+        value,
+      )
+    },
+    largeString(name, charset = 'utf-8', maxBytes, value) {
+      if (isOptions(maxBytes)) {
+        value = maxBytes
+        maxBytes = undefined
+      }
+      return field(
+        name,
+        DataType.string(charset, 'large_string', maxBytes),
+        value,
+      )
+    },
+    largeStringView(name, charset = 'utf-8', maxBytes, value) {
+      if (isOptions(maxBytes)) {
+        value = maxBytes
+        maxBytes = undefined
+      }
+      return field(
+        name,
+        DataType.string(charset, 'large_string_view', maxBytes),
+        value,
+      )
+    },
 
     list: list('list'),
     listView: list('list_view'),

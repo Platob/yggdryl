@@ -231,6 +231,10 @@ export type DataTypeId =
   | 'mic'
   | 'cfi'
   | 'isin'
+  | 'side'
+  | 'msgdirection'
+  | 'state'
+  | 'timeinforce'
   | 'uuid'
   | 'version'
   | 'url'
@@ -315,6 +319,10 @@ interface DataTypeKindById {
   mic: 'ascii'
   cfi: 'ascii'
   isin: 'ascii'
+  side: 'ascii'
+  msgdirection: 'ascii'
+  state: 'ascii'
+  timeinforce: 'ascii'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -665,6 +673,24 @@ export type MicField = FieldOf<'mic', string>
 export type CfiField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
 export type IsinField = FieldOf<'isin', string>
+/** FIX's `Side(54)`, the side of a trade, stored as the wire value. */
+export type SideField = FieldOf<'side', string>
+/** A captured line's direction, transport rather than FIX. */
+export type MsgDirectionField = FieldOf<'msgdirection', string>
+/** What state one thing is in, stored as its own sortable spelling. */
+export type StateField = FieldOf<'state', string>
+/** FIX's `TimeInForce(59)`, how long an order stands. */
+export type TimeInForceField = FieldOf<'timeinforce', string>
+/** Variable-width text in a declared charset. */
+export type StringField = FieldOf<'string', string>
+/** Text in a declared charset, stored as exactly one width, padded. */
+export type FixedStringField = FieldOf<'fixed_string', string>
+/** Text in a declared charset over Arrow's view layout. */
+export type StringViewField = FieldOf<'string_view', string>
+/** Text in a declared charset over 64-bit offsets. */
+export type LargeStringField = FieldOf<'large_string', string>
+/** Text in a declared charset over the view layout, declared large. */
+export type LargeStringViewField = FieldOf<'large_string_view', string>
 export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
 export type ListViewField<V = unknown> = FieldOf<
   'list_view',
@@ -916,6 +942,63 @@ export interface FieldsNamespace {
   mic(name: string, options?: FieldOptions): MicField
   cfi(name: string, options?: FieldOptions): CfiField
   isin(name: string, options?: FieldOptions): IsinField
+  side(name: string, options?: FieldOptions): SideField
+  msgdirection(name: string, options?: FieldOptions): MsgDirectionField
+  state(name: string, options?: FieldOptions): StateField
+  timeinforce(name: string, options?: FieldOptions): TimeInForceField
+  string(
+    name: string,
+    charset?: string,
+    maxBytes?: number,
+    options?: FieldOptions,
+  ): StringField
+  string(name: string, charset: string, options: FieldOptions): StringField
+  string(name: string, options: FieldOptions): StringField
+  fixedString(
+    name: string,
+    charset: string,
+    width: number,
+    options?: FieldOptions,
+  ): FixedStringField
+  stringView(
+    name: string,
+    charset?: string,
+    maxBytes?: number,
+    options?: FieldOptions,
+  ): StringViewField
+  stringView(
+    name: string,
+    charset: string,
+    options: FieldOptions,
+  ): StringViewField
+  stringView(name: string, options: FieldOptions): StringViewField
+  largeString(
+    name: string,
+    charset?: string,
+    maxBytes?: number,
+    options?: FieldOptions,
+  ): LargeStringField
+  largeString(
+    name: string,
+    charset: string,
+    options: FieldOptions,
+  ): LargeStringField
+  largeString(name: string, options: FieldOptions): LargeStringField
+  largeStringView(
+    name: string,
+    charset?: string,
+    maxBytes?: number,
+    options?: FieldOptions,
+  ): LargeStringViewField
+  largeStringView(
+    name: string,
+    charset: string,
+    options: FieldOptions,
+  ): LargeStringViewField
+  largeStringView(
+    name: string,
+    options: FieldOptions,
+  ): LargeStringViewField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -1416,6 +1499,70 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'isin', string, N, O>
+  side<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'side', string, N, O>
+  msgdirection<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'msgdirection', string, N, O>
+  state<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'state', string, N, O>
+  timeinforce<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'timeinforce', string, N, O>
+  string<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    charset?: string,
+    maxBytes?: number,
+    options?: O,
+  ): NamedField<'string', string, N, O>
+  fixedString<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    charset: string,
+    width: number,
+    options?: O,
+  ): NamedField<'fixed_string', string, N, O>
+  stringView<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    charset?: string,
+    maxBytes?: number,
+    options?: O,
+  ): NamedField<'string_view', string, N, O>
+  largeString<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    charset?: string,
+    maxBytes?: number,
+    options?: O,
+  ): NamedField<'large_string', string, N, O>
+  largeStringView<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    charset?: string,
+    maxBytes?: number,
+    options?: O,
+  ): NamedField<'large_string_view', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,

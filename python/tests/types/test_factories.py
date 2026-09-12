@@ -85,9 +85,18 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "timeinforce": types.timeinforce("value"),
         "geometry": types.geometry("value"),
         "geography": types.geography("value", "OGC:CRS84", "vincenty"),
+        # A string in a charset the crate has no other name for. In UTF-8 each
+        # of these answers its plain spelling instead - `string("utf-8")` is
+        # `utf8` - because one datatype has one name, so the five string IDs
+        # only exist over a charset that is not UTF-8.
+        "string": types.string("value", "windows-1252"),
+        "fixed_string": types.fixed_string("value", "windows-1252", 8),
+        "string_view": types.string_view("value", "windows-1252"),
+        "large_string": types.large_string("value", "windows-1252"),
+        "large_string_view": types.large_string_view("value", "windows-1252"),
     }
 
-    assert len(values_by_kind) == 59
+    assert len(values_by_kind) == 64
     assert set(values_by_kind) == {
         value.dtype.id for value in values_by_kind.values()
     }

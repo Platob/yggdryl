@@ -160,6 +160,16 @@ pub(crate) fn exact_i32(value: f64, name: &str) -> napi::Result<i32> {
     Ok(value as i32)
 }
 
+pub(crate) fn exact_u32(value: f64, name: &str) -> napi::Result<u32> {
+    if !value.is_finite() || value.fract() != 0.0 || value < 0.0 || value > f64::from(u32::MAX) {
+        return Err(Error::from_reason(format!(
+            "{name} must be an unsigned 32-bit integer"
+        )));
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Ok(value as u32)
+}
+
 pub(crate) fn exact_i128(value: &napi::bindgen_prelude::BigInt, name: &str) -> napi::Result<i128> {
     let (parsed, lossless) = value.get_i128();
     if !lossless {

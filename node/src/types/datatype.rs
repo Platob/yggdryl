@@ -6,13 +6,16 @@ use napi::bindgen_prelude::{
     BigInt, ClassInstance, Either, Either3, Env, Error, Object, Result, Unknown,
 };
 use napi_derive::napi;
+use yggdryl::types::{StringLayout as CoreStringLayout, StringParameters as CoreStringParameters};
 use yggdryl::{
-    AsciiEnum as CoreAsciiEnum, DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm,
-    Field as CoreField, Scheme as CoreScheme, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
+    AsciiEnum as CoreAsciiEnum, Charset as CoreCharset, DataType as CoreDataType,
+    EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField, Scheme as CoreScheme,
+    TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
 };
 
 use crate::{
-    JsDifferenceIterator, exact_i8, exact_i32, exact_i128, exact_u8, napi_error, ordering_value,
+    JsDifferenceIterator, exact_i8, exact_i32, exact_i128, exact_u8, exact_u32, napi_error,
+    ordering_value,
     types::field::JsField,
     types::value::arrow_scalar_to_ipc,
     types::value::{JsValueHint, dtype_js_hint, field_value_to_js},
@@ -196,6 +199,33 @@ impl JsDataType {
     #[napi(factory)]
     pub fn ascii(width: f64) -> Result<Self> {
         CoreDataType::ascii(exact_i32(width, "width")?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Creates a string datatype: a `layout` over a `charset`, optionally
+    /// bounded.
+    ///
+    /// The bound is one number read two ways - exactly `bound` bytes under
+    /// `fixed_string`, at most `bound` under every other layout - so the
+    /// layout is what says which it means.
+    ///
+    /// A string the crate already spells another way answers that spelling:
+    /// `string('utf-8')` is `utf8` and `string('us-ascii', 'fixed_string', 4)`
+    /// is `ascii(4)`, because one datatype has one name.
+    #[napi(factory)]
+    pub fn string(charset: String, layout: Option<String>, bound: Option<f64>) -> Result<Self> {
+        let layout = CoreStringLayout::from_str(layout.as_deref().unwrap_or("string"))
+            .map_err(napi_error)?;
+        let charset = CoreCharset::from_str(&charset).map_err(napi_error)?;
+        let parameters = CoreStringParameters::new(layout, charset);
+        let parameters = match bound {
+            Some(bound) => parameters
+                .try_with_bound(exact_u32(bound, "bound")?)
+                .map_err(napi_error)?,
+            None => parameters,
+        };
+        CoreDataType::string(parameters)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -447,6 +477,40 @@ impl JsDataType {
     #[napi(getter)]
     pub fn ascii_width(&self) -> Option<i32> {
         self.inner.ascii_width()
+    }
+
+    /// The charset a string column's bytes are written in, `null` for every
+    /// datatype that is not a string.
+    ///
+    /// Every string has one, because UTF-8 is what a string with nothing
+    /// declared is in.
+    #[napi(getter)]
+    pub fn charset(&self) -> Option<&'static str> {
+        self.inner.charset().map(CoreCharset::as_str)
+    }
+
+    /// The exact stored width a fixed string layout declares, in bytes.
+    ///
+    /// `null` for a layout that is not fixed, and for every datatype that is
+    /// not a string. A bound is one number read two ways, and the layout is
+    /// what says which reading applies.
+    #[napi(getter)]
+    pub fn fixed_bytes(&self) -> Option<u32> {
+        self.inner
+            .string_parameters()
+            .and_then(CoreStringParameters::fixed)
+    }
+
+    /// The largest stored width a string layout allows, in bytes.
+    ///
+    /// `null` when the string declares no bound, for a fixed layout - whose
+    /// bound is exact rather than a maximum - and for every datatype that is
+    /// not a string.
+    #[napi(getter)]
+    pub fn max_bytes(&self) -> Option<u32> {
+        self.inner
+            .string_parameters()
+            .and_then(CoreStringParameters::max)
     }
 
     /// The integer an ASCII value packs into: its storage bytes, big-endian.

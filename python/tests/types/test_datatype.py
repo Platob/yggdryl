@@ -884,3 +884,62 @@ def test_a_nested_datatype_is_rebuilt_with_replacement_children() -> None:
     widened = DataType("list<int32>").with_fields([Field("item", "int64")])
     assert DataType.from_str(str(widened)) == widened
     assert str(widened["item"].dtype) == "int64"
+
+
+def test_a_string_answers_its_charset_and_the_bound_its_layout_reads() -> None:
+    """The five string layouts, and the three facts each one carries.
+
+    A bound is one number read two ways - exactly that many bytes under
+    ``fixed_string``, at most that many under every other layout - so the
+    layout is what says which reading applies, and each reading has its own
+    accessor rather than one number the caller has to interpret.
+    """
+
+    latin = DataType.from_str("string(windows-1252,32)")
+    assert latin.id == "string"
+    assert latin.kind == "text"
+    assert latin.charset == "windows-1252"
+    assert latin.max_bytes == 32
+    assert latin.fixed_bytes is None
+
+    fixed = DataType.string("windows-1252", "fixed_string", 8)
+    assert fixed.id == "fixed_string"
+    assert str(fixed) == "fixed_string(windows-1252,8)"
+    assert fixed.fixed_bytes == 8
+    assert fixed.max_bytes is None
+
+    # Every layout the family has, built from the constructor and read back.
+    for layout, spelling in [
+        ("string", "string(windows-1252)"),
+        ("string_view", "string_view(windows-1252)"),
+        ("large_string", "large_string(windows-1252)"),
+        ("large_string_view", "large_string_view(windows-1252)"),
+    ]:
+        built = DataType.string("windows-1252", layout)
+        assert built.id == layout
+        assert str(built) == spelling
+        assert built.charset == "windows-1252"
+        assert built.fixed_bytes is None
+        assert built.max_bytes is None
+
+    # Every string has a charset, because UTF-8 is what a string with nothing
+    # declared is in - and a datatype that is not a string has none.
+    assert DataType("utf8").charset == "utf-8"
+    assert DataType("large_utf8").charset == "utf-8"
+    assert DataType("ascii").charset == "us-ascii"
+    assert DataType.ascii(4).charset == "us-ascii"
+    assert DataType.ascii(4).fixed_bytes == 4
+    assert DataType("int64").charset is None
+    assert DataType("int64").max_bytes is None
+
+    # One datatype has one name, so a string another spelling already covers
+    # answers that spelling instead of becoming a second way to write it.
+    assert DataType.string("utf-8") == DataType("utf8")
+    assert DataType.string("utf-8", "large_string") == DataType("large_utf8")
+    assert DataType.string("us-ascii", "fixed_string", 4) == DataType.ascii(4)
+
+    # A charset nothing registers, and a bound of nothing, are refused.
+    with pytest.raises(ValueError):
+        DataType.string("not-a-charset")
+    with pytest.raises(ValueError):
+        DataType.string("windows-1252", "fixed_string", 0)

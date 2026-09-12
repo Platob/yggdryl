@@ -391,6 +391,19 @@ export declare class DataType {
    */
   static ascii(width: number): DataType
   /**
+   * Creates a string datatype: a `layout` over a `charset`, optionally
+   * bounded.
+   *
+   * The bound is one number read two ways - exactly `bound` bytes under
+   * `fixed_string`, at most `bound` under every other layout - so the
+   * layout is what says which it means.
+   *
+   * A string the crate already spells another way answers that spelling:
+   * `string('utf-8')` is `utf8` and `string('us-ascii', 'fixed_string', 4)`
+   * is `ascii(4)`, because one datatype has one name.
+   */
+  static string(charset: string, layout?: string | undefined | null, bound?: number | undefined | null): DataType
+  /**
    * Resolves a registered logical name such as `currency` or `Price` to
    * the datatype it spells, folding case, `_`, `-`, and spaces.
    */
@@ -439,6 +452,30 @@ export declare class DataType {
   get kind(): string
   /** The storage width of an ASCII datatype in bytes, `null` for every other. */
   get asciiWidth(): number | null
+  /**
+   * The charset a string column's bytes are written in, `null` for every
+   * datatype that is not a string.
+   *
+   * Every string has one, because UTF-8 is what a string with nothing
+   * declared is in.
+   */
+  get charset(): string | null
+  /**
+   * The exact stored width a fixed string layout declares, in bytes.
+   *
+   * `null` for a layout that is not fixed, and for every datatype that is
+   * not a string. A bound is one number read two ways, and the layout is
+   * what says which reading applies.
+   */
+  get fixedBytes(): number | null
+  /**
+   * The largest stored width a string layout allows, in bytes.
+   *
+   * `null` when the string declares no bound, for a fixed layout - whose
+   * bound is exact rather than a maximum - and for every datatype that is
+   * not a string.
+   */
+  get maxBytes(): number | null
   /**
    * The integer an ASCII value packs into: its storage bytes, big-endian.
    *

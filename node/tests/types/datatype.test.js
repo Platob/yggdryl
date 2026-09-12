@@ -430,3 +430,60 @@ test('an enum declares itself onto the field its values name', () => {
   assert.throws(() => new AsciiEnum('Side', { '': 'B' }), /non-empty member name/)
   assert.throws(() => AsciiEnum.fromJson('[]'), /enum JSON object/)
 })
+
+test('a string answers its charset and the bound its layout reads', () => {
+  // A bound is one number read two ways - exactly that many bytes under
+  // fixedString, at most that many under every other layout - so the layout is
+  // what says which reading applies, and each reading has its own getter rather
+  // than one number the caller has to interpret.
+  const latin = DataType.fromString('string(windows-1252,32)')
+  assert.equal(latin.id, 'string')
+  assert.equal(latin.kind, 'text')
+  assert.equal(latin.charset, 'windows-1252')
+  assert.equal(latin.maxBytes, 32)
+  assert.equal(latin.fixedBytes, null)
+
+  const fixed = DataType.string('windows-1252', 'fixed_string', 8)
+  assert.equal(fixed.id, 'fixed_string')
+  assert.equal(String(fixed), 'fixed_string(windows-1252,8)')
+  assert.equal(fixed.fixedBytes, 8)
+  assert.equal(fixed.maxBytes, null)
+
+  // Every layout the family has, built from the constructor and read back.
+  for (const [layout, spelling] of [
+    ['string', 'string(windows-1252)'],
+    ['string_view', 'string_view(windows-1252)'],
+    ['large_string', 'large_string(windows-1252)'],
+    ['large_string_view', 'large_string_view(windows-1252)'],
+  ]) {
+    const built = DataType.string('windows-1252', layout)
+    assert.equal(built.id, layout)
+    assert.equal(String(built), spelling)
+    assert.equal(built.charset, 'windows-1252')
+    assert.equal(built.fixedBytes, null)
+    assert.equal(built.maxBytes, null)
+  }
+
+  // Every string has a charset, because UTF-8 is what a string with nothing
+  // declared is in - and a datatype that is not a string has none.
+  assert.equal(new DataType('utf8').charset, 'utf-8')
+  assert.equal(new DataType('ascii').charset, 'us-ascii')
+  assert.equal(DataType.ascii(4).charset, 'us-ascii')
+  assert.equal(DataType.ascii(4).fixedBytes, 4)
+  assert.equal(new DataType('int64').charset, null)
+  assert.equal(new DataType('int64').maxBytes, null)
+
+  // One datatype has one name, so a string another spelling already covers
+  // answers that spelling instead of becoming a second way to write it.
+  assert.ok(DataType.string('utf-8').equals(new DataType('utf8')))
+  assert.ok(
+    DataType.string('utf-8', 'large_string').equals(new DataType('large_utf8')),
+  )
+  assert.ok(
+    DataType.string('us-ascii', 'fixed_string', 4).equals(DataType.ascii(4)),
+  )
+
+  // A charset nothing registers, and a bound of nothing, are refused.
+  assert.throws(() => DataType.string('not-a-charset'))
+  assert.throws(() => DataType.string('windows-1252', 'fixed_string', 0))
+})
