@@ -27,7 +27,7 @@
   {
     "name": "valuationsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -76,7 +76,7 @@
   {
     "name": "underlyingindexannexsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -88,7 +88,7 @@
   {
     "name": "underlyingproductcomplex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -100,7 +100,7 @@
   {
     "name": "underlyingsecuritygroup",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -112,7 +112,7 @@
   {
     "name": "underlyingsettleonopenflag",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -124,7 +124,7 @@
   {
     "name": "underlyingassignmentmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -137,7 +137,7 @@
   {
     "name": "underlyingsecuritystatus",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -150,7 +150,7 @@
   {
     "name": "underlyingobligationtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -189,7 +189,7 @@
   {
     "name": "underlyingassettype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -201,7 +201,7 @@
   {
     "name": "underlyingswapclass",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -238,7 +238,7 @@
   {
     "name": "underlyingsettledentitymatrixsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -374,7 +374,7 @@
   {
     "name": "underlyingpricequotemethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -387,7 +387,7 @@
   {
     "name": "underlyingvaluationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -485,7 +485,7 @@
   {
     "name": "underlyingpool",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -497,8 +497,10 @@
   {
     "name": "underlyingcontractsettlmonth",
     "dtype": {
-      "type": "fixed_ascii",
-      "width": 8
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
     },
     "nullable": true,
     "metadata": {
@@ -791,7 +793,7 @@
   {
     "name": "legeventtimeunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -828,7 +830,7 @@
   {
     "name": "legeventtext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -866,7 +868,7 @@
   {
     "name": "legassettype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -878,7 +880,7 @@
   {
     "name": "legswapclass",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -891,7 +893,7 @@
   {
     "name": "underlyingeventtext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -989,7 +991,7 @@
   {
     "name": "legsecondaryassettype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1039,7 +1041,7 @@
   {
     "name": "underlyingsecondaryassettype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1091,7 +1093,7 @@
   {
     "name": "valuationbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1115,7 +1117,7 @@
   {
     "name": "marginamtfxratecalc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1140,7 +1142,7 @@
   {
     "name": "collateralfxratecalc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1153,7 +1155,7 @@
   {
     "name": "collateralamountmarketsegmentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1165,7 +1167,7 @@
   {
     "name": "collateralamountmarketid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1189,7 +1191,7 @@
   {
     "name": "paycollectfxratecalc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1202,7 +1204,7 @@
   {
     "name": "posamtstreamdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1226,7 +1228,7 @@
   {
     "name": "positionfxratecalc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1239,7 +1241,7 @@
   {
     "name": "posamtmarketsegmentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

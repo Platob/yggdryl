@@ -139,7 +139,7 @@ fn an_unknown_name_still_reaches_the_child_spelled_that_way() {
     message.set("Venue_Thing", Scalar::from("8")).unwrap();
     let child = &message.as_field().fields()[at];
     assert_eq!(child.name(), "venuething", "the child keeps its own field");
-    assert_eq!(child.dtype(), &DataType::Utf8);
+    assert_eq!(child.dtype(), &DataType::utf8());
     assert_eq!(message.by_name("venuething").unwrap(), &Scalar::from("8"));
 }
 
@@ -150,7 +150,7 @@ fn a_bare_unknown_tag_is_appended_under_its_decimal_spelling() {
     message.set(7777, Scalar::from("custom")).unwrap();
     let child = message.as_field().fields().last().unwrap();
     assert_eq!(child.name(), "7777");
-    assert_eq!(child.dtype(), &DataType::Utf8);
+    assert_eq!(child.dtype(), &DataType::utf8());
     assert!(child.is_nullable());
     assert_eq!(message.by_tag(7777).unwrap(), &Scalar::from("custom"));
     // A second write reaches the same child rather than a second one.
@@ -308,9 +308,9 @@ fn a_row_carrying_its_captures_own_columns_returns_to_its_schema_whole() {
     let (registry, reader) = reader();
     // Nullable, because a message parsed on its own states none of them.
     let capture = DataType::from_fields([
-        DataType::Utf8.nullable_field("url"),
+        DataType::utf8().nullable_field("url"),
         DataType::Int64.nullable_field("rownum"),
-        DataType::Binary.nullable_field("body"),
+        DataType::binary().nullable_field("body"),
     ])
     .unwrap()
     .required_field("line");

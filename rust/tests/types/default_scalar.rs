@@ -28,13 +28,19 @@ fn representative_types() -> Vec<DataType> {
         DataType::Interval(TimeUnit::YearMonth),
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
-        DataType::Binary,
+        DataType::binary(),
         DataType::fixed_size_binary(2).unwrap(),
-        DataType::LargeBinary,
-        DataType::BinaryView,
-        DataType::Utf8,
-        DataType::LargeUtf8,
-        DataType::Utf8View,
+        DataType::large_binary(),
+        DataType::binary_view(),
+        DataType::from_str("binary(4)").unwrap(),
+        DataType::utf8(),
+        DataType::large_utf8(),
+        DataType::utf8_view(),
+        DataType::ascii(),
+        DataType::fixed_ascii(4).unwrap(),
+        DataType::fixed_utf8(2).unwrap(),
+        DataType::from_str("utf8(8)").unwrap(),
+        DataType::from_str("string(windows-1252)").unwrap(),
         DataType::list(item()),
         DataType::list_view(item()),
         DataType::fixed_size_list(item(), 2).unwrap(),
@@ -42,7 +48,7 @@ fn representative_types() -> Vec<DataType> {
         DataType::large_list_view(item()),
         DataType::from_fields([
             Field::new("required", DataType::Int32, false),
-            Field::new("optional", DataType::Utf8, true),
+            Field::new("optional", DataType::utf8(), true),
         ])
         .unwrap(),
         DataType::union(
@@ -53,15 +59,15 @@ fn representative_types() -> Vec<DataType> {
             UnionMode::Dense,
         )
         .unwrap(),
-        DataType::dictionary(DataType::Int8, DataType::Utf8).unwrap(),
+        DataType::dictionary(DataType::Int8, DataType::utf8()).unwrap(),
         DataType::decimal32(7, 2).unwrap(),
         DataType::decimal64(12, 2).unwrap(),
         DataType::decimal128(30, 2).unwrap(),
         DataType::decimal256(50, 2).unwrap(),
-        DataType::map_of(DataType::Utf8, DataType::Int32, false).unwrap(),
+        DataType::map_of(DataType::utf8(), DataType::Int32, false).unwrap(),
         DataType::run_end_encoded(
             Field::new("run_ends", DataType::Int32, false),
-            Field::new("values", DataType::Utf8, true),
+            Field::new("values", DataType::utf8(), true),
         )
         .unwrap(),
     ]
@@ -114,13 +120,16 @@ fn leaf_defaults_keep_their_declared_physical_identity() {
     let cases = [
         (DataType::decimal32(7, 2).unwrap(), DataTypeId::Decimal32),
         (DataType::decimal64(12, 2).unwrap(), DataTypeId::Decimal64),
-        (DataType::LargeUtf8, DataTypeId::LargeUtf8),
-        (DataType::Utf8View, DataTypeId::Utf8View),
-        (DataType::FixedSizeBinary(3), DataTypeId::FixedSizeBinary),
-        (DataType::LargeBinary, DataTypeId::LargeBinary),
-        (DataType::BinaryView, DataTypeId::BinaryView),
-        (DataType::Ascii, DataTypeId::Ascii),
-        (DataType::FixedAscii(4), DataTypeId::FixedAscii),
+        (DataType::large_utf8(), DataTypeId::LargeString),
+        (DataType::utf8_view(), DataTypeId::StringView),
+        (
+            DataType::fixed_size_binary(3).unwrap(),
+            DataTypeId::FixedSizeBinary,
+        ),
+        (DataType::large_binary(), DataTypeId::LargeBinary),
+        (DataType::binary_view(), DataTypeId::BinaryView),
+        (DataType::ascii(), DataTypeId::String),
+        (DataType::fixed_ascii(4).unwrap(), DataTypeId::FixedString),
         (DataType::Country, DataTypeId::Country),
         (DataType::Currency, DataTypeId::Currency),
         (DataType::Mic, DataTypeId::Mic),
@@ -234,7 +243,7 @@ fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_n
     let union = DataType::union(
         [
             (1, Field::new("present", DataType::Int32, false)),
-            (9, Field::new("absent", DataType::Utf8, true)),
+            (9, Field::new("absent", DataType::utf8(), true)),
         ],
         UnionMode::Dense,
     )
@@ -250,7 +259,7 @@ fn intrinsic_logical_null_wrappers_round_trip_but_arbitrary_selected_null_does_n
 
 #[test]
 fn nullable_dictionary_null_keys_decode_as_native_null() {
-    let dtype = DataType::dictionary(DataType::Int8, DataType::Utf8).unwrap();
+    let dtype = DataType::dictionary(DataType::Int8, DataType::utf8()).unwrap();
     let array: ArrayRef = Arc::new(
         DictionaryArray::<Int8Type>::try_new(
             Int8Array::from(vec![None]),

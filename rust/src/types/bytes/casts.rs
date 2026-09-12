@@ -1,5 +1,6 @@
 //! Binary layout accounting and identity checks for Arrow casts.
 
+use arrow_array::builder::{BinaryBuilder, BinaryViewBuilder, LargeBinaryBuilder};
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
@@ -15,11 +16,13 @@ use arrow_array::ArrayRef;
 use arrow_buffer::BooleanBuffer;
 use arrow_cast::can_cast_types;
 use arrow_schema::DataType as ArrowDataType;
+use smol_str::{SmolStr, format_smolstr};
 
 use crate::arrow::{Error, Result};
 use crate::types::budget::MaterializationBudget;
-use crate::types::cast::{arrow_cast_exposed, downcast};
-use crate::types::nested::casts::null_buffers_ptr_eq;
+use crate::types::bytes::{BytesLayout, BytesParameters};
+use crate::types::cast::{arrow_cast_exposed, downcast, internal_target_error, named_cell};
+use crate::types::nested::casts::{is_exposed, null_buffers_ptr_eq};
 use crate::{DataType, Field};
 
 /// Whether one byte layout reaches another only through Arrow's `Binary`.
@@ -73,11 +76,135 @@ pub(crate) fn variable_binary_source(
             &ArrowDataType::Binary,
             false,
             exposure,
-            &Field::new(field.name(), DataType::Binary, true),
+            &Field::new(field.name(), DataType::binary(), true),
             budget,
         )?)),
         _ => Ok(None),
     }
+}
+
+/// Validates every exposed, non-null value entering a bounded byte datatype
+/// and stores it in the target's own layout.
+///
+/// A maximum is the one thing about bytes Arrow cannot check, so it is the
+/// one byte cast that reads cells rather than buffers: a fixed binary is
+/// read as it is, every variable layout through the one `Binary` framing,
+/// and anything else through the kernel's own reading into that framing. A
+/// cell past the maximum is null under `safe` and an error naming the row
+/// otherwise; nothing is copied until every cell has been measured.
+pub(crate) fn ingest_bytes_array(
+    array: &ArrayRef,
+    safe: bool,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+) -> Result<ArrayRef> {
+    let Some(target) = field.dtype().bytes_parameters() else {
+        return Err(internal_target_error("bytes"));
+    };
+    if let ArrowDataType::FixedSizeBinary(_) = array.data_type() {
+        let cells = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
+        return bytes_storage(
+            target,
+            field,
+            cells.len(),
+            safe,
+            exposure,
+            budget,
+            |index| cells.is_valid(index).then(|| cells.value(index)),
+        );
+    }
+    let bytes = match variable_binary_source(array, field, exposure, budget)? {
+        Some(bytes) => bytes,
+        // The temporary is nullable bytes: the kernel's masked path fills
+        // nothing, and the target's own null policy runs after the reading.
+        None => arrow_cast_exposed(
+            array,
+            &ArrowDataType::Binary,
+            safe,
+            exposure,
+            &Field::new(field.name(), DataType::binary(), true),
+            budget,
+        )?,
+    };
+    let cells = downcast::<BinaryArray>(bytes.as_ref())?;
+    bytes_storage(
+        target,
+        field,
+        cells.len(),
+        safe,
+        exposure,
+        budget,
+        |index| cells.is_valid(index).then(|| cells.value(index)),
+    )
+}
+
+/// Builds the storage of one bounded byte layout from one cell per row.
+///
+/// Unexposed rows are null: an ancestor hides them, so their bytes are
+/// neither measured nor copied.
+fn bytes_storage<'a>(
+    target: BytesParameters,
+    field: &Field,
+    rows: usize,
+    safe: bool,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+    cell: impl Fn(usize) -> Option<&'a [u8]>,
+) -> Result<ArrayRef> {
+    // A fixed width is the storage itself, which is why no maximum ever
+    // reaches it and why this reader owes it nothing.
+    let Some(max) = target.max() else {
+        return Err(internal_target_error("bytes"));
+    };
+    budget.add_array(field.dtype(), rows)?;
+    let mut payload = 0_usize;
+    let accepted = |index: usize| -> Result<Option<&'a [u8]>> {
+        let Some(bytes) = cell(index).filter(|_| is_exposed(exposure, index)) else {
+            return Ok(None);
+        };
+        if bytes.len() <= max as usize {
+            return Ok(Some(bytes));
+        }
+        if safe {
+            return Ok(None);
+        }
+        named_cell(
+            field,
+            index,
+            Err(crate::Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: crate::text::expected_got(
+                    format_args!("at most {max} bytes"),
+                    format_smolstr!("{} bytes", bytes.len()),
+                ),
+            }),
+        )
+    };
+    for index in 0..rows {
+        payload = payload.saturating_add(accepted(index)?.map_or(0, <[u8]>::len));
+    }
+    budget.add_bytes(payload)?;
+    macro_rules! filled {
+        ($builder:expr) => {{
+            let mut builder = $builder;
+            for index in 0..rows {
+                match accepted(index)? {
+                    Some(bytes) => builder.append_value(bytes),
+                    None => builder.append_null(),
+                }
+            }
+            Arc::new(builder.finish()) as ArrayRef
+        }};
+    }
+    Ok(match target.layout() {
+        BytesLayout::Binary => filled!(BinaryBuilder::with_capacity(rows, payload)),
+        BytesLayout::LargeBinary => filled!(LargeBinaryBuilder::with_capacity(rows, payload)),
+        // Arrow's view layout carries a prefix per cell rather than offsets,
+        // so it takes the row count and grows its own payload blocks.
+        BytesLayout::BinaryView => filled!(BinaryViewBuilder::with_capacity(rows)),
+        BytesLayout::FixedSizeBinary => return Err(internal_target_error("bytes")),
+    })
 }
 
 pub(crate) fn projected_byte_len(
@@ -99,21 +226,12 @@ pub(crate) fn projected_byte_len(
         return Ok(0);
     }
     let bytes = match source_type {
-        // Variable ASCII stores its own bytes, so it is Arrow's `Binary`.
-        DataType::Binary | DataType::Ascii => downcast::<BinaryArray>(array)?.value(index).len(),
-        DataType::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index).len(),
-        DataType::BinaryView => downcast::<BinaryViewArray>(array)?.value(index).len(),
-        DataType::FixedSizeBinary(_)
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin
-        | DataType::Uuid => downcast::<FixedSizeBinaryArray>(array)?.value(index).len(),
-        DataType::Utf8 => downcast::<StringArray>(array)?.value(index).len(),
-        DataType::LargeUtf8 => downcast::<LargeStringArray>(array)?.value(index).len(),
-        DataType::Utf8View => downcast::<StringViewArray>(array)?.value(index).len(),
+        // A byte payload is measured by the framing the array is in: a
+        // string, a code and a UUID each project onto one of the byte
+        // layouts, and the array says which.
+        bytes if bytes.kind().is_bytes() || matches!(bytes, DataType::Uuid) => {
+            byte_cell_len(array, index)?
+        }
         DataType::Dictionary(dictionary) => {
             macro_rules! dictionary_len {
                 ($key:ty) => {{
@@ -226,6 +344,26 @@ pub(crate) fn projected_byte_len(
     Ok(bytes)
 }
 
+/// The bytes one cell holds, under whichever byte framing the array is in.
+fn byte_cell_len(array: &dyn Array, index: usize) -> Result<usize> {
+    Ok(match array.data_type() {
+        ArrowDataType::Binary => downcast::<BinaryArray>(array)?.value(index).len(),
+        ArrowDataType::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index).len(),
+        ArrowDataType::BinaryView => downcast::<BinaryViewArray>(array)?.value(index).len(),
+        ArrowDataType::FixedSizeBinary(_) => {
+            downcast::<FixedSizeBinaryArray>(array)?.value(index).len()
+        }
+        ArrowDataType::Utf8 => downcast::<StringArray>(array)?.value(index).len(),
+        ArrowDataType::LargeUtf8 => downcast::<LargeStringArray>(array)?.value(index).len(),
+        ArrowDataType::Utf8View => downcast::<StringViewArray>(array)?.value(index).len(),
+        other => {
+            return Err(Error::IncompatibleSchema(format!(
+                "Arrow byte projection over a {other:?} array, which holds no byte payload"
+            )));
+        }
+    })
+}
+
 pub(crate) fn checked_valid_payload_bytes(
     len: usize,
     mut is_valid: impl FnMut(usize) -> bool,
@@ -256,19 +394,18 @@ pub(crate) fn byte_array_storage_ptr_eq(
                 && null_buffers_ptr_eq(left.nulls(), right.nulls())
         }};
     }
-    Ok(match dtype {
-        DataType::Binary | DataType::Ascii => shared!(BinaryArray),
-        DataType::LargeBinary => shared!(LargeBinaryArray),
-        DataType::Utf8 => shared!(StringArray),
-        DataType::LargeUtf8 => shared!(LargeStringArray),
-        DataType::FixedSizeBinary(_)
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin
-        | DataType::Uuid => {
+    if !(dtype.kind().is_bytes() || matches!(dtype, DataType::Uuid)) {
+        return Ok(false);
+    }
+    // The framing is the array's: a string, a code and a UUID each project
+    // onto one of the byte layouts, and a view layout owns no offsets to
+    // compare.
+    Ok(match left.data_type() {
+        ArrowDataType::Binary => shared!(BinaryArray),
+        ArrowDataType::LargeBinary => shared!(LargeBinaryArray),
+        ArrowDataType::Utf8 => shared!(StringArray),
+        ArrowDataType::LargeUtf8 => shared!(LargeStringArray),
+        ArrowDataType::FixedSizeBinary(_) => {
             let left = downcast::<FixedSizeBinaryArray>(left)?;
             let right = downcast::<FixedSizeBinaryArray>(right)?;
             byte_slices_ptr_eq(left.value_data(), right.value_data())

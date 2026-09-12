@@ -4,7 +4,7 @@ use yggdryl::{DataType, Field, UnionMode};
 fn variant_builder_canonicalizes_to_a_dense_sequential_union() {
     let members = [
         Field::new("number", DataType::Int64, false),
-        Field::from_parts("text", DataType::Utf8, true, [("source", "variant")]).unwrap(),
+        Field::from_parts("text", DataType::utf8(), true, [("source", "variant")]).unwrap(),
     ];
     let variant = DataType::dense_union(members.clone()).unwrap();
     let union = DataType::union(
@@ -54,7 +54,7 @@ fn variant_builder_enforces_the_arrow_type_id_capacity() {
 fn variant_builder_reuses_union_child_validation() {
     let duplicate = DataType::dense_union([
         Field::new("same", DataType::Int64, false),
-        Field::new("same", DataType::Utf8, true),
+        Field::new("same", DataType::utf8(), true),
     ])
     .unwrap_err();
     assert!(
@@ -114,7 +114,7 @@ fn wide_struct_validation_accepts_unique_names_and_reports_a_late_duplicate() {
     assert_eq!(dtype.field_len(), 1_024);
 
     let mut duplicate = fields;
-    duplicate.push(Field::new("column_0001", DataType::Utf8, true));
+    duplicate.push(Field::new("column_0001", DataType::utf8(), true));
     let error = DataType::from_fields(duplicate).unwrap_err();
     assert!(
         error

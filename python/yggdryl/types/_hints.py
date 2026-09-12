@@ -27,7 +27,7 @@ import uuid
 from typing import Any
 
 from .._native import DataType, Field, PythonMetadata, Uri, Url, Urn, Version
-from ..enums.ascii import AsciiCode
+from ..enums.string import AsciiCode
 
 try:  # Python 3.10 gets newer annotation wrappers from typing_extensions.
     _typing_extensions: Any = importlib.import_module("typing_extensions")
@@ -366,7 +366,7 @@ class _Inference:
             _validate_extension_metadata(imported_metadata, overlay, path)
         # A declared vocabulary carries its members onto the field, so the
         # enum an annotation names crosses Arrow with the column.
-        declared_enum = _declared_ascii_enum(base)
+        declared_enum = _declared_string_enum(base)
         if declared_enum is not None:
             imported_metadata.setdefault(_FIELD_ENUM, declared_enum)
         imported_metadata.update(overlay)
@@ -515,9 +515,9 @@ class _Inference:
             return _native_datatype("version")
         if hint in (Uri, Url, Urn):
             return _native_datatype("utf8")
-        # A declared ASCII vocabulary is its width, not the integer its
+        # A declared vocabulary is its datatype, not the integer its
         # members happen to be: the enum is the column's meaning and the
-        # width is what the column stores.
+        # fixed width or code is what the column stores.
         if issubclass(hint, AsciiCode) and hint is not AsciiCode:
             return hint.dtype()
         if issubclass(hint, enum.Enum):
@@ -1325,10 +1325,10 @@ def _string_metadata(
     return metadata
 
 
-def _declared_ascii_enum(hint: object) -> str | None:
+def _declared_string_enum(hint: object) -> str | None:
     """The `field:enum` document one annotation declares, if it declares one.
 
-    A bare width base names no members, so it stays a plain ASCII column.
+    A bare width base names no members, so it stays a plain fixed column.
     """
 
     if not isinstance(hint, type) or not issubclass(hint, AsciiCode):

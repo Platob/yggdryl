@@ -74,7 +74,7 @@
   {
     "name": "collateraltype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -98,7 +98,7 @@
   {
     "name": "paycollecttype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -146,7 +146,7 @@
   {
     "name": "paycollectmarketsegmentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -158,7 +158,7 @@
   {
     "name": "paycollectmarketid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -170,7 +170,7 @@
   {
     "name": "marginamountmarketsegmentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -182,7 +182,7 @@
   {
     "name": "marginamountmarketid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -303,7 +303,7 @@
   {
     "name": "originatingdeptid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -315,7 +315,7 @@
   {
     "name": "receivingdeptid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -327,7 +327,7 @@
   {
     "name": "informationbarrierid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -339,7 +339,7 @@
   {
     "name": "firmgroupid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -351,7 +351,7 @@
   {
     "name": "firmmnemonic",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -363,7 +363,7 @@
   {
     "name": "allocgroupid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -375,7 +375,7 @@
   {
     "name": "avgpxgroupid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -387,7 +387,7 @@
   {
     "name": "firmalloctext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -473,7 +473,7 @@
   {
     "name": "obligationtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -549,7 +549,7 @@
   {
     "name": "bidmdentryid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -561,7 +561,7 @@
   {
     "name": "offermdentryid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -573,7 +573,7 @@
   {
     "name": "bidquoteid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -585,7 +585,7 @@
   {
     "name": "offerquoteid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -621,7 +621,7 @@
   {
     "name": "secondaryquoteid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -633,7 +633,7 @@
   {
     "name": "custodiallotid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -682,7 +682,7 @@
   {
     "name": "legcustodiallotid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -858,7 +858,7 @@
   {
     "name": "entitlementrequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -870,7 +870,7 @@
   {
     "name": "entitlementreportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -931,7 +931,7 @@
   {
     "name": "entitlementid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -980,7 +980,7 @@
   {
     "name": "entitlementattribvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1030,7 +1030,7 @@
   {
     "name": "entitlementplatform",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1080,7 +1080,7 @@
   {
     "name": "legid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1104,7 +1104,7 @@
   {
     "name": "targetmarketsegmentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1128,7 +1128,7 @@
   {
     "name": "affectedmarketsegmentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1152,7 +1152,7 @@
   {
     "name": "notaffectedmarketsegmentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1189,7 +1189,7 @@
   {
     "name": "ordereventexecid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

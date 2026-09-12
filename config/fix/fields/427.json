@@ -26,7 +26,7 @@
   {
     "name": "paymentstubstartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -77,7 +77,7 @@
   {
     "name": "paymentstubstartdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -163,7 +163,7 @@
   {
     "name": "returnratevaluationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -226,7 +226,7 @@
   {
     "name": "returnratevaluationstartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -302,7 +302,7 @@
   {
     "name": "returnratevaluationenddateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -353,7 +353,7 @@
   {
     "name": "returnratevaluationfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -366,7 +366,7 @@
   {
     "name": "returnratevaluationfrequencyrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -404,7 +404,7 @@
   {
     "name": "returnratefxcurrencysymbol",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -428,7 +428,7 @@
   {
     "name": "returnratefxratecalc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -466,7 +466,7 @@
   {
     "name": "returnratecommissionbasis",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -515,7 +515,7 @@
   {
     "name": "returnratedeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -539,7 +539,7 @@
   {
     "name": "returnratequotemeasuretype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -551,7 +551,7 @@
   {
     "name": "returnratequoteunits",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -588,7 +588,7 @@
   {
     "name": "returnratequotecurrencytype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -654,7 +654,7 @@
   {
     "name": "returnratequotebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -678,7 +678,7 @@
   {
     "name": "returnratequotepricingmodel",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -690,7 +690,7 @@
   {
     "name": "returnratecashflowtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -729,7 +729,7 @@
   {
     "name": "returnratevaluationtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -792,7 +792,7 @@
   {
     "name": "returnratereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -804,7 +804,7 @@
   {
     "name": "returnratereferencepageheading",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -890,7 +890,7 @@
   {
     "name": "returnratevaluationdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -952,7 +952,7 @@
   {
     "name": "settlmethodelectiondatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1014,7 +1014,7 @@
   {
     "name": "settlmethodelectiondateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1053,7 +1053,7 @@
   {
     "name": "streamversion",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1078,7 +1078,7 @@
   {
     "name": "streamnotionaldeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1115,7 +1115,7 @@
   {
     "name": "underlyingcashsettldatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1177,7 +1177,7 @@
   {
     "name": "underlyingcashsettldateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1216,7 +1216,7 @@
   {
     "name": "underlyingcashsettlpricesource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

@@ -14,7 +14,7 @@
   {
     "name": "underlyingstreamassetattributetype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -26,7 +26,7 @@
   {
     "name": "underlyingstreamassetattributevalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -38,7 +38,7 @@
   {
     "name": "underlyingstreamassetattributelimit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -62,7 +62,7 @@
   {
     "name": "underlyingdeliverystreamcycledesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -110,7 +110,7 @@
   {
     "name": "underlyingdeliverystreamcommoditysource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -122,7 +122,7 @@
   {
     "name": "underlyingexercisedesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -195,7 +195,7 @@
   {
     "name": "underlyingmanualnoticebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -255,7 +255,7 @@
   {
     "name": "underlyingoptionexercisebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -305,7 +305,7 @@
   {
     "name": "underlyingoptionexerciseearliestdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -330,7 +330,7 @@
   {
     "name": "underlyingoptionexercisefrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -380,7 +380,7 @@
   {
     "name": "underlyingoptionexercisestartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -498,7 +498,7 @@
   {
     "name": "underlyingoptionexercisetimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -560,7 +560,7 @@
   {
     "name": "underlyingoptionexerciseexpirationdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -609,7 +609,7 @@
   {
     "name": "underlyingoptionexerciseexpirationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -634,7 +634,7 @@
   {
     "name": "underlyingoptionexerciseexpirationfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -647,7 +647,7 @@
   {
     "name": "underlyingoptionexerciseexpirationrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -687,7 +687,7 @@
   {
     "name": "underlyingoptionexerciseexpirationtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -811,7 +811,7 @@
   {
     "name": "underlyingmarketdisruptionevent",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -835,7 +835,7 @@
   {
     "name": "underlyingmarketdisruptionfallbacktype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -872,7 +872,7 @@
   {
     "name": "underlyingmarketdisruptionfallbackunderliersecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -884,7 +884,7 @@
   {
     "name": "underlyingmarketdisruptionfallbackunderliersecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -897,7 +897,7 @@
   {
     "name": "underlyingmarketdisruptionfallbackunderliersecuritydesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1006,26 +1006,26 @@
   {
     "name": "underlyingpaymentschedulexid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this UnderlyingPaymentSchedule for cross referencing elsewhere in the message.",
       "display": "UnderlyingPaymentScheduleXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingpaymentschedulexid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingpaymentschedulexid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41881"
     }
   },
   {
     "name": "underlyingpaymentschedulexidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to payment schedule elsewhere in the message.",
       "display": "UnderlyingPaymentScheduleXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingpaymentschedulexidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingpaymentschedulexidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41882"
     }
   },
@@ -1044,7 +1044,7 @@
   {
     "name": "underlyingpaymentschedulerateunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1106,7 +1106,7 @@
   {
     "name": "underlyingpaymentschedulesettlperiodpriceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1119,7 +1119,7 @@
   {
     "name": "underlyingpaymentschedulestepunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1169,7 +1169,7 @@
   {
     "name": "underlyingpaymentschedulefixinglagunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1194,7 +1194,7 @@
   {
     "name": "underlyingpaymentschedulefixingfirstobservationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

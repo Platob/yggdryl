@@ -12,6 +12,7 @@ use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::string::is_text_storage;
 use crate::{DataType, Error, Result, TimeUnit};
 
 /// A primitive type from the Iceberg specification.
@@ -66,7 +67,7 @@ pub enum PrimitiveType {
     /// A 16-byte universally unique identifier.
     Uuid,
     /// A fixed-length byte array.
-    Fixed(i32),
+    Fixed(u32),
     /// A variable-length byte array.
     Binary,
 }
@@ -118,13 +119,13 @@ impl PrimitiveType {
             // An unknown column always reads as null, which is exactly Arrow's
             // null datatype rather than a placeholder of some other width.
             Self::Unknown => DataType::Null,
-            Self::String => DataType::Utf8,
+            Self::String => DataType::utf8(),
             // A UUID is a 16-byte fixed value on the wire, and the core has a
             // datatype that is exactly that, so the spelling survives without
             // a marker beside the column.
             Self::Uuid => DataType::Uuid,
             Self::Fixed(width) => DataType::fixed_size_binary(width)?,
-            Self::Binary => DataType::Binary,
+            Self::Binary => DataType::binary(),
         })
     }
 
@@ -185,15 +186,14 @@ impl PrimitiveType {
                 }
             }
             DataType::Null => Self::Unknown,
-            // An ASCII width is text; the padding is storage, never a value.
-            DataType::Utf8
-            | DataType::LargeUtf8
-            | DataType::Utf8View
-            | DataType::Ascii
-            | DataType::FixedAscii(_)
+            // Iceberg's string is UTF-8, so a string whose bytes ride text
+            // storage is one whatever its layout - a fixed width is storage,
+            // never a value - and a string in any other charset is refused
+            // below by name rather than written as bytes that are not UTF-8.
+            DataType::String(parameters) if is_text_storage(*parameters) => Self::String,
             // Iceberg has `string` and `fixed[n]` and nothing that carries a
             // code's identity, so a code writes as the text it is.
-            | DataType::Country
+            DataType::Country
             | DataType::Currency
             | DataType::Mic
             | DataType::Cfi
@@ -204,8 +204,12 @@ impl PrimitiveType {
             // still refuses.
             | DataType::Url => Self::String,
             DataType::Uuid => Self::Uuid,
-            DataType::FixedSizeBinary(width) => Self::Fixed(*width),
-            DataType::Binary | DataType::LargeBinary | DataType::BinaryView => Self::Binary,
+            // Iceberg's `binary` has no maximum, so a bound is dropped here;
+            // the cast on the way in already held every value to it.
+            DataType::Bytes(parameters) => match parameters.fixed() {
+                Some(width) => Self::Fixed(width),
+                None => Self::Binary,
+            },
             other => {
                 return Err(Error::InvalidDataType {
                     kind: "iceberg",
@@ -326,7 +330,7 @@ fn parenthesized_pair(rest: &str, keyword: &str) -> Result<(i64, i64)> {
 }
 
 /// Read `[n]` or `(n)` after a type keyword.
-fn parenthesized_one(rest: &str, keyword: &str) -> Result<i32> {
+fn parenthesized_one(rest: &str, keyword: &str) -> Result<u32> {
     let trimmed = rest.trim();
     let inner = trimmed
         .strip_prefix('[')
@@ -342,9 +346,9 @@ fn parenthesized_one(rest: &str, keyword: &str) -> Result<i32> {
             ))
         })?;
     let value = parse_number(inner, keyword)?;
-    i32::try_from(value).map_err(|_| {
+    u32::try_from(value).map_err(|_| {
         parse_error(format_smolstr!(
-            "expected a {keyword} length that fits 32 bits, got {value}"
+            "expected a non-negative {keyword} length that fits 32 bits, got {value}"
         ))
     })
 }

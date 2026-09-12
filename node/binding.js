@@ -331,7 +331,6 @@ const internalDtypeNames = new Set([
   'fromJSON',
   '_simple',
   '_temporal',
-  '_fixedSizeBinary',
   '_decimal',
   '_list',
   '_fromFields',
@@ -565,7 +564,6 @@ const { createFields, normalizeMetadata } = require('./fields.js')
 const internalDtype = Object.freeze({
   simple: NativeDataType._simple.bind(NativeDataType),
   temporal: NativeDataType._temporal.bind(NativeDataType),
-  fixedSizeBinary: NativeDataType._fixedSizeBinary.bind(NativeDataType),
   decimal: NativeDataType._decimal.bind(NativeDataType),
   list: NativeDataType._list.bind(NativeDataType),
   fromFields: NativeDataType._fromFields.bind(NativeDataType),
@@ -1308,7 +1306,7 @@ Object.defineProperties(Scalar.prototype, {
 // The generated enum is name to code only: a numeric reverse map would
 // collide with values that render as digits, and `members` already answers
 // the name to value direction.
-Object.defineProperties(binding.AsciiEnum.prototype, {
+Object.defineProperties(binding.StringEnum.prototype, {
   intoEnum: {
     configurable: true,
     value(width) {

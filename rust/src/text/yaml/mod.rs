@@ -710,8 +710,8 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::Boolean(_)
             | Scalar::Integer(_)
             | Scalar::Floating(_)
-            | Scalar::Text(_)
-            | Scalar::Ascii(_)
+            | Scalar::String(_)
+            | Scalar::Code(_)
             | Scalar::Uuid(_)
             | Scalar::Version(_)
             | Scalar::Url(_)
@@ -742,8 +742,8 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             writer,
             &crate::types::decimal::scalars::decimal_text(value.coefficient(), value.scale()),
         )?,
-        Scalar::Text(value) => write_scalar_string(writer, value.as_str())?,
-        Scalar::Ascii(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::String(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::Code(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Version(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Url(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Uuid(value) => write_scalar_string(writer, &value.to_string())?,

@@ -32,7 +32,7 @@ use crate::{DataType, Result, Scalar};
 /// assert_eq!(narrowed.to_string(), "int32 '7'");
 ///
 /// let inferred = Literal::infer(Scalar::from("AAPL"))?;
-/// assert_eq!(inferred.dtype(), &DataType::Utf8);
+/// assert_eq!(inferred.dtype(), &DataType::utf8());
 /// assert_eq!(inferred.to_string(), "'AAPL'");
 ///
 /// assert!(Literal::new(DataType::Int8, 1_000_i64).is_err());

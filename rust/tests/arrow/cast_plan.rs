@@ -35,7 +35,7 @@ fn batch(offset: i32) -> RecordBatch {
 fn target() -> Field {
     root([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])
 }
 
@@ -150,7 +150,7 @@ fn an_exact_plan_hands_the_caller_its_own_batch_back() {
 fn preflight_reports_a_schema_failure_and_leaves_the_row_failures_alone() {
     let missing = root([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
     ]);
     let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
 
@@ -162,7 +162,7 @@ fn preflight_reports_a_schema_failure_and_leaves_the_row_failures_alone() {
     // passes and the refusal waits for a batch that has rows.
     let required = root([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
     ]);
     let plan = ArrowCastPlan::compile(&stored(), &required, strict).unwrap();
     plan.preflight().unwrap();
@@ -200,7 +200,7 @@ fn an_exact_reader_is_the_reader_itself() {
         "row",
         DataType::from_fields([
             DataType::Int32.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
+            DataType::utf8().nullable_field("symbol"),
         ])
         .unwrap(),
         false,
@@ -225,7 +225,7 @@ fn a_strict_reader_reports_its_batch_at_the_pull_and_then_fuses() {
     .unwrap();
     let required = root([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
     ]);
     let inner = yggdryl::arrow::batch_reader(stored(), [batch(0), broken, batch(9)]);
     let mut reader = cast_reader(

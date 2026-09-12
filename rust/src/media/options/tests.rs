@@ -92,7 +92,7 @@ fn the_declared_field_is_built_from_its_three_parts() {
 
     let widened = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])
     .unwrap();
     options.set_dtype(Some(widened.clone()));

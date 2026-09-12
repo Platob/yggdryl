@@ -2,7 +2,7 @@
   {
     "name": "batchid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

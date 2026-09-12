@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
+use yggdryl::types::{BytesLayout, BytesParameters};
 use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
 
 fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
@@ -37,7 +38,7 @@ fn direct_arrow_values_round_trip_through_core() {
     assert_eq!(core.get_field(0).unwrap().name(), "id");
     assert_eq!(
         core.get_field_by_path("name").unwrap().dtype(),
-        &DataType::Utf8
+        &DataType::utf8()
     );
 }
 
@@ -111,12 +112,12 @@ fn duration32_projects_to_arrow_and_imports_at_arrows_native_width() {
 
 #[test]
 fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debug() {
-    let item = || Field::new("item", DataType::Utf8, true);
+    let item = || Field::new("item", DataType::utf8(), true);
     let entries = || {
         Field::new(
             "entries",
             DataType::from_fields([
-                Field::new("key", DataType::Utf8, false),
+                Field::new("key", DataType::utf8(), false),
                 Field::new("value", DataType::Int64, true),
             ])
             .unwrap(),
@@ -149,13 +150,13 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::Interval(TimeUnit::YearMonth),
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
-        DataType::Binary,
+        DataType::binary(),
         DataType::fixed_size_binary(16).unwrap(),
-        DataType::LargeBinary,
-        DataType::BinaryView,
-        DataType::Utf8,
-        DataType::LargeUtf8,
-        DataType::Utf8View,
+        DataType::large_binary(),
+        DataType::binary_view(),
+        DataType::utf8(),
+        DataType::large_utf8(),
+        DataType::utf8_view(),
         DataType::list(item()),
         DataType::list_view(item()),
         DataType::fixed_size_list(item(), 4).unwrap(),
@@ -165,12 +166,12 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::union(
             [
                 (0, Field::new("number", DataType::Int64, false)),
-                (7, Field::new("text", DataType::Utf8, true)),
+                (7, Field::new("text", DataType::utf8(), true)),
             ],
             UnionMode::Dense,
         )
         .unwrap(),
-        DataType::dictionary(DataType::UInt16, DataType::Utf8).unwrap(),
+        DataType::dictionary(DataType::UInt16, DataType::utf8()).unwrap(),
         DataType::decimal32(9, 2).unwrap(),
         DataType::decimal64(18, -2).unwrap(),
         DataType::decimal128(38, 18).unwrap(),
@@ -178,7 +179,7 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::map(entries(), true).unwrap(),
         DataType::run_end_encoded(
             Field::new("run_ends", DataType::Int32, false),
-            Field::new("values", DataType::Utf8, true),
+            Field::new("values", DataType::utf8(), true),
         )
         .unwrap(),
     ];
@@ -206,8 +207,8 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
 /// it is written over.
 fn extension_datatypes() -> Vec<DataType> {
     vec![
-        DataType::Ascii,
-        DataType::FixedAscii(4),
+        DataType::ascii(),
+        DataType::fixed_ascii(4).unwrap(),
         DataType::Country,
         DataType::Currency,
         DataType::Mic,
@@ -328,17 +329,17 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
         assert!(invalid.clone().into_arrow().is_err());
         assert!(invalid.into_json().is_err());
     }
-    assert!(DataType::fixed_size_binary(-1).is_err());
-    assert!(DataType::fixed_size_list(Field::new("item", DataType::Utf8, true), -1).is_err());
+    assert!(DataType::fixed_size_binary(0).is_err());
+    assert!(DataType::fixed_size_list(Field::new("item", DataType::utf8(), true), -1).is_err());
     assert!(DataType::decimal128(0, 0).is_err());
     assert!(DataType::decimal128(5, 6).is_err());
-    assert!(DataType::dictionary(DataType::Float64, DataType::Utf8).is_err());
+    assert!(DataType::dictionary(DataType::Float64, DataType::utf8()).is_err());
     assert!(
         DataType::map(
             Field::new(
                 "entries",
                 DataType::from_fields([
-                    Field::new("key", DataType::Utf8, true),
+                    Field::new("key", DataType::utf8(), true),
                     Field::new("value", DataType::Int64, true),
                 ])
                 .unwrap(),
@@ -351,7 +352,7 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
     assert!(
         DataType::run_end_encoded(
             Field::new("run_ends", DataType::UInt32, false),
-            Field::new("values", DataType::Utf8, true),
+            Field::new("values", DataType::utf8(), true),
         )
         .is_err()
     );
@@ -379,17 +380,28 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
         assert_invalid(error, "Time32", "unit must be second or millisecond");
     }
 
-    let invalid_binary = DataType::FixedSizeBinary(-1);
+    // The constructor refuses a width of zero; the variant is public, so a
+    // fixed layout can also be built with no width at all, and every door
+    // past construction refuses that one alike.
+    assert_invalid(
+        DataType::fixed_size_binary(0).unwrap_err(),
+        "bytes",
+        "expected a width of at least one byte, got 0",
+    );
+    let invalid_binary = DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary));
     for error in [
-        DataType::fixed_size_binary(-1).unwrap_err(),
         invalid_binary.validate().unwrap_err(),
         invalid_binary.clone().into_arrow().unwrap_err(),
         invalid_binary.into_arrow_ffi().unwrap_err(),
     ] {
-        assert_invalid(error, "FixedSizeBinary", "width must be non-negative: -1");
+        assert_invalid(
+            error,
+            "bytes",
+            "expected fixed_size_binary(width), got no width",
+        );
     }
 
-    let item = Field::new("item", DataType::Utf8, true);
+    let item = Field::new("item", DataType::utf8(), true);
     let invalid_list = DataType::FixedSizeList(Arc::new(item.clone()), -1);
     for error in [
         DataType::fixed_size_list(item, -1).unwrap_err(),
@@ -412,8 +424,9 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
     // answers which datatypes have an extension at all, so a datatype added
     // later cannot be added to one and forgotten in the other.
     let extension_typed = [
-        DataType::Ascii,
-        DataType::ascii(4).unwrap(),
+        DataType::ascii(),
+        DataType::from_str("ascii(4)").unwrap(),
+        DataType::fixed_ascii(4).unwrap(),
         DataType::Country,
         DataType::Currency,
         DataType::Mic,

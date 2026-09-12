@@ -2,54 +2,54 @@
   {
     "name": "legsymbol",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual security's Symbol.",
       "display": "LegSymbol",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsymbol\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsymbol\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "600"
     }
   },
   {
     "name": "legsymbolsfx",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual security's SymbolSfx.",
       "display": "LegSymbolSfx",
       "fix:codes": "{\"codes\":[{\"value\":\"CD\",\"name\":\"EUCPWithLumpSumInterest\",\"since\":\"4.4\",\"sort\":1,\"group\":\"For Fixed Income\",\"doc\":\"EUCP with lump-sum interest rather than discount price\"},{\"value\":\"WI\",\"name\":\"WhenIssued\",\"since\":\"4.4\",\"sort\":2,\"group\":\"For Fixed Income\",\"doc\":\"\\\"When Issued\\\" for a security to be reissued under an old CUSIP or ISIN\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsymbolsfx\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsymbolsfx\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "601"
     }
   },
   {
     "name": "legsecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual security's SecurityID.",
       "display": "LegSecurityID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecurityid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecurityid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "602"
     }
   },
   {
     "name": "legsecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual security's SecurityIDSource.",
       "display": "LegSecurityIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecurityidsource\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecurityidsource\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "603"
     }
   },
@@ -69,27 +69,27 @@
   {
     "name": "legsecurityaltid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual security's SecurityAltID.",
       "display": "LegSecurityAltID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecurityaltid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecurityaltid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "605"
     }
   },
   {
     "name": "legsecurityaltidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Alternate identifier for individual leg security of a multileg instrument.",
       "display": "LegSecurityAltIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecurityaltidsource\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecurityaltidsource\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "606"
     }
   },
@@ -110,27 +110,27 @@
   {
     "name": "legcficode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual security's CFICode.",
       "display": "LegCFICode",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legcficode\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legcficode\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "608"
     }
   },
   {
     "name": "legsecuritytype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Refer to definition of SecurityType(167)",
       "display": "LegSecurityType",
       "fix:codes": "{\"codes\":[{\"value\":\"?\",\"name\":\"Wildcard\",\"since\":\"4.2\",\"sort\":5,\"group\":\"Other\",\"doc\":\"Wildcard entry for use on Security Definition Request\"},{\"value\":\"ABS\",\"name\":\"AssetBackedSecurities\",\"since\":\"4.3\",\"group\":\"Mortgage\",\"doc\":\"Asset-backed Securities\"},{\"value\":\"AMENDED\",\"name\":\"Amended\",\"since\":\"4.3\",\"sort\":11,\"group\":\"Loan\",\"doc\":\"Amended and restated\"},{\"value\":\"AN\",\"name\":\"OtherAnticipationNotes\",\"since\":\"4.3\",\"group\":\"Municipal\",\"doc\":\"Other Anticipation Notes (BAN, GAN, etc.)\"},{\"value\":\"BA\",\"name\":\"BankersAcceptance\",\"since\":\"4.1\",\"group\":\"Money Market\",\"doc\":\"Bankers Acceptance\"},{\"value\":\"BAB\",\"name\":\"BankAcceptedBill\",\"ep\":272,\"sort\":22,\"group\":\"Money Market\",\"doc\":\"Bank Accepted Bill\"},{\"value\":\"BDBSKT\",\"name\":\"BondBasket\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":20,\"group\":\"Derivatives\",\"doc\":\"Bond basket\"},{\"value\":\"BDN\",\"name\":\"BankDepositoryNote\",\"since\":\"5.0\",\"ep\":68,\"sort\":1,\"group\":\"Money Market\",\"doc\":\"Bank Depository Note\"},{\"value\":\"BN\",\"name\":\"BankNotes\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Money Market\",\"doc\":\"Bank Notes\"},{\"value\":\"BNST\",\"name\":\"ShortTermBankNote\",\"ep\":272,\"sort\":23,\"group\":\"Money Market\",\"doc\":\"Short Term Bank Note\"},{\"value\":\"BOX\",\"name\":\"BillOfExchanges\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Money Market\",\"doc\":\"Bill Of Exchanges\"},{\"value\":\"BRADY\",\"name\":\"BradyBond\",\"since\":\"4.3\",\"group\":\"Government\",\"doc\":\"Brady Bond\"},{\"value\":\"BRIDGE\",\"name\":\"BridgeLoan\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Loan\",\"doc\":\"Bridge Loan\"},{\"value\":\"BUYSELL\",\"name\":\"BuySellback\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Financing\",\"doc\":\"Buy Sellback\"},{\"value\":\"CAMM\",\"name\":\"CanadianMoneyMarkets\",\"since\":\"5.0\",\"ep\":68,\"sort\":4,\"group\":\"Money Market\",\"doc\":\"Canadian Money Markets\"},{\"value\":\"CAN\",\"name\":\"CanadianTreasuryNotes\",\"since\":\"5.0\",\"ep\":68,\"sort\":1,\"group\":\"Government\",\"doc\":\"Canadian Treasury Notes\"},{\"value\":\"CAP\",\"name\":\"Cap\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":1,\"group\":\"Derivatives\",\"doc\":\"Cap\"},{\"value\":\"CASH\",\"name\":\"Cash\",\"since\":\"4.4\",\"ep\":28,\"sort\":6,\"group\":\"Other\",\"doc\":\"Cash\"},{\"value\":\"CB\",\"name\":\"ConvertibleBond\",\"since\":\"4.2\",\"sort\":2,\"group\":\"Corporate\",\"doc\":\"Convertible Bond\"},{\"value\":\"CD\",\"name\":\"CertificateOfDeposit\",\"since\":\"4.1\",\"sort\":5,\"group\":\"Money Market\",\"doc\":\"Certificate Of Deposit\"},{\"value\":\"CDS\",\"name\":\"CreditDefaultSwap\",\"since\":\"5.0\",\"ep\":68,\"sort\":2,\"group\":\"Derivatives\",\"doc\":\"Credit Default Swap\"},{\"value\":\"CFD\",\"name\":\"ContractForDifference\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":21,\"group\":\"Derivatives\",\"doc\":\"Contract for difference\"},{\"value\":\"CL\",\"name\":\"CallLoans\",\"since\":\"4.3\",\"sort\":6,\"group\":\"Money Market\",\"doc\":\"Call Loans\"},{\"value\":\"CLCP\",\"name\":\"CallableCommercialPaper\",\"ep\":272,\"sort\":24,\"group\":\"Money Market\",\"doc\":\"Callable Commercial Paper\"},{\"value\":\"CLLR\",\"name\":\"Collar\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":3,\"group\":\"Derivatives\",\"doc\":\"Collar\"},{\"value\":\"CMB\",\"name\":\"CanadianMortgageBonds\",\"since\":\"5.0\",\"ep\":68,\"sort\":1,\"group\":\"Mortgage\",\"doc\":\"Canadian Mortgage Bonds\"},{\"value\":\"CMBS\",\"name\":\"Corp\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Mortgage\",\"doc\":\"Corp. Mortgage-backed Securities\"},{\"value\":\"CMDTYSWAP\",\"name\":\"CommoditySwap\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":4,\"group\":\"Derivatives\",\"doc\":\"Commodity swap\"},{\"value\":\"CMO\",\"name\":\"CollateralizedMortgageObligation\",\"since\":\"4.1\",\"sort\":3,\"group\":\"Mortgage\",\"doc\":\"Collateralized Mortgage Obligation\"},{\"value\":\"CN\",\"name\":\"CommercialNote\",\"ep\":272,\"sort\":25,\"group\":\"Money Market\",\"doc\":\"Commercial Note\"},{\"value\":\"COFO\",\"name\":\"CertificateOfObligation\",\"since\":\"4.3\",\"sort\":1,\"group\":\"Municipal\",\"doc\":\"Certificate Of Obligation\"},{\"value\":\"COFP\",\"name\":\"CertificateOfParticipation\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Municipal\",\"doc\":\"Certificate Of Participation\"},{\"value\":\"COLLBSKT\",\"name\":\"CollateralBasket\",\"since\":\"5.0.2\",\"ep\":197,\"sort\":6,\"group\":\"Financing\",\"doc\":\"Collateral basket\"},{\"value\":\"CORP\",\"name\":\"CorporateBond\",\"since\":\"4.1\",\"group\":\"Corporate\",\"doc\":\"Corporate Bond\"},{\"value\":\"CP\",\"name\":\"CommercialPaper\",\"since\":\"4.1\",\"sort\":7,\"group\":\"Money Market\",\"doc\":\"Commercial Paper\"},{\"value\":\"CPIB\",\"name\":\"InterestBearingCommercialPaper\",\"ep\":272,\"sort\":26,\"group\":\"Money Market\",\"doc\":\"Interest Bearing Commercial Paper\"},{\"value\":\"CPP\",\"name\":\"CorporatePrivatePlacement\",\"since\":\"4.1\",\"sort\":1,\"group\":\"Corporate\",\"doc\":\"Corporate Private Placement\"},{\"value\":\"CRLTNSWAP\",\"name\":\"CorrelationSwap\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":22,\"group\":\"Derivatives\",\"doc\":\"Correlation swap\"},{\"value\":\"CS\",\"name\":\"CommonStock\",\"since\":\"4.1\",\"group\":\"Equity\",\"doc\":\"Common Stock\"},{\"value\":\"CTB\",\"name\":\"CanadianTreasuryBills\",\"since\":\"5.0\",\"ep\":68,\"sort\":2,\"group\":\"Government\",\"doc\":\"Canadian Treasury Bills\"},{\"value\":\"DEFLTED\",\"name\":\"Defaulted\",\"since\":\"4.3\",\"sort\":7,\"group\":\"Loan\",\"doc\":\"Defaulted\"},{\"value\":\"DIGITAL\",\"name\":\"DigitalAsset\",\"ep\":273,\"sort\":12,\"group\":\"Other\",\"doc\":\"Digital Asset\"},{\"value\":\"DIMSUMCORP\",\"name\":\"OffshoreIssuedChineseYuanCorporateBond\",\"ep\":272,\"sort\":10,\"group\":\"Corporate\",\"doc\":\"Offshore issued Chinese Yuan (CNY) denominated corporate bond\"},{\"value\":\"DIMSUMSOV\",\"name\":\"OffshoreIssuedChineseYuanSovereignBond\",\"ep\":272,\"sort\":12,\"group\":\"Government\",\"doc\":\"Offshore issued Chinese Yuan (CNY) denominated sovereign bond\"},{\"value\":\"DINP\",\"name\":\"DebtorInPossession\",\"since\":\"4.3\",\"sort\":6,\"group\":\"Loan\",\"doc\":\"Debtor In Possession\"},{\"value\":\"DN\",\"name\":\"DepositNotes\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Money Market\",\"doc\":\"Deposit Notes\"},{\"value\":\"DR\",\"name\":\"DepositoryReceipts\",\"since\":\"5.0.2\",\"ep\":236,\"sort\":2,\"group\":\"Equity\",\"doc\":\"Depository Receipts\"},{\"value\":\"DUAL\",\"name\":\"DualCurrency\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Corporate\",\"doc\":\"Dual Currency\"},{\"value\":\"DVDNDSWAP\",\"name\":\"DiviendSwap\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":23,\"group\":\"Derivatives\",\"doc\":\"Dividend swap\"},{\"value\":\"DVPLDG\",\"name\":\"DeliveryVersusPledge\",\"since\":\"5.0.2\",\"ep\":132,\"sort\":5,\"group\":\"Financing\",\"doc\":\"Delivery versus pledge\"},{\"value\":\"EQBSKT\",\"name\":\"EquityBasket\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":24,\"group\":\"Derivatives\",\"doc\":\"Equity basket\"},{\"value\":\"EQFWD\",\"name\":\"EquityForward\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":25,\"group\":\"Derivatives\",\"doc\":\"Equity forward\"},{\"value\":\"ETC\",\"name\":\"ExchangeTradedCommodity\",\"since\":\"5.0.2\",\"ep\":238,\"sort\":33,\"group\":\"Derivatives\",\"doc\":\"Exchange traded commodity\"},{\"value\":\"ETF\",\"name\":\"ExchangeTradedFund\",\"ep\":272,\"sort\":11,\"group\":\"Other\",\"doc\":\"Exchange Traded Fund\"},{\"value\":\"ETN\",\"name\":\"ExchangeTradedNote\",\"since\":\"5.0.2\",\"ep\":238,\"sort\":8,\"group\":\"Other\",\"doc\":\"Exchange traded note\"},{\"value\":\"EUCD\",\"name\":\"EuroCertificateOfDeposit\",\"since\":\"4.4\",\"sort\":9,\"group\":\"Money Market\",\"doc\":\"Euro Certificate Of Deposit\"},{\"value\":\"EUCORP\",\"name\":\"EuroCorporateBond\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Corporate\",\"doc\":\"Euro Corporate Bond\"},{\"value\":\"EUCP\",\"name\":\"EuroCommercialPaper\",\"since\":\"4.4\",\"sort\":10,\"group\":\"Money Market\",\"doc\":\"Euro Commercial Paper\"},{\"value\":\"EUFRN\",\"name\":\"EuroCorporateFloatingRateNotes\",\"since\":\"5.0\",\"ep\":68,\"sort\":5,\"group\":\"Corporate\",\"doc\":\"Euro Corporate Floating Rate Notes\"},{\"value\":\"EUMTN\",\"name\":\"EuroMediumTermNote\",\"ep\":272,\"sort\":27,\"group\":\"Money Market\",\"doc\":\"Euro Medium Term Note\"},{\"value\":\"EUNCP\",\"name\":\"EuroNegotiableCommercialPaper\",\"ep\":272,\"sort\":28,\"group\":\"Money Market\",\"doc\":\"Euro Negotiable Commercial Paper\"},{\"value\":\"EUSOV\",\"name\":\"EuroSovereigns\",\"since\":\"4.4\",\"sort\":3,\"group\":\"Government\",\"doc\":\"Euro Sovereigns\"},{\"value\":\"EUSTLQN\",\"name\":\"EuroStructuredLiquidityNote\",\"ep\":272,\"sort\":29,\"group\":\"Money Market\",\"doc\":\"Euro Structured Liquidity Note\"},{\"value\":\"EUSUPRA\",\"name\":\"EuroSupranationalCoupons\",\"since\":\"4.4\",\"group\":\"Agency\",\"doc\":\"Euro Supranational Coupons\"},{\"value\":\"EUTD\",\"name\":\"EuroTimeDeposit\",\"ep\":272,\"sort\":30,\"group\":\"Money Market\",\"doc\":\"Euro Time Deposit\"},{\"value\":\"EXOTIC\",\"name\":\"Exotic\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":5,\"group\":\"Derivatives\",\"doc\":\"Exotic\"},{\"value\":\"FAC\",\"name\":\"FederalAgencyCoupon\",\"since\":\"4.3\",\"sort\":1,\"group\":\"Agency\",\"doc\":\"Federal Agency Coupon\"},{\"value\":\"FADN\",\"name\":\"FederalAgencyDiscountNote\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Agency\",\"doc\":\"Federal Agency Discount Note\"},{\"value\":\"FLR\",\"name\":\"Floor\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":6,\"group\":\"Derivatives\",\"doc\":\"Floor\"},{\"value\":\"FOR\",\"name\":\"ForeignExchangeContract\",\"since\":\"4.1\",\"deprecated\":\"5.0.1\",\"group\":\"Currency\",\"doc\":\"Foreign Exchange Contract\"},{\"value\":\"FORWARD\",\"name\":\"Forward\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Financing\",\"doc\":\"Forward\"},{\"value\":\"FRA\",\"name\":\"FRA\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":7,\"group\":\"Derivatives\",\"doc\":\"Forward Rate Agreement\"},{\"value\":\"FRN\",\"name\":\"USCorporateFloatingRateNotes\",\"since\":\"5.0\",\"ep\":68,\"sort\":6,\"group\":\"Corporate\",\"doc\":\"US Corporate Floating Rate Notes\"},{\"value\":\"FUT\",\"name\":\"Future\",\"since\":\"4.1\",\"sort\":8,\"group\":\"Derivatives\",\"doc\":\"Future\"},{\"value\":\"FUTSWAP\",\"name\":\"FuturesOnASwap\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":29,\"group\":\"Derivatives\",\"doc\":\"Futures on a Swap\"},{\"value\":\"FWD\",\"name\":\"DerivativeForward\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":9,\"group\":\"Derivatives\",\"doc\":\"Derivative forward\"},{\"value\":\"FWDFRTAGMT\",\"name\":\"ForwardFreightAgreement\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":31,\"group\":\"Derivatives\",\"doc\":\"Forward Freight Agreement\"},{\"value\":\"FWDSWAP\",\"name\":\"ForwardsOnASwap\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":30,\"group\":\"Derivatives\",\"doc\":\"Forwards on a Swap\"},{\"value\":\"FXBN\",\"name\":\"FXBankNote\",\"ep\":272,\"sort\":6,\"group\":\"Currency\",\"doc\":\"FX Bank Note\"},{\"value\":\"FXDN\",\"name\":\"ForeignCurrencyDiscountNote\",\"ep\":272,\"sort\":7,\"group\":\"Currency\",\"doc\":\"Foreign Currency Discount Note\"},{\"value\":\"FXFWD\",\"name\":\"FXForward\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":3,\"group\":\"Currency\",\"doc\":\"FX Forward\"},{\"value\":\"FXNDF\",\"name\":\"NonDeliverableForward\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":1,\"group\":\"Currency\",\"doc\":\"Non-deliverable forward\"},{\"value\":\"FXNDS\",\"name\":\"NonDeliverableSwap\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":5,\"group\":\"Currency\",\"doc\":\"Non-deliverable Swap\"},{\"value\":\"FXSPOT\",\"name\":\"FXSpot\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":2,\"group\":\"Currency\",\"doc\":\"FX Spot\"},{\"value\":\"FXSWAP\",\"name\":\"FXSwap\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":4,\"group\":\"Currency\",\"doc\":\"FX Swap\"},{\"value\":\"GO\",\"name\":\"GeneralObligationBonds\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Municipal\",\"doc\":\"General Obligation Bonds\"},{\"value\":\"IET\",\"name\":\"IOETTEMortgage\",\"since\":\"4.2\",\"sort\":4,\"group\":\"Mortgage\",\"doc\":\"IOETTE Mortgage\"},{\"value\":\"INDEX\",\"name\":\"Index\",\"since\":\"5.0.2\",\"ep\":179,\"sort\":19,\"group\":\"Derivatives\",\"doc\":\"General type for a contract based on an established index\"},{\"value\":\"IRS\",\"name\":\"InterestRateSwap\",\"since\":\"5.0\",\"ep\":54,\"sort\":10,\"group\":\"Derivatives\",\"doc\":\"Interest Rate Swap\"},{\"value\":\"JCD\",\"name\":\"JumboCertificateOfDeposit\",\"ep\":272,\"sort\":31,\"group\":\"Money Market\",\"doc\":\"Jumbo Certificate of Deposit\"},{\"value\":\"LOANLEASE\",\"name\":\"LoanLease\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":11,\"group\":\"Derivatives\",\"doc\":\"Loan/lease\"},{\"value\":\"LOFC\",\"name\":\"LetterOfCredit\",\"since\":\"4.3\",\"sort\":4,\"group\":\"Loan\",\"doc\":\"Letter Of Credit\"},{\"value\":\"LQN\",\"name\":\"LiquidityNote\",\"since\":\"4.3\",\"sort\":11,\"group\":\"Money Market\",\"doc\":\"Liquidity Note\"},{\"value\":\"MATURED\",\"name\":\"Matured\",\"since\":\"4.3\",\"sort\":10,\"group\":\"Loan\",\"doc\":\"Matured\"},{\"value\":\"MBS\",\"name\":\"MortgageBackedSecurities\",\"since\":\"4.3\",\"sort\":5,\"group\":\"Mortgage\",\"doc\":\"Mortgage-backed Securities\"},{\"value\":\"MCPIB\",\"name\":\"MunicipalInterestBearingCommercialPaper\",\"ep\":272,\"sort\":17,\"group\":\"Municipal\",\"doc\":\"Municipal Interest Bearing Commercial Paper\"},{\"value\":\"MF\",\"name\":\"MutualFund\",\"since\":\"4.1\",\"group\":\"Other\",\"doc\":\"Mutual Fund\"},{\"value\":\"MIO\",\"name\":\"MortgageInterestOnly\",\"since\":\"4.1\",\"sort\":6,\"group\":\"Mortgage\",\"doc\":\"Mortgage Interest Only\"},{\"value\":\"MLEG\",\"name\":\"MultilegInstrument\",\"since\":\"4.3\",\"sort\":1,\"group\":\"Other\",\"doc\":\"Multileg Instrument\"},{\"value\":\"MMF\",\"name\":\"MoneyMarketFund\",\"ep\":272,\"sort\":32,\"group\":\"Money Market\",\"doc\":\"Money Market Fund\"},{\"value\":\"MN\",\"name\":\"MasterNote\",\"ep\":272,\"sort\":33,\"group\":\"Money Market\",\"doc\":\"Master Note\"},{\"value\":\"MPO\",\"name\":\"MortgagePrincipalOnly\",\"since\":\"4.1\",\"sort\":7,\"group\":\"Mortgage\",\"doc\":\"Mortgage Principal Only\"},{\"value\":\"MPP\",\"name\":\"MortgagePrivatePlacement\",\"since\":\"4.1\",\"sort\":8,\"group\":\"Mortgage\",\"doc\":\"Mortgage Private Placement\"},{\"value\":\"MPT\",\"name\":\"MiscellaneousPassThrough\",\"since\":\"4.1\",\"sort\":9,\"group\":\"Mortgage\",\"doc\":\"Miscellaneous Pass-through\"},{\"value\":\"MRGNLOAN\",\"name\":\"MarginLoan\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":9,\"group\":\"Financing\",\"doc\":\"Margin loan\"},{\"value\":\"MT\",\"name\":\"MandatoryTender\",\"since\":\"4.3\",\"sort\":4,\"group\":\"Municipal\",\"doc\":\"Mandatory Tender\"},{\"value\":\"MTN\",\"name\":\"MediumTermNotes\",\"since\":\"4.3\",\"sort\":12,\"group\":\"Money Market\",\"doc\":\"Medium Term Notes\"},{\"value\":\"NCD\",\"name\":\"NegotiableCertificateOfDeposit\",\"ep\":272,\"sort\":34,\"group\":\"Money Market\",\"doc\":\"Negotiable Certificate of Deposit\"},{\"value\":\"NCP\",\"name\":\"NegotiableCommercialPaper\",\"ep\":272,\"sort\":35,\"group\":\"Money Market\",\"doc\":\"Negotiable Commercial Paper\"},{\"value\":\"NONE\",\"name\":\"NoSecurityType\",\"since\":\"4.1\",\"sort\":2,\"group\":\"Other\",\"doc\":\"No Security Type\"},{\"value\":\"ONITE\",\"name\":\"Overnight\",\"since\":\"4.3\",\"sort\":13,\"group\":\"Money Market\",\"doc\":\"Overnight\"},{\"value\":\"OOC\",\"name\":\"OptionsOnCombo\",\"since\":\"5.0\",\"sort\":6,\"group\":\"Derivatives\",\"doc\":\"Options on Combo\"},{\"value\":\"OOF\",\"name\":\"OptionsOnFutures\",\"since\":\"4.4\",\"ep\":19,\"sort\":13,\"group\":\"Derivatives\",\"doc\":\"Options on Futures\"},{\"value\":\"OOP\",\"name\":\"OptionsOnPhysical\",\"since\":\"4.4\",\"ep\":19,\"sort\":14,\"group\":\"Derivatives\",\"doc\":\"Options on Physical - use not recommended\"},{\"value\":\"OPT\",\"name\":\"Option\",\"since\":\"4.1\",\"sort\":15,\"group\":\"Derivatives\",\"doc\":\"Option\"},{\"value\":\"Other\",\"name\":\"Other\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":7,\"group\":\"Other\",\"doc\":\"Other\"},{\"value\":\"PEF\",\"name\":\"PrivateExportFunding\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Agency\",\"doc\":\"Private Export Funding\"},{\"value\":\"PFAND\",\"name\":\"Pfandbrief\",\"since\":\"4.4\",\"sort\":10,\"group\":\"Mortgage\",\"doc\":\"Pfandbrief\"},{\"value\":\"PN\",\"name\":\"PromissoryNote\",\"since\":\"4.3\",\"sort\":14,\"group\":\"Money Market\",\"doc\":\"Promissory Note\"},{\"value\":\"PRCORP\",\"name\":\"PreferredCorporateBond\",\"ep\":272,\"sort\":11,\"group\":\"Corporate\",\"doc\":\"Preferred Corporate Bond\"},{\"value\":\"PROV\",\"name\":\"CanadianProvincialBonds\",\"since\":\"5.0\",\"ep\":68,\"sort\":4,\"group\":\"Government\",\"doc\":\"Canadian Provincial Bonds\"},{\"value\":\"PRTFLIOSWAP\",\"name\":\"PortfolioSwaps\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":28,\"group\":\"Derivatives\",\"doc\":\"Portfolio swap\"},{\"value\":\"PS\",\"name\":\"PreferredStock\",\"since\":\"4.1\",\"sort\":1,\"group\":\"Equity\",\"doc\":\"Preferred Stock\"},{\"value\":\"PZFJ\",\"name\":\"PlazosFijos\",\"since\":\"4.3\",\"sort\":15,\"group\":\"Money Market\",\"doc\":\"Plazos Fijos\"},{\"value\":\"RAN\",\"name\":\"RevenueAnticipationNote\",\"since\":\"4.3\",\"sort\":5,\"group\":\"Municipal\",\"doc\":\"Revenue Anticipation Note\"},{\"value\":\"RCD\",\"name\":\"RetailCertificateOfDeposit\",\"ep\":272,\"sort\":36,\"group\":\"Money Market\",\"doc\":\"Retail Certificate of Deposit\"},{\"value\":\"REPLACD\",\"name\":\"Replaced\",\"since\":\"4.3\",\"sort\":9,\"group\":\"Loan\",\"doc\":\"Replaced\"},{\"value\":\"REPO\",\"name\":\"Repurchase\",\"since\":\"4.4\",\"group\":\"Financing\",\"doc\":\"Repurchase\"},{\"value\":\"RETIRED\",\"name\":\"Retired\",\"since\":\"4.3\",\"sort\":12,\"group\":\"Loan\",\"doc\":\"Retired\"},{\"value\":\"REV\",\"name\":\"RevenueBonds\",\"since\":\"4.3\",\"sort\":6,\"group\":\"Municipal\",\"doc\":\"Revenue Bonds\"},{\"value\":\"RTRNSWAP\",\"name\":\"ReturnSwap\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":26,\"group\":\"Derivatives\",\"doc\":\"Return swap\"},{\"value\":\"RVLV\",\"name\":\"RevolverLoan\",\"since\":\"4.3\",\"sort\":1,\"group\":\"Loan\",\"doc\":\"Revolver Loan\"},{\"value\":\"RVLVTRM\",\"name\":\"Revolver\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Loan\",\"doc\":\"Revolver/Term Loan\"},{\"value\":\"SECDERIV\",\"name\":\"SecuritizedDerivative\",\"since\":\"5.0.2\",\"ep\":238,\"sort\":10,\"group\":\"Other\",\"doc\":\"Securitized derivative\"},{\"value\":\"SECLOAN\",\"name\":\"SecuritiesLoan\",\"since\":\"4.4\",\"sort\":3,\"group\":\"Financing\",\"doc\":\"Securities Loan\"},{\"value\":\"SECPLEDGE\",\"name\":\"SecuritiesPledge\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Financing\",\"doc\":\"Securities Pledge\"},{\"value\":\"SFP\",\"name\":\"StructuredFinanceProduct\",\"since\":\"5.0.2\",\"ep\":238,\"sort\":7,\"group\":\"Financing\",\"doc\":\"Structured finance product\"},{\"value\":\"SLQN\",\"name\":\"SecuredLiquidityNote\",\"since\":\"5.0\",\"ep\":68,\"sort\":16,\"group\":\"Money Market\",\"doc\":\"Secured Liquidity Note\"},{\"value\":\"SOV\",\"name\":\"SovereignBond\",\"ep\":272,\"sort\":13,\"group\":\"Government\",\"doc\":\"Sovereign Bond\"},{\"value\":\"SPCLA\",\"name\":\"SpecialAssessment\",\"since\":\"4.3\",\"sort\":7,\"group\":\"Municipal\",\"doc\":\"Special Assessment\"},{\"value\":\"SPCLO\",\"name\":\"SpecialObligation\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Municipal\",\"doc\":\"Special Obligation\"},{\"value\":\"SPCLT\",\"name\":\"SpecialTax\",\"since\":\"4.3\",\"sort\":9,\"group\":\"Municipal\",\"doc\":\"Special Tax\"},{\"value\":\"SPOTFWD\",\"name\":\"SpotForward\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":16,\"group\":\"Derivatives\",\"doc\":\"Spot forward\"},{\"value\":\"SPREADBET\",\"name\":\"SpreadBetting\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":32,\"group\":\"Derivatives\",\"doc\":\"Spread Betting\"},{\"value\":\"STN\",\"name\":\"ShortTermLoanNote\",\"since\":\"4.3\",\"sort\":14,\"group\":\"Money Market\",\"doc\":\"Short Term Loan Note\"},{\"value\":\"STRUCT\",\"name\":\"StructuredNotes\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Corporate\",\"doc\":\"Structured Notes\"},{\"value\":\"SUPRA\",\"name\":\"USDSupranationalCoupons\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Agency\",\"doc\":\"USD Supranational Coupons\"},{\"value\":\"SWAPTION\",\"name\":\"SwapOption\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":17,\"group\":\"Derivatives\",\"doc\":\"Swap option\"},{\"value\":\"SWING\",\"name\":\"SwingLineFacility\",\"since\":\"4.3\",\"sort\":5,\"group\":\"Loan\",\"doc\":\"Swing Line Facility\"},{\"value\":\"TAN\",\"name\":\"TaxAnticipationNote\",\"since\":\"4.3\",\"sort\":10,\"group\":\"Municipal\",\"doc\":\"Tax Anticipation Note\"},{\"value\":\"TAXA\",\"name\":\"TaxAllocation\",\"since\":\"4.3\",\"sort\":11,\"group\":\"Municipal\",\"doc\":\"Tax Allocation\"},{\"value\":\"TB\",\"name\":\"TreasuryBill\",\"since\":\"5.0\",\"ep\":68,\"sort\":5,\"group\":\"Government\",\"doc\":\"Treasury Bill - non US\"},{\"value\":\"TBA\",\"name\":\"ToBeAnnounced\",\"since\":\"4.3\",\"sort\":11,\"group\":\"Mortgage\",\"doc\":\"To Be Announced\"},{\"value\":\"TBILL\",\"name\":\"USTreasuryBill\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Government\",\"doc\":\"US Treasury Bill\"},{\"value\":\"TBOND\",\"name\":\"USTreasuryBond\",\"since\":\"4.3\",\"sort\":6,\"group\":\"Government\",\"doc\":\"US Treasury Bond\"},{\"value\":\"TCAL\",\"name\":\"PrincipalStripOfACallableBondOrNote\",\"since\":\"4.3\",\"sort\":9,\"group\":\"Government\",\"doc\":\"Principal Strip Of A Callable Bond Or Note\"},{\"value\":\"TD\",\"name\":\"TimeDeposit\",\"since\":\"4.1\",\"sort\":17,\"group\":\"Money Market\",\"doc\":\"Time Deposit\"},{\"value\":\"TDR\",\"name\":\"TermDepositReceipt\",\"ep\":272,\"sort\":37,\"group\":\"Money Market\",\"doc\":\"Term Deposit Receipt\"},{\"value\":\"TECP\",\"name\":\"TaxExemptCommercialPaper\",\"since\":\"4.3\",\"sort\":12,\"group\":\"Municipal\",\"doc\":\"Tax Exempt Commercial Paper\"},{\"value\":\"TERM\",\"name\":\"TermLoan\",\"since\":\"4.3\",\"group\":\"Loan\",\"doc\":\"Term Loan\"},{\"value\":\"TFRN\",\"name\":\"USTreasuryFloatingRateNote\",\"ep\":272,\"sort\":14,\"group\":\"Government\",\"doc\":\"US Treasury Floating Rate Note\"},{\"value\":\"TINT\",\"name\":\"InterestStripFromAnyBondOrNote\",\"since\":\"4.3\",\"sort\":7,\"group\":\"Government\",\"doc\":\"Interest Strip From Any Bond Or Note\"},{\"value\":\"TIPS\",\"name\":\"TreasuryInflationProtectedSecurities\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Government\",\"doc\":\"Treasury Inflation Protected Securities\"},{\"value\":\"TLQN\",\"name\":\"TermLiquidityNote\",\"since\":\"5.0\",\"ep\":68,\"sort\":19,\"group\":\"Money Market\",\"doc\":\"Term Liquidity Note\"},{\"value\":\"TMB\",\"name\":\"TaxableMunicipalBond\",\"ep\":272,\"sort\":18,\"group\":\"Municipal\",\"doc\":\"Taxable Municipal Bond\"},{\"value\":\"TMCP\",\"name\":\"TaxableMunicipalCP\",\"since\":\"5.0\",\"ep\":68,\"sort\":13,\"group\":\"Municipal\",\"doc\":\"Taxable Municipal CP\"},{\"value\":\"TNOTE\",\"name\":\"USTreasuryNote\",\"since\":\"4.4\",\"sort\":11,\"group\":\"Government\",\"doc\":\"US Treasury Note\"},{\"value\":\"TPRN\",\"name\":\"PrincipalStripFromANonCallableBondOrNote\",\"since\":\"4.3\",\"sort\":10,\"group\":\"Government\",\"doc\":\"Principal Strip From A Non-Callable Bond Or Note\"},{\"value\":\"TRAN\",\"name\":\"TaxRevenueAnticipationNote\",\"since\":\"4.3\",\"sort\":14,\"group\":\"Municipal\",\"doc\":\"Tax Revenue Anticipation Note\"},{\"value\":\"TRS\",\"name\":\"TotalReturnSwap\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":10,\"group\":\"Derivatives\",\"doc\":\"Total return swap\"},{\"value\":\"UST\",\"name\":\"USTreasuryNoteOld\",\"since\":\"4.3\",\"deprecated\":\"4.4\",\"sort\":3,\"doc\":\"US Treasury Note (Deprecated Value Use TNOTE)\"},{\"value\":\"USTB\",\"name\":\"USTreasuryBillOld\",\"since\":\"4.1\",\"deprecated\":\"4.4\",\"sort\":4,\"doc\":\"US Treasury Bill (Deprecated Value Use TBILL)\"},{\"value\":\"VARSWAP\",\"name\":\"VarianceSwap\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":27,\"group\":\"Derivatives\",\"doc\":\"Variance swap\"},{\"value\":\"VRDN\",\"name\":\"VariableRateDemandNote\",\"since\":\"4.3\",\"sort\":15,\"group\":\"Municipal\",\"doc\":\"Variable Rate Demand Note\"},{\"value\":\"VRDO\",\"name\":\"VariableRateDemandObligation\",\"ep\":272,\"sort\":19,\"group\":\"Municipal\",\"doc\":\"Variable Rate Demand Obligation\"},{\"value\":\"WAR\",\"name\":\"Warrant\",\"since\":\"4.1\",\"sort\":16,\"group\":\"Municipal\",\"doc\":\"Warrant\"},{\"value\":\"WITHDRN\",\"name\":\"Withdrawn\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Loan\",\"doc\":\"Withdrawn\"},{\"value\":\"XCN\",\"name\":\"ExtendedCommNote\",\"since\":\"4.3\",\"sort\":20,\"group\":\"Money Market\",\"doc\":\"Extended Comm Note\"},{\"value\":\"XLINKD\",\"name\":\"IndexedLinked\",\"since\":\"4.3\",\"sort\":7,\"group\":\"Corporate\",\"doc\":\"Indexed Linked\"},{\"value\":\"XMISSION\",\"name\":\"Transmission\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":18,\"group\":\"Derivatives\",\"doc\":\"Transmission\"},{\"value\":\"YANK\",\"name\":\"YankeeCorporateBond\",\"since\":\"4.3\",\"sort\":9,\"group\":\"Corporate\",\"doc\":\"Yankee Corporate Bond\"},{\"value\":\"YCD\",\"name\":\"YankeeCertificateOfDeposit\",\"since\":\"4.4\",\"sort\":21,\"group\":\"Money Market\",\"doc\":\"Yankee Certificate Of Deposit\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecuritytype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecuritytype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.4\",\"when\":\"UST\",\"fills\":[{\"tag\":609,\"value\":\"TNOTE\"}],\"doc\":\"SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)\"},{\"since\":\"4.4\",\"when\":\"USTB\",\"fills\":[{\"tag\":609,\"value\":\"TBILL\"}],\"doc\":\"SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)\"}]}",
       "fix:tag": "609"
     }
@@ -138,14 +138,16 @@
   {
     "name": "legmaturitymonthyear",
     "dtype": {
-      "type": "fixed_ascii",
-      "width": 8
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual security's MaturityMonthYear.",
       "display": "LegMaturityMonthYear",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legmaturitymonthyear\",\"type\":{\"type\":\"fixed_ascii\",\"width\":8}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legmaturitymonthyear\",\"type\":{\"type\":\"string\",\"layout\":\"fixed_string\",\"charset\":\"us-ascii\",\"fixed\":8}}]}",
       "fix:tag": "610"
     }
   },
@@ -179,13 +181,13 @@
   {
     "name": "legoptattribute",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual security's OptAttribute.",
       "display": "LegOptAttribute",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legoptattribute\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legoptattribute\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "613"
     }
   },
@@ -231,13 +233,13 @@
   {
     "name": "legissuer",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual security's Issuer.",
       "display": "LegIssuer",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legissuer\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legissuer\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "617"
     }
   },
@@ -270,13 +272,13 @@
   {
     "name": "legsecuritydesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Description of a multileg instrument.",
       "display": "LegSecurityDesc",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecuritydesc\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsecuritydesc\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "620"
     }
   },
@@ -322,28 +324,28 @@
   {
     "name": "legside",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The side of this individual leg (multileg security).",
       "display": "LegSide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Sell\"},{\"value\":\"3\",\"name\":\"BuyMinus\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Buy minus\"},{\"value\":\"4\",\"name\":\"SellPlus\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Sell plus\"},{\"value\":\"5\",\"name\":\"SellShort\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Sell short\"},{\"value\":\"6\",\"name\":\"SellShortExempt\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"Sell short exempt\"},{\"value\":\"7\",\"name\":\"Undisclosed\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"Undisclosed\"},{\"value\":\"8\",\"name\":\"Cross\",\"since\":\"4.1\",\"sort\":8,\"doc\":\"Cross (orders where counterparty is an exchange, valid for all messages except IOIs)\"},{\"value\":\"9\",\"name\":\"CrossShort\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Cross short\"},{\"value\":\"A\",\"name\":\"CrossShortExempt\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Cross short exempt\"},{\"value\":\"B\",\"name\":\"AsDefined\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"\\\"As Defined\\\" (for use with multileg instruments)\"},{\"value\":\"C\",\"name\":\"Opposite\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"\\\"Opposite\\\" (for use with multileg instruments)\"},{\"value\":\"D\",\"name\":\"Subscribe\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"Subscribe (e.g. CIV)\"},{\"value\":\"E\",\"name\":\"Redeem\",\"since\":\"4.4\",\"sort\":14,\"doc\":\"Redeem (e.g. CIV)\"},{\"value\":\"F\",\"name\":\"Lend\",\"since\":\"4.4\",\"sort\":15,\"doc\":\"Lend (FINANCING - identifies direction of collateral)\"},{\"value\":\"G\",\"name\":\"Borrow\",\"since\":\"4.4\",\"sort\":16,\"doc\":\"Borrow (FINANCING - identifies direction of collateral)\"},{\"value\":\"H\",\"name\":\"SellUndisclosed\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":17,\"doc\":\"Sell undisclosed\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legside\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legside\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "624"
     }
   },
   {
     "name": "tradingsessionsubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Optional market assigned sub identifier for a trading phase within a trading session. Usage is determined by market or counterparties. Used by US based futures markets to identify exchange specific execution time bracket codes as required by US market regulations. Bilaterally agreed values of data type \"String\" that start with a character can be used for backward compatibility",
       "display": "TradingSessionSubID",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"PreTrading\",\"since\":\"5.0\",\"ep\":58,\"sort\":1,\"doc\":\"Pre-Trading\"},{\"value\":\"10\",\"name\":\"OutOfMainSessionTrading\",\"since\":\"5.0.2\",\"ep\":163,\"sort\":10,\"doc\":\"Out of main session trading\"},{\"value\":\"11\",\"name\":\"PrivateAuction\",\"since\":\"5.0.2\",\"ep\":168,\"sort\":11,\"doc\":\"Private auction\"},{\"value\":\"12\",\"name\":\"PublicAuction\",\"since\":\"5.0.2\",\"ep\":168,\"sort\":12,\"doc\":\"Public auction\"},{\"value\":\"13\",\"name\":\"GroupAuction\",\"since\":\"5.0.2\",\"ep\":168,\"sort\":13,\"doc\":\"Group auction\"},{\"value\":\"14\",\"name\":\"OrderInitiatedAuction\",\"ep\":286,\"sort\":14,\"doc\":\"Order initiated auction\"},{\"value\":\"2\",\"name\":\"OpeningOrOpeningAuction\",\"since\":\"5.0\",\"ep\":58,\"sort\":2,\"doc\":\"Opening or opening auction\"},{\"value\":\"3\",\"name\":\"Continuous\",\"since\":\"5.0\",\"ep\":58,\"sort\":3,\"doc\":\"(Continuous) Trading\"},{\"value\":\"4\",\"name\":\"ClosingOrClosingAuction\",\"since\":\"5.0\",\"ep\":58,\"sort\":4,\"doc\":\"Closing or closing auction\"},{\"value\":\"5\",\"name\":\"PostTrading\",\"since\":\"5.0\",\"ep\":58,\"sort\":5,\"doc\":\"Post-Trading\"},{\"value\":\"6\",\"name\":\"ScheduledIntradayAuction\",\"since\":\"5.0\",\"ep\":58,\"sort\":6,\"aliases\":[\"IntradayAuction\"],\"doc\":\"Scheduled intraday auction\"},{\"value\":\"7\",\"name\":\"Quiescent\",\"since\":\"5.0\",\"ep\":58,\"sort\":7,\"doc\":\"Quiescent\"},{\"value\":\"8\",\"name\":\"AnyAuction\",\"since\":\"5.0.2\",\"ep\":131,\"sort\":8,\"doc\":\"Any auction\"},{\"value\":\"9\",\"name\":\"UnscheduledIntradayAuction\",\"since\":\"5.0.2\",\"ep\":163,\"sort\":9,\"doc\":\"Unscheduled intraday auction\"},{\"value\":\"99\",\"name\":\"Other\",\"ep\":300,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradingsessionsubid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradingsessionsubid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "625"
     }
   },
@@ -377,13 +379,13 @@
   {
     "name": "hopcompid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Assigned value used to identify the third party firm which delivered a specific message either from the firm which originated the message or from another third party (if multiple \"hops\" are performed). It is recommended that this value be the SenderCompID (49) of the third party.",
       "display": "HopCompID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"hopcompid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"hopcompid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "628"
     }
   },
@@ -470,14 +472,14 @@
   {
     "name": "clearingfeeindicator",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Indicates type of fee being assessed of the customer for trade executions at an exchange. Applicable for futures markets only at this time.",
       "display": "ClearingFeeIndicator",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FirstYearDelegate\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"1st year delegate trading for own account\"},{\"value\":\"2\",\"name\":\"SecondYearDelegate\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"2nd year delegate trading for own account\"},{\"value\":\"3\",\"name\":\"ThirdYearDelegate\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"3rd year delegate trading for own account\"},{\"value\":\"4\",\"name\":\"FourthYearDelegate\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"4th year delegate trading for own account\"},{\"value\":\"5\",\"name\":\"FifthYearDelegate\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"5th year delegate trading for own account\"},{\"value\":\"9\",\"name\":\"SixthYearDelegate\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"6th year delegate trading for own account\"},{\"value\":\"B\",\"name\":\"CBOEMember\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"CBOE Member\"},{\"value\":\"C\",\"name\":\"NonMemberAndCustomer\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"Non-member and Customer\"},{\"value\":\"E\",\"name\":\"EquityMemberAndClearingMember\",\"since\":\"4.3\",\"sort\":9,\"doc\":\"Equity Member and Clearing Member\"},{\"value\":\"F\",\"name\":\"FullAndAssociateMember\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Full and Associate Member trading for own account and as floor brokers\"},{\"value\":\"H\",\"name\":\"Firms106HAnd106J\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"106.H and 106.J firms\"},{\"value\":\"I\",\"name\":\"GIM\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"GIM, IDEM and COM Membership Interest Holders\"},{\"value\":\"L\",\"name\":\"Lessee106FEmployees\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Lessee 106.F Employees\"},{\"value\":\"M\",\"name\":\"AllOtherOwnershipTypes\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"All other ownership types\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"clearingfeeindicator\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"clearingfeeindicator\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "635"
     }
   },
@@ -590,13 +592,13 @@
   {
     "name": "rfqreqid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "RFQ Request ID - used to identify an RFQ Request.",
       "display": "RFQReqID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"rfqreqid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"rfqreqid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "644"
     }
   },
@@ -655,13 +657,13 @@
   {
     "name": "quotestatusreqid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier for Quote Status Request.",
       "display": "QuoteStatusReqID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"quotestatusreqid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"quotestatusreqid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "649"
     }
   },
@@ -708,26 +710,26 @@
   {
     "name": "legrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier for a specific leg (uniqueness not defined as part of the FIX specification). LegRefID(654) be used to reference the value from LegID(1788).",
       "display": "LegRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legrefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legrefid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "654"
     }
   },
   {
     "name": "contralegrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique indicator for a specific leg for the ContraBroker (375).",
       "display": "ContraLegRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"contralegrefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"contralegrefid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "655"
     }
   },
@@ -774,13 +776,13 @@
   {
     "name": "sidecomplianceid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "ID within repeating group of sides which is used to represent this transaction for compliance purposes (e.g. OATS reporting).",
       "display": "SideComplianceID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"sidecomplianceid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"sidecomplianceid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "659"
     }
   },
@@ -842,13 +844,13 @@
   {
     "name": "confirmid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Message reference for Confirmation",
       "display": "ConfirmID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"confirmid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"confirmid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "664"
     }
   },
@@ -883,14 +885,16 @@
   {
     "name": "contractsettlmonth",
     "dtype": {
-      "type": "fixed_ascii",
-      "width": 8
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies when the contract (i.e. MBS/TBA) will settle.",
       "display": "ContractSettlMonth",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"contractsettlmonth\",\"type\":{\"type\":\"fixed_ascii\",\"width\":8}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"contractsettlmonth\",\"type\":{\"type\":\"string\",\"layout\":\"fixed_string\",\"charset\":\"us-ascii\",\"fixed\":8}}]}",
       "fix:tag": "667"
     }
   },
@@ -937,26 +941,26 @@
   {
     "name": "legallocaccount",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Allocation Account for the leg",
       "display": "LegAllocAccount",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legallocaccount\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legallocaccount\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "671"
     }
   },
   {
     "name": "legindividualallocid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference for the individual allocation ticket",
       "display": "LegIndividualAllocID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legindividualallocid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legindividualallocid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "672"
     }
   },
@@ -983,7 +987,7 @@
       "description": "Identifies the source of the LegAllocAccount(671).",
       "display": "LegAllocAcctIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"BIC\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"BIC\"},{\"value\":\"2\",\"name\":\"SIDCode\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"SID Code\"},{\"value\":\"3\",\"name\":\"TFM\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"TFM (GSPTA)\"},{\"value\":\"4\",\"name\":\"OMGEO\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"OMGEO (Alert ID)\"},{\"value\":\"5\",\"name\":\"DTCCCode\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"DTCC Code\"},{\"value\":\"6\",\"name\":\"SPSAID\",\"ep\":262,\"sort\":6,\"doc\":\"Special Segregated Account ID\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"4.4\",\"sort\":99,\"doc\":\"Other (custom or proprietary)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legallocacctidsource\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0.2\",\"name\":\"legallocacctidsource\",\"type\":{\"type\":\"int32\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legallocacctidsource\",\"type\":{\"type\":\"string\"}},{\"since\":\"5.0.2\",\"name\":\"legallocacctidsource\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "674"
     }
   },
@@ -1016,27 +1020,27 @@
   {
     "name": "legbenchmarkcurvename",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Name of the Leg Benchmark Curve.",
       "display": "LegBenchmarkCurveName",
       "fix:codes": "{\"codes\":[{\"value\":\"AONIA\",\"name\":\"AONIA\",\"ep\":272,\"sort\":34,\"doc\":\"Reserve Bank of Australia Interbank Overnight Cash Rate\"},{\"value\":\"AONIA-R\",\"name\":\"AONIAR\",\"ep\":272,\"sort\":35,\"doc\":\"Realised AONIA\"},{\"value\":\"AUBSW\",\"name\":\"AUBSW\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":15,\"doc\":\"Australian Bank Bill Swap Rate\"},{\"value\":\"BKBM\",\"name\":\"BKBM\",\"ep\":272,\"sort\":36,\"doc\":\"New Zealand Bank Bill Market Rate\"},{\"value\":\"BUBOR\",\"name\":\"BUBOR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":16,\"doc\":\"Budapest Bank Offered Rate\"},{\"value\":\"CD91D\",\"name\":\"CD91D\",\"ep\":272,\"sort\":37,\"doc\":\"Republic of Korea 90-Day Certificate of Deposit Rate\"},{\"value\":\"CDOR\",\"name\":\"CDOR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":17,\"doc\":\"Canadian Dollar Offered Rate\"},{\"value\":\"CIBOR\",\"name\":\"CIBOR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":18,\"doc\":\"Copenhagen Interbank Offered Rate\"},{\"value\":\"CORRA\",\"name\":\"CORRA\",\"ep\":272,\"sort\":38,\"doc\":\"Canadian Overnight Repo Rate Average\"},{\"value\":\"DIRR-TN\",\"name\":\"DIRRTN\",\"ep\":272,\"sort\":39,\"doc\":\"Danish Interbank Interest Rate-Tomorrow or Next\"},{\"value\":\"EIBOR\",\"name\":\"EIBOR\",\"ep\":272,\"sort\":40,\"doc\":\"Emirates Interbank Offered Rate\"},{\"value\":\"EONIA\",\"name\":\"EONIA\",\"since\":\"4.4\",\"doc\":\"EONIA\"},{\"value\":\"EONIASWAP\",\"name\":\"EONIASWAP\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":19,\"doc\":\"Euro Overnight Index Average Swap Rate\"},{\"value\":\"ESTR\",\"name\":\"ESTR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":20,\"doc\":\"Euro Short Term Rate\"},{\"value\":\"EUREPO\",\"name\":\"EUREPO\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"EUREPO\"},{\"value\":\"EURIBOR\",\"name\":\"EURIBOR\",\"since\":\"5.0.2\",\"ep\":132,\"sort\":14,\"doc\":\"Euro interbank offer rate\"},{\"value\":\"EURODOLLAR\",\"name\":\"EURODOLLAR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":21,\"doc\":\"Euro Dollar Rate\"},{\"value\":\"EUROSWISS\",\"name\":\"EUROSWISS\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":22,\"doc\":\"Euro Swiss Franc Rate\"},{\"value\":\"Euribor\",\"name\":\"EuriborLegacy\",\"since\":\"4.3\",\"deprecated\":\"5.0.2\",\"sort\":2,\"doc\":\"EURIBOR (deprecated use enum EURIBOR instead)\"},{\"value\":\"FEDEFF\",\"name\":\"FedFundRateEffective\",\"since\":\"5.0.2\",\"ep\":132,\"sort\":12,\"doc\":\"US Federal Reserve fed funds effective rate\"},{\"value\":\"FEDOPEN\",\"name\":\"FedOpen\",\"since\":\"5.0.2\",\"ep\":132,\"sort\":13,\"doc\":\"US fed funds target rate\"},{\"value\":\"FixingRepoRate\",\"name\":\"FixingRepoRate\",\"ep\":272,\"sort\":41,\"doc\":\"China Interbank Overnight Repo Rate\"},{\"value\":\"FutureSWAP\",\"name\":\"FutureSWAP\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"FutureSWAP\"},{\"value\":\"GCFREPO\",\"name\":\"GCFREPO\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":23,\"doc\":\"DTCC General Collateral Finance Repo Index\"},{\"value\":\"HIBOR\",\"name\":\"HIBOR\",\"ep\":272,\"sort\":42,\"doc\":\"Hong Kong Interbank Offered Rate\"},{\"value\":\"IBR\",\"name\":\"IBR\",\"ep\":272,\"sort\":43,\"doc\":\"Colombia Overnight Interbank Reference Rate\"},{\"value\":\"ISDAFIX\",\"name\":\"ISDAFIX\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":24,\"doc\":\"ICE Swap Rate\"},{\"value\":\"JIBAR\",\"name\":\"JIBAR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":25,\"doc\":\"Johannesburg Interbank Agreed Rate\"},{\"value\":\"KLIBOR\",\"name\":\"KLIBOR\",\"ep\":272,\"sort\":44,\"doc\":\"Kuala Lumpur Interbank Offered Rate\"},{\"value\":\"LIBID\",\"name\":\"LIBID\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"LIBID\"},{\"value\":\"LIBOR\",\"name\":\"LIBOR\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"LIBOR (London Inter-Bank Offer)\"},{\"value\":\"MIBOR\",\"name\":\"MIBOR\",\"ep\":272,\"sort\":45,\"doc\":\"Mumbia Interbank Offered Rate\"},{\"value\":\"MOSPRIM\",\"name\":\"MOSPRIM\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":26,\"doc\":\"Moscow Prime Offered Rate\"},{\"value\":\"MuniAAA\",\"name\":\"MuniAAA\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"MuniAAA\"},{\"value\":\"NIBOR\",\"name\":\"NIBOR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":27,\"doc\":\"Nigeria Three Month Interbank Rate\"},{\"value\":\"NZONIA\",\"name\":\"NZONIA\",\"ep\":272,\"sort\":46,\"doc\":\"New Zealand Overnight Indexed Swaps (OIS)\"},{\"value\":\"OBFR\",\"name\":\"OBFR\",\"ep\":301,\"sort\":56,\"doc\":\"Overnight Bank Funding Rate\"},{\"value\":\"OTHER\",\"name\":\"OTHER\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"OTHER\"},{\"value\":\"PHIREF\",\"name\":\"PHIREF\",\"ep\":272,\"sort\":47,\"doc\":\"Philippines Interbank Reference Rate\"},{\"value\":\"PRIBOR\",\"name\":\"PRIBOR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":28,\"doc\":\"Czech Republic Interbank Offered Rate\"},{\"value\":\"Pfandbriefe\",\"name\":\"Pfandbriefe\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"Pfandbriefe\"},{\"value\":\"REIBOR\",\"name\":\"REIBOR\",\"ep\":272,\"sort\":48,\"doc\":\"Reykjavik Interbank Offered Rate\"},{\"value\":\"SAIBOR\",\"name\":\"SAIBOR\",\"ep\":272,\"sort\":49,\"doc\":\"Saudi Arabian Interbank Offered Rate\"},{\"value\":\"SARON\",\"name\":\"SARON\",\"ep\":272,\"sort\":50,\"doc\":\"Swiss Average Rate Overnight\"},{\"value\":\"SOFR\",\"name\":\"SOFR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":29,\"doc\":\"Secured Overnight Financing Rate\"},{\"value\":\"SONIA\",\"name\":\"SONIA\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"SONIA\"},{\"value\":\"SORA\",\"name\":\"SORA\",\"ep\":272,\"sort\":51,\"doc\":\"Singapore Swap Offer Rate\"},{\"value\":\"STIBOR\",\"name\":\"STIBOR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":30,\"doc\":\"Stockholm Interbank Offered Rate\"},{\"value\":\"SWAP\",\"name\":\"SWAP\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"SWAP\"},{\"value\":\"TELBOR\",\"name\":\"TELBOR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":31,\"doc\":\"Bank of Israel Interbank Offered Rate\"},{\"value\":\"THBFIX\",\"name\":\"THBFIX\",\"ep\":272,\"sort\":54,\"doc\":\"Thai Baht Interest Rate Fixing\"},{\"value\":\"TIBOR\",\"name\":\"TIBOR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":32,\"doc\":\"Tokyo Interbank Offered Rate\"},{\"value\":\"TIIE\",\"name\":\"TIIE\",\"ep\":272,\"sort\":53,\"doc\":\"Mexico Interbank Equilibrium Interest Rate\"},{\"value\":\"TLREF\",\"name\":\"TLREF\",\"ep\":272,\"sort\":52,\"doc\":\"Turkish Lira Overnight Reference Rate\"},{\"value\":\"TONAR\",\"name\":\"TONAR\",\"ep\":272,\"sort\":55,\"doc\":\"Tokyo Overnight Average Rate\"},{\"value\":\"Treasury\",\"name\":\"Treasury\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Treasury\"},{\"value\":\"WIBOR\",\"name\":\"WIBOR\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":33,\"doc\":\"Warsaw Interbank Offered Rate\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legbenchmarkcurvename\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legbenchmarkcurvename\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "677"
     }
   },
   {
     "name": "legbenchmarkcurvepoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies the point on the Leg Benchmark Curve.",
       "display": "LegBenchmarkCurvePoint",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legbenchmarkcurvepoint\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legbenchmarkcurvepoint\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "678"
     }
   },
@@ -1083,14 +1087,14 @@
   {
     "name": "legioiqty",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Leg-specific IOI quantity.",
       "display": "LegIOIQty",
       "fix:codes": "{\"codes\":[{\"value\":\"L\",\"name\":\"Large\",\"since\":\"4.4\",\"ep\":25,\"sort\":4,\"doc\":\"Large\"},{\"value\":\"M\",\"name\":\"Medium\",\"since\":\"4.4\",\"ep\":25,\"sort\":3,\"doc\":\"Medium\"},{\"value\":\"S\",\"name\":\"Small\",\"since\":\"4.4\",\"ep\":25,\"sort\":2,\"doc\":\"Small\"},{\"value\":\"U\",\"name\":\"UndisclosedQuantity\",\"since\":\"4.4\",\"ep\":25,\"sort\":5,\"doc\":\"Undisclosed Quantity\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legioiqty\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legioiqty\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "682"
     }
   },
@@ -1164,27 +1168,27 @@
   {
     "name": "legstipulationtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "For Fixed Income, type of Stipulation for this leg.",
       "display": "LegStipulationType",
       "fix:codes": "{\"codes\":[{\"value\":\"ABS\",\"name\":\"AbsolutePrepaymentSpeed\",\"since\":\"4.3\",\"sort\":1,\"group\":\"Prepayment Speeds\",\"doc\":\"Absolute Prepayment Speed\"},{\"value\":\"ADDTRM\",\"name\":\"AdditionalTerm\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"group\":\"CDS General Terms\",\"doc\":\"Additional term\"},{\"value\":\"ALLGUARANTEES\",\"name\":\"AllGuarantees\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"group\":\"CDS General Terms\",\"doc\":\"All guarantees (Y/N)\"},{\"value\":\"AMT\",\"name\":\"AlternativeMinimumTax\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Alternative Minimum Tax (Y/N)\"},{\"value\":\"AUTOREINV\",\"name\":\"AutoReinvestment\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Auto Reinvestment at <rate> or better\"},{\"value\":\"AVAILQTY\",\"name\":\"AvailableOfferQuantityToBeShownToTheStreet\",\"since\":\"5.0\",\"ep\":68,\"sort\":59,\"group\":\"Other\",\"doc\":\"Available offer quantity to be shown to the street\"},{\"value\":\"AVFICO\",\"name\":\"AverageFICOScore\",\"since\":\"5.0\",\"ep\":68,\"sort\":51,\"group\":\"Other\",\"doc\":\"Average FICO Score\"},{\"value\":\"AVSIZE\",\"name\":\"AverageLoanSize\",\"since\":\"5.0\",\"ep\":68,\"sort\":52,\"group\":\"Other\",\"doc\":\"Average Loan Size\"},{\"value\":\"BANKQUAL\",\"name\":\"BankQualified\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Bank qualified (Y/N)\"},{\"value\":\"BGNCON\",\"name\":\"BargainConditions\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Bargain conditions (see StipulationValue (234) for values)\"},{\"value\":\"BROKERCREDIT\",\"name\":\"BrokerCredit\",\"since\":\"5.0\",\"ep\":68,\"sort\":60,\"group\":\"Other\",\"doc\":\"Broker's sales credit\"},{\"value\":\"COMPSECFLLBCK\",\"name\":\"COMPSECFLLBCK\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":57,\"doc\":\"Component security fallback (Y/N)\"},{\"value\":\"COUPON\",\"name\":\"CouponRange\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Coupon range\"},{\"value\":\"CPP\",\"name\":\"ConstantPrepaymentPenalty\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Prepayment Speeds\",\"doc\":\"Constant Prepayment Penalty\"},{\"value\":\"CPR\",\"name\":\"ConstantPrepaymentRate\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Prepayment Speeds\",\"doc\":\"Constant Prepayment Rate\"},{\"value\":\"CPY\",\"name\":\"ConstantPrepaymentYield\",\"since\":\"4.3\",\"sort\":4,\"group\":\"Prepayment Speeds\",\"doc\":\"Constant Prepayment Yield\"},{\"value\":\"CURRENCY\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"ISO Currency Code\"},{\"value\":\"CUSTOMDATE\",\"name\":\"CustomStart\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Custom start/end date\"},{\"value\":\"DISCOUNT\",\"name\":\"DiscountRate\",\"since\":\"5.0\",\"ep\":68,\"sort\":69,\"group\":\"Other\",\"doc\":\"Discount Rate (when price is denominated in percent of par)\"},{\"value\":\"GEOG\",\"name\":\"Geographics\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"Geographics and % range (ex. 234=CA 0-80 [minimum of 80% California assets])\"},{\"value\":\"HAIRCUT\",\"name\":\"ValuationDiscount\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Valuation Discount\"},{\"value\":\"HEP\",\"name\":\"FinalCPROfHomeEquityPrepaymentCurve\",\"since\":\"4.3\",\"sort\":5,\"group\":\"Prepayment Speeds\",\"doc\":\"final CPR of Home Equity Prepayment Curve\"},{\"value\":\"INCURRCVY\",\"name\":\"IncurredRecovery\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"group\":\"CDS General Terms\",\"doc\":\"Incurred recovery (Y/N)\"},{\"value\":\"INSURED\",\"name\":\"Insured\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Insured (Y/N)\"},{\"value\":\"INTERNALPX\",\"name\":\"OfferPriceToBeShownToInternalBrokers\",\"since\":\"5.0\",\"ep\":68,\"sort\":61,\"group\":\"Other\",\"doc\":\"Offer price to be shown to internal brokers\"},{\"value\":\"INTERNALQTY\",\"name\":\"OfferQuantityToBeShownToInternalBrokers\",\"since\":\"5.0\",\"ep\":68,\"sort\":62,\"group\":\"Other\",\"doc\":\"Offer quantity to be shown to internal brokers\"},{\"value\":\"ISSUE\",\"name\":\"IssueDate\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Year Or Year/Month of Issue (ex. 234=2002/09)\"},{\"value\":\"ISSUER\",\"name\":\"Issuer\",\"since\":\"4.4\",\"sort\":12,\"doc\":\"Issuer's ticker\"},{\"value\":\"ISSUESIZE\",\"name\":\"IssueSizeRange\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"issue size range\"},{\"value\":\"LEAVEQTY\",\"name\":\"TheMinimumResidualOfferQuantity\",\"since\":\"5.0\",\"ep\":68,\"sort\":63,\"group\":\"Other\",\"doc\":\"The minimum residual offer quantity\"},{\"value\":\"LOCLJRSDCTN\",\"name\":\"LOCLJRSDCTN\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":58,\"doc\":\"Local jurisdiction (Y/N)\"},{\"value\":\"LOOKBACK\",\"name\":\"LookbackDays\",\"since\":\"4.4\",\"sort\":14,\"doc\":\"Lookback Days\"},{\"value\":\"LOT\",\"name\":\"ExplicitLotIdentifier\",\"since\":\"4.4\",\"sort\":15,\"doc\":\"Explicit lot identifier\"},{\"value\":\"LOTVAR\",\"name\":\"LotVariance\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"Lot Variance (value in percent maximum over- or under-allocation allowed)\"},{\"value\":\"MAT\",\"name\":\"MaturityYearAndMonth\",\"since\":\"4.3\",\"sort\":17,\"doc\":\"Maturity Year And Month\"},{\"value\":\"MATURITY\",\"name\":\"MaturityRange\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"Maturity range\"},{\"value\":\"MAXBAL\",\"name\":\"MaximumLoanBalance\",\"since\":\"5.0\",\"ep\":68,\"sort\":53,\"group\":\"Other\",\"doc\":\"Maximum Loan Balance\"},{\"value\":\"MAXORDQTY\",\"name\":\"MaximumOrderSize\",\"since\":\"5.0\",\"ep\":68,\"sort\":64,\"group\":\"Other\",\"doc\":\"Maximum order size\"},{\"value\":\"MAXSUBS\",\"name\":\"MaximumSubstitutions\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Maximum substitutions (Repo)\"},{\"value\":\"MHP\",\"name\":\"PercentOfManufacturedHousingPrepaymentCurve\",\"since\":\"4.3\",\"sort\":6,\"group\":\"Prepayment Speeds\",\"doc\":\"Percent of Manufactured Housing Prepayment Curve\"},{\"value\":\"MINDNOM\",\"name\":\"MinimumDenomination\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"Minimum denomination\"},{\"value\":\"MININCR\",\"name\":\"MinimumIncrement\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"Minimum increment\"},{\"value\":\"MINQTY\",\"name\":\"MinimumQuantity\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"Minimum quantity\"},{\"value\":\"MODEQTYDLVY\",\"name\":\"ModifiedEquityDelivery\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"group\":\"CDS General Terms\",\"doc\":\"Modified equity delivery\"},{\"value\":\"MPR\",\"name\":\"MonthlyPrepaymentRate\",\"since\":\"4.3\",\"sort\":7,\"group\":\"Prepayment Speeds\",\"doc\":\"Monthly Prepayment Rate\"},{\"value\":\"MULTEXCHFLLBCK\",\"name\":\"MULTEXCHFLLBCK\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":56,\"doc\":\"Multiple exchange fallback (Y/N)\"},{\"value\":\"NOREFOBLIG\",\"name\":\"NoReferenceOblication\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"group\":\"CDS General Terms\",\"doc\":\"No reference obligation (Y/N)\"},{\"value\":\"ORDRINCR\",\"name\":\"OrderQuantityIncrement\",\"since\":\"5.0\",\"ep\":68,\"sort\":65,\"group\":\"Other\",\"doc\":\"Order quantity increment\"},{\"value\":\"ORIGAMT\",\"name\":\"OriginalAmount\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":51,\"doc\":\"Original amount\"},{\"value\":\"PAYFREQ\",\"name\":\"PaymentFrequency\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"Payment frequency, calendar\"},{\"value\":\"PAYOFF\",\"name\":\"InterestPayoffOfRollingOrAmendingTrade\",\"since\":\"5.0.2\",\"ep\":258,\"sort\":72,\"group\":\"Other\",\"doc\":\"Interest payoff of rolling or amending trade\"},{\"value\":\"PIECES\",\"name\":\"NumberOfPieces\",\"since\":\"4.3\",\"sort\":24,\"doc\":\"Number Of Pieces\"},{\"value\":\"PMAX\",\"name\":\"PoolsMaximum\",\"since\":\"4.3\",\"sort\":25,\"doc\":\"Pools Maximum\"},{\"value\":\"POOL\",\"name\":\"PoolIdentifier\",\"since\":\"5.0\",\"ep\":68,\"sort\":54,\"group\":\"Other\",\"doc\":\"Pool Identifier\"},{\"value\":\"POOLEFFDT\",\"name\":\"PoolEffectiveDate\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":52,\"doc\":\"Pool effective date\"},{\"value\":\"POOLINITFCTR\",\"name\":\"PoolInitialFactor\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":53,\"doc\":\"Pool initial factor\"},{\"value\":\"PPC\",\"name\":\"PercentOfProspectusPrepaymentCurve\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Prepayment Speeds\",\"doc\":\"Percent of Prospectus Prepayment Curve\"},{\"value\":\"PPL\",\"name\":\"PoolsPerLot\",\"since\":\"4.3\",\"sort\":26,\"doc\":\"Pools per Lot\"},{\"value\":\"PPM\",\"name\":\"PoolsPerMillion\",\"since\":\"4.3\",\"sort\":27,\"doc\":\"Pools per Million\"},{\"value\":\"PPT\",\"name\":\"PoolsPerTrade\",\"since\":\"4.3\",\"sort\":28,\"doc\":\"Pools per Trade\"},{\"value\":\"PRICE\",\"name\":\"PriceRange\",\"since\":\"4.4\",\"sort\":29,\"doc\":\"Price Range\"},{\"value\":\"PRICEFREQ\",\"name\":\"PricingFrequency\",\"since\":\"4.4\",\"sort\":30,\"doc\":\"Pricing frequency\"},{\"value\":\"PRIMARY\",\"name\":\"PrimaryOrSecondaryMarketIndicator\",\"since\":\"5.0\",\"ep\":68,\"sort\":66,\"group\":\"Other\",\"doc\":\"Primary or Secondary market indicator\"},{\"value\":\"PROD\",\"name\":\"ProductionYear\",\"since\":\"4.3\",\"sort\":31,\"doc\":\"Production Year\"},{\"value\":\"PROTECT\",\"name\":\"CallProtection\",\"since\":\"4.4\",\"sort\":32,\"doc\":\"Call protection\"},{\"value\":\"PSA\",\"name\":\"PercentOfBMAPrepaymentCurve\",\"since\":\"4.3\",\"sort\":9,\"group\":\"Prepayment Speeds\",\"doc\":\"Percent of BMA Prepayment Curve\"},{\"value\":\"PURPOSE\",\"name\":\"Purpose\",\"since\":\"4.4\",\"sort\":33,\"doc\":\"Purpose\"},{\"value\":\"PXSOURCE\",\"name\":\"BenchmarkPriceSource\",\"since\":\"4.4\",\"sort\":34,\"doc\":\"Benchmark price source\"},{\"value\":\"RATING\",\"name\":\"RatingSourceAndRange\",\"since\":\"4.4\",\"sort\":35,\"doc\":\"Rating source and range\"},{\"value\":\"REDEMPTION\",\"name\":\"TypeOfRedemption\",\"since\":\"4.4\",\"sort\":36,\"doc\":\"Type Of Redemption - values are: NonCallable, Prefunded, EscrowedToMaturity, Putable, Convertible\"},{\"value\":\"REFINT\",\"name\":\"InterestOfRollingOrClosingTrade\",\"since\":\"5.0\",\"ep\":68,\"sort\":58,\"group\":\"Other\",\"doc\":\"Interest of rolling or closing trade\"},{\"value\":\"REFPOLICY\",\"name\":\"ReferencePolicy\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":8,\"group\":\"CDS General Terms\",\"doc\":\"Reference policy (Y/N)\"},{\"value\":\"REFPRIN\",\"name\":\"PrincipalOfRollingOrClosingTrade\",\"since\":\"5.0\",\"ep\":68,\"sort\":57,\"group\":\"Other\",\"doc\":\"Principal to rolling or closing trade\"},{\"value\":\"REFPX\",\"name\":\"ReferencePrice\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"group\":\"CDS General Terms\",\"doc\":\"Reference price (Y/N)\"},{\"value\":\"REFTRADE\",\"name\":\"ReferenceToRollingOrClosingTrade\",\"since\":\"5.0\",\"ep\":68,\"sort\":56,\"group\":\"Other\",\"doc\":\"Reference to rolling or closing trade\"},{\"value\":\"RELVJRSDCTN\",\"name\":\"RELVJRSDCTN\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":59,\"doc\":\"Relevant jurisdiction (Y/N)\"},{\"value\":\"RESTRICTED\",\"name\":\"Restricted\",\"since\":\"4.4\",\"sort\":37,\"doc\":\"Restricted (Y/N)\"},{\"value\":\"ROLLTYPE\",\"name\":\"TypeOfRollTrade\",\"since\":\"5.0\",\"ep\":68,\"sort\":55,\"group\":\"Other\",\"doc\":\"Type of Roll trade\"},{\"value\":\"SALESCREDITOVR\",\"name\":\"BrokerSalesCreditOverride\",\"since\":\"5.0\",\"ep\":68,\"sort\":67,\"group\":\"Other\",\"doc\":\"Broker sales credit override\"},{\"value\":\"SECRDLIST\",\"name\":\"SecuredList\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":9,\"group\":\"CDS General Terms\",\"doc\":\"Secured list (Y/N)\"},{\"value\":\"SECTOR\",\"name\":\"MarketSector\",\"since\":\"4.4\",\"sort\":38,\"doc\":\"Market Sector\"},{\"value\":\"SECTYPE\",\"name\":\"SecurityTypeIncludedOrExcluded\",\"since\":\"4.4\",\"sort\":39,\"doc\":\"Security Type included or excluded\"},{\"value\":\"SMM\",\"name\":\"SingleMonthlyMortality\",\"since\":\"4.3\",\"sort\":10,\"group\":\"Prepayment Speeds\",\"doc\":\"Single Monthly Mortality\"},{\"value\":\"STRUCT\",\"name\":\"Structure\",\"since\":\"4.4\",\"sort\":40,\"doc\":\"Structure\"},{\"value\":\"SUBSFREQ\",\"name\":\"SubstitutionsFrequency\",\"since\":\"4.4\",\"sort\":41,\"doc\":\"Substitutions frequency (Repo)\"},{\"value\":\"SUBSLEFT\",\"name\":\"SubstitutionsLeft\",\"since\":\"4.4\",\"sort\":42,\"doc\":\"Substitutions left (Repo)\"},{\"value\":\"SUBSTITUTION\",\"name\":\"Substitution\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":55,\"doc\":\"Substitution (Y/N)\"},{\"value\":\"TEXT\",\"name\":\"FreeformText\",\"since\":\"4.4\",\"sort\":43,\"doc\":\"Freeform Text\"},{\"value\":\"TRADERCREDIT\",\"name\":\"TraderCredit\",\"since\":\"5.0\",\"ep\":68,\"sort\":68,\"group\":\"Other\",\"doc\":\"Trader's credit\"},{\"value\":\"TRANCHE\",\"name\":\"Tranche\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":54,\"doc\":\"Tranche identifier\"},{\"value\":\"TRDVAR\",\"name\":\"TradeVariance\",\"since\":\"4.3\",\"sort\":44,\"doc\":\"Trade Variance (value in percent maximum over- or under-allocation allowed)\"},{\"value\":\"UNKREFOBLIG\",\"name\":\"UnknownReferenceObligation\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"group\":\"CDS General Terms\",\"doc\":\"Unknown reference obligation (Y/N)\"},{\"value\":\"WAC\",\"name\":\"WeightedAverageCoupon\",\"since\":\"4.3\",\"sort\":45,\"doc\":\"Weighted Average Coupon - value in percent (exact or range) plus \\\"Gross\\\" or \\\"Net\\\" of servicing spread (the default) (ex. 234=6.5-Net [minimum of 6.5% net of servicing fee])\"},{\"value\":\"WAL\",\"name\":\"WeightedAverageLifeCoupon\",\"since\":\"4.3\",\"sort\":46,\"doc\":\"Weighted Average Life Coupon - value in percent (exact or range)\"},{\"value\":\"WALA\",\"name\":\"WeightedAverageLoanAge\",\"since\":\"4.3\",\"sort\":47,\"doc\":\"Weighted Average Loan Age - value in months (exact or range)\"},{\"value\":\"WAM\",\"name\":\"WeightedAverageMaturity\",\"since\":\"4.3\",\"sort\":48,\"doc\":\"Weighted Average Maturity - value in months (exact or range)\"},{\"value\":\"WHOLE\",\"name\":\"WholePool\",\"since\":\"4.4\",\"sort\":49,\"doc\":\"Whole Pool (Y/N)\"},{\"value\":\"YIELD\",\"name\":\"YieldRange\",\"since\":\"4.4\",\"sort\":50,\"doc\":\"Yield Range\"},{\"value\":\"YTM\",\"name\":\"YieldToMaturity\",\"since\":\"5.0\",\"ep\":68,\"sort\":71,\"group\":\"Other\",\"doc\":\"Yield to Maturity (when YieldType(235) and Yield(236) show a different yield)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legstipulationtype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legstipulationtype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "688"
     }
   },
   {
     "name": "legstipulationvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "For Fixed Income, value of stipulation.",
       "display": "LegStipulationValue",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legstipulationvalue\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legstipulationvalue\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "689"
     }
   },
@@ -1205,13 +1209,13 @@
   {
     "name": "pool",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "For Fixed Income, identifies MBS / ABS pool.",
       "display": "Pool",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"pool\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"pool\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "691"
     }
   },
@@ -1232,13 +1236,13 @@
   {
     "name": "quoterespid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Message reference for Quote Response",
       "display": "QuoteRespID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"quoterespid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"quoterespid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "693"
     }
   },
@@ -1259,14 +1263,14 @@
   {
     "name": "quotequalifier",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Code to qualify Quote use and other aspects of price negotiation.",
       "display": "QuoteQualifier",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"QuantityNegotiable\",\"since\":\"5.0.2\",\"ep\":226,\"sort\":28,\"doc\":\"Quantity is negotiable\"},{\"value\":\"2\",\"name\":\"AllowLateBids\",\"since\":\"5.0.2\",\"ep\":226,\"sort\":29,\"doc\":\"Allow late bids\"},{\"value\":\"3\",\"name\":\"ImmediateOrCounter\",\"since\":\"5.0.2\",\"ep\":226,\"sort\":30,\"doc\":\"Immediate or counter\"},{\"value\":\"4\",\"name\":\"AutoTrade\",\"since\":\"5.0.2\",\"ep\":226,\"sort\":31,\"doc\":\"Auto trade\"},{\"value\":\"A\",\"name\":\"AllOrNone\",\"since\":\"3.0\",\"sort\":1,\"doc\":\"All or None (AON)\"},{\"value\":\"B\",\"name\":\"MarketOnClose\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Market On Close (MOC) (held to close)\"},{\"value\":\"C\",\"name\":\"AtTheClose\",\"since\":\"3.0\",\"sort\":3,\"doc\":\"At the close (around/not held to close)\"},{\"value\":\"D\",\"name\":\"VWAP\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"VWAP (Volume Weighted Average Price)\"},{\"value\":\"E\",\"name\":\"Axe\",\"since\":\"5.0.2\",\"ep\":184,\"sort\":5,\"doc\":\"Axe\"},{\"value\":\"F\",\"name\":\"AxeOnBid\",\"since\":\"5.0.2\",\"ep\":184,\"sort\":6,\"doc\":\"Axe on bid\"},{\"value\":\"G\",\"name\":\"AxeOnOffer\",\"since\":\"5.0.2\",\"ep\":184,\"sort\":7,\"doc\":\"Axe on offer\"},{\"value\":\"H\",\"name\":\"ClientNaturalWorking\",\"since\":\"5.0.2\",\"ep\":225,\"sort\":8,\"doc\":\"Client natural working\"},{\"value\":\"I\",\"name\":\"InTouchWith\",\"since\":\"3.0\",\"sort\":9,\"doc\":\"In touch with\"},{\"value\":\"J\",\"name\":\"PositionWanted\",\"since\":\"5.0.2\",\"ep\":225,\"sort\":10,\"doc\":\"Position wanted\"},{\"value\":\"K\",\"name\":\"MarketMaking\",\"since\":\"5.0.2\",\"ep\":225,\"sort\":11,\"doc\":\"Market making\"},{\"value\":\"L\",\"name\":\"Limit\",\"since\":\"3.0\",\"sort\":12,\"doc\":\"Limit\"},{\"value\":\"M\",\"name\":\"MoreBehind\",\"since\":\"3.0\",\"sort\":13,\"doc\":\"More Behind\"},{\"value\":\"N\",\"name\":\"ClientNaturalBlock\",\"since\":\"5.0.2\",\"ep\":225,\"sort\":14,\"doc\":\"Client natural block\"},{\"value\":\"O\",\"name\":\"AtTheOpen\",\"since\":\"3.0\",\"sort\":15,\"doc\":\"At the Open\"},{\"value\":\"P\",\"name\":\"TakingAPosition\",\"since\":\"3.0\",\"sort\":16,\"doc\":\"Taking a Position\"},{\"value\":\"Q\",\"name\":\"AtTheMarket\",\"since\":\"3.0\",\"sort\":17,\"doc\":\"At the Market (previously called Current Quote)\"},{\"value\":\"R\",\"name\":\"ReadyToTrade\",\"since\":\"4.2\",\"sort\":18,\"doc\":\"Ready to Trade\"},{\"value\":\"S\",\"name\":\"PortfolioShown\",\"since\":\"3.0\",\"sort\":19,\"doc\":\"Inventory or Portfolio Shown\"},{\"value\":\"T\",\"name\":\"ThroughTheDay\",\"since\":\"3.0\",\"sort\":20,\"doc\":\"Through the Day\"},{\"value\":\"U\",\"name\":\"Unwind\",\"since\":\"5.0.2\",\"ep\":225,\"sort\":21,\"doc\":\"Unwind\"},{\"value\":\"V\",\"name\":\"Versus\",\"since\":\"3.0\",\"sort\":22,\"doc\":\"Versus\"},{\"value\":\"W\",\"name\":\"Indication\",\"since\":\"3.0\",\"sort\":23,\"doc\":\"Indication - Working Away\"},{\"value\":\"X\",\"name\":\"CrossingOpportunity\",\"since\":\"3.0\",\"sort\":24,\"doc\":\"Crossing Opportunity\"},{\"value\":\"Y\",\"name\":\"AtTheMidpoint\",\"since\":\"4.1\",\"sort\":25,\"doc\":\"At the Midpoint\"},{\"value\":\"Z\",\"name\":\"PreOpen\",\"since\":\"4.1\",\"sort\":26,\"doc\":\"Pre-open\"},{\"value\":\"a\",\"name\":\"AutomaticSpot\",\"since\":\"5.0.2\",\"ep\":226,\"sort\":37,\"doc\":\"Automatic spot\"},{\"value\":\"b\",\"name\":\"PlatformCalculatedSpot\",\"since\":\"5.0.2\",\"ep\":226,\"sort\":38,\"doc\":\"Platform calculated spot\"},{\"value\":\"c\",\"name\":\"OutsideSpread\",\"since\":\"5.0.2\",\"ep\":225,\"sort\":39,\"doc\":\"Outside spread\"},{\"value\":\"d\",\"name\":\"DeferredSpot\",\"since\":\"5.0.2\",\"ep\":226,\"sort\":40,\"doc\":\"Deferred spot\"},{\"value\":\"n\",\"name\":\"NegotiatedSpot\",\"since\":\"5.0.2\",\"ep\":226,\"sort\":50,\"doc\":\"Negotiated spot\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"quotequalifier\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"quotequalifier\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "695"
     }
   },
@@ -1314,13 +1318,13 @@
   {
     "name": "benchmarksecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The identifier of the benchmark security, e.g. Treasury against Corporate bond.",
       "display": "BenchmarkSecurityID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"benchmarksecurityid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"benchmarksecurityid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "699"
     }
   }

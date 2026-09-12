@@ -242,7 +242,7 @@ impl Field {
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut schema = DataType::from_fields([
     ///     DataType::Int64.required_field("id"),
-    ///     DataType::list(DataType::Utf8.nullable_field("item")).nullable_field("tags"),
+    ///     DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags"),
     /// ])?
     /// .required_field("row");
     ///
@@ -1050,7 +1050,7 @@ impl Index<&str> for Field {
 /// # fn main() -> yggdryl::Result<()> {
 /// let order = DataType::from_fields([
 ///     DataType::Int64.required_field("id"),
-///     DataType::Utf8.required_field("venue"),
+///     DataType::utf8().required_field("venue"),
 /// ])?
 /// .required_field("order");
 ///

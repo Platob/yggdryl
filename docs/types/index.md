@@ -21,13 +21,13 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 | Core | [Scalar](scalar.md) | The value every layer speaks, the shared enums, and `FieldScalar` |
 | Core | [Cast](cast.md) | The field as cast target, over Scalar rows, Arrow arrays, and record batches |
 | Families | [Numeric & temporal](numeric.md) | Boolean, integer, floating, decimal, and the temporal vocabulary |
-| Families | [Text & bytes](text.md) | The utf8 and binary widths, the version value, plus regex-capture schema inference |
-| Families | [ASCII](ascii.md) | Variable and fixed widths, the four registered codes, `AsciiEnum` |
-| Families | [UUID](uuid.md) | The 128-bit identifier over `FixedSizeBinary(16)` |
+| Families | [Strings & bytes](text.md) | The string family (five layouts, any charset, one bound), the byte family (four layouts), `Str` and `Bytes`, the version and URL values, regex-capture schema inference |
+| Families | [Codes](codes.md) | The nine registered codes, `ascii_packed`, `StringEnum` and the ISO listings, the `state` lifecycle, `msgdirection` |
+| Families | [UUID](uuid.md) | The 128-bit identifier over `fixed_size_binary(16)` storage |
 | Families | [Nested](nested.md) | Children, dictionary and run-end encodings, unions |
 | Families | [Geospatial](geospatial.md) | Variant, geometry, geography, and the WKB reader |
 | Families | [Protocol](protocol.md) | Reserved metadata keys and scheme-prefixed protocol properties |
-| Reference | [Playground](playground.md) | Every ASCII datatype, code, and refusal, as the package answered them |
+| Reference | [Playground](playground.md) | Every US-ASCII string width, code, and refusal, as the package answered them |
 
 ## Edges
 

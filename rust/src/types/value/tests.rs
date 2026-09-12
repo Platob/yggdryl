@@ -9,7 +9,7 @@ fn root(fields: impl IntoIterator<Item = Field>) -> Field {
 fn a_record_maps_names_to_schema_order_and_fills_field_defaults() {
     let schema = root([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ]);
     let record = Scalar::from_record([("id", Scalar::from(7))]).unwrap();
 
@@ -205,54 +205,62 @@ mod readings {
 
     #[test]
     fn every_value_with_a_spelling_prints_it_into_a_text_column() {
-        assert_eq!(DataType::Utf8.scalar(7_i64).unwrap(), Scalar::from("7"));
+        assert_eq!(DataType::utf8().scalar(7_i64).unwrap(), Scalar::from("7"));
         assert_eq!(
-            DataType::Utf8.scalar(Scalar::date32(0)).unwrap(),
+            DataType::utf8().scalar(Scalar::date32(0)).unwrap(),
             Scalar::from("1970-01-01")
         );
         assert_eq!(
-            DataType::Utf8
+            DataType::utf8()
                 .scalar(DataType::Currency.scalar("USD").unwrap())
                 .unwrap(),
             Scalar::from("USD")
         );
         assert_eq!(
-            DataType::Utf8
+            DataType::utf8()
                 .scalar(Scalar::from(b"AAPL".to_vec()))
                 .unwrap(),
             Scalar::from("AAPL")
         );
 
-        // A payload that was read and refused names what was wrong with it,
-        // rather than which kind arrived.
-        let refused = DataType::Utf8
+        // A payload that was read and refused names the charset and the byte
+        // it refused, rather than which kind arrived.
+        let refused = DataType::utf8()
             .scalar(Scalar::from(vec![0xFF_u8]))
             .unwrap_err()
             .to_string();
-        assert!(refused.contains("not UTF-8"), "{refused}");
+        assert!(refused.contains("utf-8"), "{refused}");
+        assert!(refused.contains("0xff"), "{refused}");
     }
 
     #[test]
     fn a_byte_column_stores_the_payload_a_value_spells() {
         assert_eq!(
-            DataType::Binary.scalar("hi").unwrap(),
+            DataType::binary().scalar("hi").unwrap(),
             Scalar::from(b"hi".to_vec())
         );
-        // An ASCII value at a declared width spells that width, padded, which
-        // is the payload the fixed column stores.
-        let code = dtype("ascii(4)").scalar("US").unwrap();
+        // A code spells its padded slot, which is the payload the fixed
+        // column stores; text spells its characters' bytes and nothing more.
+        let code = DataType::Side.scalar("1").unwrap();
         assert_eq!(
-            DataType::FixedSizeBinary(4)
+            DataType::fixed_size_binary(4)
+                .unwrap()
                 .scalar(code)
                 .unwrap()
                 .as_bytes(),
-            Some(b"US\0\0".as_slice())
+            Some(b"1\0\0\0".as_slice())
+        );
+        let text = dtype("fixed_ascii(4)").scalar("US").unwrap();
+        assert_eq!(
+            DataType::binary().scalar(text).unwrap().as_bytes(),
+            Some(b"US".as_slice())
         );
         let uuid = DataType::Uuid
             .scalar("00000000-0000-0000-0000-000000000001")
             .unwrap();
         assert_eq!(
-            DataType::FixedSizeBinary(16)
+            DataType::fixed_size_binary(16)
+                .unwrap()
                 .scalar(uuid)
                 .unwrap()
                 .as_bytes(),
@@ -267,11 +275,12 @@ mod readings {
         );
 
         // The declared width is part of the layout on every path.
-        let refused = DataType::FixedSizeBinary(4)
+        let refused = DataType::fixed_size_binary(4)
+            .unwrap()
             .scalar(Scalar::from(vec![1_u8, 2]))
             .unwrap_err()
             .to_string();
-        assert!(refused.contains("requires 4 bytes"), "{refused}");
+        assert!(refused.contains("exactly 4 bytes"), "{refused}");
     }
 
     #[test]
@@ -304,10 +313,10 @@ mod readings {
             (Scalar::from("b"), Scalar::from(1_i32)),
             (Scalar::from("a"), Scalar::from(2_i32)),
         ])));
-        let sorted = DataType::map_of(DataType::Utf8, DataType::Int32, true).unwrap();
+        let sorted = DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap();
         let refused = sorted.scalar(unsorted.clone()).unwrap_err().to_string();
         assert!(refused.contains("not sorted"), "{refused}");
-        DataType::map_of(DataType::Utf8, DataType::Int32, false)
+        DataType::map_of(DataType::utf8(), DataType::Int32, false)
             .unwrap()
             .scalar(unsorted)
             .unwrap();

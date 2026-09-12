@@ -197,7 +197,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
     assert_eq!(cme.name(), "cme", "folded once, on the way in");
     assert!(FixBranch::from_str("2cme").is_err());
 
-    let mut trade = DataType::Utf8.nullable_field("TradeID");
+    let mut trade = DataType::utf8().nullable_field("TradeID");
     // Absent means standard, and there is no identity without a tag.
     assert_eq!(trade.as_fix().branch()?, FixBranch::STANDARD);
     assert_eq!(trade.as_fix().id()?, None);

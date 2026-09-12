@@ -12,9 +12,9 @@ use crate::IOMedia;
 fn wide() -> Field {
     DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
         DataType::Float64.required_field("price"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])
     .unwrap()
     .required_field("row")
@@ -101,7 +101,7 @@ fn the_projection_only_drops_columns_and_the_cast_does_the_rest() {
     // it, so the encoding reads everything and the cast supplies it.
     let invented = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("nowhere"),
+        DataType::utf8().nullable_field("nowhere"),
     ])
     .unwrap()
     .required_field("row");

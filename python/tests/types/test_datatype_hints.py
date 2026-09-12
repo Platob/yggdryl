@@ -69,7 +69,7 @@ def test_scalar_hints_have_native_arrow_equivalents() -> None:
         bool: "boolean",
         int: "int64",
         float: "float64",
-        str: "utf8",
+        str: "string",
         bytes: "binary",
         bytearray: "binary",
         memoryview: "binary",
@@ -79,10 +79,10 @@ def test_scalar_hints_have_native_arrow_equivalents() -> None:
         datetime.timedelta: "duration64",
         decimal.Decimal: "decimal128",
         uuid.UUID: "uuid",
-        pathlib.Path: "utf8",
-        Uri: "utf8",
-        Url: "utf8",
-        Urn: "utf8",
+        pathlib.Path: "string",
+        Uri: "string",
+        Url: "string",
+        Urn: "string",
     }
 
     for hint, kind in expected.items():
@@ -158,7 +158,7 @@ def test_collection_hints_preserve_nested_nullability_and_order() -> None:
     assert DataType.from_pyhint(cabc.Iterable).id == "list"
     assert DataType.from_pyhint(typing.Tuple).id == "list"
     assert DataType.from_pyhint(tuple[()]).id == "struct"
-    assert DataType.from_pyhint(cabc.Generator[str, None, None])[0].dtype.id == "utf8"
+    assert DataType.from_pyhint(cabc.Generator[str, None, None])[0].dtype.id == "string"
     items = DataType.from_pyhint(cabc.ItemsView[str, int])
     assert [field.name for field in items[0].dtype] == ["_1", "_2"]
     with pytest.raises(TypeError, match="nullable map key"):
@@ -261,8 +261,8 @@ def test_counter_and_generic_mapping_subclasses_keep_parameters() -> None:
 
     counter_entries = counter[0].dtype
     chain_entries = chain[0].dtype
-    assert [field.dtype.id for field in counter_entries] == ["utf8", "int64"]
-    assert [field.dtype.id for field in chain_entries] == ["utf8", "int64"]
+    assert [field.dtype.id for field in counter_entries] == ["string", "int64"]
+    assert [field.dtype.id for field in chain_entries] == ["string", "int64"]
 
 
 def test_struct_hints_are_deterministic_and_keep_class_identity() -> None:
@@ -296,7 +296,7 @@ def test_literal_enum_newtype_typevar_and_union_inference() -> None:
     bounded = TypeVar("bounded", bound=float)
 
     assert DataType.from_pyhint(Literal[1, 2]).id == "int64"
-    assert DataType.from_pyhint(Side).id == "utf8"
+    assert DataType.from_pyhint(Side).id == "string"
     assert DataType.from_pyhint(UserId).id == "int64"
     assert DataType.from_pyhint(bounded).id == "float64"
 

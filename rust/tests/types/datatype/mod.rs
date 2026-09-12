@@ -1,5 +1,6 @@
 mod arrow;
 mod ascii;
+mod bytes;
 mod coded;
 mod compatibility;
 mod default;

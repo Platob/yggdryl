@@ -208,7 +208,7 @@ mod tests {
     }
 
     fn parties() -> Field {
-        let subparty = DataType::from_fields([tagged("PartySubID", 523, DataType::Utf8)])
+        let subparty = DataType::from_fields([tagged("PartySubID", 523, DataType::utf8())])
             .unwrap()
             .required_field("SubParty");
         let mut nested = DataType::large_list(subparty).required_field("SubParties");
@@ -217,7 +217,7 @@ mod tests {
             .unwrap()
             .required_field("Attribution");
         let item = DataType::from_fields([
-            tagged("PartyID", 448, DataType::Utf8),
+            tagged("PartyID", 448, DataType::utf8()),
             attribution,
             tagged("NoPartySubIDs", 802, DataType::Int32),
             nested,

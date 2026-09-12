@@ -11,14 +11,17 @@ use arrow_schema::{DataType as ArrowDataType, ffi::FFI_ArrowSchema};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple};
+use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
 use yggdryl::ArrowCast;
 use yggdryl::{
-    AsciiEnum as CoreAsciiEnum, DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm,
-    Scheme as CoreScheme, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
+    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
+    StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
 };
 
 use crate::types::field::PyField;
+use crate::types::parameters::{
+    PyBytesParameters, PyStringParameters, core_bytes_parameters, core_string_parameters,
+};
 use crate::types::scalar::{PyScalar, arrow_scalar_into_array, from_py};
 use crate::{
     FieldKey, PyDifferenceIterator, cast_options, compare, field_at_of, field_by_path_of, field_of,
@@ -121,10 +124,11 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
     dtype: &CoreDataType,
     safe: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    // ASCII, UUID, Version, and Url carry value rules `PyArrow` does not own.
-    // Route them through the core once rather than letting Python's storage
-    // shape silently bypass padding, parsing, or canonicalization.
-    if dtype.is_ascii()
+    // A declared string, a code, a UUID, a Version, and a Url carry value
+    // rules `PyArrow` does not own. Route them through the core once rather
+    // than letting Python's storage shape silently bypass padding, a bound, a
+    // charset, parsing, or canonicalization.
+    if needs_core_value_rules(dtype)
         || matches!(
             dtype,
             CoreDataType::Uuid | CoreDataType::Version | CoreDataType::Url
@@ -134,6 +138,17 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
     }
     let target = core_dtype_to_pyarrow(py, dtype)?;
     arrow_scalar_to_pyarrow_type(py, value, target, safe)
+}
+
+/// Whether a string or code datatype holds value rules `PyArrow` cannot check.
+///
+/// Plain UTF-8 text is what Arrow's own string layouts already guarantee;
+/// a charset, a bound, a fixed width, or a code's vocabulary is not.
+pub(crate) fn needs_core_value_rules(dtype: &CoreDataType) -> bool {
+    dtype.is_code()
+        || dtype
+            .string_parameters()
+            .is_some_and(|parameters| !parameters.charset().is_utf8() || parameters.is_bounded())
 }
 
 /// Store one custom scalar through the core boundary.
@@ -428,13 +443,13 @@ impl PyDataType {
             "float64" => CoreDataType::Float64,
             "date32" => CoreDataType::Date32,
             "date64" => CoreDataType::Date64,
-            "binary" => CoreDataType::Binary,
-            "large_binary" => CoreDataType::LargeBinary,
-            "binary_view" => CoreDataType::BinaryView,
-            "utf8" => CoreDataType::Utf8,
-            "large_utf8" => CoreDataType::LargeUtf8,
-            "utf8_view" => CoreDataType::Utf8View,
-            "ascii" => CoreDataType::Ascii,
+            "binary" => CoreDataType::binary(),
+            "large_binary" => CoreDataType::large_binary(),
+            "binary_view" => CoreDataType::binary_view(),
+            "utf8" => CoreDataType::utf8(),
+            "large_utf8" => CoreDataType::large_utf8(),
+            "utf8_view" => CoreDataType::utf8_view(),
+            "ascii" => CoreDataType::ascii(),
             "country" => CoreDataType::Country,
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
@@ -509,13 +524,6 @@ impl PyDataType {
                 )));
             }
         };
-        Self::from_validated(inner)
-    }
-
-    /// Internal fixed-width binary constructor used by the typed fields facade.
-    #[staticmethod]
-    fn _fixed_size_binary(byte_width: i32) -> PyResult<Self> {
-        let inner = CoreDataType::fixed_size_binary(byte_width).map_err(value_error)?;
         Self::from_validated(inner)
     }
 
@@ -634,11 +642,106 @@ impl PyDataType {
         Self::from_validated(inner)
     }
 
-    /// Creates the fixed ASCII datatype storing exactly ``width`` bytes,
-    /// padding shorter values with trailing NUL.
+    /// Creates a string datatype: one layout, one charset, one bound.
+    ///
+    /// ``layout`` takes any of a layout's three spellings (``string``,
+    /// ``utf8``, ``ascii``; ``fixed_string``; ``string_view``;
+    /// ``large_string``; ``large_string_view``) and ``charset`` any
+    /// documented charset alias. ``bound`` is the exact width on the fixed
+    /// layout and the maximum stored bytes everywhere else.
+    #[classmethod]
+    #[pyo3(
+        signature = (layout="string", charset="utf-8", bound=None),
+        text_signature = "(layout='string', charset='utf-8', bound=None)"
+    )]
+    fn string(
+        _cls: &Bound<'_, PyType>,
+        layout: &str,
+        charset: &str,
+        bound: Option<u32>,
+    ) -> PyResult<Self> {
+        let inner = CoreDataType::string(core_string_parameters(layout, charset, bound)?)
+            .map_err(value_error)?;
+        Self::from_validated(inner)
+    }
+
+    /// Creates a byte datatype: one layout, one bound.
+    ///
+    /// ``layout`` is ``binary``, ``fixed_size_binary``, ``large_binary``, or
+    /// ``binary_view``; ``bound`` is the exact width on ``fixed_size_binary``
+    /// and the maximum stored bytes everywhere else.
+    #[classmethod]
+    #[pyo3(
+        signature = (layout="binary", bound=None),
+        text_signature = "(layout='binary', bound=None)"
+    )]
+    fn bytes(_cls: &Bound<'_, PyType>, layout: &str, bound: Option<u32>) -> PyResult<Self> {
+        let inner =
+            CoreDataType::bytes(core_bytes_parameters(layout, bound)?).map_err(value_error)?;
+        Self::from_validated(inner)
+    }
+
+    /// Unbounded UTF-8 with 32-bit offsets - Arrow's ``utf8``.
     #[staticmethod]
-    fn ascii(width: i32) -> PyResult<Self> {
-        let inner = CoreDataType::ascii(width).map_err(value_error)?;
+    fn utf8() -> Self {
+        Self::from_inner(CoreDataType::utf8())
+    }
+
+    /// Unbounded UTF-8 with 64-bit offsets - Arrow's ``large_utf8``.
+    #[staticmethod]
+    fn large_utf8() -> Self {
+        Self::from_inner(CoreDataType::large_utf8())
+    }
+
+    /// Unbounded UTF-8 in the view layout - Arrow's ``utf8_view``.
+    #[staticmethod]
+    fn utf8_view() -> Self {
+        Self::from_inner(CoreDataType::utf8_view())
+    }
+
+    /// Unbounded US-ASCII with 32-bit offsets: any length, every byte below
+    /// ``0x80`` and none NUL.
+    #[staticmethod]
+    fn ascii() -> Self {
+        Self::from_inner(CoreDataType::ascii())
+    }
+
+    /// UTF-8 of exactly ``width`` stored bytes, padded with trailing NUL.
+    #[staticmethod]
+    fn fixed_utf8(width: u32) -> PyResult<Self> {
+        let inner = CoreDataType::fixed_utf8(width).map_err(value_error)?;
+        Self::from_validated(inner)
+    }
+
+    /// US-ASCII of exactly ``width`` stored bytes, padded with trailing NUL.
+    #[staticmethod]
+    fn fixed_ascii(width: u32) -> PyResult<Self> {
+        let inner = CoreDataType::fixed_ascii(width).map_err(value_error)?;
+        Self::from_validated(inner)
+    }
+
+    /// Unbounded bytes with 32-bit offsets - Arrow's ``binary``.
+    #[staticmethod]
+    fn binary() -> Self {
+        Self::from_inner(CoreDataType::binary())
+    }
+
+    /// Unbounded bytes with 64-bit offsets - Arrow's ``large_binary``.
+    #[staticmethod]
+    fn large_binary() -> Self {
+        Self::from_inner(CoreDataType::large_binary())
+    }
+
+    /// Unbounded bytes in the view layout - Arrow's ``binary_view``.
+    #[staticmethod]
+    fn binary_view() -> Self {
+        Self::from_inner(CoreDataType::binary_view())
+    }
+
+    /// Exactly ``width`` bytes per value - Arrow's ``fixed_size_binary``.
+    #[staticmethod]
+    fn fixed_size_binary(width: u32) -> PyResult<Self> {
+        let inner = CoreDataType::fixed_size_binary(width).map_err(value_error)?;
         Self::from_validated(inner)
     }
 
@@ -1211,10 +1314,38 @@ impl PyDataType {
         self.inner.id().is_binary()
     }
 
-    /// Whether this stores text, ASCII datatypes included.
+    /// Whether this is a string, in any layout and charset.
+    ///
+    /// The nine registered codes are not strings: a currency is three ASCII
+    /// bytes with an identity, and answers ``is_code`` instead.
     #[getter]
     fn is_string(&self) -> bool {
-        self.inner.id().is_string()
+        self.inner.is_string()
+    }
+
+    /// What a string declares - its layout, charset, and bound - ``None``
+    /// for every other datatype, the codes included.
+    #[getter]
+    fn string_parameters(&self) -> Option<PyStringParameters> {
+        self.inner
+            .string_parameters()
+            .map(PyStringParameters::from_inner)
+    }
+
+    /// What a byte column declares - its layout and bound - ``None`` for
+    /// every other datatype.
+    #[getter]
+    fn bytes_parameters(&self) -> Option<PyBytesParameters> {
+        self.inner
+            .bytes_parameters()
+            .map(PyBytesParameters::from_inner)
+    }
+
+    /// The canonical name of the charset a string's bytes are written in,
+    /// ``None`` for a datatype that is not a string.
+    #[getter]
+    fn charset(&self) -> Option<&'static str> {
+        self.inner.charset().map(yggdryl::Charset::as_str)
     }
 
     /// Whether the family is a fixed-width or exact number.
@@ -1235,16 +1366,13 @@ impl PyDataType {
         self.inner.kind().is_ordered()
     }
 
-    /// The byte width of one value, `None` when the layout has no fixed one.
+    /// The byte width of one value, ``None`` when the layout has no fixed one.
+    ///
+    /// A fixed string's and fixed bytes' width is a parameter; a code's and a
+    /// number's is its identity. Both answer here.
     #[getter]
     fn fixed_byte_width(&self) -> Option<usize> {
-        self.inner.id().fixed_byte_width()
-    }
-
-    /// Whether this is any ASCII datatype, a registered code included.
-    #[getter]
-    fn is_ascii(&self) -> bool {
-        self.inner.is_ascii()
+        self.inner.fixed_byte_width()
     }
 
     /// Whether this is one of the four registered code vocabularies.
@@ -1255,24 +1383,19 @@ impl PyDataType {
 
     /// The registered code vocabulary this is, `None` for every other.
     ///
-    /// A bare fixed ASCII of the same width is not a code, because a code
-    /// carries the vocabulary its values are drawn from.
+    /// A bare fixed US-ASCII string of the same width is not a code, because
+    /// a code carries the vocabulary its values are drawn from.
     #[getter]
     fn code_name(&self) -> Option<&'static str> {
         self.inner.code_name()
     }
 
-    /// The storage width of an ASCII datatype in bytes, ``None`` for every other.
-    #[getter]
-    fn ascii_width(&self) -> Option<i32> {
-        self.inner.ascii_width()
-    }
-
     /// The integer an ASCII value packs into: its storage bytes, big-endian.
     ///
-    /// The packed integer is the same in every process, so it is what an enum
-    /// member and a stable hash are, and it is exactly the bytes an ASCII
-    /// column stores.
+    /// Only a fixed US-ASCII string of at most sixteen bytes or a code packs;
+    /// the packed integer is the same in every process, so it is what an enum
+    /// member and a stable hash are, and it is exactly the bytes the column
+    /// stores.
     fn ascii_packed(&self, value: &Bound<'_, PyAny>) -> PyResult<i128> {
         self.inner
             .ascii_packed(&ascii_value_of(value)?)
@@ -1779,25 +1902,26 @@ impl PyDataType {
     }
 }
 
-/// The enum an ASCII field's values name: one value per member name.
+/// The enum a string field's values name: one value per member name.
 ///
 /// A dictionary is a vocabulary and derives its member names; this is the
 /// vocabulary a declaration named itself, and it is what a ``Field`` stores
 /// under ``field:enum`` so the enum crosses Arrow, a file, and another runtime
-/// intact. The width lives in the field's datatype, so a member's code is its
-/// packed ASCII value under that width and never a position.
-#[pyclass(name = "AsciiEnum", module = "yggdryl._native", skip_from_py_object)]
+/// intact. The width lives in the field's datatype - a fixed US-ASCII string
+/// of at most sixteen bytes, or a code - so a member's code is its packed
+/// value under that width and never a position.
+#[pyclass(name = "StringEnum", module = "yggdryl._native", skip_from_py_object)]
 #[derive(Clone)]
-pub(crate) struct PyAsciiEnum {
-    inner: CoreAsciiEnum,
+pub(crate) struct PyStringEnum {
+    inner: CoreStringEnum,
 }
 
-impl PyAsciiEnum {
-    pub(crate) const fn from_inner(inner: CoreAsciiEnum) -> Self {
+impl PyStringEnum {
+    pub(crate) const fn from_inner(inner: CoreStringEnum) -> Self {
         Self { inner }
     }
 
-    pub(crate) const fn as_inner(&self) -> &CoreAsciiEnum {
+    pub(crate) const fn as_inner(&self) -> &CoreStringEnum {
         &self.inner
     }
 }
@@ -1822,7 +1946,7 @@ fn ascii_members_of(value: &Bound<'_, PyAny>) -> PyResult<Vec<(String, String)>>
 }
 
 #[pymethods]
-impl PyAsciiEnum {
+impl PyStringEnum {
     // The members move, so equality cannot be frozen into a hash: a mutable
     // value follows Python's hash contract by having none.
     #[classattr]
@@ -1836,7 +1960,7 @@ impl PyAsciiEnum {
             .map(ascii_members_of)
             .transpose()?
             .unwrap_or_default();
-        CoreAsciiEnum::from_members(name, members)
+        CoreStringEnum::from_members(name, members)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -1844,7 +1968,7 @@ impl PyAsciiEnum {
     /// Parses the ``field:enum`` document.
     #[staticmethod]
     fn from_json(document: &str) -> PyResult<Self> {
-        CoreAsciiEnum::from_json(document)
+        CoreStringEnum::from_json(document)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -1890,7 +2014,8 @@ impl PyAsciiEnum {
         self.inner.remove(member).map(|value| value.to_string())
     }
 
-    /// The members paired with their packed codes under one ASCII width.
+    /// The members paired with their packed codes under one datatype: a
+    /// fixed US-ASCII string of at most sixteen bytes, or a code.
     #[allow(clippy::wrong_self_convention)]
     fn into_members(&self, width: &Bound<'_, PyAny>) -> PyResult<Vec<(String, i128)>> {
         self.inner
@@ -1907,7 +2032,7 @@ impl PyAsciiEnum {
     /// The enum a registered logical name prebuilds, named for it.
     #[staticmethod]
     fn from_logical_name(name: &str) -> PyResult<Self> {
-        CoreAsciiEnum::from_logical_name(name)
+        CoreStringEnum::from_logical_name(name)
             .map(|inner| Self { inner })
             .map_err(value_error)
     }
@@ -1916,7 +2041,7 @@ impl PyAsciiEnum {
     #[staticmethod]
     fn prebuilt(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let lists = PyDict::new(py);
-        for (name, values) in CoreAsciiEnum::PREBUILT {
+        for (name, values) in CoreStringEnum::PREBUILT {
             lists.set_item(name, PyList::new(py, *values)?)?;
         }
         Ok(lists)
@@ -1925,7 +2050,7 @@ impl PyAsciiEnum {
     /// The enum member name one ASCII value takes.
     #[staticmethod]
     fn member_name(value: &str) -> String {
-        CoreAsciiEnum::member_name(value).to_string()
+        CoreStringEnum::member_name(value).to_string()
     }
 
     /// This enum as a Python ``IntEnum``, its members keyed by packed code.
@@ -1964,7 +2089,7 @@ impl PyAsciiEnum {
     }
 
     fn __repr__(&self) -> String {
-        format!("AsciiEnum.from_json({:?})", self.inner.into_json())
+        format!("StringEnum.from_json({:?})", self.inner.into_json())
     }
 
     fn __richcmp__(&self, other: &Bound<'_, PyAny>, operation: CompareOp) -> PyResult<Py<PyAny>> {

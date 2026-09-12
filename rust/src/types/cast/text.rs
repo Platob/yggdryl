@@ -71,7 +71,7 @@ pub(crate) fn ingest_text_values(
             &ArrowDataType::Utf8,
             safe,
             exposure,
-            &Field::new(field.name(), DataType::Utf8, true),
+            &Field::new(field.name(), DataType::utf8(), true),
             budget,
         )?
     };

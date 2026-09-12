@@ -53,7 +53,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         if index % 2 == 0 {
             DataType::Int64.required_field(name)
         } else {
-            DataType::Utf8.nullable_field(name)
+            DataType::utf8().nullable_field(name)
         }
     }))
     .expect("the benchmark row schema is valid")

@@ -29,10 +29,10 @@
 //! | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 //! | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
 //! | `Side` | char | `side` | a code set the standard declares, 4 bytes |
-//! | `direction` | - | `direction` | which way a captured line moved, 4 bytes |
-//! | `Language` | String | `ascii(2)` | ISO 639-1 alpha-2 |
-//! | `MonthYear` | String | `ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
-//! | `Tenor` | Pattern | `ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
+//! | `msgdirection` | - | `msgdirection` | which way a captured line moved, 4 bytes |
+//! | `Language` | String | `fixed_ascii(2)` | ISO 639-1 alpha-2 |
+//! | `MonthYear` | String | `fixed_ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
+//! | `Tenor` | Pattern | `fixed_ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
 //! | `Pattern` | - | `utf8` | the abstract base of `Tenor` and the reserved ranges |
 //! | `Length` | int | `int32` | a byte count |
 //! | `TagNum` | int | `int32` | a FIX tag |
@@ -95,6 +95,17 @@ use crate::{DataType, Error, Result, TimeUnit, Timezone};
 
 use super::parser::normalized;
 
+/// A fixed US-ASCII width, spelled once for the listing below.
+const fn fixed_ascii(width: u32) -> DataType {
+    match std::num::NonZeroU32::new(width) {
+        Some(width) => DataType::String(
+            super::StringParameters::ascii(super::StringLayout::FixedString).with_bound(width),
+        ),
+        // Every width in the listing is a literal above zero.
+        None => DataType::ascii(),
+    }
+}
+
 impl DataType {
     /// The logical names, in registration order, paired with what they resolve to.
     ///
@@ -114,7 +125,7 @@ impl DataType {
         ("isin", DataType::Isin),
         // The remaining codes resolve to themselves. `side` is FIX
         // code sets the standard itself declares, addressed constantly enough
-        // to earn a packed datatype; `direction` is transport rather than FIX,
+        // to earn a packed datatype; `msgdirection` is transport rather than FIX,
         // because every captured line has one whatever protocol it carried.
         ("side", DataType::Side),
         ("msgdirection", DataType::MsgDirection),
@@ -122,13 +133,12 @@ impl DataType {
         // is a word the Arrow or SQL grammar owns.
         ("state", DataType::State),
         ("timeinforce", DataType::TimeInForce),
-        // The spelling this datatype was first published under.
-        ("direction", DataType::MsgDirection),
-        // The rest are names over an ASCII width, which is all they need.
-        ("language", DataType::FixedAscii(2)),
-        ("monthyear", DataType::FixedAscii(8)),
-        ("tenor", DataType::FixedAscii(8)),
-        ("pattern", DataType::Utf8),
+        // The rest are names over a fixed US-ASCII width, which is all they
+        // need.
+        ("language", fixed_ascii(2)),
+        ("monthyear", fixed_ascii(8)),
+        ("tenor", fixed_ascii(8)),
+        ("pattern", DataType::utf8()),
         // The int family, each carrying the range its base type does not.
         ("length", DataType::Int32),
         ("tagnum", DataType::Int32),
@@ -229,12 +239,12 @@ impl DataType {
             },
         ),
         // The remaining text and binary shapes.
-        ("multiplecharvalue", DataType::Utf8),
-        ("multiplestringvalue", DataType::Utf8),
-        ("xid", DataType::Utf8),
-        ("xidref", DataType::Utf8),
-        ("data", DataType::Binary),
-        ("xmldata", DataType::Binary),
+        ("multiplecharvalue", DataType::utf8()),
+        ("multiplestringvalue", DataType::utf8()),
+        ("xid", DataType::utf8()),
+        ("xidref", DataType::utf8()),
+        ("data", DataType::binary()),
+        ("xmldata", DataType::binary()),
     ];
 
     /// Resolves a registered logical name to the datatype it spells.

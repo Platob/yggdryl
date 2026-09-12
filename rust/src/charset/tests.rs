@@ -88,6 +88,11 @@ fn a_charset_serializes_as_its_canonical_name() {
         );
     }
     assert!(serde_json::from_str::<Charset>("\"utf-16\"").is_err());
+    // A parsed document cannot lend its strings, and reads all the same.
+    assert_eq!(
+        serde_json::from_value::<Charset>(serde_json::json!("us-ascii")).unwrap(),
+        Charset::Ascii
+    );
 }
 
 #[test]

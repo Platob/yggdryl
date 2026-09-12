@@ -4,6 +4,7 @@ import copy
 import decimal
 import enum
 import inspect
+import json
 import pickle
 import uuid
 from typing import Optional
@@ -11,7 +12,7 @@ from typing import Optional
 import pyarrow as pa
 import pytest
 
-from yggdryl import AsciiEnum, DataType, Field, Version, types
+from yggdryl import BytesParameters, DataType, Field, StringEnum, StringParameters, Version, types
 
 
 def test_dtype_infers_native_string_and_arrow_values() -> None:
@@ -327,7 +328,9 @@ def test_the_uuid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
     assert uuid_type.id == "uuid"
     assert uuid_type.kind == "uuid"
     assert str(uuid_type) == "uuid"
-    assert uuid_type.ascii_width is None
+    assert uuid_type.fixed_byte_width == 16
+    assert uuid_type.string_parameters is None
+    assert uuid_type.bytes_parameters is None
 
     # The identity is the sixteen bytes; the spelling is a rendering of them.
     text = "01912d68-783e-7c9a-b1f2-0123456789ab"
@@ -370,7 +373,8 @@ def test_version_is_numeric_with_an_arrow_string_projection() -> None:
     assert dtype.id == "version"
     assert dtype.kind == "text"
     assert str(dtype) == "version"
-    assert dtype.ascii_width is None
+    assert dtype.fixed_byte_width is None
+    assert dtype.string_parameters is None
     assert field.default_scalar().as_py() == Version(0)
     assert field.arrow_scalar("5.0.01") == pa.scalar("5.0.1")
     assert field.cast_arrow_array(pa.array(["5.0.01", "5.0.10"])).to_pylist() == [
@@ -395,7 +399,8 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
     assert dtype.id == "url"
     assert dtype.kind == "text"
     assert str(dtype) == "url"
-    assert dtype.ascii_width is None
+    assert dtype.fixed_byte_width is None
+    assert dtype.string_parameters is None
     assert DataType("url") == dtype
     assert eval(repr(dtype), {"DataType": DataType}) == dtype
 
@@ -444,31 +449,96 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
     ).to_pylist() == ["https://example.com/a%2Fb", None]
 
 
-def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:
+def test_every_string_is_one_datatype_with_a_layout_a_charset_and_a_bound() -> None:
     ascii_text = DataType("ascii")
-    fixed = DataType.ascii(3)
+    fixed = DataType.fixed_ascii(3)
 
-    # Variable ASCII stores the bytes it is given, so it has no width.
-    assert ascii_text.id == "ascii"
-    assert ascii_text.kind == "ascii"
+    # Variable US-ASCII is the default layout in the US-ASCII charset: any
+    # length, so no width.
+    assert ascii_text == DataType.ascii()
+    assert ascii_text == DataType.string(charset="us-ascii")
+    assert ascii_text.id == "string"
+    assert ascii_text.kind == "text"
     assert str(ascii_text) == "ascii"
-    assert ascii_text.ascii_width is None
+    assert ascii_text.charset == "us-ascii"
+    assert ascii_text.fixed_byte_width is None
+    assert ascii_text.string_parameters == StringParameters("string", "us-ascii")
+    assert ascii_text.string_parameters.bound is None
     assert eval(repr(ascii_text), {"DataType": DataType}) == ascii_text
 
-    # A fixed width is the width, so two widths are two datatypes and neither
-    # is the variable form.
-    assert fixed.id == "fixed_ascii"
-    assert fixed.kind == "ascii"
-    assert str(fixed) == "ascii(3)"
-    assert fixed.ascii_width == 3
-    assert DataType("ascii(3)") == fixed
+    # A fixed width is the fixed layout, so two widths are two datatypes and
+    # neither is the variable form.
+    assert fixed == DataType.string("fixed_string", "us-ascii", 3)
+    # A layout's three spellings are one layout; the charset is the
+    # charset argument's to say.
+    # A US-ASCII spelling names a charset a bare layout would drop, so the
+    # layout key refuses it: the charset is its own key.
+    with pytest.raises(ValueError, match="us-ascii"):
+        DataType.string("fixed_ascii", bound=3)
+    assert fixed.id == "fixed_string"
+    assert fixed.kind == "text"
+    assert str(fixed) == "fixed_ascii(3)"
+    assert fixed.fixed_byte_width == 3
+    assert fixed.string_parameters.fixed == 3
+    assert fixed.string_parameters.max is None
+    assert fixed.string_parameters.layout == "fixed_string"
+    assert DataType("fixed_ascii(3)") == fixed
+    assert DataType("fixed_string(us-ascii,3)") == fixed
     assert eval(repr(fixed), {"DataType": DataType}) == fixed
-    assert DataType.ascii(4) != fixed
+    assert DataType.fixed_ascii(4) != fixed
     assert fixed != ascii_text
     # Any width of at least one byte is storage; only the packed integer
     # stops at sixteen bytes.
-    assert DataType.ascii(64).ascii_width == 64
-    assert DataType("utf8").ascii_width is None
+    assert DataType.fixed_ascii(64).fixed_byte_width == 64
+    assert DataType("utf8").fixed_byte_width is None
+
+    # One number, one reading per layout: `ascii(4)` is a maximum and
+    # `fixed_ascii(4)` the width.
+    bounded = DataType("ascii(4)")
+    assert bounded == DataType.string(charset="us-ascii", bound=4)
+    assert bounded.id == "string"
+    assert bounded.string_parameters.max == 4
+    assert bounded.string_parameters.fixed is None
+    assert bounded.fixed_byte_width is None
+    assert str(bounded) == "ascii(4)"
+    assert bounded != DataType.fixed_ascii(4)
+
+    # The five layouts, each under the charset-named spelling UTF-8 earns.
+    assert DataType.utf8() == DataType("utf8") == DataType("string")
+    assert DataType.utf8().string_parameters == StringParameters()
+    assert DataType.large_utf8() == DataType("large_string")
+    assert DataType.large_utf8().id == "large_string"
+    assert DataType.utf8_view() == DataType("utf8_view")
+    assert DataType.utf8_view().id == "string_view"
+    assert DataType.string("large_string_view").id == "large_string_view"
+    assert str(DataType.string("large_string_view")) == "large_utf8_view"
+    assert DataType.fixed_utf8(8) == DataType("char(8)")
+    assert str(DataType.fixed_utf8(8)) == "fixed_utf8(8)"
+    assert DataType.fixed_utf8(8).charset == "utf-8"
+    assert DataType("varchar(32)") == DataType.string(bound=32)
+    assert str(DataType.string(bound=32)) == "utf8(32)"
+
+    # Every other charset renders under the general name and states itself.
+    latin = DataType.string(charset="windows-1252", bound=32)
+    assert str(latin) == "string(windows-1252,32)"
+    assert DataType("string(windows-1252,32)") == latin
+    assert latin.charset == "windows-1252"
+    assert latin.string_parameters == StringParameters("string", "windows-1252", 32)
+    assert latin.is_string
+    assert not latin.is_code
+
+    # The parameters are a frozen value: equal, hashable, ordered, picklable.
+    parameters = latin.string_parameters
+    assert hash(parameters) == hash(StringParameters("utf8", "cp1252", 32))
+    assert parameters.stable_hash() == latin.stable_hash()
+    assert pickle.loads(pickle.dumps(parameters)) == parameters
+    assert copy.deepcopy(parameters) == parameters
+    assert str(parameters) == "string(windows-1252,32)"
+    assert repr(parameters) == 'StringParameters("string", "windows-1252", 32)'
+    assert StringParameters() < parameters
+    assert {parameters: 1}[StringParameters("string", "windows-1252", 32)] == 1
+    with pytest.raises(AttributeError):
+        parameters.bound = 3  # type: ignore[misc]
 
     # A name is one more spelling of a datatype, and it folds case, `_`, `-`,
     # and spaces the way the grammar folds them.
@@ -482,8 +552,64 @@ def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:
 
     with pytest.raises(ValueError, match="currency"):
         DataType.from_logical_name("sedol")
-    with pytest.raises(ValueError, match="at least 1 byte, got 0"):
-        DataType.ascii(0)
+    with pytest.raises(ValueError, match="at least one byte, got 0"):
+        DataType.fixed_ascii(0)
+    with pytest.raises(ValueError, match="fixed_string"):
+        DataType.string("fixed_string")
+    with pytest.raises(ValueError, match="fixed_string"):
+        StringParameters("fixed_utf8")
+    with pytest.raises(ValueError):
+        DataType.string("utf9")
+    with pytest.raises(ValueError):
+        DataType.string(charset="utf-16")
+
+
+def test_every_byte_column_is_one_datatype_with_a_layout_and_a_bound() -> None:
+    plain = DataType("binary")
+    assert plain == DataType.binary() == DataType.bytes()
+    assert plain.id == "binary"
+    assert plain.kind == "bytes"
+    assert plain.is_binary
+    assert plain.bytes_parameters == BytesParameters()
+    assert plain.bytes_parameters.layout == "binary"
+    assert plain.bytes_parameters.bound is None
+    assert plain.string_parameters is None
+    assert plain.charset is None
+    assert plain.fixed_byte_width is None
+
+    # `binary(16)` is a maximum; `fixed_size_binary(16)` the exact width.
+    bounded = DataType("binary(16)")
+    assert bounded == DataType.bytes(bound=16) == DataType("varbinary(16)")
+    assert bounded.bytes_parameters.max == 16
+    assert bounded.bytes_parameters.fixed is None
+    assert str(bounded) == "binary(16)"
+    fixed = DataType.fixed_size_binary(16)
+    assert fixed == DataType("fixed_size_binary(16)") == DataType.bytes("fixed_binary", 16)
+    assert fixed.id == "fixed_size_binary"
+    assert fixed.fixed_byte_width == 16
+    assert fixed.bytes_parameters == BytesParameters("fixed_size_binary", 16)
+    assert fixed.bytes_parameters.fixed == 16
+    assert fixed.bytes_parameters.max is None
+    assert fixed != bounded
+    assert DataType.large_binary().id == "large_binary"
+    assert DataType.binary_view().id == "binary_view"
+    assert DataType.bytes("large_binary", 8) == DataType("large_binary(8)")
+
+    parameters = fixed.bytes_parameters
+    assert repr(parameters) == 'BytesParameters("fixed_size_binary", 16)'
+    assert repr(BytesParameters()) == 'BytesParameters("binary")'
+    assert str(parameters) == "fixed_size_binary(16)"
+    assert pickle.loads(pickle.dumps(parameters)) == parameters
+    assert hash(parameters) == hash(BytesParameters("fixed_size_binary", 16))
+    assert parameters.stable_hash() == fixed.stable_hash()
+    assert BytesParameters() < parameters
+
+    with pytest.raises(ValueError, match="at least one byte, got 0"):
+        DataType.fixed_size_binary(0)
+    with pytest.raises(ValueError, match="fixed_size_binary"):
+        DataType.bytes("fixed_size_binary")
+    with pytest.raises(ValueError):
+        BytesParameters("blob_view")
 
 
 def test_a_registered_code_is_its_own_datatype() -> None:
@@ -497,10 +623,13 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     assert DataType.from_logical_name("Exchange") == DataType("mic")
 
     assert currency.id == "currency"
-    assert currency.kind == "ascii"
+    assert currency.kind == "code"
     assert str(currency) == "currency"
-    assert currency.ascii_width == 3
-    assert currency != DataType.ascii(3)
+    assert currency.fixed_byte_width == 3
+    assert currency.string_parameters is None
+    assert currency.charset is None
+    assert not currency.is_string
+    assert currency != DataType.fixed_ascii(3)
     assert DataType(" CURRENCY ") == currency
     assert eval(repr(currency), {"DataType": DataType}) == currency
 
@@ -512,10 +641,10 @@ def test_a_registered_code_is_its_own_datatype() -> None:
         ("isin", 12),
     ]:
         dtype = DataType(name)
-        assert (dtype.id, dtype.ascii_width, dtype.kind) == (name, width, "ascii")
+        assert (dtype.id, dtype.fixed_byte_width, dtype.kind) == (name, width, "code")
 
     # The packed integer is the value's own bytes, exactly as for a width.
-    assert currency.ascii_packed("USD") == DataType.ascii(3).ascii_packed("USD")
+    assert currency.ascii_packed("USD") == DataType.fixed_ascii(3).ascii_packed("USD")
     assert currency.ascii_value(0x555344) == "USD"
     with pytest.raises(ValueError, match="at most 2 bytes"):
         DataType("country").ascii_packed("USD")
@@ -531,7 +660,7 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     assert apple.as_py() == "US0378331005"
     assert apple.kind == "isin"
     assert pickle.loads(pickle.dumps(apple)) == apple
-    assert isin.ascii_packed("US0378331005") == DataType.ascii(12).ascii_packed("US0378331005")
+    assert isin.ascii_packed("US0378331005") == DataType.fixed_ascii(12).ascii_packed("US0378331005")
     with pytest.raises(ValueError, match="check digit does not close"):
         isin.scalar("US0378331006")
     with pytest.raises(ValueError, match="expected twelve characters"):
@@ -549,10 +678,10 @@ def test_a_registered_code_carries_its_identity_across_arrow() -> None:
     }
     assert Field.from_arrow(arrow_field) == ccy
 
-    # The same three bytes under the width's own name are the width, and
-    # under no name at all are a plain fixed binary.
-    assert Field.from_arrow(Field("ccy", DataType.ascii(3)).into_arrow()) == Field(
-        "ccy", DataType.ascii(3)
+    # The same three bytes under the string family's name are the fixed
+    # string, and under no name at all are a plain fixed binary.
+    assert Field.from_arrow(Field("ccy", DataType.fixed_ascii(3)).into_arrow()) == Field(
+        "ccy", DataType.fixed_ascii(3)
     )
     assert Field.from_arrow(pa.field("ccy", pa.binary(3))) == Field(
         "ccy", "fixed_size_binary(3)"
@@ -563,20 +692,28 @@ def test_a_registered_code_carries_its_identity_across_arrow() -> None:
         b"USD",
         b"EU\x00",
     ]
+    # A cell the code refuses is null under the default safe cast and an
+    # error naming the row when strict, exactly as a string cell is.
+    assert ccy.cast_arrow_array(pa.array(["EURO"])).to_pylist() == [None]
     with pytest.raises(ValueError, match="at most 3 bytes"):
-        ccy.cast_arrow_array(pa.array(["EURO"]))
+        ccy.cast_arrow_array(pa.array(["EURO"]), safe=False)
 
 
 def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> None:
-    ascii32 = DataType.ascii(4)
+    ascii32 = DataType.fixed_ascii(4)
     ccy = Field("ccy", ascii32)
 
+    # Arrow has no fixed-width string, so the fixed layout rides
+    # `FixedSizeBinary` and the declaration rides the `yggdryl.string`
+    # document beside it.
     assert ascii32.into_arrow() == pa.binary(4)
     arrow_field = ccy.into_arrow()
     assert arrow_field.type == pa.binary(4)
     assert arrow_field.metadata == {
-        b"ARROW:extension:name": b"yggdryl.ascii",
-        b"ARROW:extension:metadata": b"",
+        b"ARROW:extension:name": b"yggdryl.string",
+        b"ARROW:extension:metadata": (
+            b'{"layout":"fixed_string","charset":"us-ascii","fixed":4}'
+        ),
     }
     assert Field.from_arrow(arrow_field) == ccy
     assert Field.from_arrow(pa.field("ccy", pa.binary(4))) == Field(
@@ -602,44 +739,50 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
     stored = pa.record_batch([padded], schema=pa.schema([arrow_field]))
     assert row.cast_arrow_batch(stored).column(0).to_pylist() == ["USD", None]
 
-    with pytest.raises(ValueError, match="at most 4 bytes"):
-        ascii32.cast_arrow_array(pa.array(["EURO!"]))
+    # A safe cast nulls the cell it cannot write - the required column then
+    # fills it with the default - and a strict one names the row.
+    assert ascii32.cast_arrow_array(pa.array(["EURO!"])).to_pylist() == [b"\x00" * 4]
+    assert ccy.cast_arrow_array(pa.array(["EURO!"])).to_pylist() == [None]
+    with pytest.raises(ValueError, match="row 0: expected at most 4 bytes"):
+        ascii32.cast_arrow_array(pa.array(["EURO!"]), safe=False)
     with pytest.raises(ValueError, match="at most 4 bytes"):
         ascii32.arrow_scalar("EURO!")
     with pytest.raises(ValueError, match="non-ASCII"):
         ccy.arrow_scalar("\u20ac")
-    # Only text and bytes are ASCII values; nothing is stringified.
-    with pytest.raises(ValueError, match="got i64"):
-        ascii32.arrow_scalar(3)
-    with pytest.raises(ValueError, match="got boolean"):
-        ascii32.arrow_scalar(True)
-    with pytest.raises(ValueError):
-        ccy.cast(1.5)
+    # A string is a string: a number or a boolean spells itself, exactly as
+    # it does into `utf8`, and the width then judges the spelling.
+    assert ascii32.arrow_scalar(3) == pa.scalar(b"3\x00\x00\x00", pa.binary(4))
+    assert ascii32.arrow_scalar(True) == pa.scalar(b"true", pa.binary(4))
+    assert ccy.cast(1.5) == pa.scalar(b"1.5\x00", pa.binary(4))
+    with pytest.raises(ValueError, match="at most 4 bytes"):
+        ccy.cast(12345)
 
 
-def test_variable_ascii_stores_the_bytes_it_is_given() -> None:
+def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None:
     note = DataType("ascii")
     field = Field("note", note)
 
-    # No width, so no padding: variable ASCII is Arrow's variable binary under
-    # the same extension name, told apart from the fixed form by its storage.
-    assert note.into_arrow() == pa.binary()
+    # ASCII bytes are UTF-8, so US-ASCII rides Arrow's own string layout;
+    # what Arrow cannot say - the charset - rides the `yggdryl.string`
+    # document. Plain UTF-8 crosses bare.
+    assert note.into_arrow() == pa.string()
     arrow_field = field.into_arrow()
-    assert arrow_field.type == pa.binary()
+    assert arrow_field.type == pa.string()
     assert arrow_field.metadata == {
-        b"ARROW:extension:name": b"yggdryl.ascii",
-        b"ARROW:extension:metadata": b"",
+        b"ARROW:extension:name": b"yggdryl.string",
+        b"ARROW:extension:metadata": b'{"layout":"string","charset":"us-ascii"}',
     }
     assert Field.from_arrow(arrow_field) == field
-    assert Field.from_arrow(pa.field("note", pa.binary())) == Field("note", "binary")
+    assert Field.from_arrow(pa.field("note", pa.string())) == Field("note", "utf8")
+    assert Field("text", "utf8").into_arrow().metadata is None
 
-    assert note.arrow_scalar("free text") == pa.scalar(b"free text", pa.binary())
+    assert note.arrow_scalar("free text") == pa.scalar("free text", pa.string())
     assert note.default_scalar().as_py() == ""
     assert note.default_pyhint() is str
-    assert note.default_arrow_scalar() == pa.scalar(b"", pa.binary())
+    assert note.default_arrow_scalar() == pa.scalar("", pa.string())
 
     stored = field.cast_arrow_array(pa.array(["a", "much longer note", None]))
-    assert stored.to_pylist() == [b"a", b"much longer note", None]
+    assert stored.to_pylist() == ["a", "much longer note", None]
     row = DataType.from_fields([Field("note", "utf8")])
     batch = pa.record_batch([stored], schema=pa.schema([arrow_field]))
     assert row.cast_arrow_batch(batch).column(0).to_pylist() == [
@@ -648,20 +791,76 @@ def test_variable_ascii_stores_the_bytes_it_is_given() -> None:
         None,
     ]
 
-    # The value contract is the width's, minus the width itself.
+    # The value contract is the repertoire: no NUL, nothing above 0x7F.
     with pytest.raises(ValueError, match="non-ASCII"):
         note.arrow_scalar("\u20ac")
     with pytest.raises(ValueError, match="NUL"):
         note.arrow_scalar("a\x00b")
-    # A packed integer needs a width, so the variable form has none.
+    # A packed integer needs a fixed width, so the variable form has none.
     with pytest.raises(ValueError, match="at most 16 bytes"):
         note.ascii_packed("USD")
 
+    # A maximum is the column's rule, checked where a value enters, and
+    # never the value's: the cell read back is a plain `ascii`.
+    bounded = Field("code", DataType("ascii(4)"))
+    assert bounded.into_arrow().metadata == {
+        b"ARROW:extension:name": b"yggdryl.string",
+        b"ARROW:extension:metadata": b'{"layout":"string","charset":"us-ascii","max":4}',
+    }
+    assert Field.from_arrow(bounded.into_arrow()) == bounded
+    assert bounded.scalar("USD").dtype == DataType("ascii")
+    with pytest.raises(ValueError, match="at most 4 bytes"):
+        bounded.scalar("EURO!")
+    assert bounded.cast_arrow_array(pa.array(["EURO!"])).to_pylist() == [None]
+    with pytest.raises(ValueError, match="at most 4 bytes"):
+        bounded.cast_arrow_array(pa.array(["EURO!"]), safe=False)
 
+    # A legacy charset rides binary storage, because its bytes are not UTF-8.
+    latin = Field("name", DataType.string(charset="windows-1252"))
+    assert latin.into_arrow().type == pa.binary()
+    assert Field.from_arrow(latin.into_arrow()) == latin
+    assert latin.cast_arrow_array(pa.array(["caf\u00e9"])).to_pylist() == [b"caf\xe9"]
+    assert latin.scalar(b"caf\xe9").as_py() == "caf\u00e9"
+
+
+def test_a_string_and_a_byte_field_cross_json_under_one_tag_each() -> None:
+    string = Field("name", DataType.string("fixed_string", "windows-1252", 8))
+    document = json.loads(string.into_json())
+    assert document["dtype"] == {
+        "type": "string",
+        "layout": "fixed_string",
+        "charset": "windows-1252",
+        "fixed": 8,
+    }
+    assert Field.from_json(string.into_json()) == string
+    # Plain UTF-8 states nothing beyond its tag; a maximum says `max`.
+    assert json.loads(Field("t", "utf8").into_json())["dtype"] == {"type": "string"}
+    assert json.loads(Field("t", "utf8(32)").into_json())["dtype"] == {
+        "type": "string",
+        "max": 32,
+    }
+    assert json.loads(Field("t", "ascii").into_json())["dtype"] == {
+        "type": "string",
+        "charset": "us-ascii",
+    }
+
+    bytes_field = Field("blob", DataType.bytes("large_binary", 16))
+    assert json.loads(bytes_field.into_json())["dtype"] == {
+        "type": "binary",
+        "layout": "large_binary",
+        "max": 16,
+    }
+    assert Field.from_json(bytes_field.into_json()) == bytes_field
+    assert json.loads(Field("b", "binary").into_json())["dtype"] == {"type": "binary"}
+    assert json.loads(Field("b", "fixed_size_binary(4)").into_json())["dtype"] == {
+        "type": "binary",
+        "layout": "fixed_size_binary",
+        "fixed": 4,
+    }
 
 
 def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
-    prebuilt = AsciiEnum.prebuilt()
+    prebuilt = StringEnum.prebuilt()
     assert set(prebuilt) == {
         "currency",
         "country",
@@ -675,7 +874,7 @@ def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
     # `exchange` is FIX's name for the ISO 10383 code, so it is one list.
     assert prebuilt["mic"] == prebuilt["exchange"]
 
-    countries = AsciiEnum.from_logical_name("Country")
+    countries = StringEnum.from_logical_name("Country")
     assert countries.name == "country"
     assert len(countries) == len(prebuilt["country"])
     # An ISO code names itself, so the member and its value are one spelling.
@@ -683,7 +882,7 @@ def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
     assert countries.get_member("FR") == "FR"
     assert "FR" in countries
     # A prebuilt listing is a constant, so a second build is the same enum.
-    assert AsciiEnum.from_logical_name("country") == countries
+    assert StringEnum.from_logical_name("country") == countries
     # `ZZ` is ISO 3166's user-assigned range, so no member names it.
     assert countries.get("ZZ") is None
 
@@ -699,24 +898,24 @@ def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
 
     # A registered name with no prebuilt listing answers an enum of no
     # members, and one that is no registration at all is refused.
-    assert len(AsciiEnum.from_logical_name("tenor")) == 0
+    assert len(StringEnum.from_logical_name("tenor")) == 0
     # An open identifier space has no listing to prebuild either.
-    assert len(AsciiEnum.from_logical_name("isin")) == 0
+    assert len(StringEnum.from_logical_name("isin")) == 0
     with pytest.raises(ValueError, match="currency"):
-        AsciiEnum.from_logical_name("sedol")
+        StringEnum.from_logical_name("sedol")
 
 
 def test_an_enum_member_name_is_the_one_rule_both_runtimes_apply() -> None:
-    assert AsciiEnum.member_name("n/a") == "N_A"
-    assert AsciiEnum.member_name("3M") == "_3M"
-    assert AsciiEnum.member_name("") == "_"
+    assert StringEnum.member_name("n/a") == "N_A"
+    assert StringEnum.member_name("3M") == "_3M"
+    assert StringEnum.member_name("") == "_"
     # A name that opens and closes with `_` would be a reserved `_sunder_` or
     # `__dunder__`, so the trailing run goes and every member is a member.
-    assert AsciiEnum.member_name("-a-") == "_A"
-    assert AsciiEnum.member_name("--b--") == "__B"
+    assert StringEnum.member_name("-a-") == "_A"
+    assert StringEnum.member_name("--b--") == "__B"
 
-    codes = AsciiEnum("Currency", {"USD": "USD", "N_A": "n/a"})
-    width = DataType.ascii(4)
+    codes = StringEnum("Currency", {"USD": "USD", "N_A": "n/a"})
+    width = DataType.fixed_ascii(4)
     assert codes.into_members(width) == [
         ("N_A", 0x6E2F6100),
         ("USD", 0x55534400),
@@ -724,7 +923,7 @@ def test_an_enum_member_name_is_the_one_rule_both_runtimes_apply() -> None:
     # A value the width could not store is refused by the width, never
     # silently truncated into a member.
     with pytest.raises(ValueError, match="at most 2 bytes"):
-        codes.into_members(DataType.ascii(2))
+        codes.into_members(DataType.fixed_ascii(2))
 
 
 def test_the_datatype_restates_a_value_as_the_representation_it_declares() -> None:
@@ -740,7 +939,7 @@ def test_the_datatype_restates_a_value_as_the_representation_it_declares() -> No
 
     # An ASCII value is trimmed of its padding, and a value already in the
     # declared representation crosses unchanged.
-    assert DataType.ascii(4).scalar("AAPL").as_py() == "AAPL"
+    assert DataType.fixed_ascii(4).scalar("AAPL").as_py() == "AAPL"
     assert DataType("utf8").scalar("AAPL").as_py() == "AAPL"
 
     with pytest.raises(ValueError):
@@ -786,19 +985,20 @@ def test_a_datatype_answers_the_family_and_the_layout_of_its_identity() -> None:
     assert DataType.PARSE_RECURSION_LIMIT > 0
 
 
-def test_an_ascii_datatype_names_the_vocabulary_it_draws_from() -> None:
+def test_a_code_datatype_names_the_vocabulary_it_draws_from() -> None:
     country = DataType("country")
-    assert country.is_ascii
     assert country.is_code
+    assert country.kind == "code"
     assert country.code_name == "country"
+    assert country.is_bytes
 
-    # A bare fixed ASCII of the same width is not a code.
-    plain = DataType.ascii(2)
-    assert plain.is_ascii
+    # A bare fixed US-ASCII string of the same width is not a code.
+    plain = DataType.fixed_ascii(2)
     assert not plain.is_code
     assert plain.code_name is None
+    assert plain.is_string
 
-    assert not DataType("utf8").is_ascii
+    assert not DataType("utf8").is_code
     assert DataType("utf8").code_name is None
 
 

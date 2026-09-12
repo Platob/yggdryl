@@ -1,4 +1,4 @@
-use super::super::{AsciiEnum, DataType};
+use super::super::{DataType, StringEnum};
 
 #[test]
 fn the_member_name_rule_is_applied_once_per_value() {
@@ -13,14 +13,14 @@ fn the_member_name_rule_is_applied_once_per_value() {
         ("3M", "_3M"),
         ("", "_"),
     ] {
-        assert_eq!(AsciiEnum::member_name(value).as_str(), member, "{value:?}");
+        assert_eq!(StringEnum::member_name(value).as_str(), member, "{value:?}");
     }
 }
 
 #[test]
 fn an_enum_names_its_values_and_renders_one_document() {
     let mut side =
-        AsciiEnum::from_members("Side", [("SELL", "S"), ("BUY", "B"), ("BID", "B")]).unwrap();
+        StringEnum::from_members("Side", [("SELL", "S"), ("BUY", "B"), ("BID", "B")]).unwrap();
     assert_eq!(side.name(), "Side");
     assert_eq!(side.len(), 3);
     assert_eq!(side.get("BID"), Some("B"));
@@ -30,7 +30,8 @@ fn an_enum_names_its_values_and_renders_one_document() {
     assert_eq!(side.get_member("B"), Some("BID"));
     assert_eq!(side.get_member("X"), None);
     assert_eq!(
-        side.into_members(&DataType::FixedAscii(4)).unwrap(),
+        side.into_members(&DataType::fixed_ascii(4).unwrap())
+            .unwrap(),
         [
             ("BID".into(), 0x4200_0000),
             ("BUY".into(), 0x4200_0000),
@@ -45,17 +46,17 @@ fn an_enum_names_its_values_and_renders_one_document() {
         document,
         r#"{"members":{"BID":"B","BUY":"B","SELL":"S"},"name":"Side"}"#
     );
-    assert_eq!(AsciiEnum::from_json(&document).unwrap(), side);
+    assert_eq!(StringEnum::from_json(&document).unwrap(), side);
     assert_eq!(
-        AsciiEnum::from_json(r#" {"name":"Side","members":{"SELL":"S","BUY":"B","BID":"B"}} "#)
+        StringEnum::from_json(r#" {"name":"Side","members":{"SELL":"S","BUY":"B","BID":"B"}} "#)
             .unwrap(),
         side
     );
     assert_eq!(
-        AsciiEnum::from_json(r#"{"name":"Empty"}"#).unwrap(),
-        AsciiEnum::new("Empty").unwrap()
+        StringEnum::from_json(r#"{"name":"Empty"}"#).unwrap(),
+        StringEnum::new("Empty").unwrap()
     );
-    assert!(AsciiEnum::new("Empty").unwrap().is_empty());
+    assert!(StringEnum::new("Empty").unwrap().is_empty());
 
     assert_eq!(side.remove("BID"), Some("B".into()));
     assert_eq!(side.remove("BID"), None);
@@ -67,14 +68,17 @@ fn an_enum_names_its_values_and_renders_one_document() {
 
     // A member the width cannot store is refused when the codes are asked
     // for, which is where the width is known.
-    let refused = side.into_members(&DataType::Utf8).unwrap_err().to_string();
-    assert!(refused.contains("a fixed ASCII width"), "{refused}");
+    let refused = side
+        .into_members(&DataType::utf8())
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("a fixed US-ASCII string"), "{refused}");
 }
 
 #[test]
 fn an_enum_refuses_what_a_document_could_not_carry_back() {
     for (name, member) in [("", "BUY"), ("Side", ""), ("Si\u{7}de", "BUY")] {
-        assert!(AsciiEnum::from_members(name, [(member, "B")]).is_err());
+        assert!(StringEnum::from_members(name, [(member, "B")]).is_err());
     }
     for document in [
         "[]",
@@ -85,18 +89,22 @@ fn an_enum_refuses_what_a_document_could_not_carry_back() {
         r#"{"name":"Side","members":{"BUY":7}}"#,
         r#"{"name":"Side","members":{"":"B"}}"#,
     ] {
-        assert!(AsciiEnum::from_json(document).is_err(), "{document}");
+        assert!(StringEnum::from_json(document).is_err(), "{document}");
     }
 }
 
 #[test]
 fn an_ascii_value_packs_into_the_integer_its_storage_reads_as() {
     for (dtype, value, packed) in [
-        (DataType::FixedAscii(4), "USD", 0x5553_4400_i128),
-        (DataType::FixedAscii(4), "", 0),
-        (DataType::FixedAscii(8), "EUREX", 0x4555_5245_5800_0000),
+        (DataType::fixed_ascii(4).unwrap(), "USD", 0x5553_4400_i128),
+        (DataType::fixed_ascii(4).unwrap(), "", 0),
         (
-            DataType::FixedAscii(16),
+            DataType::fixed_ascii(8).unwrap(),
+            "EUREX",
+            0x4555_5245_5800_0000,
+        ),
+        (
+            DataType::fixed_ascii(16).unwrap(),
             "US0378331005",
             0x5553_3033_3738_3333_3130_3035_0000_0000,
         ),
@@ -111,42 +119,61 @@ fn an_ascii_value_packs_into_the_integer_its_storage_reads_as() {
     // An ASCII byte never sets the sign bit, so the order of the packed
     // integers is the order of the text.
     assert!(
-        DataType::FixedAscii(4).ascii_packed(b"EUR").unwrap()
-            < DataType::FixedAscii(4).ascii_packed(b"USD").unwrap()
+        DataType::fixed_ascii(4)
+            .unwrap()
+            .ascii_packed(b"EUR")
+            .unwrap()
+            < DataType::fixed_ascii(4)
+                .unwrap()
+                .ascii_packed(b"USD")
+                .unwrap()
     );
     assert!(
-        DataType::FixedAscii(8)
+        DataType::fixed_ascii(8)
+            .unwrap()
             .ascii_packed(b"\x7f\x7f\x7f\x7f\x7f\x7f\x7f\x7f")
             .unwrap()
             > 0
     );
 
     // What the width refuses, the packing refuses, in both directions.
-    let refused = DataType::FixedAscii(4)
+    let refused = DataType::fixed_ascii(4)
+        .unwrap()
         .ascii_packed(b"EURO!")
         .unwrap_err()
         .to_string();
     assert!(refused.contains("at most 4 bytes"), "{refused}");
-    let refused = DataType::FixedAscii(4)
+    let refused = DataType::fixed_ascii(4)
+        .unwrap()
         .ascii_value(-1)
         .unwrap_err()
         .to_string();
     assert!(refused.contains("wider than the width"), "{refused}");
-    let refused = DataType::FixedAscii(4)
+    let refused = DataType::fixed_ascii(4)
+        .unwrap()
         .ascii_value(0x1_5553_4400)
         .unwrap_err()
         .to_string();
     assert!(refused.contains("wider than the width"), "{refused}");
-    let refused = DataType::FixedAscii(4)
+    let refused = DataType::fixed_ascii(4)
+        .unwrap()
         .ascii_value(0x0055_4400)
         .unwrap_err()
         .to_string();
     assert!(refused.contains("a NUL byte at 0"), "{refused}");
-    let refused = DataType::Utf8.ascii_packed(b"USD").unwrap_err().to_string();
-    assert!(refused.contains("a fixed ASCII width"), "{refused}");
-    assert!(DataType::Utf8.ascii_value(0).is_err());
+    let refused = DataType::utf8()
+        .ascii_packed(b"USD")
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("a fixed US-ASCII string"), "{refused}");
+    assert!(DataType::utf8().ascii_value(0).is_err());
     // The variable shape has no width, so it has no packed integer; nor
     // does a width wider than the widest integer this crate carries.
-    assert!(DataType::Ascii.ascii_packed(b"USD").is_err());
-    assert!(DataType::FixedAscii(17).ascii_packed(b"USD").is_err());
+    assert!(DataType::ascii().ascii_packed(b"USD").is_err());
+    assert!(
+        DataType::fixed_ascii(17)
+            .unwrap()
+            .ascii_packed(b"USD")
+            .is_err()
+    );
 }

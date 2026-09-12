@@ -89,7 +89,7 @@
   {
     "name": "underlyingpaymentstreamcompoundingdatesoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -139,7 +139,7 @@
   {
     "name": "underlyingpaymentstreamcompoundingfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -152,7 +152,7 @@
   {
     "name": "underlyingpaymentstreamcompoundingrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -203,7 +203,7 @@
   {
     "name": "underlyingpaymentstreamcompoundingdatesbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -252,7 +252,7 @@
   {
     "name": "underlyingpaymentstreamcompoundingenddateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -291,7 +291,7 @@
   {
     "name": "underlyingpaymentstreamcompoundingrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -315,7 +315,7 @@
   {
     "name": "underlyingpaymentstreamcompoundingrateindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -466,7 +466,7 @@
   {
     "name": "underlyingpaymentstreamcompoundingfinalrateroundingdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -554,7 +554,7 @@
   {
     "name": "underlyingpaymentstreamcompoundingstartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -654,7 +654,7 @@
   {
     "name": "underlyingpaymentstreamfinalpricepaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -782,7 +782,7 @@
   {
     "name": "underlyingpaymentstreamunderlierrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -952,7 +952,7 @@
   {
     "name": "underlyingpaymentstreamnearestexchangecontractrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -988,7 +988,7 @@
   {
     "name": "underlyingpaymentstreamformulacurrencydeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1036,7 +1036,7 @@
   {
     "name": "underlyingpaymentstreamformuladesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1098,7 +1098,7 @@
   {
     "name": "underlyingpaymentstubenddateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1149,7 +1149,7 @@
   {
     "name": "underlyingpaymentstubenddatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1211,7 +1211,7 @@
   {
     "name": "underlyingpaymentstubstartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

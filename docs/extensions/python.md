@@ -18,7 +18,8 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `RecordOptions` | [RecordOptions](../media/options.md), [Arrow IPC](../media/ipc.md), [Parquet](../media/parquet.md) |
 | `iceberg` | [Iceberg](../media/iceberg/index.md) |
 | `MimeType`, `MediaType`, `Timezone` | [Scalar](../types/scalar.md) |
-| `enums` | [ASCII](../types/ascii.md) and this page |
+| `enums` | [Codes](../types/codes.md) and this page |
+| `StringEnum`, `StringParameters`, `BytesParameters` | [Strings & bytes](../types/text.md), [Codes](../types/codes.md), and this page |
 | `json`, `toml`, `yaml` | [Structured text](../text/index.md) and the format pages |
 | `avro` | [Apache Avro](../media/avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../coding/gzip.md), [zlib](../coding/zlib.md), [zstd](../coding/zstd.md) |
@@ -91,6 +92,49 @@ assert field(Release).dtype["version"].dtype == DataType("version")
 restores the wrapper. [Version measurements](../types/text.md#performance)
 include the parser, comparison and Scalar boundary.
 
+## Strings and bytes at the boundary
+
+The one string family and the one byte family of [Strings & bytes](../types/text.md) cross as they are: `DataType.string(layout, charset, bound)` and `DataType.bytes(layout, bound)` read a declaration, the layout sugars (`utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_utf8(width)`, `fixed_ascii(width)`, `binary`, `large_binary`, `binary_view`, `fixed_size_binary(width)`) pick one, and `string_parameters` / `bytes_parameters` answer it back as a frozen `StringParameters` / `BytesParameters` whose `bound` reads as `fixed` on the fixed layout and `max` everywhere else. `types.string(...)` and `types.bytes(...)` build the field in one call, spelling the bound as `fixed=` or `max=`; `Field.string_enum` / `set_string_enum` carry a `StringEnum`, accepted on a fixed US-ASCII string of at most sixteen bytes or a code and refused by name elsewhere.
+
+```python
+import pytest
+
+from yggdryl import DataType, Field, Scalar, StringEnum, StringParameters, types
+
+# A declaration is one datatype; the sugar is the declaration with the layout
+# and charset picked once.
+declared = DataType.string("string", "windows-1252", 8)
+assert str(declared) == "string(windows-1252,8)"
+assert declared.string_parameters == StringParameters("string", "windows-1252", 8)
+assert (declared.string_parameters.max, declared.string_parameters.fixed) == (8, None)
+assert DataType.utf8() == DataType.string()
+assert DataType.fixed_ascii(4).string_parameters.fixed == 4
+assert DataType.fixed_ascii(4).fixed_byte_width == 4
+assert DataType("ascii(4)").string_parameters.max == 4
+assert DataType.bytes("binary", 16).bytes_parameters.max == 16
+assert DataType.fixed_size_binary(16).bytes_parameters.fixed == 16
+
+# The field factories spell the bound by its reading.
+assert types.string("name", charset="us-ascii", max=8).dtype == DataType("ascii(8)")
+assert types.fixed_utf8("code", 4).dtype == DataType.fixed_utf8(4)
+assert types.bytes("blob", max=16).dtype == DataType.bytes("binary", 16)
+with pytest.raises(TypeError):
+    types.string("both", fixed=4, max=8)
+
+# A value never carries a maximum; a code is its own kind.
+assert Scalar.from_py("AAPL").kind == "string"
+assert Scalar.from_py("AAPL").as_str() == "AAPL"
+assert DataType("currency").scalar("USD").kind == "currency"
+assert DataType("currency").is_code and DataType("currency").kind == "code"
+
+# A vocabulary is metadata on a fixed US-ASCII string or a code.
+side = Field("side", DataType.fixed_ascii(4), nullable=False)
+side.set_string_enum(StringEnum("Side", {"BUY": "B", "SELL": "S"}))
+assert side.string_enum.get("BUY") == "B"
+with pytest.raises(ValueError, match="fixed US-ASCII string of at most 16 bytes"):
+    Field("side", DataType.fixed_utf8(4)).set_string_enum(StringEnum("Side", {"BUY": "B"}))
+```
+
 ## Native `Scalar`
 
 `Scalar` is a Python view of the Rust tree, and `from_py` chooses the natural Python shape.
@@ -116,7 +160,7 @@ assert values.into_arrow_array().type == pa.int16()
 
 tree = Scalar.from_py({"legs": [{"id": 1}]})
 assert tree["legs"][0]["id"].as_py() == 1
-assert tree.set("venue", "XNAS")["venue"].as_utf8() == "XNAS"
+assert tree.set("venue", "XNAS")["venue"].as_str() == "XNAS"
 ```
 
 | Call | Behavior |
@@ -125,7 +169,7 @@ assert tree.set("venue", "XNAS")["venue"].as_utf8() == "XNAS"
 | `date(count, unit="d", timezone=None)`, `time` / `datetime` / `duration` `(count, unit, timezone=None)` | only `datetime` takes a zone |
 | `from_arrow_scalar` / `_array` / `_batch` / `_table` | Arrow C Data or C Stream; a table arrives batch by batch, then is owned as rows |
 | `into_arrow_*` | exact physical types; `field=` casts to a declared shape |
-| `as_bytes`, `as_utf8`, `as_json_bytes`, `as_json_utf8` | the scalar payload, then the core's natural JSON writer |
+| `as_bytes`, `as_str`, `as_json_bytes`, `as_json_utf8` | the scalar payload - `as_str` answers a string, a code, or an enum member - then the core's natural JSON writer |
 | `len`, iteration, indexing, `get`, `path`, containment, `keys` / `values` / `items` | child values stay native |
 | `set`, `remove` | persistent: a rebuilt `Scalar`, source intact |
 | `add`, `subtract`, `multiply`, `divide`, `remainder`, `negate`, `absolute` | checked native arithmetic, mirrored by the Python operators |
@@ -629,9 +673,9 @@ else:
 
 `into_dataclass` reads the same declaration: the class name and module it materializes come from `python:qualname` and `python:module` unless the caller names them, and the field's own name is the last fallback.
 
-## ASCII vocabularies as enums
+## String vocabularies as enums
 
-`yggdryl.enums` carries the core's static spellings (`DATA_TYPE_IDS`, `CODECS`, `LEVELS`, and the rest) and the enum bases. `fixed_ascii(width)` builds one cached class per [ASCII width](../types/ascii.md), and a member *is* the integer its value packs into.
+`yggdryl.enums` carries the core's static spellings (`DATA_TYPE_IDS`, `CODECS`, `LEVELS`, and the rest) and the enum bases. `fixed_ascii(width)` builds one cached class per fixed US-ASCII width of at most sixteen bytes - the [`fixed_ascii(n)` datatype](../types/text.md) - and a member *is* the integer its value packs into. Only such a string, or a [code](../types/codes.md), has a packed integer, so only those declare a vocabulary; `fixed_utf8(4)` and the variable `ascii` are refused by name.
 
 ```python
 from yggdryl import DataType
@@ -645,7 +689,8 @@ class Currency(fixed_ascii(4)):
 assert int(Currency.USD) == 0x55534400
 assert int(Currency.USD).to_bytes(4, "big") == b"USD\x00"
 assert Currency.EUR < Currency.USD
-assert Currency.dtype() == DataType.ascii(4)
+assert Currency.dtype() == DataType.fixed_ascii(4)
+assert Currency.dtype().string_parameters.fixed == 4
 
 # The ASCII value is what a member renders as; `int(member)` asks for the code.
 assert Currency.USD.into_str() == "USD"
@@ -681,7 +726,7 @@ assert Isin.APPLE.into_str() == "US0378331005"
 A class declares itself onto a field under the reserved `field:enum` key, so the declaration crosses Arrow, a file, and the other binding.
 
 ```python
-from yggdryl import AsciiEnum, Field
+from yggdryl import StringEnum, Field
 from yggdryl.enums import AsciiCode, fixed_ascii
 
 class Side(fixed_ascii(4)):
@@ -689,9 +734,9 @@ class Side(fixed_ascii(4)):
     SELL = "S"
 
 field = Side.into_field("side", nullable=False)
-assert field.dtype.id == "fixed_ascii"
-assert field.ascii_enum == AsciiEnum("Side", {"BUY": "B", "SELL": "S"})
-assert field.get_property("field", "enum") == field.ascii_enum.into_json()
+assert field.dtype.id == "fixed_string"
+assert field.string_enum == StringEnum("Side", {"BUY": "B", "SELL": "S"})
+assert field.get_property("field", "enum") == field.string_enum.into_json()
 
 # The declaration is metadata, so the Arrow round trip carries it and it reads
 # back as the class that wrote it.
@@ -702,7 +747,7 @@ assert [(member.name, int(member)) for member in recovered] == [
 ]
 ```
 
-A value read back that the class did not declare registers once, announced on the `yggdryl.enums.ascii` logger at `INFO`.
+A value read back that the class did not declare registers once, announced on the `yggdryl.enums.string` logger at `INFO`.
 
 ```python
 import logging
@@ -716,7 +761,7 @@ class Side(fixed_ascii(4)):
 records: list[logging.LogRecord] = []
 handler = logging.Handler()
 handler.emit = records.append  # type: ignore[method-assign]
-logger = logging.getLogger("yggdryl.enums.ascii")
+logger = logging.getLogger("yggdryl.enums.string")
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 try:
@@ -739,7 +784,7 @@ from yggdryl import DataType
 from yggdryl.enums import CFI, Country, Currency, MIC
 
 assert Currency.dtype() == DataType("currency")
-assert Currency.dtype() != DataType.ascii(3)
+assert Currency.dtype() != DataType.fixed_ascii(3)
 assert int(Currency.USD) == 0x555344
 assert (Country.FR, MIC.XPAR, CFI.ESVUFR) == (Country("FR"), MIC("XPAR"), CFI("ESVUFR"))
 assert f"{MIC.XPAR} settles {Currency.EUR}" == "XPAR settles EUR"
@@ -762,8 +807,8 @@ class Fill:
 
 venue, settlement = Fill.into_field()
 assert (venue.dtype.id, settlement.dtype.id) == ("mic", "currency")
-assert settlement.ascii_enum.name == "Currency"
-assert settlement.ascii_enum.get("USD") == "USD"
+assert settlement.string_enum.name == "Currency"
+assert settlement.string_enum.get("USD") == "USD"
 ```
 
 `yggdryl.types` names the same four codes as factories, for a field built without a class.
@@ -1477,9 +1522,10 @@ assert selected.into_fixmsg(codec).by_name("Name").as_py() == "Orders"
 - a decorated class -> gains no codec, dictionary, or Arrow methods; an undecorated subclass reuses the nearest decorated base's root.
 - a field cached by `@scalar` -> read-only independently of the `hash()` lock.
 - `name=` on a global conversion -> identical rename semantics for a `Field`, a PyArrow input, and a dataclass.
-- `DataType("ascii")` -> any length and no packed integer, so no vocabulary.
-- an ASCII enum member -> the same code in every process, exactly what the column stores, ordered as its text is.
+- `DataType("ascii")`, `DataType("ascii(4)")` -> any length or a maximum, no packed integer, so no vocabulary; `fixed_utf8(4)` holds bytes the packing does not read, so none either.
+- an `AsciiCode` member -> the same code in every process, exactly what the column stores, ordered as its text is.
 - a vocabulary that already has members -> never subclassed; `AsciiCode` is the base every width and code shares.
+- `types.string(...)` or `types.bytes(...)` with both `fixed=` and `max=` -> `TypeError`; the core carries one bound, and the layout says how it reads.
 - `row_size`, `column_size` -> lazy, retained only between `open()` and `close()`, invalidated by writes through that handle.
 - `relative_to` outside the root -> `ValueError`; `touch` on a directory -> `IsADirectoryError`.
 - `read_range(cls=...)` outside `bytes`, `str`, and `None` -> `TypeError`, the way `read_scalar(cls=...)` refuses one.

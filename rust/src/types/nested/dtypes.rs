@@ -751,9 +751,9 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut row = DataType::from_fields([DataType::Int64.required_field("id")])?;
-    /// row.set_field_at(0, DataType::Utf8.required_field("id"))?;
+    /// row.set_field_at(0, DataType::utf8().required_field("id"))?;
     ///
-    /// assert_eq!(row["id"].dtype(), &DataType::Utf8);
+    /// assert_eq!(row["id"].dtype(), &DataType::utf8());
     /// # Ok(())
     /// # }
     /// ```
@@ -810,7 +810,7 @@ impl DataType {
     /// assert_eq!(row["line"]["price"].dtype(), &DataType::Float64);
     ///
     /// // An unresolved name appends.
-    /// row.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))?;
+    /// row.set_field_by_path("venue", DataType::utf8().nullable_field("venue"))?;
     /// assert_eq!(row.field_len(), 2);
     /// # Ok(())
     /// # }

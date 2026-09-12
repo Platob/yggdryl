@@ -26,14 +26,14 @@ fn view_layouts_cast_in_and_out_of_their_plain_spellings() {
     // Utf8View -> Utf8 and back, BinaryView -> Binary: the view layouts are
     // first-class datatypes, not lossy coercions.
     let view: ArrayRef = Arc::new(StringViewArray::from(vec![Some("alpha"), None]));
-    let plain = cast(&DataType::Utf8.nullable_field("text"), Arc::clone(&view)).unwrap();
+    let plain = cast(&DataType::utf8().nullable_field("text"), Arc::clone(&view)).unwrap();
     assert_eq!(plain.data_type(), &arrow_schema::DataType::Utf8);
 
-    let back = cast(&DataType::Utf8View.nullable_field("text"), plain).unwrap();
+    let back = cast(&DataType::utf8_view().nullable_field("text"), plain).unwrap();
     assert_eq!(back.data_type(), &arrow_schema::DataType::Utf8View);
 
     let bytes: ArrayRef = Arc::new(BinaryViewArray::from(vec![Some(b"ab".as_slice()), None]));
-    let plain = cast(&DataType::Binary.nullable_field("raw"), bytes).unwrap();
+    let plain = cast(&DataType::binary().nullable_field("raw"), bytes).unwrap();
     assert_eq!(plain.data_type(), &arrow_schema::DataType::Binary);
 }
 
@@ -391,7 +391,7 @@ fn an_encoded_temporal_column_reads_and_spells_like_a_plain_one() {
     let values: ArrayRef =
         Arc::new(TimestampSecondArray::from(vec![1_700_000_000]).with_timezone("Europe/Paris"));
     let instants: ArrayRef = Arc::new(DictionaryArray::new(keys, values));
-    let text = cast(&DataType::Utf8.nullable_field("at"), instants).unwrap();
+    let text = cast(&DataType::utf8().nullable_field("at"), instants).unwrap();
     assert_eq!(
         text.as_any()
             .downcast_ref::<StringArray>()
@@ -433,7 +433,7 @@ fn temporals_render_the_spelling_this_crate_prints() {
     // formatter cannot spell without a timezone database.
     let at: ArrayRef =
         Arc::new(TimestampSecondArray::from(vec![1_700_000_000]).with_timezone("Europe/Paris"));
-    let text = cast(&DataType::Utf8.nullable_field("at"), at).unwrap();
+    let text = cast(&DataType::utf8().nullable_field("at"), at).unwrap();
     assert_eq!(
         text.as_any()
             .downcast_ref::<StringArray>()
@@ -444,12 +444,12 @@ fn temporals_render_the_spelling_this_crate_prints() {
 
     // The other families spell what an expression literal spells.
     let elapsed: ArrayRef = Arc::new(DurationMillisecondArray::from(vec![90_000, -1_500]));
-    let text = cast(&DataType::Utf8.nullable_field("took"), elapsed).unwrap();
+    let text = cast(&DataType::utf8().nullable_field("took"), elapsed).unwrap();
     let text = text.as_any().downcast_ref::<StringArray>().unwrap();
     assert_eq!((text.value(0), text.value(1)), ("PT90.000S", "-PT1.500S"));
 
     let clock: ArrayRef = Arc::new(Time64NanosecondArray::from(vec![Some(1), None]));
-    let text = cast(&DataType::Utf8.nullable_field("clock"), clock).unwrap();
+    let text = cast(&DataType::utf8().nullable_field("clock"), clock).unwrap();
     let text = text.as_any().downcast_ref::<StringArray>().unwrap();
     assert_eq!(text.value(0), "00:00:00.000000001");
     assert!(text.is_null(1));

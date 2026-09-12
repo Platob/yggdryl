@@ -86,20 +86,11 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Decimal128 { .. }
         | D::Decimal256 { .. } => JsValueHint::BigInt,
         // A geospatial value is its Well-Known Binary payload, so the pair
-        // projects exactly as the binary family does.
-        D::Binary
-        | D::LargeBinary
-        | D::BinaryView
-        | D::FixedSizeBinary(_)
-        | D::Geometry(_)
-        | D::Geography(_) => JsValueHint::Buffer,
-        // An ASCII width reads back as its trimmed text and a UUID as its
-        // hyphenated spelling, so both project as the string family does.
-        D::Utf8
-        | D::LargeUtf8
-        | D::Utf8View
-        | D::Ascii
-        | D::FixedAscii(_)
+        // projects exactly as the byte family does.
+        D::Bytes(_) | D::Geometry(_) | D::Geography(_) => JsValueHint::Buffer,
+        // A code reads back as its trimmed text and a UUID as its hyphenated
+        // spelling, so both project as the string family does.
+        D::String(_)
         | D::Country
         | D::Currency
         | D::Mic
@@ -307,18 +298,14 @@ fn text_or_binary_to_js<'env>(
     use DataType as D;
 
     let output = match dtype {
-        D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_) => Buffer::from(
+        D::Bytes(_) => Buffer::from(
             value
                 .as_bytes()
                 .ok_or_else(|| napi_error("invalid native binary record value"))?
                 .to_vec(),
         )
         .into_unknown(env)?,
-        D::Utf8
-        | D::LargeUtf8
-        | D::Utf8View
-        | D::Ascii
-        | D::FixedAscii(_)
+        D::String(_)
         | D::Country
         | D::Currency
         | D::Mic

@@ -27,7 +27,7 @@
   {
     "name": "ordereventtext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -77,7 +77,7 @@
   {
     "name": "refclordid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -304,7 +304,7 @@
   {
     "name": "affectedorigclordid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -316,7 +316,7 @@
   {
     "name": "notaffsecondaryorderid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -340,7 +340,7 @@
   {
     "name": "eventtimeunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -452,7 +452,7 @@
   {
     "name": "posqtyunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -465,8 +465,10 @@
   {
     "name": "underlyingcontractpricerefmonth",
     "dtype": {
-      "type": "fixed_ascii",
-      "width": 8
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
     },
     "nullable": true,
     "metadata": {
@@ -565,7 +567,7 @@
   {
     "name": "tradeallocamttype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -641,7 +643,7 @@
   {
     "name": "strategylinkid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -678,7 +680,7 @@
   {
     "name": "sideavgpxgroupid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -702,7 +704,7 @@
   {
     "name": "relatedtradeid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -776,7 +778,7 @@
   {
     "name": "relatedpositionid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -827,7 +829,7 @@
   {
     "name": "strikeindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -839,7 +841,7 @@
   {
     "name": "offerid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -913,7 +915,7 @@
   {
     "name": "legsecurityxmlschema",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -949,7 +951,7 @@
   {
     "name": "underlyingsecurityxmlschema",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1065,7 +1067,7 @@
   {
     "name": "entitlementrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1077,7 +1079,7 @@
   {
     "name": "settlpriceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1140,7 +1142,7 @@
   {
     "name": "trdmatchsubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1164,7 +1166,7 @@
   {
     "name": "legexecid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1176,7 +1178,7 @@
   {
     "name": "legtradeid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1188,7 +1190,7 @@
   {
     "name": "legtradereportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1226,7 +1228,7 @@
   {
     "name": "sidemarketsegmentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1238,7 +1240,7 @@
   {
     "name": "sidevenuetype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

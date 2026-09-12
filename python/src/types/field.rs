@@ -23,7 +23,7 @@ use crate::enums::{
 use crate::fix::{FixTag, branch_from_py, id_parts_from_py};
 use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow};
 use crate::types::datatype::{
-    PyAsciiEnum, PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
+    PyDataType, PyDataTypeIterator, PyStringEnum, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
     arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
@@ -545,7 +545,7 @@ impl PyField {
         value: &Bound<'py, PyAny>,
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let scalar = if self.inner.dtype().is_ascii()
+        let scalar = if crate::types::datatype::needs_core_value_rules(self.inner.dtype())
             || matches!(
                 self.inner.dtype(),
                 CoreDataType::Uuid | CoreDataType::Version | CoreDataType::Url
@@ -1098,16 +1098,16 @@ impl PyField {
         self.inner.parquet_field_id().map_err(value_error)
     }
 
-    /// The enum this field's ASCII values name, ``None`` when it declares none.
+    /// The enum this field's values name, ``None`` when it declares none.
     ///
     /// The declaration is one ``field:enum`` document, so it reaches Arrow, a
     /// file, and another runtime as ordinary field metadata and comes back the
     /// enum that was written.
     #[getter]
-    fn ascii_enum(&self) -> PyResult<Option<PyAsciiEnum>> {
+    fn string_enum(&self) -> PyResult<Option<PyStringEnum>> {
         self.inner
-            .ascii_enum()
-            .map(|value| value.map(PyAsciiEnum::from_inner))
+            .string_enum()
+            .map(|value| value.map(PyStringEnum::from_inner))
             .map_err(value_error)
     }
 
@@ -1331,20 +1331,21 @@ impl PyField {
         Ok(())
     }
 
-    /// Declares the enum this field's ASCII values name.
-    fn set_ascii_enum(&mut self, value: &PyAsciiEnum) -> PyResult<()> {
+    /// Declares the enum this field's values name: a fixed US-ASCII string of at
+    /// most sixteen bytes or a code, refused by name elsewhere.
+    fn set_string_enum(&mut self, value: &PyStringEnum) -> PyResult<()> {
         self.require_mutable()?;
         self.inner
-            .set_ascii_enum(value.as_inner())
+            .set_string_enum(value.as_inner())
             .map_err(value_error)
     }
 
     /// Removes the declaration and returns the enum it held.
-    fn remove_ascii_enum(&mut self) -> PyResult<Option<PyAsciiEnum>> {
+    fn remove_string_enum(&mut self) -> PyResult<Option<PyStringEnum>> {
         self.require_mutable()?;
         self.inner
-            .remove_ascii_enum()
-            .map(|value| value.map(PyAsciiEnum::from_inner))
+            .remove_string_enum()
+            .map(|value| value.map(PyStringEnum::from_inner))
             .map_err(value_error)
     }
 

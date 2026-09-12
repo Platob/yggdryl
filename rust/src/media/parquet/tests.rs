@@ -102,7 +102,7 @@ fn root() -> Field {
         DataType::Int64
             .required_field("id")
             .with_parquet_field_id(1),
-        DataType::Utf8
+        DataType::utf8()
             .nullable_field("symbol")
             .with_parquet_field_id(2),
     ])
@@ -544,7 +544,7 @@ fn a_coded_location_is_rejected_with_the_reason() {
 #[test]
 fn a_mismatched_batch_reports_which_index_disagreed() {
     let field = root();
-    let other = DataType::from_fields([DataType::Utf8.required_field("unrelated")])
+    let other = DataType::from_fields([DataType::utf8().required_field("unrelated")])
         .unwrap()
         .required_field("row");
     let mut media = Parquet::new(handle("mismatch.parquet"));
@@ -738,9 +738,9 @@ mod pushdown {
     fn wide() -> Field {
         DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
+            DataType::utf8().nullable_field("symbol"),
             DataType::Float64.required_field("price"),
-            DataType::Utf8.nullable_field("venue"),
+            DataType::utf8().nullable_field("venue"),
         ])
         .unwrap()
         .required_field("row")
@@ -859,7 +859,7 @@ mod pushdown {
         // and the canonical declared-Field cast supplies the absent column.
         let invented = DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("nowhere"),
+            DataType::utf8().nullable_field("nowhere"),
         ])
         .unwrap()
         .required_field("row");
@@ -1392,7 +1392,7 @@ mod geospatial {
 
     #[test]
     fn an_ascii_field_round_trips_through_the_embedded_arrow_schema() {
-        let declared = crate::Field::new("ccy", crate::DataType::FixedAscii(4), true);
+        let declared = crate::Field::new("ccy", crate::DataType::fixed_ascii(4).unwrap(), true);
         let media = written(
             "ascii.parquet",
             vec![declared.clone().into_arrow().unwrap()],
@@ -1420,7 +1420,7 @@ mod geospatial {
             .next()
             .unwrap()
             .unwrap();
-        let text = crate::DataType::from_fields([crate::DataType::Utf8.nullable_field("ccy")])
+        let text = crate::DataType::from_fields([crate::DataType::utf8().nullable_field("ccy")])
             .unwrap()
             .required_field("row")
             .cast_arrow_batch(stored, ArrowCastOptions::new().with_safe(false))

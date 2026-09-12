@@ -68,14 +68,13 @@ pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
 pub use scalar::{Scalar, ScalarFamily, ScalarValue};
 pub use string::*;
-pub(crate) use string::{
-    ASCII_EXTENSION_NAME, ascii_bytes, ascii_free_text, ascii_padded, ascii_text, code_cell_text,
-    code_for_extension, trim_padding,
-};
 #[cfg(feature = "arrow")]
 pub(crate) use string::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
     TIMEINFORCE_WIDTH, code_refusal, code_text,
+};
+pub(crate) use string::{
+    ascii_bytes, ascii_padded, ascii_text, code_cell_text, code_for_extension, trim_padding,
 };
 pub use temporal::scalars::TemporalFamily;
 pub use temporal::*;

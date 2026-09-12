@@ -106,10 +106,11 @@ fn what_is_not_an_identifier_is_refused_by_the_one_rule() {
     assert!(refused.contains("36-character"), "{refused}");
 
     // The type answers only for itself.
-    assert!(DataType::Utf8.uuid_packed(TEXT.as_bytes()).is_err());
-    assert!(DataType::Utf8.uuid_value(PACKED).is_err());
+    assert!(DataType::utf8().uuid_packed(TEXT.as_bytes()).is_err());
+    assert!(DataType::utf8().uuid_value(PACKED).is_err());
     assert!(
-        DataType::FixedSizeBinary(16)
+        DataType::fixed_size_binary(16)
+            .unwrap()
             .uuid_packed(TEXT.as_bytes())
             .is_err()
     );

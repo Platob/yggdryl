@@ -27,7 +27,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use yggdryl::media::text::{TextBytes, TextLine};
-use yggdryl::types::{MsgDirection, UncheckedFieldScalar};
+use yggdryl::types::{
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, MsgDirection, Str, StringLayout, StringParameters,
+    UncheckedFieldScalar,
+};
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixBranch, FixCode,
     FixCodec, FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType,
@@ -176,7 +179,7 @@ fn version_parse_compare_and_render_allocate_nothing() {
 fn http_field(extra: usize) -> Field {
     let mut field = Field::from_parts(
         "payload",
-        DataType::Binary,
+        DataType::binary(),
         false,
         [
             ("http:content-type", "application/json"),
@@ -250,7 +253,7 @@ fn venue() -> FixBranch {
 /// ones are what every hit lands on. The group keeps a nested shape in the
 /// same index corpus.
 fn fix_registry(extra: usize) -> FixRegistry {
-    let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])
+    let item = DataType::from_fields([DataType::utf8().nullable_field("PartyID")])
         .expect("a struct item")
         .required_field("item");
     let mut parties = DataType::list(item).nullable_field("Parties");
@@ -260,7 +263,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .expect("a static counter");
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     counter.as_fix_mut().set_tag(453).expect("a static tag");
-    let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    let mut symbol = DataType::utf8().nullable_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a static tag");
     symbol
         .as_fix_mut()
@@ -270,9 +273,9 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .as_fix_mut()
         .set_aliases(["Ticker", "SecuritySymbolIdentifier"])
         .expect("static aliases");
-    let mut msgtype = DataType::Utf8.nullable_field("MsgType");
+    let mut msgtype = DataType::utf8().nullable_field("MsgType");
     msgtype.as_fix_mut().set_tag(35).expect("a static tag");
-    let mut trade = DataType::Utf8.nullable_field("TradeID");
+    let mut trade = DataType::utf8().nullable_field("TradeID");
     trade
         .as_fix_mut()
         .set_id(&venue(), 5_001)
@@ -527,7 +530,7 @@ fn fix_field_code_metadata_and_category_cursors_allocate_nothing() {
     for size in [1, 32, 512] {
         let mut registry = FixRegistry::new();
         for index in 0..size {
-            let mut field = DataType::Utf8.nullable_field(format!("Code{index}"));
+            let mut field = DataType::utf8().nullable_field(format!("Code{index}"));
             field.as_fix_mut().set_tag(index).unwrap();
             field
                 .as_fix_mut()
@@ -569,7 +572,7 @@ fn a_fix_lineage_read_allocates_nothing() {
     // Every spelling a lineage answers is a slice of the field's own stored
     // document, so a version filter costs the walk and nothing else. Only
     // `dtype_at` allocates, because building a `DataType` is what it answers.
-    let mut field = DataType::Utf8.nullable_field("LastQty");
+    let mut field = DataType::utf8().nullable_field("LastQty");
     field.as_fix_mut().set_tag(32).expect("a static tag");
     let entries = [
         FixLineageEntry::new(FixPedigree::new(
@@ -621,7 +624,7 @@ fn a_fix_lineage_read_allocates_nothing() {
     });
     // A document the scan refuses costs no allocation either: the byte
     // position is carried by the borrowed cursor, not by a rendered copy.
-    let mut edited = DataType::Utf8.nullable_field("LastShares");
+    let mut edited = DataType::utf8().nullable_field("LastShares");
     edited
         .set_metadata([("fix:lineage", r#"{"entries":[{"name":"x","since":"2.7"}]}"#)])
         .expect("a hand-edited document");
@@ -641,7 +644,7 @@ fn a_fix_code_lookup_allocates_nothing() {
                 .with_description(format!("Member number {index} (M{index:04})"))
         })
         .collect();
-    let mut field = DataType::Utf8.nullable_field("Vocabulary");
+    let mut field = DataType::utf8().nullable_field("Vocabulary");
     field.as_fix_mut().set_tag(9995).expect("a static tag");
     field
         .as_fix_mut()
@@ -687,14 +690,14 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     let registry = Arc::new(fix_registry(64));
     let venue = venue();
     let vendor = FixId::from_parts(&venue, 5_001).expect("a vendor identifier");
-    let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    let mut symbol = DataType::utf8().nullable_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a static tag");
-    let mut trade = DataType::Utf8.nullable_field("TradeID");
+    let mut trade = DataType::utf8().nullable_field("TradeID");
     trade
         .as_fix_mut()
         .set_id(&venue, 5_001)
         .expect("a static identifier");
-    let mut root = DataType::from_fields([symbol, trade, DataType::Utf8.nullable_field("9999")])
+    let mut root = DataType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
         .expect("three children")
         .required_field("row");
     root.as_fix_mut()
@@ -823,7 +826,7 @@ fn a_read_allocates_only_what_it_hands_back() {
     });
     let base_only = Field::from_parts(
         "payload",
-        DataType::Binary,
+        DataType::binary(),
         false,
         [("http:content-type", "application/json")],
     )
@@ -1105,10 +1108,10 @@ fn borrowed_value_bytes_allocate_nothing() {
 /// thrown away once per row: the payload is unbounded, so the copy was too.
 fn payload_row() -> (Field, Scalar) {
     let root = DataType::from_fields([
-        Field::new("symbol", DataType::Utf8, false),
-        Field::new("payload", DataType::Binary, false),
+        Field::new("symbol", DataType::utf8(), false),
+        Field::new("payload", DataType::binary(), false),
         Field::new("ccy", DataType::Currency, false),
-        Field::new("venue", DataType::Ascii, false),
+        Field::new("venue", DataType::ascii(), false),
     ])
     .expect("the row schema is valid")
     .required_field("row");
@@ -1156,7 +1159,7 @@ fn rewriting_a_layout_shares_the_storage_it_rewrites() {
     let source = Scalar::from(payload);
     let address = |value: &Scalar| value.as_bytes().expect("the payload is there").as_ptr();
     let from = address(&source);
-    for dtype in [DataType::LargeBinary, DataType::BinaryView] {
+    for dtype in [DataType::large_binary(), DataType::binary_view()] {
         let field = Field::new("payload", dtype, false);
         let rewritten = field.scalar(source.clone()).expect("the payload is bytes");
         assert_ne!(rewritten.id(), source.id());
@@ -1166,12 +1169,64 @@ fn rewriting_a_layout_shares_the_storage_it_rewrites() {
     let text = Scalar::from("a symbol far longer than any inline string buffer can hold");
     let characters = |value: &Scalar| value.as_str().expect("the text is there").as_ptr();
     let from = characters(&text);
-    for dtype in [DataType::LargeUtf8, DataType::Utf8View] {
+    for dtype in [DataType::large_utf8(), DataType::utf8_view()] {
         let field = Field::new("symbol", dtype, false);
         let rewritten = field.scalar(text.clone()).expect("the value is text");
         assert_ne!(rewritten.id(), text.id());
         assert_eq!(characters(&rewritten), from, "a rewrite copied the text");
     }
+}
+
+#[test]
+fn a_string_value_is_inline_to_its_capacity_and_one_handle_past_it() {
+    // `Str` wraps the compact string, so its threshold is that string's: a
+    // value of `INLINE_CAPACITY` bytes lives in the value and one byte more
+    // costs exactly the shared handle. Restating a value under other
+    // parameters retags the handle, so the characters are never copied.
+    let inline = "s".repeat(INLINE_CAPACITY);
+    free("building a string value at the inline capacity", || {
+        let value = Str::new(black_box(inline.as_str()));
+        assert!(value.is_inline());
+        black_box(value);
+    });
+    let shared = "s".repeat(INLINE_CAPACITY + 1);
+    costs("building a string value one byte past it", 1, || {
+        let value = Str::new(black_box(shared.as_str()));
+        assert!(!value.is_inline());
+        black_box(value);
+    });
+    let source = Str::new(&shared);
+    let large = StringParameters::utf8(StringLayout::LargeString);
+    free(
+        "restating a shared string value under another layout",
+        || {
+            let restated = black_box(&source)
+                .clone()
+                .try_with_parameters(large)
+                .expect("the layout holds it");
+            assert!(std::ptr::eq(source.as_str(), restated.as_str()));
+            black_box(restated);
+        },
+    );
+}
+
+#[test]
+fn a_byte_value_is_inline_to_its_capacity_and_one_handle_past_it() {
+    // The byte value keeps its own buffer: `INLINE_BYTES` fit in the value
+    // with no heap behind them, and one byte more costs exactly the shared
+    // handle.
+    let inline = vec![0x42_u8; INLINE_BYTES];
+    free("building a byte value at the inline capacity", || {
+        let value = Bytes::new(black_box(inline.as_slice()));
+        assert!(value.is_inline());
+        black_box(value);
+    });
+    let shared = vec![0x42_u8; INLINE_BYTES + 1];
+    costs("building a byte value one byte past it", 1, || {
+        let value = Bytes::new(black_box(shared.as_slice()));
+        assert!(!value.is_inline());
+        black_box(value);
+    });
 }
 
 #[test]
@@ -1224,8 +1279,8 @@ fn cast_corpus() -> (
         "row",
         DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
-            DataType::Utf8.required_field("venue"),
+            DataType::utf8().nullable_field("symbol"),
+            DataType::utf8().required_field("venue"),
         ])
         .expect("the root fields are valid"),
         false,
@@ -1320,7 +1375,9 @@ fn coupled_value_bytes_allocate_nothing() {
     free("projecting the instant as a datetime", || {
         black_box(value.into_datetime());
     });
-    costs("projecting the whole value as a byte scalar", 1, || {
+    // Twenty-four bytes fit the byte value's inline buffer, so the scalar
+    // costs nothing where it used to cost its one shared handle.
+    free("projecting the whole value as a byte scalar", || {
         black_box(value.into_scalar());
     });
 }
@@ -1393,7 +1450,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 33] = [
+    let seeds: [(DataTypeId, Scalar); 32] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -1412,10 +1469,9 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Binary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::LargeBinary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::BinaryView, Scalar::from(&b"ABC"[..])),
-        (DataTypeId::Utf8, Scalar::from("AAPL")),
-        (DataTypeId::LargeUtf8, Scalar::from("AAPL")),
-        (DataTypeId::Utf8View, Scalar::from("AAPL")),
-        (DataTypeId::Ascii, Scalar::from("AAPL")),
+        (DataTypeId::String, Scalar::from("AAPL")),
+        (DataTypeId::LargeString, Scalar::from("AAPL")),
+        (DataTypeId::StringView, Scalar::from("AAPL")),
         (DataTypeId::Country, Scalar::from("US")),
         (DataTypeId::Currency, Scalar::from("USD")),
         (DataTypeId::Mic, Scalar::from("XNAS")),
@@ -1468,11 +1524,18 @@ fn inferring_a_field_scalar_borrows_a_prebuilt_field_and_allocates_nothing() {
             black_box(FieldScalar::infer(black_box(&value).clone()).expect("the value infers"));
         });
     }
+    // The plain string and the plain byte value name the family's default
+    // layout, whose field the crate keeps beside the other prebuilt ones.
+    for value in [Scalar::from("x"), Scalar::from(vec![1_u8])] {
+        free(&format!("inferring a typed {}", value.kind()), || {
+            black_box(FieldScalar::infer(black_box(&value).clone()).expect("the value infers"));
+        });
+    }
     // A parameterized leaf is interned on its first ask and borrowed after.
     for dtype in [
         DataType::decimal128(10, 2).expect("a valid decimal"),
         DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).expect("a valid instant"),
-        DataType::FixedAscii(4),
+        DataType::fixed_ascii(4).unwrap(),
     ] {
         free(&format!("looking up the shared field of {dtype}"), || {
             black_box(black_box(&dtype).shared_field().expect("an interned field"));
@@ -1500,7 +1563,7 @@ fn typing_a_value_a_field_already_holds_allocates_nothing() {
             },
         );
     }
-    let text = Field::new("symbol", DataType::Utf8, false);
+    let text = Field::new("symbol", DataType::utf8(), false);
     let unchecked = UncheckedFieldScalar::from_str(
         &text,
         "a symbol far longer than any inline string buffer can hold",
@@ -1627,10 +1690,10 @@ const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 27), (16, 42), (64, 92)];
 /// *value's width*: a field that only types a number never carries three
 /// kilobytes, so a numeric dictionary could not state the case at all.
 fn fix_text_registry(count: usize) -> FixRegistry {
-    let mut msgtype = DataType::Utf8.nullable_field("MsgType");
+    let mut msgtype = DataType::utf8().nullable_field("MsgType");
     msgtype.as_fix_mut().set_tag(35).expect("a static tag");
     let generated = (0..count).map(|index| {
-        let mut field = DataType::Utf8.nullable_field(format!("Text{index:04}"));
+        let mut field = DataType::utf8().nullable_field(format!("Text{index:04}"));
         let tag = i32::try_from(2_000 + index).expect("a small tag");
         field.as_fix_mut().set_tag(tag).expect("a generated tag");
         field
@@ -1708,7 +1771,7 @@ fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
 /// becomes - which is the number the case below grows against.
 fn fix_group_registry(members: usize) -> FixRegistry {
     let declared = (0..members).map(|index| {
-        let mut field = DataType::Utf8.nullable_field(format!("Member{index:04}"));
+        let mut field = DataType::utf8().nullable_field(format!("Member{index:04}"));
         let tag = i32::try_from(3_000 + index).expect("a small tag");
         field.as_fix_mut().set_tag(tag).expect("a generated tag");
         field
@@ -1723,7 +1786,7 @@ fn fix_group_registry(members: usize) -> FixRegistry {
         .expect("a static counter");
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     counter.as_fix_mut().set_tag(453).expect("a static tag");
-    let mut msgtype = DataType::Utf8.nullable_field("MsgType");
+    let mut msgtype = DataType::utf8().nullable_field("MsgType");
     msgtype.as_fix_mut().set_tag(35).expect("a static tag");
     let mut registry = FixRegistry::from_fields([msgtype, counter])
         .expect("the generated dictionary has no conflict");
@@ -1935,7 +1998,7 @@ fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
     for dtype in [
         DataType::from_str("string(windows-1252)").expect("a charset string"),
         DataType::from_str("large_string(windows-1252)").expect("a charset string"),
-        DataType::Utf8,
+        DataType::utf8(),
     ] {
         let field = dtype.clone().nullable_field("value");
         let mut counts = Vec::new();

@@ -36,8 +36,8 @@ impl Serialize for JsonRef<'_> {
             Scalar::Decimal(value) => serializer.serialize_str(
                 &crate::types::decimal::scalars::decimal_text(value.coefficient(), value.scale()),
             ),
-            Scalar::Text(value) => serializer.serialize_str(value.as_str()),
-            Scalar::Ascii(value) => serializer.serialize_str(value.as_str()),
+            Scalar::String(value) => serializer.serialize_str(value.as_str()),
+            Scalar::Code(value) => serializer.serialize_str(value.as_str()),
             Scalar::Version(value) => serializer.collect_str(value),
             Scalar::Url(value) => serializer.collect_str(value),
             Scalar::Uuid(value) => serializer.serialize_str(&value.to_string()),

@@ -823,14 +823,14 @@ impl Binder<'_> {
                 case_insensitive,
                 escape,
             } => {
-                let value = self.lower(value, Some(&DataType::Utf8))?;
+                let value = self.lower(value, Some(&DataType::utf8()))?;
                 let pattern = self.constant_pattern(pattern, "like")?;
                 // A pattern with no wildcard left in it is an equality, and
                 // saying so here is what lets it reach a comparison kernel and
                 // a statistics bound instead of a character walk.
                 if !*case_insensitive && !has_wildcard(&pattern, *escape) {
                     let literal = Node {
-                        field: Field::new("pattern", DataType::Utf8, false),
+                        field: Field::new("pattern", DataType::utf8(), false),
                         kind: Kind::Literal(Scalar::from(unescape(&pattern, *escape))),
                         cost: 0,
                     };
@@ -857,7 +857,7 @@ impl Binder<'_> {
                 }
             }
             Expression::Glob(value, pattern) => {
-                let value = self.lower(value, Some(&DataType::Utf8))?;
+                let value = self.lower(value, Some(&DataType::utf8()))?;
                 let pattern = self.constant_pattern(pattern, "glob")?;
                 let (nullable, cost) = (value.field.is_nullable(), value.cost);
                 Node {
@@ -1121,7 +1121,7 @@ impl Binder<'_> {
 
     /// Read the constant pattern a match operator requires.
     fn constant_pattern(&self, pattern: &Expression, operator: &str) -> Result<SmolStr> {
-        let lowered = self.lower(pattern, Some(&DataType::Utf8))?;
+        let lowered = self.lower(pattern, Some(&DataType::utf8()))?;
         match lowered.as_literal().and_then(Scalar::as_str) {
             Some(text) => Ok(SmolStr::new(text)),
             None => Err(Error::InvalidRecord {

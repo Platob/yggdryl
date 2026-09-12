@@ -10,6 +10,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Field, Result};
 
+use super::bytes::BytesLayout;
 use super::string::StringLayout;
 use super::{DataType, TimeUnit};
 use crate::EdgeAlgorithm;
@@ -74,16 +75,8 @@ impl fmt::Display for DataType {
             D::Duration32(unit) => write!(formatter, "duration32({unit})"),
             D::Duration64(unit) => write!(formatter, "duration64({unit})"),
             D::Interval(unit) => write!(formatter, "interval({unit})"),
-            D::Binary => formatter.write_str("binary"),
-            D::FixedSizeBinary(width) => write!(formatter, "fixed_size_binary({width})"),
-            D::LargeBinary => formatter.write_str("large_binary"),
-            D::BinaryView => formatter.write_str("binary_view"),
-            D::Utf8 => formatter.write_str("utf8"),
-            D::LargeUtf8 => formatter.write_str("large_utf8"),
-            D::Utf8View => formatter.write_str("utf8_view"),
+            D::Bytes(parameters) => fmt::Display::fmt(parameters, formatter),
             D::String(parameters) => fmt::Display::fmt(parameters, formatter),
-            D::Ascii => formatter.write_str("ascii"),
-            D::FixedAscii(width) => write!(formatter, "ascii({width})"),
             D::Country => formatter.write_str("country"),
             D::Currency => formatter.write_str("currency"),
             D::Mic => formatter.write_str("mic"),
@@ -347,29 +340,31 @@ impl<'a> Parser<'a> {
             }
             "duration64" => DataType::duration64(self.parse_required_time_unit(depth)?.0)?,
             "interval" => DataType::Interval(self.parse_interval_unit(depth)?),
+            // One byte family, one grammar: an optional bound that reads as
+            // the width on the fixed layout and as the maximum on every
+            // other.
             "binary" | "bytes" | "varbinary" | "blob" | "bytea" => {
-                self.ignore_optional_length()?;
-                DataType::Binary
+                self.parse_bytes(BytesLayout::Binary)?
             }
-            "fixedsizebinary" | "fixedbinary" => {
-                DataType::fixed_size_binary(self.parse_single_i32_parameter("binary width")?)?
-            }
-            "largebinary" => DataType::LargeBinary,
-            "binaryview" => DataType::BinaryView,
-            // One family, two spellings each, and one grammar over both: an
-            // optional charset, then an optional bound that reads as the
-            // width on a fixed layout and as the maximum on every other.
-            "utf8" | "string" | "str" | "text" | "varchar" | "nvarchar" | "charactervarying" => {
-                self.parse_string(StringLayout::String, &keyword)?
-            }
-            "largeutf8" | "largestring" => {
+            "fixedsizebinary" | "fixedbinary" => self.parse_bytes(BytesLayout::FixedSizeBinary)?,
+            "largebinary" => self.parse_bytes(BytesLayout::LargeBinary)?,
+            "binaryview" => self.parse_bytes(BytesLayout::BinaryView)?,
+            // One family, three spellings each, and one grammar over all of
+            // them: an optional charset, then an optional bound that reads
+            // as the width on a fixed layout and as the maximum on every
+            // other.
+            "utf8" | "ascii" | "string" | "str" | "text" | "varchar" | "nvarchar"
+            | "charactervarying" => self.parse_string(StringLayout::String, &keyword)?,
+            "largeutf8" | "largeascii" | "largestring" => {
                 self.parse_string(StringLayout::LargeString, &keyword)?
             }
-            "utf8view" | "stringview" => self.parse_string(StringLayout::StringView, &keyword)?,
-            "largeutf8view" | "largestringview" => {
+            "utf8view" | "asciiview" | "stringview" => {
+                self.parse_string(StringLayout::StringView, &keyword)?
+            }
+            "largeutf8view" | "largeasciiview" | "largestringview" => {
                 self.parse_string(StringLayout::LargeStringView, &keyword)?
             }
-            "fixedutf8" | "fixedstring" => {
+            "fixedutf8" | "fixedascii" | "fixedstring" => {
                 self.parse_string(StringLayout::FixedString, &keyword)?
             }
             // SQL's `char(n)` is blank-padded to exactly n bytes, which is
@@ -390,23 +385,6 @@ impl<'a> Parser<'a> {
             "uuid" => DataType::Uuid,
             "version" => DataType::Version,
             "url" => DataType::Url,
-            // Bare `ascii` is the variable shape; `ascii(N)` is the fixed
-            // one of exactly N bytes.
-            "fixedascii" => {
-                let position = self.current_position();
-                DataType::ascii(self.parse_single_i32_parameter("ASCII width")?)
-                    .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?
-            }
-            "ascii" => match self.consume_opening() {
-                Some(close) => {
-                    let position = self.current_position();
-                    let width = self.parse_i32("ASCII width")?;
-                    self.expect_symbol(close)?;
-                    DataType::ascii(width)
-                        .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?
-                }
-                None => DataType::Ascii,
-            },
             "list" | "array" => self.parse_list(ListKind::List, depth + 1)?,
             "listview" | "arrayview" => self.parse_list(ListKind::ListView, depth + 1)?,
             "fixedsizelist" | "fixedarray" => self.parse_fixed_size_list(depth + 1)?,
@@ -485,35 +463,6 @@ impl<'a> Parser<'a> {
             nesting += 1;
         }
         Ok(value)
-    }
-
-    pub(crate) fn parse_single_i32_parameter(&mut self, label: &str) -> Result<i32> {
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here(format_smolstr!("expected {label}")))?;
-        let value = self.parse_i32(label)?;
-        self.expect_symbol(close)?;
-        Ok(value)
-    }
-
-    pub(crate) fn ignore_optional_length(&mut self) -> Result<()> {
-        // Square brackets after a scalar are the SQL/Spark postfix-array
-        // operator, not a string length declaration.
-        if self.peek_symbol() != Some('(') {
-            return Ok(());
-        }
-        let Some(close) = self.consume_opening() else {
-            return Ok(());
-        };
-        // The length says nothing this crate's variable storage stores, but a
-        // declaration it could never have meant is still a malformed one, and
-        // the grammar refuses malformed numbers rather than dropping them.
-        let position = self.current_position();
-        let length = self.parse_integer("length")?;
-        if length < 1 {
-            return Err(self.error_at(position, "length must be a positive number of bytes"));
-        }
-        self.expect_symbol(close)
     }
 
     pub(crate) fn parse_field_or_type(

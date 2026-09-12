@@ -2,26 +2,26 @@
   {
     "name": "mdstreamid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The identifier or name of the price stream.",
       "display": "MDStreamID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"mdstreamid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"mdstreamid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1500"
     }
   },
   {
     "name": "streamasgnrptid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier of the stream assignment report provided by the respondent.",
       "display": "StreamAsgnRptID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"streamasgnrptid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"streamasgnrptid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1501"
     }
   },
@@ -71,7 +71,7 @@
   {
     "name": "partydetailslistrequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -83,7 +83,7 @@
   {
     "name": "sidetradeid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -95,7 +95,7 @@
   {
     "name": "sideorigtradeid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -132,7 +132,7 @@
   {
     "name": "partydetailslistreportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -169,7 +169,7 @@
   {
     "name": "documentationtext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -218,7 +218,7 @@
   {
     "name": "partydetailaltid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -230,7 +230,7 @@
   {
     "name": "partydetailaltidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -255,7 +255,7 @@
   {
     "name": "partydetailaltsubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -414,7 +414,7 @@
   {
     "name": "risklimitplatform",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -451,7 +451,7 @@
   {
     "name": "instrumentscopesymbol",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -463,7 +463,7 @@
   {
     "name": "instrumentscopesymbolsfx",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -476,7 +476,7 @@
   {
     "name": "instrumentscopesecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -488,7 +488,7 @@
   {
     "name": "instrumentscopesecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -513,7 +513,7 @@
   {
     "name": "instrumentscopesecurityaltid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -525,7 +525,7 @@
   {
     "name": "instrumentscopesecurityaltidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -551,7 +551,7 @@
   {
     "name": "instrumentscopeproductcomplex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -563,7 +563,7 @@
   {
     "name": "instrumentscopesecuritygroup",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -575,7 +575,7 @@
   {
     "name": "instrumentscopecficode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -587,7 +587,7 @@
   {
     "name": "instrumentscopesecuritytype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -600,7 +600,7 @@
   {
     "name": "instrumentscopesecuritysubtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -612,8 +612,10 @@
   {
     "name": "instrumentscopematuritymonthyear",
     "dtype": {
-      "type": "fixed_ascii",
-      "width": 8
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
     },
     "nullable": true,
     "metadata": {
@@ -640,7 +642,7 @@
   {
     "name": "instrumentscoperestructuringtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -652,7 +654,7 @@
   {
     "name": "instrumentscopeseniority",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -701,7 +703,7 @@
   {
     "name": "instrumentscopesecuritydesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -713,7 +715,7 @@
   {
     "name": "instrumentscopesettltype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -762,7 +764,7 @@
   {
     "name": "riskwarninglevelname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -786,7 +788,7 @@
   {
     "name": "relatedpartydetailid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -798,7 +800,7 @@
   {
     "name": "relatedpartydetailidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -836,7 +838,7 @@
   {
     "name": "relatedpartydetailsubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -873,7 +875,7 @@
   {
     "name": "relatedpartydetailaltid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -885,7 +887,7 @@
   {
     "name": "relatedpartydetailaltidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -910,7 +912,7 @@
   {
     "name": "relatedpartydetailaltsubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -935,7 +937,7 @@
   {
     "name": "swapsubclass",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -960,7 +962,7 @@
   {
     "name": "settlrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -996,7 +998,7 @@
   {
     "name": "settlrateindexlocation",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1008,7 +1010,7 @@
   {
     "name": "optionexpirationdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1045,7 +1047,7 @@
   {
     "name": "securityclassificationvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1094,7 +1096,7 @@
   {
     "name": "legposamttype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1157,7 +1159,7 @@
   {
     "name": "parentallocid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1169,7 +1171,7 @@
   {
     "name": "legsecuritygroup",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

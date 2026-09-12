@@ -40,7 +40,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         }
         Field::new("root", dtype, false)
     };
-    let deep_left = deep(DataType::Utf8);
+    let deep_left = deep(DataType::utf8());
     let deep_right = deep(DataType::Int64);
     group.bench_function("diff_first_deep_64", |bencher| {
         bencher.iter(|| {

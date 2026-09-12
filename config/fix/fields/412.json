@@ -14,7 +14,7 @@
   {
     "name": "paymentstreamreferencelevelunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -51,7 +51,7 @@
   {
     "name": "paymentstreamratespreadunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -125,7 +125,7 @@
   {
     "name": "paymentstreamcalculationlagunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -150,7 +150,7 @@
   {
     "name": "paymentstreamfirstobservationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -201,7 +201,7 @@
   {
     "name": "paymentstreampricingbusinesscalendar",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -226,7 +226,7 @@
   {
     "name": "deliverystreamriskapportionmentsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -238,7 +238,7 @@
   {
     "name": "legdeliverystreamriskapportionmentsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -387,7 +387,7 @@
   {
     "name": "pricingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -452,7 +452,7 @@
   {
     "name": "pricingtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -476,7 +476,7 @@
   {
     "name": "streamassetattributetype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -488,7 +488,7 @@
   {
     "name": "streamassetattributevalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -500,7 +500,7 @@
   {
     "name": "streamassetattributelimit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -550,26 +550,26 @@
   {
     "name": "streamcalculationperioddatesxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this calculation period for cross referencing elsewhere in the message.",
       "display": "StreamCalculationPeriodDatesXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcalculationperioddatesxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcalculationperioddatesxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41244"
     }
   },
   {
     "name": "streamcalculationperioddatesxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Cross reference to another calculation period for duplicating its properties.",
       "display": "StreamCalculationPeriodDatesXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcalculationperioddatesxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcalculationperioddatesxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41245"
     }
   },
@@ -600,7 +600,7 @@
   {
     "name": "streamcalculationcorrectionunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -625,7 +625,7 @@
   {
     "name": "streamcommoditysettlbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -637,7 +637,7 @@
   {
     "name": "streamcommoditybase",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -649,7 +649,7 @@
   {
     "name": "streamcommoditytype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -661,7 +661,7 @@
   {
     "name": "streamcommoditysecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -673,7 +673,7 @@
   {
     "name": "streamcommoditysecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -686,7 +686,7 @@
   {
     "name": "streamcommoditydesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -722,7 +722,7 @@
   {
     "name": "streamcommodityunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -771,7 +771,7 @@
   {
     "name": "streamcommodityratereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -783,7 +783,7 @@
   {
     "name": "streamcommodityratereferencepageheading",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -795,7 +795,7 @@
   {
     "name": "streamdataprovider",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -807,7 +807,7 @@
   {
     "name": "streamcommoditypricingtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -831,7 +831,7 @@
   {
     "name": "streamcommoditynearbysettldayunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -907,7 +907,7 @@
   {
     "name": "streamcommoditysettldaterollunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -933,26 +933,26 @@
   {
     "name": "streamcommodityxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this stream commodity for cross referencing elsewhere in the message.",
       "display": "StreamCommodityXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcommodityxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcommodityxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41275"
     }
   },
   {
     "name": "streamcommodityxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to a stream commodity elsewhere in the message.",
       "display": "StreamCommodityXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcommodityxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcommodityxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41276"
     }
   },
@@ -971,7 +971,7 @@
   {
     "name": "streamcommodityaltid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -983,7 +983,7 @@
   {
     "name": "streamcommodityaltidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1007,7 +1007,7 @@
   {
     "name": "streamcommoditydatasourceid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1081,7 +1081,7 @@
   {
     "name": "streamcommoditysettlstart",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1093,7 +1093,7 @@
   {
     "name": "streamcommoditysettlend",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1129,7 +1129,7 @@
   {
     "name": "streamcommoditysettltimezone",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1166,7 +1166,7 @@
   {
     "name": "streamcommoditysettlperiodnotionalunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1191,7 +1191,7 @@
   {
     "name": "streamcommoditysettlperiodfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1216,7 +1216,7 @@
   {
     "name": "streamcommoditysettlperiodpriceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

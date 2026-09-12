@@ -27,12 +27,12 @@
 
     use yggdryl::{DataType, FixCategory, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field, into_json_scalar, FieldPath};
 
-    let mut symbol = DataType::Utf8.required_field("Symbol");
+    let mut symbol = DataType::utf8().required_field("Symbol");
     symbol.as_fix_mut().set_tag(55)?;
     symbol.as_fix_mut().set_aliases(["Ticker"])?;
     let mut qty = DataType::Int64.required_field("OrderQty");
     qty.as_fix_mut().set_tag(38)?;
-    let mut party_id = DataType::Utf8.nullable_field("PartyID");
+    let mut party_id = DataType::utf8().nullable_field("PartyID");
     party_id.as_fix_mut().set_tag(448)?;
     let mut count = DataType::Int32.required_field("NoPartyIDs");
     count.as_fix_mut().set_tag(453)?;
@@ -46,7 +46,7 @@
     let registry = Arc::new(registry);
 
     // The root carries a tag no dictionary explains, under its rendered name.
-    let root = DataType::from_fields([qty, symbol, count, parties, DataType::Utf8.nullable_field("9999")])?
+    let root = DataType::from_fields([qty, symbol, count, parties, DataType::utf8().nullable_field("9999")])?
         .required_field("NewOrderSingle");
     let value = Scalar::from_record([
         ("Symbol", Scalar::from("AAPL")),
@@ -391,7 +391,7 @@ A written child keeps its position, so every reader already holding the row addr
 
 ## A row is a message again
 
-`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The branch is the schema's own `fix:branch`. The entries are rebuilt from the `nofixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the line the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `Utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds.
+`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The branch is the schema's own `fix:branch`. The entries are rebuilt from the `nofixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the line the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds.
 
 === "Rust"
 

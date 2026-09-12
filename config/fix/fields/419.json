@@ -50,7 +50,7 @@
   {
     "name": "underlyingpaymentstreamfixedamountunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -123,7 +123,7 @@
   {
     "name": "underlyingpaymentstreampricingbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -135,7 +135,7 @@
   {
     "name": "underlyingpaymentstreamrateindex2curveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -160,7 +160,7 @@
   {
     "name": "underlyingpaymentstreamrateindexlocation",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -184,7 +184,7 @@
   {
     "name": "underlyingpaymentstreamrateindexunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -222,7 +222,7 @@
   {
     "name": "underlyingpaymentstreamreferencelevelunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -259,7 +259,7 @@
   {
     "name": "underlyingpaymentstreamratespreadunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -333,7 +333,7 @@
   {
     "name": "underlyingpaymentstreamcalculationlagunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -358,7 +358,7 @@
   {
     "name": "underlyingpaymentstreamfirstobservationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -409,7 +409,7 @@
   {
     "name": "underlyingpaymentstreampricingbusinesscalendar",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -597,7 +597,7 @@
   {
     "name": "underlyingpricingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -662,7 +662,7 @@
   {
     "name": "underlyingpricingtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -712,26 +712,26 @@
   {
     "name": "underlyingstreamcalculationperioddatesxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this calculation period for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamCalculationPeriodDatesXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcalculationperioddatesxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcalculationperioddatesxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41957"
     }
   },
   {
     "name": "underlyingstreamcalculationperioddatesxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Cross reference to another calculation period for duplicating its properties.",
       "display": "UnderlyingStreamCalculationPeriodDatesXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcalculationperioddatesxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcalculationperioddatesxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41958"
     }
   },
@@ -762,7 +762,7 @@
   {
     "name": "underlyingstreamcalculationcorrectionunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -787,7 +787,7 @@
   {
     "name": "underlyingstreamcommoditysettlbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -799,7 +799,7 @@
   {
     "name": "underlyingstreamcommoditybase",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -811,7 +811,7 @@
   {
     "name": "underlyingstreamcommoditytype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -823,7 +823,7 @@
   {
     "name": "underlyingstreamcommoditysecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -835,7 +835,7 @@
   {
     "name": "underlyingstreamcommoditysecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -848,7 +848,7 @@
   {
     "name": "underlyingstreamcommoditydesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -884,7 +884,7 @@
   {
     "name": "underlyingstreamcommodityunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -933,7 +933,7 @@
   {
     "name": "underlyingstreamcommodityratereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -945,7 +945,7 @@
   {
     "name": "underlyingstreamcommodityratereferencepageheading",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -957,7 +957,7 @@
   {
     "name": "underlyingstreamdataprovider",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -969,7 +969,7 @@
   {
     "name": "underlyingstreamcommoditypricingtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -993,7 +993,7 @@
   {
     "name": "underlyingstreamcommoditynearbysettldayunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1069,7 +1069,7 @@
   {
     "name": "underlyingstreamcommoditysettldaterollunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1095,26 +1095,26 @@
   {
     "name": "underlyingstreamcommodityxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this stream commodity for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamCommodityXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcommodityxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcommodityxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41988"
     }
   },
   {
     "name": "underlyingstreamcommodityxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to a stream commodity elsewhere in the message.",
       "display": "UnderlyingStreamCommodityXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcommodityxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcommodityxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41989"
     }
   },
@@ -1133,7 +1133,7 @@
   {
     "name": "underlyingstreamcommodityaltid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1145,7 +1145,7 @@
   {
     "name": "underlyingstreamcommodityaltidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1169,7 +1169,7 @@
   {
     "name": "underlyingstreamcommoditydatasourceid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

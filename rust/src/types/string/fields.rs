@@ -1,36 +1,16 @@
-//! Every string's field marker: the five layouts and the ASCII repertoire.
+//! Every string's field marker: the one family and the nine codes.
 //!
 //! One file because a marker is one line per datatype and the family is one
 //! family; splitting them would be two lists to keep in step rather than one.
 
-use crate::metadata::{FIELD_ENUM_KEY, parse_ascii_enum};
+use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 use crate::types::typed::define_field_types;
-use crate::{AsciiEnum, Field, Result, TypedField};
+use crate::{Field, Result, StringEnum, TypedField};
 
-define_field_types!(Utf8Type, "utf8", crate::DataType::Utf8);
-define_field_types!(LargeUtf8Type, "large_utf8", crate::DataType::LargeUtf8);
-define_field_types!(Utf8ViewType, "utf8_view", crate::DataType::Utf8View);
 define_field_types!(StringType, "string", crate::DataType::String(_));
 
-/// A UTF-8-typed field.
-pub type Utf8Field = TypedField<Utf8Type>;
-/// A large UTF-8-typed field.
-pub type LargeUtf8Field = TypedField<LargeUtf8Type>;
-/// A UTF-8-view-typed field.
-pub type Utf8ViewField = TypedField<Utf8ViewType>;
-/// A field of strings declaring a charset, a bound, or both.
-///
-/// The three markers above are the plain UTF-8 layouts, which are datatypes
-/// of their own; this one is every string that declares more than its layout,
-/// whichever of the five layouts it declares.
+/// A string-typed field, whichever layout, charset and bound it declares.
 pub type StringField = TypedField<StringType>;
-
-define_field_types!(AsciiType, "ascii", crate::DataType::Ascii);
-define_field_types!(
-    FixedAsciiType,
-    "fixed_ascii",
-    crate::DataType::FixedAscii(_)
-);
 
 define_field_types!(CountryType, "country", crate::DataType::Country);
 define_field_types!(CurrencyType, "currency", crate::DataType::Currency);
@@ -38,14 +18,14 @@ define_field_types!(MicType, "mic", crate::DataType::Mic);
 define_field_types!(CfiType, "cfi", crate::DataType::Cfi);
 define_field_types!(IsinType, "isin", crate::DataType::Isin);
 define_field_types!(SideType, "side", crate::DataType::Side);
-define_field_types!(MsgDirectionType, "direction", crate::DataType::MsgDirection);
+define_field_types!(
+    MsgDirectionType,
+    "msgdirection",
+    crate::DataType::MsgDirection
+);
 define_field_types!(StateType, "state", crate::DataType::State);
 define_field_types!(TimeInForceType, "timeinforce", crate::DataType::TimeInForce);
 
-/// A variable-width ASCII-typed field.
-pub type AsciiField = TypedField<AsciiType>;
-/// A fixed-width ASCII-typed field.
-pub type FixedAsciiField = TypedField<FixedAsciiType>;
 /// A country-typed field: ISO 3166-1 alpha-2.
 pub type CountryField = TypedField<CountryType>;
 /// A currency-typed field: ISO 4217.
@@ -59,30 +39,33 @@ pub type IsinField = TypedField<IsinType>;
 /// A side-typed field: FIX's side of a trade.
 pub type SideField = TypedField<SideType>;
 /// A direction-typed field: which way a captured line moved.
-pub type DirectionField = TypedField<MsgDirectionType>;
+pub type MsgDirectionField = TypedField<MsgDirectionType>;
 /// A field declared as a thing's state.
 pub type StateField = TypedField<StateType>;
 /// A field declared as how long an order stands.
 pub type TimeInForceField = TypedField<TimeInForceType>;
 
 impl Field {
-    /// The enum this field's ASCII values name, if one is declared.
+    /// The enum this field's string values name, if one is declared.
     ///
     /// # Errors
     ///
     /// Returns an error only for externally corrupted serialized state.
-    pub fn ascii_enum(&self) -> Result<Option<AsciiEnum>> {
+    pub fn string_enum(&self) -> Result<Option<StringEnum>> {
         self.get_metadata(FIELD_ENUM_KEY)
-            .map(parse_ascii_enum)
+            .map(parse_string_enum)
             .transpose()
     }
 
-    /// Declares the enum this field's ASCII values name.
+    /// Declares the enum this field's string values name.
     ///
     /// # Errors
     ///
-    /// Returns an error when this field cannot store every enum member.
-    pub fn set_ascii_enum(&mut self, value: &AsciiEnum) -> Result<()> {
+    /// Returns an error when this field cannot store every enum member: the
+    /// datatype must be a fixed US-ASCII string of at most sixteen bytes or
+    /// a registered code, because a member's code is its value's own bytes
+    /// packed into one integer.
+    pub fn set_string_enum(&mut self, value: &StringEnum) -> Result<()> {
         value.into_members(&self.dtype)?;
         let (_, changed) = self
             .metadata
@@ -93,9 +76,13 @@ impl Field {
         Ok(())
     }
 
-    /// Returns a persistent field declaring one enum over its ASCII values.
-    pub fn try_with_ascii_enum(mut self, value: &AsciiEnum) -> Result<Self> {
-        self.set_ascii_enum(value)?;
+    /// Returns a persistent field declaring one enum over its string values.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::set_string_enum`] does.
+    pub fn try_with_string_enum(mut self, value: &StringEnum) -> Result<Self> {
+        self.set_string_enum(value)?;
         Ok(self)
     }
 
@@ -104,9 +91,9 @@ impl Field {
     /// # Errors
     ///
     /// Returns an error only for externally corrupted serialized state.
-    pub fn remove_ascii_enum(&mut self) -> Result<Option<AsciiEnum>> {
+    pub fn remove_string_enum(&mut self) -> Result<Option<StringEnum>> {
         self.remove_metadata(FIELD_ENUM_KEY)
-            .map(|value| parse_ascii_enum(&value))
+            .map(|value| parse_string_enum(&value))
             .transpose()
     }
 }

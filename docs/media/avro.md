@@ -34,7 +34,7 @@ Read, overwrite, append, and keyed merge follow the [canonical record signatures
 
     let field = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])?
     .required_field("row");
     let schema = field.into_arrow_schema()?;
@@ -214,7 +214,7 @@ The generic [`RecordOptions`](options.md) exposes both Avro settings without dow
     assert_eq!(decoded.get("source"), Some("docs"));
     assert_eq!(decoded.rows.len(), 2);
     assert_eq!(
-        decoded.rows[0].get_key_str("symbol").and_then(Scalar::as_utf8),
+        decoded.rows[0].get_key_str("symbol").and_then(Scalar::as_str),
         Some("AAPL")
     );
     ```
@@ -535,6 +535,159 @@ A date is `Date32`, a timestamp is `DateTime64` with `UTC`, and a decimal keeps 
 | union | union | Resolves branch by branch |
 | field the reader does not name | absent | Skipped undecoded: length-prefixed values jump by prefix, size-carrying array and map blocks jump as one seek |
 
+## Strings and bytes on the wire
+
+Avro's `string` is UTF-8, so every [string](../types/text.md) on text storage - UTF-8 or US-ASCII, any layout, bounded or not - writes as `string`, a fixed width trimmed of its padding; a string in any other charset holds bytes that are not UTF-8 and is refused by name. A fixed byte layout is Avro's `fixed`, every other one is `bytes`, and a maximum is dropped on write because Avro has none: the values were held to it when they entered.
+
+| `DataType` | Avro | Reads back as |
+| --- | --- | --- |
+| `utf8`, `utf8(n)`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)`, `fixed_utf8(n)` | `string` | `utf8` |
+| `string(windows-1252)`, any charset but UTF-8 and US-ASCII | refused: `expected a datatype Avro can spell` | |
+| `country`, `currency`, `mic`, `cfi`, `isin` | `string` | `utf8` |
+| `binary`, `binary(n)`, `large_binary`, `binary_view` | `bytes` | `binary` |
+| `fixed_size_binary(n)` | `fixed` of size `n` | `fixed_size_binary(n)` |
+| `uuid` | `string` with `logicalType: uuid` | `uuid` |
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{BinaryArray, RecordBatch, StringArray};
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::holder::Buffer;
+    use yggdryl::{DataType, Url};
+
+    let row = DataType::from_fields([
+        DataType::fixed_ascii(4)?.nullable_field("code"),
+        DataType::fixed_size_binary(2)?.nullable_field("key"),
+        DataType::from_str("binary(8)")?.nullable_field("blob"),
+    ])?
+    .required_field("row");
+    let plain = RecordBatch::try_from_iter([
+        ("code", Arc::new(StringArray::from(vec!["AB"])) as _),
+        ("key", Arc::new(BinaryArray::from(vec![&[0_u8, 1][..]])) as _),
+        ("blob", Arc::new(BinaryArray::from(vec![&b"xyz"[..]])) as _),
+    ])?;
+
+    let mut handle =
+        Buffer::new().with_media_type(Url::from_str("file:///codes.avro")?.media_type());
+    let options = handle.record_options()?;
+    // The declared field casts the plain batch once on the way in.
+    handle.overwrite_arrow_batch(plain, &options.clone().with_field(row))?;
+
+    let stored = handle.read_arrow_field(&options)?;
+    let spelled: Vec<String> = stored.fields().iter().map(|child| child.dtype().to_string()).collect();
+    assert_eq!(spelled, ["utf8", "fixed_size_binary(2)", "binary"]);
+
+    let legacy = DataType::from_fields([
+        DataType::from_str("string(windows-1252)")?.nullable_field("note"),
+    ])?
+    .required_field("row");
+    let note = RecordBatch::try_from_iter([("note", Arc::new(StringArray::from(vec!["hi"])) as _)])?;
+    let refused = Buffer::new()
+        .with_media_type(Url::from_str("file:///notes.avro")?.media_type())
+        .overwrite_arrow_batch(note, &options.with_field(legacy))
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("expected a datatype Avro can spell, got string(windows-1252)"), "{refused}");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase, types
+
+    row = types.struct("row", [
+        types.fixed_ascii("code", 4),
+        types.fixed_size_binary("key", 2),
+        types.bytes("blob", max=8),
+    ], nullable=False)
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "codes.avro")
+    options = handle.record_options()
+    options.field = row
+    # The declared field casts the plain batch once on the way in.
+    handle.overwrite_arrow_batch(
+        pa.record_batch({"code": ["AB"], "key": [b"\x00\x01"], "blob": [b"xyz"]}),
+        options=options,
+    )
+
+    stored = handle.read_arrow_field()
+    assert [str(child.dtype) for child in stored.dtype] == ["utf8", "fixed_size_binary(2)", "binary"]
+    assert list(handle.read_records()) == [{"code": "AB", "key": b"\x00\x01", "blob": b"xyz"}]
+
+    legacy = handle.record_options()
+    legacy.field = types.struct("row", [types.string("note", charset="windows-1252")], nullable=False)
+    try:
+        IOBase(pathlib.Path(tempfile.mkdtemp()) / "notes.avro").overwrite_arrow_batch(
+            pa.record_batch({"note": ["hi"]}), options=legacy
+        )
+    except ValueError as error:
+        assert "expected a datatype Avro can spell, got string(windows-1252)" in str(error), error
+    else:
+        raise AssertionError("a windows-1252 string is not Avro's string")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { BatchReader, IOBase, fields } = require('yggdryl')
+
+    const row = fields.struct(
+      'row',
+      [
+        fields.fixedAscii('code', 4),
+        fields.fixedSizeBinary('key', 2),
+        fields.bytes('blob', { max: 8 }),
+      ],
+      { nullable: false },
+    )
+    const plain = new arrow.Table({
+      code: arrow.vectorFromArray(['AB'], new arrow.Utf8()),
+      key: arrow.vectorFromArray([Uint8Array.from([0, 1])], new arrow.Binary()),
+      blob: arrow.vectorFromArray([Buffer.from('xyz')], new arrow.Binary()),
+    })
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'codes.avro'))
+    // The declared field casts the plain table once on the way in.
+    handle.overwriteArrowReader(BatchReader.from(plain), handle.recordOptions().withField(row))
+
+    const stored = handle.readArrowField()
+    assert.deepEqual(
+      [0, 1, 2].map((index) => String(stored.dtype.getFieldAt(index).dtype)),
+      ['utf8', 'fixed_size_binary(2)', 'binary'],
+    )
+    assert.deepEqual([...handle.readRecords()].map((record) => record.code), ['AB'])
+
+    const legacy = fields.struct(
+      'row',
+      [fields.string('note', { charset: 'windows-1252' })],
+      { nullable: false },
+    )
+    assert.throws(
+      () =>
+        new IOBase(path.join(root, 'notes.avro')).overwriteArrowReader(
+          BatchReader.from(new arrow.Table({ note: arrow.vectorFromArray(['hi'], new arrow.Utf8()) })),
+          handle.recordOptions().withField(legacy),
+        ),
+      /expected a datatype Avro can spell, got string\(windows-1252\)/,
+    )
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
 ## Streaming a large container
 
 `read_blocks` iterates over nothing but `pread`, so any handle works without holding the file in memory. Python and JavaScript copy an already-held byte value into the owning native handle once.
@@ -720,6 +873,7 @@ Input bytes bound the container and each decompressed block, depth bounds schema
 - `merge_by_names` -> upsert: rows matching the key are updated, misses are inserted.
 - `trades.avro.gz` -> refused rather than double-compressed: Avro compresses inside its blocks, like [Parquet](parquet.md) and unlike [IPC](ipc.md).
 - A union wider than `null` plus one branch, a recursive schema, or an unspellable datatype -> refused by name on the record surface.
+- A string in a charset other than UTF-8 or US-ASCII -> refused by name; `fixed_ascii(n)` writes `string` with its padding trimmed, `binary(n)` writes `bytes` with the maximum dropped.
 - The same input through the `Scalar` functions -> accepted; they carry no such limit.
 - `set_avro_block_codec` or `set_avro_sync_marker` on options for another encoding -> typed record error.
 - A sync marker of any length but 16 bytes -> refused; an absent marker generates a fresh one per write.

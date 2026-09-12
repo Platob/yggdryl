@@ -840,7 +840,7 @@ impl FixRegistry {
     /// use yggdryl::{DataType, FixCategory, FixRegistry};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut party_id = DataType::Utf8.nullable_field("PartyID");
+    /// let mut party_id = DataType::utf8().nullable_field("PartyID");
     /// party_id.as_fix_mut().set_tag(448)?;
     /// let mut registry = FixRegistry::from_fields([party_id.clone()])?;
     /// party_id.as_fix_mut().set_field_ref("PartyID")?;
@@ -855,12 +855,12 @@ impl FixRegistry {
     ///
     /// // Extending the component is one call, and the message sees the member.
     /// let mut extended = registry.definition(FixCategory::Components, "Party", None)?.clone();
-    /// let note = DataType::Utf8.nullable_field("PartyNote");
+    /// let note = DataType::utf8().nullable_field("PartyNote");
     /// let members = extended.fields().iter().cloned().chain([note]);
     /// extended.set_dtype(DataType::from_fields(members)?)?;
     /// assert!(!registry.add_definition(FixCategory::Components, extended)?, "merged");
     /// let member = yggdryl::FieldPath::from_str("Order.Party.PartyNote")?;
-    /// assert_eq!(registry.field_by_path(&member, None)?.dtype(), &DataType::Utf8);
+    /// assert_eq!(registry.field_by_path(&member, None)?.dtype(), &DataType::utf8());
     /// assert_eq!(registry.definition(FixCategory::Components, "Party", None)?.field_len(), 2);
     /// # Ok(())
     /// # }

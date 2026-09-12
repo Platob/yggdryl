@@ -9,8 +9,8 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::TimeUnit;
-use crate::{DataType, Field, Result, Scalar};
+use crate::types::string::is_text_storage;
+use crate::{DataType, Field, Result, Scalar, TimeUnit};
 
 use super::datum::invalid;
 use super::schema::{Node, Schema};
@@ -95,7 +95,7 @@ fn dtype_from(
         Node::Map(values) => {
             let (value_type, nullable) = dtype_from(values, schema, visiting)?;
             let value = Field::new("value", value_type, nullable);
-            let key = Field::new("key", DataType::Utf8, false);
+            let key = Field::new("key", DataType::utf8(), false);
             let entries = Field::new("entries", DataType::from_fields([key, value])?, false);
             (DataType::map(entries, false)?, false)
         }
@@ -202,22 +202,13 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         DataType::Int64 | DataType::UInt32 => plain("long"),
         DataType::Float16 | DataType::Float32 => plain("float"),
         DataType::Float64 => plain("double"),
-        // An ASCII width, and a code over one, is text on the wire; the cast
-        // plan trims the padding before the encoder sees a value.
-        DataType::Utf8
-        | DataType::LargeUtf8
-        | DataType::Utf8View
-        | DataType::Ascii
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin => plain("string"),
+        dtype if spells_string(dtype) => plain("string"),
         // Avro's `uuid` annotates a string with the hyphenated spelling,
         // which is what a UUID value already is.
         DataType::Uuid => logical("string", "uuid"),
-        DataType::Binary | DataType::LargeBinary | DataType::BinaryView => plain("bytes"),
+        // Avro's `bytes` has no maximum, so a bound is dropped here; the cast
+        // on the way in already held every value to it.
+        DataType::Bytes(parameters) if !parameters.is_fixed() => plain("bytes"),
         DataType::Date32 => logical("int", "date"),
         DataType::Time32(TimeUnit::Millisecond) => logical("int", "time-millis"),
         DataType::Time64(TimeUnit::Microsecond) => logical("long", "time-micros"),
@@ -242,12 +233,13 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 ("logicalType", Scalar::from("duration")),
             ])
         }
-        DataType::FixedSizeBinary(size) => {
+        DataType::Bytes(parameters) => {
+            let width = parameters.fixed().ok_or_else(|| unspellable(dtype))?;
             *counter += 1;
             Scalar::from_record([
                 ("type", Scalar::from("fixed")),
                 ("name", Scalar::from(unique_name(name, counter))),
-                ("size", Scalar::from(i64::from(*size))),
+                ("size", Scalar::from(i64::from(width))),
             ])
         }
         DataType::Decimal32 { precision, scale }
@@ -280,19 +272,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             let entries = map.entries().fields();
             let key = entries.first().ok_or_else(|| unspellable(dtype))?;
             let value = entries.get(1).ok_or_else(|| unspellable(dtype))?;
-            if !matches!(
-                key.dtype(),
-                DataType::Utf8
-                    | DataType::LargeUtf8
-                    | DataType::Utf8View
-                    | DataType::Ascii
-                    | DataType::FixedAscii(_)
-                    | DataType::Country
-                    | DataType::Currency
-                    | DataType::Mic
-                    | DataType::Cfi
-                    | DataType::Isin
-            ) {
+            if !spells_string(key.dtype()) {
                 return Err(unspellable(dtype));
             }
             let mut values = node_json(value.dtype(), value.name(), counter)?;
@@ -325,6 +305,22 @@ fn unique_name(name: &str, counter: &usize) -> SmolStr {
         cleaned.insert(0, 'r');
     }
     format_smolstr!("{cleaned}_{counter}")
+}
+
+/// Whether a datatype is Avro's `string` on the wire.
+///
+/// Avro's string is UTF-8, so a string whose bytes ride text storage is one
+/// whatever its layout - a fixed width is padding the cast plan trims before
+/// the encoder sees a value - and a code is the text it is. A string in any
+/// other charset is not: its bytes are not UTF-8, and it is refused by name.
+fn spells_string(dtype: &DataType) -> bool {
+    match dtype {
+        DataType::String(parameters) => is_text_storage(*parameters),
+        DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi | DataType::Isin => {
+            true
+        }
+        _ => false,
+    }
 }
 
 /// Report a datatype the Avro format cannot spell.

@@ -14,7 +14,7 @@ fn hash_of<T: Hash>(value: &T) -> u64 {
 fn schema() -> Field {
     DataType::from_fields([
         Field::new("id", DataType::Int64, false),
-        Field::new("symbol", DataType::Utf8, true),
+        Field::new("symbol", DataType::utf8(), true),
         Field::new("price", DataType::decimal128(10, 2).unwrap(), true),
     ])
     .unwrap()
@@ -61,8 +61,8 @@ fn a_row_pairs_every_cell_with_its_child() {
 #[test]
 fn a_name_resolves_exactly_as_the_field_resolves_it() {
     let schema = DataType::from_fields([
-        Field::new("Symbol", DataType::Utf8, false),
-        Field::new("symbol", DataType::Utf8, false),
+        Field::new("Symbol", DataType::utf8(), false),
+        Field::new("symbol", DataType::utf8(), false),
         DataType::from_fields([Field::new("px", DataType::Float64, false)])
             .unwrap()
             .required_field("leg"),
@@ -191,7 +191,7 @@ fn rows_compare_by_datatype_and_cells_and_never_by_the_root_around_them() {
 
     let widened = DataType::from_fields([
         Field::new("id", DataType::Int64, false),
-        Field::new("symbol", DataType::LargeUtf8, true),
+        Field::new("symbol", DataType::large_utf8(), true),
         Field::new("price", DataType::decimal128(10, 2).unwrap(), true),
     ])
     .unwrap()

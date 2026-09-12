@@ -28,7 +28,7 @@
 
 ## Use
 
-Text crosses this boundary once. A byte payload is decoded at intake and everything past that point is `str`, a `Scalar::Utf8`, or an Arrow string array; nothing re-decodes, and no layer branches on a charset per row.
+Text crosses this boundary once. A byte payload is decoded at intake and everything past that point is `str`, a `Scalar::String`, or an Arrow string array; nothing re-decodes, and no layer branches on a charset per row.
 
 === "Rust"
 
@@ -118,7 +118,7 @@ A resource declares its charset on its [media type](../uri/path.md), the way it 
 
 ## Reading what cannot be read
 
-Three doors, one verb. `decode` refuses a byte the charset leaves unassigned and names where it is. `decode_lossy` reads the same bytes and marks each fault with `U+FFFD`, which is what a capture of arbitrary wire lines wants and never what a stored column wants. `transcribe` reads every byte it can: an unassigned byte becomes the scalar ISO 8859-1 gives it - which for the five bytes `windows-1252` leaves unassigned is what the WHATWG Encoding Standard's own index answers - and bytes offered as UTF-8 that are not UTF-8 are read as ISO 8859-1 rather than replaced. It is the door a [`string(...)` column](../types/text.md) reads its values through.
+Three doors, one verb. `decode` refuses a byte the charset leaves unassigned and names where it is. `decode_lossy` reads the same bytes and marks each fault with `U+FFFD`, which is what a capture of arbitrary wire lines wants and never what a stored column wants. `transcribe` reads every byte it can: an unassigned byte becomes the scalar ISO 8859-1 gives it - which for the five bytes `windows-1252` leaves unassigned is what the WHATWG Encoding Standard's own index answers - and bytes offered as UTF-8 that are not UTF-8 are read as ISO 8859-1 rather than replaced. A [string column](../types/text.md) reads its bytes through one door, `Str::from_bytes`, and the charset picks which of these it opens: `utf8` and `ascii` (and every bounded or fixed spelling of them) go through `decode`, so bytes that are not what they claim are refused and a US-ASCII value holds no NUL and no byte above `0x7F`; every other charset - `string(windows-1252)`, `fixed_string(iso-8859-1,8)` - goes through `transcribe`, because it declares legacy bytes that still have to be read.
 
 === "Rust"
 

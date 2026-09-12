@@ -103,7 +103,7 @@ fn typed_row_field() -> Field {
                 DataType::time32(TimeUnit::Millisecond).unwrap(),
                 false,
             ),
-            Field::new("payload", DataType::Binary, false),
+            Field::new("payload", DataType::binary(), false),
         ])
         .unwrap(),
         false,

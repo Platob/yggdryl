@@ -54,7 +54,7 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
         .join(format!("yggdryl-fix-root-calls-{}", std::process::id()));
     let mut folder = Counted::new(Folder::new(&path).unwrap());
     let calls = Arc::clone(folder.calls());
-    let mut field = DataType::Utf8.nullable_field("Symbol");
+    let mut field = DataType::utf8().nullable_field("Symbol");
     field.as_fix_mut().set_tag(55).unwrap();
     let registry = FixRegistry::from_fields([field]).unwrap();
     // Counted measures navigation at this root; child handles own the

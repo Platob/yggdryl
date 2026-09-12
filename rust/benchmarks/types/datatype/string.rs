@@ -1,5 +1,5 @@
 //! The string family: the grammar, the extension document, and the two
-//! directions across Arrow for every layout at both charset classes.
+//! directions across Arrow for every layout at each charset class.
 //!
 //! Cell widths straddle `smol_str`'s twenty-three-byte inline buffer on
 //! purpose. That threshold is the whole allocation story of a string value -
@@ -13,7 +13,7 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::types::{StringLayout, StringParameters};
-use yggdryl::{Charset, DataType, Scalar};
+use yggdryl::{Charset, DataType, Scalar, Str};
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
@@ -89,11 +89,11 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
     });
     // The one reader, over every datatype that answers it.
     let declared: Vec<DataType> = vec![
-        DataType::Utf8,
-        DataType::LargeUtf8,
-        DataType::Utf8View,
-        DataType::Ascii,
-        DataType::ascii(3).expect("three bytes is a width"),
+        DataType::utf8(),
+        DataType::large_utf8(),
+        DataType::utf8_view(),
+        DataType::ascii(),
+        DataType::fixed_ascii(3).expect("three bytes is a width"),
         DataType::from_str("string(windows-1252,32)").expect("a charset string"),
     ];
     group.bench_function("string_parameters", |bencher| {
@@ -130,25 +130,37 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
 
     // One cell through the storage door, with no Arrow around it: the only
     // case where a regression in the transcode cannot hide behind a builder.
+    // UTF-8 and US-ASCII are validated, the legacy charset is transcribed, and
+    // the fixed slot is filled to its width, so nothing is trimmed.
     for width in CELL_WIDTHS {
-        for (charset, name) in [(Charset::Utf8, "utf8"), (Charset::Cp1252, "cp1252")] {
-            let parameters = StringParameters::new(StringLayout::String, charset);
-            let ascii = cell(charset, width, false);
+        let fixed = StringParameters::ascii(StringLayout::FixedString)
+            .try_with_bound(u32::try_from(width).expect("the widths fit"))
+            .expect("every cell width is a width");
+        for (parameters, name) in [
+            (StringParameters::utf8(StringLayout::String), "utf8"),
+            (StringParameters::ascii(StringLayout::String), "ascii"),
+            (fixed, "fixed_ascii"),
+            (
+                StringParameters::new(StringLayout::String, Charset::Cp1252),
+                "cp1252",
+            ),
+        ] {
+            let ascii = cell(parameters.charset(), width, false);
             group.bench_function(
                 BenchmarkId::new(format!("transcribe_cell_{name}"), width),
                 |bencher| {
-                    bencher.iter(|| {
-                        yggdryl::types::Text::from_bytes(black_box(&ascii), black_box(parameters))
-                    });
+                    bencher.iter(|| Str::from_bytes(black_box(&ascii), black_box(parameters)));
                 },
             );
-            let high = cell(charset, width, true);
+            // US-ASCII has no byte above 0x7F to pay for.
+            if parameters.charset() == Charset::Ascii {
+                continue;
+            }
+            let high = cell(parameters.charset(), width, true);
             group.bench_function(
                 BenchmarkId::new(format!("transcribe_cell_high_{name}"), width),
                 |bencher| {
-                    bencher.iter(|| {
-                        yggdryl::types::Text::from_bytes(black_box(&high), black_box(parameters))
-                    });
+                    bencher.iter(|| Str::from_bytes(black_box(&high), black_box(parameters)));
                 },
             );
         }
@@ -162,19 +174,34 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
         column_round_trip(
             &mut group,
             &format!("utf8_{width}"),
-            &DataType::Utf8,
+            &DataType::utf8(),
             &ascii,
         );
         column_round_trip(
             &mut group,
             &format!("large_utf8_{width}"),
-            &DataType::LargeUtf8,
+            &DataType::large_utf8(),
             &ascii,
         );
         column_round_trip(
             &mut group,
             &format!("utf8_view_{width}"),
-            &DataType::Utf8View,
+            &DataType::utf8_view(),
+            &ascii,
+        );
+        // The US-ASCII layouts: the same text storage under a document that
+        // names the repertoire, and the fixed slot the codes ride.
+        column_round_trip(
+            &mut group,
+            &format!("ascii_{width}"),
+            &DataType::ascii(),
+            &ascii,
+        );
+        column_round_trip(
+            &mut group,
+            &format!("fixed_ascii_{width}"),
+            &DataType::fixed_ascii(u32::try_from(width).expect("the widths fit"))
+                .expect("every column width is a width"),
             &ascii,
         );
         // The charset string, on the payload that borrows and the one that
@@ -194,7 +221,7 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
 
     // Restating a layout: a storage handle adopted, never characters copied.
     let long = Scalar::from("a value well past the twenty-three byte inline buffer");
-    let large = DataType::LargeUtf8;
+    let large = DataType::large_utf8();
     group.throughput(Throughput::Elements(1));
     group.bench_function("restate_layout", |bencher| {
         bencher.iter(|| {

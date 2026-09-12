@@ -109,12 +109,12 @@
 //! use yggdryl::{DataType, FixBranch, FixId, FixRegistry};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let mut symbol = DataType::Utf8.required_field("Symbol");
+//! let mut symbol = DataType::utf8().required_field("Symbol");
 //! symbol.as_fix_mut().set_tag(55)?;
 //! symbol.as_fix_mut().set_aliases(["Ticker"])?;
 //!
 //! let cme = FixBranch::from_str("cme")?;
-//! let mut trade = DataType::Utf8.required_field("TradeID");
+//! let mut trade = DataType::utf8().required_field("TradeID");
 //! trade.as_fix_mut().set_id(&cme, 5001)?;
 //!
 //! let registry = FixRegistry::from_fields([symbol, trade])?;

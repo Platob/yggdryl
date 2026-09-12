@@ -25,7 +25,7 @@
 //!     ("price", Scalar::d128(125, 1)),
 //! ])?;
 //!
-//! assert_eq!(quote.get_key_str("symbol").and_then(Scalar::as_utf8), Some("AAPL"));
+//! assert_eq!(quote.get_key_str("symbol").and_then(Scalar::as_str), Some("AAPL"));
 //! assert_eq!(quote.len(), 2);
 //! # Ok(())
 //! # }
@@ -52,8 +52,7 @@ use super::floating::scalars::{Float16, Float32, Float64, Floating};
 use super::geospatial::Geospatial;
 use super::integer::scalars::Integer;
 use super::nested::{Children, Mapping, Nested, Record, Sequence};
-use super::string::AsciiFamily;
-use super::string::Text;
+use super::string::{Code, Str};
 use super::temporal::scalars::{Temporal, temporal_key};
 use super::uuid::Uuid;
 use super::version::Version;
@@ -121,10 +120,11 @@ pub enum Scalar {
     Decimal(Decimal),
     /// A temporal or interval value.
     Temporal(Temporal),
-    /// A Unicode string retaining its storage representation.
-    Text(Text),
-    /// Validated ASCII text or a registered code.
-    Ascii(AsciiFamily),
+    /// A string: its characters, and the layout and charset it is stored
+    /// under.
+    String(Str),
+    /// A registered code: an identity with a fixed US-ASCII storage.
+    Code(Code),
     /// An RFC 9562 identifier.
     Uuid(Uuid),
     /// A canonical, numerically ordered version.
@@ -243,59 +243,22 @@ impl Serialize for Scalar {
                     &Pair(&value.coefficient(), &value.scale()),
                 ),
             },
-            // The ordinary string - UTF-8, no width - writes its characters
-            // under its layout's own tag, which is what it always wrote. A
-            // charset or a width is what makes a value carry more than that,
-            // and those write the whole declaration rather than half of it.
-            Self::Text(value) if value.charset().is_utf8() && value.width().is_none() => {
-                match value {
-                    Text::Utf8(value) => tagged(serializer, "string", &value.as_str()),
-                    Text::LargeUtf8(value) => tagged(serializer, "large_utf8", &value.as_str()),
-                    Text::Utf8View(value) => tagged(serializer, "utf8_view", &value.as_str()),
-                    Text::LargeUtf8View(value) => {
-                        tagged(serializer, "large_utf8_view", &value.as_str())
-                    }
-                    Text::FixedUtf8(_) => unreachable!("a fixed string carries its width"),
-                }
-            }
-            Self::Text(value) => tagged(
-                serializer,
-                "encoded_string",
-                &super::string::TextRepresentation::from(value),
-            ),
-            Self::Ascii(value) => match value {
-                AsciiFamily::Ascii(value) => tagged(serializer, "ascii", &value.as_str()),
-                AsciiFamily::FixedAscii(value) => tagged(
-                    serializer,
-                    "fixed_ascii",
-                    &Pair(&value.as_str(), &value.width()),
-                ),
-                AsciiFamily::Country(value) => tagged(serializer, "country", &value.as_str()),
-                AsciiFamily::Currency(value) => tagged(serializer, "currency", &value.as_str()),
-                AsciiFamily::Mic(value) => tagged(serializer, "mic", &value.as_str()),
-                AsciiFamily::Cfi(value) => tagged(serializer, "cfi", &value.as_str()),
-                AsciiFamily::Isin(value) => tagged(serializer, "isin", &value.as_str()),
-                AsciiFamily::Side(value) => tagged(serializer, "side", &value.as_str()),
-                AsciiFamily::State(value) => tagged(serializer, "state", &value.as_str()),
-                AsciiFamily::TimeInForce(value) => {
-                    tagged(serializer, "timeinforce", &value.as_str())
-                }
-                AsciiFamily::MsgDirection(value) => {
-                    tagged(serializer, "direction", &value.as_str())
-                }
-            },
+            // One tag for every string. The ordinary value - UTF-8, the
+            // `string` layout - writes its characters and nothing else, which
+            // is what it always wrote; a layout, a charset or a fixed width
+            // is what makes a value carry more than that, and `Str` writes
+            // the whole declaration rather than half of it.
+            Self::String(value) => tagged(serializer, "string", value),
+            // A code writes its text under its own datatype's name.
+            Self::Code(value) => tagged(serializer, value.identifier().as_str(), &value.as_str()),
             Self::Uuid(value) => tagged(serializer, "uuid", &value.to_string()),
             Self::Version(value) => tagged(serializer, "version", value),
             Self::Url(value) => tagged(serializer, "url", &value.to_string()),
             Self::Enum(value) => tagged(serializer, "enum", value),
-            Self::Bytes(value) => match value {
-                Bytes::Binary(value) => tagged(serializer, "bytes", &value.as_bytes()),
-                Bytes::FixedSizeBinary(value) => {
-                    tagged(serializer, "fixed_size_binary", &value.as_bytes())
-                }
-                Bytes::LargeBinary(value) => tagged(serializer, "large_binary", &value.as_bytes()),
-                Bytes::BinaryView(value) => tagged(serializer, "binary_view", &value.as_bytes()),
-            },
+            // One tag for every byte value: the ordinary payload writes its
+            // bytes and nothing else, and a layout or a fixed width is what
+            // makes a value carry more than that.
+            Self::Bytes(value) => tagged(serializer, "bytes", value),
             Self::Geospatial(value) => match value {
                 Geospatial::Geometry(value) => tagged(serializer, "geospatial", &value.as_bytes()),
                 Geospatial::Geography(value) => tagged(serializer, "geography", &value.as_bytes()),
@@ -483,26 +446,23 @@ impl<'de> Deserialize<'de> for Scalar {
             D64(i64, i8),
             D128(i128, i8),
             D256(I256, i8),
-            String(SmolStr),
-            LargeUtf8(SmolStr),
-            Utf8View(SmolStr),
-            LargeUtf8View(SmolStr),
-            EncodedString(super::string::TextRepresentation),
-            Ascii(SmolStr),
-            FixedAscii(SmolStr, i32),
+            String(Str),
             Country(SmolStr),
             Currency(SmolStr),
             Mic(SmolStr),
             Cfi(SmolStr),
             Isin(SmolStr),
+            Side(SmolStr),
+            #[serde(rename = "msgdirection")]
+            MsgDirection(SmolStr),
+            State(SmolStr),
+            #[serde(rename = "timeinforce")]
+            TimeInForce(SmolStr),
             Uuid(SmolStr),
             Version(Version),
             Url(SmolStr),
             Enum(Enum),
-            Bytes(Arc<[u8]>),
-            FixedSizeBinary(Arc<[u8]>),
-            LargeBinary(Arc<[u8]>),
-            BinaryView(Arc<[u8]>),
+            Bytes(Bytes),
             Geospatial(Arc<[u8]>),
             Geography(Arc<[u8]>),
             Date32(Temporal32),
@@ -543,41 +503,34 @@ impl<'de> Deserialize<'de> for Scalar {
             ))),
             StructuralValue::D128(unscaled, scale) => Ok(Self::d128(unscaled, scale)),
             StructuralValue::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
-            StructuralValue::String(value) => Ok(Self::from(value)),
-            StructuralValue::LargeUtf8(value) => Ok(Self::Text(Text::LargeUtf8(
-                super::string::LargeUtf8::new(value),
-            ))),
-            StructuralValue::Utf8View(value) => Ok(Self::Text(Text::Utf8View(
-                super::string::Utf8View::new(value),
-            ))),
-            StructuralValue::LargeUtf8View(value) => Ok(Self::Text(Text::LargeUtf8View(
-                super::string::LargeUtf8View::new(value),
-            ))),
-            StructuralValue::EncodedString(value) => Text::try_from(value)
-                .map(Self::Text)
-                .map_err(D::Error::custom),
-            StructuralValue::Ascii(value) => super::string::Ascii::new(value)
-                .map(|value| Self::Ascii(AsciiFamily::Ascii(value)))
-                .map_err(D::Error::custom),
-            StructuralValue::FixedAscii(value, width) => {
-                super::string::FixedAscii::new(value, width)
-                    .map(|value| Self::Ascii(AsciiFamily::FixedAscii(value)))
-                    .map_err(D::Error::custom)
-            }
+            StructuralValue::String(value) => Ok(Self::String(value)),
             StructuralValue::Country(value) => super::string::Country::new(value)
-                .map(|value| Self::Ascii(AsciiFamily::Country(value)))
+                .map(|value| Self::Code(Code::Country(value)))
                 .map_err(D::Error::custom),
             StructuralValue::Currency(value) => super::string::Currency::new(value)
-                .map(|value| Self::Ascii(AsciiFamily::Currency(value)))
+                .map(|value| Self::Code(Code::Currency(value)))
                 .map_err(D::Error::custom),
             StructuralValue::Mic(value) => super::string::Mic::new(value)
-                .map(|value| Self::Ascii(AsciiFamily::Mic(value)))
+                .map(|value| Self::Code(Code::Mic(value)))
                 .map_err(D::Error::custom),
             StructuralValue::Cfi(value) => super::string::Cfi::new(value)
-                .map(|value| Self::Ascii(AsciiFamily::Cfi(value)))
+                .map(|value| Self::Code(Code::Cfi(value)))
                 .map_err(D::Error::custom),
             StructuralValue::Isin(value) => super::string::Isin::new(value)
-                .map(|value| Self::Ascii(AsciiFamily::Isin(value)))
+                .map(|value| Self::Code(Code::Isin(value)))
+                .map_err(D::Error::custom),
+            StructuralValue::Side(value) => super::string::Side::new(value)
+                .map(|value| Self::Code(Code::Side(value)))
+                .map_err(D::Error::custom),
+            StructuralValue::MsgDirection(value) => super::string::MsgDirection::new(value)
+                .map(|value| Self::Code(Code::MsgDirection(value)))
+                .map_err(D::Error::custom),
+            // A state is read by its spelling, exactly as a column reads it.
+            StructuralValue::State(value) => super::string::State::read(&value)
+                .map(|value| Self::Code(Code::State(value)))
+                .map_err(D::Error::custom),
+            StructuralValue::TimeInForce(value) => super::string::TimeInForce::new(value)
+                .map(|value| Self::Code(Code::TimeInForce(value)))
                 .map_err(D::Error::custom),
             StructuralValue::Uuid(value) => Uuid::from_bytes(value.as_bytes())
                 .map(Self::Uuid)
@@ -587,16 +540,7 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map(|value| Self::Url(Arc::new(value)))
                 .map_err(D::Error::custom),
             StructuralValue::Enum(value) => Ok(Self::Enum(value)),
-            StructuralValue::Bytes(value) => Ok(Self::from(value)),
-            StructuralValue::FixedSizeBinary(value) => Ok(Self::Bytes(Bytes::FixedSizeBinary(
-                super::bytes::FixedSizeBinary::new(value),
-            ))),
-            StructuralValue::LargeBinary(value) => Ok(Self::Bytes(Bytes::LargeBinary(
-                super::bytes::LargeBinary::new(value),
-            ))),
-            StructuralValue::BinaryView(value) => Ok(Self::Bytes(Bytes::BinaryView(
-                super::bytes::BinaryView::new(value),
-            ))),
+            StructuralValue::Bytes(value) => Ok(Self::Bytes(value)),
             StructuralValue::Geospatial(value) => super::geospatial::Geometry::new(value)
                 .map(|value| Self::Geospatial(Geospatial::Geometry(value)))
                 .map_err(D::Error::custom),
@@ -761,8 +705,8 @@ impl Ord for Scalar {
             Self::Floating(_) => unreachable!("all float widths returned above"),
             Self::Decimal(_) => unreachable!("all decimal widths returned above"),
             Self::Temporal(left) => same_kind!(Self::Temporal(right) => left.cmp(right)),
-            Self::Text(left) => same_kind!(Self::Text(right) => left.cmp(right)),
-            Self::Ascii(left) => same_kind!(Self::Ascii(right) => left.cmp(right)),
+            Self::String(left) => same_kind!(Self::String(right) => left.cmp(right)),
+            Self::Code(left) => same_kind!(Self::Code(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Url(left) => same_kind!(Self::Url(right) => left.cmp(right)),
@@ -803,8 +747,8 @@ impl Hash for Scalar {
             Self::Floating(_) => unreachable!("float values returned above"),
             Self::Decimal(_) => unreachable!("decimal values returned above"),
             Self::Temporal(value) => value.hash(state),
-            Self::Text(value) => value.hash(state),
-            Self::Ascii(value) => value.hash(state),
+            Self::String(value) => value.hash(state),
+            Self::Code(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
             Self::Url(value) => value.hash(state),
@@ -859,7 +803,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Integer(_) => 2,
         Scalar::Floating(_) => 3,
         Scalar::Decimal(_) => 4,
-        Scalar::Text(_) => 5,
+        Scalar::String(_) => 5,
         Scalar::Bytes(_) => 6,
         Scalar::Temporal(Temporal::Date32(_) | Temporal::Date64(_)) => 7,
         Scalar::Temporal(Temporal::Time32(_) | Temporal::Time64(_)) => 8,
@@ -872,7 +816,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Enum(_) => 15,
         Scalar::Temporal(Temporal::Interval(_)) => 16,
         Scalar::Uuid(_) => 17,
-        Scalar::Ascii(_) => 18,
+        Scalar::Code(_) => 18,
         Scalar::Version(_) => 19,
         Scalar::Url(_) => 20,
     }
@@ -914,29 +858,14 @@ impl Scalar {
             Self::Temporal(Temporal::Duration32(_)) => DataTypeId::Duration32,
             Self::Temporal(Temporal::Duration64(_)) => DataTypeId::Duration64,
             Self::Temporal(Temporal::Interval(_)) => DataTypeId::Interval,
-            // A string names the layout it is stored in, and names it under
-            // the charset it is written in: plain UTF-8 is the identifier it
-            // always was, and anything else is the string family's own.
-            Self::Text(text) => text.identifier(),
-            Self::Ascii(AsciiFamily::Ascii(_)) => DataTypeId::Ascii,
-            Self::Ascii(AsciiFamily::FixedAscii(_)) => DataTypeId::FixedAscii,
-            Self::Ascii(AsciiFamily::Country(_)) => DataTypeId::Country,
-            Self::Ascii(AsciiFamily::Currency(_)) => DataTypeId::Currency,
-            Self::Ascii(AsciiFamily::Mic(_)) => DataTypeId::Mic,
-            Self::Ascii(AsciiFamily::Cfi(_)) => DataTypeId::Cfi,
-            Self::Ascii(AsciiFamily::Isin(_)) => DataTypeId::Isin,
-            Self::Ascii(AsciiFamily::Side(_)) => DataTypeId::Side,
-            Self::Ascii(AsciiFamily::MsgDirection(_)) => DataTypeId::MsgDirection,
-            Self::Ascii(AsciiFamily::State(_)) => DataTypeId::State,
-            Self::Ascii(AsciiFamily::TimeInForce(_)) => DataTypeId::TimeInForce,
+            // A string names the layout it is stored in.
+            Self::String(text) => text.layout().id(),
+            Self::Code(code) => code.identifier(),
             Self::Uuid(_) => DataTypeId::Uuid,
             Self::Version(_) => DataTypeId::Version,
             Self::Url(_) => DataTypeId::Url,
-            Self::Enum(_) => DataTypeId::Utf8,
-            Self::Bytes(Bytes::Binary(_)) => DataTypeId::Binary,
-            Self::Bytes(Bytes::FixedSizeBinary(_)) => DataTypeId::FixedSizeBinary,
-            Self::Bytes(Bytes::LargeBinary(_)) => DataTypeId::LargeBinary,
-            Self::Bytes(Bytes::BinaryView(_)) => DataTypeId::BinaryView,
+            Self::Enum(_) => DataTypeId::String,
+            Self::Bytes(bytes) => bytes.layout().id(),
             Self::Geospatial(Geospatial::Geometry(_)) => DataTypeId::Geometry,
             Self::Geospatial(Geospatial::Geography(_)) => DataTypeId::Geography,
             Self::Nested(Nested::Sequence(_)) => DataTypeId::List,
@@ -976,30 +905,16 @@ impl Scalar {
             Self::Decimal(Decimal::D64(_)) => "d64",
             Self::Decimal(Decimal::D128(_)) => "d128",
             Self::Decimal(Decimal::D256(_)) => "d256",
-            Self::Text(Text::Utf8(_)) => "string",
-            Self::Text(Text::FixedUtf8(_)) => "fixed_string",
-            Self::Text(Text::LargeUtf8(_)) => "large_utf8",
-            Self::Text(Text::Utf8View(_)) => "utf8_view",
-            Self::Text(Text::LargeUtf8View(_)) => "large_utf8_view",
-            Self::Ascii(AsciiFamily::Ascii(_)) => "ascii",
-            Self::Ascii(AsciiFamily::FixedAscii(_)) => "fixed_ascii",
-            Self::Ascii(AsciiFamily::Country(_)) => "country",
-            Self::Ascii(AsciiFamily::Currency(_)) => "currency",
-            Self::Ascii(AsciiFamily::Mic(_)) => "mic",
-            Self::Ascii(AsciiFamily::Cfi(_)) => "cfi",
-            Self::Ascii(AsciiFamily::Isin(_)) => "isin",
-            Self::Ascii(AsciiFamily::Side(_)) => "side",
-            Self::Ascii(AsciiFamily::MsgDirection(_)) => "direction",
-            Self::Ascii(AsciiFamily::State(_)) => "state",
-            Self::Ascii(AsciiFamily::TimeInForce(_)) => "timeinforce",
+            Self::String(text) => text.layout().as_str(),
+            Self::Code(code) => code.identifier().as_str(),
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
             Self::Url(_) => "url",
             Self::Enum(_) => "enum",
-            Self::Bytes(Bytes::Binary(_)) => "bytes",
-            Self::Bytes(Bytes::FixedSizeBinary(_)) => "fixed_size_binary",
-            Self::Bytes(Bytes::LargeBinary(_)) => "large_binary",
-            Self::Bytes(Bytes::BinaryView(_)) => "binary_view",
+            Self::Bytes(bytes) => match bytes.layout() {
+                super::bytes::BytesLayout::Binary => "bytes",
+                other => other.as_str(),
+            },
             Self::Geospatial(Geospatial::Geometry(_)) => "geospatial",
             Self::Geospatial(Geospatial::Geography(_)) => "geography",
             Self::Temporal(Temporal::Date32(_)) => "date32",
@@ -1133,8 +1048,8 @@ impl Scalar {
     /// Return a string slice when this is a string.
     pub fn as_str(&self) -> Option<&str> {
         match self {
-            Self::Text(value) => Some(value.as_str()),
-            Self::Ascii(value) => Some(value.as_str()),
+            Self::String(value) => Some(value.as_str()),
+            Self::Code(value) => Some(value.as_str()),
             Self::Enum(value) => Some(value.as_str()),
             _ => None,
         }
@@ -1146,11 +1061,6 @@ impl Scalar {
             Self::Enum(value) => Some(value),
             _ => None,
         }
-    }
-
-    /// Return borrowed UTF-8 text when this is a string.
-    pub fn as_utf8(&self) -> Option<&str> {
-        self.as_str()
     }
 
     /// Return bytes when this is a byte value.

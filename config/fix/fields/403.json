@@ -14,7 +14,7 @@
   {
     "name": "legpaymentstreampaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -65,7 +65,7 @@
   {
     "name": "legpaymentstreamresetdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -89,7 +89,7 @@
   {
     "name": "legpaymentstreamresetfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -102,7 +102,7 @@
   {
     "name": "legpaymentstreamresetweeklyrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -140,7 +140,7 @@
   {
     "name": "legpaymentstreaminitialfixingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -164,7 +164,7 @@
   {
     "name": "legpaymentstreaminitialfixingdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -228,7 +228,7 @@
   {
     "name": "legpaymentstreamfixingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -252,7 +252,7 @@
   {
     "name": "legpaymentstreamfixingdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -303,7 +303,7 @@
   {
     "name": "legpaymentstreamratecutoffdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -390,7 +390,7 @@
   {
     "name": "legpaymentstreamrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -415,7 +415,7 @@
   {
     "name": "legpaymentstreamrateindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -578,7 +578,7 @@
   {
     "name": "legpaymentstreamfinalrateroundingdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -641,7 +641,7 @@
   {
     "name": "legpaymentstreaminflationlagunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -693,7 +693,7 @@
   {
     "name": "legpaymentstreaminflationpublicationsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -767,7 +767,7 @@
   {
     "name": "legpaymentstreamnondeliverablefixingdatesbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -803,7 +803,7 @@
   {
     "name": "legpaymentstreamnondeliverablefixingdatesoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -880,7 +880,7 @@
   {
     "name": "legsettlratefallbackreferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -905,7 +905,7 @@
   {
     "name": "paymentstreamnondeliverablesettlreferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1142,7 +1142,7 @@
   {
     "name": "legpaymentschedulestepfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

@@ -33,7 +33,7 @@ The target names the columns to keep; the cast to the scan's root reads an evolv
 
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?
     .required_field("row");
 
@@ -156,7 +156,7 @@ Rust only; [Filtered reads and filtered writes](#filtered-reads-and-filtered-wri
 
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])?
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
@@ -383,7 +383,7 @@ The filter is the vocabulary [`IOBase::children_where`](../../holder/iobase/part
 
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
         DataType::Int64.nullable_field("qty"),
     ])?
     .required_field("row");

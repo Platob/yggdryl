@@ -158,11 +158,11 @@ enum Payload {
 /// use yggdryl::{ArrowShape, ArrowValue, DataType, Field, Scalar};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let field = Field::new("symbol", DataType::Utf8, false);
+/// let field = Field::new("symbol", DataType::utf8(), false);
 /// let value = ArrowValue::from_value(&field, &Scalar::from("AAPL"))?;
 ///
 /// assert_eq!(value.shape(), ArrowShape::Scalar);
-/// assert_eq!(value.into_scalar()?.as_utf8(), Some("AAPL"));
+/// assert_eq!(value.into_scalar()?.as_str(), Some("AAPL"));
 /// # Ok(())
 /// # }
 /// ```

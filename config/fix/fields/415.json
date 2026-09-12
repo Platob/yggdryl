@@ -26,7 +26,7 @@
   {
     "name": "legoptionexercisestartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -144,7 +144,7 @@
   {
     "name": "legoptionexercisetimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -206,7 +206,7 @@
   {
     "name": "legoptionexerciseexpirationdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -255,7 +255,7 @@
   {
     "name": "legoptionexerciseexpirationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -280,7 +280,7 @@
   {
     "name": "legoptionexerciseexpirationfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -293,7 +293,7 @@
   {
     "name": "legoptionexerciseexpirationrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -333,7 +333,7 @@
   {
     "name": "legoptionexerciseexpirationtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -420,26 +420,26 @@
   {
     "name": "legpaymentschedulexid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this LegPaymentSchedule for cross referencing elsewhere in the message.",
       "display": "LegPaymentScheduleXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legpaymentschedulexid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legpaymentschedulexid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41533"
     }
   },
   {
     "name": "legpaymentschedulexidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to payment schedule elsewhere in the message.",
       "display": "LegPaymentScheduleXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legpaymentschedulexidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legpaymentschedulexidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41534"
     }
   },
@@ -458,7 +458,7 @@
   {
     "name": "legpaymentschedulerateunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -520,7 +520,7 @@
   {
     "name": "legpaymentschedulesettlperiodpriceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -533,7 +533,7 @@
   {
     "name": "legpaymentschedulestepunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -583,7 +583,7 @@
   {
     "name": "legpaymentschedulefixinglagunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -608,7 +608,7 @@
   {
     "name": "legpaymentschedulefixingfirstobservationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -705,7 +705,7 @@
   {
     "name": "legpaymentstreamfixedamountunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -778,7 +778,7 @@
   {
     "name": "legpaymentstreampricingbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -790,7 +790,7 @@
   {
     "name": "legpaymentstreamrateindex2curveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -815,7 +815,7 @@
   {
     "name": "legpaymentstreamrateindexlocation",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -839,7 +839,7 @@
   {
     "name": "legpaymentstreamrateindexunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -877,7 +877,7 @@
   {
     "name": "legpaymentstreamreferencelevelunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -914,7 +914,7 @@
   {
     "name": "legpaymentstreamratespreadunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -988,7 +988,7 @@
   {
     "name": "legpaymentstreamcalculationlagunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1013,7 +1013,7 @@
   {
     "name": "legpaymentstreamfirstobservationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1064,7 +1064,7 @@
   {
     "name": "legpaymentstreampricingbusinesscalendar",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1089,7 +1089,7 @@
   {
     "name": "underlyingdeliverystreamriskapportionmentsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

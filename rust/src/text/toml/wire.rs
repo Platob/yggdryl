@@ -270,8 +270,8 @@ fn write_scalar<W: Write>(
                 &crate::types::decimal::scalars::decimal_text(value.coefficient(), value.scale()),
             )?;
         }
-        Scalar::Text(value) => write_quoted(writer, value.as_str())?,
-        Scalar::Ascii(value) => write_quoted(writer, value.as_str())?,
+        Scalar::String(value) => write_quoted(writer, value.as_str())?,
+        Scalar::Code(value) => write_quoted(writer, value.as_str())?,
         Scalar::Version(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Url(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Uuid(value) => write_quoted(writer, &value.to_string())?,

@@ -1,4 +1,4 @@
-"""Open ASCII vocabularies declared as enums over one fixed-width datatype.
+"""Open ASCII vocabularies declared as enums over one packable datatype.
 
 A subclass of one of the four registered code bases - `CountryCode`,
 `CurrencyCode`, `MicCode`, `CfiCode` - or of the base `fixed_ascii(width)`
@@ -8,9 +8,10 @@ therefore the same in every process, is exactly what the column stores, and is
 what a stable hash hashes - never a position in some column's vocabulary. The
 order of the integers is the order of the text.
 
-Only a fixed width has a packed integer, so only a fixed width names an enum:
-`DataType("ascii")` takes a value of any length and has no integer its bytes
-always fit.
+Only a fixed US-ASCII string of at most sixteen bytes, or a code, has a packed
+integer, so only those name an enum: `DataType("ascii")` takes a value of any
+length and has no integer its bytes always fit, and a fixed UTF-8 string holds
+bytes the packing does not read.
 
 A width says how many bytes a value may take. A registered code says what the
 value *is*, and carries that identity across Arrow, so a vocabulary declared
@@ -19,12 +20,12 @@ bytes.
 
 The vocabulary stays open: a valid value that was not declared reads back as a
 member under its own packed code, registered once and announced once on the
-`yggdryl.enums.ascii` logger.
+`yggdryl.enums.string` logger.
 
 A class declares itself onto a field with `into_field()`, which stores the
-members under `field:enum`, so the enum crosses Arrow, a file, and another
-runtime as ordinary field metadata; `from_field()` reads that declaration back
-as a class.
+members under `field:enum` as a `StringEnum`, so the enum crosses Arrow, a
+file, and another runtime as ordinary field metadata; `from_field()` reads
+that declaration back as a class.
 
 A subclass body is the caller's vocabulary, so the seven names this class API
 owns - `as_enum`, `dtype`, `from_code`, `from_field`, `from_str`, `into_field`,
@@ -43,7 +44,7 @@ import logging
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, cast
 
-from .._native import AsciiEnum, DataType, Field
+from .._native import DataType, Field, StringEnum
 
 if TYPE_CHECKING:
     from typing import Self
@@ -170,7 +171,7 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
         # only ever built for bytes this vocabulary could carry.
         value = cls.dtype().ascii_value(code)
         member = int.__new__(cls, code)
-        member._name_ = AsciiEnum.member_name(value)
+        member._name_ = StringEnum.member_name(value)
         member._value_ = code
         member._text = value
         # Cached under its code, so every later read of the same value is this
@@ -199,14 +200,14 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
         )
 
     @classmethod
-    def as_enum(cls) -> AsciiEnum:
+    def as_enum(cls) -> StringEnum:
         """This class as the declaration a field stores: its declared members.
 
         A value read back at runtime is data, not a declaration, so only the
         members the class body names are here.
         """
 
-        return AsciiEnum(
+        return StringEnum(
             cls.__name__,
             {name: member.into_str() for name, member in cls.__members__.items()},
         )
@@ -226,7 +227,7 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
         """
 
         field = Field(name, cls.dtype(), nullable=nullable, metadata=metadata)
-        field.set_ascii_enum(cls.as_enum())
+        field.set_string_enum(cls.as_enum())
         return field
 
     @classmethod
@@ -235,11 +236,11 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
 
         Raises:
             ValueError: when the field declares no enum, its datatype is
-                neither an ASCII width nor a registered code, or the
+                neither a fixed US-ASCII string nor a registered code, or the
                 declaration names a member the class API owns.
         """
 
-        declared = field.ascii_enum
+        declared = field.string_enum
         if declared is None:
             raise ValueError(f"the field {field.name!r} declares no enum")
         # A stored declaration is data another writer produced, so a member
@@ -253,11 +254,11 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
                 "rather than a value"
             )
         # Read off the datatype, not the width alone: `currency` and
-        # `ascii(3)` are three bytes each and are not the same base.
+        # `fixed_ascii(3)` are three bytes each and are not the same base.
         base = _base_for(field.dtype)
         if base is None:
             raise ValueError(
-                f"expected a fixed ASCII width or a registered code to "
+                f"expected a fixed US-ASCII string or a registered code to "
                 f"declare an enum over, got {field.dtype}"
             )
         # The Enum functional API builds a class from names and values, and it
@@ -286,7 +287,7 @@ def fixed_ascii(width: int) -> type[AsciiCode]:
             the sixteen bytes a packed code holds.
     """
 
-    dtype = DataType.ascii(width)
+    dtype = DataType.fixed_ascii(width)
     # A member *is* the packed integer, so a width with no packed integer
     # names no vocabulary. Probing here refuses that width at the declaration
     # rather than at the first value.
@@ -353,10 +354,13 @@ def _base_for(dtype: DataType) -> type[AsciiCode] | None:
     code = _CODES.get(dtype.id)
     if code is not None:
         return code
-    # A fixed width names a vocabulary; the variable shape has no packed
-    # integer, so it names none.
-    width = dtype.ascii_width
-    return None if width is None else fixed_ascii(width)
+    # A fixed US-ASCII width names a vocabulary; a variable shape has no
+    # packed integer and another charset holds bytes the packing does not
+    # read, so neither names one.
+    parameters = dtype.string_parameters
+    if parameters is None or parameters.charset != "us-ascii" or parameters.fixed is None:
+        return None
+    return fixed_ascii(parameters.fixed)
 
 
 __all__ = [

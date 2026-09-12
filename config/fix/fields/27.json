@@ -2,7 +2,7 @@
   {
     "name": "sidecollateralportfolioid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -14,7 +14,7 @@
   {
     "name": "sidecollateraltype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -101,7 +101,7 @@
   {
     "name": "quoteattributevalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -164,7 +164,7 @@
   {
     "name": "miscfeedesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -176,7 +176,7 @@
   {
     "name": "financialinstrumentfullname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -212,7 +212,7 @@
   {
     "name": "legfinancialinstrumentfullname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -248,7 +248,7 @@
   {
     "name": "underlyingfinancialinstrumentfullname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -284,7 +284,7 @@
   {
     "name": "underlyingindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -335,7 +335,7 @@
   {
     "name": "alloclegrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -371,7 +371,7 @@
   {
     "name": "floatingrateindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -384,7 +384,7 @@
   {
     "name": "floatingrateindexid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -396,7 +396,7 @@
   {
     "name": "floatingrateindexidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -409,7 +409,7 @@
   {
     "name": "indexrollmonth",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -433,7 +433,7 @@
   {
     "name": "assetsubtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -458,7 +458,7 @@
   {
     "name": "financialinstrumentshortname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -483,7 +483,7 @@
   {
     "name": "legassetsubtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -495,7 +495,7 @@
   {
     "name": "legfinancialinstrumentshortname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -507,7 +507,7 @@
   {
     "name": "secondaryassetsubtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -519,7 +519,7 @@
   {
     "name": "underlyingfinancialinstrumentshortname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -531,7 +531,7 @@
   {
     "name": "legsecondaryassetsubtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -543,7 +543,7 @@
   {
     "name": "underlyingassetsubtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -555,7 +555,7 @@
   {
     "name": "underlyingsecondaryassetsubtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -644,7 +644,7 @@
   {
     "name": "deliveryrouteorcharter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -669,7 +669,7 @@
   {
     "name": "legdeliveryrouteorcharter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -694,7 +694,7 @@
   {
     "name": "underlyingdeliveryrouteorcharter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -719,7 +719,7 @@
   {
     "name": "allocrequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -871,7 +871,7 @@
   {
     "name": "allocavgpxgroupid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -883,7 +883,7 @@
   {
     "name": "previousallocgroupid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -933,7 +933,7 @@
   {
     "name": "matchexceptionelementname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -945,7 +945,7 @@
   {
     "name": "matchexceptionallocvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -957,7 +957,7 @@
   {
     "name": "matchexceptionconfirmvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -994,7 +994,7 @@
   {
     "name": "matchexceptiontext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1031,7 +1031,7 @@
   {
     "name": "matchingdatapointvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1056,7 +1056,7 @@
   {
     "name": "matchingdatapointname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1068,7 +1068,7 @@
   {
     "name": "tradeaggregationrequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1080,7 +1080,7 @@
   {
     "name": "tradeaggregationrequestrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1143,7 +1143,7 @@
   {
     "name": "tradeaggregationreportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1192,13 +1192,13 @@
   {
     "name": "fxbenchmarkratefix",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies the foreign exchange benchmark rate fixing to be used in valuing the transaction. For example \"London 4 p.m.\" or \"Tokyo 3 p.m.\"",
       "display": "FXBenchmarkRateFix",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"fxbenchmarkratefix\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0.2\",\"ep\":293,\"deprecated\":true}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"fxbenchmarkratefix\",\"type\":{\"type\":\"string\"}},{\"since\":\"5.0.2\",\"ep\":293,\"deprecated\":true}]}",
       "fix:tag": "2796"
     }
   },
@@ -1229,7 +1229,7 @@
   {
     "name": "payreportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

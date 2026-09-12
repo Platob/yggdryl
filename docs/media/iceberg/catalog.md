@@ -39,7 +39,7 @@ A caller holding rows and a dotted name needs nothing else.
     // schema the rows carry, and the second appends to it.
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])?
     .required_field("row")
     .with_partition_fields(&["venue"])?;
@@ -335,7 +335,7 @@ let schema = DataType::from_fields([
     DataType::Int64.required_field("trip_id"),
     DataType::Float32.nullable_field("trip_distance"),
     DataType::Float64.nullable_field("fare_amount"),
-    DataType::Utf8.nullable_field("store_and_fwd_flag"),
+    DataType::utf8().nullable_field("store_and_fwd_flag"),
 ])?
 .required_field("row")
 .with_partition_fields(&["vendor_id"])?;

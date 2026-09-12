@@ -7,8 +7,9 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::BytesParameters;
 use crate::types::protocol::{DigestField, DigestFieldMut};
-use crate::{DataType, DigestAlgorithm, Error, Field, Result, TimeUnit};
+use crate::{DigestAlgorithm, Error, Field, Result, TimeUnit};
 
 use super::time::{DEFAULT_UNIT, validate_unit};
 use super::value::{algorithm_of_width, dtype, fixed_width};
@@ -50,7 +51,7 @@ pub(crate) fn validate_digest_time(value: &str) -> Result<()> {
 
 /// Return whether a coupled holder's storage carries this algorithm's width.
 pub(crate) fn coupled_holder_accepts(field: &Field, algorithm: DigestAlgorithm) -> bool {
-    matches!(field.dtype(), DataType::FixedSizeBinary(width) if *width == fixed_width(algorithm))
+    coupled_holder_width(field) == Some(fixed_width(algorithm))
 }
 
 /// Return the datatype spelling a coupled holder needs for an algorithm.
@@ -60,10 +61,16 @@ pub(crate) fn expected_coupled_dtype(algorithm: DigestAlgorithm) -> String {
 
 /// Return the algorithm a coupled holder's width implies.
 pub(crate) fn coupled_holder_algorithm(field: &Field) -> Option<DigestAlgorithm> {
-    match field.dtype() {
-        DataType::FixedSizeBinary(width) => algorithm_of_width(*width),
-        _ => None,
-    }
+    coupled_holder_width(field).and_then(algorithm_of_width)
+}
+
+/// The width a holder's fixed byte storage declares, `None` for any other
+/// storage: a UUID or a code is fixed bytes with another identity.
+fn coupled_holder_width(field: &Field) -> Option<u32> {
+    field
+        .dtype()
+        .bytes_parameters()
+        .and_then(BytesParameters::fixed)
 }
 
 impl DigestField<'_> {
@@ -112,7 +119,7 @@ impl DigestFieldMut<'_> {
     /// use yggdryl::{DataType, DigestAlgorithm, TimeUnit};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut key = DataType::FixedSizeBinary(16).required_field("key");
+    /// let mut key = DataType::fixed_size_binary(16)?.required_field("key");
     /// key.as_digest_mut().set_holder()?;
     /// key.as_digest_mut().set_time("event")?;
     /// key.as_digest_mut().set_unit(TimeUnit::Second)?;

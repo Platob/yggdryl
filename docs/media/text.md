@@ -403,7 +403,7 @@ without retaining it.
 
 ## Writes
 
-Writes stay physical-line operations, consuming the non-null Binary `body`
+Writes stay physical-line operations, consuming the non-null `binary` `body`
 column and appending the terminator.
 
 ## Edges

@@ -37,7 +37,7 @@
 
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     counter.as_fix_mut().set_tag(453)?;
-    let mut party_id = DataType::Utf8.nullable_field("PartyID");
+    let mut party_id = DataType::utf8().nullable_field("PartyID");
     party_id.as_fix_mut().set_tag(448)?;
     let mut registry = FixRegistry::from_fields([counter, party_id])?;
 
@@ -209,7 +209,7 @@ These mutations preserve stored canonical spelling for case-only input changes. 
     use yggdryl::{DataType, FixCategory, FixRegistry};
 
     let mut registry = FixRegistry::new();
-    let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    let mut symbol = DataType::utf8().nullable_field("Symbol");
     symbol.as_fix_mut().set_tag(55)?;
     registry.create_definition(FixCategory::Fields, symbol.clone())?;
     assert!(registry.create_definition(FixCategory::Fields, symbol.clone()).is_err());
@@ -280,7 +280,7 @@ A scalar's enum vocabulary remains inline in `fix:codes`, with required `value` 
     ```rust
     use yggdryl::{DataType, FixCode, FixRegistry};
 
-    let mut side = DataType::Utf8.nullable_field("Side");
+    let mut side = DataType::utf8().nullable_field("Side");
     side.as_fix_mut().set_tag(54)?;
     side.as_fix_mut().set_codes(&[
         FixCode::new("Buy", "1"), FixCode::new("Sell", "2"),
@@ -640,7 +640,7 @@ A CBlock is read for what it says. A real one is megabytes over hundreds of thou
     ```rust
     use yggdryl::{DataType, FixRegistry};
 
-    let mut field = DataType::Utf8.nullable_field("MsgType");
+    let mut field = DataType::utf8().nullable_field("MsgType");
     field.as_fix_mut().set_tag(35)?;
     let mut registry = FixRegistry::from_fields([field])?;
     let message = registry.register_msgtype("P Report Ack", Some("AllocationReportAck"), None)?;

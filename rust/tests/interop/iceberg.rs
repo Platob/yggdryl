@@ -36,8 +36,8 @@ fn interop_root() -> std::path::PathBuf {
 fn schema() -> Field {
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("symbol"),
+        DataType::utf8().nullable_field("venue"),
     ])
     .expect("a struct datatype")
     .required_field("row");

@@ -1079,7 +1079,7 @@ pub(crate) fn parse_capture(
         )
     };
     match dtype {
-        DataType::Utf8 => Ok(Scalar::from(value)),
+        DataType::String(_) => Ok(Scalar::from(value)),
         DataType::Boolean => value
             .parse::<bool>()
             .map(Scalar::from)

@@ -147,7 +147,7 @@ fn records_round_trip_through_a_store_like_any_other_handle() {
     let store = store();
     let field = crate::DataType::from_fields([
         crate::DataType::Int64.required_field("id"),
-        crate::DataType::Utf8.required_field("symbol"),
+        crate::DataType::utf8().required_field("symbol"),
     ])
     .expect("a struct root")
     .required_field("row");

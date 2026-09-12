@@ -15,46 +15,46 @@
   {
     "name": "streamcommoditysettlperiodxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
       "display": "StreamCommoditySettlPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcommoditysettlperiodxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcommoditysettlperiodxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41301"
     }
   },
   {
     "name": "streamcommoditysettlperiodxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Cross reference to another settlement period for duplicating its properties.",
       "display": "StreamCommoditySettlPeriodXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcommoditysettlperiodxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamcommoditysettlperiodxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41302"
     }
   },
   {
     "name": "streamxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this Stream for cross referencing elsewhere in the message.",
       "display": "StreamXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41303"
     }
   },
   {
     "name": "paymentlegrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -66,13 +66,13 @@
   {
     "name": "streamnotionalxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Cross reference to another Stream notional for duplicating its properties.",
       "display": "StreamNotionalXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamnotionalxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"streamnotionalxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41305"
     }
   },
@@ -91,7 +91,7 @@
   {
     "name": "streamnotionalfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -117,7 +117,7 @@
   {
     "name": "streamnotionalunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -142,7 +142,7 @@
   {
     "name": "streamtotalnotionalunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -167,7 +167,7 @@
   {
     "name": "mandatoryclearingjurisdiction",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -179,26 +179,26 @@
   {
     "name": "underlyingprotectiontermxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to the protection terms applicable to this entity or obligation. Contains the same XID named string value of the instance in the ProtectionTerms repeating group that applies to this Underlying.",
       "display": "UnderlyingProtectionTermXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingprotectiontermxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingprotectiontermxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41314"
     }
   },
   {
     "name": "underlyingsettltermxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to the cash or physical settlement terms applicable to this entity or obligation. Contains the same XID named string value of the instance in the appropriate repeating group that applies to this Underlying.",
       "display": "UnderlyingSettlTermXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingsettltermxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingsettltermxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41315"
     }
   },
@@ -217,7 +217,7 @@
   {
     "name": "legadditionaltermbondsecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -229,7 +229,7 @@
   {
     "name": "legadditionaltermbondsecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -242,7 +242,7 @@
   {
     "name": "legadditionaltermbonddesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -290,7 +290,7 @@
   {
     "name": "legadditionaltermbondissuer",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -326,7 +326,7 @@
   {
     "name": "legadditionaltermbondseniority",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -413,7 +413,7 @@
   {
     "name": "legadditionaltermbondcouponfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -475,7 +475,7 @@
   {
     "name": "underlyingmarketdisruptionvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -487,7 +487,7 @@
   {
     "name": "underlyingmarketdisruptionfallbackvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -511,7 +511,7 @@
   {
     "name": "underlyingadditionaltermbondsecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -535,7 +535,7 @@
   {
     "name": "legcashsettldealer",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -621,7 +621,7 @@
   {
     "name": "legcashsettlbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -767,13 +767,13 @@
   {
     "name": "legcashsettltermxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "LegCashSettlTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legcashsettltermxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legcashsettltermxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41362"
     }
   },
@@ -828,7 +828,7 @@
   {
     "name": "legcomplexeventcrediteventtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -840,7 +840,7 @@
   {
     "name": "legcomplexeventcrediteventvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -876,7 +876,7 @@
   {
     "name": "legcomplexeventcrediteventunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -926,7 +926,7 @@
   {
     "name": "legcomplexeventcrediteventqualifier",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1003,7 +1003,7 @@
   {
     "name": "legcomplexeventbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1053,7 +1053,7 @@
   {
     "name": "legcomplexeventreferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1065,7 +1065,7 @@
   {
     "name": "legcomplexevenreferencepageheading",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1089,7 +1089,7 @@
   {
     "name": "legcomplexeventdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1138,7 +1138,7 @@
   {
     "name": "legcomplexeventdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1204,7 +1204,7 @@
   {
     "name": "legcomplexeventfixingtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1228,7 +1228,7 @@
   {
     "name": "legcomplexeventcrediteventsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

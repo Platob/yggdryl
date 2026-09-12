@@ -67,10 +67,10 @@
     return block
   }
 
-  /** A `<select>` over the fixed ASCII types, labelled for a screen reader. */
+  /** A `<select>` over the US-ASCII strings and the codes, labelled for a screen reader. */
   const chooser = (id, widths, onChange) => {
     const holder = make('div', 'ygg-pg__controls')
-    const label = make('label', null, 'Width')
+    const label = make('label', null, 'Datatype')
     label.setAttribute('for', id)
     const select = make('select', 'ygg-pg__select')
     select.id = id
@@ -106,14 +106,14 @@
     return { items, press }
   }
 
-  /** Each fixed ASCII type, what it stores, and the extension identity it carries. */
+  /** Each US-ASCII string and code, what it stores, and the extension identity it carries. */
   const renderWidths = (root, data) => {
     const table = make('table', 'ygg-pg__widths')
     const head = make('thead')
     const heading = make('tr')
     for (const name of [
       'datatype',
-      'asciiWidth',
+      'fixedByteWidth',
       'kind',
       'Arrow storage',
       'extension name',
@@ -132,7 +132,7 @@
       first.append(code(width.dtype))
       line.append(first)
       for (const value of [
-        String(width.asciiWidth),
+        String(width.fixedByteWidth),
         width.kind,
         width.arrow,
         width.extensionName,

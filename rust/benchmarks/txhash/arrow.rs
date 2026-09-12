@@ -117,7 +117,7 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
             .expect("the batch couples")
         });
     });
-    let symbol = Field::new("symbol", DataType::Utf8, false);
+    let symbol = Field::new("symbol", DataType::utf8(), false);
     let symbols = Arc::clone(batch.column(1));
     group.bench_function("column_digests", |bencher| {
         bencher.iter(|| {
@@ -188,13 +188,17 @@ fn holder_fixtures() -> (Field, Field, RecordBatch) {
         },
         false,
     );
-    let symbol = Field::new("symbol", DataType::Utf8, false);
+    let symbol = Field::new("symbol", DataType::utf8(), false);
     let mut plain = Field::new("row_digest", DataType::UInt64, false);
     plain
         .as_digest_mut()
         .set_holder()
         .expect("a valid holder role");
-    let mut coupled = Field::new("key", DataType::FixedSizeBinary(16), false);
+    let mut coupled = Field::new(
+        "key",
+        DataType::fixed_size_binary(16).expect("sixteen bytes is a width"),
+        false,
+    );
     coupled
         .as_digest_mut()
         .set_holder()

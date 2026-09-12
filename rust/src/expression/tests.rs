@@ -180,7 +180,7 @@ fn rows_schema() -> Field {
             Field::new("i", DataType::Int64, true),
             Field::new("f", DataType::Float64, true),
             Field::new("d", DataType::decimal128(9, 2).unwrap(), true),
-            Field::new("s", DataType::Utf8, true),
+            Field::new("s", DataType::utf8(), true),
             Field::new("b", DataType::Boolean, true),
             Field::new(
                 "t",
@@ -193,12 +193,12 @@ fn rows_schema() -> Field {
             Field::new("n", DataType::Int32, true).with_partition(true),
             Field::new(
                 "nested",
-                DataType::from_fields([Field::new("leg", DataType::Utf8, true)]).unwrap(),
+                DataType::from_fields([Field::new("leg", DataType::utf8(), true)]).unwrap(),
                 true,
             ),
             // Temporal text, so a cast into and out of a temporal is one of
             // the pairs the two tiers are compared on.
-            Field::new("clock", DataType::Utf8, true),
+            Field::new("clock", DataType::utf8(), true),
         ])
         .unwrap(),
         false,
@@ -350,29 +350,29 @@ fn scalar_casts_return_the_exact_target_leaf() {
             DataTypeId::Float32,
         ),
         (
-            DataType::LargeUtf8,
+            DataType::large_utf8(),
             Scalar::from("value"),
-            DataTypeId::LargeUtf8,
+            DataTypeId::LargeString,
         ),
         (
-            DataType::Utf8View,
+            DataType::utf8_view(),
             Scalar::from("value"),
-            DataTypeId::Utf8View,
+            DataTypeId::StringView,
         ),
         (
-            DataType::LargeBinary,
+            DataType::large_binary(),
             Scalar::from("value"),
             DataTypeId::LargeBinary,
         ),
         (
-            DataType::BinaryView,
+            DataType::binary_view(),
             Scalar::from("value"),
             DataTypeId::BinaryView,
         ),
         (
-            DataType::FixedAscii(4),
+            DataType::fixed_ascii(4).unwrap(),
             Scalar::from("FIX"),
-            DataTypeId::FixedAscii,
+            DataTypeId::FixedString,
         ),
         (
             DataType::Currency,
@@ -406,7 +406,7 @@ fn versions_do_not_fall_through_text_or_numeric_expression_paths() {
         patch2
     );
     assert_eq!(
-        super::eval::convert(&DataType::Utf8, &patch2, Safety::Strict).unwrap(),
+        super::eval::convert(&DataType::utf8(), &patch2, Safety::Strict).unwrap(),
         Scalar::from("5.0.2")
     );
     assert!(super::eval::convert(&DataType::Version, &Scalar::from(5), Safety::Strict).is_err());
@@ -893,7 +893,7 @@ fn binds_and_evaluates_rows() {
     let schema = Field::new(
         "trades",
         DataType::from_fields([
-            Field::new("ccy", DataType::Utf8, true),
+            Field::new("ccy", DataType::utf8(), true),
             Field::new("price", DataType::decimal128(9, 2).unwrap(), true),
             Field::new("size", DataType::Int32, true),
         ])
@@ -1048,7 +1048,7 @@ fn a_literal_holds_what_its_datatype_stores() {
     assert!(Literal::new(DataType::Int64, "seven").is_err());
 
     let inferred = Literal::infer(Scalar::from("AAPL")).unwrap();
-    assert_eq!(inferred.dtype(), &DataType::Utf8);
+    assert_eq!(inferred.dtype(), &DataType::utf8());
     assert_eq!(inferred.to_string(), "'AAPL'");
     let mixed = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]);
     assert!(Literal::infer(mixed.clone()).is_err());

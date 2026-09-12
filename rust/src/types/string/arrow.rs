@@ -3,15 +3,39 @@
 //! Arrow declares a layout and, for its three string layouts, UTF-8. It
 //! declares no charset, no length bound, and it has one view layout where
 //! this crate has two. So the projection is: text this crate stores as UTF-8
-//! rides Arrow's own string layouts, text in any other charset rides the
-//! matching *binary* layout - the bytes are not UTF-8 and saying they are
-//! would be a lie a reader acts on - and everything Arrow cannot say rides
-//! the `yggdryl.string` extension document beside it.
+//! or US-ASCII rides Arrow's own string layouts - ASCII bytes are UTF-8, and
+//! Arrow is told the truth about the bytes - text in any other charset rides
+//! the matching *binary* layout, because the bytes are not UTF-8 and saying
+//! they are would be a lie a reader acts on, and everything Arrow cannot say
+//! rides the `yggdryl.string` extension document beside it.
 
 use arrow_schema::DataType as ArrowDataType;
 
 use super::{StringLayout, StringParameters};
-use crate::{Error, Result};
+use crate::{Charset, Error, Result};
+
+/// Whether a string's bytes ride Arrow's text layouts rather than its binary
+/// ones.
+///
+/// The one owner of that fact: the projection below, the column writer, the
+/// cell reader, the digest feed and the cast planner all ask here. UTF-8 is
+/// Arrow's own text, and US-ASCII is a subset of it.
+pub(crate) const fn is_text_storage(parameters: StringParameters) -> bool {
+    matches!(parameters.charset(), Charset::Utf8 | Charset::Ascii)
+}
+
+/// Whether a string field needs the `yggdryl.string` document beside its
+/// storage.
+///
+/// Only where Arrow cannot say what the string declares: a charset other
+/// than UTF-8, a bound, or the large view layout, which Arrow projects onto
+/// its one view. Plain `utf8`, `large_utf8` and `utf8_view` are Arrow's own
+/// datatypes and cross bare.
+pub(crate) const fn needs_extension(parameters: StringParameters) -> bool {
+    !parameters.charset().is_utf8()
+        || parameters.is_bounded()
+        || matches!(parameters.layout(), StringLayout::LargeStringView)
+}
 
 /// The Arrow storage one string datatype lays out.
 ///
@@ -35,8 +59,8 @@ pub(crate) fn arrow_storage(parameters: StringParameters) -> Result<ArrowDataTyp
         })?;
         return Ok(ArrowDataType::FixedSizeBinary(width));
     }
-    let utf8 = parameters.charset().is_utf8();
-    Ok(match (parameters.layout(), utf8) {
+    let text = is_text_storage(parameters);
+    Ok(match (parameters.layout(), text) {
         (StringLayout::String, true) => ArrowDataType::Utf8,
         (StringLayout::String, false) => ArrowDataType::Binary,
         (StringLayout::LargeString, true) => ArrowDataType::LargeUtf8,

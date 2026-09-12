@@ -41,7 +41,7 @@
   {
     "name": "underlyingprovisioncashsettlquotereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -67,7 +67,7 @@
   {
     "name": "underlyingprovisioncashsettlvaluetimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -116,7 +116,7 @@
   {
     "name": "underlyingprovisioncashsettlvaluedateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -218,7 +218,7 @@
   {
     "name": "underlyingprovisionoptionexerciseearliestdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -243,7 +243,7 @@
   {
     "name": "underlyingprovisionoptionexercisefrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -293,7 +293,7 @@
   {
     "name": "underlyingprovisionoptionexercisestartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -384,7 +384,7 @@
   {
     "name": "underlyingprovisionoptionexerciseearliesttimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -410,7 +410,7 @@
   {
     "name": "underlyingprovisionoptionexerciselatesttimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -472,7 +472,7 @@
   {
     "name": "underlyingprovisionoptionexpirationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -525,7 +525,7 @@
   {
     "name": "underlyingprovisionoptionexpirationtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -587,7 +587,7 @@
   {
     "name": "underlyingprovisionoptionrelevantunderlyingdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -702,7 +702,7 @@
   {
     "name": "underlyingprovisiondatetenorunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -889,7 +889,7 @@
   {
     "name": "underlyingprovisiontext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -937,7 +937,7 @@
   {
     "name": "underlyingprovisionpartyid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -949,7 +949,7 @@
   {
     "name": "underlyingprovisionpartyidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -987,7 +987,7 @@
   {
     "name": "underlyingprovisionpartysubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1024,7 +1024,7 @@
   {
     "name": "underlyingprovisioncashsettlpaymentdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1048,7 +1048,7 @@
   {
     "name": "underlyingprovisioncashsettlvaluedatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1072,7 +1072,7 @@
   {
     "name": "underlyingprovisionoptionexercisebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1096,7 +1096,7 @@
   {
     "name": "underlyingprovisionoptionexpirationdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1120,7 +1120,7 @@
   {
     "name": "underlyingprovisionoptionrelevantunderlyingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1144,7 +1144,7 @@
   {
     "name": "underlyingprovisiondatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1169,7 +1169,7 @@
   {
     "name": "deliverystreamdeliverypointdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1194,7 +1194,7 @@
   {
     "name": "legdeliverystreamdeliverypointdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1219,7 +1219,7 @@
   {
     "name": "underlyingdeliverystreamdeliverypointdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1243,7 +1243,7 @@
   {
     "name": "legcontractualdefinition",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

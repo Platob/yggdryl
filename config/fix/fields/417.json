@@ -2,20 +2,20 @@
   {
     "name": "legstreamxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this LegStream for cross referencing elsewhere in the message.",
       "display": "LegStreamXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legstreamxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legstreamxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41700"
     }
   },
   {
     "name": "underlyingadditionaltermbondsecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -28,13 +28,13 @@
   {
     "name": "legstreamnotionalxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Cross reference to another LegStream notional for duplicating its properties.",
       "display": "LegStreamNotionalXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legstreamnotionalxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legstreamnotionalxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41702"
     }
   },
@@ -53,7 +53,7 @@
   {
     "name": "legstreamnotionalfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -79,7 +79,7 @@
   {
     "name": "legstreamnotionalunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -104,7 +104,7 @@
   {
     "name": "legstreamtotalnotionalunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -117,7 +117,7 @@
   {
     "name": "underlyingadditionaltermbonddesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -213,7 +213,7 @@
   {
     "name": "underlyingcomplexeventcrediteventtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -225,7 +225,7 @@
   {
     "name": "underlyingcomplexeventcrediteventvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -261,7 +261,7 @@
   {
     "name": "underlyingcomplexeventcrediteventunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -311,7 +311,7 @@
   {
     "name": "underlyingcomplexeventcrediteventqualifier",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -388,7 +388,7 @@
   {
     "name": "underlyingcomplexeventbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -438,7 +438,7 @@
   {
     "name": "underlyingcomplexeventreferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -450,7 +450,7 @@
   {
     "name": "underlyingcomplexeventreferencepageheading",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -474,7 +474,7 @@
   {
     "name": "underlyingcomplexeventdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -523,7 +523,7 @@
   {
     "name": "underlyingcomplexeventdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -589,7 +589,7 @@
   {
     "name": "underlyingcomplexeventfixingtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -613,7 +613,7 @@
   {
     "name": "underlyingcomplexeventcrediteventsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -675,7 +675,7 @@
   {
     "name": "underlyingcomplexeventschedulefrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -688,7 +688,7 @@
   {
     "name": "underlyingcomplexeventschedulerollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -726,13 +726,13 @@
   {
     "name": "underlyingdeliveryschedulexid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier for this instance of delivery schedule for cross referencing elsewhere in the message.",
       "display": "UnderlyingDeliveryScheduleXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingdeliveryschedulexid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingdeliveryschedulexid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41758"
     }
   },
@@ -751,7 +751,7 @@
   {
     "name": "underlyingdeliveryschedulenotionalunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -801,7 +801,7 @@
   {
     "name": "underlyingdeliveryscheduletoleranceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -839,7 +839,7 @@
   {
     "name": "underlyingdeliveryschedulesettltimezone",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -926,7 +926,7 @@
   {
     "name": "underlyingdeliveryschedulesettlstart",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -938,7 +938,7 @@
   {
     "name": "underlyingdeliveryschedulesettlend",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -976,7 +976,7 @@
   {
     "name": "underlyingdeliverystreampipeline",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -988,7 +988,7 @@
   {
     "name": "underlyingdeliverystreamentrypoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1000,7 +1000,7 @@
   {
     "name": "underlyingdeliverystreamwithdrawalpoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1012,7 +1012,7 @@
   {
     "name": "underlyingdeliverystreamdeliverypoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1037,7 +1037,7 @@
   {
     "name": "underlyingdeliverystreamdeliverycontingency",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1074,7 +1074,7 @@
   {
     "name": "underlyingdeliverystreamriskapportionment",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1086,7 +1086,7 @@
   {
     "name": "underlyingdeliverystreamtitletransferlocation",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1111,7 +1111,7 @@
   {
     "name": "underlyingdeliverystreamimporterofrecord",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1147,7 +1147,7 @@
   {
     "name": "underlyingdeliverystreamtoleranceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1222,7 +1222,7 @@
   {
     "name": "underlyingdeliverystreamtransportequipment",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

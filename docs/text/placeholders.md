@@ -35,7 +35,7 @@ Jinja-style `{{ }}` substitution in string values of a parsed YAML or TOML docum
         &loading,
     )?;
 
-    assert_eq!(value.get_key_str("host").and_then(Scalar::as_utf8), Some("db.internal"));
+    assert_eq!(value.get_key_str("host").and_then(Scalar::as_str), Some("db.internal"));
     assert_eq!(value.get_key_str("port"), Some(&Scalar::from(8080_i64)));
     ```
 

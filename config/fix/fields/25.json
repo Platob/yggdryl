@@ -2,7 +2,7 @@
   {
     "name": "legbrokerconfirmationdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -27,7 +27,7 @@
   {
     "name": "legcreditsupportagreementdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -39,7 +39,7 @@
   {
     "name": "legcreditsupportagreementid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -64,7 +64,7 @@
   {
     "name": "legdocumentationtext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -89,7 +89,7 @@
   {
     "name": "leggoverninglaw",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -139,7 +139,7 @@
   {
     "name": "legmasterconfirmationdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -151,7 +151,7 @@
   {
     "name": "legmasterconfirmationannexdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -201,7 +201,7 @@
   {
     "name": "collateralrequestinstruction",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -213,7 +213,7 @@
   {
     "name": "collateralrequestlinkid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -249,7 +249,7 @@
   {
     "name": "warningtext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -569,7 +569,7 @@
   {
     "name": "relatedmarketsegmentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -606,7 +606,7 @@
   {
     "name": "auctiontypeproductcomplex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -678,7 +678,7 @@
   {
     "name": "pricerangeproductcomplex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -690,7 +690,7 @@
   {
     "name": "pricerangeruleid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -751,7 +751,7 @@
   {
     "name": "flexproducteligibilitycomplex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -825,7 +825,7 @@
   {
     "name": "primaryservicelocationid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -837,7 +837,7 @@
   {
     "name": "secondaryservicelocationid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -849,7 +849,7 @@
   {
     "name": "matchruleproductcomplex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -874,7 +874,7 @@
   {
     "name": "tickruleproductcomplex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1166,7 +1166,7 @@
   {
     "name": "orderattributevalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

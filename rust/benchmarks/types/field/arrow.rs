@@ -102,7 +102,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
         ),
         (
             "uint64_to_bytes",
-            Field::new("digest", DataType::FixedSizeBinary(8), true),
+            Field::new(
+                "digest",
+                DataType::fixed_size_binary(8).expect("eight bytes is a width"),
+                true,
+            ),
         ),
     ] {
         group.bench_function(name, |bencher| {

@@ -1497,10 +1497,14 @@ def test_asking_for_bits_never_reinterprets_a_different_width() -> None:
     )
     assert widened.to_pylist() == [7]
 
-    # And a datatype whose values follow a rule keeps that rule.
+    # And a datatype whose values follow a rule keeps that rule: a safe cast
+    # nulls the cell it cannot read, a strict one names it.
+    assert Field("ccy", "fixed_ascii(4)").cast_arrow_array(
+        pa.array([b"\xff\xff\xff\xff"], type=pa.binary(4)), **bits
+    ).to_pylist() == [None]
     with pytest.raises(ValueError, match="ccy"):
-        Field("ccy", "ascii(4)").cast_arrow_array(
-            pa.array([b"\xff\xff\xff\xff"], type=pa.binary(4)), **bits
+        Field("ccy", "fixed_ascii(4)").cast_arrow_array(
+            pa.array([b"\xff\xff\xff\xff"], type=pa.binary(4)), safe=False, **bits
         )
 
 

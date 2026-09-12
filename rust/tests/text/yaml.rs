@@ -96,7 +96,7 @@ fn typed_row_field() -> Field {
                 DataType::time64(TimeUnit::Nanosecond).unwrap(),
                 false,
             ),
-            Field::new("payload", DataType::Binary, false),
+            Field::new("payload", DataType::binary(), false),
         ])
         .unwrap(),
         false,

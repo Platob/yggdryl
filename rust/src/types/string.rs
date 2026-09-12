@@ -4,27 +4,27 @@
 //! `Utf8` array declares UTF-8 and nothing else declares anything, and there
 //! is no `varchar(n)` or `char(n)` anywhere in the format. This family is the
 //! one place this crate answers all three questions - which layout, which
-//! charset, how long - and every other spelling of a string redirects into
-//! it.
+//! charset, how long - and every string the crate has is one member of it.
 //!
 //! [`StringLayout`] names the five layouts. [`StringParameters`] is a layout
 //! beside the charset its bytes are written in and the bound its values are
-//! held to.
-//! [`crate::DataType::string`] builds one and *redirects*: unbounded UTF-8 is
-//! already [`crate::DataType::Utf8`] and its two siblings, and US-ASCII is
-//! already [`crate::DataType::Ascii`], so those come back as themselves rather
-//! than as a second spelling of themselves.
+//! held to. [`crate::DataType::string`] builds the one string datatype,
+//! [`crate::DataType::String`], from them; `utf8`, `ascii`, `varchar(32)`
+//! and `char(8)` are spellings of it, never datatypes of their own.
+//! [`Str`] is the one string value, and the nine registered codes beside it
+//! are identities with a storage rather than strings with a charset.
 //!
 //! ```
 //! use yggdryl::types::{StringLayout, StringParameters};
 //! use yggdryl::{Charset, DataType};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! // The UTF-8 spellings are the layouts they name.
-//! assert_eq!(DataType::from_str("string")?, DataType::Utf8);
+//! // Every spelling is one datatype, and it reads back as itself.
+//! assert_eq!(DataType::from_str("string")?, DataType::utf8());
 //! assert_eq!(DataType::from_str("largestringview")?.to_string(), "large_utf8_view");
+//! assert_eq!(DataType::from_str("fixed_string(us-ascii,4)")?.to_string(), "fixed_ascii(4)");
 //!
-//! // A charset or a bound is what makes a string its own datatype.
+//! // The layout, the charset and the bound are what a string declares.
 //! let latin = DataType::from_str("string(windows-1252,32)")?;
 //! let parameters = latin.string_parameters().expect("a string datatype");
 //! assert_eq!(parameters.layout(), StringLayout::String);
@@ -43,10 +43,10 @@ use smol_str::format_smolstr;
 use crate::{DataTypeId, Error, Result};
 
 mod arrow;
-/// The ASCII repertoire's values: the width, and the nine registered codes.
-mod ascii;
 #[cfg(feature = "arrow")]
 pub(crate) mod casts;
+/// The nine registered codes' values.
+mod code;
 mod codes;
 mod dictionary;
 mod dtypes;
@@ -56,27 +56,25 @@ mod parser;
 mod registries;
 mod scalars;
 
-pub(crate) use arrow::{arrow_storage, describes_storage};
-pub use ascii::{
-    Ascii, AsciiFamily, AsciiValue, Cfi, Country, Currency, FixedAscii, Isin, Mic, MsgDirection,
-    Side, State, TimeInForce,
+pub(crate) use arrow::{arrow_storage, describes_storage, is_text_storage, needs_extension};
+pub use code::{
+    Cfi, Code, CodeValue, Country, Currency, Isin, Mic, MsgDirection, Side, State, TimeInForce,
 };
 // The padding is the payload a declared width stores, which a value answers
 // with or without an Arrow array around it.
 pub(crate) use codes::ascii_padded;
 pub(crate) use codes::{
-    ASCII_EXTENSION_NAME, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH,
-    MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, ascii_bytes, ascii_free_text,
-    ascii_text, code_cell_text, code_extension_name, code_for_extension,
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH,
+    STATE_WIDTH, TIMEINFORCE_WIDTH, ascii_bytes, ascii_text, code_cell_text, code_extension_name,
+    code_for_extension,
 };
 #[cfg(feature = "arrow")]
 pub(crate) use codes::{code_refusal, code_text};
-pub use dictionary::AsciiEnum;
-pub(crate) use dtypes::redirect;
+pub use dictionary::StringEnum;
 pub use fields::*;
 pub use parameters::{STRING_EXTENSION_NAME, StringParameters};
-pub use scalars::{FixedUtf8, LargeUtf8, LargeUtf8View, Text, TextValue, Utf8, Utf8View};
-pub(crate) use scalars::{TextRepresentation, text_from_value};
+pub(crate) use scalars::str_from_value;
+pub use scalars::{INLINE_CAPACITY, Str};
 
 /// One of the five ways this crate lays a string out.
 ///
@@ -84,11 +82,12 @@ pub(crate) use scalars::{TextRepresentation, text_from_value};
 /// It says nothing about what the bytes mean; that is the charset beside it in
 /// [`StringParameters`].
 ///
-/// Each layout has two spellings, and they are one datatype: the `string`
-/// name is the general one, and the `utf8` name is what the same layout is
-/// called when its charset is UTF-8, which is the default. So `large_string`
-/// and `large_utf8` name the same layout, and a value renders under whichever
-/// name its charset earns.
+/// Each layout has three spellings, and they are one datatype: the `string`
+/// name is the general one, the `utf8` name is what the same layout is called
+/// when its charset is UTF-8, which is the default, and the `ascii` name is
+/// what it is called when its charset is US-ASCII. So `large_string`,
+/// `large_utf8` and `large_ascii` name one layout, and a value renders under
+/// whichever name its charset earns.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
 pub enum StringLayout {
@@ -116,9 +115,8 @@ pub enum StringLayout {
 /// Strip the padding a fixed-width storage writes.
 ///
 /// Trailing NUL is that padding wherever this crate lays a value out in a
-/// slot wider than itself - a [`StringLayout::FixedString`] cell, an
-/// [`crate::DataType::FixedAscii`] one, a registered code - so the rule lives
-/// here once rather than at each of those three readers.
+/// slot wider than itself - a [`StringLayout::FixedString`] cell or a
+/// registered code - so the rule lives here once rather than at each reader.
 pub(crate) fn trim_padding(bytes: &[u8]) -> &[u8] {
     let end = bytes
         .iter()
@@ -161,17 +159,43 @@ impl StringLayout {
         }
     }
 
-    /// Resolve a layout from either of its two spellings.
+    /// The canonical name of this layout when its charset is US-ASCII.
+    #[must_use]
+    pub const fn as_ascii_str(self) -> &'static str {
+        match self {
+            Self::String => "ascii",
+            Self::FixedString => "fixed_ascii",
+            Self::StringView => "ascii_view",
+            Self::LargeString => "large_ascii",
+            Self::LargeStringView => "large_ascii_view",
+        }
+    }
+
+    /// Resolve a layout from its general spelling or its UTF-8 one.
     ///
     /// Case, underscores, hyphens and spaces are all ignored, so
     /// `LARGE_STRING`, `large-string` and `largestring` are one layout, and
-    /// so are `large_utf8` and `largeutf8`.
+    /// so are `large_utf8` and `largeutf8` - UTF-8 is the charset a layout
+    /// has when nothing is declared, so that spelling names no more than the
+    /// layout. The US-ASCII spellings do name more, and a layout alone would
+    /// drop it, so they are refused here and read only where the charset
+    /// travels with them: [`crate::DataType::from_str`].
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnknownDataType`] for a name no layout answers to.
+    /// Returns [`Error::UnknownDataType`] for a name no layout answers to,
+    /// and for a US-ASCII spelling, naming the charset it would lose.
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(value: &str) -> Result<Self> {
+        if let Some(layout) = Self::ALL
+            .into_iter()
+            .find(|layout| super::parser::folds_equal(value, layout.as_ascii_str()))
+        {
+            return Err(Error::UnknownDataType(format_smolstr!(
+                "{value} names the {} layout in the us-ascii charset, not a layout alone",
+                layout.as_str()
+            )));
+        }
         Self::ALL
             .into_iter()
             .find(|layout| {
@@ -190,6 +214,20 @@ impl StringLayout {
             Self::StringView => DataTypeId::StringView,
             Self::LargeString => DataTypeId::LargeString,
             Self::LargeStringView => DataTypeId::LargeStringView,
+        }
+    }
+
+    /// The layout one identifier names, `None` for an identifier that is not
+    /// a string's.
+    #[must_use]
+    pub const fn from_id(id: DataTypeId) -> Option<Self> {
+        match id {
+            DataTypeId::String => Some(Self::String),
+            DataTypeId::FixedString => Some(Self::FixedString),
+            DataTypeId::StringView => Some(Self::StringView),
+            DataTypeId::LargeString => Some(Self::LargeString),
+            DataTypeId::LargeStringView => Some(Self::LargeStringView),
+            _ => None,
         }
     }
 
@@ -226,7 +264,7 @@ impl Serialize for StringLayout {
 
 impl<'de> Deserialize<'de> for StringLayout {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        let value = <&str>::deserialize(deserializer)?;
-        Self::from_str(value).map_err(serde::de::Error::custom)
+        let value = <std::borrow::Cow<'_, str>>::deserialize(deserializer)?;
+        Self::from_str(&value).map_err(serde::de::Error::custom)
     }
 }

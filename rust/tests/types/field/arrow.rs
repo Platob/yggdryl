@@ -6,6 +6,7 @@ use arrow_schema::{
     ffi::{FFI_ArrowSchema, Flags},
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
+use yggdryl::types::{BytesLayout, BytesParameters};
 use yggdryl::{ArrowCastOptions, DataType, Field, Nullability, TimeUnit, Timezone};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
@@ -60,7 +61,7 @@ fn arrow_import_rebuilds_noncanonical_http_metadata_for_every_ownership_path() {
 fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
     let mut encoded = Field::from_parts(
         "codes",
-        DataType::dictionary(DataType::UInt16, DataType::Utf8).unwrap(),
+        DataType::dictionary(DataType::UInt16, DataType::utf8()).unwrap(),
         true,
         [("ARROW:extension:name", "catalog-code")],
     )
@@ -69,7 +70,7 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
 
     let entries = Field::new(
         "entries",
-        DataType::from_fields([Field::new("key", DataType::Utf8, false), encoded]).unwrap(),
+        DataType::from_fields([Field::new("key", DataType::utf8(), false), encoded]).unwrap(),
         false,
     );
     let map = DataType::map(entries, true).unwrap();
@@ -106,7 +107,7 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
 
 #[test]
 fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state() {
-    let map = DataType::map_of(DataType::Utf8, DataType::Int64, true).unwrap();
+    let map = DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap();
     let dtype = DataType::from_fields([Field::new("lookup", map, true)]).unwrap();
 
     let schema = dtype.into_arrow_ffi().unwrap();
@@ -114,7 +115,12 @@ fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state(
     assert_flag(map, Flags::NULLABLE);
     assert_flag(map, Flags::MAP_KEYS_SORTED);
 
-    assert!(DataType::FixedSizeBinary(-1).into_arrow_ffi().is_err());
+    // A fixed layout built by hand with no width is what `validate` catches.
+    assert!(
+        DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary))
+            .into_arrow_ffi()
+            .is_err()
+    );
     assert!(
         Field::new(
             "bad",
@@ -178,20 +184,25 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
 }
 
 #[test]
-fn ascii_ffi_schemas_carry_the_extension_identity() {
-    let currency =
-        Field::from_parts("ccy", DataType::FixedAscii(4), false, [("owner", "core")]).unwrap();
+fn fixed_ascii_ffi_schemas_carry_the_string_document() {
+    let currency = Field::from_parts(
+        "ccy",
+        DataType::fixed_ascii(4).unwrap(),
+        false,
+        [("owner", "core")],
+    )
+    .unwrap();
 
     let schema = currency.clone().into_arrow_ffi().unwrap();
     assert_eq!(schema.format(), "w:4");
     let metadata = schema.metadata().unwrap();
     assert_eq!(
         metadata.get("ARROW:extension:name"),
-        Some(&"yggdryl.ascii".to_owned())
+        Some(&"yggdryl.string".to_owned())
     );
     assert_eq!(
         metadata.get("ARROW:extension:metadata"),
-        Some(&String::new())
+        Some(&r#"{"layout":"fixed_string","charset":"us-ascii","fixed":4}"#.to_owned())
     );
     assert_eq!(metadata.get("owner"), Some(&"core".to_owned()));
 
@@ -200,21 +211,21 @@ fn ascii_ffi_schemas_carry_the_extension_identity() {
     assert_eq!(imported, currency);
 
     // A bare datatype carries the identity too.
-    let schema = DataType::FixedAscii(16).into_arrow_ffi().unwrap();
+    let schema = DataType::fixed_ascii(16).unwrap().into_arrow_ffi().unwrap();
     assert_eq!(schema.format(), "w:16");
     assert_eq!(
         schema.metadata().unwrap().get("ARROW:extension:name"),
-        Some(&"yggdryl.ascii".to_owned())
+        Some(&"yggdryl.string".to_owned())
     );
     let imported = Field::from_arrow(&ArrowField::try_from(&schema).unwrap()).unwrap();
-    assert_eq!(imported.dtype(), &DataType::FixedAscii(16));
+    assert_eq!(imported.dtype(), &DataType::fixed_ascii(16).unwrap());
 }
 
 #[test]
 fn arrow_exchange_sidecar_restores_nested_dictionary_ids_after_a_c_round_trip() {
     let mut region = Field::new(
         "region",
-        DataType::dictionary(DataType::Int16, DataType::Utf8).unwrap(),
+        DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap(),
         true,
     );
     region.set_dictionary_options(-7, true).unwrap();
@@ -228,7 +239,7 @@ fn arrow_exchange_sidecar_restores_nested_dictionary_ids_after_a_c_round_trip() 
 
     let mut item = Field::new(
         "item",
-        DataType::dictionary(DataType::Int32, DataType::LargeUtf8).unwrap(),
+        DataType::dictionary(DataType::Int32, DataType::large_utf8()).unwrap(),
         true,
     );
     item.set_dictionary_options(i64::MIN, true).unwrap();
@@ -704,7 +715,7 @@ fn a_strict_apply_refuses_an_ordinary_required_column_the_source_lacks() {
         "row",
         DataType::from_fields([
             DataType::Date32.required_field("event"),
-            DataType::Utf8.required_field("venue"),
+            DataType::utf8().required_field("venue"),
         ])
         .unwrap(),
         false,

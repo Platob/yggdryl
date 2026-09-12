@@ -28,10 +28,10 @@ pub enum DataTypeKind {
     Decimal,
     /// Dates, times, timestamps, durations, and calendar intervals.
     Temporal,
-    /// UTF-8 text in variable, large, and view layouts.
+    /// Strings in every layout and charset, and the version and URL values.
     Text,
-    /// Validated ASCII text and registered fixed-width codes.
-    Ascii,
+    /// The registered fixed-width codes: identities with a US-ASCII storage.
+    Code,
     /// Byte strings in variable, fixed, large, and view layouts.
     Bytes,
     /// Lists, structs, unions, maps, wrappers, and self-describing values.
@@ -63,7 +63,7 @@ impl DataTypeKind {
         Self::Decimal,
         Self::Temporal,
         Self::Text,
-        Self::Ascii,
+        Self::Code,
         Self::Bytes,
         Self::Nested,
         Self::Geospatial,
@@ -91,7 +91,7 @@ impl DataTypeKind {
             Self::Decimal => "decimal",
             Self::Temporal => "temporal",
             Self::Text => "text",
-            Self::Ascii => "ascii",
+            Self::Code => "code",
             Self::Bytes => "bytes",
             Self::Nested => "nested",
             Self::Geospatial => "geospatial",
@@ -114,7 +114,7 @@ impl DataTypeKind {
 
     /// Return whether the category stores an opaque or textual byte payload.
     pub const fn is_bytes(self) -> bool {
-        matches!(self, Self::Bytes | Self::Text | Self::Ascii)
+        matches!(self, Self::Bytes | Self::Text | Self::Code)
     }
 
     /// Return whether values of the category have a total order.

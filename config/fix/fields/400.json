@@ -14,7 +14,7 @@
   {
     "name": "additionaltermbondsecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -26,7 +26,7 @@
   {
     "name": "additionaltermbondsecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -39,7 +39,7 @@
   {
     "name": "additionaltermbonddesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -87,7 +87,7 @@
   {
     "name": "additionaltermbondissuer",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -123,7 +123,7 @@
   {
     "name": "additionaltermbondseniority",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -210,7 +210,7 @@
   {
     "name": "additionaltermbondcouponfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -322,7 +322,7 @@
   {
     "name": "cashsettlbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -395,7 +395,7 @@
   {
     "name": "cashsettldealer",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -480,13 +480,13 @@
   {
     "name": "cashsettltermxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "CashSettlTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"cashsettltermxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"cashsettltermxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "40039"
     }
   },
@@ -505,7 +505,7 @@
   {
     "name": "contractualdefinition",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -529,7 +529,7 @@
   {
     "name": "contractualmatrixsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -554,7 +554,7 @@
   {
     "name": "contractualmatrixterm",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -578,7 +578,7 @@
   {
     "name": "financingtermsupplementdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -628,7 +628,7 @@
   {
     "name": "streamdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -690,7 +690,7 @@
   {
     "name": "streamtext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -728,7 +728,7 @@
   {
     "name": "underlyingstreameffectivedatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -764,7 +764,7 @@
   {
     "name": "underlyingstreameffectivedateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -829,7 +829,7 @@
   {
     "name": "streamterminationdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -865,7 +865,7 @@
   {
     "name": "streamterminationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -917,7 +917,7 @@
   {
     "name": "streamcalculationperiodbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -955,7 +955,7 @@
   {
     "name": "streamfirstperiodstartdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1031,7 +1031,7 @@
   {
     "name": "streamcalculationfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1044,7 +1044,7 @@
   {
     "name": "streamcalculationrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1170,7 +1170,7 @@
   {
     "name": "provisiondatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1207,7 +1207,7 @@
   {
     "name": "provisiondatetenorunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

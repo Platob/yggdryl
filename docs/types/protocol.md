@@ -7,6 +7,7 @@ Field metadata the library reads: reserved keys, `scheme:name` properties behind
 | Key | Datatype and rule |
 | --- | --- |
 | `PARQUET:field_id` | i32, canonicalized on write |
+| `field:enum` | the `StringEnum` document ([Codes](codes.md)); accepted on a fixed US-ASCII string of at most sixteen bytes or a registered code, refused by name elsewhere |
 | `field:init` | boolean, absent by default; `false` = declared but refused by constructors |
 | `field:partition` | boolean; `true` on partition columns, absent elsewhere |
 | `location` | [`Url`](../uri/url-urn.md), a straight key |
@@ -161,7 +162,7 @@ Typed accessors parse and canonicalize both ways.
     ```rust
     use yggdryl::{DataType, Field, MimeType, PythonKind, PythonMetadata, Scheme};
 
-    let mut field = Field::new("payload", DataType::Binary, false);
+    let mut field = Field::new("payload", DataType::binary(), false);
 
     field.set_parquet_field_id(17);
     field.set_init(false);
@@ -400,7 +401,7 @@ The reserved `field:partition` key marks partition columns on the fields themsel
 
     let schema = DataType::from_fields([
         DataType::Int32.required_field("year"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
         DataType::Int64.required_field("price"),
     ])?
     .required_field("row")

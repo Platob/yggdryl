@@ -11,6 +11,7 @@ fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
 
 mod widths {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
+    use crate::types::{BytesLayout, BytesParameters};
     use crate::{DataTypeId, I256};
 
     #[test]
@@ -70,13 +71,39 @@ mod widths {
     fn bytes_survive_every_binary_layout() {
         let payload = Scalar::from(b"\x00\xffAAPL".as_slice());
         for column in [
-            DataType::Binary,
-            DataType::LargeBinary,
-            DataType::BinaryView,
-            DataType::FixedSizeBinary(6),
+            DataType::binary(),
+            DataType::large_binary(),
+            DataType::binary_view(),
+            DataType::fixed_size_binary(6).unwrap(),
         ] {
-            assert_eq!(round_trip(column.clone(), payload.clone()), payload);
+            let decoded = round_trip(column.clone(), payload.clone());
+            assert_eq!(decoded, payload);
+            // A cell answers the column's layout and, on the fixed one, its
+            // width; a short cell is held inline.
+            assert_eq!(decoded.dtype().unwrap(), column);
+            let Scalar::Bytes(bytes) = decoded else {
+                panic!("bytes read back as {decoded:?}");
+            };
+            assert!(bytes.is_inline());
         }
+    }
+
+    #[test]
+    fn a_maximum_is_the_columns_rule_and_never_the_cells() {
+        let column = DataType::bytes(
+            BytesParameters::new(BytesLayout::Binary)
+                .try_with_bound(8)
+                .unwrap(),
+        )
+        .unwrap();
+        let decoded = round_trip(column, Scalar::from(b"AAPL".as_slice()));
+        assert_eq!(decoded.dtype().unwrap(), DataType::binary());
+    }
+
+    #[test]
+    fn a_fixed_width_takes_exactly_its_width() {
+        let field = Field::new("key", DataType::fixed_size_binary(6).unwrap(), true);
+        assert!(scalar_array(&field, &Scalar::from(b"AAPL".as_slice())).is_err());
     }
 
     #[test]
@@ -97,42 +124,42 @@ mod widths {
                 Scalar::from(125),
                 DataTypeId::Decimal128,
             ),
-            (DataType::Utf8, Scalar::from("value"), DataTypeId::Utf8),
+            (DataType::utf8(), Scalar::from("value"), DataTypeId::String),
             (
-                DataType::LargeUtf8,
+                DataType::large_utf8(),
                 Scalar::from("value"),
-                DataTypeId::LargeUtf8,
+                DataTypeId::LargeString,
             ),
             (
-                DataType::Utf8View,
+                DataType::utf8_view(),
                 Scalar::from("value"),
-                DataTypeId::Utf8View,
+                DataTypeId::StringView,
             ),
             (
-                DataType::Binary,
+                DataType::binary(),
                 Scalar::from(b"value".as_slice()),
                 DataTypeId::Binary,
             ),
             (
-                DataType::FixedSizeBinary(5),
+                DataType::fixed_size_binary(5).unwrap(),
                 Scalar::from(b"value".as_slice()),
                 DataTypeId::FixedSizeBinary,
             ),
             (
-                DataType::LargeBinary,
+                DataType::large_binary(),
                 Scalar::from(b"value".as_slice()),
                 DataTypeId::LargeBinary,
             ),
             (
-                DataType::BinaryView,
+                DataType::binary_view(),
                 Scalar::from(b"value".as_slice()),
                 DataTypeId::BinaryView,
             ),
-            (DataType::Ascii, Scalar::from("FIX"), DataTypeId::Ascii),
+            (DataType::ascii(), Scalar::from("FIX"), DataTypeId::String),
             (
-                DataType::FixedAscii(4),
+                DataType::fixed_ascii(4).unwrap(),
                 Scalar::from("FIX"),
-                DataTypeId::FixedAscii,
+                DataTypeId::FixedString,
             ),
             (DataType::Country, Scalar::from("US"), DataTypeId::Country),
             (
@@ -172,7 +199,7 @@ mod widths {
     fn a_value_that_is_not_bytes_is_reported_and_not_silently_dropped() {
         // Reading through `as_bytes` alone turned every other kind into a
         // null, so a value written into a binary column simply vanished.
-        let field = Field::new("payload", DataType::Binary, true);
+        let field = Field::new("payload", DataType::binary(), true);
 
         // A string spells a payload, and the column stores those bytes - the
         // same reading a text column takes into a binary one.
@@ -208,7 +235,7 @@ mod bulk {
     fn named_records_build_one_schema_ordered_record_batch() {
         let root = DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("venue"),
+            DataType::utf8().nullable_field("venue"),
         ])
         .unwrap()
         .required_field("row");

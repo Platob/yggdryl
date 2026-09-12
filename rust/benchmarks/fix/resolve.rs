@@ -33,7 +33,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .is_none()
     );
     let mut alternate = registry.clone();
-    let mut field = DataType::Utf8.nullable_field("AlternateTagBenchmark");
+    let mut field = DataType::utf8().nullable_field("AlternateTagBenchmark");
     field.as_fix_mut().set_tag(9_000).unwrap();
     field.as_fix_mut().set_tags(&[9_001]).unwrap();
     alternate.insert(field).unwrap();
@@ -231,7 +231,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .expect("the generated dictionary has no conflict");
     for index in (0..LARGE_FIELDS).step_by(50) {
         let item =
-            yggdryl::DataType::from_fields([yggdryl::DataType::Utf8.nullable_field("Member")])
+            yggdryl::DataType::from_fields([yggdryl::DataType::utf8().nullable_field("Member")])
                 .unwrap()
                 .required_field("item");
         let mut field = yggdryl::DataType::list(item).nullable_field(format!("Group{index:05}"));
@@ -269,7 +269,7 @@ fn vocabulary(count: usize) -> Field {
                 .with_description(format!("Member number {index} (M{index:04})"))
         })
         .collect();
-    let mut field = DataType::Utf8.nullable_field("Vocabulary");
+    let mut field = DataType::utf8().nullable_field("Vocabulary");
     field.as_fix_mut().set_tag(9995).expect("a static tag");
     field
         .as_fix_mut()
@@ -345,7 +345,7 @@ fn codes(criterion: &mut Criterion) {
         .collect();
     group.bench_function("300/set_codes", |bencher| {
         bencher.iter_batched_ref(
-            || DataType::Utf8.nullable_field("Vocabulary"),
+            || DataType::utf8().nullable_field("Vocabulary"),
             |field| {
                 field
                     .as_fix_mut()
@@ -371,7 +371,7 @@ fn version(text: &str) -> Version {
 /// generated field claim the same alias.
 fn dated(name: &str, tag: i32) -> Field {
     let was = format!("{name}Was");
-    let mut field = DataType::Utf8.nullable_field(name);
+    let mut field = DataType::utf8().nullable_field(name);
     field.as_fix_mut().set_tag(tag).expect("a static tag");
     field
         .as_fix_mut()

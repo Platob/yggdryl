@@ -40,14 +40,14 @@ fn group(
 fn registry(scoped: bool) -> Arc<FixRegistry> {
     let standard = FixBranch::STANDARD;
     let mut registry = FixRegistry::from_fields([
-        scalar("MsgType", 35, DataType::Utf8, &standard),
-        scalar("Symbol", 55, DataType::Utf8, &standard),
-        scalar("CheckSum", 10, DataType::Utf8, &standard),
+        scalar("MsgType", 35, DataType::utf8(), &standard),
+        scalar("Symbol", 55, DataType::utf8(), &standard),
+        scalar("CheckSum", 10, DataType::utf8(), &standard),
     ])
     .unwrap();
     for (branch, name, dtype) in [
         ("alpha", "Alpha", DataType::Int32),
-        ("beta", "Beta", DataType::Utf8),
+        ("beta", "Beta", DataType::utf8()),
     ] {
         let branch = FixBranch::from_str(branch).unwrap();
         let counter = scalar(&format!("No{name}Rows"), 6000, DataType::Int32, &branch);
@@ -92,7 +92,7 @@ fn numeric_scalars_and_groups_follow_the_pinned_branch() {
             (
                 "beta",
                 "Beta",
-                DataType::Utf8,
+                DataType::utf8(),
                 Scalar::from("42"),
                 Scalar::from("7"),
             ),

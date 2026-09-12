@@ -18,7 +18,7 @@ use crate::{
     exact_i32,
     fix::{branch_from_js, id_parts_from_js},
     napi_error, napi_type_error, ordering_value,
-    types::datatype::{JsAsciiEnum, JsDataType, dtype_from_input},
+    types::datatype::{JsDataType, JsStringEnum, dtype_from_input},
     types::value::arrow_scalar_to_ipc,
     types::value::field_value_to_js,
     uri::{JsUri, JsUrl, JsUrn, url_from_input},
@@ -536,16 +536,16 @@ impl JsField {
         self.inner.parquet_field_id().map_err(napi_error)
     }
 
-    /// The enum this field's ASCII values name, `null` when it declares none.
+    /// The enum this field's string values name, `null` when it declares none.
     ///
     /// The declaration is one `field:enum` document, so it reaches Arrow, a
     /// file, and another runtime as ordinary field metadata and comes back the
     /// enum that was written.
     #[napi(getter)]
-    pub fn ascii_enum(&self) -> Result<Option<JsAsciiEnum>> {
+    pub fn string_enum(&self) -> Result<Option<JsStringEnum>> {
         self.inner
-            .ascii_enum()
-            .map(|value| value.map(JsAsciiEnum::from_core))
+            .string_enum()
+            .map(|value| value.map(JsStringEnum::from_core))
             .map_err(napi_error)
     }
 
@@ -816,20 +816,24 @@ impl JsField {
         self.inner.remove_parquet_field_id().map_err(napi_error)
     }
 
-    /// Declare the enum this field's ASCII values name.
+    /// Declare the enum this field's string values name.
+    ///
+    /// Accepted on a fixed US-ASCII string of at most sixteen bytes or a
+    /// code, whose values pack into the members' integers, and refused by
+    /// name on every other datatype.
     #[napi]
-    pub fn set_ascii_enum(&mut self, value: &JsAsciiEnum) -> Result<()> {
+    pub fn set_string_enum(&mut self, value: &JsStringEnum) -> Result<()> {
         self.inner
-            .set_ascii_enum(value.as_core())
+            .set_string_enum(value.as_core())
             .map_err(napi_error)
     }
 
     /// Remove the declaration and return the enum it held.
     #[napi]
-    pub fn remove_ascii_enum(&mut self) -> Result<Option<JsAsciiEnum>> {
+    pub fn remove_string_enum(&mut self) -> Result<Option<JsStringEnum>> {
         self.inner
-            .remove_ascii_enum()
-            .map(|value| value.map(JsAsciiEnum::from_core))
+            .remove_string_enum()
+            .map(|value| value.map(JsStringEnum::from_core))
             .map_err(napi_error)
     }
 

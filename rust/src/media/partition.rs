@@ -29,6 +29,7 @@ use crate::expression::{Expression, Function};
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::types::cast::{ArrowCastOptions, cast_field_array};
+use crate::types::string::is_text_storage;
 use crate::{ArrowCast, DataType, Error, Field, PartitionField, PartitionFieldMut, Result, Url};
 use crate::{IOBase, IOMedia, Listing};
 
@@ -77,6 +78,14 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
     if value.is_null() {
         return Ok(smol_str::SmolStr::new_static(NULL_PARTITION));
     }
+    // A string's text is the directory name whatever its column lays out - a
+    // fixed width or a charset other than UTF-8 rides binary storage, which
+    // the formatter would spell as hex - and a code is the text it is.
+    match value {
+        crate::Scalar::String(text) => return Ok(text.storage().clone()),
+        crate::Scalar::Code(code) => return Ok(code.storage().clone()),
+        _ => {}
+    }
     // The value is non-null here, so the typed pairing's own projection is the
     // one-row array the formatter reads. A leaf borrows the field the crate
     // keeps for its datatype; a value with no shared field is paired under
@@ -103,7 +112,7 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
 /// Build a constant column holding `value` for every row of a batch.
 ///
 /// The directory name is text, and a declared column turns it into its own
-/// type through the field cast: an ASCII width pads it, a date parses it.
+/// type through the field cast: a fixed string pads it, a date parses it.
 /// `null` is both the spelling for absence and a perfectly good four-letter
 /// value, which a path cannot settle by itself, so the declared nullability
 /// decides: a nullable column reads what it cannot convert as absent, a
@@ -879,19 +888,21 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
                 ),
             });
         };
-        // An ASCII width, and a registered code over one, is stored as fixed
-        // bytes, which the formatter would spell as hex; the directory
-        // carries the trimmed text the value is. `ascii_width` is the one
-        // oracle for both families, so a `currency` column spells `ccy=USD`
-        // and the read casts that text back through the code's own path.
+        // A fixed string, a string in a charset other than UTF-8, and a
+        // registered code ride binary storage, which the formatter would
+        // spell as hex; the directory carries the trimmed text the value is,
+        // so a `currency` column spells `ccy=USD` and the read casts that
+        // text back through the code's own path.
         let schema = batch.schema();
-        let column = if Field::from_arrow(schema.field(index))?
-            .dtype()
-            .ascii_width()
-            .is_some()
-        {
+        let field = Field::from_arrow(schema.field(index))?;
+        let dtype = field.dtype();
+        let stored_as_bytes = dtype.is_code()
+            || dtype
+                .string_parameters()
+                .is_some_and(|parameters| parameters.is_fixed() || !is_text_storage(parameters));
+        let column = if stored_as_bytes {
             cast_field_array(
-                &DataType::Utf8.nullable_field(column.as_str()),
+                &DataType::utf8().nullable_field(column.as_str()),
                 Some(schema.field(index).metadata()),
                 Arc::clone(batch.column(index)),
                 ArrowCastOptions::new().with_safe(false),

@@ -709,28 +709,34 @@ test('rows read back as records, plain or through a runtime class', (t) => {
 test('a cast failure inside a stream reports the failure, not the envelope', () => {
   // A reader can only carry a core failure boxed inside an ArrowError, and
   // that envelope is transport: draining one here must hand back the failure
-  // the cast raised, not `External error: <the real one>`.
+  // the cast raised, not `External error: <the real one>`. A string ingest
+  // nulls a failing cell under the safe default, so the strict cast is the
+  // one that raises.
   const target = fields.struct('row', [fields.ascii('ccy', { nullable: false })], {
     nullable: false,
   })
   const source = new arrow.Table({
     ccy: arrow.vectorFromArray(['US\u00c9'], new arrow.Utf8()),
   })
+  const strict = { safe: false }
 
   for (const drain of [
-    () => target.castArrow(source),
-    () => target.castArrowReader(source).intoIpc(),
-    () => [...target.castArrowReader(source)],
+    () => target.castArrow(source, strict),
+    () => target.castArrowReader(source, strict).intoIpc(),
+    () => [...target.castArrowReader(source, strict)],
   ]) {
     assert.throws(drain, (error) => {
       assert.ok(
         !/External error/.test(error.message),
         `the transport envelope reached the caller: ${error.message}`,
       )
-      assert.match(error.message, /expected ASCII text, got a non-ASCII byte/)
+      assert.match(error.message, /expected US-ASCII text, got a non-ASCII byte/)
       return true
     })
   }
+  // Under the safe default the failing cell is null, which the non-null
+  // column fills with its default rather than raising.
+  assert.deepEqual([...target.castArrow(source).getChild('ccy')], [''])
 })
 
 test('a field casts whatever Arrow JS holds, batch by batch', () => {
@@ -974,7 +980,8 @@ test('an ASCII column pads on the way in and trims on the way out', () => {
     new arrow.Table({ ccy: arrow.vectorFromArray(values, new arrow.Utf8()) })
 
   handle.overwriteArrowTable(codes(['USD', 'EUR']), options)
-  // The identity survives the IPC stream, so the stored field is the ASCII width.
+  // The declaration survives the IPC stream, so the stored field is the
+  // fixed US-ASCII string at its width.
   assert.ok(handle.readArrowField().equals(declared))
   // Arrow JS sees the storage: the padded fixed width. Every string rendering
   // trims, so reading under a declared text column is the core cast that
@@ -989,7 +996,7 @@ test('an ASCII column pads on the way in and trims on the way out', () => {
 
   assert.throws(
     () => handle.overwriteArrowTable(codes(['EURO!']), options),
-    /ASCII text of at most 4 bytes/,
+    /expected at most 4 bytes of us-ascii, got 5/,
   )
 })
 
@@ -1003,14 +1010,12 @@ test('a variable ASCII column stores the bytes it is given', () => {
 
   handle.overwriteArrowTable(notes(['a', 'much longer note']), options)
   assert.ok(handle.readArrowField().equals(declared))
-  // No width, so no padding: the stored bytes are the value's own, and Arrow
-  // JS sees the variable binary the extension sits over.
+  // No width, so no padding: the stored bytes are the value's own, and since
+  // US-ASCII bytes are UTF-8, Arrow JS sees the text storage the `yggdryl.string`
+  // document sits over.
   const stored = handle.readArrowReader().intoTable().getChild('note')
-  assert.equal(stored.type.toString(), 'Binary')
-  assert.deepEqual([...stored].map((value) => Buffer.from(value).toString()), [
-    'a',
-    'much longer note',
-  ])
+  assert.equal(stored.type.toString(), 'Utf8')
+  assert.deepEqual([...stored], ['a', 'much longer note'])
   const text = fields.struct('row', [fields.utf8('note')], { nullable: false })
   assert.deepEqual(
     [...handle.readRecords(handle.recordOptions().withField(text))].map((row) => row.note),

@@ -1,62 +1,100 @@
-//! The one door into the string family, and the one way back out.
-
-use smol_str::format_smolstr;
+//! The one door into the string family, and the questions every string answers.
 
 use super::{StringLayout, StringParameters};
-use crate::{Charset, DataType, Error, Result};
+use crate::{Charset, DataType, Result};
 
 impl DataType {
     /// The string datatype these parameters name.
     ///
-    /// This is the family's one constructor, and it *redirects*: a string
-    /// that another datatype already spells comes back as that datatype
-    /// rather than as a second spelling of it.
-    ///
-    /// | parameters | datatype |
-    /// | --- | --- |
-    /// | unbounded UTF-8, `string` | [`DataType::Utf8`] |
-    /// | unbounded UTF-8, `large_string` | [`DataType::LargeUtf8`] |
-    /// | unbounded UTF-8, `string_view` | [`DataType::Utf8View`] |
-    /// | unbounded US-ASCII, `string` | [`DataType::Ascii`] |
-    /// | US-ASCII, `fixed_string(n)` | [`DataType::FixedAscii`] |
-    /// | anything else | [`DataType::String`] |
+    /// This is the family's one constructor. Every string is
+    /// [`DataType::String`]; what differs is what it declares, and the
+    /// parameters say all of it - a layout, a charset, and a bound.
     ///
     /// ```
     /// use yggdryl::types::{StringLayout, StringParameters};
     /// use yggdryl::{Charset, DataType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// // Plain UTF-8 is the datatype it already was.
+    /// // Plain UTF-8 renders under Arrow's own name.
     /// let plain = StringParameters::utf8(StringLayout::LargeString);
-    /// assert_eq!(DataType::string(plain)?, DataType::LargeUtf8);
+    /// assert_eq!(DataType::string(plain)?, DataType::large_utf8());
+    /// assert_eq!(DataType::large_utf8().to_string(), "large_utf8");
     ///
-    /// // A charset or a bound is what makes it its own.
+    /// // A charset or a bound is what a string declares.
     /// let bounded = StringParameters::utf8(StringLayout::String).try_with_bound(32)?;
     /// assert_eq!(DataType::string(bounded)?.to_string(), "utf8(32)");
     /// assert_eq!(DataType::string(Charset::Cp1252)?.to_string(), "string(windows-1252)");
+    /// assert_eq!(DataType::fixed_ascii(4)?.to_string(), "fixed_ascii(4)");
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidDataType`] for a fixed layout with no width,
-    /// and for US-ASCII in a layout the [`DataType::Ascii`] family has no
-    /// shape for - a view or a maximum - because US-ASCII text is that
-    /// family's, and one fact has one owner.
+    /// Returns [`crate::Error::InvalidDataType`] for a fixed layout with no width:
+    /// the width is what makes it fixed.
     pub fn string(parameters: impl Into<StringParameters>) -> Result<Self> {
         let parameters = parameters.into();
         parameters.validate()?;
-        Ok(redirect(parameters)?.unwrap_or(Self::String(parameters)))
+        Ok(Self::String(parameters))
     }
 
-    /// The parameters every string datatype declares, `None` for the rest.
+    /// Unbounded UTF-8 with 32-bit offsets - Arrow's `Utf8`.
+    #[must_use]
+    pub const fn utf8() -> Self {
+        Self::String(StringParameters::utf8(StringLayout::String))
+    }
+
+    /// Unbounded UTF-8 with 64-bit offsets - Arrow's `LargeUtf8`.
+    #[must_use]
+    pub const fn large_utf8() -> Self {
+        Self::String(StringParameters::utf8(StringLayout::LargeString))
+    }
+
+    /// Unbounded UTF-8 in the view layout - Arrow's `Utf8View`.
+    #[must_use]
+    pub const fn utf8_view() -> Self {
+        Self::String(StringParameters::utf8(StringLayout::StringView))
+    }
+
+    /// Unbounded US-ASCII with 32-bit offsets.
+    #[must_use]
+    pub const fn ascii() -> Self {
+        Self::String(StringParameters::ascii(StringLayout::String))
+    }
+
+    /// UTF-8 of exactly `width` stored bytes, padded with trailing NUL.
     ///
-    /// This is where the family is one family: [`DataType::Utf8`] and its two
-    /// siblings answer their layout in UTF-8, the two ASCII datatypes answer
-    /// theirs in US-ASCII, and [`DataType::String`] answers what it carries.
-    /// So a reader asking which charset a column is in, or how long its
-    /// values may be, asks one question of every string column there is.
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::InvalidDataType`] for a width of zero.
+    pub fn fixed_utf8(width: u32) -> Result<Self> {
+        Self::string(StringParameters::utf8(StringLayout::FixedString).try_with_bound(width)?)
+    }
+
+    /// US-ASCII of exactly `width` stored bytes, padded with trailing NUL.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(DataType::fixed_ascii(4)?.to_string(), "fixed_ascii(4)");
+    /// assert_eq!(DataType::fixed_ascii(4)?.fixed_byte_width(), Some(4));
+    /// assert_eq!(DataType::ascii().to_string(), "ascii");
+    /// assert_eq!(DataType::ascii().fixed_byte_width(), None);
+    /// assert!(DataType::fixed_ascii(0).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::InvalidDataType`] for a width of zero.
+    pub fn fixed_ascii(width: u32) -> Result<Self> {
+        Self::string(StringParameters::ascii(StringLayout::FixedString).try_with_bound(width)?)
+    }
+
+    /// The parameters a string datatype declares, `None` for every other.
     ///
     /// The registered codes are deliberately not here. A currency is three
     /// ASCII bytes the way a UUID is sixteen binary ones - an identity with a
@@ -68,11 +106,11 @@ impl DataType {
     /// use yggdryl::{Charset, DataType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let utf8 = DataType::Utf8.string_parameters().expect("a string datatype");
+    /// let utf8 = DataType::utf8().string_parameters().expect("a string datatype");
     /// assert_eq!(utf8.layout(), StringLayout::String);
     /// assert_eq!(utf8.charset(), Charset::Utf8);
     ///
-    /// let ascii = DataType::ascii(3)?.string_parameters().expect("a string datatype");
+    /// let ascii = DataType::fixed_ascii(3)?.string_parameters().expect("a string datatype");
     /// assert_eq!(ascii.charset(), Charset::Ascii);
     /// assert_eq!(ascii.fixed(), Some(3));
     ///
@@ -81,26 +119,17 @@ impl DataType {
     /// # }
     /// ```
     #[must_use]
-    pub fn string_parameters(&self) -> Option<StringParameters> {
+    pub const fn string_parameters(&self) -> Option<StringParameters> {
         match self {
             Self::String(parameters) => Some(*parameters),
-            Self::Utf8 => Some(StringParameters::utf8(StringLayout::String)),
-            Self::LargeUtf8 => Some(StringParameters::utf8(StringLayout::LargeString)),
-            Self::Utf8View => Some(StringParameters::utf8(StringLayout::StringView)),
-            Self::Ascii => Some(StringParameters::new(StringLayout::String, Charset::Ascii)),
-            Self::FixedAscii(width) => u32::try_from(*width).ok().and_then(|width| {
-                StringParameters::new(StringLayout::FixedString, Charset::Ascii)
-                    .try_with_bound(width)
-                    .ok()
-            }),
             _ => None,
         }
     }
 
-    /// Return whether this datatype is one of the strings.
+    /// Return whether this datatype is a string.
     #[must_use]
-    pub fn is_string(&self) -> bool {
-        self.string_parameters().is_some()
+    pub const fn is_string(&self) -> bool {
+        matches!(self, Self::String(_))
     }
 
     /// The charset a string column's bytes are written in.
@@ -108,65 +137,42 @@ impl DataType {
     /// `None` is a datatype that is not a string; every string has one,
     /// because UTF-8 is what a string with nothing declared is in.
     #[must_use]
-    pub fn charset(&self) -> Option<Charset> {
-        self.string_parameters().map(StringParameters::charset)
-    }
-}
-
-/// The datatype another variant already spells for these parameters.
-///
-/// `None` is a string only [`DataType::String`] names. `Some` is one that
-/// another variant already names, and returning it is what keeps a fact to one
-/// spelling: `string` *is* [`DataType::Utf8`] rather than a second way to
-/// write it. `Err` is US-ASCII in a shape the [`DataType::Ascii`] family has
-/// no room for.
-///
-/// [`DataType::string`] takes the answer and [`DataType::validate`] refuses
-/// anything that has one, so the two doors cannot disagree about which
-/// spelling is canonical.
-pub(crate) fn redirect(parameters: StringParameters) -> Result<Option<DataType>> {
-    if parameters.charset() == Charset::Ascii {
-        return ascii_redirect(parameters).map(Some);
-    }
-    if parameters.charset().is_utf8() && parameters.is_plain() {
-        return Ok(plain_utf8(parameters.layout()));
-    }
-    Ok(None)
-}
-
-/// The plain UTF-8 datatype one layout already has, if it has one.
-const fn plain_utf8(layout: StringLayout) -> Option<DataType> {
-    match layout {
-        StringLayout::String => Some(DataType::Utf8),
-        StringLayout::LargeString => Some(DataType::LargeUtf8),
-        StringLayout::StringView => Some(DataType::Utf8View),
-        // Arrow has no fixed string and no large view, so neither has a
-        // plain spelling to redirect to.
-        StringLayout::FixedString | StringLayout::LargeStringView => None,
-    }
-}
-
-/// The ASCII datatype US-ASCII parameters name, or the refusal.
-fn ascii_redirect(parameters: StringParameters) -> Result<DataType> {
-    match (parameters.layout(), parameters.bound()) {
-        (StringLayout::String, None) => Ok(DataType::Ascii),
-        (StringLayout::FixedString, Some(width)) => {
-            DataType::ascii(i32::try_from(width).map_err(|_| {
-                invalid(format_smolstr!(
-                    "ASCII width {width} is outside the i32 range"
-                ))
-            })?)
+    pub const fn charset(&self) -> Option<Charset> {
+        match self.string_parameters() {
+            Some(parameters) => Some(parameters.charset()),
+            None => None,
         }
-        _ => Err(invalid(format_smolstr!(
-            "expected ascii or ascii(width) for US-ASCII text, got {parameters}"
-        ))),
     }
-}
 
-/// The refusal an unbuildable string answers with.
-fn invalid(reason: smol_str::SmolStr) -> Error {
-    Error::InvalidDataType {
-        kind: "string",
-        reason,
+    /// The fixed byte width of one value, when this datatype has one.
+    ///
+    /// [`crate::DataTypeId::fixed_byte_width`] answers for every
+    /// parameter-free variant - the numbers, the codes, a UUID; this adds the
+    /// two whose width is a parameter: a fixed string and fixed bytes.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(DataType::fixed_ascii(4)?.fixed_byte_width(), Some(4));
+    /// assert_eq!(DataType::fixed_size_binary(16)?.fixed_byte_width(), Some(16));
+    /// assert_eq!(DataType::Currency.fixed_byte_width(), Some(3));
+    /// assert_eq!(DataType::utf8().fixed_byte_width(), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub const fn fixed_byte_width(&self) -> Option<usize> {
+        match self {
+            Self::String(parameters) => match parameters.fixed() {
+                Some(width) => Some(width as usize),
+                None => None,
+            },
+            Self::Bytes(parameters) => match parameters.fixed() {
+                Some(width) => Some(width as usize),
+                None => None,
+            },
+            _ => self.id().fixed_byte_width(),
+        }
     }
 }

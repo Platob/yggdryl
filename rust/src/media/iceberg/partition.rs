@@ -102,7 +102,7 @@ impl Transform {
             return Ok(source.clone());
         }
         if self == Self::Unknown {
-            return Ok(DataType::Utf8);
+            return Ok(DataType::utf8());
         }
 
         let transform = official_transform(self);
@@ -846,13 +846,7 @@ fn official_primitive_type(dtype: &DataType) -> Result<OfficialPrimitiveType> {
         super::PrimitiveType::TimestamptzNs => OfficialPrimitiveType::TimestamptzNs,
         super::PrimitiveType::String => OfficialPrimitiveType::String,
         super::PrimitiveType::Uuid => OfficialPrimitiveType::Uuid,
-        super::PrimitiveType::Fixed(width) => {
-            OfficialPrimitiveType::Fixed(u64::try_from(width).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a non-negative Iceberg fixed width, got {width}"
-                ))
-            })?)
-        }
+        super::PrimitiveType::Fixed(width) => OfficialPrimitiveType::Fixed(u64::from(width)),
         super::PrimitiveType::Binary => OfficialPrimitiveType::Binary,
         super::PrimitiveType::Unknown => {
             return Err(invalid(SmolStr::new_static(

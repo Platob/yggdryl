@@ -1,4 +1,4 @@
-//! The prebuilt ASCII vocabularies: the codes a common column starts from.
+//! The prebuilt vocabularies: the codes a common column starts from.
 //!
 //! A registered-code column carries values from a published registry, and
 //! most of a stream is the handful of codes that registry actually assigns.
@@ -10,16 +10,16 @@
 //! holding all of them costs every column the whole registry and buys nothing
 //! a declaration does not already give.
 //!
-//! [`AsciiEnum::from_logical_name`] builds one as the enum a field declares,
+//! [`StringEnum::from_logical_name`] builds one as the enum a field declares,
 //! so the members a schema carries under `field:enum` come from one listing
 //! rather than from a copy per language. Every value fits the width its
 //! registered name resolves to, so a prebuilt vocabulary never refuses its own
 //! listing.
 
 use crate::types::parser;
-use crate::{AsciiEnum, DataType, Result};
+use crate::{DataType, Result, StringEnum};
 
-impl AsciiEnum {
+impl StringEnum {
     /// The currently assigned ISO 4217 alphabetic currency codes, sorted.
     ///
     /// The whole active table rather than a major-currency subset: the fund
@@ -232,33 +232,33 @@ impl AsciiEnum {
     /// Creates the enum a registered logical name prebuilds.
     ///
     /// The enum is named for the registration and holds one member per value
-    /// of its constant, each named by [`AsciiEnum::member_name`] - which, for
+    /// of its constant, each named by [`StringEnum::member_name`] - which, for
     /// an ISO code, is the code itself. A registered name with no constant -
     /// `language`, `monthyear`, `tenor` - answers an enum of no members,
     /// because a listing is what it has to offer and it has none.
     ///
     /// ```
-    /// use yggdryl::{AsciiEnum, DataType};
+    /// use yggdryl::{StringEnum, DataType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let venues = AsciiEnum::from_logical_name("mic")?;
-    /// assert_eq!(venues.len(), AsciiEnum::MICS.len());
+    /// let venues = StringEnum::from_logical_name("mic")?;
+    /// assert_eq!(venues.len(), StringEnum::MICS.len());
     /// assert_eq!(venues.get("XCME"), Some("XCME"));
     ///
     /// // A member's code is the value's own bytes under the resolved width.
     /// assert_eq!(
     ///     venues.into_members(&DataType::Mic)?[0].1,
-    ///     DataType::Mic.ascii_packed(AsciiEnum::MICS[0].as_bytes())?
+    ///     DataType::Mic.ascii_packed(StringEnum::MICS[0].as_bytes())?
     /// );
     ///
     /// // `exchange` is FIX's name for the same list, under the same type.
     /// assert_eq!(
-    ///     AsciiEnum::from_logical_name("Exchange")?.len(),
-    ///     AsciiEnum::from_logical_name("mic")?.len()
+    ///     StringEnum::from_logical_name("Exchange")?.len(),
+    ///     StringEnum::from_logical_name("mic")?.len()
     /// );
     ///
     /// // A name with no listing answers an enum of no members.
-    /// assert!(AsciiEnum::from_logical_name("tenor")?.is_empty());
+    /// assert!(StringEnum::from_logical_name("tenor")?.is_empty());
     /// # Ok(())
     /// # }
     /// ```

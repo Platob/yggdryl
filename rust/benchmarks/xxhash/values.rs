@@ -68,7 +68,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
 /// numbers are reported as they are: one hash contract is worth more than a
 /// few nanoseconds on a short string.
 pub(crate) fn stable_hash_benchmarks(criterion: &mut Criterion) {
-    let field = Field::new("settlement_currency", DataType::Utf8, true);
+    let field = Field::new("settlement_currency", DataType::utf8(), true);
     let uri = Uri::from_str("s3://warehouse/trades/2026/02/01/part-0000.parquet")
         .expect("a valid URI fixture");
     let dtype = DataType::from_str(

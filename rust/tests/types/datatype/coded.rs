@@ -10,10 +10,10 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::{AsciiFamily, CfiField, CountryField, CurrencyField, MicField};
+use yggdryl::types::{CfiField, Code, CountryField, CurrencyField, MicField};
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, AsciiEnum, DataType, DataTypeId, DataTypeKind, Field, FieldScalar,
-    Scalar,
+    ArrowCast, ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar,
+    StringEnum,
 };
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -24,15 +24,22 @@ fn text(values: &[&str]) -> ArrayRef {
     Arc::new(StringArray::from(values.to_vec()))
 }
 
-/// Coded datatypes with their fixed widths and published vocabulary.
-const CODED: [(&str, DataType, i32); 2] = [
-    ("side", DataType::Side, 4),
-    ("msgdirection", DataType::MsgDirection, 4),
+/// The nine codes, each with its fixed width and one value its standard names.
+const CODED: [(&str, DataType, usize, &str); 9] = [
+    ("country", DataType::Country, 2, "US"),
+    ("currency", DataType::Currency, 3, "USD"),
+    ("mic", DataType::Mic, 4, "XPAR"),
+    ("cfi", DataType::Cfi, 6, "ESVUFR"),
+    ("isin", DataType::Isin, 12, "US0378331005"),
+    ("side", DataType::Side, 4, "1"),
+    ("msgdirection", DataType::MsgDirection, 4, "SENT"),
+    ("state", DataType::State, 10, "20NEW"),
+    ("timeinforce", DataType::TimeInForce, 8, "0"),
 ];
 
 #[test]
 fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
-    for (name, dtype, width) in &CODED {
+    for (name, dtype, width, sample) in &CODED {
         // Naming: one canonical spelling, and the grammar round-trips it.
         assert_eq!(dtype.to_string(), *name, "{name}");
         assert_eq!(DataType::from_str(name).unwrap(), *dtype, "{name}");
@@ -47,19 +54,23 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
         );
 
         // Identity: the discriminant, the family, the width, and the listing.
+        // A code is an identity with a storage, not a string with a charset.
         assert_eq!(dtype.id().as_str(), *name, "{name}");
-        assert_eq!(dtype.kind(), DataTypeKind::Ascii, "{name}");
-        assert_eq!(dtype.ascii_width(), Some(*width), "{name}");
-        assert_eq!(
-            dtype.id().fixed_byte_width(),
-            usize::try_from(*width).ok(),
-            "{name}"
-        );
+        assert_eq!(dtype.kind(), DataTypeKind::Code, "{name}");
+        assert_eq!(dtype.fixed_byte_width(), Some(*width), "{name}");
+        assert_eq!(dtype.id().fixed_byte_width(), Some(*width), "{name}");
         assert!(dtype.is_code(), "{name}");
-        assert!(dtype.is_ascii(), "{name}");
+        assert!(dtype.id().is_string(), "{name}");
+        assert!(!dtype.is_string(), "{name}");
+        assert_eq!(dtype.string_parameters(), None, "{name}");
+        assert_eq!(dtype.charset(), None, "{name}");
         assert!(DataTypeId::ALL.contains(&dtype.id()), "{name}");
         assert!(
-            DataType::CODES.iter().any(|(held, _, _)| held == name),
+            DataType::CODES
+                .iter()
+                .any(|(held, listed, listed_width)| held == name
+                    && listed == dtype
+                    && listed_width == width),
             "{name}"
         );
 
@@ -67,14 +78,19 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
         assert!(!dtype.is_nested(), "{name}");
         assert!(!dtype.id().is_parameterized(), "{name}");
 
-        // Default: it answers one rather than falling through to one.
-        let default = dtype.default_value().unwrap();
-        assert!(!default.is_null(), "{name}");
-        dtype.scalar(default.clone()).unwrap();
+        // Default: what it answers is a value of the datatype, or it answers
+        // none at all - never a value the datatype itself refuses.
+        if let Ok(default) = dtype.default_value() {
+            assert!(!default.is_null(), "{name}");
+            dtype
+                .scalar(default)
+                .unwrap_or_else(|error| panic!("{name} refuses its own default: {error}"));
+        }
 
         // Serde: the serialized shape is the canonical spelling, and it
         // round-trips.
         let json = dtype.clone().into_json().unwrap();
+        assert_eq!(json, format!(r#"{{"type":"{name}"}}"#), "{name}");
         assert_eq!(DataType::from_json(&json).unwrap(), *dtype, "{name}");
         let rendered = serde_json::to_string(dtype).unwrap();
         assert_eq!(
@@ -83,15 +99,46 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
             "{name}"
         );
 
+        // A value is the code leaf under its own identity, and its wire
+        // shape is that identity's name over the text.
+        let value = dtype.scalar(Scalar::from(*sample)).unwrap();
+        assert!(matches!(value, Scalar::Code(_)), "{name}");
+        assert_eq!(value.id(), dtype.id(), "{name}");
+        assert_eq!(value.kind(), *name, "{name}");
+        assert_eq!(value.as_str(), Some(*sample), "{name}");
+        assert_eq!(value.dtype().unwrap(), *dtype, "{name}");
+        let wire = serde_json::to_string(&value).unwrap();
+        assert_eq!(
+            wire,
+            format!(r#"{{"type":"{name}","value":"{sample}"}}"#),
+            "{name}"
+        );
+        assert_eq!(
+            serde_json::from_str::<Scalar>(&wire).unwrap(),
+            value,
+            "{name}"
+        );
+
         // Arrow: one type and back, losslessly, through a field.
         let field = Field::new(*name, dtype.clone(), false);
         let arrow = field.clone().into_arrow().unwrap();
         assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
 
-        // Merge and compatibility: with itself is itself, and a foreign
-        // datatype refuses naming both.
+        // Merge and compatibility: with itself is itself; a number's
+        // rendering does not fit a code, so absorbing one is no less than
+        // `utf8`; a nested datatype refuses naming both.
         assert_eq!(dtype.merge_with(dtype, false).unwrap(), *dtype, "{name}");
-        let refused = dtype.merge_with(&DataType::Int64, false).unwrap_err();
+        assert_eq!(
+            dtype.merge_with(&DataType::Int64, false).unwrap(),
+            DataType::utf8(),
+            "{name}"
+        );
+        let refused = dtype
+            .merge_with(
+                &DataType::list(DataType::Int64.nullable_field("item")),
+                false,
+            )
+            .unwrap_err();
         let message = refused.to_string();
         assert!(message.contains(name), "{message}");
         assert!(message.contains("int64"), "{message}");
@@ -103,15 +150,18 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
     // The value contract accepts the text, rewrites it into the declared
     // representation, and answers an unchanged value untouched.
     let side = DataType::Side.scalar(Scalar::from("1")).unwrap();
-    assert!(matches!(side, Scalar::Ascii(AsciiFamily::Side(_))));
+    assert!(matches!(side, Scalar::Code(Code::Side(_))));
     assert_eq!(side.as_str(), Some("1"));
     assert_eq!(DataType::Side.scalar(side.clone()).unwrap(), side);
 
-    // Packing is the crate's existing fixed-ASCII packing at the fixed width:
+    // Packing is the crate's fixed-ASCII packing at the fixed width:
     // NUL-padded up to it, the padding gone on the way back.
     assert_eq!(
         DataType::Side.ascii_packed(b"1").unwrap(),
-        DataType::FixedAscii(4).ascii_packed(b"1").unwrap()
+        DataType::fixed_ascii(4)
+            .unwrap()
+            .ascii_packed(b"1")
+            .unwrap()
     );
     for (dtype, value) in [
         (DataType::Side, "1"),
@@ -157,7 +207,7 @@ fn a_cast_into_a_code_pads_and_reading_it_back_trims() {
 
     let row = root([venue.clone()]);
     let batch = RecordBatch::try_new(row.into_arrow_schema().unwrap(), vec![padded]).unwrap();
-    let as_text = root([DataType::Utf8.required_field("venue")]);
+    let as_text = root([DataType::utf8().required_field("venue")]);
     let trimmed = as_text
         .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
         .unwrap();
@@ -191,20 +241,24 @@ fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
     // The listing is what a name resolves from, and two readers answer the
     // same members because it is a constant.
     for (name, count) in [
-        ("side", AsciiEnum::SIDES.len()),
-        ("msgdirection", AsciiEnum::DIRECTIONS.len()),
+        ("side", StringEnum::SIDES.len()),
+        ("msgdirection", StringEnum::DIRECTIONS.len()),
     ] {
-        let built = AsciiEnum::from_logical_name(name).unwrap();
+        let built = StringEnum::from_logical_name(name).unwrap();
         assert_eq!(built.len(), count, "{name}");
-        assert_eq!(built, AsciiEnum::from_logical_name(name).unwrap(), "{name}");
+        assert_eq!(
+            built,
+            StringEnum::from_logical_name(name).unwrap(),
+            "{name}"
+        );
     }
-    assert_eq!(AsciiEnum::DIRECTIONS, &["RECV", "SENT"][..]);
+    assert_eq!(StringEnum::DIRECTIONS, &["RECV", "SENT"][..]);
     // Every prebuilt member fits the width its own datatype fixes.
     for (name, dtype) in [
         ("side", DataType::Side),
         ("msgdirection", DataType::MsgDirection),
     ] {
-        AsciiEnum::from_logical_name(name)
+        StringEnum::from_logical_name(name)
             .unwrap()
             .into_members(&dtype)
             .unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -215,8 +269,8 @@ fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
 fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     // A row whose line does not say which way it moved has no direction, and
     // the crate already spells "no answer" one way.
-    assert!(!AsciiEnum::DIRECTIONS.contains(&"UNKNOWN"));
-    assert!(!AsciiEnum::DIRECTIONS.contains(&"NONE"));
+    assert!(!StringEnum::DIRECTIONS.contains(&"UNKNOWN"));
+    assert!(!StringEnum::DIRECTIONS.contains(&"NONE"));
 
     let field = Field::new("direction", DataType::MsgDirection, true);
     let row = Field::new(
@@ -244,14 +298,34 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
 }
 
 #[test]
+fn a_code_carries_its_identity_into_equality_and_order() {
+    // Two codes whose bytes agree are two values: the identity compares
+    // first, then the text, so a side and a time in force never collide in
+    // a set or sort beside each other.
+    let side = DataType::Side.scalar(Scalar::from("1")).unwrap();
+    let tif = DataType::TimeInForce.scalar(Scalar::from("1")).unwrap();
+    assert_eq!(side.as_str(), tif.as_str());
+    assert_ne!(side, tif);
+    assert_ne!(side.cmp(&tif), std::cmp::Ordering::Equal);
+    assert_eq!(side, DataType::Side.scalar(Scalar::from("1")).unwrap());
+
+    // And a code is not the string of the same characters.
+    assert_ne!(side, Scalar::from("1"));
+    assert_ne!(
+        DataType::Currency.scalar(Scalar::from("USD")).unwrap(),
+        DataType::fixed_ascii(3).unwrap().scalar("USD").unwrap()
+    );
+}
+
+#[test]
 fn a_coded_column_casts_to_text_and_back_and_refuses_a_number() {
-    for (dtype, value) in [(DataType::Side, "1"), (DataType::MsgDirection, "SENT")] {
-        let stored = dtype.scalar(Scalar::from(value)).unwrap();
+    for (_, dtype, _, value) in &CODED {
+        let stored = dtype.scalar(Scalar::from(*value)).unwrap();
         // To text, which is what the value already is.
-        let text = DataType::Utf8
+        let text = DataType::utf8()
             .scalar(Scalar::from(stored.as_str().unwrap()))
             .unwrap();
-        assert_eq!(text.as_str(), Some(value));
+        assert_eq!(text.as_str(), Some(*value));
         // And back, through the same contract.
         assert_eq!(dtype.scalar(text.clone()).unwrap(), stored);
         // A number is not one of these, and the refusal names the type.
@@ -321,13 +395,13 @@ fn a_direction_is_the_verb_in_front_of_the_payload_and_nothing_else() {
 
 #[test]
 fn every_code_stores_the_width_its_standard_fixes() {
-    for (name, dtype, width) in DataType::CODES {
+    for (name, dtype, width, sample) in &CODED {
         let field = Field::new("code", dtype.clone(), false);
         let arrow = field.clone().into_arrow().unwrap();
 
         assert_eq!(
             arrow.data_type(),
-            &ArrowDataType::FixedSizeBinary(*width),
+            &ArrowDataType::FixedSizeBinary(i32::try_from(*width).unwrap()),
             "{name}"
         );
         assert_eq!(
@@ -338,13 +412,39 @@ fn every_code_stores_the_width_its_standard_fixes() {
         assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "", "{name}");
         // The identity round-trips: the same bytes come back the same code.
         assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
+
+        // A value is stored padded to the width and read back trimmed, and
+        // text cast into the column becomes the same cell.
+        let value = dtype.scalar(Scalar::from(*sample)).unwrap();
+        let stored = scalar_array(&field, &value).unwrap();
+        let bytes = stored
+            .as_any()
+            .downcast_ref::<FixedSizeBinaryArray>()
+            .unwrap();
+        assert_eq!(
+            bytes.value_length(),
+            i32::try_from(*width).unwrap(),
+            "{name}"
+        );
+        let mut padded = sample.as_bytes().to_vec();
+        padded.resize(*width, 0);
+        assert_eq!(bytes.value(0), padded.as_slice(), "{name}");
+        assert_eq!(
+            scalar_value(&field, stored.as_ref()).unwrap(),
+            value,
+            "{name}"
+        );
+        let cast = field
+            .cast_arrow_array(text(&[sample]), ArrowCastOptions::new().with_safe(false))
+            .unwrap();
+        assert_eq!(cast.as_ref(), stored.as_ref(), "{name}");
     }
 }
 
 #[test]
 fn a_code_and_the_width_that_holds_it_are_not_the_same_column() {
     let currency = Field::new("ccy", DataType::Currency, false);
-    let ascii24 = Field::new("ccy", DataType::FixedAscii(3), false);
+    let ascii24 = Field::new("ccy", DataType::fixed_ascii(3).unwrap(), false);
 
     // Identical storage, different identity, so neither imports as the other.
     let currency_arrow = currency.clone().into_arrow().unwrap();
@@ -358,7 +458,7 @@ fn a_code_and_the_width_that_holds_it_are_not_the_same_column() {
     let plain = arrow_schema::Field::new("ccy", ArrowDataType::FixedSizeBinary(3), false);
     assert_eq!(
         Field::from_arrow(&plain).unwrap().dtype(),
-        &DataType::FixedSizeBinary(3)
+        &DataType::fixed_size_binary(3).unwrap()
     );
 
     // A code's own name over the wrong width is not that code either.
@@ -376,7 +476,7 @@ fn a_code_and_the_width_that_holds_it_are_not_the_same_column() {
         );
     assert_eq!(
         Field::from_arrow(&mismatched).unwrap().dtype(),
-        &DataType::FixedSizeBinary(4)
+        &DataType::fixed_size_binary(4).unwrap()
     );
 }
 
@@ -396,8 +496,11 @@ fn a_cfi_stores_six_bytes_rather_than_padding_into_eight() {
         DataType::Cfi.scalar(Scalar::from("ESVUFR")).unwrap()
     );
     // A width of six bytes is spellable and is still not a CFI code.
-    assert_eq!(DataType::ascii(6).unwrap(), DataType::FixedAscii(6));
-    assert_ne!(DataType::Cfi, DataType::FixedAscii(6));
+    assert_eq!(
+        DataType::from_str("fixed_ascii(6)").unwrap(),
+        DataType::fixed_ascii(6).unwrap()
+    );
+    assert_ne!(DataType::Cfi, DataType::fixed_ascii(6).unwrap());
 }
 
 #[test]
@@ -421,7 +524,7 @@ fn the_typed_field_and_scalar_aliases_name_their_code() {
     assert_eq!(value.value().id(), DataTypeId::Currency);
 
     // The marker checks the datatype, so a width is not a code.
-    let plain = Field::new("ccy", DataType::FixedAscii(3), false);
+    let plain = Field::new("ccy", DataType::fixed_ascii(3).unwrap(), false);
     assert!(
         plain
             .try_into_typed::<yggdryl::types::CurrencyType>()
@@ -452,7 +555,7 @@ fn a_dictionary_encoded_code_keeps_its_identity_across_arrow() {
     // anonymous bytes stays anonymous.
     let width = Field::new(
         "ccy",
-        DataType::dictionary(DataType::Int32, DataType::FixedAscii(3)).unwrap(),
+        DataType::dictionary(DataType::Int32, DataType::fixed_ascii(3).unwrap()).unwrap(),
         false,
     );
     assert_eq!(
@@ -461,11 +564,181 @@ fn a_dictionary_encoded_code_keeps_its_identity_across_arrow() {
     );
     let plain = Field::new(
         "ccy",
-        DataType::dictionary(DataType::Int32, DataType::FixedSizeBinary(3)).unwrap(),
+        DataType::dictionary(DataType::Int32, DataType::fixed_size_binary(3).unwrap()).unwrap(),
         false,
     );
     assert_eq!(
         Field::from_arrow(&plain.clone().into_arrow().unwrap()).unwrap(),
         plain
     );
+}
+
+#[test]
+fn a_state_sorts_from_the_first_state_to_the_terminal_ones() {
+    use yggdryl::types::State;
+
+    // The stored bytes, sorted by nothing but ASCII. This is the whole claim:
+    // whatever sorts the column - a Parquet row group's bounds, an external
+    // sort, an ORDER BY in something that never heard of this crate - puts
+    // every live state before every ended one.
+    let mut held: Vec<&str> = yggdryl::StringEnum::STATES.to_vec();
+    held.sort_unstable();
+    assert_eq!(
+        held.as_slice(),
+        yggdryl::StringEnum::STATES,
+        "the vocabulary is declared in the order it sorts",
+    );
+
+    let ordered = [
+        "10PENDING",
+        "20NEW",
+        "40PARTFILL",
+        "60PENDCXL",
+        "80FILLED",
+        "90CANCELED",
+        "95REJECTED",
+    ];
+    let mut shuffled = [
+        "95REJECTED",
+        "80FILLED",
+        "20NEW",
+        "60PENDCXL",
+        "10PENDING",
+        "90CANCELED",
+        "40PARTFILL",
+    ];
+    shuffled.sort_unstable();
+    assert_eq!(shuffled, ordered);
+
+    // The rank is the two leading digits, read as the number they spell.
+    for (held, rank) in [
+        ("00UNKNOWN", 0),
+        ("10PENDING", 10),
+        ("40PARTFILL", 40),
+        ("80FILLED", 80),
+        ("90CANCELED", 90),
+        ("95REJECTED", 95),
+    ] {
+        assert_eq!(State::new(held).unwrap().rank(), Some(rank), "{held}");
+    }
+
+    // Every ending is told apart from every other without reading a name.
+    for held in [
+        "10PENDING",
+        "20NEW",
+        "40PARTFILL",
+        "60PENDCXL",
+        "70REPLACED",
+        "70RESTATED",
+    ] {
+        assert!(State::new(held).unwrap().is_live(), "{held}");
+    }
+    assert!(State::new("80FILLED").unwrap().is_done());
+    assert!(State::new("90CANCELED").unwrap().is_cancelled());
+    assert!(State::new("95REJECTED").unwrap().is_failed());
+    for held in ["80FILLED", "90CANCELED", "95REJECTED"] {
+        assert!(!State::new(held).unwrap().is_live(), "{held}");
+    }
+
+    // The digits between two shipped ranks are placeholders: a state that
+    // belongs between them takes one, and the predicates read the band it
+    // falls in rather than the exact rank.
+    let between = State::new("85ARCHIVED").unwrap();
+    assert_eq!(between.rank(), Some(85));
+    assert!(between.is_done());
+    assert!(!between.is_live());
+    assert!(State::new("92HALTED").unwrap().is_cancelled());
+    assert!(State::new("97ABORTED").unwrap().is_failed());
+
+    // A value that opens with anything but two digits has no rank, and so is
+    // neither live nor ended.
+    let unranked = State::new("FILLED").unwrap();
+    assert_eq!(unranked.rank(), None);
+    assert!(!unranked.is_live());
+    assert!(!unranked.is_done());
+    assert_eq!(State::new("8FILLED").unwrap().rank(), None);
+}
+
+#[test]
+fn a_state_answers_a_fix_code_a_fix_name_and_a_scheduler_word_alike() {
+    use yggdryl::types::State;
+
+    // One value, four vocabularies: the wire code an ExecutionReport carries,
+    // the specification's name for it, the word a scheduler uses, and the
+    // short name a FIX bridge logs.
+    for (spelling, expected) in [
+        ("0", "20NEW"),
+        ("1", "40PARTFILL"),
+        ("2", "80FILLED"),
+        ("8", "95REJECTED"),
+        ("F", "40TRADE"),
+        ("New", "20NEW"),
+        ("PartiallyFilled", "40PARTFILL"),
+        ("DoneForDay", "80DONEDAY"),
+        ("done_for_day", "80DONEDAY"),
+        ("DONE FOR DAY", "80DONEDAY"),
+        ("running", "30RUNNING"),
+        ("succeeded", "80SUCCESS"),
+        ("timed out", "95TIMEOUT"),
+        ("failed", "95FAILED"),
+        // The short names a FIX bridge logs fold to the same states.
+        ("PartFill", "40PARTFILL"),
+        ("PartFilled", "40PARTFILL"),
+        ("PendNew", "10PENDNEW"),
+        ("PendCancel", "60PENDCXL"),
+        ("PendReplace", "60PENDRPL"),
+        ("DoneDay", "80DONEDAY"),
+        ("Cancel", "90CANCELED"),
+        ("Reject", "95REJECTED"),
+        // A stored value names itself, so resolving one twice is resolving it
+        // once.
+        ("80FILLED", "80FILLED"),
+    ] {
+        let held =
+            State::from_spelling(spelling).unwrap_or_else(|| panic!("{spelling} names no state"));
+        assert_eq!(held.as_str(), expected, "{spelling}");
+        assert_eq!(
+            State::from_spelling(held.as_str()).unwrap().as_str(),
+            expected,
+            "{spelling} resolves to itself",
+        );
+    }
+
+    // A wire code never folds: `A` is PendingNew and `a` is not a code at all.
+    assert_eq!(State::from_spelling("A").unwrap().as_str(), "10PENDNEW");
+    assert_eq!(State::from_spelling("a"), None);
+    assert_eq!(State::from_spelling("whatever"), None);
+    assert_eq!(State::from_spelling(""), None);
+}
+
+#[test]
+fn the_state_and_time_in_force_codes_are_ordinary_datatypes_everywhere_else() {
+    for (name, dtype, width) in [
+        ("state", DataType::State, 10),
+        ("timeinforce", DataType::TimeInForce, 8),
+    ] {
+        // Parsed, displayed and round-tripped by the grammar like any other.
+        assert_eq!(DataType::from_str(name).unwrap(), dtype);
+        assert_eq!(dtype.to_string(), name);
+        assert_eq!(dtype.kind(), DataTypeKind::Code);
+        assert!(dtype.is_code());
+        assert_eq!(dtype.fixed_byte_width(), Some(width));
+
+        // And it crosses Arrow as the fixed width it is, extension name and
+        // all, so a column round-trips without becoming plain bytes.
+        let field = Field::new(name, dtype.clone(), true);
+        let recovered = Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap();
+        assert_eq!(recovered, field);
+    }
+
+    // A value wider than the storage is refused by the datatype rather than
+    // truncated into something that reads.
+    assert!(DataType::State.scalar(Scalar::from("20NEW")).is_ok());
+    assert!(DataType::State.scalar(Scalar::from("40PARTFILL")).is_ok());
+    assert!(
+        DataType::State
+            .scalar(Scalar::from("80CALCULATED"))
+            .is_err()
+    );
+    assert!(DataType::TimeInForce.scalar(Scalar::from("0")).is_ok());
 }

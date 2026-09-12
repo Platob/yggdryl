@@ -1,11 +1,13 @@
 //! Arrow casts owned by this datatype family.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
-use arrow_array::{
-    Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, LargeStringArray, StringArray,
-    StringViewArray,
+use arrow_array::builder::{
+    BinaryBuilder, BinaryViewBuilder, LargeBinaryBuilder, LargeStringBuilder, StringBuilder,
+    StringViewBuilder,
 };
+use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
 use arrow_schema::DataType as ArrowDataType;
 
@@ -15,293 +17,250 @@ use crate::types::bytes::casts::variable_binary_source;
 use crate::types::cast::arrow_cast_exposed;
 use crate::types::cast::{downcast, internal_target_error, named_cell};
 use crate::types::nested::casts::is_exposed;
-use crate::types::{ascii_free_text, ascii_padded, ascii_text, code_text};
-use crate::{DataType, Field};
+use crate::types::string::arrow_storage;
+use crate::types::{Str, StringParameters, code_cell_text, code_text, trim_padding};
+use crate::{Charset, DataType, Field};
 
-/// Validates every exposed, non-null value entering an ASCII datatype and
-/// stores it as the target's own bytes.
+/// What the planner learned about the column a string reads from.
 ///
-/// A fixed binary of the target width is the same array once validated,
-/// like WKB entering a geospatial column; another fixed width re-pads each
-/// trimmed value; anything else first renders as Utf8 through Arrow's
-/// kernel, so a dictionary or a view layout costs one temporary text array
-/// on top of the fixed-width target. The variable form pads nothing and is
-/// the same three sources under [`variable_ascii_array`].
-pub(crate) fn ingest_ascii_array(
+/// A recognized source declares how its bytes are read; a bare one is read
+/// as text where Arrow calls it text, and as bytes already in the target's
+/// charset everywhere else.
+#[derive(Clone, Debug)]
+pub(crate) enum StringSource {
+    /// A `yggdryl.string` column: every cell is read under its own
+    /// parameters before it is restated under the target's.
+    String(StringParameters),
+    /// A registered code: validated ASCII, trimmed of its padding.
+    Code(DataType),
+    /// Storage with no extension identity.
+    Bare,
+}
+
+/// One cell of the temporary every string source is read through.
+#[derive(Clone, Copy)]
+enum Cell<'a> {
+    Text(&'a str),
+    Bytes(&'a [u8]),
+}
+
+/// Validates every exposed, non-null value entering a string datatype and
+/// stores it in the target's own storage.
+///
+/// Every source is read through one of three temporaries - text, variable
+/// bytes, or the fixed binary it already is - so the per-cell reading is
+/// stated once per source kind rather than once per Arrow layout. A fixed
+/// binary cell is trimmed of its padding on the way in: the padding is the
+/// slot's, never the value's. A failing cell is null under `safe` and an
+/// error naming the row otherwise.
+pub(crate) fn ingest_string_array(
     array: &ArrayRef,
-    expected: &ArrowDataType,
+    source: &StringSource,
     safe: bool,
     field: &Field,
     exposure: Option<&BooleanBuffer>,
     budget: &mut MaterializationBudget,
 ) -> Result<ArrayRef> {
-    let width = match *expected {
-        ArrowDataType::FixedSizeBinary(width) => width,
-        ArrowDataType::Binary => {
-            return ingest_variable_ascii_array(array, safe, field, exposure, budget);
-        }
-        _ => return Err(internal_target_error("ascii")),
+    let Some(target) = field.dtype().string_parameters() else {
+        return Err(internal_target_error("string"));
     };
-    if let ArrowDataType::FixedSizeBinary(source_width) = array.data_type() {
-        let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
-        if *source_width == width {
-            for index in 0..source.len() {
-                if is_exposed(exposure, index) && source.is_valid(index) {
-                    ascii_cell(field, index, width, source.value(index))?;
-                }
+    let read = |cell: Cell<'_>| -> crate::Result<Str> {
+        match (source, cell) {
+            (StringSource::String(parameters), Cell::Text(text)) => {
+                Str::from_storage(text, *parameters).try_with_parameters(target)
             }
-            return Ok(Arc::clone(array));
+            (StringSource::String(parameters), Cell::Bytes(bytes)) => {
+                Str::from_bytes(bytes, *parameters)?.try_with_parameters(target)
+            }
+            (StringSource::Code(code), Cell::Bytes(bytes)) => {
+                Str::from_storage(code_cell_text(code, bytes)?, StringParameters::default())
+                    .try_with_parameters(target)
+            }
+            (StringSource::Code(_) | StringSource::Bare, Cell::Text(text)) => {
+                Str::from_storage(text, StringParameters::default()).try_with_parameters(target)
+            }
+            (StringSource::Bare, Cell::Bytes(bytes)) => Str::from_bytes(bytes, target),
         }
-        return padded_ascii_array(field, width, source.len(), exposure, budget, |index| {
-            source.is_valid(index).then(|| source.value(index))
-        });
+    };
+    if let ArrowDataType::FixedSizeBinary(_) = array.data_type() {
+        let cells = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
+        return string_storage(
+            target,
+            field,
+            cells.len(),
+            safe,
+            exposure,
+            budget,
+            |index| {
+                cells
+                    .is_valid(index)
+                    .then(|| read(Cell::Bytes(trim_padding(cells.value(index)))))
+            },
+        );
     }
     if let Some(bytes) = variable_binary_source(array, field, exposure, budget)? {
-        let source = downcast::<BinaryArray>(bytes.as_ref())?;
-        return padded_ascii_array(field, width, source.len(), exposure, budget, |index| {
-            source.is_valid(index).then(|| source.value(index))
-        });
+        let cells = downcast::<BinaryArray>(bytes.as_ref())?;
+        return string_storage(
+            target,
+            field,
+            cells.len(),
+            safe,
+            exposure,
+            budget,
+            |index| {
+                cells
+                    .is_valid(index)
+                    .then(|| read(Cell::Bytes(cells.value(index))))
+            },
+        );
     }
     let text = if array.data_type() == &ArrowDataType::Utf8 {
         Arc::clone(array)
     } else {
         // The temporary is nullable text: the kernel's masked path fills
-        // nothing, and the ASCII target's own null policy runs after padding.
+        // nothing, and the target's own null policy runs after the reading.
         arrow_cast_exposed(
             array,
             &ArrowDataType::Utf8,
             safe,
             exposure,
-            &Field::new(field.name(), DataType::Utf8, true),
+            &Field::new(field.name(), DataType::utf8(), true),
             budget,
         )?
     };
-    let source = downcast::<StringArray>(text.as_ref())?;
-    padded_ascii_array(field, width, source.len(), exposure, budget, |index| {
-        source
-            .is_valid(index)
-            .then(|| source.value(index).as_bytes())
-    })
-}
-/// Builds the fixed storage of an ASCII width from one cell per row.
-///
-/// Unexposed rows are null: an ancestor hides them, so their bytes are
-/// neither validated nor copied.
-fn padded_ascii_array<'a>(
-    field: &Field,
-    width: i32,
-    rows: usize,
-    exposure: Option<&BooleanBuffer>,
-    budget: &mut MaterializationBudget,
-    cell: impl Fn(usize) -> Option<&'a [u8]>,
-) -> Result<ArrayRef> {
-    let slot = usize::try_from(width).map_err(|_| internal_target_error("ascii"))?;
-    // The reservation bounds `rows * slot`, so the product cannot overflow.
-    budget.add_array(field.dtype(), rows)?;
-    let mut bytes = vec![0_u8; rows * slot];
-    let mut validity = BooleanBufferBuilder::new(rows);
-    for index in 0..rows {
-        let value = cell(index).filter(|_| is_exposed(exposure, index));
-        if let Some(raw) = value {
-            let text = ascii_cell(field, index, width, raw)?;
-            ascii_padded(&mut bytes[index * slot..][..slot], text);
-        }
-        validity.append(value.is_some());
-    }
-    let nulls = arrow_buffer::NullBuffer::new(validity.finish());
-    Ok(Arc::new(FixedSizeBinaryArray::try_new(
-        width,
-        arrow_buffer::Buffer::from(bytes),
-        (nulls.null_count() != 0).then_some(nulls),
-    )?))
-}
-
-/// Validates every exposed, non-null value entering variable ASCII and stores
-/// it as the bytes it is.
-///
-/// The same three sources as a width, minus the padding: a `Binary` column is
-/// the same array once validated, a fixed width is trimmed of the NUL its
-/// storage added, and anything else renders as Utf8 through Arrow's kernel
-/// first.
-fn ingest_variable_ascii_array(
-    array: &ArrayRef,
-    safe: bool,
-    field: &Field,
-    exposure: Option<&BooleanBuffer>,
-    budget: &mut MaterializationBudget,
-) -> Result<ArrayRef> {
-    if let Some(bytes) = variable_binary_source(array, field, exposure, budget)? {
-        let source = downcast::<BinaryArray>(bytes.as_ref())?;
-        for index in 0..source.len() {
-            if is_exposed(exposure, index) && source.is_valid(index) {
-                ascii_free_cell(field, index, source.value(index))?;
-            }
-        }
-        return Ok(bytes);
-    }
-    // The width's padding is storage, so a fixed cell is trimmed by the
-    // width's own rule before it is stored as the bytes it is.
-    if let ArrowDataType::FixedSizeBinary(width) = array.data_type() {
-        let width = *width;
-        let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
-        return variable_ascii_array(field, source.len(), exposure, budget, |index| match source
-            .is_valid(index)
-            .then(|| source.value(index))
-        {
-            Some(padded) => ascii_cell(field, index, width, padded).map(Some),
-            None => Ok(None),
-        });
-    }
-    let text = if array.data_type() == &ArrowDataType::Utf8 {
-        Arc::clone(array)
-    } else {
-        arrow_cast_exposed(
-            array,
-            &ArrowDataType::Utf8,
-            safe,
-            exposure,
-            &Field::new(field.name(), DataType::Utf8, true),
-            budget,
-        )?
-    };
-    let source = downcast::<StringArray>(text.as_ref())?;
-    variable_ascii_array(
+    let cells = downcast::<StringArray>(text.as_ref())?;
+    string_storage(
+        target,
         field,
-        source.len(),
+        cells.len(),
+        safe,
         exposure,
         budget,
-        |index| match source.is_valid(index) {
-            true => ascii_free_cell(field, index, source.value(index).as_bytes()).map(Some),
-            false => Ok(None),
+        |index| {
+            cells
+                .is_valid(index)
+                .then(|| read(Cell::Text(cells.value(index))))
         },
     )
 }
 
-/// Builds the variable storage of ASCII text from one cell per row.
+/// Builds the storage of one string datatype from one read cell per row.
 ///
 /// Unexposed rows are null: an ancestor hides them, so their bytes are
-/// neither validated nor copied. A fixed-width cell arrives padded and is
-/// stored trimmed, which is the only shortening this does.
-fn variable_ascii_array<'a>(
+/// neither validated nor copied. Every value is held before a byte of the
+/// output exists, so the payload is measured once and the buffer sized to
+/// it. The repertoire was settled when the value was restated - US-ASCII is
+/// judged there, UTF-8 is what a value holds - so text storage takes the
+/// characters as they are; every other charset writes its bytes here, and a
+/// scalar it cannot spell fails at the write, as in every other writer.
+fn string_storage(
+    target: StringParameters,
     field: &Field,
     rows: usize,
+    safe: bool,
     exposure: Option<&BooleanBuffer>,
     budget: &mut MaterializationBudget,
-    cell: impl Fn(usize) -> Result<Option<&'a str>>,
+    cell: impl Fn(usize) -> Option<crate::Result<Str>>,
 ) -> Result<ArrayRef> {
     budget.add_array(field.dtype(), rows)?;
-    reserve_vec_bytes::<Option<&str>>(budget, rows)?;
+    reserve_vec_bytes::<Option<Str>>(budget, rows)?;
     let mut values = Vec::new();
     values.try_reserve_exact(rows).map_err(|error| {
-        Error::IncompatibleSchema(format!("ASCII output allocation failed: {error}"))
+        Error::IncompatibleSchema(format!("string output allocation failed: {error}"))
     })?;
-    let mut payload = 0usize;
+    let mut payload = 0_usize;
     for index in 0..rows {
-        let text = if is_exposed(exposure, index) {
-            cell(index)?
-        } else {
-            None
+        let value = match is_exposed(exposure, index).then(|| cell(index)).flatten() {
+            Some(Ok(value)) => Some(value),
+            Some(Err(_)) if safe => None,
+            Some(read @ Err(_)) => Some(named_cell(field, index, read)?),
+            None => None,
         };
-        payload = payload.saturating_add(text.map_or(0, str::len));
-        values.push(text);
+        payload = payload.saturating_add(value.as_ref().map_or(0, Str::encoded_len));
+        values.push(value);
     }
     budget.add_bytes(payload)?;
-    Ok(Arc::new(
-        values
-            .into_iter()
-            .map(|text| text.map(str::as_bytes))
-            .collect::<BinaryArray>(),
-    ))
-}
-
-/// Renders a recognized ASCII column as trimmed text.
-///
-/// Storage pads with NUL and every string rendering trims, so the text
-/// payload is bounded by the fixed payload: the reservation charges the
-/// target rows plus that bound, and a view target its one largest value.
-pub(crate) fn render_ascii_text(
-    array: &ArrayRef,
-    expected: &ArrowDataType,
-    field: &Field,
-    exposure: Option<&BooleanBuffer>,
-    budget: &mut MaterializationBudget,
-) -> Result<ArrayRef> {
-    // The variable form stores no padding, so its own bytes are the text and
-    // the payload bound is the source buffer itself.
-    if let ArrowDataType::Binary = array.data_type() {
-        let source = downcast::<BinaryArray>(array.as_ref())?;
-        return render_ascii_cells(
-            expected,
-            field,
-            source.len(),
-            source.value_data().len(),
-            budget,
-            |index| match is_exposed(exposure, index) && source.is_valid(index) {
-                true => ascii_free_cell(field, index, source.value(index)).map(Some),
-                false => Ok(None),
-            },
-        );
+    let charset = target.charset();
+    macro_rules! filled {
+        ($builder:expr, $stored:expr) => {{
+            let mut builder = $builder;
+            for (index, value) in values.iter().enumerate() {
+                match value.as_ref().map($stored) {
+                    Some(Ok(stored)) => builder.append_value(stored),
+                    Some(Err(_)) if safe => builder.append_null(),
+                    Some(Err(error)) => return named_cell(field, index, Err(error)),
+                    None => builder.append_null(),
+                }
+            }
+            Arc::new(builder.finish()) as ArrayRef
+        }};
     }
-    let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
-    let width = source.value_length();
-    let slot = usize::try_from(width).map_err(|_| internal_target_error("ascii text"))?;
-    render_ascii_cells(
-        expected,
-        field,
-        source.len(),
-        source.len().saturating_mul(slot),
-        budget,
-        |index| match is_exposed(exposure, index) && source.is_valid(index) {
-            true => ascii_cell(field, index, width, source.value(index)).map(Some),
-            false => Ok(None),
-        },
-    )
-}
-
-/// Collects one ASCII cell per row into the text layout the target names.
-fn render_ascii_cells<'a>(
-    expected: &ArrowDataType,
-    field: &Field,
-    rows: usize,
-    payload: usize,
-    budget: &mut MaterializationBudget,
-    cell: impl Fn(usize) -> Result<Option<&'a str>>,
-) -> Result<ArrayRef> {
-    budget.add_array(field.dtype(), rows)?;
-    budget.add_bytes(payload)?;
-    if matches!(expected, ArrowDataType::Utf8View) {
-        budget.add_bytes(payload)?;
-    }
-    reserve_vec_bytes::<Option<&str>>(budget, rows)?;
-    let mut rendered = Vec::new();
-    rendered.try_reserve_exact(rows).map_err(|error| {
-        Error::IncompatibleSchema(format!("ASCII text output allocation failed: {error}"))
-    })?;
-    for index in 0..rows {
-        rendered.push(cell(index)?);
-    }
-    Ok(match expected {
-        ArrowDataType::Utf8 => Arc::new(rendered.into_iter().collect::<StringArray>()) as ArrayRef,
+    Ok(match arrow_storage(target)? {
+        ArrowDataType::FixedSizeBinary(width) => {
+            let slot = usize::try_from(width).map_err(|_| internal_target_error("string"))?;
+            // The reservation bounds `rows * slot`, so the product cannot overflow.
+            let mut padded = vec![0_u8; rows * slot];
+            let mut validity = BooleanBufferBuilder::new(rows);
+            for (index, value) in values.iter().enumerate() {
+                let present = match value.as_ref().map(|value| encoded(charset, value)) {
+                    Some(Ok(encoded)) => {
+                        padded[index * slot..][..encoded.len()].copy_from_slice(&encoded);
+                        true
+                    }
+                    Some(Err(_)) if safe => false,
+                    Some(Err(error)) => return named_cell(field, index, Err(error)),
+                    None => false,
+                };
+                validity.append(present);
+            }
+            let nulls = arrow_buffer::NullBuffer::new(validity.finish());
+            Arc::new(FixedSizeBinaryArray::try_new(
+                width,
+                arrow_buffer::Buffer::from(padded),
+                (nulls.null_count() != 0).then_some(nulls),
+            )?)
+        }
+        ArrowDataType::Utf8 => filled!(StringBuilder::with_capacity(rows, payload), characters),
         ArrowDataType::LargeUtf8 => {
-            Arc::new(rendered.into_iter().collect::<LargeStringArray>()) as ArrayRef
+            filled!(LargeStringBuilder::with_capacity(rows, payload), characters)
         }
-        ArrowDataType::Utf8View => {
-            Arc::new(rendered.into_iter().collect::<StringViewArray>()) as ArrayRef
+        // Arrow's view layout carries a prefix per cell rather than offsets,
+        // so it takes the row count and grows its own payload blocks.
+        ArrowDataType::Utf8View => filled!(StringViewBuilder::with_capacity(rows), characters),
+        ArrowDataType::Binary => filled!(BinaryBuilder::with_capacity(rows, payload), |value| {
+            encoded(charset, value)
+        }),
+        ArrowDataType::LargeBinary => {
+            filled!(LargeBinaryBuilder::with_capacity(rows, payload), |value| {
+                encoded(charset, value)
+            })
         }
-        _ => return Err(internal_target_error("ascii text")),
+        ArrowDataType::BinaryView => filled!(BinaryViewBuilder::with_capacity(rows), |value| {
+            encoded(charset, value)
+        }),
+        _ => return Err(internal_target_error("string")),
     })
+}
+
+/// What text storage stores: the characters themselves.
+fn characters(value: &Str) -> crate::Result<&str> {
+    Ok(value.as_str())
+}
+
+/// What binary storage stores: the characters written in the charset.
+fn encoded(charset: Charset, value: &Str) -> crate::Result<Cow<'_, [u8]>> {
+    charset.encode(value.as_str())
 }
 
 /// Validates every exposed, non-null value entering a registered code and
 /// pads it into that code's fixed storage.
 ///
-/// The same shape as [`ingest_ascii_array`] with the width a constant: a
-/// fixed binary of the code's own width is the same array once validated,
+/// A fixed binary of the code's own width is the same array once validated,
 /// another fixed width re-pads each trimmed value, and anything else first
-/// renders as Utf8 through Arrow's kernel. What the constant buys is the
-/// inner loop: the length check, the slot arithmetic and the padding copy
-/// are all fixed-size, so a currency column ingests three bytes a row with
-/// no width to read.
+/// renders as Utf8 through Arrow's kernel. What the constant width buys is
+/// the inner loop: the length check, the slot arithmetic and the padding
+/// copy are all fixed-size, so a currency column ingests three bytes a row
+/// with no width to read.
 pub(crate) fn ingest_code_array<const WIDTH: usize>(
     array: &ArrayRef,
     safe: bool,
@@ -312,20 +271,30 @@ pub(crate) fn ingest_code_array<const WIDTH: usize>(
     if let ArrowDataType::FixedSizeBinary(source_width) = array.data_type() {
         let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
         if usize::try_from(*source_width).is_ok_and(|width| width == WIDTH) {
+            // The array is the target's own storage once every cell passes;
+            // a cell that fails is an error when strict, and under `safe` a
+            // null the rebuild below writes.
+            let mut every_cell_passes = true;
             for index in 0..source.len() {
-                if is_exposed(exposure, index) && source.is_valid(index) {
-                    code_cell::<WIDTH>(field, index, source.value(index))?;
+                if is_exposed(exposure, index)
+                    && source.is_valid(index)
+                    && code_cell::<WIDTH>(field, index, source.value(index), safe)?.is_none()
+                {
+                    every_cell_passes = false;
+                    break;
                 }
             }
-            return Ok(Arc::clone(array));
+            if every_cell_passes {
+                return Ok(Arc::clone(array));
+            }
         }
-        return padded_code_array::<WIDTH>(field, source.len(), exposure, budget, |index| {
+        return padded_code_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
             source.is_valid(index).then(|| source.value(index))
         });
     }
     if let Some(bytes) = variable_binary_source(array, field, exposure, budget)? {
         let source = downcast::<BinaryArray>(bytes.as_ref())?;
-        return padded_code_array::<WIDTH>(field, source.len(), exposure, budget, |index| {
+        return padded_code_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
             source.is_valid(index).then(|| source.value(index))
         });
     }
@@ -337,12 +306,12 @@ pub(crate) fn ingest_code_array<const WIDTH: usize>(
             &ArrowDataType::Utf8,
             safe,
             exposure,
-            &Field::new(field.name(), DataType::Utf8, true),
+            &Field::new(field.name(), DataType::utf8(), true),
             budget,
         )?
     };
     let source = downcast::<StringArray>(text.as_ref())?;
-    padded_code_array::<WIDTH>(field, source.len(), exposure, budget, |index| {
+    padded_code_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
         source
             .is_valid(index)
             .then(|| source.value(index).as_bytes())
@@ -350,9 +319,14 @@ pub(crate) fn ingest_code_array<const WIDTH: usize>(
 }
 
 /// Builds the fixed storage of one registered code from one cell per row.
+///
+/// Unexposed rows are null, and so is a refused cell under `safe`, exactly
+/// as a refused string cell is: the two families answer one cast the same
+/// way.
 fn padded_code_array<'a, const WIDTH: usize>(
     field: &Field,
     rows: usize,
+    safe: bool,
     exposure: Option<&BooleanBuffer>,
     budget: &mut MaterializationBudget,
     cell: impl Fn(usize) -> Option<&'a [u8]>,
@@ -362,9 +336,12 @@ fn padded_code_array<'a, const WIDTH: usize>(
     let mut bytes = vec![0_u8; rows * WIDTH];
     let mut validity = BooleanBufferBuilder::new(rows);
     for (index, slot) in bytes.chunks_exact_mut(WIDTH).enumerate() {
-        let value = cell(index).filter(|_| is_exposed(exposure, index));
-        if let Some(raw) = value {
-            let text = code_cell::<WIDTH>(field, index, raw)?;
+        let value = cell(index)
+            .filter(|_| is_exposed(exposure, index))
+            .map(|raw| code_cell::<WIDTH>(field, index, raw, safe))
+            .transpose()?
+            .flatten();
+        if let Some(text) = value {
             slot[..text.len()].copy_from_slice(text.as_bytes());
         }
         validity.append(value.is_some());
@@ -378,36 +355,34 @@ fn padded_code_array<'a, const WIDTH: usize>(
 }
 
 /// Validates one code cell at the code's constant width.
+///
+/// `None` is a refused cell under `safe`, which the caller stores as null;
+/// strict, the refusal names the row and the column.
 fn code_cell<'a, const WIDTH: usize>(
     field: &Field,
     index: usize,
     bytes: &'a [u8],
-) -> Result<&'a str> {
-    let text = code_text::<WIDTH>(bytes).map_err(|error| {
-        Error::IncompatibleSchema(format!(
-            "row {index} of column {name}: {error}",
+    safe: bool,
+) -> Result<Option<&'a str>> {
+    let refused = |reason: String| match safe {
+        true => Ok(None),
+        false => Err(Error::IncompatibleSchema(format!(
+            "row {index} of column {name}: {reason}",
             name = field.name()
-        ))
-    })?;
+        ))),
+    };
+    let text = match code_text::<WIDTH>(bytes) {
+        Ok(text) => text,
+        Err(error) => return refused(error.to_string()),
+    };
     // A securities number carries its own check, and a column of them
     // holds the canonical spelling: what a cast lets in is what a read
     // answers, so the check digit and the case are settled here rather
     // than on every read of the cell.
     if matches!(field.dtype(), DataType::Isin) && !crate::types::Isin::is_canonical(text) {
-        return Err(Error::IncompatibleSchema(format!(
-            "row {index} of column {name}: expected a securities number in its canonical spelling, got {text:?}",
-            name = field.name()
-        )));
+        return refused(format!(
+            "expected a securities number in its canonical spelling, got {text:?}"
+        ));
     }
-    Ok(text)
-}
-/// Validates one cell under an ASCII width, naming the field and the row
-/// beside the width the rule itself names.
-fn ascii_cell<'a>(field: &Field, index: usize, width: i32, bytes: &'a [u8]) -> Result<&'a str> {
-    named_cell(field, index, ascii_text(width, bytes))
-}
-
-/// One variable ASCII cell: the same value rule, with no width to fit.
-fn ascii_free_cell<'a>(field: &Field, index: usize, bytes: &'a [u8]) -> Result<&'a str> {
-    named_cell(field, index, ascii_free_text(bytes))
+    Ok(Some(text))
 }

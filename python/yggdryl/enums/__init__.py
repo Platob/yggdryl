@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Mapping
 
 from .._native import _enum_values
-from .ascii import (
+from .string import (
     AsciiCode,
     CfiCode,
     CountryCode,

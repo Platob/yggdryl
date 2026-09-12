@@ -6,9 +6,9 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use super::{
-    BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialType,
-    IntegerType, MapType, NestedType, RunEndEncodedType, StringLayout, StringParameters,
-    TemporalType, TimeUnit, UnionFields, UnionMode,
+    BytesLayout, BytesParameters, DataType, DecimalType, DictionaryType, Fields, FloatingType,
+    GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType, StringLayout,
+    StringParameters, TemporalType, TimeUnit, UnionFields, UnionMode,
 };
 use crate::{Charset, Error, Field, Timezone};
 
@@ -29,9 +29,9 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
     let temporal_family = TemporalType::try_from(&temporal).unwrap();
     assert_eq!(temporal_family.into_dtype().unwrap(), temporal);
 
-    let text = DataType::LargeUtf8.string_parameters().unwrap();
+    let text = DataType::large_utf8().string_parameters().unwrap();
     assert_eq!(text.layout(), StringLayout::LargeString);
-    assert_eq!(DataType::string(text).unwrap(), DataType::LargeUtf8);
+    assert_eq!(DataType::string(text).unwrap(), DataType::large_utf8());
 
     let encoded = StringParameters::new(StringLayout::StringView, Charset::Cp1252);
     assert_eq!(
@@ -39,22 +39,29 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
         Some(encoded)
     );
 
-    // The ASCII repertoire has no family enum of its own: `DataTypeId` names
-    // the exact variant and `string_parameters` answers the layout, charset
+    // The string family has no family enum of its own: `DataTypeId` names
+    // the exact layout and `string_parameters` answers the layout, charset
     // and bound, so a third listing would only be one more thing to disagree.
-    let ascii = DataType::ascii(7).unwrap();
-    assert_eq!(ascii.id(), crate::DataTypeId::FixedAscii);
-    assert_eq!(ascii.ascii_width(), Some(7));
+    let ascii = DataType::fixed_ascii(7).unwrap();
+    assert_eq!(ascii.id(), crate::DataTypeId::FixedString);
+    assert_eq!(ascii.fixed_byte_width(), Some(7));
+    assert!(ascii.is_string());
     let parameters = ascii.string_parameters().unwrap();
     assert_eq!(parameters.charset(), Charset::Ascii);
     assert_eq!(parameters.fixed(), Some(7));
     assert_eq!(DataType::string(parameters).unwrap(), ascii);
 
-    let bytes = DataType::FixedSizeBinary(16);
-    let bytes_family = BytesType::try_from(&bytes).unwrap();
-    assert_eq!(bytes_family.into_dtype().unwrap(), bytes);
+    // The byte family reads back the same way: the layout and the bound.
+    let bytes = DataType::fixed_size_binary(16).unwrap();
+    assert_eq!(bytes.id(), crate::DataTypeId::FixedSizeBinary);
+    assert_eq!(bytes.fixed_byte_width(), Some(16));
+    let parameters = bytes.bytes_parameters().unwrap();
+    assert_eq!(parameters.layout(), BytesLayout::FixedSizeBinary);
+    assert_eq!(parameters.fixed(), Some(16));
+    assert_eq!(DataType::bytes(parameters).unwrap(), bytes);
+    assert_eq!(DataType::utf8().bytes_parameters(), None);
 
-    let nested = DataType::dictionary(DataType::Int16, DataType::Utf8).unwrap();
+    let nested = DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap();
     let nested_family = NestedType::try_from(&nested).unwrap();
     assert!(nested_family.is_wrapper());
     assert_eq!(DataType::from(nested_family), nested);
@@ -63,7 +70,7 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
     let geospatial_family = GeospatialType::try_from(&geospatial).unwrap();
     assert_eq!(DataType::from(geospatial_family), geospatial);
 
-    assert!(IntegerType::try_from(&DataType::Utf8).is_err());
+    assert!(IntegerType::try_from(&DataType::utf8()).is_err());
 }
 
 #[test]
@@ -72,8 +79,8 @@ fn nested_helper_values_have_total_order_and_hash() {
     assert_traits::<MapType>();
     assert_traits::<RunEndEncodedType>();
 
-    let first = DataType::map_of(DataType::Utf8, DataType::Int32, false).unwrap();
-    let later = DataType::map_of(DataType::Utf8, DataType::Int32, true).unwrap();
+    let first = DataType::map_of(DataType::utf8(), DataType::Int32, false).unwrap();
+    let later = DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap();
     let (DataType::Map(first), DataType::Map(later)) = (first, later) else {
         unreachable!()
     };
@@ -103,7 +110,7 @@ fn canonical_display_json_and_arrow_are_lossless() {
             Field::new("id", DataType::Int64, false),
             Field::from_parts(
                 "text",
-                DataType::Utf8,
+                DataType::utf8(),
                 true,
                 [("source", "quoted \"value\"")],
             )
@@ -156,13 +163,13 @@ fn structural_json_rejects_malformed_and_duplicate_values() {
 
     let malformed = [
         serde_json::json!({"type": "time32", "unit": "nanosecond"}),
-        serde_json::json!({"type": "fixed_size_binary", "width": -1}),
+        serde_json::json!({"type": "binary", "layout": "fixed_size_binary", "fixed": 0}),
         serde_json::json!({"type": "decimal32", "precision": 10, "scale": 0}),
         serde_json::json!({
             "type": "struct",
             "fields": [
                 field("same", serde_json::json!({"type": "int32"}), false),
-                field("same", serde_json::json!({"type": "utf8"}), true)
+                field("same", serde_json::json!({"type": "string"}), true)
             ]
         }),
         serde_json::json!({
@@ -170,13 +177,13 @@ fn structural_json_rejects_malformed_and_duplicate_values() {
             "mode": "dense",
             "fields": [
                 {"type_id": 1, "field": field("one", serde_json::json!({"type": "int32"}), false)},
-                {"type_id": 1, "field": field("two", serde_json::json!({"type": "utf8"}), true)}
+                {"type_id": 1, "field": field("two", serde_json::json!({"type": "string"}), true)}
             ]
         }),
         serde_json::json!({
             "type": "dictionary",
             "key": {"type": "float64"},
-            "value": {"type": "utf8"}
+            "value": {"type": "string"}
         }),
         serde_json::json!({
             "type": "map",
@@ -185,7 +192,7 @@ fn structural_json_rejects_malformed_and_duplicate_values() {
                 serde_json::json!({
                     "type": "struct",
                     "fields": [
-                        field("key", serde_json::json!({"type": "utf8"}), false),
+                        field("key", serde_json::json!({"type": "string"}), false),
                         field("value", serde_json::json!({"type": "int64"}), true)
                     ]
                 }),
@@ -196,7 +203,7 @@ fn structural_json_rejects_malformed_and_duplicate_values() {
         serde_json::json!({
             "type": "run_end_encoded",
             "run_ends": field("run_ends", serde_json::json!({"type": "int32"}), true),
-            "values": field("values", serde_json::json!({"type": "utf8"}), true)
+            "values": field("values", serde_json::json!({"type": "string"}), true)
         }),
         serde_json::json!({"type": "int64", "unexpected": true}),
     ];
@@ -212,7 +219,7 @@ fn structural_json_rejects_malformed_and_duplicate_values() {
             "type":"list",
             "field":{
                 "name":"item",
-                "dtype":{"type":"utf8"},
+                "dtype":{"type":"string"},
                 "nullable":true,
                 "metadata":{"source":"one","source":"two"}
             }
@@ -224,7 +231,7 @@ fn structural_json_rejects_malformed_and_duplicate_values() {
 fn nested_serde_and_core_validators_keep_distinct_error_contracts() {
     let dictionary = serde_json::json!({
         "key": {"type": "float64"},
-        "value": {"type": "utf8"}
+        "value": {"type": "string"}
     });
     assert_eq!(
         serde_json::from_value::<DictionaryType>(dictionary)
@@ -233,7 +240,7 @@ fn nested_serde_and_core_validators_keep_distinct_error_contracts() {
         "invalid Dictionary datatype: expected an integer key datatype (int8, int16, int32, int64, uint8, uint16, uint32, or uint64), got float64"
     );
     assert_eq!(
-        DataType::dictionary(DataType::Float64, DataType::Utf8)
+        DataType::dictionary(DataType::Float64, DataType::utf8())
             .unwrap_err()
             .to_string(),
         "invalid Dictionary datatype: expected an integer key datatype (int8, int16, int32, int64, uint8, uint16, uint32, or uint64), got float64"
@@ -249,7 +256,7 @@ fn nested_serde_and_core_validators_keep_distinct_error_contracts() {
     };
     let run_end = serde_json::json!({
         "run_ends": field("run_ends", serde_json::json!({"type": "int32"}), true),
-        "values": field("values", serde_json::json!({"type": "utf8"}), true)
+        "values": field("values", serde_json::json!({"type": "string"}), true)
     });
     assert_eq!(
         serde_json::from_value::<RunEndEncodedType>(run_end)
@@ -260,7 +267,7 @@ fn nested_serde_and_core_validators_keep_distinct_error_contracts() {
     assert_eq!(
         DataType::run_end_encoded(
             Field::new("run_ends", DataType::Int32, true),
-            Field::new("values", DataType::Utf8, true),
+            Field::new("values", DataType::utf8(), true),
         )
         .unwrap_err()
         .to_string(),
@@ -271,8 +278,8 @@ fn nested_serde_and_core_validators_keep_distinct_error_contracts() {
     // actually failed rather than one fused sentence.
     assert_eq!(
         DataType::run_end_encoded(
-            Field::new("run_ends", DataType::Utf8, false),
-            Field::new("values", DataType::Utf8, true),
+            Field::new("run_ends", DataType::utf8(), false),
+            Field::new("values", DataType::utf8(), true),
         )
         .unwrap_err()
         .to_string(),
@@ -284,7 +291,7 @@ fn nested_serde_and_core_validators_keep_distinct_error_contracts() {
 fn structural_serialization_rejects_public_enum_invalid_states() {
     let invalid = [
         DataType::Time32(TimeUnit::Nanosecond),
-        DataType::FixedSizeBinary(-1),
+        DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary)),
         DataType::Decimal128 {
             precision: 0,
             scale: 0,
@@ -396,7 +403,7 @@ fn native_order_hash_and_child_access_are_value_based() {
 
 #[test]
 fn every_arrow_variant_has_a_lossless_owned_equivalent() {
-    let item = || Field::new("item", DataType::Utf8, true);
+    let item = || Field::new("item", DataType::utf8(), true);
     let values = vec![
         DataType::Null,
         DataType::Boolean,
@@ -423,13 +430,13 @@ fn every_arrow_variant_has_a_lossless_owned_equivalent() {
         DataType::Interval(TimeUnit::YearMonth),
         DataType::Interval(TimeUnit::DayTime),
         DataType::Interval(TimeUnit::MonthDayNano),
-        DataType::Binary,
+        DataType::binary(),
         DataType::fixed_size_binary(16).unwrap(),
-        DataType::LargeBinary,
-        DataType::BinaryView,
-        DataType::Utf8,
-        DataType::LargeUtf8,
-        DataType::Utf8View,
+        DataType::large_binary(),
+        DataType::binary_view(),
+        DataType::utf8(),
+        DataType::large_utf8(),
+        DataType::utf8_view(),
         DataType::list(item()),
         DataType::list_view(item()),
         DataType::fixed_size_list(item(), 4).unwrap(),
@@ -439,20 +446,20 @@ fn every_arrow_variant_has_a_lossless_owned_equivalent() {
         DataType::union(
             [
                 (0, Field::new("number", DataType::Int64, false)),
-                (1, Field::new("text", DataType::Utf8, true)),
+                (1, Field::new("text", DataType::utf8(), true)),
             ],
             UnionMode::Sparse,
         )
         .unwrap(),
-        DataType::dictionary(DataType::Int16, DataType::Utf8).unwrap(),
+        DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap(),
         DataType::decimal32(9, 2).unwrap(),
         DataType::decimal64(18, -2).unwrap(),
         DataType::decimal128(38, 18).unwrap(),
         DataType::decimal256(76, 20).unwrap(),
-        DataType::map_of(DataType::Utf8, DataType::Int64, true).unwrap(),
+        DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap(),
         DataType::run_end_encoded(
             Field::new("run_ends", DataType::Int32, false),
-            Field::new("values", DataType::Utf8, true),
+            Field::new("values", DataType::utf8(), true),
         )
         .unwrap(),
     ];
@@ -580,7 +587,10 @@ fn public_field_collections_validate_children_without_clone_helpers() {
 mod semi_structured_and_geospatial;
 
 /// The ASCII widths and the vocabularies over them.
-mod ascii;
+mod strings;
+
+/// The byte family: one tag, one layout, one bound.
+mod bytes;
 
 /// The UUID: one 128-bit identifier, stored as its sixteen bytes.
 mod uuid;
@@ -592,7 +602,7 @@ mod url;
 mod version;
 
 /// The enum a field declares, and the codes its members name.
-mod ascii_enum;
+mod string_enum;
 
 /// The logical names: the FIX datatype vocabulary in front of the parser.
 mod logical;

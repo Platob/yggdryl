@@ -16,7 +16,7 @@ use crate::text::codec::{
     codec_encode_all_writer, codec_encode_path, codec_encode_writer, codec_infer, codec_infer_path,
     codec_infer_text, codec_normalize_format,
 };
-use crate::types::datatype::{PyAsciiEnum, PyDataType, PyDataTypeIterator};
+use crate::types::datatype::{PyDataType, PyDataTypeIterator, PyStringEnum};
 use crate::types::field::{
     PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolField,
 };
@@ -399,7 +399,9 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
 /// Register the native value and iterator classes.
 fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataType>()?;
-    module.add_class::<PyAsciiEnum>()?;
+    module.add_class::<PyStringEnum>()?;
+    module.add_class::<types::parameters::PyStringParameters>()?;
+    module.add_class::<types::parameters::PyBytesParameters>()?;
     module.add_class::<PyField>()?;
     module.add_class::<PyScalar>()?;
     module.add_class::<crate::arrow::PyArrowValue>()?;

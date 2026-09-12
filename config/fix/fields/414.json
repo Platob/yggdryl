@@ -52,7 +52,7 @@
   {
     "name": "legcomplexeventschedulefrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -65,7 +65,7 @@
   {
     "name": "legcomplexeventschedulerollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -78,7 +78,7 @@
   {
     "name": "provisioncashsettlquotereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -90,7 +90,7 @@
   {
     "name": "legprovisioncashsettlquotereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -127,13 +127,13 @@
   {
     "name": "legdeliveryschedulexid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier for this instance of delivery schedule for cross referencing elsewhere in the message.",
       "display": "LegDeliveryScheduleXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legdeliveryschedulexid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legdeliveryschedulexid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41410"
     }
   },
@@ -152,7 +152,7 @@
   {
     "name": "legdeliveryschedulenotionalunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -202,7 +202,7 @@
   {
     "name": "legdeliveryscheduletoleranceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -240,7 +240,7 @@
   {
     "name": "legdeliveryschedulesettltimezone",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -327,7 +327,7 @@
   {
     "name": "legdeliveryschedulesettlstart",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -339,7 +339,7 @@
   {
     "name": "legdeliveryschedulesettlend",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -377,7 +377,7 @@
   {
     "name": "legdeliverystreampipeline",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -389,7 +389,7 @@
   {
     "name": "legdeliverystreamentrypoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -401,7 +401,7 @@
   {
     "name": "legdeliverystreamwithdrawalpoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -413,7 +413,7 @@
   {
     "name": "legdeliverystreamdeliverypoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -438,7 +438,7 @@
   {
     "name": "legdeliverystreamdeliverycontingency",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -475,7 +475,7 @@
   {
     "name": "legdeliverystreamriskapportionment",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -487,7 +487,7 @@
   {
     "name": "legdeliverystreamtitletransferlocation",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -512,7 +512,7 @@
   {
     "name": "legdeliverystreamimporterofrecord",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -548,7 +548,7 @@
   {
     "name": "legdeliverystreamtoleranceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -623,7 +623,7 @@
   {
     "name": "legdeliverystreamtransportequipment",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -660,7 +660,7 @@
   {
     "name": "legstreamassetattributetype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -672,7 +672,7 @@
   {
     "name": "legstreamassetattributevalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -684,7 +684,7 @@
   {
     "name": "legstreamassetattributelimit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -708,7 +708,7 @@
   {
     "name": "legdeliverystreamcycledesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -756,7 +756,7 @@
   {
     "name": "legdeliverystreamcommoditysource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -842,7 +842,7 @@
   {
     "name": "legmarketdisruptionevent",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -866,7 +866,7 @@
   {
     "name": "legmarketdisruptionfallbacktype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -903,7 +903,7 @@
   {
     "name": "legmarketdisruptionfallbackunderliersecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -915,7 +915,7 @@
   {
     "name": "legmarketdisruptionfallbackunderliersecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -928,7 +928,7 @@
   {
     "name": "legmarketdisruptionfallbackunderliersecuritydesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1000,7 +1000,7 @@
   {
     "name": "legexercisedesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1073,7 +1073,7 @@
   {
     "name": "legmanualnoticebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1133,7 +1133,7 @@
   {
     "name": "legoptionexercisebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1183,7 +1183,7 @@
   {
     "name": "legoptionexerciseearliestdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1208,7 +1208,7 @@
   {
     "name": "legoptionexercisefrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

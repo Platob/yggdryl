@@ -34,7 +34,7 @@ The handle's media type selects Parquet, so the three write intents take no form
 
     let field = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?
     .required_field("row");
     let schema = field.into_arrow_schema()?;
@@ -234,9 +234,9 @@ A non-null struct root naming a subset of the stored columns reads only those ch
 
     let stored = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
     ])?
     .required_field("row");
     let arrow_schema = stored.into_arrow_schema()?;
@@ -547,7 +547,7 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
 
     let field = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?
     .required_field("row");
 

@@ -2,7 +2,7 @@
   {
     "name": "strikeindexcurvepoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -52,7 +52,7 @@
   {
     "name": "legstrikeindexcurvepoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -200,7 +200,7 @@
   {
     "name": "underlyingnotionaldeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -225,7 +225,7 @@
   {
     "name": "positionid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -237,20 +237,20 @@
   {
     "name": "underlyingnotionalxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Cross reference to another notional amount for duplicating its properties.",
       "display": "UnderlyingNotionalXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingnotionalxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingnotionalxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "2619"
     }
   },
   {
     "name": "underlyingfutureid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -262,7 +262,7 @@
   {
     "name": "underlyingfutureidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -275,7 +275,7 @@
   {
     "name": "underlyingstrikeindexcurvepoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -385,13 +385,13 @@
   {
     "name": "underlyinginstrumentxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier for referencing this UnderlyingInstrument from a parent instrument or a convertible instrument.",
       "display": "UnderlyingInstrumentXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyinginstrumentxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyinginstrumentxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "2631"
     }
   },
@@ -423,7 +423,7 @@
   {
     "name": "miscfeesubtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -447,7 +447,7 @@
   {
     "name": "miscfeesubtypedesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -520,7 +520,7 @@
   {
     "name": "commissionbasis",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -545,7 +545,7 @@
   {
     "name": "commissionunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -606,7 +606,7 @@
   {
     "name": "commissionlegrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -618,7 +618,7 @@
   {
     "name": "commissiondesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -691,7 +691,7 @@
   {
     "name": "alloccommissionbasis",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -716,7 +716,7 @@
   {
     "name": "alloccommissionunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -777,7 +777,7 @@
   {
     "name": "alloccommissionlegrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -789,7 +789,7 @@
   {
     "name": "alloccommissiondesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -889,7 +889,7 @@
   {
     "name": "crossrequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -901,7 +901,7 @@
   {
     "name": "fillmatchid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -913,7 +913,7 @@
   {
     "name": "fillmatchsubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -988,7 +988,7 @@
   {
     "name": "legaccount",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1136,7 +1136,7 @@
   {
     "name": "sidecollateralamountmarketid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1148,7 +1148,7 @@
   {
     "name": "sidecollateralamountmarketsegmentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1197,7 +1197,7 @@
   {
     "name": "sidecollateralfxratecalc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

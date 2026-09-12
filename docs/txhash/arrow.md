@@ -168,8 +168,8 @@ A holder naming `digest:time` stores the instant it names in front of its digest
     use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
     let event = Field::new("event", DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::UTC }, false);
-    let symbol = Field::new("symbol", DataType::Utf8, false);
-    let mut key = Field::new("key", DataType::FixedSizeBinary(16), false);
+    let symbol = Field::new("symbol", DataType::utf8(), false);
+    let mut key = Field::new("key", DataType::fixed_size_binary(16)?, false);
     key.as_digest_mut().set_holder()?;
     key.as_digest_mut().set_time("event")?;
     key.as_digest_mut().set_unit(TimeUnit::Second)?;

@@ -71,6 +71,12 @@ impl StringParameters {
         Self::new(layout, Charset::Utf8)
     }
 
+    /// An unbounded US-ASCII string in one layout.
+    #[must_use]
+    pub const fn ascii(layout: StringLayout) -> Self {
+        Self::new(layout, Charset::Ascii)
+    }
+
     /// The layout the values are stored in.
     #[must_use]
     pub const fn layout(self) -> StringLayout {
@@ -136,6 +142,14 @@ impl StringParameters {
         self
     }
 
+    /// Return these parameters bounded to `bound` bytes, the bound already
+    /// proven non-zero.
+    #[must_use]
+    pub const fn with_bound(mut self, bound: NonZeroU32) -> Self {
+        self.bound = Some(bound);
+        self
+    }
+
     /// Return these parameters bounded to `bound` bytes.
     ///
     /// # Errors
@@ -157,6 +171,18 @@ impl StringParameters {
     pub const fn without_bound(mut self) -> Self {
         self.bound = None;
         self
+    }
+
+    /// Return these parameters with no maximum, keeping a fixed width.
+    ///
+    /// A maximum is a column's rule and a fixed width is a value's shape, so
+    /// this is what a value carries out of a bounded column.
+    #[must_use]
+    pub const fn without_max(self) -> Self {
+        match self.layout.is_fixed() {
+            true => self,
+            false => self.without_bound(),
+        }
     }
 
     /// Check that the layout and the bound agree.
@@ -184,14 +210,22 @@ impl StringParameters {
         }
     }
 
-    /// Return whether these parameters add nothing to the layout alone.
+    /// The name this layout takes under this charset.
     ///
-    /// Unbounded UTF-8 is already a datatype for three of the five layouts,
-    /// and unbounded US-ASCII for two more, so parameters answering `true`
-    /// here redirect to those rather than becoming a second spelling of them.
+    /// UTF-8 and US-ASCII each earn the layout's short spelling; every other
+    /// charset renders under the general name and states itself beside it.
     #[must_use]
-    pub const fn is_plain(self) -> bool {
-        !self.is_bounded()
+    pub const fn layout_name(self) -> &'static str {
+        match self.charset {
+            Charset::Utf8 => self.layout.as_utf8_str(),
+            Charset::Ascii => self.layout.as_ascii_str(),
+            _ => self.layout.as_str(),
+        }
+    }
+
+    /// Return whether a charset-named spelling already says the charset.
+    const fn charset_is_named(self) -> bool {
+        matches!(self.charset, Charset::Utf8 | Charset::Ascii)
     }
 
     /// The extension metadata an Arrow field carries these in.
@@ -303,16 +337,12 @@ impl From<StringLayout> for StringParameters {
 impl fmt::Display for StringParameters {
     /// The canonical spelling, which [`crate::DataType`]'s grammar reads back.
     ///
-    /// UTF-8 is the default, so a UTF-8 string renders under the layout's
-    /// `utf8` name with no charset to state; every other charset renders
+    /// UTF-8 renders under the layout's `utf8` name and US-ASCII under its
+    /// `ascii` name, with no charset to state; every other charset renders
     /// under the `string` name and states it.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let utf8 = self.charset.is_utf8();
-        formatter.write_str(match utf8 {
-            true => self.layout.as_utf8_str(),
-            false => self.layout.as_str(),
-        })?;
-        match (utf8, self.bound) {
+        formatter.write_str(self.layout_name())?;
+        match (self.charset_is_named(), self.bound) {
             (true, None) => Ok(()),
             (true, Some(bound)) => write!(formatter, "({bound})"),
             (false, None) => write!(formatter, "({})", self.charset),

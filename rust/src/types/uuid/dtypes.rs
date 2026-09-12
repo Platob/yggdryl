@@ -68,7 +68,7 @@ impl DataType {
     /// assert_eq!(DataType::Uuid.uuid_packed(&packed.to_be_bytes())?, packed);
     ///
     /// assert!(DataType::Uuid.uuid_packed(b"not-a-uuid").is_err());
-    /// assert!(DataType::Utf8.uuid_packed(text.as_bytes()).is_err());
+    /// assert!(DataType::utf8().uuid_packed(text.as_bytes()).is_err());
     /// # Ok(())
     /// # }
     /// ```
@@ -110,7 +110,7 @@ impl DataType {
 /// The bytes a UUID value carries, in either accepted spelling.
 pub(crate) fn uuid_bytes(value: &Scalar) -> Option<&[u8]> {
     match value {
-        Scalar::Text(text) => Some(text.as_str().as_bytes()),
+        Scalar::String(text) => Some(text.as_str().as_bytes()),
         Scalar::Bytes(bytes) => Some(bytes.as_bytes()),
         _ => None,
     }

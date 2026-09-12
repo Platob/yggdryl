@@ -26,6 +26,7 @@ criterion_group!(
     datatype::geospatial::geospatial_benchmarks,
     datatype::ascii::ascii_benchmarks,
     datatype::string::string_benchmarks,
+    datatype::bytes::bytes_benchmarks,
     field::field_benches::parser::benchmarks,
     field::field_benches::value::benchmarks,
     field::field_benches::integer::benchmarks,

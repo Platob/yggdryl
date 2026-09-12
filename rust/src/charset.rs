@@ -9,7 +9,7 @@
 //! Text crosses this boundary exactly once. A byte payload is decoded to UTF-8
 //! at intake - by a [`Transcoded`] handle, by [`crate::media::text::TextOptions`],
 //! or by a direct [`Charset::decode`] - and everything past that point is
-//! `str`, `Scalar::Utf8`, or an Arrow string array whose bytes are already
+//! `str`, `Scalar::String`, or an Arrow string array whose bytes are already
 //! UTF-8. Nothing re-decodes, and no layer branches on a charset per row.
 //!
 //! ```
@@ -892,8 +892,10 @@ impl Serialize for Charset {
 
 impl<'de> Deserialize<'de> for Charset {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        let value = <&str>::deserialize(deserializer)?;
-        Self::from_str(value).map_err(serde::de::Error::custom)
+        // Owned where the deserializer cannot lend, as a parsed JSON value
+        // cannot, so a schema document reads through every door.
+        let value = <Cow<'_, str>>::deserialize(deserializer)?;
+        Self::from_str(&value).map_err(serde::de::Error::custom)
     }
 }
 

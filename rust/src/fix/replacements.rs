@@ -603,7 +603,7 @@ impl<'field> FixFills<'field> {
     /// use yggdryl::{DataType, Version};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut field = DataType::Utf8.nullable_field("relatdsym");
+    /// let mut field = DataType::utf8().nullable_field("relatdsym");
     /// field.as_fix_mut().set_tag(46)?;
     /// field.as_fix_mut().set_replacements(&[FixReplacement::new("4.3".parse::<Version>()?)
     ///     .with_fills([FixFill::Field { tag: 55, value: FixFillSource::Source }])])?;
@@ -896,7 +896,7 @@ impl<'field> FixReplacements<'field> {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut field = DataType::Utf8.nullable_field("rule80a");
+    /// let mut field = DataType::utf8().nullable_field("rule80a");
     /// field.set_metadata([("fix:replacements", r#"{"replacements":[{"fills":[{"tag":528}]}]}"#)])?;
     /// // The entry states no `since`, which the grammar requires.
     /// assert!(field.as_fix().replacements().next_ok().is_none());

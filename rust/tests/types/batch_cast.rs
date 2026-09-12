@@ -21,7 +21,7 @@ fn a_missing_column_is_filled_with_its_canonical_default() {
 
     let target = root([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
     ]);
     let cast = target
         .cast_arrow_batch(batch, ArrowCastOptions::new())
@@ -52,7 +52,7 @@ fn columns_reconcile_by_name_and_extra_columns_are_dropped() {
 
     let target = root([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ]);
     let cast = target
         .cast_arrow_batch(batch, ArrowCastOptions::new())
@@ -120,13 +120,13 @@ fn options_cast_is_declared_schema_then_selection_then_stored_completion() {
     // reorders; the stored shape finally adds the column the resource
     // already has, defaulted, and every layer is one definition.
     let declared = root([
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("price"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
     ]);
     let stored = root([
         DataType::Int64.required_field("price"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("volume"),
     ]);
     let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)

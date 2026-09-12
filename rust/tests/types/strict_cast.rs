@@ -47,7 +47,7 @@ fn a_required_column_the_source_does_not_carry_is_refused_by_path() {
     .unwrap();
     let target = root([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
     ]);
 
     // The default policy is unchanged: the hole is filled, not reported.
@@ -89,7 +89,7 @@ fn a_null_in_a_required_column_is_refused_with_its_count() {
     .unwrap();
     let target = root([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
     ]);
 
     let filled = target
@@ -109,7 +109,7 @@ fn a_missing_nullable_column_stays_all_null_under_both_policies() {
     let batch = RecordBatch::try_new(source, vec![Arc::new(Int64Array::from(vec![1, 2]))]).unwrap();
     let target = root([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ]);
 
     for options in [ArrowCastOptions::new(), strict()] {
@@ -162,8 +162,8 @@ fn a_nested_struct_child_is_named_by_its_whole_path() {
 
     // A required child the source struct does not carry at all.
     let missing = root([DataType::from_fields([
-        DataType::Utf8.nullable_field("city"),
-        DataType::Utf8.required_field("zip code"),
+        DataType::utf8().nullable_field("city"),
+        DataType::utf8().required_field("zip code"),
     ])
     .unwrap()
     .required_field("address")]);
@@ -184,7 +184,7 @@ fn a_nested_struct_child_is_named_by_its_whole_path() {
     )
     .unwrap();
     let required_child = root([
-        DataType::from_fields([DataType::Utf8.required_field("city")])
+        DataType::from_fields([DataType::utf8().required_field("city")])
             .unwrap()
             .required_field("address"),
     ]);
@@ -228,7 +228,7 @@ fn a_required_map_value_is_named_under_its_entries() {
     let batch = RecordBatch::try_new(source, vec![map]).unwrap();
 
     let entries = DataType::from_fields([
-        DataType::Utf8.required_field("keys"),
+        DataType::utf8().required_field("keys"),
         DataType::Int32.required_field("values"),
     ])
     .unwrap()
@@ -255,7 +255,7 @@ fn a_dictionary_refuses_a_null_its_values_reach() {
     )]);
     let batch = RecordBatch::try_new(source, vec![dictionary]).unwrap();
 
-    let target = root([DataType::dictionary(DataType::Int16, DataType::Utf8)
+    let target = root([DataType::dictionary(DataType::Int16, DataType::utf8())
         .unwrap()
         .required_field("label")]);
     assert_eq!(

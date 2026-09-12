@@ -230,7 +230,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
     let field = named("empty.log", b"")
         .read_arrow_field(&strings.into())
         .unwrap();
-    assert_eq!(field.field("value").unwrap().dtype(), &DataType::Utf8,);
+    assert_eq!(field.field("value").unwrap().dtype(), &DataType::utf8(),);
 
     let typed = options(r"(?<value>\d+)");
     let field = named("empty.log", b"")
@@ -794,9 +794,9 @@ fn generic_record_writes_use_only_the_binary_body() {
     let mut target = named("out.txt", b"old");
     let mut options: RecordOptions = TextOptions::new().into();
     let field = DataType::from_fields([
-        DataType::Utf8.required_field("url"),
+        DataType::utf8().required_field("url"),
         DataType::Int64.required_field("rownum"),
-        DataType::Binary.required_field("body"),
+        DataType::binary().required_field("body"),
     ])
     .unwrap()
     .required_field("row");

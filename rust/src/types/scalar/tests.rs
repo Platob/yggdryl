@@ -355,10 +355,10 @@ fn native_and_json_accessors_have_explicit_borrowing_semantics() {
     let geometry = Scalar::Geospatial(super::Geospatial::Geometry(
         crate::types::Geometry::new(crate::types::default::POINT_EMPTY_WKB.as_slice()).unwrap(),
     ));
-    assert_eq!(text.as_utf8(), Some("AAPL"));
+    assert_eq!(text.as_str(), Some("AAPL"));
     assert_eq!(text.as_bytes(), None);
     assert_eq!(bytes.as_bytes(), Some(b"AAPL".as_slice()));
-    assert_eq!(bytes.as_utf8(), None);
+    assert_eq!(bytes.as_str(), None);
     assert_eq!(
         geometry.as_bytes(),
         Some(crate::types::default::POINT_EMPTY_WKB.as_slice())
@@ -404,8 +404,7 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
 fn every_scalar_family_exposes_its_leaf_contract() {
     use crate::types::{bytes, decimal, geospatial, integer, nested, string, temporal, uuid};
     use crate::{
-        AsciiValue, BytesValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue,
-        TemporalValue, TextValue,
+        CodeValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue, TemporalValue,
     };
 
     let integer = integer::UInt128::new(u128::MAX);
@@ -429,17 +428,24 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(milliseconds.count(), 2_000);
     assert_eq!(milliseconds.unit(), TimeUnit::Millisecond);
 
-    let text = string::LargeUtf8::new("AAPL");
-    assert_eq!(TextValue::as_str(&text), "AAPL");
-    assert_eq!(ScalarValue::dtype(&text).unwrap(), DataType::LargeUtf8);
+    let text = string::Str::new("AAPL")
+        .try_with_parameters(string::StringParameters::utf8(
+            string::StringLayout::LargeString,
+        ))
+        .unwrap();
+    assert_eq!(text.as_str(), "AAPL");
+    assert_eq!(ScalarValue::dtype(&text).unwrap(), DataType::large_utf8());
 
-    let bytes = bytes::BinaryView::from(vec![1, 2, 3]);
-    assert_eq!(BytesValue::as_bytes(&bytes), [1, 2, 3]);
-    assert_eq!(ScalarValue::dtype(&bytes).unwrap(), DataType::BinaryView);
+    let bytes = bytes::Bytes::new([1, 2, 3])
+        .try_with_parameters(bytes::BytesParameters::new(bytes::BytesLayout::BinaryView))
+        .unwrap();
+    assert_eq!(bytes.as_bytes(), [1, 2, 3]);
+    assert_eq!(ScalarValue::dtype(&bytes).unwrap(), DataType::binary_view());
 
     let currency = string::Currency::new("USD").unwrap();
-    assert_eq!(<string::Currency as AsciiValue>::WIDTH, Some(3));
-    assert_eq!(AsciiValue::as_str(&currency), "USD");
+    assert_eq!(<string::Currency as CodeValue>::WIDTH, 3);
+    assert_eq!(CodeValue::as_str(&currency), "USD");
+    assert_eq!(ScalarValue::dtype(&currency).unwrap(), DataType::Currency);
 
     let geometry =
         geospatial::Geometry::new(crate::types::default::POINT_EMPTY_WKB.as_slice()).unwrap();
@@ -464,7 +470,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(ScalarValue::dtype(&uuid).unwrap(), DataType::Uuid);
 
     let scalar = ScalarValue::into_scalar(text);
-    assert_eq!(scalar.id(), DataTypeId::LargeUtf8);
+    assert_eq!(scalar.id(), DataTypeId::LargeString);
     assert_eq!(scalar.family(), DataTypeKind::Text);
 }
 
@@ -487,24 +493,51 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(datetime.timezone(), Timezone::UTC);
     assert!(temporal::Date32::new(0, TimeUnit::Second, Timezone::NAIVE).is_err());
 
-    let utf8 = string::Utf8::new("東京");
-    let view = string::Utf8View::new("東京");
+    let utf8 = string::Str::new("東京");
+    let view = utf8
+        .clone()
+        .try_with_parameters(string::StringParameters::utf8(
+            string::StringLayout::StringView,
+        ))
+        .unwrap();
     assert_eq!(utf8.as_str(), view.as_str());
+    assert_eq!(utf8.layout(), string::StringLayout::String);
+    assert_eq!(view.layout(), string::StringLayout::StringView);
     assert_eq!(
-        serde_json::from_str::<string::Utf8>(&serde_json::to_string(&utf8).unwrap()).unwrap(),
+        serde_json::from_str::<string::Str>(&serde_json::to_string(&utf8).unwrap()).unwrap(),
         utf8
     );
 
-    let ascii = string::Ascii::new("FIX").unwrap();
+    let ascii = string::Str::new("FIX")
+        .try_with_parameters(string::StringParameters::ascii(
+            string::StringLayout::String,
+        ))
+        .unwrap();
     let currency = string::Currency::new("USD").unwrap();
     assert_eq!(ascii.as_str(), "FIX");
+    assert_eq!(ascii.charset(), crate::Charset::Ascii);
     assert_eq!(currency.as_str(), "USD");
-    assert!(string::Ascii::new("café").is_err());
-    assert!(string::FixedAscii::new("", 0).is_err());
+    assert!(
+        string::Str::new("café")
+            .try_with_parameters(string::StringParameters::ascii(
+                string::StringLayout::String
+            ))
+            .is_err()
+    );
+    assert!(
+        string::Str::new("")
+            .try_with_parameters(string::StringParameters::ascii(
+                string::StringLayout::FixedString
+            ))
+            .is_err()
+    );
     assert!(string::Cfi::new("TOO-LONG").is_err());
 
-    let binary = bytes::Binary::from(vec![0, 1, 0xff]);
-    let binary_view = bytes::BinaryView::from(vec![0, 1, 0xff]);
+    let binary = bytes::Bytes::from(vec![0, 1, 0xff]);
+    let binary_view = binary
+        .clone()
+        .try_with_parameters(bytes::BytesParameters::new(bytes::BytesLayout::BinaryView))
+        .unwrap();
     assert_eq!(binary.as_bytes(), binary_view.as_bytes());
     assert_eq!(binary.to_string(), "0001ff");
 
@@ -549,17 +582,29 @@ fn tier_two_families_keep_exact_members_and_logical_identity() {
     assert_eq!(narrow, wide);
     assert_eq!(narrow.to_string(), "12.50");
 
-    let utf8 = string::Text::Utf8(string::Utf8::new("same"));
-    let large = string::Text::LargeUtf8(string::LargeUtf8::new("same"));
+    let utf8 = string::Str::new("same");
+    let large = utf8
+        .clone()
+        .try_with_parameters(string::StringParameters::utf8(
+            string::StringLayout::LargeString,
+        ))
+        .unwrap();
     assert_eq!(utf8, large);
 
-    let binary = bytes::Bytes::Binary(bytes::Binary::from(vec![1, 2]));
-    let view = bytes::Bytes::BinaryView(bytes::BinaryView::from(vec![1, 2]));
+    let binary = bytes::Bytes::from(vec![1, 2]);
+    let view = binary
+        .clone()
+        .try_with_parameters(bytes::BytesParameters::new(bytes::BytesLayout::BinaryView))
+        .unwrap();
     assert_eq!(binary, view);
 
-    let ascii = string::AsciiFamily::Ascii(string::Ascii::new("USD").unwrap());
-    let currency = string::AsciiFamily::Currency(string::Currency::new("USD").unwrap());
-    assert_eq!(ascii, currency);
+    // A code carries its identity: two codes whose bytes agree are two
+    // values, and neither is the string spelling the same bytes.
+    let side = string::Code::Side(string::Side::new("1").unwrap());
+    let time_in_force = string::Code::TimeInForce(string::TimeInForce::new("1").unwrap());
+    assert_ne!(side, time_in_force);
+    assert_eq!(side.as_str(), time_in_force.as_str());
+    assert_ne!(Scalar::from(side), Scalar::from("1"));
 
     let mut point = vec![1, 1, 0, 0, 0];
     point.extend_from_slice(&1.5_f64.to_le_bytes());

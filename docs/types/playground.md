@@ -1,6 +1,6 @@
 # Playground
 
-Every ASCII datatype, every registered code, every refusal, and a declared vocabulary, as the package itself answered them.
+Every US-ASCII string width, every registered code, every refusal, and a declared vocabulary, as the package itself answered them.
 
 ## Contract
 
@@ -9,10 +9,11 @@ Every ASCII datatype, every registered code, every refusal, and a declared vocab
 | Source | `scripts/build_docs_playground.js` runs the real Node package over a fixed corpus |
 | Manifest | `docs/assets/playground.json`, committed and checked for drift by the addon build job |
 | Browser | Renders the manifest only; nothing is computed client-side (the addon is native, so no WebAssembly target exists) |
-| Contract proven | The [ASCII page](ascii.md): widths, registered codes, packed integers, declared vocabularies |
+| Contract proven | [Strings & bytes](text.md) for `ascii` and `fixed_ascii(n)`; [Codes](codes.md) for the registered codes, packed integers and declared vocabularies |
+| Manifest keys | `widths[]`: `dtype`, `fixedByteWidth` (null on the variable `ascii`), `kind` (`text` for a string, `code` for a code), `arrow`, `extensionName`, `extensionDocument`; `encode[]` / `decode[]` cases per `dtype`; `vocabulary`: a `StringEnum` declared on a `currency` field; `versions[]` |
 
 
-## The ASCII datatypes and the codes
+## The US-ASCII strings and the codes
 
 <div class="ygg-pg" data-playground="widths" markdown="1">
 This section renders `assets/playground.json` and needs JavaScript.
@@ -36,7 +37,7 @@ This section renders `assets/playground.json` and needs JavaScript.
 This section renders `assets/playground.json` and needs JavaScript.
 </div>
 
-A member is the integer its ASCII value packs into (the storage bytes, big-endian), so the code is the same in every process. The declaration rides on the field under one reserved metadata key, so it crosses Arrow, a file, and another runtime.
+A member is the integer its US-ASCII value packs into (the storage bytes, big-endian), so the code is the same in every process. The `StringEnum` declaration rides on the field under `field:enum`, so it crosses Arrow, a file, and another runtime. The encode and decode casts are recorded with `{ safe: false }`, so a refusal is the message the package answered rather than a null.
 
 ## Look up a value
 

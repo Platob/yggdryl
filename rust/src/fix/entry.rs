@@ -141,7 +141,7 @@ impl FixEntry {
     /// The key as a row column holds it: text, and lossily where the wire was
     /// not UTF-8.
     ///
-    /// A row materializes the arrival record into a `Utf8` column, which is
+    /// A row materializes the arrival record into a `utf8` column, which is
     /// the one place the bytes are read as text at all. The entry itself keeps
     /// the bytes, so re-emission stays exact whatever the column had to spell.
     pub(super) fn key_text(&self) -> smol_str::SmolStr {

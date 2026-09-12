@@ -7,7 +7,7 @@ use yggdryl::{DataType, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
 fn arrow_is_a_cache_preserving_validated_noop() {
     let field = Field::from_parts(
         "value",
-        DataType::from_fields([Field::new("child", DataType::Utf8, true)]).unwrap(),
+        DataType::from_fields([Field::new("child", DataType::utf8(), true)]).unwrap(),
         false,
         [("owner", "yggdryl")],
     )
@@ -27,12 +27,12 @@ fn spark_applies_only_the_conservative_recursive_matrix() {
         Field::new("wide", DataType::UInt64, true),
         Field::new(
             "items",
-            DataType::large_list(Field::new("item", DataType::Utf8View, true)),
+            DataType::large_list(Field::new("item", DataType::utf8_view(), true)),
             false,
         ),
         Field::new(
             "encoded",
-            DataType::dictionary(DataType::Int8, DataType::LargeBinary).unwrap(),
+            DataType::dictionary(DataType::Int8, DataType::large_binary()).unwrap(),
             false,
         ),
     ])
@@ -44,9 +44,9 @@ fn spark_applies_only_the_conservative_recursive_matrix() {
     let DataType::List(item) = fields[2].dtype() else {
         panic!("expected normalized list");
     };
-    assert_eq!(item.dtype(), &DataType::Utf8);
+    assert_eq!(item.dtype(), &DataType::utf8());
     assert!(item.is_nullable());
-    assert_eq!(fields[3].dtype(), &DataType::Binary);
+    assert_eq!(fields[3].dtype(), &DataType::binary());
     assert!(fields[1].is_nullable());
 }
 
@@ -56,11 +56,11 @@ fn spark_physical_rewrite_table_covers_offset_numeric_and_decimal_families() {
         (DataType::UInt16, DataType::Int32),
         (DataType::UInt32, DataType::Int64),
         (DataType::Float16, DataType::Float32),
-        (DataType::fixed_size_binary(8).unwrap(), DataType::Binary),
-        (DataType::LargeBinary, DataType::Binary),
-        (DataType::BinaryView, DataType::Binary),
-        (DataType::LargeUtf8, DataType::Utf8),
-        (DataType::Utf8View, DataType::Utf8),
+        (DataType::fixed_size_binary(8).unwrap(), DataType::binary()),
+        (DataType::large_binary(), DataType::binary()),
+        (DataType::binary_view(), DataType::binary()),
+        (DataType::large_utf8(), DataType::utf8()),
+        (DataType::utf8_view(), DataType::utf8()),
         (
             DataType::list_view(Field::new("item", DataType::UInt16, true)),
             DataType::list(Field::new("item", DataType::Int32, true)),
@@ -70,8 +70,8 @@ fn spark_physical_rewrite_table_covers_offset_numeric_and_decimal_families() {
             DataType::list(Field::new("item", DataType::Int32, false)),
         ),
         (
-            DataType::large_list_view(Field::new("item", DataType::Utf8View, true)),
-            DataType::list(Field::new("item", DataType::Utf8, true)),
+            DataType::large_list_view(Field::new("item", DataType::utf8_view(), true)),
+            DataType::list(Field::new("item", DataType::utf8(), true)),
         ),
         (
             DataType::decimal32(7, 2).unwrap(),
@@ -125,7 +125,7 @@ fn spark_errors_are_path_aware_and_extension_rewrites_are_atomic() {
 
     let no_op_extension = Field::from_parts(
         "value",
-        DataType::Utf8,
+        DataType::utf8(),
         true,
         [("ARROW:extension:name", "example.text")],
     )
@@ -234,7 +234,7 @@ fn polars_and_pandas_reject_maps_with_a_named_alternative() {
         Field::new(
             "entries",
             DataType::from_fields(vec![
-                Field::new("key", DataType::Utf8, false),
+                Field::new("key", DataType::utf8(), false),
                 Field::new("value", DataType::Int64, true),
             ])
             .unwrap(),
@@ -407,14 +407,14 @@ fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
 
 #[test]
 fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
-    let map = DataType::map_of(DataType::Utf8View, DataType::UInt8, true).unwrap();
+    let map = DataType::map_of(DataType::utf8_view(), DataType::UInt8, true).unwrap();
     let transformed = map.into_scheme_compat(&Scheme::SPARK).unwrap();
     let DataType::Map(map) = transformed else {
         panic!("expected map");
     };
     assert!(map.keys_sorted());
     let fields = map.entries().dtype().as_fields().unwrap();
-    assert_eq!(fields[0].dtype(), &DataType::Utf8);
+    assert_eq!(fields[0].dtype(), &DataType::utf8());
     assert_eq!(fields[1].dtype(), &DataType::Int16);
 
     let dictionary = DataType::dictionary(
@@ -430,12 +430,12 @@ fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
 
     let encoded = DataType::run_end_encoded(
         Field::new("run_ends", DataType::Int32, false),
-        Field::new("values", DataType::Utf8View, true),
+        Field::new("values", DataType::utf8_view(), true),
     )
     .unwrap();
     assert_eq!(
         encoded.into_scheme_compat(&Scheme::SPARK).unwrap(),
-        DataType::Utf8
+        DataType::utf8()
     );
 }
 
@@ -498,11 +498,11 @@ fn spark_rejects_both_run_end_extension_children_at_exact_paths() {
             Field::new("run_ends", DataType::Int32, false)
         };
         let values = if extension_on_run_ends {
-            Field::new("values", DataType::Utf8View, true)
+            Field::new("values", DataType::utf8_view(), true)
         } else {
             Field::from_parts(
                 "values",
-                DataType::Utf8View,
+                DataType::utf8_view(),
                 true,
                 [("ARROW:extension:metadata", "example-values")],
             )
@@ -530,10 +530,10 @@ fn iceberg_widens_everything_outside_its_closed_primitive_vocabulary() {
         (DataType::UInt32, DataType::Int64),
         (DataType::UInt64, DataType::decimal128(20, 0).unwrap()),
         (DataType::Float16, DataType::Float32),
-        (DataType::LargeBinary, DataType::Binary),
-        (DataType::BinaryView, DataType::Binary),
-        (DataType::LargeUtf8, DataType::Utf8),
-        (DataType::Utf8View, DataType::Utf8),
+        (DataType::large_binary(), DataType::binary()),
+        (DataType::binary_view(), DataType::binary()),
+        (DataType::large_utf8(), DataType::utf8()),
+        (DataType::utf8_view(), DataType::utf8()),
         (
             DataType::decimal32(7, 2).unwrap(),
             DataType::decimal128(7, 2).unwrap(),
@@ -563,8 +563,8 @@ fn iceberg_widens_everything_outside_its_closed_primitive_vocabulary() {
         DataType::Float32,
         DataType::Float64,
         DataType::Date32,
-        DataType::Binary,
-        DataType::Utf8,
+        DataType::binary(),
+        DataType::utf8(),
         DataType::fixed_size_binary(16).unwrap(),
         DataType::fixed_size_binary(8).unwrap(),
         DataType::Time64(TimeUnit::Microsecond),
@@ -665,7 +665,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
         Field::new("id", DataType::UInt16, false),
         Field::new(
             "tags",
-            DataType::large_list(Field::new("item", DataType::Utf8View, true)),
+            DataType::large_list(Field::new("item", DataType::utf8_view(), true)),
             false,
         ),
         Field::new(
@@ -676,7 +676,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
         // Iceberg has a first-class map, so it recurses rather than refusing.
         Field::new(
             "labels",
-            DataType::map_of(DataType::Utf8View, DataType::UInt8, true).unwrap(),
+            DataType::map_of(DataType::utf8_view(), DataType::UInt8, true).unwrap(),
             true,
         ),
     ])
@@ -689,7 +689,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     let DataType::List(item) = fields[1].dtype() else {
         panic!("expected a normalized list");
     };
-    assert_eq!(item.dtype(), &DataType::Utf8);
+    assert_eq!(item.dtype(), &DataType::utf8());
     assert!(item.is_nullable());
     let nested = fields[2].dtype().as_fields().unwrap();
     assert_eq!(nested[0].name(), "half");
@@ -699,7 +699,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     };
     assert!(map.keys_sorted());
     let entries = map.entries().dtype().as_fields().unwrap();
-    assert_eq!(entries[0].dtype(), &DataType::Utf8);
+    assert_eq!(entries[0].dtype(), &DataType::utf8());
     assert_eq!(entries[1].dtype(), &DataType::Int32);
 
     // A fixed-size list has no Iceberg equivalent, so it degrades to a list.
@@ -765,7 +765,7 @@ fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_exte
     // A foreign extension is still rejected rather than relabeled.
     let foreign = Field::from_parts(
         "blob",
-        DataType::LargeBinary,
+        DataType::large_binary(),
         true,
         [("ARROW:extension:name", "someorg.blob")],
     )

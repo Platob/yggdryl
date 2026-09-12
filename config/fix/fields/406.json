@@ -2,7 +2,7 @@
   {
     "name": "underlyingpaymentstreaminitialfixingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -26,7 +26,7 @@
   {
     "name": "underlyingpaymentstreaminitialfixingdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -90,7 +90,7 @@
   {
     "name": "underlyingpaymentstreamfixingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -114,7 +114,7 @@
   {
     "name": "underlyingpaymentstreamfixingdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -165,7 +165,7 @@
   {
     "name": "underlyingpaymentstreamratecutoffdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -252,7 +252,7 @@
   {
     "name": "underlyingpaymentstreamrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -277,7 +277,7 @@
   {
     "name": "underlyingpaymentstreamrateindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -440,7 +440,7 @@
   {
     "name": "underlyingpaymentstreamfinalrateroundingdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -503,7 +503,7 @@
   {
     "name": "underlyingpaymentstreaminflationlagunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -555,7 +555,7 @@
   {
     "name": "underlyingpaymentstreaminflationpublicationsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -629,7 +629,7 @@
   {
     "name": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -665,7 +665,7 @@
   {
     "name": "underlyingpaymentstreamnondeliverablefixingdatesoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -691,7 +691,7 @@
   {
     "name": "settlratefallbackreferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1015,7 +1015,7 @@
   {
     "name": "underlyingpaymentschedulestepfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1127,7 +1127,7 @@
   {
     "name": "underlyingpaymentschedulefixingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1151,7 +1151,7 @@
   {
     "name": "underlyingpaymentschedulefixingdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1204,7 +1204,7 @@
   {
     "name": "underlyingpaymentschedulefixingtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1241,7 +1241,7 @@
   {
     "name": "underlyingpaymentscheduleinterimexchangedatesbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

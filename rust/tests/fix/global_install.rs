@@ -15,7 +15,7 @@ fn an_installed_registry_is_the_default_and_cannot_be_replaced() {
     ) {
         return;
     }
-    let mut symbol = DataType::Utf8.required_field("Symbol");
+    let mut symbol = DataType::utf8().required_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a valid tag");
     let registry = FixRegistry::from_fields([symbol.clone()]).expect("one field");
     FixRegistry::install_global(registry).expect("nothing has resolved the default yet");

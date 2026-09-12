@@ -2,13 +2,13 @@
   {
     "name": "biddescriptor",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "BidDescriptor value. Usage depends upon BidDescriptorTyp (399).",
       "display": "BidDescriptor",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"biddescriptor\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"biddescriptor\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "400"
     }
   },
@@ -241,7 +241,7 @@
   {
     "name": "bidtradetype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -249,21 +249,21 @@
       "display": "BidTradeType",
       "fix:aliases": "tradetype",
       "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"Agency\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Agency\"},{\"value\":\"G\",\"name\":\"VWAPGuarantee\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"VWAP Guarantee\"},{\"value\":\"J\",\"name\":\"GuaranteedClose\",\"since\":\"4.2\",\"sort\":3,\"doc\":\"Guaranteed Close\"},{\"value\":\"R\",\"name\":\"RiskTrade\",\"since\":\"4.2\",\"sort\":4,\"doc\":\"Risk Trade\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"tradetype\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.4\",\"name\":\"bidtradetype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"tradetype\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.4\",\"name\":\"bidtradetype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "418"
     }
   },
   {
     "name": "basispxtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Code to represent the basis price type.",
       "display": "BasisPxType",
       "fix:codes": "{\"codes\":[{\"value\":\"2\",\"name\":\"ClosingPriceAtMorningSession\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Closing price at morning session\"},{\"value\":\"3\",\"name\":\"ClosingPrice\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Closing price\"},{\"value\":\"4\",\"name\":\"CurrentPrice\",\"since\":\"4.2\",\"sort\":3,\"doc\":\"Current price\"},{\"value\":\"5\",\"name\":\"SQ\",\"since\":\"4.2\",\"sort\":4,\"doc\":\"SQ\"},{\"value\":\"6\",\"name\":\"VWAPThroughADay\",\"since\":\"4.2\",\"sort\":5,\"doc\":\"VWAP through a day\"},{\"value\":\"7\",\"name\":\"VWAPThroughAMorningSession\",\"since\":\"4.2\",\"sort\":6,\"doc\":\"VWAP through a morning session\"},{\"value\":\"8\",\"name\":\"VWAPThroughAnAfternoonSession\",\"since\":\"4.2\",\"sort\":7,\"doc\":\"VWAP through an afternoon session\"},{\"value\":\"9\",\"name\":\"VWAPThroughADayExcept\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"VWAP through a day except \\\"YORI\\\" (an opening auction)\"},{\"value\":\"A\",\"name\":\"VWAPThroughAMorningSessionExcept\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"VWAP through a morning session except \\\"YORI\\\" (an opening auction)\"},{\"value\":\"B\",\"name\":\"VWAPThroughAnAfternoonSessionExcept\",\"since\":\"4.2\",\"sort\":10,\"doc\":\"VWAP through an afternoon session except \\\"YORI\\\" (an opening auction)\"},{\"value\":\"C\",\"name\":\"Strike\",\"since\":\"4.2\",\"sort\":11,\"doc\":\"Strike\"},{\"value\":\"D\",\"name\":\"Open\",\"since\":\"4.2\",\"sort\":12,\"doc\":\"Open\"},{\"value\":\"Z\",\"name\":\"Others\",\"since\":\"4.2\",\"sort\":30,\"doc\":\"Others\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"basispxtype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"basispxtype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "419"
     }
   },
@@ -289,7 +289,7 @@
     "metadata": {
       "description": "ISO Country Code in field",
       "display": "Country",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"country\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"name\":\"country\",\"type\":{\"type\":\"country\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"country\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"name\":\"country\",\"type\":{\"type\":\"country\"}}]}",
       "fix:tag": "421"
     }
   },
@@ -445,28 +445,28 @@
   {
     "name": "listexecinsttype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies the type of ListExecInst (69).",
       "display": "ListExecInstType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Immediate\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Immediate\"},{\"value\":\"2\",\"name\":\"WaitForInstruction\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Wait for Execut Instruction (i.e. a List Execut message or phone call before proceeding with execution of the list)\"},{\"value\":\"3\",\"name\":\"SellDriven\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Exchange/switch CIV order - Sell driven\"},{\"value\":\"4\",\"name\":\"BuyDrivenCashTopUp\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Exchange/switch CIV order - Buy driven, cash top-up (i.e. additional cash will be provided to fulfill the order)\"},{\"value\":\"5\",\"name\":\"BuyDrivenCashWithdraw\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Exchange/switch CIV order - Buy driven, cash withdraw (i.e. additional cash will not be provided to fulfill the order)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"listexecinsttype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"listexecinsttype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "433"
     }
   },
   {
     "name": "cxlrejresponseto",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies the type of request that a Cancel Reject is in response to.",
       "display": "CxlRejResponseTo",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"OrderCancelRequest\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Order cancel request\"},{\"value\":\"2\",\"name\":\"OrderCancelReplaceRequest\",\"since\":\"4.2\",\"sort\":2,\"aliases\":[\"OrderCancel\"],\"doc\":\"Order cancel/replace request\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"cxlrejresponseto\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"cxlrejresponseto\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "434"
     }
   },
@@ -527,12 +527,12 @@
   {
     "name": "clearingfirm",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "display": "ClearingFirm",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"clearingfirm\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"removed\":true}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"clearingfirm\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"removed\":true}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.3\",\"fills\":[{\"group\":\"parties\",\"members\":[{\"tag\":448},{\"tag\":452,\"value\":\"4\"}]}],\"doc\":\"ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)\"}]}",
       "fix:tag": "439"
     }
@@ -540,12 +540,12 @@
   {
     "name": "clearingaccount",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "display": "ClearingAccount",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"clearingaccount\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"removed\":true}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"clearingaccount\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"removed\":true}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.3\",\"fills\":[{\"group\":\"parties\",\"members\":[{\"tag\":452,\"value\":\"4\"},{\"group\":\"ptyssubgrp\",\"members\":[{\"tag\":523}]}]}],\"doc\":\"ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)\"}]}",
       "fix:tag": "440"
     }
@@ -566,14 +566,14 @@
   {
     "name": "multilegreportingtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Used to indicate how the multi-legged security (e.g. option strategies, spreads, etc.) is being reported.",
       "display": "MultiLegReportingType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"SingleSecurity\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Single security (default if not specified)\"},{\"value\":\"2\",\"name\":\"IndividualLegOfAMultiLegSecurity\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Individual leg of a multi-leg security\"},{\"value\":\"3\",\"name\":\"MultiLegSecurity\",\"since\":\"4.2\",\"sort\":3,\"doc\":\"Multi-leg security\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"multilegreportingtype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"multilegreportingtype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "442"
     }
   },
@@ -595,13 +595,13 @@
   {
     "name": "liststatustext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Free format text string related to List Status.",
       "display": "ListStatusText",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"liststatustext\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"liststatustext\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "444"
     }
   },
@@ -634,27 +634,27 @@
   {
     "name": "partyidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.",
       "display": "PartyIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"KoreanInvestorID\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Korean Investor ID\"},{\"value\":\"2\",\"name\":\"TaiwaneseForeignInvestorID\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Qualified Foreign Investor ID QFII/FID\"},{\"value\":\"3\",\"name\":\"TaiwaneseTradingAcct\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Trading Acct\"},{\"value\":\"4\",\"name\":\"MalaysianCentralDepository\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Malaysian Central Depository (MCD) number\"},{\"value\":\"5\",\"name\":\"ChineseInvestorID\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Chinese Investor ID\"},{\"value\":\"6\",\"name\":\"UKNationalInsuranceOrPensionNumber\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"UK National Insurance or Pension Number\"},{\"value\":\"7\",\"name\":\"USSocialSecurityNumber\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Social Security Number\"},{\"value\":\"8\",\"name\":\"USEmployerOrTaxIDNumber\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Employer or Tax ID Number\"},{\"value\":\"9\",\"name\":\"AustralianBusinessNumber\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Business Number\"},{\"value\":\"A\",\"name\":\"AustralianTaxFileNumber\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Tax File Number\"},{\"value\":\"B\",\"name\":\"BIC\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For all PartyRoles\",\"doc\":\"BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \\\"Appendix 6-B\\\")\"},{\"value\":\"C\",\"name\":\"GeneralIdentifier\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For all PartyRoles\",\"doc\":\"Generally accepted market participant identifier (e.g. NASD mnemonic)\"},{\"value\":\"D\",\"name\":\"Proprietary\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For all PartyRoles\",\"doc\":\"Proprietary / Custom code\"},{\"value\":\"E\",\"name\":\"ISOCountryCode\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For all PartyRoles\",\"doc\":\"ISO Country Code\"},{\"value\":\"F\",\"name\":\"SettlementEntityLocation\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For all PartyRoles\",\"doc\":\"Settlement Entity Location (note if Local Market Settlement use \\\"E=ISO Country Code\\\") (see \\\"Appendix 6-G\\\" for valid values)\"},{\"value\":\"G\",\"name\":\"MIC\",\"since\":\"4.4\",\"sort\":6,\"group\":\"For all PartyRoles\",\"doc\":\"Market Identifier Code (ISO 10383) MIC\"},{\"value\":\"H\",\"name\":\"CSDParticipant\",\"since\":\"4.4\",\"sort\":7,\"group\":\"For all PartyRoles\",\"doc\":\"CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number\"},{\"value\":\"I\",\"name\":\"ISITCAcronym\",\"since\":\"4.4\",\"sort\":1,\"group\":\"For PartyRole=\\\"Broker of Credit\\\"\",\"doc\":\"Directed broker three character acronym as defined in ISITC \\\"ETC Best Practice\\\" guidelines document\"},{\"value\":\"J\",\"name\":\"TaxID\",\"since\":\"5.0.2\",\"ep\":103,\"sort\":6,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Tax ID\"},{\"value\":\"K\",\"name\":\"AustralianCompanyNumber\",\"since\":\"5.0.2\",\"ep\":108,\"sort\":8,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Company Number\"},{\"value\":\"L\",\"name\":\"AustralianRegisteredBodyNumber\",\"since\":\"5.0.2\",\"ep\":108,\"sort\":9,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Registered Body Number\"},{\"value\":\"M\",\"name\":\"CFTCReportingFirmIdentifier\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":10,\"group\":\"For all PartyRoles\",\"doc\":\"CFTC reporting firm identifier\"},{\"value\":\"N\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":156,\"sort\":11,\"group\":\"For all PartyRoles\",\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"O\",\"name\":\"InterimIdentifier\",\"since\":\"5.0.2\",\"ep\":192,\"sort\":12,\"group\":\"For all PartyRoles\",\"doc\":\"Interim identifier\"},{\"value\":\"P\",\"name\":\"ShortCodeIdentifier\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":13,\"group\":\"For all PartyRoles\",\"doc\":\"Short code identifier\"},{\"value\":\"Q\",\"name\":\"NationalIDNaturalPerson\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":14,\"group\":\"For all PartyRoles\",\"doc\":\"National ID of natural person\"},{\"value\":\"R\",\"name\":\"IndiaPermanentAccountNumber\",\"since\":\"5.0.2\",\"ep\":244,\"sort\":15,\"group\":\"For all PartyRoles\",\"doc\":\"India Permanent Account Number\"},{\"value\":\"S\",\"name\":\"FDID\",\"since\":\"5.0.2\",\"ep\":248,\"sort\":16,\"group\":\"For all PartyRoles\",\"doc\":\"Firm designated identifier\"},{\"value\":\"T\",\"name\":\"SPSAID\",\"ep\":262,\"sort\":17,\"group\":\"For all PartyRoles\",\"doc\":\"Special Segregated Account ID\"},{\"value\":\"U\",\"name\":\"MasterSPSAID\",\"ep\":262,\"sort\":18,\"group\":\"For all PartyRoles\",\"doc\":\"Master Special Segregated Account ID\"},{\"value\":\"V\",\"name\":\"KoreaShortSellingRegistrationNumber\",\"ep\":296,\"sort\":19,\"group\":\"For all PartyRoles\",\"doc\":\"Korea Short Selling Registration Number\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"partyidsource\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"partyidsource\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "447"
     }
   },
   {
     "name": "partyid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
       "display": "PartyID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"partyid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"partyid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "448"
     }
   },
@@ -741,27 +741,27 @@
   {
     "name": "securityaltid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Alternate Security identifier value for this security of SecurityAltIDSource (456) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityAltIDSource.",
       "display": "SecurityAltID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"securityaltid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"securityaltid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "455"
     }
   },
   {
     "name": "securityaltidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies class or source of the SecurityAltID(455) value.",
       "display": "SecurityAltIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"securityaltidsource\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"securityaltidsource\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "456"
     }
   },
@@ -781,27 +781,27 @@
   {
     "name": "underlyingsecurityaltid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Alternate Security identifier value for this underlying security of UnderlyingSecurityAltIDSource (459) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires UnderlyingSecurityAltIDSource.",
       "display": "UnderlyingSecurityAltID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyingsecurityaltid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyingsecurityaltid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "458"
     }
   },
   {
     "name": "underlyingsecurityaltidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies class or source of the UnderlyingSecurityAltID(458) value.",
       "display": "UnderlyingSecurityAltIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyingsecurityaltidsource\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyingsecurityaltidsource\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "459"
     }
   },
@@ -822,13 +822,13 @@
   {
     "name": "cficode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments.",
       "display": "CFICode",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cficode\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cficode\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "461"
     }
   },
@@ -849,13 +849,13 @@
   {
     "name": "underlyingcficode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Underlying security's CFICode.",
       "display": "UnderlyingCFICode",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyingcficode\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyingcficode\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "463"
     }
   },
@@ -890,40 +890,40 @@
   {
     "name": "bookingrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Common reference passed to a post-trade booking process (e.g. industry matching utility).",
       "display": "BookingRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"bookingrefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"bookingrefid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "466"
     }
   },
   {
     "name": "individualallocid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier for a specific NoAllocs (78) repeating group instance (e.g. for an AllocAccount).",
       "display": "IndividualAllocID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"individualallocid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"individualallocid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "467"
     }
   },
   {
     "name": "roundingdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies which direction to round For CIV - indicates whether or not the quantity of shares/units is to be rounded and in which direction where CashOrdQty (152) or (for CIV only) OrderPercent (516) are specified on an order.",
       "display": "RoundingDirection",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RoundToNearest\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Round to nearest\"},{\"value\":\"1\",\"name\":\"RoundDown\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Round down\"},{\"value\":\"2\",\"name\":\"RoundUp\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Round up\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"roundingdirection\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"roundingdirection\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "468"
     }
   },
@@ -956,26 +956,26 @@
   {
     "name": "stateorprovinceofissue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "A two-character state or province abbreviation.",
       "display": "StateOrProvinceOfIssue",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"stateorprovinceofissue\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"stateorprovinceofissue\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "471"
     }
   },
   {
     "name": "localeofissue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies the locale or region of issue.",
       "display": "LocaleOfIssue",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"localeofissue\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"localeofissue\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "472"
     }
   },
@@ -995,13 +995,13 @@
   {
     "name": "mailingdtls",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Set of Correspondence address details, possibly including phone, fax, etc.",
       "display": "MailingDtls",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"mailingdtls\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"mailingdtls\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "474"
     }
   },
@@ -1021,13 +1021,13 @@
   {
     "name": "paymentref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "\"Settlement Payment Reference\" - A free format Payment reference to assist with reconciliation, e.g. a Client and/or Order ID number.",
       "display": "PaymentRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"paymentref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"paymentref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "476"
     }
   },
@@ -1074,41 +1074,41 @@
   {
     "name": "cancellationrights",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "For CIV - A one character code identifying whether Cancellation rights/Cooling off period applies.",
       "display": "CancellationRights",
       "fix:codes": "{\"codes\":[{\"value\":\"M\",\"name\":\"NoWaiverAgreement\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"No - Waiver agreement\"},{\"value\":\"N\",\"name\":\"NoExecutionOnly\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"No - Execution Only\"},{\"value\":\"O\",\"name\":\"NoInstitutional\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"No - Institutional\"},{\"value\":\"Y\",\"name\":\"Yes\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Yes\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cancellationrights\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cancellationrights\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "480"
     }
   },
   {
     "name": "moneylaunderingstatus",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "A one character code identifying Money laundering status.",
       "display": "MoneyLaunderingStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ExemptBelowLimit\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Exempt - Below the Limit\"},{\"value\":\"2\",\"name\":\"ExemptMoneyType\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Exempt - Client Money Type exemption\"},{\"value\":\"3\",\"name\":\"ExemptAuthorised\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Exempt - Authorised Credit or financial institution\"},{\"value\":\"N\",\"name\":\"NotChecked\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Not Checked\"},{\"value\":\"Y\",\"name\":\"Passed\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Passed\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"moneylaunderingstatus\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"moneylaunderingstatus\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "481"
     }
   },
   {
     "name": "mailinginst",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Free format text to specify mailing instruction requirements, e.g. \"no third party mailings\".",
       "display": "MailingInst",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"mailinginst\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"mailinginst\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "482"
     }
   },
@@ -1130,14 +1130,14 @@
   {
     "name": "execpricetype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "For CIV - Identifies how the execution price LastPx (31) was calculated from the fund unit/share price(s) calculated at the fund valuation point.",
       "display": "ExecPriceType",
       "fix:codes": "{\"codes\":[{\"value\":\"B\",\"name\":\"BidPrice\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Bid price\"},{\"value\":\"C\",\"name\":\"CreationPrice\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Creation price\"},{\"value\":\"D\",\"name\":\"CreationPricePlusAdjustmentPercent\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Creation price plus adjustment percent\"},{\"value\":\"E\",\"name\":\"CreationPricePlusAdjustmentAmount\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Creation price plus adjustment amount\"},{\"value\":\"O\",\"name\":\"OfferPrice\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Offer price\"},{\"value\":\"P\",\"name\":\"OfferPriceMinusAdjustmentPercent\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Offer price minus adjustment percent\"},{\"value\":\"Q\",\"name\":\"OfferPriceMinusAdjustmentAmount\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"Offer price minus adjustment amount\"},{\"value\":\"S\",\"name\":\"SinglePrice\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"Single price\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"execpricetype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"execpricetype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "484"
     }
   },
@@ -1178,33 +1178,33 @@
       "description": "Identifies Trade Report message transaction type",
       "display": "TradeReportTransType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Cancel\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Cancel\"},{\"value\":\"2\",\"name\":\"Replace\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Replace\"},{\"value\":\"3\",\"name\":\"Release\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Release\"},{\"value\":\"4\",\"name\":\"Reverse\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Reverse\"},{\"value\":\"5\",\"name\":\"CancelDueToBackOutOfTrade\",\"since\":\"4.4\",\"ep\":4,\"sort\":6,\"doc\":\"Cancel Due To Back Out of Trade\"},{\"value\":\"C\",\"name\":\"CancelLegacy\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"N\",\"name\":\"NewLegacy\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"R\",\"name\":\"ReplaceLegacy\",\"since\":\"4.3\",\"deprecated\":\"4.4\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradereporttranstype\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.4\",\"name\":\"tradereporttranstype\",\"type\":{\"type\":\"int32\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradereporttranstype\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.4\",\"name\":\"tradereporttranstype\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "487"
     }
   },
   {
     "name": "cardholdername",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The name of the payment card holder as specified on the card being used for payment.",
       "display": "CardHolderName",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cardholdername\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cardholdername\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "488"
     }
   },
   {
     "name": "cardnumber",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The number of the payment card as specified on the card being used for payment.",
       "display": "CardNumber",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cardnumber\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cardnumber\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "489"
     }
   },
@@ -1225,14 +1225,14 @@
   {
     "name": "cardissnum",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The issue number of the payment card as specified on the card being used for payment. This is only applicable to certain types of card.",
       "display": "CardIssNum",
       "fix:aliases": "cardissno",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cardissno\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.4\",\"name\":\"cardissnum\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cardissno\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.4\",\"name\":\"cardissnum\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "491"
     }
   },
@@ -1253,26 +1253,26 @@
   {
     "name": "registaccttype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "For CIV - a fund manager-defined code identifying which of the fund manager's account types is required.",
       "display": "RegistAcctType",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registaccttype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registaccttype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "493"
     }
   },
   {
     "name": "designation",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Free format text defining the designation to be associated with a holding on the register. Used to identify assets of a specific underlying investor using a common registration, e.g. a broker's nominee or street name.",
       "display": "Designation",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"designation\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"designation\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "494"
     }
   },
@@ -1293,53 +1293,53 @@
   {
     "name": "registrejreasontext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Text indicating reason(s) why a Registration Instruction has been rejected.",
       "display": "RegistRejReasonText",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registrejreasontext\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registrejreasontext\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "496"
     }
   },
   {
     "name": "fundrenewwaiv",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "A one character code identifying whether the Fund based renewal commission is to be waived.",
       "display": "FundRenewWaiv",
       "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"No\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"No\"},{\"value\":\"Y\",\"name\":\"Yes\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Yes\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"fundrenewwaiv\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"fundrenewwaiv\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "497"
     }
   },
   {
     "name": "cashdistribagentname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Name of local agent bank if for cash distributions",
       "display": "CashDistribAgentName",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashdistribagentname\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashdistribagentname\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "498"
     }
   },
   {
     "name": "cashdistribagentcode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "BIC (Bank Identification Code--Swift managed) code of agent bank for cash distributions",
       "display": "CashDistribAgentCode",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashdistribagentcode\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashdistribagentcode\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "499"
     }
   }

@@ -19,7 +19,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // One insert into a dictionary of each size. The clone is outside the
     // timer, and so is the drop: every routine hands the registry back as its
     // output rather than letting it fall at the end of the timed closure.
-    let mut incoming = DataType::Utf8.nullable_field("Incoming");
+    let mut incoming = DataType::utf8().nullable_field("Incoming");
     incoming.as_fix_mut().set_tag(9_000).unwrap();
     incoming
         .as_fix_mut()
@@ -57,7 +57,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
 
     // A merge that adds an alias and an alternate tag to a stored field.
-    let mut update = DataType::Utf8.nullable_field("Symbol");
+    let mut update = DataType::utf8().nullable_field("Symbol");
     update.as_fix_mut().set_tag(55).unwrap();
     update.as_fix_mut().set_tags(&[9_001]).unwrap();
     update.as_fix_mut().set_aliases(["Sym"]).unwrap();
@@ -85,7 +85,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // field its name reaches, a Struct redirected to the components, and a
     // component gaining a member that every reference to it then carries -
     // which re-resolves the seed's whole catalog, and is the honest cost.
-    let mut renamed = DataType::Utf8.nullable_field("symbol");
+    let mut renamed = DataType::utf8().nullable_field("symbol");
     renamed.as_fix_mut().set_tag(9_001).unwrap();
     renamed.as_fix_mut().set_aliases(["Ticker"]).unwrap();
     group.bench_function("add_field_same_name_merge", |bencher| {
@@ -98,7 +98,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    let nested = DataType::from_fields([DataType::Utf8.nullable_field("VenueSymbol")])
+    let nested = DataType::from_fields([DataType::utf8().nullable_field("VenueSymbol")])
         .unwrap()
         .required_field("VenueInstrument");
     group.bench_function("add_field_nested_redirect", |bencher| {
@@ -112,7 +112,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         );
     });
     let mut seeded = registry.clone();
-    let mut venue_symbol = DataType::Utf8.nullable_field("VenueSymbol");
+    let mut venue_symbol = DataType::utf8().nullable_field("VenueSymbol");
     venue_symbol.as_fix_mut().set_tag(9_010).unwrap();
     seeded.add_field(venue_symbol).unwrap();
     let mut member = seeded.field(9_010).unwrap().clone();
@@ -155,7 +155,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The identity setters, and the refusal path a caller pays for a tag the
     // FIX specification assigns.
     let venue = venue();
-    let mut movable = DataType::Utf8.nullable_field("Movable");
+    let mut movable = DataType::utf8().nullable_field("Movable");
     movable.as_fix_mut().set_tag(9_000).unwrap();
     group.bench_function("set_branch", |bencher| {
         bencher.iter_batched(
@@ -177,7 +177,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    let mut reserved = DataType::Utf8.nullable_field("Reserved");
+    let mut reserved = DataType::utf8().nullable_field("Reserved");
     reserved.as_fix_mut().set_tag(35).unwrap();
     group.bench_function("set_branch_refused", |bencher| {
         bencher.iter_batched(
@@ -254,7 +254,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
 }
 
 fn coded_catalog() -> FixRegistry {
-    let mut party = DataType::Utf8.nullable_field("PartyID");
+    let mut party = DataType::utf8().nullable_field("PartyID");
     party.as_fix_mut().set_tag(448).unwrap();
     party
         .as_fix_mut()
@@ -295,7 +295,7 @@ fn coded_catalog() -> FixRegistry {
 /// One realistic definition of tag 32: dated, coded, described, aliased.
 fn merge_source(wording: &str, dated: &str, reading: &str) -> Field {
     let version: Version = dated.parse().expect("a valid version");
-    let mut field = DataType::Utf8.nullable_field("LastQty");
+    let mut field = DataType::utf8().nullable_field("LastQty");
     field.as_fix_mut().set_tag(32).expect("a static tag");
     field
         .as_fix_mut()

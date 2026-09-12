@@ -13,7 +13,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{AsciiEnum, Error, Result, Scheme, Url, stable_hash_display};
+use crate::{Error, Result, Scheme, StringEnum, Url, stable_hash_display};
 
 mod pairs;
 
@@ -899,8 +899,8 @@ mod validation;
 pub use protocol::ProtocolMetadata;
 use validation::*;
 pub(crate) use validation::{
-    ALL_SOURCES, parse_ascii_enum, parse_content_length, parse_field_id, parse_reserved_bool,
-    parse_source_list, property_key, property_name, protocol_metadata_prefix, render_source_list,
+    ALL_SOURCES, parse_content_length, parse_field_id, parse_reserved_bool, parse_source_list,
+    parse_string_enum, property_key, property_name, protocol_metadata_prefix, render_source_list,
     write_json_string,
 };
 // Read only by `xxhash::arrow` and `media::partition`, both of which the

@@ -75,7 +75,7 @@ const negativeValue: Scalar = price.negate()
 const absoluteValue: Scalar = negativeValue.absolute()
 const dtype = widePrice.dtype
 const rawBytes: Buffer | null = Scalar.fromJs(Buffer.from('x')).asBytes()
-const rawUtf8: string | null = Scalar.fromJs('x').asUtf8()
+const rawText: string | null = Scalar.fromJs('x').asStr()
 const jsonBytes: Buffer = widePrice.asJsonBytes()
 const jsonUtf8: string = widePrice.asJsonUtf8()
 const pivot: Scalar = Scalar.fromJs(new Set([1, 2]), { maxDepth: 8 })
@@ -260,7 +260,7 @@ void negativeValue
 void absoluteValue
 void dtype
 void rawBytes
-void rawUtf8
+void rawText
 void jsonBytes
 void jsonUtf8
 void pivot

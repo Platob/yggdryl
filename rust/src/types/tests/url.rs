@@ -151,7 +151,7 @@ fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_tri
 #[test]
 fn a_text_column_is_ingested_and_canonicalized_and_a_bad_row_names_itself() {
     let target = root(Field::new("location", DataType::Url, true));
-    let source_schema = root(Field::new("location", DataType::Utf8, true))
+    let source_schema = root(Field::new("location", DataType::utf8(), true))
         .into_arrow_schema()
         .unwrap();
     let batch = RecordBatch::try_new(
@@ -202,7 +202,7 @@ fn defaults_merges_and_typed_fields_do_not_fall_through() {
         DataType::Url
     );
     let refused = DataType::Url
-        .merge_with(&DataType::Utf8, true)
+        .merge_with(&DataType::utf8(), true)
         .unwrap_err()
         .to_string();
     assert!(refused.contains("url"), "{refused}");

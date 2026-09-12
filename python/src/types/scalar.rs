@@ -22,16 +22,14 @@ use pyo3::{IntoPyObjectExt, PyTypeInfo};
 use yggdryl::arrow::{
     array_from_value, array_to_value, batch_from_value, batch_to_value, scalar_array, scalar_value,
 };
-use yggdryl::types::bytes::{BinaryView, Bytes, FixedSizeBinary, LargeBinary};
+use yggdryl::types::bytes::{Bytes, BytesLayout, BytesParameters};
 use yggdryl::types::decimal::{Decimal, Decimal32, Decimal64};
 use yggdryl::types::geospatial::{Geography, Geometry, Geospatial};
 use yggdryl::types::integer::Integer;
 use yggdryl::types::nested::Nested;
-use yggdryl::types::string::{
-    LargeUtf8, LargeUtf8View, StringLayout, StringParameters, Text, Utf8, Utf8View,
-};
+use yggdryl::types::string::{Code, Str, StringLayout, StringParameters};
 use yggdryl::types::temporal::{Interval, Temporal};
-use yggdryl::types::{Ascii, AsciiFamily, Cfi, Country, Currency, FixedAscii, Isin, Mic};
+use yggdryl::types::{Cfi, Country, Currency, Isin, Mic, MsgDirection, Side, State, TimeInForce};
 use yggdryl::{
     ArrowCast, DataType as CoreDataType, Enum, Error as CoreError, Field as CoreField, Float16,
     Float32, Float64, I256, Scalar, TemporalFamily, TimeUnit, Timezone,
@@ -329,90 +327,36 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         Scalar::Decimal(Decimal::D256(value)) => {
             decimal_pickle_state(py, "d256", &value.coefficient().to_string(), value.scale())
         }
-        // The ordinary string - UTF-8, no width - pickles its characters
-        // under its layout's own tag. A charset or a width is what makes a
-        // value carry more than that, and those pickle the whole declaration.
-        Scalar::Text(value) if value.charset().is_utf8() && value.width().is_none() => {
-            let tag = match value {
-                Text::LargeUtf8(_) => "large_utf8",
-                Text::Utf8View(_) => "utf8_view",
-                Text::LargeUtf8View(_) => "large_utf8_view",
-                _ => "string",
-            };
+        // The ordinary string - UTF-8, the default layout, no width - pickles
+        // its characters alone. A layout, a charset, or a width is what makes
+        // a value carry more than that, and those pickle the whole declaration.
+        Scalar::String(value) if value.parameters() == StringParameters::default() => {
             tagged_pickle_state(
                 py,
-                tag,
+                "string",
                 Some(PyString::new(py, value.as_str()).into_any().unbind()),
             )
         }
-        Scalar::Text(value) => {
+        Scalar::String(value) => {
             let layout = PyString::new(py, value.layout().as_str())
                 .into_any()
                 .unbind();
             let charset = PyString::new(py, value.charset().as_str())
                 .into_any()
                 .unbind();
-            let width = value
-                .width()
-                .unwrap_or(0)
-                .into_pyobject(py)?
-                .clone()
-                .into_any()
-                .unbind();
+            let fixed = value.fixed().into_pyobject(py)?.into_any().unbind();
             let text = PyString::new(py, value.as_str()).into_any().unbind();
             tagged_pickle_state(
                 py,
-                "encoded_string",
-                Some(pickle_tuple(py, vec![layout, charset, width, text])?),
+                "string",
+                Some(pickle_tuple(py, vec![layout, charset, fixed, text])?),
             )
         }
-        Scalar::Ascii(AsciiFamily::Ascii(value)) => tagged_pickle_state(
+        // A code pickles under its own identity, which is what tells a
+        // currency from a country whose bytes agree.
+        Scalar::Code(value) => tagged_pickle_state(
             py,
-            "ascii",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
-        Scalar::Ascii(AsciiFamily::FixedAscii(value)) => {
-            let text = PyString::new(py, value.as_str()).into_any().unbind();
-            let width = value.width().into_pyobject(py)?.clone().into_any().unbind();
-            tagged_pickle_state(
-                py,
-                "fixed_ascii",
-                Some(pickle_tuple(py, vec![text, width])?),
-            )
-        }
-        Scalar::Ascii(AsciiFamily::Country(value)) => tagged_pickle_state(
-            py,
-            "country",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
-        Scalar::Ascii(AsciiFamily::Currency(value)) => tagged_pickle_state(
-            py,
-            "currency",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
-        Scalar::Ascii(AsciiFamily::Mic(value)) => tagged_pickle_state(
-            py,
-            "mic",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
-        Scalar::Ascii(AsciiFamily::Cfi(value)) => tagged_pickle_state(
-            py,
-            "cfi",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
-        Scalar::Ascii(AsciiFamily::Isin(value)) => tagged_pickle_state(
-            py,
-            "isin",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
-        Scalar::Ascii(AsciiFamily::Side(value)) => tagged_pickle_state(
-            py,
-            "side",
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
-        ),
-        Scalar::Ascii(AsciiFamily::MsgDirection(value)) => tagged_pickle_state(
-            py,
-            "msgdirection",
+            value.identifier().as_str(),
             Some(PyString::new(py, value.as_str()).into_any().unbind()),
         ),
         Scalar::Uuid(value) => tagged_pickle_state(
@@ -441,26 +385,27 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
                 ],
             )?),
         ),
-        Scalar::Bytes(Bytes::Binary(value)) => tagged_pickle_state(
-            py,
-            "bytes",
-            Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
-        ),
-        Scalar::Bytes(Bytes::FixedSizeBinary(value)) => tagged_pickle_state(
-            py,
-            "fixed_size_binary",
-            Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
-        ),
-        Scalar::Bytes(Bytes::LargeBinary(value)) => tagged_pickle_state(
-            py,
-            "large_binary",
-            Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
-        ),
-        Scalar::Bytes(Bytes::BinaryView(value)) => tagged_pickle_state(
-            py,
-            "binary_view",
-            Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
-        ),
+        // Plain bytes pickle as the payload alone; another layout or a fixed
+        // width pickles the declaration beside it.
+        Scalar::Bytes(value) if value.parameters() == BytesParameters::default() => {
+            tagged_pickle_state(
+                py,
+                "bytes",
+                Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
+            )
+        }
+        Scalar::Bytes(value) => {
+            let layout = PyString::new(py, value.layout().as_str())
+                .into_any()
+                .unbind();
+            let fixed = value.fixed().into_pyobject(py)?.into_any().unbind();
+            let payload = PyBytes::new(py, value.as_bytes()).into_any().unbind();
+            tagged_pickle_state(
+                py,
+                "bytes",
+                Some(pickle_tuple(py, vec![layout, fixed, payload])?),
+            )
+        }
         Scalar::Geospatial(Geospatial::Geometry(value)) => tagged_pickle_state(
             py,
             "geospatial",
@@ -666,59 +611,50 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map(|coefficient| Scalar::d256(coefficient, scale))
                 .map_err(|error| PyOverflowError::new_err(error.to_string()))
         }
-        "string" => payload()?.extract::<String>().map(Scalar::from),
-        "large_utf8" => payload()?
-            .extract::<String>()
-            .map(|value| Scalar::Text(Text::LargeUtf8(LargeUtf8::new(value)))),
-        "utf8_view" => payload()?
-            .extract::<String>()
-            .map(|value| Scalar::Text(Text::Utf8View(Utf8View::new(value)))),
-        "large_utf8_view" => payload()?
-            .extract::<String>()
-            .map(|value| Scalar::Text(Text::LargeUtf8View(LargeUtf8View::new(value)))),
-        "encoded_string" => {
-            let (layout, charset, width, text) =
-                payload()?.extract::<(String, String, u32, String)>()?;
+        "string" => {
+            let payload = payload()?;
+            if let Ok(text) = payload.extract::<String>() {
+                return Ok(Scalar::from(text));
+            }
+            let (layout, charset, fixed, text) =
+                payload.extract::<(String, String, Option<u32>, String)>()?;
             let layout = StringLayout::from_str(&layout).map_err(value_error)?;
             let charset = yggdryl::Charset::from_str(&charset).map_err(value_error)?;
             let mut parameters = StringParameters::new(layout, charset);
-            if width > 0 {
+            if let Some(width) = fixed {
                 parameters = parameters.try_with_bound(width).map_err(value_error)?;
             }
-            Text::Utf8(Utf8::new(text))
-                .restated(parameters)
-                .map(Scalar::Text)
-                .map_err(value_error)
-        }
-        "ascii" => Ascii::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Ascii(AsciiFamily::Ascii(value)))
-            .map_err(value_error),
-        "fixed_ascii" => {
-            let (value, width) = payload()?.extract::<(String, i32)>()?;
-            FixedAscii::new(value, width)
-                .map(|value| Scalar::Ascii(AsciiFamily::FixedAscii(value)))
+            Str::new(text)
+                .try_with_parameters(parameters)
+                .map(Scalar::String)
                 .map_err(value_error)
         }
         "country" => Country::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Ascii(AsciiFamily::Country(value)))
+            .map(|value| Scalar::Code(Code::Country(value)))
             .map_err(value_error),
         "currency" => Currency::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Ascii(AsciiFamily::Currency(value)))
+            .map(|value| Scalar::Code(Code::Currency(value)))
             .map_err(value_error),
         "mic" => Mic::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Ascii(AsciiFamily::Mic(value)))
+            .map(|value| Scalar::Code(Code::Mic(value)))
             .map_err(value_error),
         "cfi" => Cfi::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Ascii(AsciiFamily::Cfi(value)))
+            .map(|value| Scalar::Code(Code::Cfi(value)))
             .map_err(value_error),
         "isin" => Isin::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Ascii(AsciiFamily::Isin(value)))
+            .map(|value| Scalar::Code(Code::Isin(value)))
             .map_err(value_error),
-        "side" => yggdryl::types::Side::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Ascii(AsciiFamily::Side(value)))
+        "side" => Side::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Code(Code::Side(value)))
             .map_err(value_error),
-        "msgdirection" => yggdryl::types::MsgDirection::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Ascii(AsciiFamily::MsgDirection(value)))
+        "msgdirection" => MsgDirection::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Code(Code::MsgDirection(value)))
+            .map_err(value_error),
+        "state" => State::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Code(Code::State(value)))
+            .map_err(value_error),
+        "timeinforce" => TimeInForce::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Code(Code::TimeInForce(value)))
             .map_err(value_error),
         "uuid" => {
             let value = payload()?.extract::<String>()?;
@@ -742,16 +678,28 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map(Scalar::Enum)
                 .map_err(value_error)
         }
-        "bytes" => pickle_bytes(&payload()?).map(Scalar::from),
-        "fixed_size_binary" => pickle_bytes(&payload()?)
-            .map(FixedSizeBinary::new)
-            .map(|value| Scalar::Bytes(Bytes::FixedSizeBinary(value))),
-        "large_binary" => pickle_bytes(&payload()?)
-            .map(LargeBinary::new)
-            .map(|value| Scalar::Bytes(Bytes::LargeBinary(value))),
-        "binary_view" => pickle_bytes(&payload()?)
-            .map(BinaryView::new)
-            .map(|value| Scalar::Bytes(Bytes::BinaryView(value))),
+        "bytes" => {
+            let payload = payload()?;
+            if let Ok(bytes) = payload.cast::<PyBytes>() {
+                return Ok(Scalar::Bytes(Bytes::new(bytes.as_bytes())));
+            }
+            let (layout, fixed, bytes) = payload
+                .extract::<(String, Option<u32>, Bound<'_, PyAny>)>()
+                .map_err(|_| {
+                    PyTypeError::new_err(
+                        "Scalar byte state must be bytes or (layout, fixed, bytes)",
+                    )
+                })?;
+            let layout = BytesLayout::from_str(&layout).map_err(value_error)?;
+            let mut parameters = BytesParameters::new(layout);
+            if let Some(width) = fixed {
+                parameters = parameters.try_with_bound(width).map_err(value_error)?;
+            }
+            Bytes::from_shared(pickle_bytes(&bytes)?)
+                .try_with_parameters(parameters)
+                .map(Scalar::Bytes)
+                .map_err(value_error)
+        }
         "geospatial" => Geometry::new(pickle_bytes(&payload()?)?)
             .map(|value| Scalar::Geospatial(Geospatial::Geometry(value)))
             .map_err(value_error),
@@ -1296,8 +1244,9 @@ impl PyScalar {
         self.inner.as_f64()
     }
 
-    fn as_utf8(&self) -> Option<&str> {
-        self.inner.as_utf8()
+    /// The text this is, or `None`: a string, a code, or an enum member.
+    fn as_str(&self) -> Option<&str> {
+        self.inner.as_str()
     }
 
     fn as_json_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
@@ -1695,8 +1644,8 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         },
         Scalar::Floating(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
         Scalar::Decimal(_) => decimal_as_py(py, value),
-        Scalar::Text(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
-        Scalar::Ascii(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        Scalar::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        Scalar::Code(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Version(value) => Ok(crate::version::PyVersion { inner: *value }
             .into_pyobject(py)?

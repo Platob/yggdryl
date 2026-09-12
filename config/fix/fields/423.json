@@ -39,7 +39,7 @@
   {
     "name": "legcashsettldateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -90,7 +90,7 @@
   {
     "name": "legcashsettldatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -102,7 +102,7 @@
   {
     "name": "legcashsettlpricesource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -139,7 +139,7 @@
   {
     "name": "legdividendaccrualpaymentdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -151,7 +151,7 @@
   {
     "name": "legdividendfloatingrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -175,7 +175,7 @@
   {
     "name": "legdividendfloatingrateindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -326,7 +326,7 @@
   {
     "name": "legdividendfinalrateroundingdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -401,7 +401,7 @@
   {
     "name": "legdividendaccrualpaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -504,7 +504,7 @@
   {
     "name": "legdividendunderlierrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -554,7 +554,7 @@
   {
     "name": "legextraordinarydividenddeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -737,7 +737,7 @@
   {
     "name": "legdividendfxtriggerdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -814,7 +814,7 @@
   {
     "name": "legdividendfxtriggerdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -876,7 +876,7 @@
   {
     "name": "legdividendperiodunderlierrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -950,7 +950,7 @@
   {
     "name": "legdividendperiodvaluationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1026,7 +1026,7 @@
   {
     "name": "legdividendperiodpaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1065,13 +1065,13 @@
   {
     "name": "legdividendperiodxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
       "display": "LegDividendPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legdividendperiodxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legdividendperiodxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42385"
     }
   },
@@ -1090,7 +1090,7 @@
   {
     "name": "legdividendperiodbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1114,7 +1114,7 @@
   {
     "name": "legextraordinaryeventtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1126,7 +1126,7 @@
   {
     "name": "legextraordinaryeventvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1176,7 +1176,7 @@
   {
     "name": "legmakewholebenchmarkcurvename",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1188,7 +1188,7 @@
   {
     "name": "legmakewholebenchmarkcurvepoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

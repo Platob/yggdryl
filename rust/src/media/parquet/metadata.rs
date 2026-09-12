@@ -335,7 +335,7 @@ mod tests {
             .unwrap();
         assert_eq!(metadata.len(), 2);
         assert_eq!(
-            metadata[0].get_key_str("key").and_then(Scalar::as_utf8),
+            metadata[0].get_key_str("key").and_then(Scalar::as_str),
             Some("tag")
         );
         let geospatial = value

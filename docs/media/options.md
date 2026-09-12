@@ -119,7 +119,7 @@ The media type names the encoding, so no format argument is passed.
 
     let widened = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])?;
     options.set_dtype(Some(widened.clone()));
     let built = options.field().unwrap();
@@ -226,7 +226,7 @@ use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{DataType, MimeType};
 
 let declared = DataType::from_fields([
-    DataType::Utf8.required_field("symbol"),
+    DataType::utf8().required_field("symbol"),
     DataType::Int64.required_field("price"),
 ])?
 .required_field("row");

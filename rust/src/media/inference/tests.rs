@@ -77,10 +77,10 @@ mod scalars {
 
     #[test]
     fn text_and_bytes_name_their_own_columns() {
-        assert_eq!(Scalar::from("AAPL").dtype().unwrap(), DataType::Utf8);
+        assert_eq!(Scalar::from("AAPL").dtype().unwrap(), DataType::utf8());
         assert_eq!(
             Scalar::from(b"\x00\xff".as_slice()).dtype().unwrap(),
-            DataType::Binary
+            DataType::binary()
         );
         assert_eq!(Scalar::Null.dtype().unwrap(), DataType::Null);
         assert_eq!(Scalar::from(true).dtype().unwrap(), DataType::Boolean);
@@ -145,7 +145,7 @@ mod containers {
         let sparse = Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]);
         assert_eq!(
             sparse.dtype().unwrap(),
-            DataType::list(Field::new("item", DataType::Utf8, true))
+            DataType::list(Field::new("item", DataType::utf8(), true))
         );
 
         // Nothing but nulls names the null column, which is a real Arrow type.
@@ -165,7 +165,7 @@ mod containers {
 
         assert_eq!(
             quote.dtype().unwrap(),
-            DataType::map_of(DataType::Utf8, DataType::Utf8, false).unwrap()
+            DataType::map_of(DataType::utf8(), DataType::utf8(), false).unwrap()
         );
     }
 
@@ -184,7 +184,7 @@ mod containers {
         assert_eq!(fields[0].name(), "id");
         assert!(!fields[0].is_nullable());
         assert_eq!(fields[1].name(), "venue");
-        assert_eq!(fields[1].dtype(), &DataType::Utf8);
+        assert_eq!(fields[1].dtype(), &DataType::utf8());
         assert!(fields[1].is_nullable());
     }
 }

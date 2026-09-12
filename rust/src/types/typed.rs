@@ -696,8 +696,8 @@ impl<'a> FieldScalar<'a> {
     /// [`Display`](fmt::Display) writes. A value that spells no text of its
     /// own, such as a row or an interval, writes its family's own form.
     pub fn into_str(self) -> SmolStr {
-        match crate::types::string::text_from_value(&self.value) {
-            Some(Ok(text)) => text,
+        match crate::types::string::str_from_value(&self.value) {
+            Some(Ok(text)) => text.into_inner(),
             _ => format_smolstr!("{self}"),
         }
     }
@@ -770,13 +770,13 @@ impl<'a> FieldScalar<'a> {
 
 /// Write a value's canonical text, or its family's own form when it has none.
 ///
-/// `text_from_value` owns the spelling, and it declines exactly four shapes:
+/// `str_from_value` owns the spelling, and it declines exactly four shapes:
 /// a null, a nested value, a temporal without a classic spelling, and a bytes
 /// or geometry payload it read and refused. Only those reach the arms below,
 /// each writing what its family prints - the hex of a payload, an interval's
 /// components, a row as its sequence.
 fn write_value(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Result {
-    match crate::types::string::text_from_value(value) {
+    match crate::types::string::str_from_value(value) {
         Some(Ok(text)) => formatter.write_str(&text),
         Some(Err(_)) | None => match value {
             Scalar::Null => formatter.write_str("null"),
@@ -1092,13 +1092,6 @@ static_field_constructor!(super::floating::Float32Type, DataType::Float32);
 static_field_constructor!(super::floating::Float64Type, DataType::Float64);
 static_field_constructor!(super::temporal::Date32Type, DataType::Date32);
 static_field_constructor!(super::temporal::Date64Type, DataType::Date64);
-static_field_constructor!(super::bytes::BinaryType, DataType::Binary);
-static_field_constructor!(super::bytes::LargeBinaryType, DataType::LargeBinary);
-static_field_constructor!(super::bytes::BinaryViewType, DataType::BinaryView);
-static_field_constructor!(super::string::Utf8Type, DataType::Utf8);
-static_field_constructor!(super::string::LargeUtf8Type, DataType::LargeUtf8);
-static_field_constructor!(super::string::Utf8ViewType, DataType::Utf8View);
-static_field_constructor!(super::string::AsciiType, DataType::Ascii);
 static_field_constructor!(super::string::CountryType, DataType::Country);
 static_field_constructor!(super::string::CurrencyType, DataType::Currency);
 static_field_constructor!(super::string::MicType, DataType::Mic);

@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, PoisonError, RwLock};
 
+use crate::types::{BytesLayout, BytesParameters, StringLayout, StringParameters};
 use crate::{DataType, DataTypeId, Field, Scalar};
 
 /// The name every shared field carries - the name an inferred scalar field
@@ -46,6 +47,43 @@ static PREBUILT: LazyLock<[Option<Field>; DataTypeId::ALL.len()]> = LazyLock::ne
     })
 });
 
+/// One nullable field per plain unbounded UTF-8 layout.
+///
+/// Every string identifier is parameterized, so none has a slot in
+/// [`PREBUILT`]; these four are what a bare string value names, and a value
+/// typed by inference borrows one of them rather than interning anything.
+static PLAIN_UTF8: LazyLock<[(StringParameters, Field); 4]> = LazyLock::new(|| {
+    [
+        StringLayout::String,
+        StringLayout::LargeString,
+        StringLayout::StringView,
+        StringLayout::LargeStringView,
+    ]
+    .map(|layout| {
+        let parameters = StringParameters::utf8(layout);
+        (
+            parameters,
+            Field::new(SHARED_NAME, DataType::String(parameters), true),
+        )
+    })
+});
+
+/// One nullable field per plain unbounded byte layout, for the same reason.
+static PLAIN_BYTES: LazyLock<[(BytesParameters, Field); 3]> = LazyLock::new(|| {
+    [
+        BytesLayout::Binary,
+        BytesLayout::LargeBinary,
+        BytesLayout::BinaryView,
+    ]
+    .map(|layout| {
+        let parameters = BytesParameters::new(layout);
+        (
+            parameters,
+            Field::new(SHARED_NAME, DataType::Bytes(parameters), true),
+        )
+    })
+});
+
 /// The interned fields of parameterized leaf datatypes, bounded by
 /// [`INTERN_LIMIT`].
 static INTERNED: LazyLock<RwLock<HashMap<DataType, &'static Field>>> =
@@ -55,8 +93,10 @@ impl DataType {
     /// The shared nullable `value` field of this datatype, when it has one.
     ///
     /// Every parameter-free leaf answers a field built once for the program,
-    /// and every parameterized leaf - a fixed ASCII or binary width, a
-    /// decimal, a timestamp, a time, a duration, an interval - answers one
+    /// and so does a plain unbounded UTF-8 string or a plain unbounded byte
+    /// column in any layout; every other parameterized leaf - a string
+    /// declaring a charset, a bound or a fixed width, bounded or fixed bytes,
+    /// a decimal, a timestamp, a time, a duration, an interval - answers one
     /// interned on its first ask, so a second ask for the same datatype is a
     /// lookup that allocates nothing. A nested datatype, and a geometry or
     /// geography whose coordinate reference is unbounded text, answers
@@ -90,9 +130,17 @@ impl DataType {
             return PREBUILT[usize::from(id.as_u8())].as_ref();
         }
         match self {
-            Self::FixedAscii(_)
-            | Self::FixedSizeBinary(_)
-            | Self::DateTime64 { .. }
+            Self::String(parameters) => PLAIN_UTF8
+                .iter()
+                .find(|(plain, _)| plain == parameters)
+                .map(|(_, field)| field)
+                .or_else(|| interned(self)),
+            Self::Bytes(parameters) => PLAIN_BYTES
+                .iter()
+                .find(|(plain, _)| plain == parameters)
+                .map(|(_, field)| field)
+                .or_else(|| interned(self)),
+            Self::DateTime64 { .. }
             | Self::Time32(_)
             | Self::Time64(_)
             | Self::Duration32(_)
@@ -140,7 +188,7 @@ impl Scalar {
     /// use yggdryl::{DataType, Scalar};
     ///
     /// let shared = Scalar::from("AAPL").shared_field().unwrap();
-    /// assert_eq!(shared.dtype(), &DataType::Utf8);
+    /// assert_eq!(shared.dtype(), &DataType::utf8());
     /// assert!(Scalar::from_sequence([Scalar::from(1)]).shared_field().is_none());
     /// ```
     pub fn shared_field(&self) -> Option<&'static Field> {

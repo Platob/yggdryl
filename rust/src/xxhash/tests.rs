@@ -989,9 +989,9 @@ mod values {
 
     use super::super::{Xxh3, xxh3};
     use crate::types::{
-        Ascii, AsciiFamily, BinaryView, Bytes, Decimal, Decimal32, Decimal64, FixedAscii,
-        FixedSizeBinary, Geography, Geospatial, Interval, LargeBinary, LargeUtf8, Temporal, Text,
-        Utf8View,
+        Bytes, BytesLayout, BytesParameters, Code, Currency, Decimal, Decimal32, Decimal64,
+        Geography, Geospatial, Interval, Side, Str, StringLayout, StringParameters, Temporal,
+        TimeInForce,
     };
     use crate::{
         Codec, DataTypeId, DigestAlgorithm, Enum, Float16, Float32, Float64, I256, Scalar,
@@ -1024,6 +1024,27 @@ mod values {
         fn write(&mut self, bytes: &[u8]) {
             self.0.extend_from_slice(bytes);
         }
+    }
+
+    /// The text, restated under the parameters a column stores it in.
+    fn stored(text: &str, parameters: StringParameters) -> Str {
+        Str::new(text).try_with_parameters(parameters).unwrap()
+    }
+
+    /// A fixed US-ASCII slot of `width` bytes.
+    fn fixed_ascii(width: u32) -> StringParameters {
+        StringParameters::ascii(StringLayout::FixedString)
+            .try_with_bound(width)
+            .unwrap()
+    }
+
+    /// `AAPL` as a byte value stored under one layout.
+    fn stored_bytes(layout: BytesLayout) -> Scalar {
+        let parameters = match layout.is_fixed() {
+            true => BytesParameters::new(layout).try_with_bound(4).unwrap(),
+            false => BytesParameters::new(layout),
+        };
+        Scalar::Bytes(Bytes::new(b"AAPL").try_with_parameters(parameters).unwrap())
     }
 
     /// Return one value's canonical feed.
@@ -1065,25 +1086,28 @@ mod values {
             Scalar::from(""),
             Scalar::from("1"),
             Scalar::from("AAPL"),
-            Scalar::Text(Text::LargeUtf8(LargeUtf8::new("AAPL"))),
-            Scalar::Text(Text::Utf8View(Utf8View::new("AAPL"))),
-            Scalar::Ascii(AsciiFamily::Ascii(Ascii::new("USD").unwrap())),
-            Scalar::Ascii(AsciiFamily::FixedAscii(FixedAscii::new("USD", 4).unwrap())),
+            Scalar::String(stored(
+                "AAPL",
+                StringParameters::utf8(StringLayout::LargeString),
+            )),
+            Scalar::String(stored(
+                "AAPL",
+                StringParameters::utf8(StringLayout::StringView),
+            )),
+            Scalar::String(stored("USD", StringParameters::ascii(StringLayout::String))),
+            Scalar::String(stored("USD", fixed_ascii(4))),
+            Scalar::Code(Code::Currency(Currency::new("USD").unwrap())),
+            Scalar::Code(Code::Side(Side::new("1").unwrap())),
+            Scalar::Code(Code::TimeInForce(TimeInForce::new("1").unwrap())),
             Scalar::Enum(Enum::Codec(Codec::Gzip)),
             Scalar::Enum(Enum::Codec(Codec::Zstd)),
             Scalar::Enum(Enum::DataTypeId(DataTypeId::Int128)),
             Scalar::from(Arc::from(b"".as_slice())),
             Scalar::from(Arc::from(b"1".as_slice())),
             Scalar::from(Arc::from(b"AAPL".as_slice())),
-            Scalar::Bytes(Bytes::FixedSizeBinary(FixedSizeBinary::new(
-                Arc::<[u8]>::from(b"AAPL".as_slice()),
-            ))),
-            Scalar::Bytes(Bytes::LargeBinary(LargeBinary::new(Arc::<[u8]>::from(
-                b"AAPL".as_slice(),
-            )))),
-            Scalar::Bytes(Bytes::BinaryView(BinaryView::new(Arc::<[u8]>::from(
-                b"AAPL".as_slice(),
-            )))),
+            stored_bytes(BytesLayout::FixedSizeBinary),
+            stored_bytes(BytesLayout::LargeBinary),
+            stored_bytes(BytesLayout::BinaryView),
             geometry(),
             geography(),
             Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
@@ -1138,34 +1162,34 @@ mod values {
                 Scalar::d256(I256::from_i128(1), 0),
             ),
             (
-                Scalar::Text(Text::LargeUtf8(LargeUtf8::new("AAPL"))),
+                Scalar::String(stored(
+                    "AAPL",
+                    StringParameters::utf8(StringLayout::LargeString),
+                )),
                 Scalar::from("AAPL"),
             ),
             (
-                Scalar::Text(Text::Utf8View(Utf8View::new("AAPL"))),
+                Scalar::String(stored(
+                    "AAPL",
+                    StringParameters::utf8(StringLayout::StringView),
+                )),
                 Scalar::from("AAPL"),
             ),
             (
-                Scalar::Bytes(Bytes::FixedSizeBinary(FixedSizeBinary::new(
-                    Arc::<[u8]>::from(b"AAPL".as_slice()),
-                ))),
+                stored_bytes(BytesLayout::FixedSizeBinary),
                 Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
             ),
             (
-                Scalar::Bytes(Bytes::LargeBinary(LargeBinary::new(Arc::<[u8]>::from(
-                    b"AAPL".as_slice(),
-                )))),
+                stored_bytes(BytesLayout::LargeBinary),
                 Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
             ),
             (
-                Scalar::Bytes(Bytes::BinaryView(BinaryView::new(Arc::<[u8]>::from(
-                    b"AAPL".as_slice(),
-                )))),
+                stored_bytes(BytesLayout::BinaryView),
                 Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
             ),
             (
-                Scalar::Ascii(AsciiFamily::FixedAscii(FixedAscii::new("USD", 4).unwrap())),
-                Scalar::Ascii(AsciiFamily::Ascii(Ascii::new("USD").unwrap())),
+                Scalar::String(stored("USD", fixed_ascii(4))),
+                Scalar::String(stored("USD", StringParameters::ascii(StringLayout::String))),
             ),
             (geometry(), geography()),
             (
@@ -1248,7 +1272,7 @@ mod values {
             (Scalar::from(-1), DataTypeId::Int128),
             (Scalar::from(Float32::from_f32(1.5)), DataTypeId::Float64),
             (Scalar::d128(1, 0), DataTypeId::Decimal256),
-            (Scalar::from("AAPL"), DataTypeId::Utf8),
+            (Scalar::from("AAPL"), DataTypeId::String),
             (
                 Scalar::Enum(Enum::Codec(Codec::Gzip)),
                 DataTypeId::Dictionary,
@@ -1295,10 +1319,24 @@ mod values {
             feed(&Scalar::from(true)),
             vec![DataTypeId::Boolean.as_u8(), 1]
         );
-        let mut expected = vec![DataTypeId::Utf8.as_u8()];
+        let mut expected = vec![DataTypeId::String.as_u8()];
         expected.extend_from_slice(&4_u64.to_le_bytes());
         expected.extend_from_slice(b"AAPL");
         assert_eq!(feed(&Scalar::from("AAPL")), expected);
+
+        // A string feeds one tag whatever layout or charset stores it, and a
+        // code feeds its own: the identity is part of the value.
+        assert_eq!(
+            feed(&Scalar::String(stored("AAPL", fixed_ascii(8)))),
+            expected
+        );
+        let mut expected = vec![DataTypeId::Currency.as_u8()];
+        expected.extend_from_slice(&3_u64.to_le_bytes());
+        expected.extend_from_slice(b"USD");
+        assert_eq!(
+            feed(&Scalar::Code(Code::Currency(Currency::new("USD").unwrap()))),
+            expected
+        );
     }
 
     #[test]
@@ -1335,7 +1373,7 @@ mod values {
 
     #[test]
     fn a_field_scalar_digests_as_the_value_inside_it() {
-        let field = crate::Field::new("symbol", crate::DataType::Utf8, false);
+        let field = crate::Field::new("symbol", crate::DataType::utf8(), false);
         let typed = crate::FieldScalar::new(&field, "AAPL").unwrap();
         for algorithm in DigestAlgorithm::ALL {
             assert_eq!(
@@ -1350,7 +1388,7 @@ mod values {
     fn a_field_record_digests_as_the_sequence_it_canonicalizes_to() {
         let row = crate::DataType::from_fields([
             crate::Field::new("id", crate::DataType::Int64, false),
-            crate::Field::new("symbol", crate::DataType::Utf8, true),
+            crate::Field::new("symbol", crate::DataType::utf8(), true),
             crate::Field::new(
                 "legs",
                 crate::DataType::list(crate::Field::new("item", crate::DataType::Int32, true)),

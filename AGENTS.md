@@ -41,7 +41,8 @@ binding first.
 | datatype variant | `types/` family module, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
 | logical name | `DataType::LOGICAL_NAMES` only; resolves to an existing datatype, adds no variant |
 | codec | `coding/<name>.rs` (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
-| string layout | a `StringLayout` variant + `DataTypeId` appended + `types/string/` (parameters, redirect, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
+| string layout | a `StringLayout` variant + `DataTypeId` appended + `types/string/` (parameters, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
+| byte layout | a `BytesLayout` variant + `DataTypeId` appended + `types/bytes/` (parameters, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
 | charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant -> interop both directions -> bench -> bindings -> `docs/charset/` |
 | storage backend | `holder/<name>/` with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `media/<name>/` free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
@@ -116,7 +117,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
-| `types/string.rs` + `types/string/` | every string the crate has, one family: the `StringLayout` vocabulary beside `StringParameters`, the five layouts' datatypes and values, the ASCII repertoire in `ascii.rs`, the nine registered codes' identities and widths in `codes.rs`, the `field:enum` dictionary and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. `utf8`, `large_utf8`, `utf8_view`, `ascii` and `ascii(n)` all answer `DataType::string_parameters`; a code answers `DataType::ascii_width` instead, because it is an identity with a storage rather than a charset |
+| `types/string.rs` + `types/string/` | every string the crate has, one family: the `StringLayout` vocabulary beside `StringParameters`, the one string datatype `DataType::String` and the one string value `Str` in `scalars.rs`, the nine registered codes' values in `code.rs` and their identities and widths in `codes.rs`, the `field:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)` and `string(windows-1252,32)` are all spellings of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::fixed_byte_width` and `is_code` instead, because it is an identity with a storage rather than a charset |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside its implementations: `ascii`/`single_byte`/`unicode` own the codecs, generated `tables.rs` owns the code pages, `Decoder`/`Reader`/`Writer` the chunked doors, `Transcoded` the decoding handle. Fused rather than split like `codec.rs`/`coding/`, because no single code page is a public module of its own |
 | `media/` | record routing and settings; `{ipc,parquet,avro}/` each own free functions over `IOBase` plus a stateful wrapper |
 | `media/text/` | `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering |
@@ -402,10 +403,10 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 - `DataType::LOGICAL_NAMES` is the one fallback registry: FIX Latest datatype
   vocabulary plus `mic`, each name resolving to the closest core datatype and
   displaying as it - no variant, no second spelling. Never register a word the
-  Arrow/SQL grammar owns. `AsciiEnum::PREBUILT` keys the ISO code constants three
-  of those names prebuild; `AsciiEnum::from_logical_name` builds the enum a field
-  declares from one. A listing is a constant: every reader answers the same
-  members.
+  Arrow/SQL grammar owns. `StringEnum::PREBUILT` keys the ISO code constants
+  the registered names prebuild; `StringEnum::from_logical_name` builds the
+  enum a field declares from one. A listing is a constant: every reader answers
+  the same members.
 - Split only at top-level separators, honoring balanced wrappers, quoting, and
   escapes; reject trailing tokens, duplicates, malformed numbers, and invalid
   nullability with byte position and context. `variant(...)` is dense-union input
@@ -733,26 +734,40 @@ change to `media/iceberg/`.
 `types/string.rs` + `types/string/` own the family; these bind a change to any
 of the five layouts or to what a string declares.
 
-- **One family, five layouts, one charset each.** `StringLayout` names the
-  layouts, `StringParameters` is a layout beside its charset and its bound, and
-  `DataType::string` is the only constructor. There is no second door: a
-  `DataType::String` built by hand can hold parameters the constructor would
-  have redirected or refused, exactly as every other parameterized variant can,
-  and `validate` is what catches it before a boundary.
-- **The constructor redirects, so one fact has one spelling.** Unbounded UTF-8
-  in the three layouts Arrow names is `Utf8`, `LargeUtf8`, `Utf8View`;
-  US-ASCII is `Ascii` or `FixedAscii(n)`, which own that repertoire's value
-  contract and every code above it. So `DataType::String` is only ever a string
-  that declares something those cannot say, and a US-ASCII shape the ASCII
-  family has no room for - a view, a maximum - is refused by name rather than
-  becoming a second kind of ASCII column. `string_parameters` reads back for
-  all of them, which is what makes "which charset is this column in" one
-  question rather than six.
-- **Two spellings, one layout.** The `string` name is the general one and the
-  `utf8` name is what the same layout is called when its charset is UTF-8, so
-  `large_string` and `large_utf8` parse to one thing and a value renders under
-  whichever name its charset earns. The grammar's fold drops underscores, so
-  `largeutf8` is that spelling too.
+- **One datatype, one value, five layouts, one charset each.** `StringLayout`
+  names the layouts, `StringParameters` is a layout beside its charset and its
+  bound, `DataType::String(StringParameters)` is every string the crate has,
+  `DataType::string` is its one constructor and `utf8()`, `large_utf8()`,
+  `utf8_view()`, `ascii()`, `fixed_utf8(n)`, `fixed_ascii(n)` are that
+  constructor picking a layout once. There is no `Utf8`, `Ascii` or
+  `FixedAscii` variant, no redirect, and no second door: a `DataType::String`
+  built by hand can hold a fixed layout with no width, exactly as every other
+  parameterized variant can hold what its constructor refuses, and `validate`
+  is what catches it before a boundary. `string_parameters` reads back for
+  every string, which is what makes "which charset is this column in" one
+  question. The nine registered codes are not strings: a currency is three
+  ASCII bytes with an identity, so it is `DataType::Currency`, kind `Code`,
+  answers `is_code` and `fixed_byte_width`, and never `string_parameters`.
+- **Three spellings, one layout.** The `string` name is the general one, the
+  `utf8` name is what the same layout is called when its charset is UTF-8 and
+  the `ascii` name when it is US-ASCII, so `large_string`, `large_utf8` and
+  `large_ascii` parse to one thing and a value renders under whichever name its
+  charset earns; every other charset renders under the general name and states
+  itself: `string(windows-1252,32)`. A charset-named spelling takes only a
+  bound - `utf8(32)`, `fixed_ascii(4)` - and a charset beside it is refused.
+  The grammar's fold drops underscores, so `largeutf8` is that spelling too.
+  One number, one reading per layout: `ascii(4)` is a maximum, `fixed_ascii(4)`
+  the width.
+- **`Str` is the string.** `Scalar::String(Str)` holds the characters in the
+  crate's compact string - inline to `INLINE_CAPACITY` bytes, static for free,
+  one `Arc<str>` beyond - beside the layout and charset they are stored under
+  and, on the fixed layout, the width. A maximum is the column's rule and never
+  the value's: a cell read out of `utf8(32)` is a `utf8`. Equality, order and
+  hash read the characters alone, so a value is one value whichever column
+  holds it, and `Borrow<str>` is sound for that reason and no other. `Str` is
+  the holder every string-family API answers with - `ascii_value`,
+  `StringEnum` members, `str_from_value` - and `SmolStr` stays the crate's
+  utility string for names, keys and errors.
 - **The bound counts stored bytes, and one number carries both readings**: the
   exact width on `FixedString`, the maximum on every other layout. Bytes,
   because that is what the buffer holds and what Arrow's offsets measure; a
@@ -763,22 +778,71 @@ of the five layouts or to what a string declares.
   recovering damage means - so refusing it here would make the permissive read
   useless, and the refusal names the scalar where it is written instead.
 - **A value holds UTF-8 and remembers its charset.** Decoding happens at the
-  seam, as everywhere else; what a `Text` value keeps is the charset it is
-  *written* in, so it goes back out the way it came without the column being
-  read twice. `as_str` is therefore infallible on every string value there is.
-- **Arrow gets the truth about the bytes.** UTF-8 rides Arrow's string
-  layouts; every other charset rides the matching *binary* layout, because the
-  bytes are not UTF-8 and an Arrow reader told otherwise reads mojibake and
-  calls it text. What Arrow cannot say - the charset, the bound, and which of
-  the two view layouts this is, since Arrow has one - rides the
-  `yggdryl.string` extension document. A document over a storage it does not
-  describe is a foreign field wearing our name and imports as its storage.
-- **Bytes arriving at a `string(...)` column are transcribed, not refused.**
-  `Charset::transcribe` is the permissive door: an unassigned byte reads as its
-  ISO 8859-1 scalar, and bytes offered as UTF-8 that are not UTF-8 read as ISO
-  8859-1. The plain `utf8` datatypes stay strict - they are Arrow's types and
-  Arrow guarantees UTF-8 - so the split is the declaration: a column that names
-  a charset is a column that expects legacy bytes.
+  seam, as everywhere else; what a `Str` keeps is the charset it is *written*
+  in, so it goes back out the way it came without the column being read twice.
+  `as_str` is therefore infallible on every string value there is.
+- **Arrow gets the truth about the bytes.** UTF-8 and US-ASCII ride Arrow's
+  string layouts - ASCII bytes are UTF-8 - and every other charset rides the
+  matching *binary* layout, because the bytes are not UTF-8 and an Arrow
+  reader told otherwise reads mojibake and calls it text; the fixed layout
+  rides `FixedSizeBinary` in every charset. `is_text_storage` is the one owner
+  of that split and every writer, reader, digest and cast asks it. What Arrow
+  cannot say - a charset other than UTF-8, a bound, the large view layout -
+  rides the `yggdryl.string` extension document, and only then: plain `utf8`,
+  `large_utf8` and `utf8_view` cross bare. A document over a storage it does
+  not describe is a foreign field wearing our name and imports as its storage.
+- **`Str::from_bytes` is the one door bytes take, and the charset decides how
+  strict it is.** UTF-8 and US-ASCII are validated repertoires - Arrow
+  guarantees the first and the second rides Arrow's text storage - so bytes
+  that are not what they claim are refused, and a US-ASCII value holds no NUL
+  and no byte above `0x7F`. Every other charset is a declaration that the
+  column holds legacy bytes, and those are transcribed rather than refused:
+  `Charset::transcribe` reads an unassigned byte as its ISO 8859-1 scalar.
+  The row door, the Arrow cell reader and the cast all call that one function,
+  so a batch and a row cannot read bytes differently; a text-storage cell is
+  `Str::from_storage`, checked when it was written and not again.
+- **The value door judges US-ASCII and counts everything else.** A value
+  restated under a legacy charset may hold scalars that charset cannot write -
+  that is what recovering damage means - and the write seam (the Arrow array
+  build, the cast) refuses them naming the scalar. A `StringEnum` packs its
+  members into integers through `ascii_packed`, so it is accepted on a fixed
+  US-ASCII string of at most sixteen bytes or a code and refused by name
+  elsewhere.
+
+## Bytes
+
+`types/bytes/` owns the family the same way `types/string/` owns strings;
+these bind a change to any of the four layouts or to what a byte column
+declares.
+
+- **One datatype, one value, four layouts.** `BytesLayout` names Arrow's
+  four, `BytesParameters` is a layout beside its bound,
+  `DataType::Bytes(BytesParameters)` is every byte column the crate has,
+  `DataType::bytes` is its one constructor and `binary()`, `large_binary()`,
+  `binary_view()`, `fixed_size_binary(n)` are that constructor picking a
+  layout once. There is no `Binary`, `LargeBinary`, `BinaryView` or
+  `FixedSizeBinary` variant. `bytes_parameters` reads back for every byte
+  column. A UUID and a geospatial value are bytes with an identity, so they
+  are their own datatypes and answer no `bytes_parameters`, exactly as a
+  code answers no `string_parameters`.
+- **One number, one reading per layout.** `binary(16)` is a maximum of
+  sixteen bytes and `fixed_size_binary(16)` the exact width; bytes are never
+  padded, so a fixed value is exactly its width. `bytes`, `blob`, `bytea`,
+  `varbinary(n)` and `fixed_binary(n)` are accepted spellings and render as
+  the canonical ones.
+- **`Bytes` is the byte string.** `Scalar::Bytes(Bytes)` holds the payload
+  inline to `INLINE_BYTES` bytes with no heap behind it, static for free, one
+  `Arc<[u8]>` beyond, beside the layout it is stored under and, on the fixed
+  layout, the width. A maximum is the column's rule and never the value's.
+  Equality, order and hash read the payload alone, and `Borrow<[u8]>` is
+  sound for that reason and no other. `Bytes::from_storage` adopts a cell of
+  a column's own storage; `bytes_from_value` is what a value spells as bytes.
+- **Arrow already says the layout.** The storage is the layout, and only a
+  maximum on a variable layout - which no Arrow type can state - rides the
+  `yggdryl.bytes` document; a fixed width is the storage itself. A document
+  over a storage it does not describe imports as its storage. Avro and
+  Iceberg have no maximum either, so a bounded column crosses them unbounded
+  and the bound is enforced where the values enter.
 
 ## Structured codecs
 

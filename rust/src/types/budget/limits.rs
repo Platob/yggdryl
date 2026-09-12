@@ -289,10 +289,6 @@ impl MaterializationBudget {
             DataType::Side | DataType::MsgDirection => self.add_fixed_rows(rows, 4)?,
             DataType::State => self.add_fixed_rows(rows, 10)?,
             DataType::TimeInForce => self.add_fixed_rows(rows, 8)?,
-            // A fixed ASCII column charges the width it stores, whatever it is.
-            DataType::FixedAscii(width) => {
-                self.add_fixed_rows(rows, usize::try_from(*width).unwrap_or(0))?;
-            }
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64
@@ -306,8 +302,6 @@ impl MaterializationBudget {
             | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
             DataType::Interval(TimeUnit::MonthDayNano)
             | DataType::Decimal128 { .. }
-            | DataType::BinaryView
-            | DataType::Utf8View
             | DataType::Uuid
             | DataType::LargeListView(_) => {
                 self.add_fixed_rows(rows, 16)?;
@@ -316,11 +310,8 @@ impl MaterializationBudget {
             DataType::Interval(_) => {
                 return Err(unsupported(dtype, "invalid interval layout"));
             }
-            DataType::Binary
-            | DataType::Utf8
-            | DataType::Version
+            DataType::Version
             | DataType::Url
-            | DataType::Ascii
             | DataType::List(_)
             | DataType::Map(_)
             // A geospatial column is one binary column of WKB payloads.
@@ -334,17 +325,11 @@ impl MaterializationBudget {
                 self.add_offsets(rows, 4)?;
                 self.add_offsets(rows, 4)?;
             }
-            DataType::LargeBinary | DataType::LargeUtf8 | DataType::LargeList(_) => {
-                self.add_offsets(rows, 8)?;
-            }
-            DataType::FixedSizeBinary(width) => {
-                let width = usize::try_from(*width)
-                    .map_err(|_| invalid_value("a fixed binary width within usize", width))?;
-                self.add_fixed_rows(rows, width)?;
-            }
-            // A string's cost is its layout's: a fixed width is that width
-            // per row, a view is one sixteen-byte descriptor, and the two
-            // variable layouts are their offset runs.
+            DataType::LargeList(_) => self.add_offsets(rows, 8)?,
+            // A byte or string column's cost is its storage's: a fixed width
+            // is that width per row, a view is one sixteen-byte descriptor,
+            // and the two variable layouts are their offset runs.
+            DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
             DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
             DataType::Null
             | DataType::FixedSizeList(..)
@@ -405,10 +390,6 @@ impl MaterializationBudget {
             DataType::Side | DataType::MsgDirection => self.add_fixed_rows(rows, 4)?,
             DataType::State => self.add_fixed_rows(rows, 10)?,
             DataType::TimeInForce => self.add_fixed_rows(rows, 8)?,
-            // A fixed ASCII column charges the width it stores, whatever it is.
-            DataType::FixedAscii(width) => {
-                self.add_fixed_rows(rows, usize::try_from(*width).unwrap_or(0))?;
-            }
             DataType::Int64
             | DataType::UInt64
             | DataType::Float64
@@ -422,19 +403,14 @@ impl MaterializationBudget {
             | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
             DataType::Interval(TimeUnit::MonthDayNano)
             | DataType::Decimal128 { .. }
-            | DataType::BinaryView
-            | DataType::Utf8View
             | DataType::Uuid
             | DataType::LargeListView(_) => self.add_fixed_rows(rows, 16)?,
             DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
             DataType::Interval(_) => {
                 return Err(unsupported(dtype, "invalid interval layout"));
             }
-            DataType::Binary
-            | DataType::Utf8
-            | DataType::Version
+            DataType::Version
             | DataType::Url
-            | DataType::Ascii
             | DataType::List(_)
             | DataType::Map(_)
             // A geospatial column is one binary column of WKB payloads.
@@ -448,17 +424,11 @@ impl MaterializationBudget {
                 self.add_offsets(rows, 4)?;
                 self.add_offsets(rows, 4)?;
             }
-            DataType::LargeBinary | DataType::LargeUtf8 | DataType::LargeList(_) => {
-                self.add_offsets(rows, 8)?;
-            }
-            DataType::FixedSizeBinary(width) => {
-                let width = usize::try_from(*width)
-                    .map_err(|_| invalid_value("a fixed binary width within usize", width))?;
-                self.add_fixed_rows(rows, width)?;
-            }
-            // A string's cost is its layout's: a fixed width is that width
-            // per row, a view is one sixteen-byte descriptor, and the two
-            // variable layouts are their offset runs.
+            DataType::LargeList(_) => self.add_offsets(rows, 8)?,
+            // A byte or string column's cost is its storage's: a fixed width
+            // is that width per row, a view is one sixteen-byte descriptor,
+            // and the two variable layouts are their offset runs.
+            DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
             DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
             DataType::FixedSizeList(child, size) => {
                 let size = usize::try_from(*size)
@@ -512,6 +482,26 @@ impl MaterializationBudget {
             self.add_fixed_rows(rows, 4)?;
         }
         Ok(())
+    }
+
+    /// Charge one byte column against the storage it lays out.
+    fn add_bytes_rows(
+        &mut self,
+        rows: usize,
+        parameters: crate::types::BytesParameters,
+    ) -> Result<()> {
+        use arrow_schema::DataType as ArrowDataType;
+
+        match crate::types::bytes::arrow_storage(parameters)? {
+            ArrowDataType::FixedSizeBinary(width) => {
+                let width = usize::try_from(width)
+                    .map_err(|_| invalid_value("a fixed binary width within usize", width))?;
+                self.add_fixed_rows(rows, width)
+            }
+            ArrowDataType::LargeBinary => self.add_offsets(rows, 8),
+            ArrowDataType::BinaryView => self.add_fixed_rows(rows, 16),
+            _ => self.add_offsets(rows, 4),
+        }
     }
 
     /// Charge one string column against the layout it declares.

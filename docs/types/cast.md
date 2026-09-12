@@ -106,7 +106,7 @@ shared rather than rebuilt. `u64::MAX` reads as `-1`, and back.
 
 It is a preference, not a mode. A pair that is *not* the same bytes - two different widths, or
 text and a number - takes the ordinary conversion, and a datatype whose values follow a rule
-(an [ASCII width](ascii.md), a registered code, a [UUID](uuid.md), a [version](../types/index.md))
+(a [fixed string](text.md), a [registered code](codes.md), a [UUID](uuid.md), a [version](text.md#versions))
 keeps that rule: four arbitrary bytes are not a currency merely because a currency is four bytes.
 
 Nullability is unaffected: the reading says what the bytes mean, and `nullability` still says
@@ -129,7 +129,7 @@ what an absent value means.
     assert_eq!(signed.values(), &[0, -1]);
 
     // The same eight bytes, now as raw payload - and back again exactly.
-    let stored = Field::new("digest", DataType::FixedSizeBinary(8), true)
+    let stored = Field::new("digest", DataType::fixed_size_binary(8)?, true)
         .cast_arrow_array(Arc::clone(&source), bits)?;
     let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
     assert_eq!(bytes.value(1), &[0xff; 8]);
@@ -199,7 +199,7 @@ Rust only.
 `validate_value` checks a [`Scalar`](scalar.md) row is representable; `canonicalize_value` rewrites it exactly.
 
 Canonicalization decides before it builds, so a row already in its declared representation
-allocates nothing whatever it carries: text, byte, ASCII, code, and geospatial columns are
+allocates nothing whatever it carries: text, byte, code, and geospatial columns are
 recognized from the value in hand rather than rebuilt and compared. A column that does rewrite a
 layout - `utf8` to `large_utf8`, `binary` to `binary_view`, bytes to a geometry - retags the
 storage handle it was given, so the payload is never copied. `rust/tests/allocations.rs` counts
@@ -209,8 +209,8 @@ both.
 the column tier reads. Text becomes the number, boolean, decimal or temporal a column declares -
 through this crate's own readers, so a digit a scale cannot hold is refused rather than rounded.
 Any value that prints a spelling enters a text column as that spelling, a geometry included.
-Any value that carries bytes enters a byte column as that payload, and an ASCII value carries the
-width it declares, padded, because that is what the fixed column stores.
+Any value that carries bytes enters a byte column as that payload; a fixed string carries the
+width it declares and pads to it on the way out, because that is what the fixed column stores.
 
 ```rust
 use yggdryl::{DataType, Scalar};
@@ -221,8 +221,8 @@ assert_eq!(money.scalar("10.50")?, Scalar::d128(1_050, 2));
 assert!(money.scalar("1.005").is_err());
 
 assert_eq!(DataType::Date32.scalar("1970-01-02")?, Scalar::date32(1));
-assert_eq!(DataType::Utf8.scalar(7_i64)?, Scalar::from("7"));
-assert_eq!(DataType::Binary.scalar("hi")?, Scalar::from(b"hi".to_vec()));
+assert_eq!(DataType::utf8().scalar(7_i64)?, Scalar::from("7"));
+assert_eq!(DataType::binary().scalar("hi")?, Scalar::from(b"hi".to_vec()));
 
 // A record is a map keyed by name, so a map column reads one.
 let prices: DataType = "map<utf8, int32>".parse()?;
@@ -274,7 +274,7 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
 
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?
     .required_field("trade");
 
@@ -345,7 +345,7 @@ strictness is about declared values that are absent, not about columns nobody de
     let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
     let root = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
     ])?
     .required_field("row");
 
@@ -599,7 +599,8 @@ no behavior of its own.
 - Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
 - Text into a boolean or a number at the row tier -> this crate's canonical spelling; a column keeps Arrow's wider vocabulary behind it, as it does for temporals.
 - Two fixed sizes, list or binary -> a value change rather than a layout change, refused by name.
-- A byte source entering an ASCII width, a code or a UUID -> read as bytes under all four binary framings, so a payload that is not UTF-8 is refused rather than nulled.
+- A string target declaring a bound, a fixed width or a charset other than UTF-8 -> `StringIngest`: every cell validated, a `yggdryl.string` source read under its own parameters first, bare binary storage read as bytes already in the target charset; a bounded variable byte target -> `BytesIngest`, every cell's length checked ([Strings & bytes](text.md#casts)). Under `safe` a refused cell is null, under strict the row and column are named.
+- A byte source entering a code or a UUID -> read as bytes under all four binary framings, so a payload that is not US-ASCII is refused rather than nulled under strict.
 - A dictionary or run-end target -> its values' own rule runs, then the encoding; a `dictionary<int32, ascii>` refuses what `ascii` refuses.
 - An encoded source into a plain target -> decoded first, so a dictionary of a recognized code still renders as text.
 - A bare null into a `union` or a `run_end_encoded` -> refused: both spell absence inside a child, so the value is the pair or the values entry that carries it.

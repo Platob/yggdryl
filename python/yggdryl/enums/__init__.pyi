@@ -1,6 +1,6 @@
 from typing import Mapping
 
-from .ascii import (
+from .string import (
     AsciiCode as AsciiCode,
     CfiCode as CfiCode,
     CountryCode as CountryCode,

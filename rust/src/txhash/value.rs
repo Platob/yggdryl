@@ -1,14 +1,14 @@
 //! One time-coupled hash: the instant first, the digest after it.
 
 use std::fmt;
+use std::num::NonZeroU32;
 use std::ops::Deref;
 use std::str::FromStr;
-use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-use crate::types::{Bytes, FixedSizeBinary};
+use crate::types::{Bytes, BytesLayout, BytesParameters};
 use crate::{DataType, Digest, DigestAlgorithm, Error, Result, Scalar, TimeUnit, Timezone};
 
 use super::time::{DEFAULT_UNIT, restate_unix, validate_unit};
@@ -39,11 +39,17 @@ pub const fn width(algorithm: DigestAlgorithm) -> usize {
 /// or 192 bits wide and the sixteen-byte value is a whole rather than two
 /// numbers: sorting the bytes sorts the instants, then the digests.
 pub const fn dtype(algorithm: DigestAlgorithm) -> DataType {
-    DataType::FixedSizeBinary(fixed_width(algorithm))
+    match NonZeroU32::new(fixed_width(algorithm)) {
+        Some(width) => {
+            DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary).with_bound(width))
+        }
+        // Every width below is a literal above zero.
+        None => DataType::binary(),
+    }
 }
 
 /// The width as the datatype spells it.
-pub(crate) const fn fixed_width(algorithm: DigestAlgorithm) -> i32 {
+pub(crate) const fn fixed_width(algorithm: DigestAlgorithm) -> u32 {
     match algorithm {
         DigestAlgorithm::Xxh32 => 12,
         DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => 16,
@@ -56,7 +62,7 @@ pub(crate) const fn fixed_width(algorithm: DigestAlgorithm) -> i32 {
 /// Sixteen bytes answer XXH3-64 rather than XXH64 for the reason the digest
 /// vocabulary defaults the same way: it is the algorithm every `stable_hash`
 /// in the project answers.
-pub(crate) const fn algorithm_of_width(width: i32) -> Option<DigestAlgorithm> {
+pub(crate) const fn algorithm_of_width(width: u32) -> Option<DigestAlgorithm> {
     // The three defaults in width order; the width each takes is read off
     // the one layout rule rather than restated here.
     const DEFAULTS: [DigestAlgorithm; 3] = [
@@ -269,12 +275,13 @@ impl TxHash {
     /// Return the canonical bytes as a fixed-width byte value.
     ///
     /// This is the cell a column of these values holds, so a value and the
-    /// array it came from spell the same bytes. It allocates the byte payload,
-    /// as every `into_*` projection does; [`Self::into_bytes`] is the inline
-    /// form.
+    /// array it came from spell the same bytes: the canonical layout at the
+    /// algorithm's exact width, which every width here fits inline.
     pub fn into_scalar(self) -> Scalar {
-        let bytes: Arc<[u8]> = Arc::from(&*self.into_bytes());
-        Scalar::Bytes(Bytes::FixedSizeBinary(FixedSizeBinary::new(bytes)))
+        let DataType::Bytes(parameters) = self.dtype() else {
+            unreachable!("a coupled hash is stored as fixed-width bytes")
+        };
+        Scalar::Bytes(Bytes::from_storage(&self.into_bytes(), parameters))
     }
 
     /// Read a value back out of the two representations a value has.

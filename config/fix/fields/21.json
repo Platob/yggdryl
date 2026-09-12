@@ -2,7 +2,7 @@
   {
     "name": "posamtmarketid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -38,7 +38,7 @@
   {
     "name": "relatedregulatorytradeidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -62,7 +62,7 @@
   {
     "name": "attachmentname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -74,7 +74,7 @@
   {
     "name": "attachmentmediatype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -86,7 +86,7 @@
   {
     "name": "attachmentclassification",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -98,7 +98,7 @@
   {
     "name": "attachmentexternalurl",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -171,7 +171,7 @@
   {
     "name": "attachmentkeyword",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -236,7 +236,7 @@
   {
     "name": "complexoptpayoutunderlier",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -346,7 +346,7 @@
   {
     "name": "complexeventdeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -407,13 +407,13 @@
   {
     "name": "complexeventcrediteventsxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to credit event table elsewhere in the message.",
       "display": "ComplexEventCreditEventsXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"complexeventcrediteventsxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"complexeventcrediteventsxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "2133"
     }
   },
@@ -433,7 +433,7 @@
   {
     "name": "complexeventcrediteventbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -469,33 +469,33 @@
   {
     "name": "complexeventxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
       "display": "ComplexEventXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"complexeventxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"complexeventxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "2138"
     }
   },
   {
     "name": "complexeventxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to a complex event elsewhere in the message.",
       "display": "ComplexEventXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"complexeventxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"complexeventxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "2139"
     }
   },
   {
     "name": "valuationreferencemodel",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -507,7 +507,7 @@
   {
     "name": "strategytype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -545,7 +545,7 @@
   {
     "name": "instrumentroundingdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -570,7 +570,7 @@
   {
     "name": "legsettleonopenflag",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -582,7 +582,7 @@
   {
     "name": "leginstrmtassignmentmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -595,7 +595,7 @@
   {
     "name": "legsecuritystatus",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -608,7 +608,7 @@
   {
     "name": "legrestructuringtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -621,7 +621,7 @@
   {
     "name": "legseniority",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -682,7 +682,7 @@
   {
     "name": "legobligationtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -695,7 +695,7 @@
   {
     "name": "legswapsubclass",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -732,7 +732,7 @@
   {
     "name": "legsettledentitymatrixsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -794,7 +794,7 @@
   {
     "name": "legcouponfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -820,7 +820,7 @@
   {
     "name": "legconvertiblebondequityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -832,7 +832,7 @@
   {
     "name": "legconvertiblebondequityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -845,8 +845,10 @@
   {
     "name": "legcontractpricerefmonth",
     "dtype": {
-      "type": "fixed_ascii",
-      "width": 8
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
     },
     "nullable": true,
     "metadata": {
@@ -934,7 +936,7 @@
   {
     "name": "legindexannexsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -946,7 +948,7 @@
   {
     "name": "legsettlrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -958,7 +960,7 @@
   {
     "name": "legsettlrateindexlocation",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -970,7 +972,7 @@
   {
     "name": "legoptionexpirationdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1030,7 +1032,7 @@
   {
     "name": "legstrikeunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1043,7 +1045,7 @@
   {
     "name": "legstrikeindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1142,7 +1144,7 @@
   {
     "name": "legsettlmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1180,7 +1182,7 @@
   {
     "name": "legpricequotemethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1193,7 +1195,7 @@
   {
     "name": "legvaluationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1206,7 +1208,7 @@
   {
     "name": "legvaluationsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1218,7 +1220,7 @@
   {
     "name": "legvaluationreferencemodel",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

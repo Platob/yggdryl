@@ -139,7 +139,7 @@ nav:
     - Families:
       - Numeric & temporal: types/numeric.md
       - Strings & bytes: types/text.md
-      - ASCII: types/ascii.md
+      - Codes: types/codes.md
       - UUID: types/uuid.md
       - Nested: types/nested.md
       - Geospatial: types/geospatial.md

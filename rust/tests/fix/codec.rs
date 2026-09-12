@@ -122,7 +122,7 @@ fn message_codes_keep_the_complete_text_the_wire_declares() {
                     .find(|field| field.as_fix().tag().unwrap() == Some(35))
                     .unwrap()
                     .dtype(),
-                &DataType::Utf8,
+                &DataType::utf8(),
             );
             assert_eq!(message.into_bytes(separator), line.as_bytes());
         }
@@ -1587,7 +1587,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     // counter as a member: it opens its group inside the occurrence being
     // filled, the members that follow fill that group first, and a member of
     // the outer group closes it.
-    let mut sub_id = DataType::Utf8.nullable_field("partysubid");
+    let mut sub_id = DataType::utf8().nullable_field("partysubid");
     sub_id.as_fix_mut().set_tag(523).unwrap();
     let mut sub_type = DataType::Int32.nullable_field("partysubidtype");
     sub_type.as_fix_mut().set_tag(803).unwrap();
@@ -1598,7 +1598,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     sub_count.as_fix_mut().set_tag(802).unwrap();
     let mut subs = DataType::list(sub_item).nullable_field("ptyssubgrp");
     subs.as_fix_mut().set_counter(802).unwrap();
-    let mut party_id = DataType::Utf8.nullable_field("partyid");
+    let mut party_id = DataType::utf8().nullable_field("partyid");
     party_id.as_fix_mut().set_tag(448).unwrap();
     let mut role = DataType::Int32.nullable_field("partyrole");
     role.as_fix_mut().set_tag(452).unwrap();
@@ -1614,7 +1614,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     count.as_fix_mut().set_tag(453).unwrap();
     let mut parties = DataType::list(item).nullable_field("parties");
     parties.as_fix_mut().set_counter(453).unwrap();
-    let mut symbol = DataType::Utf8.nullable_field("symbol");
+    let mut symbol = DataType::utf8().nullable_field("symbol");
     symbol.as_fix_mut().set_tag(55).unwrap();
     // As the generated dictionary does, every member is also a field of its
     // own by tag and every group is a named definition headed by its
@@ -1827,7 +1827,7 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
     // The FIX layer reads a group as `List` or `LargeList` everywhere it looks
     // at one, so the miscount looks at the same pair: a dictionary that stored
     // its group in the wider variant is still a dictionary of groups.
-    let mut party_id = DataType::Utf8.nullable_field("partyid");
+    let mut party_id = DataType::utf8().nullable_field("partyid");
     party_id.as_fix_mut().set_tag(448).unwrap();
     let item = DataType::from_fields([party_id])
         .unwrap()
@@ -1837,7 +1837,7 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
     group.as_fix_mut().set_component(item.name()).unwrap();
     let mut counter = DataType::Int32.nullable_field("nopartyids");
     counter.as_fix_mut().set_tag(453).unwrap();
-    let mut symbol = DataType::Utf8.nullable_field("symbol");
+    let mut symbol = DataType::utf8().nullable_field("symbol");
     symbol.as_fix_mut().set_tag(55).unwrap();
     let mut registry = FixRegistry::from_fields([counter, symbol]).unwrap();
     registry
@@ -2138,7 +2138,7 @@ fn a_dateless_clock_never_becomes_the_capture_instant() {
     // A dictionary narrow enough to type the clock as text is what reaches
     // the reading at all: a full one has already made it an instant.
     let mut narrow = FixRegistry::new();
-    let mut clock = DataType::Utf8.nullable_field("transacttime");
+    let mut clock = DataType::utf8().nullable_field("transacttime");
     clock.as_fix_mut().set_tag(60).expect("a standard tag");
     narrow.insert(clock).expect("a fresh dictionary");
     let reader = FixCodec::new(Arc::new(narrow));
@@ -2261,7 +2261,7 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
 
     // The same rows as one Arrow batch in and one Arrow batch out, with the
     // row count preserved: a capture joins back to its source by position.
-    let capture = DataType::from_fields([DataType::Binary.required_field("body")])
+    let capture = DataType::from_fields([DataType::binary().required_field("body")])
         .expect("a capture shape")
         .required_field("capture");
     let values = Scalar::from_sequence(
@@ -2298,7 +2298,7 @@ fn a_row_inside_a_data_field_is_read_at_its_own_version_and_not_the_frames() {
     // Only one of the two is visible at a version, so which one answers is
     // exactly which version the read used.
     let mut scoped = FixRegistry::new();
-    let mut exectype = DataType::Utf8.nullable_field("exectype");
+    let mut exectype = DataType::utf8().nullable_field("exectype");
     exectype.as_fix_mut().set_tag(150).unwrap();
     exectype
         .as_fix_mut()

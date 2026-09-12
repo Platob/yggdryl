@@ -264,7 +264,7 @@ fn field_crud_preserves_branch_identity_and_refuses_invalid_mutations() {
     workspace.failure(&["fields", "read", "5001", "--branch", "alpha"]);
     let output = workspace.success(&["fields", "read", "5001", "--branch", "beta", "--json"]);
     let remaining = Field::from_json_bytes(&output.stdout).expect("remaining branch field");
-    assert_eq!(remaining.dtype(), &DataType::Utf8);
+    assert_eq!(remaining.dtype(), &DataType::utf8());
 }
 
 #[test]

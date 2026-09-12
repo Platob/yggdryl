@@ -1,4 +1,12 @@
-import { AsciiEnum, DataType, Field } from '../..'
+import {
+  DataType,
+  Field,
+  StringEnum,
+  type BytesParameters,
+  type BytesParametersInput,
+  type StringParameters,
+  type StringParametersInput,
+} from '../..'
 
 const type = DataType.from('struct<id: bigint not null>')
 const clonedType: DataType = DataType.from(type)
@@ -27,13 +35,41 @@ const geometryType: DataType = DataType.geometry()
 const projectedGeometry: DataType = DataType.geometry('EPSG:3857')
 const geographyType: DataType = DataType.geography()
 const vincentyGeography: DataType = DataType.geography('OGC:CRS84', 'vincenty')
-const asciiType: DataType = new DataType('ascii')
-const fixedAsciiType: DataType = DataType.ascii(3)
-const asciiWidth: number | null = fixedAsciiType.asciiWidth
+const asciiType: DataType = DataType.ascii()
+const fixedAsciiType: DataType = DataType.fixedAscii(3)
+const fixedUtf8Type: DataType = DataType.fixedUtf8(8)
+const utf8Type: DataType = DataType.utf8()
+const largeUtf8Type: DataType = DataType.largeUtf8()
+const utf8ViewType: DataType = DataType.utf8View()
+const binaryType: DataType = DataType.binary()
+const largeBinaryType: DataType = DataType.largeBinary()
+const binaryViewType: DataType = DataType.binaryView()
+const fixedBinaryType: DataType = DataType.fixedSizeBinary(16)
+// The one string datatype and the one byte datatype, declared whole.
+const plainString: DataType = DataType.string()
+const latinString: DataType = DataType.string({
+  layout: 'large_string',
+  charset: 'windows-1252',
+  max: 32,
+})
+const boundedBytes: DataType = DataType.bytes({ layout: 'binary_view', bound: 64 })
+const stringParameters: StringParameters | null = latinString.stringParameters
+const stringLayout: string = stringParameters!.layout
+const stringCharset: string = stringParameters!.charset
+const stringBound: number | undefined = stringParameters!.bound
+const stringFixed: number | undefined = stringParameters!.fixed
+const stringMax: number | undefined = stringParameters!.max
+const bytesParameters: BytesParameters | null = boundedBytes.bytesParameters
+const bytesLayout: string = bytesParameters!.layout
+const bytesMax: number | undefined = bytesParameters!.max
+const stringInput: StringParametersInput = { charset: 'us-ascii', fixed: 4 }
+const bytesInput: BytesParametersInput = { fixed: 16 }
+const charset: string | null = fixedAsciiType.charset
+const fixedByteWidth: number | null = fixedAsciiType.fixedByteWidth
 const currencyType: DataType = new DataType('currency')
-const currencyTypeWidth: number | null = currencyType.asciiWidth
+const currencyTypeWidth: number | null = currencyType.fixedByteWidth
 const urlType: DataType = new DataType('url')
-const urlTypeWidth: number | null = urlType.asciiWidth
+const urlTypeWidth: number | null = urlType.fixedByteWidth
 
 void child
 void indexedChild
@@ -49,20 +85,42 @@ void projectedGeometry
 void geographyType
 void vincentyGeography
 void asciiType
-void asciiWidth
+void fixedAsciiType
+void fixedUtf8Type
+void utf8Type
+void largeUtf8Type
+void utf8ViewType
+void binaryType
+void largeBinaryType
+void binaryViewType
+void fixedBinaryType
+void plainString
+void latinString
+void boundedBytes
+void stringLayout
+void stringCharset
+void stringBound
+void stringFixed
+void stringMax
+void bytesLayout
+void bytesMax
+void stringInput
+void bytesInput
+void charset
+void fixedByteWidth
 void currencyType
 void currencyTypeWidth
 void urlType
 void urlTypeWidth
 
-const prebuiltLists: Record<string, string[]> = AsciiEnum.prebuilt()
-const prebuiltMics: AsciiEnum = AsciiEnum.fromLogicalName('mic')
-const currencyMemberName: string = AsciiEnum.memberName('n/a')
-const currencyPacked: bigint = DataType.ascii(3).asciiPacked('USD')
-const currencyUnpacked: string = DataType.ascii(3).asciiValue(currencyPacked)
-const currencyDeclaration: AsciiEnum = new AsciiEnum('Currency', { USD: 'USD' })
+const prebuiltLists: Record<string, string[]> = StringEnum.prebuilt()
+const prebuiltMics: StringEnum = StringEnum.fromLogicalName('mic')
+const currencyMemberName: string = StringEnum.memberName('n/a')
+const currencyPacked: bigint = DataType.fixedAscii(3).asciiPacked('USD')
+const currencyUnpacked: string = DataType.fixedAscii(3).asciiValue(currencyPacked)
+const currencyDeclaration: StringEnum = new StringEnum('Currency', { USD: 'USD' })
 const currencyDeclarationJson: string = currencyDeclaration.intoJson()
-const currencyDeclarationParsed: AsciiEnum = AsciiEnum.fromJson(currencyDeclarationJson)
+const currencyDeclarationParsed: StringEnum = StringEnum.fromJson(currencyDeclarationJson)
 const currencyDeclarationName: string = currencyDeclaration.name
 const currencyDeclarationMembers: Record<string, string> = currencyDeclaration.members
 const currencyDeclarationValue: string | null = currencyDeclaration.get('USD')
@@ -70,20 +128,20 @@ const currencyDeclarationMember: string | null = currencyDeclaration.getMember('
 const currencyDeclarationPrior: string | null = currencyDeclaration.insert('EUR', 'EUR')
 const currencyDeclarationRemoved: string | null = currencyDeclaration.remove('EUR')
 const currencyDeclarationCodes: Record<string, bigint> =
-  currencyDeclaration.intoMembers(DataType.ascii(3))
+  currencyDeclaration.intoMembers(DataType.fixedAscii(3))
 const currencyDeclarationEnum: Readonly<Record<string, bigint>> =
   currencyDeclaration.intoEnum('currency')
 const currencyDeclarationLength: number = currencyDeclaration.length
 const currencyDeclarationEquals: boolean =
   currencyDeclaration.equals(currencyDeclarationParsed)
-const currencyDeclarationClone: AsciiEnum = currencyDeclaration.clone()
+const currencyDeclarationClone: StringEnum = currencyDeclaration.clone()
 const currencyDeclarationText: string = currencyDeclaration.toString()
 const uuidType: DataType = new DataType('uuid')
 const uuidId: string = uuidType.id
-const declaredField: Field = new Field('side', DataType.ascii(3), false)
-declaredField.setAsciiEnum(currencyDeclaration)
-const declaredFieldEnum: AsciiEnum | null = declaredField.asciiEnum
-const declaredFieldRemoved: AsciiEnum | null = declaredField.removeAsciiEnum()
+const declaredField: Field = new Field('side', DataType.fixedAscii(3), false)
+declaredField.setStringEnum(currencyDeclaration)
+const declaredFieldEnum: StringEnum | null = declaredField.stringEnum
+const declaredFieldRemoved: StringEnum | null = declaredField.removeStringEnum()
 
 void prebuiltLists
 void prebuiltMics

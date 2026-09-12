@@ -1,11 +1,11 @@
 use super::super::DataType;
-use crate::AsciiEnum;
+use crate::StringEnum;
 
 fn lists() -> [(&'static str, &'static [&'static str]); 3] {
     [
-        ("currency", AsciiEnum::CURRENCIES),
-        ("country", AsciiEnum::COUNTRIES),
-        ("mic", AsciiEnum::MICS),
+        ("currency", StringEnum::CURRENCIES),
+        ("country", StringEnum::COUNTRIES),
+        ("mic", StringEnum::MICS),
     ]
 }
 
@@ -19,11 +19,11 @@ fn every_constant_is_sorted_unique_and_fits_its_width() {
         );
         let width = DataType::from_logical_name(name)
             .unwrap()
-            .ascii_width()
+            .fixed_byte_width()
             .unwrap();
         for value in values {
             assert!(
-                value.is_ascii() && !value.is_empty() && value.len() <= width as usize,
+                value.is_ascii() && !value.is_empty() && value.len() <= width,
                 "{name} holds {value:?}, which does not fit {width} bytes"
             );
             assert!(
@@ -35,9 +35,9 @@ fn every_constant_is_sorted_unique_and_fits_its_width() {
         }
     }
     // The code sets are the standards' own shapes.
-    assert!(AsciiEnum::CURRENCIES.iter().all(|code| code.len() == 3));
-    assert!(AsciiEnum::COUNTRIES.iter().all(|code| code.len() == 2));
-    assert!(AsciiEnum::MICS.iter().all(|code| code.len() == 4));
+    assert!(StringEnum::CURRENCIES.iter().all(|code| code.len() == 3));
+    assert!(StringEnum::COUNTRIES.iter().all(|code| code.len() == 2));
+    assert!(StringEnum::MICS.iter().all(|code| code.len() == 4));
 }
 
 /// An ISO code is already an identifier, so no two members collide and
@@ -45,7 +45,7 @@ fn every_constant_is_sorted_unique_and_fits_its_width() {
 #[test]
 fn every_constant_names_its_own_enum_members() {
     for (name, values) in lists() {
-        let declared = AsciiEnum::from_logical_name(name).unwrap();
+        let declared = StringEnum::from_logical_name(name).unwrap();
         let dtype = DataType::from_logical_name(name).unwrap();
         assert_eq!(declared.len(), values.len(), "{name}");
         assert_eq!(declared.name(), name, "{name}");
@@ -64,18 +64,18 @@ fn every_constant_names_its_own_enum_members() {
 #[test]
 fn the_two_names_of_one_list_prebuild_one_vocabulary() {
     assert_eq!(
-        AsciiEnum::from_logical_name("Exchange").unwrap().len(),
-        AsciiEnum::from_logical_name("mic").unwrap().len()
+        StringEnum::from_logical_name("Exchange").unwrap().len(),
+        StringEnum::from_logical_name("mic").unwrap().len()
     );
-    assert_eq!(AsciiEnum::prebuilt_values(" MIC "), AsciiEnum::MICS);
-    assert!(AsciiEnum::prebuilt_values("isin").is_empty());
+    assert_eq!(StringEnum::prebuilt_values(" MIC "), StringEnum::MICS);
+    assert!(StringEnum::prebuilt_values("isin").is_empty());
 }
 
 #[test]
 fn a_registered_name_with_no_constant_prebuilds_no_members() {
     for name in ["language", "monthyear", "tenor"] {
         assert!(
-            AsciiEnum::from_logical_name(name).unwrap().is_empty(),
+            StringEnum::from_logical_name(name).unwrap().is_empty(),
             "{name}"
         );
     }
@@ -83,7 +83,7 @@ fn a_registered_name_with_no_constant_prebuilds_no_members() {
 
 #[test]
 fn a_name_that_is_not_registered_is_refused_by_the_vocabulary() {
-    let refused = AsciiEnum::from_logical_name("sedol")
+    let refused = StringEnum::from_logical_name("sedol")
         .unwrap_err()
         .to_string();
     assert!(refused.contains("currency"), "{refused}");

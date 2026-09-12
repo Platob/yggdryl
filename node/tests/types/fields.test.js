@@ -57,10 +57,7 @@ test('the bits reading crosses every same-width pair', () => {
   )
   const signed64 = fields.int64('digest').castArrowArray(unsigned64, bits)
   assert.equal(signed64.type.toString(), 'Int64')
-  assert.deepEqual(
-    Array.from(signed64),
-    [0n, 2n ** 63n - 1n, -(2n ** 63n), -1n, null],
-  )
+  assert.deepEqual(Array.from(signed64), [0n, 2n ** 63n - 1n, -(2n ** 63n), -1n, null])
   assert.deepEqual(
     Array.from(fields.uint64('digest').castArrowArray(signed64, bits)),
     Array.from(unsigned64),
@@ -68,9 +65,7 @@ test('the bits reading crosses every same-width pair', () => {
 
   // Eight bytes are eight bytes: the integer, its opposite sign and the raw
   // payload are one buffer under three readings, and the chain round-trips.
-  const stored = fields
-    .fixedSizeBinary('digest', 8)
-    .castArrowArray(unsigned64, bits)
+  const stored = fields.fixedSizeBinary('digest', 8).castArrowArray(unsigned64, bits)
   assert.deepEqual(Array.from(stored.get(3)), new Array(8).fill(255))
   assert.deepEqual(
     Array.from(fields.uint64('digest').castArrowArray(stored, bits)),
@@ -87,10 +82,7 @@ test('the bits reading crosses every same-width pair', () => {
   // absent value means.
   const required = fields
     .int64('digest', { nullable: false })
-    .castArrowArray(
-      arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()),
-      bits,
-    )
+    .castArrowArray(arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()), bits)
   assert.deepEqual(Array.from(required), [0n, -1n])
   assert.throws(
     () =>
@@ -104,15 +96,15 @@ test('the bits reading crosses every same-width pair', () => {
   )
 
   // Four bytes are not eight, so this stays the ordinary numeric widening.
-  assert.deepEqual(
-    Array.from(fields.int64('digest').castArrowArray(unsigned32, bits)),
-    [0n, 2n ** 31n - 1n, 2n ** 31n, 2n ** 32n - 1n, null],
-  )
+  assert.deepEqual(Array.from(fields.int64('digest').castArrowArray(unsigned32, bits)), [
+    0n,
+    2n ** 31n - 1n,
+    2n ** 31n,
+    2n ** 32n - 1n,
+    null,
+  ])
 
-  assert.throws(
-    () => fields.int32('digest').castArrowArray([0]),
-    /must be an Apache Arrow Vector/,
-  )
+  assert.throws(() => fields.int32('digest').castArrowArray([0]), /must be an Apache Arrow Vector/)
 })
 
 test('DataType.fromFields is the iterable-aware native Struct builder', () => {
@@ -120,7 +112,11 @@ test('DataType.fromFields is the iterable-aware native Struct builder', () => {
     nullable: false,
     metadata: { physical: 'int32' },
   })
-  const type = DataType.fromFields((function* children() { yield id })())
+  const type = DataType.fromFields(
+    (function* children() {
+      yield id
+    })(),
+  )
 
   assert.equal(type.kind, 'nested')
   assert.ok(type.getFieldAt(0).equals(id))
@@ -153,13 +149,17 @@ test('Variant assigns deterministic dense Union IDs through one native builder',
   assert.deepEqual(dtype.defaultJSValue(), { typeId: 0, value: '' })
   assert.ok(
     dtype.equals(
-      fields.union('holder', [[0, text], [1, code]], 'dense').dtype,
+      fields.union(
+        'holder',
+        [
+          [0, text],
+          [1, code],
+        ],
+        'dense',
+      ).dtype,
     ),
   )
-  assert.ok(
-    fields.denseUnion('payload', [text, code], { nullable: false })
-      .dtype.equals(dtype),
-  )
+  assert.ok(fields.denseUnion('payload', [text, code], { nullable: false }).dtype.equals(dtype))
   assert.equal(
     DataType.fromString(
       'variant(field("text",utf8,nullable=false,metadata={}),' +
@@ -184,10 +184,7 @@ test('typed field factories cover every native datatype variant', () => {
   const item = fields.int8('item', { nullable: false })
   const entries = fields.struct(
     'entries',
-    [
-      fields.utf8('key', { nullable: false }),
-      fields.int64('value'),
-    ],
+    [fields.utf8('key', { nullable: false }), fields.int64('value')],
     { nullable: false },
   )
   const runEnds = fields.int16('run_ends', { nullable: false })
@@ -220,11 +217,13 @@ test('typed field factories cover every native datatype variant', () => {
     ['fixed_size_binary', fields.fixedSizeBinary('value', 16)],
     ['large_binary', fields.largeBinary('value')],
     ['binary_view', fields.binaryView('value')],
-    ['utf8', fields.utf8('value')],
-    ['large_utf8', fields.largeUtf8('value')],
-    ['utf8_view', fields.utf8View('value')],
-    ['ascii', fields.ascii('value')],
-    ['fixed_ascii', fields.fixedAscii('value', 4)],
+    // One string datatype, five layouts: the identity is the layout, and
+    // the charset-named factories pick a layout and a charset once.
+    ['string', fields.utf8('value')],
+    ['fixed_string', fields.fixedAscii('value', 4)],
+    ['string_view', fields.utf8View('value')],
+    ['large_string', fields.largeUtf8('value')],
+    ['large_string_view', fields.string('value', { layout: 'large_string_view' })],
     ['country', fields.country('value')],
     ['currency', fields.currency('value')],
     ['mic', fields.mic('value')],
@@ -246,10 +245,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['decimal128', fields.decimal128('value', 38, 2)],
     ['decimal256', fields.decimal256('value', 76, 2)],
     ['map', fields.map('value', entries, true)],
-    [
-      'run_end_encoded',
-      fields.runEndEncoded('value', runEnds, values),
-    ],
+    ['run_end_encoded', fields.runEndEncoded('value', runEnds, values)],
     ['variant', fields.variant('value')],
     ['geometry', fields.geometry('value')],
     ['geography', fields.geography('value', 'OGC:CRS84', 'vincenty')],
@@ -264,15 +260,18 @@ test('typed field factories cover every native datatype variant', () => {
     assert.equal(value.nullable, true, id)
   }
   // Canonical display opens with the variant id and appends its parameters.
-  // `fixed_ascii` is the one exception: `ascii` alone spells the variable
-  // form, so the fixed one is that spelling with its width as the parameter.
-  const spellings = new Map([['fixed_ascii', 'ascii']])
+  // A string is the exception: its identity is the layout, and it renders
+  // under the name its charset earns - `utf8` for UTF-8, `ascii` for
+  // US-ASCII - with the bound as the parameter.
+  const spellings = new Map([
+    ['string', 'utf8'],
+    ['fixed_string', 'fixed_ascii'],
+    ['string_view', 'utf8_view'],
+    ['large_string', 'large_utf8'],
+    ['large_string_view', 'large_utf8_view'],
+  ])
   for (const [id, value] of byId) {
-    assert.equal(
-      value.dtype.toString().split(/[(<]/, 1)[0],
-      spellings.get(id) ?? id,
-      id,
-    )
+    assert.equal(value.dtype.toString().split(/[(<]/, 1)[0], spellings.get(id) ?? id, id)
   }
   assert.deepEqual(
     new Set([...byId.values()].map((value) => value.dtype.kind)),
@@ -285,7 +284,7 @@ test('typed field factories cover every native datatype variant', () => {
       'temporal',
       'bytes',
       'text',
-      'ascii',
+      'code',
       'nested',
       'geospatial',
       'uuid',
@@ -297,29 +296,92 @@ test('the ascii factories build the variable form and one fixed width', () => {
   const free = fields.ascii('note')
   const currency = fields.fixedAscii('ccy', 3, { nullable: false })
 
-  assert.equal(free.dtype.id, 'ascii')
-  assert.equal(free.dtype.asciiWidth, null)
+  // Both are the one string datatype in US-ASCII: the variable layout has
+  // no width to answer, the fixed layout answers its own.
+  assert.equal(free.dtype.id, 'string')
+  assert.equal(free.dtype.charset, 'us-ascii')
+  assert.equal(free.dtype.fixedByteWidth, null)
   assert.equal(free.nullable, true)
-  assert.equal(currency.dtype.id, 'fixed_ascii')
-  assert.equal(currency.dtype.asciiWidth, 3)
+  assert.equal(currency.dtype.id, 'fixed_string')
+  assert.equal(currency.dtype.charset, 'us-ascii')
+  assert.equal(currency.dtype.fixedByteWidth, 3)
   assert.equal(currency.nullable, false)
-  assert.ok(currency.dtype.equals(DataType.ascii(3)))
-  assert.equal(fields.fixedAscii('iso', 2).dtype.asciiWidth, 2)
+  assert.ok(currency.dtype.equals(DataType.fixedAscii(3)))
+  assert.ok(free.dtype.equals(DataType.ascii()))
+  assert.ok(!free.dtype.equals(fields.utf8('note').dtype))
+  assert.equal(fields.fixedAscii('iso', 2).dtype.fixedByteWidth, 2)
   assert.equal(fields.uuid('id').dtype.id, 'uuid')
   assert.equal(fields.uuid('id', { nullable: false }).nullable, false)
   assert.equal(fields.version('release').dtype.id, 'version')
   assert.ok(fields.version('release', { nullable: false }).defaultJSValue().equals(new Version(0)))
   // A fixed width past the packed integer is still storage, so it builds.
-  assert.equal(fields.fixedAscii('isin', 64).dtype.asciiWidth, 64)
+  assert.equal(fields.fixedAscii('isin', 64).dtype.fixedByteWidth, 64)
   assert.equal(fields.fixedAscii('code', 12).nullable, true)
   assert.equal(fields.ascii('note').defaultJSValue(), null)
   assert.equal(fields.ascii('note', { nullable: false }).defaultJSValue(), '')
   assert.equal(fields.fixedAscii('ccy', 4).defaultJSValue(), null)
   assert.equal(fields.fixedAscii('ccy', 4, { nullable: false }).defaultJSValue(), '')
-  assert.throws(
-    () => fields.fixedAscii('code', 0),
-    /expected an ASCII width of at least 1 byte, got 0/,
+  assert.throws(() => fields.fixedAscii('code', 0), /expected a width of at least one byte, got 0/)
+  assert.throws(() => fields.fixedUtf8('code', 0), /expected a width of at least one byte, got 0/)
+})
+
+test('the string and bytes factories declare the datatype beside the field', () => {
+  // The parameter keys build the datatype; every other key is a field
+  // option, checked as one.
+  const latin = fields.string('note', {
+    charset: 'windows-1252',
+    max: 32,
+    nullable: false,
+  })
+  assert.equal(latin.dtype.toString(), 'string(windows-1252,32)')
+  assert.deepEqual(latin.dtype.stringParameters, {
+    layout: 'string',
+    charset: 'windows-1252',
+    bound: 32,
+    max: 32,
+  })
+  assert.equal(latin.nullable, false)
+  assert.ok(fields.string('note').dtype.equals(DataType.utf8()))
+  assert.ok(
+    fields.string('code', { layout: 'fixed_utf8', fixed: 8 }).dtype.equals(DataType.fixedUtf8(8)),
   )
+  assert.equal(
+    fields
+      .string('code', {
+        layout: 'large_string',
+        charset: 'us-ascii',
+        metadata: { role: 'ticker' },
+      })
+      .get('role'),
+    'ticker',
+  )
+  assert.throws(
+    () => fields.string('note', { fixed: 4 }),
+    /expected a maximum on a variable layout/,
+  )
+  assert.throws(() => fields.string('note', { layout: 'fixed_string' }), /width/)
+  assert.throws(() => fields.string('note', 'utf8'), /field options must be a plain object/)
+
+  const blob = fields.bytes('payload', { max: 16, nullable: false })
+  assert.equal(blob.dtype.toString(), 'binary(16)')
+  assert.deepEqual(blob.dtype.bytesParameters, {
+    layout: 'binary',
+    bound: 16,
+    max: 16,
+  })
+  assert.equal(blob.nullable, false)
+  assert.ok(fields.bytes('payload').dtype.equals(DataType.binary()))
+  assert.ok(
+    fields
+      .bytes('key', { layout: 'fixed_size_binary', fixed: 16 })
+      .dtype.equals(DataType.fixedSizeBinary(16)),
+  )
+  assert.equal(fields.bytes('key', { layout: 'fixed_binary', bound: 16 }).dtype.fixedByteWidth, 16)
+  assert.throws(
+    () => fields.bytes('payload', { fixed: 4 }),
+    /expected a maximum on a variable layout/,
+  )
+  assert.throws(() => fields.bytes('payload', { bound: 4, max: 4 }), /got more than one/)
 })
 
 test('the url factory builds a validated, canonical location column', () => {
@@ -329,10 +391,7 @@ test('the url factory builds a validated, canonical location column', () => {
   assert.equal(location.dtype.kind, 'text')
   assert.equal(location.nullable, true)
   assert.equal(fields.url('location', { nullable: false }).nullable, false)
-  assert.equal(
-    fields.url('location', { metadata: { role: 'source' } }).get('role'),
-    'source',
-  )
+  assert.equal(fields.url('location', { metadata: { role: 'source' } }).get('role'), 'source')
   const declared = fields.url('location', { nullable: false })
   assert.equal(location.defaultJSValue(), null)
   // A location has no zero, so the non-null column's default is the shortest
@@ -345,10 +404,7 @@ test('the url factory builds a validated, canonical location column', () => {
   assert.deepEqual(
     Array.from(
       declared.castArrowArray(
-        arrow.vectorFromArray(
-          ['HTTPS://example.com/a%2fb', '/lake/part.txt'],
-          new arrow.Utf8(),
-        ),
+        arrow.vectorFromArray(['HTTPS://example.com/a%2fb', '/lake/part.txt'], new arrow.Utf8()),
       ),
     ),
     ['https://example.com/a%2Fb', 'file:///lake/part.txt'],
@@ -358,10 +414,7 @@ test('the url factory builds a validated, canonical location column', () => {
   // itself - and the empty string is refused with the rest of it.
   for (const relative of ['./rel', 'example.com/x', '']) {
     assert.throws(
-      () =>
-        declared.castArrowArray(
-          arrow.vectorFromArray([relative], new arrow.Utf8()),
-        ),
+      () => declared.castArrowArray(arrow.vectorFromArray([relative], new arrow.Utf8())),
       /does not read as url/,
       relative,
     )
@@ -393,7 +446,9 @@ test('the registered codes build their own datatype at their own width', () => {
 
   for (const [name, [value, width]] of declared) {
     assert.equal(value.dtype.id, name, name)
-    assert.equal(value.dtype.asciiWidth, width, name)
+    assert.equal(value.dtype.fixedByteWidth, width, name)
+    assert.equal(value.dtype.kind, 'code', name)
+    assert.equal(value.dtype.stringParameters, null, name)
     assert.ok(value.dtype.equals(new DataType(name)), name)
     assert.equal(value.nullable, true, name)
   }
@@ -425,11 +480,7 @@ test('nested factories preserve exact child metadata and dictionary state', () =
 
 test('metadata entry overlays use last-write-wins without coercion', () => {
   const field = fields.int32('id', {
-    metadata: [
-      ['source', 'first'],
-      { key: 'source', value: 'last' },
-      ['owner', 'events'],
-    ],
+    metadata: [['source', 'first'], { key: 'source', value: 'last' }, ['owner', 'events']],
   })
 
   assert.equal(field.get('source'), 'last')

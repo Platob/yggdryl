@@ -2,7 +2,7 @@
   {
     "name": "underlyingdividendaccrualpaymentdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -14,7 +14,7 @@
   {
     "name": "underlyingdividendfloatingrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -38,7 +38,7 @@
   {
     "name": "underlyingdividendfloatingrateindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -189,7 +189,7 @@
   {
     "name": "underlyingdividendfinalrateroundingdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -264,7 +264,7 @@
   {
     "name": "underlyingdividendaccrualpaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -367,7 +367,7 @@
   {
     "name": "underlyingdividendunderlierrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -417,7 +417,7 @@
   {
     "name": "underlyingextraordinarydividenddeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -600,7 +600,7 @@
   {
     "name": "underlyingdividendfxtriggerdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -677,7 +677,7 @@
   {
     "name": "underlyingdividendfxtriggerdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -762,7 +762,7 @@
   {
     "name": "underlyingdividendpayoutconditions",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -824,7 +824,7 @@
   {
     "name": "underlyingdividendperiodunderlierrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -898,7 +898,7 @@
   {
     "name": "underlyingdividendperiodvaluationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -974,7 +974,7 @@
   {
     "name": "underlyingdividendperiodpaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1013,13 +1013,13 @@
   {
     "name": "underlyingdividendperiodxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
       "display": "UnderlyingDividendPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingdividendperiodxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingdividendperiodxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42881"
     }
   },
@@ -1038,7 +1038,7 @@
   {
     "name": "underlyingdividendperiodbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1062,7 +1062,7 @@
   {
     "name": "underlyingextraordinaryeventtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1074,7 +1074,7 @@
   {
     "name": "underlyingextraordinaryeventvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1124,7 +1124,7 @@
   {
     "name": "underlyingmakewholebenchmarkcurvename",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1136,7 +1136,7 @@
   {
     "name": "underlyingmakewholebenchmarkcurvepoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1198,13 +1198,13 @@
   {
     "name": "underlyingpaymentstreamcompoundingxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to the stream which details the compounding fixed or floating rate.",
       "display": "UnderlyingPaymentStreamCompoundingXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingpaymentstreamcompoundingxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingpaymentstreamcompoundingxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42896"
     }
   },

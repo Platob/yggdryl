@@ -9,13 +9,16 @@ fn message_codes_are_text_owned_by_the_fix_registry() {
         assert!(DataType::from_logical_name(spelling).is_err(), "{spelling}");
         assert!(crate::DataTypeId::from_str(spelling).is_err(), "{spelling}");
         assert!(
-            crate::AsciiEnum::from_logical_name(spelling).is_err(),
+            crate::StringEnum::from_logical_name(spelling).is_err(),
             "{spelling}"
         );
     }
     assert!(DataType::from_json(r#"{"type":"msgtype"}"#).is_err());
     let value = "A venue message type longer than eight bytes";
-    assert_eq!(DataType::Utf8.scalar(value).unwrap().as_str(), Some(value));
+    assert_eq!(
+        DataType::utf8().scalar(value).unwrap().as_str(),
+        Some(value)
+    );
 }
 
 /// The whole registry, as the module documents it. A change to a mapping
@@ -32,11 +35,10 @@ fn registered() -> Vec<(&'static str, DataType)> {
         ("msgdirection", DataType::MsgDirection),
         ("state", DataType::State),
         ("timeinforce", DataType::TimeInForce),
-        ("direction", DataType::MsgDirection),
-        ("language", DataType::FixedAscii(2)),
-        ("monthyear", DataType::FixedAscii(8)),
-        ("tenor", DataType::FixedAscii(8)),
-        ("pattern", DataType::Utf8),
+        ("language", DataType::fixed_ascii(2).unwrap()),
+        ("monthyear", DataType::fixed_ascii(8).unwrap()),
+        ("tenor", DataType::fixed_ascii(8).unwrap()),
+        ("pattern", DataType::utf8()),
         ("length", DataType::Int32),
         ("tagnum", DataType::Int32),
         ("seqnum", DataType::Int64),
@@ -101,12 +103,12 @@ fn registered() -> Vec<(&'static str, DataType)> {
                 timezone: Timezone::UTC,
             },
         ),
-        ("multiplecharvalue", DataType::Utf8),
-        ("multiplestringvalue", DataType::Utf8),
-        ("xid", DataType::Utf8),
-        ("xidref", DataType::Utf8),
-        ("data", DataType::Binary),
-        ("xmldata", DataType::Binary),
+        ("multiplecharvalue", DataType::utf8()),
+        ("multiplestringvalue", DataType::utf8()),
+        ("xid", DataType::utf8()),
+        ("xidref", DataType::utf8()),
+        ("data", DataType::binary()),
+        ("xmldata", DataType::binary()),
     ]
 }
 
@@ -168,9 +170,9 @@ fn the_grammar_resolves_a_name_and_displays_the_datatype_it_named() {
         ),
         ("LocalMktTime", DataType::Time64(TimeUnit::Nanosecond)),
         ("UTCTimeOnly", DataType::Time64(TimeUnit::Nanosecond)),
-        ("XMLData", DataType::Binary),
-        ("data", DataType::Binary),
-        ("Tenor", DataType::FixedAscii(8)),
+        ("XMLData", DataType::binary()),
+        ("data", DataType::binary()),
+        ("Tenor", DataType::fixed_ascii(8).unwrap()),
     ] {
         let parsed: DataType = spelling.parse().unwrap();
         assert_eq!(parsed, dtype, "{spelling}");
@@ -203,8 +205,8 @@ fn the_shared_base_type_spellings_keep_their_grammar_meaning() {
     for (spelling, dtype) in [
         ("int", DataType::Int32),
         ("float", DataType::Float32),
-        ("char", DataType::Utf8),
-        ("String", DataType::Utf8),
+        ("char", DataType::utf8()),
+        ("String", DataType::utf8()),
         ("Boolean", DataType::Boolean),
     ] {
         assert_eq!(spelling.parse::<DataType>().unwrap(), dtype, "{spelling}");
@@ -243,7 +245,7 @@ fn a_name_adds_no_datatype_of_its_own() {
     assert_eq!(*mode, UnionMode::Dense);
 
     // The prebuilt vocabularies are keyed by the same names.
-    for (name, _) in crate::AsciiEnum::PREBUILT {
+    for (name, _) in crate::StringEnum::PREBUILT {
         assert!(
             DataType::LOGICAL_NAMES
                 .iter()

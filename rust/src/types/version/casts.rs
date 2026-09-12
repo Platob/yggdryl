@@ -27,7 +27,7 @@ pub(crate) fn ingest_version_array(
             &ArrowDataType::Utf8,
             true,
             exposure,
-            &Field::new(field.name(), DataType::Utf8, true),
+            &Field::new(field.name(), DataType::utf8(), true),
             budget,
         )?
     };
@@ -56,7 +56,7 @@ pub(crate) fn ingest_version_array(
 }
 
 /// Return whether an Arrow layout holds one of the three text forms.
-pub(crate) fn is_text_storage(dtype: &ArrowDataType) -> bool {
+pub(crate) fn is_text_layout(dtype: &ArrowDataType) -> bool {
     matches!(
         dtype,
         ArrowDataType::Utf8 | ArrowDataType::LargeUtf8 | ArrowDataType::Utf8View

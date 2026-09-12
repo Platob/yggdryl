@@ -9,7 +9,7 @@ fn shapes() -> Vec<Field> {
     let nested = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::from_fields([
-            DataType::from_fields([DataType::Utf8.nullable_field("leaf")])
+            DataType::from_fields([DataType::utf8().nullable_field("leaf")])
                 .unwrap()
                 .nullable_field("inner"),
         ])
@@ -33,13 +33,15 @@ fn shapes() -> Vec<Field> {
 
     let mut dictionary = Field::new(
         "status",
-        DataType::dictionary(DataType::Int16, DataType::Utf8).unwrap(),
+        DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap(),
         true,
     );
     dictionary.set_dictionary_options(42, true).unwrap();
 
     let partitioned = DataType::from_fields([
-        DataType::Utf8.required_field("venue").with_partition(true),
+        DataType::utf8()
+            .required_field("venue")
+            .with_partition(true),
         DataType::Int64.required_field("id"),
     ])
     .unwrap()
@@ -54,13 +56,13 @@ fn shapes() -> Vec<Field> {
                 .nullable_field("item"),
         )
         .nullable_field("rows"),
-        DataType::map_of(DataType::Utf8, DataType::Int64, false)
+        DataType::map_of(DataType::utf8(), DataType::Int64, false)
             .unwrap()
             .nullable_field("counts"),
         DataType::union(
             [
                 (0_i8, DataType::Int64.nullable_field("number")),
-                (1_i8, DataType::Utf8.nullable_field("text")),
+                (1_i8, DataType::utf8().nullable_field("text")),
             ],
             yggdryl::UnionMode::Dense,
         )
@@ -79,13 +81,27 @@ fn shapes() -> Vec<Field> {
         .nullable_field("at"),
         DataType::run_end_encoded(
             DataType::Int32.required_field("run_ends"),
-            DataType::Utf8.nullable_field("values"),
+            DataType::utf8().nullable_field("values"),
         )
         .unwrap()
         .nullable_field("runs"),
         DataType::fixed_size_binary(16)
             .unwrap()
             .nullable_field("uuid"),
+        DataType::from_str("binary(64)")
+            .unwrap()
+            .nullable_field("blob"),
+        DataType::large_binary().nullable_field("large"),
+        DataType::from_str("utf8(32)")
+            .unwrap()
+            .nullable_field("note"),
+        DataType::fixed_ascii(4).unwrap().required_field("ccy"),
+        DataType::from_str("fixed_string(windows-1252,8)")
+            .unwrap()
+            .nullable_field("legacy"),
+        DataType::from_str("large_utf8_view")
+            .unwrap()
+            .nullable_field("view"),
         DataType::Null.nullable_field("nothing"),
         DataType::variant().nullable_field("payload"),
         DataType::geometry(None).unwrap().nullable_field("shape"),
@@ -175,7 +191,7 @@ fn the_trait_forms_sit_beside_the_inherent_ones() {
     let value: Scalar = (&field).into();
     assert_eq!(Field::try_from(value).unwrap(), field);
 
-    let dtype = DataType::Utf8;
+    let dtype = DataType::utf8();
     let value: Scalar = (&dtype).into();
     assert_eq!(DataType::try_from(value).unwrap(), dtype);
 
@@ -220,6 +236,69 @@ fn every_shape_round_trips_through_every_format() {
             dtype
         );
     }
+}
+
+#[test]
+fn every_string_and_byte_column_is_one_tag_with_its_parameters() {
+    // One `"string"` tag carries the layout, the charset and the bound, each
+    // omitted when it is the default; `"binary"` the same without a charset.
+    for (dtype, json) in [
+        (DataType::utf8(), r#"{"type":"string"}"#),
+        (
+            DataType::from_str("utf8(32)").unwrap(),
+            r#"{"type":"string","max":32}"#,
+        ),
+        (
+            DataType::fixed_ascii(4).unwrap(),
+            r#"{"type":"string","layout":"fixed_string","charset":"us-ascii","fixed":4}"#,
+        ),
+        (
+            DataType::ascii(),
+            r#"{"type":"string","charset":"us-ascii"}"#,
+        ),
+        (
+            DataType::large_utf8(),
+            r#"{"type":"string","layout":"large_string"}"#,
+        ),
+        (
+            DataType::from_str("string(windows-1252)").unwrap(),
+            r#"{"type":"string","charset":"windows-1252"}"#,
+        ),
+        (DataType::binary(), r#"{"type":"binary"}"#),
+        (
+            DataType::from_str("binary(16)").unwrap(),
+            r#"{"type":"binary","max":16}"#,
+        ),
+        (
+            DataType::fixed_size_binary(16).unwrap(),
+            r#"{"type":"binary","layout":"fixed_size_binary","fixed":16}"#,
+        ),
+        (
+            DataType::binary_view(),
+            r#"{"type":"binary","layout":"binary_view"}"#,
+        ),
+    ] {
+        assert_eq!(dtype.clone().into_json().unwrap(), json, "{dtype}");
+        assert_eq!(DataType::from_json(json).unwrap(), dtype, "{json}");
+    }
+
+    // The retired tags name nothing.
+    for retired in [
+        r#"{"type":"utf8"}"#,
+        r#"{"type":"large_utf8"}"#,
+        r#"{"type":"utf8_view"}"#,
+        r#"{"type":"ascii"}"#,
+        r#"{"type":"fixed_ascii","width":4}"#,
+        r#"{"type":"fixed_size_binary","width":16}"#,
+        r#"{"type":"large_binary"}"#,
+        r#"{"type":"binary_view"}"#,
+    ] {
+        assert!(DataType::from_json(retired).is_err(), "{retired}");
+    }
+    // A fixed layout needs its width, and one number has one reading.
+    assert!(DataType::from_json(r#"{"type":"string","layout":"fixed_string"}"#).is_err());
+    assert!(DataType::from_json(r#"{"type":"string","layout":"fixed_string","max":4}"#).is_err());
+    assert!(DataType::from_json(r#"{"type":"binary","fixed":4}"#).is_err());
 }
 
 #[test]
@@ -487,7 +566,7 @@ fn the_readable_form_indents_by_depth_and_omits_unset_attributes() {
         DataType::from_fields([DataType::Float64.required_field("price")])
             .unwrap()
             .nullable_field("line"),
-        DataType::list(DataType::Utf8.nullable_field("tag")).nullable_field("tags"),
+        DataType::list(DataType::utf8().nullable_field("tag")).nullable_field("tags"),
     ])
     .unwrap()
     .required_field("order");
@@ -515,7 +594,7 @@ order: struct[3], required
     assert!(!format!("{plain:#}").contains("metadata"));
 
     // A set one is shown.
-    let mut dictionary = DataType::dictionary(DataType::Int16, DataType::Utf8)
+    let mut dictionary = DataType::dictionary(DataType::Int16, DataType::utf8())
         .unwrap()
         .nullable_field("status");
     dictionary.set_dictionary_options(42, true).unwrap();
@@ -550,14 +629,14 @@ fn json_bytes_and_text_carry_the_same_nested_document() {
     // struct > list > struct > map, so the assertion is about nesting rather
     // than about a flat field.
     let inner = DataType::from_fields([
-        DataType::Utf8.required_field("sym"),
+        DataType::utf8().required_field("sym"),
         DataType::decimal128(18, 4).unwrap().nullable_field("px"),
     ])
     .unwrap();
     let row = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::list(inner.nullable_field("item")).nullable_field("levels"),
-        DataType::map_of(DataType::Utf8, DataType::Int64, true)
+        DataType::map_of(DataType::utf8(), DataType::Int64, true)
             .unwrap()
             .nullable_field("tags"),
     ])

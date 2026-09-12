@@ -16,16 +16,22 @@ impl Parser<'_> {
     ///
     /// # Errors
     ///
-    /// Returns [`crate::Error::Parse`] for a charset beside a `utf8`
-    /// spelling, since the name already declares one; for a charset no name
-    /// answers to; and for a bound outside a positive `u32`.
+    /// Returns [`crate::Error::Parse`] for a charset beside a `utf8` or
+    /// `ascii` spelling, since the name already declares one; for a charset
+    /// no name answers to; and for a bound outside a positive `u32`.
     pub(crate) fn parse_string(&mut self, layout: StringLayout, keyword: &str) -> Result<DataType> {
-        // The `utf8` spellings put the charset in the name, so naming another
-        // one beside them would be two answers to one question. The keyword
-        // arrives folded and the layout's name is not, so they meet on the
-        // fold rather than on the underscores.
-        let named_utf8 = crate::types::parser::folds_equal(keyword, layout.as_utf8_str());
-        let mut parameters = StringParameters::utf8(layout);
+        // The `utf8` and `ascii` spellings put the charset in the name, so
+        // naming another one beside them would be two answers to one
+        // question. The keyword arrives folded and the layout's names are
+        // not, so they meet on the fold rather than on the underscores.
+        let named = if crate::types::parser::folds_equal(keyword, layout.as_utf8_str()) {
+            Some(Charset::Utf8)
+        } else if crate::types::parser::folds_equal(keyword, layout.as_ascii_str()) {
+            Some(Charset::Ascii)
+        } else {
+            None
+        };
+        let mut parameters = StringParameters::new(layout, named.unwrap_or(Charset::Utf8));
         let mut bound = None;
 
         if let Some(close) = self.consume_opening() {
@@ -34,7 +40,7 @@ impl Parser<'_> {
                 if self.peek_integer().is_none() {
                     let position = self.current_position();
                     let name = self.parse_text("a charset")?;
-                    if named_utf8 {
+                    if named.is_some() {
                         return Err(self.error_at(
                             position,
                             format_smolstr!(

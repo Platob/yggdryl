@@ -27,7 +27,7 @@ pub(crate) fn ingest_url_array(
             &ArrowDataType::Utf8,
             true,
             exposure,
-            &Field::new(field.name(), DataType::Utf8, true),
+            &Field::new(field.name(), DataType::utf8(), true),
             budget,
         )?
     };

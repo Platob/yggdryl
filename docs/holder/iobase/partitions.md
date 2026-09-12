@@ -212,7 +212,7 @@ Addressing the folder restores the columns its directories spell and routes each
     let schema = DataType::from_fields([
         DataType::Int64.required_field("price"),
         DataType::Int32.required_field("year"),
-        DataType::Utf8.required_field("month"),
+        DataType::utf8().required_field("month"),
     ])?
     .required_field("row");
     let arrow_schema = schema.clone().into_arrow_schema()?;

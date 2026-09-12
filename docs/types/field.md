@@ -82,7 +82,7 @@ A table's columns are the children of a struct field with `nullable` false, the 
 
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?
     .required_field("trade");
 
@@ -190,8 +190,8 @@ Rust only.
 1. equal types are that type;
 2. `null` yields to the defined side;
 3. same-family nesting recurses; a struct takes the union of its fields;
-4. bytes win; a fixed width both sides store keeps that storage, the plain bytes when widening and the side constraining them - an ASCII width, a code, `uuid` - when narrowing;
-5. text wins next; ASCII widths meet at the wider width, or the narrower when narrowing. A width beside variable text meets at the variable text, or the width when narrowing; a registered code beside plainer text meets at the width it stores, or at the code itself when narrowing;
+4. bytes win; two byte types meet parameter by parameter - the wider offsets, the variable layout over a fixed one, no bound over a bound when widening, and the mirror when narrowing. A type storing a fixed width beside fixed bytes of that same width - a fixed string, a code, `uuid` - keeps the storage both have: the plain bytes when widening, the side constraining them when narrowing. A numeric width never shares fixed bytes: `int32` beside `fixed_size_binary(4)` is variable bytes;
+5. text wins next; two strings meet parameter by parameter - the wider offsets, the variable layout over a fixed one, UTF-8 over two different charsets, no bound over a bound when widening, and the narrower layout, repertoire and bound when narrowing. A registered code is the `fixed_ascii(n)` it stores when widening and the code itself when narrowing; text absorbing a non-text side is at least `utf8`;
 6. numbers meet by width, temporals by unit; widening keeps the widest decimal backing either side declared.
 
 Anything left is refused.
@@ -205,7 +205,7 @@ Rust only.
 
     let left = DataType::from_fields([
         DataType::Int32.required_field("id"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
     ])?;
     let right = DataType::from_fields([
         DataType::Int64.required_field("id"),
@@ -226,12 +226,40 @@ Rust only.
     );
 
     // Bytes win over text, and text over numbers.
-    assert_eq!(DataType::Utf8.merge_with(&DataType::Binary, true)?, DataType::Binary);
-    assert_eq!(DataType::Int64.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+    assert_eq!(DataType::utf8().merge_with(&DataType::binary(), true)?, DataType::binary());
+    assert_eq!(DataType::Int64.merge_with(&DataType::utf8(), true)?, DataType::utf8());
+
+    // Two strings, and two byte types, meet parameter by parameter.
+    assert_eq!(
+        DataType::from_str("utf8(8)")?.merge_with(&DataType::from_str("large_ascii(32)")?, true)?,
+        DataType::from_str("large_utf8(32)")?,
+    );
+    assert_eq!(
+        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_ascii(8)?, false)?,
+        DataType::fixed_ascii(4)?,
+    );
+    assert_eq!(
+        DataType::from_str("binary(16)")?.merge_with(&DataType::large_binary(), true)?,
+        DataType::large_binary(),
+    );
+    // A fixed string and fixed bytes of one width keep that storage; a
+    // number's width is its own encoding and never bytes it shares.
+    assert_eq!(
+        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_size_binary(4)?, true)?,
+        DataType::fixed_size_binary(4)?,
+    );
+    assert_eq!(
+        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_size_binary(4)?, false)?,
+        DataType::fixed_ascii(4)?,
+    );
+    assert_eq!(
+        DataType::Int32.merge_with(&DataType::fixed_size_binary(4)?, true)?,
+        DataType::binary(),
+    );
 
     // Narrowing keeps the tighter type: the code over the width it stores in.
-    assert_eq!(DataType::Currency.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
-    assert_eq!(DataType::Currency.merge_with(&DataType::Utf8, false)?, DataType::Currency);
+    assert_eq!(DataType::Currency.merge_with(&DataType::utf8(), true)?, DataType::utf8());
+    assert_eq!(DataType::Currency.merge_with(&DataType::utf8(), false)?, DataType::Currency);
 
     // Widening never re-encodes a decimal's storage to fit the precision.
     assert_eq!(
@@ -270,10 +298,10 @@ Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `i
     assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
 
     // An unknown name appends; a position replaces.
-    order.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))?;
+    order.set_field_by_path("venue", DataType::utf8().nullable_field("venue"))?;
     assert_eq!(order.field_len(), 3);
-    order.set_field(0, DataType::Utf8.required_field("id"))?;
-    assert_eq!(order["id"].dtype(), &DataType::Utf8);
+    order.set_field(0, DataType::utf8().required_field("id"))?;
+    assert_eq!(order["id"].dtype(), &DataType::utf8());
     assert_eq!(order.remove_field_by_path("venue")?.name(), "venue");
 
     // Metadata keeps its own named surface.
@@ -416,21 +444,21 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 === "Rust"
 
     ```rust
-    use yggdryl::types::{Int64Field, DateTime64Field, Utf8Field, integer};
+    use yggdryl::types::{Int64Field, DateTime64Field, StringField, integer};
     use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
     let id = Int64Field::new("id", false);
-    let symbol = Utf8Field::from_parts("symbol", true, [("source", "feed")])?;
+    let symbol = StringField::try_new("symbol", DataType::utf8(), true)?;
     let at = DateTime64Field::try_new("at", DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }, false)?;
 
     // A typed field derefs to the field it wraps.
     assert_eq!(id.name(), "id");
-    assert_eq!(symbol.get_metadata("source"), Some("feed"));
+    assert_eq!(symbol.dtype(), &DataType::utf8());
     assert_eq!(at.dtype().to_string(), "datetime64(us)");
 
     // The marker is checked, never assumed.
     assert!(
-        Field::new("id", DataType::Utf8, false)
+        Field::new("id", DataType::utf8(), false)
             .try_into_typed::<integer::Int64Type>()
             .is_err()
     );
@@ -468,16 +496,16 @@ Keys and values are strings in lexical key order, so equal entries compare and h
     assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
 
-`Int64Field` and its fifty-six siblings are `TypedField<K>`: one `Field` plus a zero-sized sealed marker, `repr(transparent)`. The marker constrains the variant only; every parameter stays in the wrapped field.
+`Int64Field` and its siblings are `TypedField<K>`: one `Field` plus a zero-sized sealed marker, `repr(transparent)`. The marker constrains the variant only; every parameter stays in the wrapped field.
 
 | alias | constructors |
 | --- | --- |
-| static datatype (`Int64Field`, `Utf8Field`, `VariantField`, `UuidField`, `VersionField`, `Ascii16Field` to `Ascii128Field`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`) | `new(name, nullable)`, infallible; `from_parts(name, nullable, metadata)` |
-| parameterized (`DateTime64Field`, `GeometryField`, `GeographyField`) | `try_new(name, dtype, nullable)` |
+| static datatype (`Int64Field`, `VariantField`, `UuidField`, `VersionField`, `UrlField`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`, `IsinField`, `SideField`, `MsgDirectionField`, `StateField`, `TimeInForceField`) | `new(name, nullable)`, infallible; `from_parts(name, nullable, metadata)` |
+| parameterized (`StringField`, `BytesField`, `DateTime64Field`, `GeometryField`, `GeographyField`) | `try_new(name, dtype, nullable)`; `StringField` is every layout, charset and bound, `BytesField` every byte layout |
 | from a `Field` | `try_as_typed` borrows; `try_into_typed` consumes |
-| bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `fields.ascii(name, width)`, `types.version` / `fields.version` |
+| bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `types.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `types.bytes` / `fields.bytes`, `types.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `types.version` / `fields.version` |
 
-[Geospatial](geospatial.md), [ASCII](ascii.md), [UUID](uuid.md), and [Version](text.md) aliases follow this pattern; a registered code builds its own datatype, not an ASCII width.
+[Geospatial](geospatial.md), [Strings & bytes](text.md), [Codes](codes.md), [UUID](uuid.md), and [Version](text.md#versions) aliases follow this pattern; a registered code builds its own datatype, not a fixed string.
 
 ## Converting to one native field
 
@@ -652,7 +680,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
     // The mapping is the shared `Scalar`, so it drops into any document.
     let shape = field.into_value();
-    assert_eq!(shape.get_key_str("name").and_then(Scalar::as_utf8), Some("price"));
+    assert_eq!(shape.get_key_str("name").and_then(Scalar::as_str), Some("price"));
     // Unset optional attributes are absent rather than null.
     assert!(shape.get_key_str("dictionary_id").is_none());
     ```
@@ -815,7 +843,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - `explode_fields` -> a list gives its item, a map its entries, a dictionary or run-end its values.
 - `explode_fields` -> one level per call; the column keeps its name and place; nullable when the collection or its element is.
 - both projections -> a list of fields, not a node; `DataType::from_fields` rebuilds one.
-- `merge_with(other, upscale)` -> `upscale` widens by default and loses nothing; `false` meets at the tightest type naming both, keeping a code, a `uuid`, or an ASCII width over the plainer shape storing it.
+- `merge_with(other, upscale)` -> `upscale` widens by default and loses nothing; `false` meets at the tightest type naming both, keeping a code, a `uuid`, or a fixed string over the plainer shape storing it.
 - widening a decimal -> the widest backing either side declared, never a re-encoding down to what the merged precision needs.
 - `Field::merge_with` -> receiver's name; nullable when either side is; dictionary options only where both encode; metadata unioned, receiver winning.
 - merged struct -> a one-sided child becomes nullable; receiver order, additions appended.

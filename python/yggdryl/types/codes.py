@@ -1,26 +1,25 @@
-"""The ASCII field factories: variable, fixed-width, and by registered code.
+"""The registered code field factories: nine identities, one width each.
 
 The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, ``isin``,
-and FIX's own ``side`` and ``msgdirection`` - are
+and FIX's own ``side``, ``msgdirection``, ``state`` and ``timeinforce`` - are
 datatypes of their own, each storing the width its standard fixes, so a code
-factory is not a width factory wearing a name: the field it builds carries the
-code's identity across Arrow. The declared vocabularies live in
-:mod:`yggdryl.enums`, whose classes carry their members onto the field they
-build; ``isin`` is an open identifier space closed by its own check digit, so
-no class declares it.
+factory is not a fixed-width string wearing a name: the field it builds
+carries the code's identity across Arrow, answers ``is_code`` and
+``fixed_byte_width``, and never ``string_parameters``. The declared
+vocabularies live in :mod:`yggdryl.enums`, whose classes carry their members
+onto the field they build; ``isin`` is an open identifier space closed by its
+own check digit, so no class declares it.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, TypeAlias, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias
 
-from .._native import DataType, Field
+from .._native import Field
 from ._common import MetadataInput, new_field, simple_dtype
 from ._typing import TypedField
 
 if TYPE_CHECKING:
-    AsciiField: TypeAlias = TypedField[Literal["ascii"], str]
-    FixedAsciiField: TypeAlias = TypedField[Literal["fixed_ascii"], str]
     CountryField: TypeAlias = TypedField[Literal["country"], str]
     CurrencyField: TypeAlias = TypedField[Literal["currency"], str]
     MicField: TypeAlias = TypedField[Literal["mic"], str]
@@ -31,11 +30,10 @@ if TYPE_CHECKING:
     StateField: TypeAlias = TypedField[Literal["state"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
 else:
-    AsciiField = FixedAsciiField = CountryField = CurrencyField = MicField = (
-        CfiField
-    ) = IsinField = SideField = MsgDirectionField = StateField = TimeInForceField = Field
+    CountryField = CurrencyField = MicField = CfiField = IsinField = SideField = (
+        MsgDirectionField
+    ) = StateField = TimeInForceField = Field
 
-_ASCII = simple_dtype("ascii")
 _COUNTRY = simple_dtype("country")
 _CURRENCY = simple_dtype("currency")
 _MIC = simple_dtype("mic")
@@ -45,31 +43,6 @@ _SIDE = simple_dtype("side")
 _DIRECTION = simple_dtype("msgdirection")
 _STATE = simple_dtype("state")
 _TIMEINFORCE = simple_dtype("timeinforce")
-
-
-def ascii(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> AsciiField:
-    """Variable-width ASCII text: any length, stored as the bytes it is."""
-
-    return new_field(AsciiField, name, _ASCII, nullable, metadata)
-
-
-def fixed_ascii(
-    name: str,
-    width: int,
-    *,
-    nullable: bool = True,
-    metadata: MetadataInput = None,
-) -> FixedAsciiField:
-    """ASCII text padded with trailing NUL to exactly ``width`` bytes.
-
-    Raises:
-        ValueError: when ``width`` is not at least one byte.
-    """
-
-    return cast(
-        FixedAsciiField,
-        new_field(Field, name, DataType.ascii(width), nullable, metadata),
-    )
 
 
 def country(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CountryField:
@@ -137,24 +110,22 @@ def timeinforce(
 
 
 __all__ = [
-    "AsciiField",
     "CfiField",
     "CountryField",
     "CurrencyField",
-    "MsgDirectionField",
-    "StateField",
-    "TimeInForceField",
-    "FixedAsciiField",
     "IsinField",
     "MicField",
+    "MsgDirectionField",
     "SideField",
-    "ascii",
+    "StateField",
+    "TimeInForceField",
     "cfi",
     "country",
     "currency",
-    "msgdirection",
-    "fixed_ascii",
     "isin",
     "mic",
+    "msgdirection",
     "side",
+    "state",
+    "timeinforce",
 ]

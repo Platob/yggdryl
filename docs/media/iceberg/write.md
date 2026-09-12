@@ -34,7 +34,7 @@ The folder *is* the table, so the shared [record surface](../../holder/iobase/re
 
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])?
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
@@ -194,7 +194,7 @@ use std::sync::Arc;
 
 let mut schema = DataType::from_fields([
     DataType::Int64.required_field("id"),
-    DataType::Utf8.nullable_field("venue"),
+    DataType::utf8().nullable_field("venue"),
 ])?
 .required_field("row");
 assign_field_ids(&mut schema, 1)?;
@@ -268,7 +268,7 @@ use std::sync::Arc;
 
 let mut schema = DataType::from_fields([
     DataType::Int64.required_field("id"),
-    DataType::Utf8.nullable_field("venue"),
+    DataType::utf8().nullable_field("venue"),
 ])?
 .required_field("row");
 assign_field_ids(&mut schema, 1)?;

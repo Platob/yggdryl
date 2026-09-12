@@ -44,7 +44,7 @@ fn a_malformed_location_errors_and_a_valid_one_settles_the_default() {
     // The default did not settle on the failure, so a valid location now
     // resolves it.
     let good = root.join("good");
-    let mut symbol = DataType::Utf8.required_field("Symbol");
+    let mut symbol = DataType::utf8().required_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a valid tag");
     FixRegistry::from_fields([symbol])
         .expect("one field")

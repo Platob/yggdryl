@@ -60,8 +60,8 @@ fn quantities() -> ArrayRef {
 }
 
 /// A coupled holder of the given width, naming its instant.
-fn coupled(name: &str, width: i32, time: &str) -> Field {
-    let mut field = Field::new(name, DataType::FixedSizeBinary(width), false);
+fn coupled(name: &str, width: u32, time: &str) -> Field {
+    let mut field = Field::new(name, DataType::fixed_size_binary(width).unwrap(), false);
     field.as_digest_mut().set_holder().unwrap();
     field.as_digest_mut().set_time(time).unwrap();
     field
@@ -140,7 +140,7 @@ fn unix_array_reads_timestamps_dates_and_integers() {
 
 #[test]
 fn row_txhashes_couple_row_digests_with_instants() {
-    let fields = [event_field(), Field::new("symbol", DataType::Utf8, false)];
+    let fields = [event_field(), Field::new("symbol", DataType::utf8(), false)];
     let rows = batch(&fields, vec![events(), symbols()]);
     for algorithm in DigestAlgorithm::ALL {
         let coupled = row_txhashes(&rows, events().as_ref(), UNIT, algorithm).unwrap();
@@ -178,7 +178,7 @@ fn row_txhashes_couple_row_digests_with_instants() {
 
 #[test]
 fn the_instant_column_need_not_be_a_column_of_the_batch() {
-    let fields = [Field::new("symbol", DataType::Utf8, false)];
+    let fields = [Field::new("symbol", DataType::utf8(), false)];
     let rows = batch(&fields, vec![symbols()]);
     let coupled = row_txhashes(&rows, events().as_ref(), UNIT, DigestAlgorithm::Xxh3).unwrap();
     let read = values(coupled.as_ref(), UNIT, DigestAlgorithm::Xxh3);
@@ -201,7 +201,7 @@ fn the_instant_column_need_not_be_a_column_of_the_batch() {
 
 #[test]
 fn a_null_instant_is_a_null_cell() {
-    let fields = [Field::new("symbol", DataType::Utf8, false)];
+    let fields = [Field::new("symbol", DataType::utf8(), false)];
     let rows = batch(&fields, vec![symbols()]);
     let times = TimestampMicrosecondArray::from(vec![Some(1), None, Some(3)]);
     let coupled = row_txhashes(&rows, &times, UNIT, DigestAlgorithm::Xxh3).unwrap();
@@ -211,7 +211,7 @@ fn a_null_instant_is_a_null_cell() {
     let column = column_txhashes(
         &times,
         symbols(),
-        &Field::new("symbol", DataType::Utf8, false),
+        &Field::new("symbol", DataType::utf8(), false),
         UNIT,
         DigestAlgorithm::Xxh3,
     )
@@ -221,7 +221,7 @@ fn a_null_instant_is_a_null_cell() {
 
 #[test]
 fn column_txhashes_couple_cell_digests() {
-    let field = Field::new("symbol", DataType::Utf8, false);
+    let field = Field::new("symbol", DataType::utf8(), false);
     let coupled = column_txhashes(
         events().as_ref(),
         symbols(),
@@ -274,7 +274,7 @@ fn column_txhashes_couple_cell_digests() {
 
 #[test]
 fn compose_and_decompose_are_inverses_at_every_width() {
-    let fields = [Field::new("symbol", DataType::Utf8, false)];
+    let fields = [Field::new("symbol", DataType::utf8(), false)];
     let rows = batch(&fields, vec![symbols()]);
     let times = TimestampMillisecondArray::from(vec![Some(1_000), None, Some(3_000)]);
     for algorithm in DigestAlgorithm::ALL {
@@ -351,7 +351,7 @@ fn compose_reads_signed_digest_storage_as_the_same_bits() {
 
 #[test]
 fn a_seeded_hasher_answers_seeded_digests_over_columns() {
-    let fields = [Field::new("symbol", DataType::Utf8, false)];
+    let fields = [Field::new("symbol", DataType::utf8(), false)];
     let rows = batch(&fields, vec![symbols()]);
     let hasher = TxHasher::new(DigestAlgorithm::Xxh3).with_seed(7);
     let coupled = hasher.row_txhashes(&rows, events().as_ref()).unwrap();
@@ -383,7 +383,7 @@ fn a_seeded_hasher_answers_seeded_digests_over_columns() {
 
 #[test]
 fn a_coupled_holder_is_filled_with_the_instant_in_front() {
-    let symbol = Field::new("symbol", DataType::Utf8, false);
+    let symbol = Field::new("symbol", DataType::utf8(), false);
     let root = struct_root([event_field(), symbol.clone(), coupled("key", 16, "event")]);
     let source = batch(&[event_field(), symbol], vec![events(), symbols()]);
 
@@ -430,7 +430,7 @@ fn a_coupled_holder_is_filled_with_the_instant_in_front() {
 
 #[test]
 fn a_coupled_holder_names_its_sources_unit_and_algorithm() {
-    let symbol = Field::new("symbol", DataType::Utf8, false);
+    let symbol = Field::new("symbol", DataType::utf8(), false);
     let mut key = coupled("key", 24, "event");
     key.as_digest_mut().set_sources(["symbol"]).unwrap();
     key.as_digest_mut().set_unit(TimeUnit::Second).unwrap();
@@ -629,7 +629,7 @@ fn accepts_time_agrees_with_the_column_reader() {
             unit: TimeUnit::Millisecond,
             timezone: Timezone::NAIVE,
         },
-        DataType::Utf8,
+        DataType::utf8(),
         DataType::Float64,
         DataType::Boolean,
         DataType::Time64(TimeUnit::Microsecond),
@@ -646,7 +646,7 @@ fn accepts_time_agrees_with_the_column_reader() {
 }
 
 fn symbol_field() -> Field {
-    Field::new("symbol", DataType::Utf8, false)
+    Field::new("symbol", DataType::utf8(), false)
 }
 
 #[test]
@@ -810,7 +810,7 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
 
     // A unit without an instant, and coupling metadata off a holder, written
     // raw where the typed setters would have refused.
-    let mut unit_only = Field::new("key", DataType::FixedSizeBinary(16), false);
+    let mut unit_only = Field::new("key", DataType::fixed_size_binary(16).unwrap(), false);
     unit_only.as_digest_mut().set_holder().unwrap();
     unit_only.as_digest_mut().insert("unit", "s").unwrap();
     let error = refused(struct_root([event_field(), symbol_field(), unit_only]));
@@ -854,7 +854,7 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
 
 #[test]
 fn a_coupled_holder_of_the_wrong_width_is_refused_by_name() {
-    let mut odd = Field::new("key", DataType::FixedSizeBinary(20), false);
+    let mut odd = Field::new("key", DataType::fixed_size_binary(20).unwrap(), false);
     odd.as_digest_mut().set_holder().unwrap();
     odd.as_digest_mut().insert("time", "event").unwrap();
     let root = struct_root([event_field(), symbol_field(), odd]);

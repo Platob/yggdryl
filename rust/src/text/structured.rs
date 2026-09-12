@@ -21,7 +21,7 @@ use crate::{MediaType, MimeType, Result, Url};
 /// assert_eq!(format, Structured::Yaml);
 ///
 /// let value = format.from_utf8("symbol: AAPL\n")?;
-/// assert_eq!(value.get_key_str("symbol").and_then(yggdryl::Scalar::as_utf8), Some("AAPL"));
+/// assert_eq!(value.get_key_str("symbol").and_then(yggdryl::Scalar::as_str), Some("AAPL"));
 /// # Ok(())
 /// # }
 /// ```

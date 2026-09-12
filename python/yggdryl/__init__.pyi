@@ -27,12 +27,14 @@ from .media import (
 )
 from .types import (
     ArrowCastPlan as ArrowCastPlan,
-    AsciiEnum as AsciiEnum,
+    BytesParameters as BytesParameters,
     DataType as DataType,
     Field as Field,
     ProtocolField as ProtocolField,
     PythonMetadata as PythonMetadata,
     Scalar as Scalar,
+    StringEnum as StringEnum,
+    StringParameters as StringParameters,
     Timezone as Timezone,
     Version as Version,
     field as field,

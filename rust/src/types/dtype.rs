@@ -76,32 +76,24 @@ pub enum DataType {
     Duration64(TimeUnit),
     /// Calendar interval.
     Interval(TimeUnit),
-    /// Variable-width binary data with 32-bit offsets.
-    Binary,
-    /// Fixed-width binary data.
-    FixedSizeBinary(i32),
-    /// Variable-width binary data with 64-bit offsets.
-    LargeBinary,
-    /// Binary view layout.
-    BinaryView,
-    /// UTF-8 with 32-bit offsets.
-    Utf8,
-    /// UTF-8 with 64-bit offsets.
-    LargeUtf8,
-    /// UTF-8 view layout.
-    Utf8View,
-    /// A string declaring its charset, its length bound, or both.
+    /// Bytes: one layout, one optional byte bound.
     ///
-    /// The three variants above are what a string is when it declares
-    /// nothing beyond its layout, so they are what [`Self::string`] answers
-    /// for unbounded UTF-8 and this variant is every other string. The
-    /// parameters ride inline: a layout, a charset and one bound are two
-    /// bytes and a number, which is cheaper to carry than to point at.
+    /// Every byte column the crate has, `binary`, `varbinary(16)` and
+    /// `fixed_size_binary(16)` alike; [`Self::bytes`] builds one and the
+    /// sugar beside it - [`Self::binary`], [`Self::large_binary`],
+    /// [`Self::binary_view`], [`Self::fixed_size_binary`] - names the common
+    /// ones.
+    Bytes(super::bytes::BytesParameters),
+    /// A string: one layout, one charset, one optional byte bound.
+    ///
+    /// Every string the crate has, `utf8` and `ascii(n)` and
+    /// `fixed_string(windows-1252,8)` alike; [`Self::string`] builds one and
+    /// the sugar beside it - [`Self::utf8`], [`Self::large_utf8`],
+    /// [`Self::utf8_view`], [`Self::ascii`], [`Self::fixed_utf8`],
+    /// [`Self::fixed_ascii`] - names the common ones. The parameters ride
+    /// inline: a layout, a charset and one bound are two bytes and a number,
+    /// which is cheaper to carry than to point at.
     String(super::string::StringParameters),
-    /// Variable-width ASCII text.
-    Ascii,
-    /// ASCII text padded with trailing NUL to a fixed byte width.
-    FixedAscii(i32),
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country,
     /// ISO 4217: a currency code, three ASCII bytes.
@@ -254,16 +246,8 @@ impl DataType {
             Self::Duration32(_) => DataTypeId::Duration32,
             Self::Duration64(_) => DataTypeId::Duration64,
             Self::Interval(_) => DataTypeId::Interval,
-            Self::Binary => DataTypeId::Binary,
-            Self::FixedSizeBinary(_) => DataTypeId::FixedSizeBinary,
-            Self::LargeBinary => DataTypeId::LargeBinary,
-            Self::BinaryView => DataTypeId::BinaryView,
-            Self::Utf8 => DataTypeId::Utf8,
-            Self::LargeUtf8 => DataTypeId::LargeUtf8,
-            Self::Utf8View => DataTypeId::Utf8View,
+            Self::Bytes(parameters) => parameters.layout().id(),
             Self::String(parameters) => parameters.layout().id(),
-            Self::Ascii => DataTypeId::Ascii,
-            Self::FixedAscii(_) => DataTypeId::FixedAscii,
             Self::Country => DataTypeId::Country,
             Self::Currency => DataTypeId::Currency,
             Self::Mic => DataTypeId::Mic,
@@ -330,7 +314,7 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let id = DataType::Int64.named_field("id", false);
-    /// let tags = DataType::list(DataType::Utf8.named_field("item", true))
+    /// let tags = DataType::list(DataType::utf8().named_field("item", true))
     ///     .named_field("tags", true);
     ///
     /// assert_eq!(id.name(), "id");
@@ -370,25 +354,13 @@ impl DataType {
             Self::Interval(unit) if !unit.is_interval() => {
                 Err(invalid("Interval", "unit must be an interval layout"))
             }
-            Self::FixedSizeBinary(width) => {
-                validate_non_negative("FixedSizeBinary", "width", *width)
-            }
-            // The variant is public, so a caller can build a string the
-            // constructor would have refused for want of a width, or one it
-            // would have redirected to the variant that already spells it.
-            // This is where both stop, before either reaches a boundary: a
-            // `String` that renders as `utf8` and compares unequal to
-            // `DataType::Utf8` is one fact with two spellings.
-            Self::String(parameters) => {
-                parameters.validate()?;
-                match super::string::redirect(*parameters)? {
-                    Some(canonical) => Err(invalid(
-                        "string",
-                        format_smolstr!("expected {canonical}, got a second spelling of it"),
-                    )),
-                    None => Ok(()),
-                }
-            }
+            // The variant is public, so a caller can build a fixed layout
+            // without the width that makes it fixed. This is where it stops.
+            Self::Bytes(parameters) => parameters.validate(),
+            // The variant is public, so a caller can build a fixed string
+            // the constructor would have refused for want of a width. This
+            // is where it stops, before it reaches a boundary.
+            Self::String(parameters) => parameters.validate(),
             Self::List(field)
             | Self::ListView(field)
             | Self::LargeList(field)
@@ -454,8 +426,7 @@ impl Ord for DataType {
             | (D::Duration32(left), D::Duration32(right))
             | (D::Duration64(left), D::Duration64(right)) => left.cmp(right),
             (D::Interval(left), D::Interval(right)) => left.cmp(right),
-            (D::FixedSizeBinary(left), D::FixedSizeBinary(right))
-            | (D::FixedAscii(left), D::FixedAscii(right)) => left.cmp(right),
+            (D::Bytes(left), D::Bytes(right)) => left.cmp(right),
             (D::List(left), D::List(right))
             | (D::ListView(left), D::ListView(right))
             | (D::LargeList(left), D::LargeList(right))
@@ -549,15 +520,12 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Duration32(_) => 18,
         DataType::Duration64(_) => 19,
         DataType::Interval(_) => 20,
-        DataType::Binary => 21,
-        DataType::FixedSizeBinary(_) => 22,
-        DataType::LargeBinary => 23,
-        DataType::BinaryView => 24,
-        DataType::Utf8 => 25,
-        DataType::LargeUtf8 => 26,
-        DataType::Utf8View => 27,
-        DataType::Ascii => 28,
-        DataType::FixedAscii(_) => 29,
+        // The one byte variant takes the first of the four ranks the binary
+        // variants it replaced held, so nothing after it moves.
+        DataType::Bytes(_) => 21,
+        // The one string variant takes the first of the five ranks the text
+        // variants it replaced held, so nothing after it moves.
+        DataType::String(_) => 25,
         DataType::Country => 30,
         DataType::Currency => 31,
         DataType::Mic => 32,
@@ -590,7 +558,6 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::TimeInForce => 56,
         DataType::Url => 57,
         DataType::Isin => 58,
-        DataType::String(_) => 59,
     }
 }
 

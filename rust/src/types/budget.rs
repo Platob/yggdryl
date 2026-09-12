@@ -3,14 +3,15 @@
 use std::sync::Arc;
 
 use arrow_array::types::{
-    Int8Type, Int16Type, Int32Type, Int64Type, RunEndIndexType, UInt8Type, UInt16Type, UInt32Type,
-    UInt64Type,
+    BinaryType, BinaryViewType, ByteArrayType, ByteViewType, Int8Type, Int16Type, Int32Type,
+    Int64Type, LargeBinaryType, LargeUtf8Type, RunEndIndexType, StringViewType, UInt8Type,
+    UInt16Type, UInt32Type, UInt64Type, Utf8Type,
 };
 use arrow_array::{
-    Array, ArrayRef, BinaryArray, BinaryViewArray, DictionaryArray, FixedSizeListArray,
-    Int16RunArray, Int32RunArray, Int64RunArray, LargeBinaryArray, LargeListArray,
-    LargeListViewArray, LargeStringArray, ListArray, ListViewArray, MapArray, RunArray,
-    StringArray, StringViewArray, StructArray, UnionArray,
+    Array, ArrayRef, BinaryViewArray, DictionaryArray, FixedSizeListArray, GenericByteArray,
+    GenericByteViewArray, Int16RunArray, Int32RunArray, Int64RunArray, LargeListArray,
+    LargeListViewArray, ListArray, ListViewArray, MapArray, RunArray, StringViewArray, StructArray,
+    UnionArray,
 };
 use arrow_buffer::ArrowNativeType;
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
@@ -22,6 +23,7 @@ use crate::types::bytes::casts::{
 };
 use crate::types::cast::downcast;
 use crate::types::nested::casts::{dictionary_values_ref, offset_pair};
+use crate::types::{bytes, string};
 use crate::{DataType, Field, UnionMode};
 
 mod limits;
@@ -136,6 +138,60 @@ fn reserve_byte_payload(
     budget.add_bytes(bytes)
 }
 
+/// The bytes a selection of one byte array's cells hold, text or binary alike.
+fn reserve_selected_bytes<T: ByteArrayType>(
+    array: &dyn Array,
+    selection: SourceSelection<'_>,
+    budget: &mut MaterializationBudget,
+) -> Result<()> {
+    let array = downcast::<GenericByteArray<T>>(array)?;
+    reserve_byte_payload(
+        selection,
+        array.len(),
+        |index| {
+            if array.is_valid(index) {
+                AsRef::<[u8]>::as_ref(array.value(index)).len()
+            } else {
+                0
+            }
+        },
+        budget,
+    )
+}
+
+/// One buffer handle per data buffer a view array shares.
+fn reserve_view_buffers<T: ByteViewType>(
+    array: &dyn Array,
+    budget: &mut MaterializationBudget,
+) -> Result<()> {
+    let array = downcast::<GenericByteViewArray<T>>(array)?;
+    reserve_vec_bytes::<arrow_buffer::Buffer>(budget, array.data_buffers().len())
+}
+
+/// The payload a selection of one string or byte column's cells hold, in
+/// whichever storage its parameters lay out. A fixed width was charged by
+/// the layout.
+fn reserve_storage_source_payload(
+    array: &dyn Array,
+    storage: ArrowDataType,
+    selection: SourceSelection<'_>,
+    budget: &mut MaterializationBudget,
+) -> Result<()> {
+    match storage {
+        ArrowDataType::Utf8 => reserve_selected_bytes::<Utf8Type>(array, selection, budget),
+        ArrowDataType::LargeUtf8 => {
+            reserve_selected_bytes::<LargeUtf8Type>(array, selection, budget)
+        }
+        ArrowDataType::Binary => reserve_selected_bytes::<BinaryType>(array, selection, budget),
+        ArrowDataType::LargeBinary => {
+            reserve_selected_bytes::<LargeBinaryType>(array, selection, budget)
+        }
+        ArrowDataType::Utf8View => reserve_view_buffers::<StringViewType>(array, budget),
+        ArrowDataType::BinaryView => reserve_view_buffers::<BinaryViewType>(array, budget),
+        _ => Ok(()),
+    }
+}
+
 fn reserve_run_source_take<R: RunEndIndexType>(
     source: &RunArray<R>,
     encoded: &crate::RunEndEncodedType,
@@ -207,66 +263,18 @@ fn reserve_source_children_and_payload(
 ) -> Result<()> {
     let selected_count = selection.row_count(array.len())?;
     match source_type {
-        DataType::Binary => {
-            let array = downcast::<BinaryArray>(array)?;
-            reserve_byte_payload(
-                selection,
-                array.len(),
-                |index| {
-                    if array.is_valid(index) {
-                        array.value(index).len()
-                    } else {
-                        0
-                    }
-                },
-                budget,
-            )?;
-        }
-        DataType::LargeBinary => {
-            let array = downcast::<LargeBinaryArray>(array)?;
-            reserve_byte_payload(
-                selection,
-                array.len(),
-                |index| {
-                    if array.is_valid(index) {
-                        array.value(index).len()
-                    } else {
-                        0
-                    }
-                },
-                budget,
-            )?;
-        }
-        DataType::Utf8 => {
-            let array = downcast::<StringArray>(array)?;
-            reserve_byte_payload(
-                selection,
-                array.len(),
-                |index| {
-                    if array.is_valid(index) {
-                        array.value(index).len()
-                    } else {
-                        0
-                    }
-                },
-                budget,
-            )?;
-        }
-        DataType::LargeUtf8 => {
-            let array = downcast::<LargeStringArray>(array)?;
-            reserve_byte_payload(
-                selection,
-                array.len(),
-                |index| {
-                    if array.is_valid(index) {
-                        array.value(index).len()
-                    } else {
-                        0
-                    }
-                },
-                budget,
-            )?;
-        }
+        DataType::Bytes(parameters) => reserve_storage_source_payload(
+            array,
+            bytes::arrow_storage(*parameters)?,
+            selection,
+            budget,
+        )?,
+        DataType::String(parameters) => reserve_storage_source_payload(
+            array,
+            string::arrow_storage(*parameters)?,
+            selection,
+            budget,
+        )?,
         DataType::List(child) => {
             let array = downcast::<ListArray>(array)?;
             let offsets = array.value_offsets();
@@ -437,14 +445,6 @@ fn reserve_source_children_and_payload(
                 ));
             }
         },
-        DataType::BinaryView => {
-            let array = downcast::<BinaryViewArray>(array)?;
-            reserve_vec_bytes::<arrow_buffer::Buffer>(budget, array.data_buffers().len())?;
-        }
-        DataType::Utf8View => {
-            let array = downcast::<StringViewArray>(array)?;
-            reserve_vec_bytes::<arrow_buffer::Buffer>(budget, array.data_buffers().len())?;
-        }
         // List views and dictionaries share their child/value arrays. All
         // scalar/fixed-width storage was fully charged by the shallow layout.
         _ => {}
@@ -507,31 +507,28 @@ pub(crate) fn reserve_cast_output_payload(
         // A string's payload is its characters whatever charset writes them:
         // every charset here is at most one byte per scalar above US-ASCII,
         // so the UTF-8 rendering is the reservation's upper bound.
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View | DataType::String(_) => {
-            reserve_formatted_payload(
-                array,
-                selection,
-                matches!(target_type, DataType::Utf8View)
-                    || target_type
-                        .string_parameters()
-                        .is_some_and(|parameters| parameters.layout().is_view()),
-                budget,
-            )
+        DataType::String(parameters) => {
+            reserve_formatted_payload(array, selection, parameters.layout().is_view(), budget)
         }
-        DataType::Binary | DataType::LargeBinary => {
-            let mut bytes = 0usize;
-            selection.try_for_each(array.len(), |index| {
-                bytes = bytes
-                    .checked_add(projected_byte_len(array, source_type, index)?)
-                    .ok_or_else(|| {
-                        Error::IncompatibleSchema(
-                            "Arrow cast output payload exceeds usize".to_owned(),
-                        )
-                    })?;
-                Ok(())
-            })?;
-            budget.add_bytes(bytes)
-        }
+        // Offset storage copies every projected payload; a view shares its
+        // buffers and a fixed width was charged by the layout.
+        DataType::Bytes(parameters) => match bytes::arrow_storage(*parameters)? {
+            ArrowDataType::Binary | ArrowDataType::LargeBinary => {
+                let mut bytes = 0usize;
+                selection.try_for_each(array.len(), |index| {
+                    bytes = bytes
+                        .checked_add(projected_byte_len(array, source_type, index)?)
+                        .ok_or_else(|| {
+                            Error::IncompatibleSchema(
+                                "Arrow cast output payload exceeds usize".to_owned(),
+                            )
+                        })?;
+                    Ok(())
+                })?;
+                budget.add_bytes(bytes)
+            }
+            _ => Ok(()),
+        },
         DataType::List(_)
         | DataType::LargeList(_)
         | DataType::FixedSizeList(..)
@@ -569,13 +566,8 @@ pub(crate) fn reserve_concat_copy(
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     match dtype {
-        DataType::BinaryView => {
+        DataType::Bytes(parameters) if parameters.layout().is_view() => {
             let array = downcast::<BinaryViewArray>(array)?;
-            budget.add_array_layout(dtype, array.len())?;
-            reserve_vec_bytes::<arrow_buffer::Buffer>(budget, array.data_buffers().len())?;
-        }
-        DataType::Utf8View => {
-            let array = downcast::<StringViewArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_vec_bytes::<arrow_buffer::Buffer>(budget, array.data_buffers().len())?;
         }
@@ -681,48 +673,27 @@ fn reserve_new_materialized_array_without_dictionary_values(
         budget.add_array_layout(dtype, output.len())?;
     }
     match dtype {
-        DataType::Binary => {
-            let output = downcast::<BinaryArray>(output.as_ref())?;
-            budget.add_bytes(checked_valid_payload_bytes(
-                output.len(),
-                |index| output.is_valid(index),
-                |index| output.value(index).len(),
-            )?)?;
-        }
-        DataType::LargeBinary => {
-            let output = downcast::<LargeBinaryArray>(output.as_ref())?;
-            budget.add_bytes(checked_valid_payload_bytes(
-                output.len(),
-                |index| output.is_valid(index),
-                |index| output.value(index).len(),
-            )?)?;
-        }
-        DataType::Utf8 => {
-            let output = downcast::<StringArray>(output.as_ref())?;
-            budget.add_bytes(checked_valid_payload_bytes(
-                output.len(),
-                |index| output.is_valid(index),
-                |index| output.value(index).len(),
-            )?)?;
-        }
-        DataType::LargeUtf8 => {
-            let output = downcast::<LargeStringArray>(output.as_ref())?;
-            budget.add_bytes(checked_valid_payload_bytes(
-                output.len(),
-                |index| output.is_valid(index),
-                |index| output.value(index).len(),
-            )?)?;
-        }
-        DataType::BinaryView => reserve_new_view_buffers(
-            downcast::<BinaryViewArray>(output.as_ref())?.data_buffers(),
-            downcast::<BinaryViewArray>(source.as_ref())?.data_buffers(),
-            budget,
-        )?,
-        DataType::Utf8View => reserve_new_view_buffers(
-            downcast::<StringViewArray>(output.as_ref())?.data_buffers(),
-            downcast::<StringViewArray>(source.as_ref())?.data_buffers(),
-            budget,
-        )?,
+        DataType::Bytes(parameters) => match bytes::arrow_storage(*parameters)? {
+            ArrowDataType::Binary => reserve_new_bytes::<BinaryType>(output, budget)?,
+            ArrowDataType::LargeBinary => reserve_new_bytes::<LargeBinaryType>(output, budget)?,
+            ArrowDataType::BinaryView => {
+                reserve_new_views::<BinaryViewType>(output, source, budget)?;
+            }
+            // A fixed width was charged by the layout.
+            _ => {}
+        },
+        DataType::String(parameters) => match string::arrow_storage(*parameters)? {
+            ArrowDataType::Utf8 => reserve_new_bytes::<Utf8Type>(output, budget)?,
+            ArrowDataType::LargeUtf8 => reserve_new_bytes::<LargeUtf8Type>(output, budget)?,
+            ArrowDataType::Binary => reserve_new_bytes::<BinaryType>(output, budget)?,
+            ArrowDataType::LargeBinary => reserve_new_bytes::<LargeBinaryType>(output, budget)?,
+            ArrowDataType::Utf8View => reserve_new_views::<StringViewType>(output, source, budget)?,
+            ArrowDataType::BinaryView => {
+                reserve_new_views::<BinaryViewType>(output, source, budget)?;
+            }
+            // A fixed width was charged by the layout.
+            _ => {}
+        },
         DataType::List(child) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<ListArray>(output.as_ref())?.values(),
             downcast::<ListArray>(source.as_ref())?.values(),
@@ -824,6 +795,32 @@ fn reserve_new_materialized_array_without_dictionary_values(
         _ => {}
     }
     Ok(())
+}
+
+/// The payload bytes one materialized byte array holds, text or binary alike.
+fn reserve_new_bytes<T: ByteArrayType>(
+    output: &ArrayRef,
+    budget: &mut MaterializationBudget,
+) -> Result<()> {
+    let output = downcast::<GenericByteArray<T>>(output.as_ref())?;
+    budget.add_bytes(checked_valid_payload_bytes(
+        output.len(),
+        |index| output.is_valid(index),
+        |index| AsRef::<[u8]>::as_ref(output.value(index)).len(),
+    )?)
+}
+
+/// The data buffers a materialized view array holds beyond its source's.
+fn reserve_new_views<T: ByteViewType>(
+    output: &ArrayRef,
+    source: &ArrayRef,
+    budget: &mut MaterializationBudget,
+) -> Result<()> {
+    reserve_new_view_buffers(
+        downcast::<GenericByteViewArray<T>>(output.as_ref())?.data_buffers(),
+        downcast::<GenericByteViewArray<T>>(source.as_ref())?.data_buffers(),
+        budget,
+    )
 }
 
 fn reserve_new_view_buffers(

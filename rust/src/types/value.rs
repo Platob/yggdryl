@@ -18,12 +18,12 @@ use crate::types::integer::{
     canonical_signed, canonical_unsigned, integer_from_text, validate_integer_tuple,
     validate_signed, validate_unsigned,
 };
-use crate::types::string::text_from_value;
+use crate::types::string::str_from_value;
 use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{
-    AsciiFamily, Bytes, Decimal, Decimal32, Decimal64, Decimal128, Geospatial, Interval,
-    StringParameters, Temporal, Text, ascii_bytes, ascii_free_text, ascii_text, code_cell_text,
-    default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null,
+    Code, Decimal, Decimal32, Decimal64, Decimal128, Geospatial, Interval, Str, StringParameters,
+    Temporal, ascii_bytes, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse,
+    value_is_logically_null,
 };
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
@@ -172,7 +172,7 @@ impl Field {
     /// // Canonical rows are positional; the natural restatement names them.
     /// assert!(row.as_sequence().is_some());
     /// assert_eq!(
-    ///     field.into_natural_value(row)?.get_key_str("symbol").and_then(Scalar::as_utf8),
+    ///     field.into_natural_value(row)?.get_key_str("symbol").and_then(Scalar::as_str),
     ///     Some("AAPL"),
     /// );
     /// # Ok(())
@@ -453,32 +453,22 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
         return None;
     }
     match dtype {
-        // A text column stores the spelling every tier prints.
-        D::Utf8 | D::LargeUtf8 | D::Utf8View if !matches!(value, Scalar::Text(_)) => {
-            Some(text_from_value(value)?.map(Scalar::from))
-        }
-        // A string column stores that same spelling, and bytes arriving at
-        // one are read through the charset the column declares: the payload
-        // is that charset by definition, so decoding it here is what the
-        // declaration is for. The decode is the permissive one, because a
-        // legacy export with one bad byte is a file that still has to be
-        // read, and the strict door is [`Charset::decode`].
-        D::String(parameters) if !matches!(value, Scalar::Text(_)) => match value {
-            Scalar::Bytes(bytes) => Some(Ok(Scalar::Text(Text::from_bytes(
-                bytes.as_bytes(),
-                *parameters,
-            )))),
-            _ => Some(text_from_value(value)?.map(Scalar::from)),
+        // A string column stores the spelling every tier prints, and bytes
+        // arriving at one are read through the charset the column declares:
+        // the payload is that charset by definition, so decoding it here is
+        // what the declaration is for. `Str::from_bytes` is the one door
+        // that decides how strict that read is.
+        D::String(parameters) if !matches!(value, Scalar::String(_)) => match value {
+            Scalar::Bytes(bytes) => {
+                Some(Str::from_bytes(bytes.as_bytes(), *parameters).map(Scalar::String))
+            }
+            _ => Some(str_from_value(value)?.map(Scalar::from)),
         },
         // A byte column stores one payload, however the value spells it. The
         // declared layout is the offset width, which the restatement below
         // retags without copying the payload.
-        D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_)
-            if !matches!(value, Scalar::Bytes(_)) =>
-        {
-            Some(Ok(Scalar::Bytes(Bytes::Binary(crate::types::Binary::new(
-                bytes_from_value(value)?,
-            )))))
+        D::Bytes(_) if !matches!(value, Scalar::Bytes(_)) => {
+            Some(Ok(Scalar::Bytes(bytes_from_value(value)?)))
         }
         // A record is a name-to-value map, so a map column reads it as its
         // entries; the key field then reads each name as its own datatype,
@@ -498,13 +488,13 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
 
 /// The text a value offers a datatype that stores something else.
 ///
-/// Only [`Scalar::Text`] is a spelling waiting to be read. An ASCII value and
-/// a generic enum member also answer [`Scalar::as_str`], but their identity is
-/// the width and the member rather than the characters, and a column refuses
-/// them into a number for the same reason.
+/// Only [`Scalar::String`] is a spelling waiting to be read. A code and a
+/// generic enum member also answer [`Scalar::as_str`], but their identity is
+/// the registry and the member rather than the characters, and a column
+/// refuses them into a number for the same reason.
 fn text_reading(value: &Scalar) -> Option<&str> {
     match value {
-        Scalar::Text(text) => Some(text.as_str()),
+        Scalar::String(text) => Some(text.as_str()),
         _ => None,
     }
 }
@@ -702,133 +692,41 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         D::Float64 => canonical_float(value, FloatWidth::Float64),
         // A byte layout is an Arrow offset width over the same payload, so a
         // value already stored in the declared one is its own canonical form
-        // and nothing is built; a rewrite adopts the source's storage handle
-        // rather than copying the payload into a second buffer.
-        D::Binary | D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => {
-            // The reading above rewrote every other kind into these bytes, so
-            // only a payload of the declared layout reaches here unchanged. A
-            // fixed width is part of that layout, exactly as it is for a fixed
-            // ASCII value, so it is compared rather than assumed.
-            let Some(bytes) = value.as_bytes() else {
+        // once it fits the bound and nothing is built; a rewrite adopts the
+        // source's storage under the column's parameters rather than copying
+        // the payload into a second buffer. The reading above rewrote every
+        // other kind into bytes, so only bytes reach here.
+        D::Bytes(parameters) => {
+            let Scalar::Bytes(source) = value else {
                 return canonicalization_failure(dtype);
             };
-            if let D::FixedSizeBinary(width) = dtype {
-                if usize::try_from(*width).ok() != Some(bytes.len()) {
-                    return Err(Error::InvalidRecord {
-                        path: SmolStr::new_static("$"),
-                        reason: format_smolstr!(
-                            "fixed_size_binary({width}) requires {width} bytes, got {}",
-                            bytes.len()
-                        ),
-                    });
-                }
+            let restated = source.clone().try_with_parameters(*parameters)?;
+            match source.parameters() == restated.parameters() {
+                true => Ok((value.clone(), false)),
+                false => Ok((Scalar::Bytes(restated), true)),
             }
-            if matches!(
-                (dtype, value),
-                (D::Binary, Scalar::Bytes(Bytes::Binary(_)))
-                    | (
-                        D::FixedSizeBinary(_),
-                        Scalar::Bytes(Bytes::FixedSizeBinary(_))
-                    )
-                    | (D::LargeBinary, Scalar::Bytes(Bytes::LargeBinary(_)))
-                    | (D::BinaryView, Scalar::Bytes(Bytes::BinaryView(_)))
-            ) {
-                return Ok((value.clone(), false));
-            }
-            let Some(bytes) = bytes_from_value(value) else {
-                return canonicalization_failure(dtype);
-            };
-            let canonical = match dtype {
-                D::Binary => Scalar::Bytes(Bytes::Binary(crate::types::Binary::new(bytes))),
-                D::FixedSizeBinary(_) => Scalar::Bytes(Bytes::FixedSizeBinary(
-                    crate::types::FixedSizeBinary::new(bytes),
-                )),
-                D::LargeBinary => {
-                    Scalar::Bytes(Bytes::LargeBinary(crate::types::LargeBinary::new(bytes)))
-                }
-                D::BinaryView => {
-                    Scalar::Bytes(Bytes::BinaryView(crate::types::BinaryView::new(bytes)))
-                }
-                _ => unreachable!("binary datatype matched above"),
-            };
-            Ok((canonical, true))
-        }
-        // Text canonicalizes the same way: the layout is the offset width,
-        // the characters are shared, and the declared layout is reached by
-        // retagging one storage handle.
-        D::Utf8 | D::LargeUtf8 | D::Utf8View => {
-            if matches!(
-                (dtype, value),
-                (D::Utf8, Scalar::Text(Text::Utf8(_)))
-                    | (D::LargeUtf8, Scalar::Text(Text::LargeUtf8(_)))
-                    | (D::Utf8View, Scalar::Text(Text::Utf8View(_)))
-            ) {
-                return Ok((value.clone(), false));
-            }
-            // The reading above rewrote every other kind into this text, so
-            // only a string of another layout reaches here, and it hands over
-            // its storage rather than a copy of its characters.
-            let Scalar::Text(source) = value else {
-                return canonicalization_failure(dtype);
-            };
-            let text = source.storage().clone();
-            let canonical = match dtype {
-                D::Utf8 => Scalar::Text(Text::Utf8(crate::types::Utf8::new(text))),
-                D::LargeUtf8 => Scalar::Text(Text::LargeUtf8(crate::types::LargeUtf8::new(text))),
-                D::Utf8View => Scalar::Text(Text::Utf8View(crate::types::Utf8View::new(text))),
-                _ => unreachable!("text datatype matched above"),
-            };
-            Ok((canonical, true))
         }
         // A string is one layout, one charset and one bound, and a value
-        // already stored in all three is its own canonical form. Anything
-        // else adopts the source's storage handle rather than copying its
-        // characters into a second buffer.
+        // already stored under that layout and charset is its own canonical
+        // form once it fits the bound. Anything else adopts the source's
+        // storage handle under the column's parameters rather than copying
+        // its characters into a second buffer: the reading above rewrote
+        // every other kind into a string, so only a string reaches here.
         D::String(parameters) => {
-            let Scalar::Text(source) = value else {
+            let Scalar::String(source) = value else {
                 return canonicalization_failure(dtype);
             };
             if string_matches(*parameters, source) {
                 check_string_bound(*parameters, source.as_str())?;
                 return Ok((value.clone(), false));
             }
-            let restated = source.restated(*parameters)?;
-            check_string_bound(*parameters, restated.as_str())?;
-            Ok((Scalar::Text(restated), true))
+            let restated = source.clone().try_with_parameters(*parameters)?;
+            Ok((Scalar::String(restated), true))
         }
-        // The canonical ASCII spelling is the trimmed string; bytes and a
-        // string carrying trailing NULs are rewritten here. A value already
-        // stored at this exact width holds that trimmed text, so it is
-        // returned without re-walking its own bytes. A fixed value carries
-        // its width, and a column declaring another one restates it.
-        D::Ascii | D::FixedAscii(_) => {
-            let unchanged = match (dtype, value) {
-                (D::Ascii, Scalar::Ascii(AsciiFamily::Ascii(_))) => true,
-                (D::FixedAscii(width), Scalar::Ascii(AsciiFamily::FixedAscii(fixed))) => {
-                    fixed.width() == *width
-                }
-                _ => false,
-            };
-            if unchanged {
-                return Ok((value.clone(), false));
-            }
-            let Some(bytes) = ascii_bytes(value) else {
-                return canonicalization_failure(dtype);
-            };
-            let text = match dtype.ascii_width() {
-                Some(width) => ascii_text(width, bytes)?,
-                None => ascii_free_text(bytes)?,
-            };
-            let canonical = match dtype {
-                D::Ascii => Scalar::Ascii(AsciiFamily::Ascii(crate::types::Ascii::new(text)?)),
-                D::FixedAscii(width) => Scalar::Ascii(AsciiFamily::FixedAscii(
-                    crate::types::FixedAscii::new(text, *width)?,
-                )),
-                _ => unreachable!("ASCII datatype matched above"),
-            };
-            Ok((canonical, true))
-        }
-        // A code canonicalizes the same way, at the width its own type fixes.
+        // The canonical code spelling is the trimmed string; bytes and a
+        // string carrying trailing NULs are rewritten here, at the width the
+        // code's own type fixes. A value already stored as this code holds
+        // that trimmed text, so it is returned without re-walking its bytes.
         D::Country
         | D::Currency
         | D::Mic
@@ -838,18 +736,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::MsgDirection
         | D::State
         | D::TimeInForce => {
-            if matches!(
-                (dtype, value),
-                (D::Country, Scalar::Ascii(AsciiFamily::Country(_)))
-                    | (D::Currency, Scalar::Ascii(AsciiFamily::Currency(_)))
-                    | (D::Mic, Scalar::Ascii(AsciiFamily::Mic(_)))
-                    | (D::Cfi, Scalar::Ascii(AsciiFamily::Cfi(_)))
-                    | (D::Isin, Scalar::Ascii(AsciiFamily::Isin(_)))
-                    | (D::Side, Scalar::Ascii(AsciiFamily::Side(_)))
-                    | (D::MsgDirection, Scalar::Ascii(AsciiFamily::MsgDirection(_)))
-                    | (D::State, Scalar::Ascii(AsciiFamily::State(_)))
-                    | (D::TimeInForce, Scalar::Ascii(AsciiFamily::TimeInForce(_)))
-            ) {
+            if matches!(value, Scalar::Code(code) if code.datatype() == *dtype) {
                 return Ok((value.clone(), false));
             }
             let Some(bytes) = ascii_bytes(value) else {
@@ -857,30 +744,22 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             };
             let text = code_cell_text(dtype, bytes)?;
             let canonical = match dtype {
-                D::Country => {
-                    Scalar::Ascii(AsciiFamily::Country(crate::types::Country::new(text)?))
-                }
-                D::Currency => {
-                    Scalar::Ascii(AsciiFamily::Currency(crate::types::Currency::new(text)?))
-                }
-                D::Mic => Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(text)?)),
-                D::Cfi => Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(text)?)),
-                D::Isin => Scalar::Ascii(AsciiFamily::Isin(crate::types::Isin::new(text)?)),
-                D::Side => Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(text)?)),
-                D::MsgDirection => Scalar::Ascii(AsciiFamily::MsgDirection(
-                    crate::types::MsgDirection::new(text)?,
-                )),
+                D::Country => Code::Country(crate::types::Country::new(text)?),
+                D::Currency => Code::Currency(crate::types::Currency::new(text)?),
+                D::Mic => Code::Mic(crate::types::Mic::new(text)?),
+                D::Cfi => Code::Cfi(crate::types::Cfi::new(text)?),
+                D::Isin => Code::Isin(crate::types::Isin::new(text)?),
+                D::Side => Code::Side(crate::types::Side::new(text)?),
+                D::MsgDirection => Code::MsgDirection(crate::types::MsgDirection::new(text)?),
                 // A state is read by its spelling: the wire code, the
                 // specification's name or a stored value all reach the one
                 // ranked value, and a spelling that names no state is refused
                 // rather than stored unranked.
-                D::State => Scalar::Ascii(AsciiFamily::State(crate::types::State::read(text)?)),
-                D::TimeInForce => Scalar::Ascii(AsciiFamily::TimeInForce(
-                    crate::types::TimeInForce::new(text)?,
-                )),
-                _ => unreachable!("registered ASCII datatype matched above"),
+                D::State => Code::State(crate::types::State::read(text)?),
+                D::TimeInForce => Code::TimeInForce(crate::types::TimeInForce::new(text)?),
+                _ => unreachable!("registered code matched above"),
             };
-            Ok((canonical, true))
+            Ok((Scalar::Code(canonical), true))
         }
         // The canonical UUID spelling is the hyphenated text; the sixteen
         // stored bytes and the bare-hex spelling are rewritten here.
@@ -896,7 +775,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         }
         D::Version => match value {
             Scalar::Version(_) => Ok((value.clone(), false)),
-            Scalar::Text(text) => text
+            Scalar::String(text) => text
                 .as_str()
                 .parse::<crate::Version>()
                 .map(|version| (Scalar::Version(version), true))
@@ -910,7 +789,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             Scalar::Url(_) => Ok((value.clone(), false)),
             // Text is canonicalized on the way in, so a column of URLs holds
             // one spelling per location however it was written.
-            Scalar::Text(text) => crate::Url::from_str(text.as_str())
+            Scalar::String(text) => crate::Url::from_str(text.as_str())
                 .map(|url| (Scalar::Url(std::sync::Arc::new(url)), true))
                 .map_err(|error| Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -1321,10 +1200,11 @@ fn canonicalize_slice(
 }
 
 /// Whether a string value is already stored the way its column declares.
-fn string_matches(parameters: StringParameters, value: &Text) -> bool {
-    value.layout() == parameters.layout()
-        && value.charset() == parameters.charset()
-        && value.width() == parameters.fixed()
+///
+/// A value never carries a maximum, so the layout, the charset and the fixed
+/// width are the whole comparison; the maximum is checked beside it.
+fn string_matches(parameters: StringParameters, value: &Str) -> bool {
+    value.parameters() == parameters.without_max()
 }
 
 /// Check one string against the maximum its column declares.
@@ -1337,7 +1217,7 @@ fn string_matches(parameters: StringParameters, value: &Text) -> bool {
 /// make the permissive read useless.
 ///
 /// A fixed width is checked where the value is built, because the padding is
-/// built there too.
+/// built there too, and so is the US-ASCII repertoire.
 fn check_string_bound(parameters: StringParameters, text: &str) -> Result<()> {
     let Some(max) = parameters.max() else {
         return Ok(());
@@ -1526,36 +1406,24 @@ fn validate_dtype_value(
         D::Date64 => validate_date64(value),
         D::Time32(unit) | D::Time64(unit) => validate_time(value, *unit),
         D::Interval(unit) => validate_interval_value(value, *unit),
-        D::Binary | D::LargeBinary | D::BinaryView => {
-            require(matches!(value, Scalar::Bytes(_)), dtype.name(), value)
-        }
-        D::FixedSizeBinary(width) => match value {
-            Scalar::Bytes(bytes)
-                if usize::try_from(*width).ok() == Some(bytes.as_bytes().len()) =>
-            {
-                Ok(())
-            }
-            Scalar::Bytes(bytes) => Err(ValidationFailure::new(format_smolstr!(
-                "fixed_size_binary({width}) requires {width} bytes, got {}",
-                bytes.as_bytes().len()
-            ))),
-            _ => Err(expected(dtype.name(), value)),
-        },
-        D::Utf8 | D::LargeUtf8 | D::Utf8View => {
-            require(matches!(value, Scalar::Text(_)), dtype.name(), value)
-        }
-        D::String(parameters) => match value {
-            Scalar::Text(text) => check_string_bound(*parameters, text.as_str())
+        // Bytes are checked the way they are built: the bound alone.
+        D::Bytes(parameters) => match value {
+            Scalar::Bytes(bytes) => bytes
+                .clone()
+                .try_with_parameters(*parameters)
+                .map(|_| ())
                 .map_err(|error| ValidationFailure::new(reason_of(&error))),
             _ => Err(expected(dtype.name(), value)),
         },
-        // Text or bytes, both under the one ASCII rule naming the width.
-        D::Ascii | D::FixedAscii(_) => match ascii_bytes(value) {
-            Some(bytes) => match dtype.ascii_width() {
-                Some(width) => ascii_text(width, bytes).map(|_| ()).map_err(ascii_failure),
-                None => ascii_free_text(bytes).map(|_| ()).map_err(ascii_failure),
-            },
-            None => Err(expected(dtype.name(), value)),
+        // A string is checked the way it is built: the bound, and the
+        // US-ASCII repertoire where the column declares it.
+        D::String(parameters) => match value {
+            Scalar::String(text) => text
+                .clone()
+                .try_with_parameters(*parameters)
+                .map(|_| ())
+                .map_err(|error| ValidationFailure::new(reason_of(&error))),
+            _ => Err(expected(dtype.name(), value)),
         },
         D::Country
         | D::Currency
@@ -1580,7 +1448,7 @@ fn validate_dtype_value(
         },
         D::Version => match value {
             Scalar::Version(_) => Ok(()),
-            Scalar::Text(text) => text
+            Scalar::String(text) => text
                 .as_str()
                 .parse::<crate::Version>()
                 .map(|_| ())
@@ -1589,7 +1457,7 @@ fn validate_dtype_value(
         },
         D::Url => match value {
             Scalar::Url(_) => Ok(()),
-            Scalar::Text(text) => crate::Url::from_str(text.as_str())
+            Scalar::String(text) => crate::Url::from_str(text.as_str())
                 .map(|_| ())
                 .map_err(|_| expected("url", value)),
             _ => Err(expected("url", value)),

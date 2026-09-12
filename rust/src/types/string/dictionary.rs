@@ -1,12 +1,13 @@
-//! Named member dictionaries for ASCII-encoded fields.
+//! Named member dictionaries for string fields.
 
 use std::collections::BTreeMap;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::Str;
 use crate::{DataType, Error, Result};
 
-/// The enum an ASCII field's values name: one value per member name.
+/// The enum a string field's values name: one value per member name.
 ///
 /// This is the vocabulary a declaration named itself, and it is what a
 /// [`crate::Field`] stores under `field:enum` so the enum crosses Arrow, a
@@ -20,39 +21,39 @@ use crate::{DataType, Error, Result};
 /// code is the value's own bytes.
 ///
 /// ```
-/// use yggdryl::{AsciiEnum, DataType};
+/// use yggdryl::{DataType, StringEnum};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let side = AsciiEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?;
+/// let side = StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?;
 /// assert_eq!(side.get("BUY"), Some("B"));
 /// assert_eq!(side.get_member("S"), Some("SELL"));
 /// assert_eq!(
-///     side.into_members(&DataType::FixedAscii(4))?,
+///     side.into_members(&DataType::fixed_ascii(4)?)?,
 ///     [("BUY".into(), 0x4200_0000), ("SELL".into(), 0x5300_0000)]
 /// );
 /// assert_eq!(
 ///     side.into_json(),
 ///     r#"{"members":{"BUY":"B","SELL":"S"},"name":"Side"}"#
 /// );
-/// assert_eq!(AsciiEnum::from_json(&side.into_json())?, side);
+/// assert_eq!(StringEnum::from_json(&side.into_json())?, side);
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AsciiEnum {
+pub struct StringEnum {
     /// The enum's own name, which is not the field's name.
-    name: SmolStr,
-    /// Member name to ASCII value, ordered by name so the document is one text.
-    members: BTreeMap<SmolStr, SmolStr>,
+    name: Str,
+    /// Member name to string value, ordered by name so the document is one text.
+    members: BTreeMap<Str, Str>,
 }
 
-impl AsciiEnum {
+impl StringEnum {
     /// Creates an enum of no members under one name.
     ///
     /// # Errors
     ///
     /// Returns an error when `name` is empty or holds a control character.
-    pub fn new(name: impl Into<SmolStr>) -> Result<Self> {
+    pub fn new(name: impl Into<Str>) -> Result<Self> {
         let name = name.into();
         validate_enum_text("enum name", &name)?;
         Ok(Self {
@@ -61,7 +62,7 @@ impl AsciiEnum {
         })
     }
 
-    /// Creates an enum from its members, one ASCII value per member name.
+    /// Creates an enum from its members, one string value per member name.
     ///
     /// A repeated member name keeps the last value, exactly as [`Self::insert`]
     /// would; two members may share a value, because two spellings of one code
@@ -71,11 +72,11 @@ impl AsciiEnum {
     ///
     /// Returns an error when the enum name or a member name is empty or holds
     /// a control character.
-    pub fn from_members<I, N, V>(name: impl Into<SmolStr>, members: I) -> Result<Self>
+    pub fn from_members<I, N, V>(name: impl Into<Str>, members: I) -> Result<Self>
     where
         I: IntoIterator<Item = (N, V)>,
-        N: Into<SmolStr>,
-        V: Into<SmolStr>,
+        N: Into<Str>,
+        V: Into<Str>,
     {
         let mut enumeration = Self::new(name)?;
         for (member, value) in members {
@@ -159,12 +160,12 @@ impl AsciiEnum {
         &self.name
     }
 
-    /// The ASCII value one member names, or `None` for a member it has not.
+    /// The value one member names, or `None` for a member it has not.
     pub fn get(&self, member: &str) -> Option<&str> {
-        self.members.get(member).map(SmolStr::as_str)
+        self.members.get(member).map(Str::as_str)
     }
 
-    /// The first member naming one ASCII value, or `None` when none does.
+    /// The first member naming one value, or `None` when none does.
     ///
     /// Two members may share a value; the first by name answers, so an alias
     /// never changes which member a stored value reads back as.
@@ -175,23 +176,19 @@ impl AsciiEnum {
             .map(|(member, _)| member.as_str())
     }
 
-    /// Names one ASCII value and returns the value the member had.
+    /// Names one value and returns the value the member had.
     ///
     /// # Errors
     ///
     /// Returns an error when `member` is empty or holds a control character.
-    pub fn insert(
-        &mut self,
-        member: impl Into<SmolStr>,
-        value: impl Into<SmolStr>,
-    ) -> Result<Option<SmolStr>> {
+    pub fn insert(&mut self, member: impl Into<Str>, value: impl Into<Str>) -> Result<Option<Str>> {
         let member = member.into();
         validate_enum_text("member name", &member)?;
         Ok(self.members.insert(member, value.into()))
     }
 
-    /// Removes one member and returns the ASCII value it named.
-    pub fn remove(&mut self, member: &str) -> Option<SmolStr> {
+    /// Removes one member and returns the value it named.
+    pub fn remove(&mut self, member: &str) -> Option<Str> {
         self.members.remove(member)
     }
 
@@ -205,14 +202,14 @@ impl AsciiEnum {
         self.members.is_empty()
     }
 
-    /// The members by name, each with the ASCII value it names.
+    /// The members by name, each with the value it names.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.members
             .iter()
             .map(|(member, value)| (member.as_str(), value.as_str()))
     }
 
-    /// The enum member name one ASCII value takes.
+    /// The enum member name one value takes.
     ///
     /// An ASCII letter is kept uppercased, a digit is kept, every other byte
     /// becomes `_`, a leading digit takes a `_` in front, and a name that both
@@ -225,19 +222,19 @@ impl AsciiEnum {
     /// whole listing at once would.
     ///
     /// ```
-    /// use yggdryl::AsciiEnum;
+    /// use yggdryl::StringEnum;
     ///
-    /// assert_eq!(AsciiEnum::member_name("USD").as_str(), "USD");
-    /// assert_eq!(AsciiEnum::member_name("n/a").as_str(), "N_A");
-    /// assert_eq!(AsciiEnum::member_name("-a-").as_str(), "_A");
-    /// assert_eq!(AsciiEnum::member_name("").as_str(), "_");
+    /// assert_eq!(StringEnum::member_name("USD").as_str(), "USD");
+    /// assert_eq!(StringEnum::member_name("n/a").as_str(), "N_A");
+    /// assert_eq!(StringEnum::member_name("-a-").as_str(), "_A");
+    /// assert_eq!(StringEnum::member_name("").as_str(), "_");
     /// ```
     #[must_use]
-    pub fn member_name(value: &str) -> SmolStr {
+    pub fn member_name(value: &str) -> Str {
         let mut name = String::with_capacity(value.len() + 1);
-        // A registered value passed `ascii_text`, so one byte is one character.
-        // Any other byte is not ASCII alphanumeric, so it becomes `_` like the
-        // rest of what the rule replaces.
+        // A packed value is ASCII, so one byte is one character. Any other
+        // byte is not ASCII alphanumeric, so it becomes `_` like the rest of
+        // what the rule replaces.
         for byte in value.bytes() {
             name.push(if byte.is_ascii_alphanumeric() {
                 char::from(byte.to_ascii_uppercase())
@@ -256,18 +253,19 @@ impl AsciiEnum {
             name.truncate(named);
         }
         if name.is_empty() {
-            return SmolStr::new_static("_");
+            return Str::new_static("_");
         }
-        SmolStr::new(name)
+        Str::from(name)
     }
 
-    /// The members paired with their packed codes under one ASCII width.
+    /// The members paired with their packed codes under one fixed US-ASCII
+    /// width.
     ///
     /// # Errors
     ///
     /// Returns an error naming the accepted widths when `width` is not one,
     /// and one naming the width when a value does not fit it.
-    pub fn into_members(&self, width: &DataType) -> Result<Vec<(SmolStr, i128)>> {
+    pub fn into_members(&self, width: &DataType) -> Result<Vec<(Str, i128)>> {
         self.members
             .iter()
             .map(|(member, value)| Ok((member.clone(), width.ascii_packed(value.as_bytes())?)))
@@ -277,7 +275,7 @@ impl AsciiEnum {
 
 fn enum_document_refusal(reason: SmolStr) -> Error {
     Error::InvalidDataType {
-        kind: "ascii-enum",
+        kind: "string-enum",
         reason,
     }
 }

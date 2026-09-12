@@ -17,7 +17,7 @@ use crate::{IOBase, IOMedia};
 fn schema() -> Field {
     DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])
     .unwrap()
     .required_field("row")
@@ -311,7 +311,7 @@ fn an_open_cache_tracks_the_published_field_after_a_fitting_overwrite() {
     // text and `symbol` is absent. The overwrite completion keeps the stored
     // Int64 + nullable Utf8 shape, so an open cache must not retain this
     // reader's pre-cast schema.
-    let loose = DataType::from_fields([DataType::Utf8.required_field("id")])
+    let loose = DataType::from_fields([DataType::utf8().required_field("id")])
         .unwrap()
         .required_field("row");
     let incoming = RecordBatch::try_new(
@@ -892,7 +892,7 @@ mod limits {
         let handle = stored();
         // The declared root both projects the stream down to `id` and casts
         // it to text, so what the limit counts is the shaped result.
-        let declared = DataType::from_fields([DataType::Utf8.required_field("id")])
+        let declared = DataType::from_fields([DataType::utf8().required_field("id")])
             .unwrap()
             .required_field("row");
         let options = handle

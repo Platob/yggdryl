@@ -623,9 +623,13 @@ impl JsScalar {
     }
 
     /// Borrow string content, or `null` for another kind.
+    ///
+    /// A string, a code and an enum member all answer their characters; a
+    /// string holds UTF-8 whatever charset it is written in, so this never
+    /// fails on one.
     #[napi]
-    pub fn as_utf8(&self) -> Option<String> {
-        self.inner.as_utf8().map(ToOwned::to_owned)
+    pub fn as_str(&self) -> Option<String> {
+        self.inner.as_str().map(ToOwned::to_owned)
     }
 
     /// Encode this value as natural compact JSON bytes.
@@ -2368,8 +2372,8 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
                 .ok_or_else(|| napi_error("invalid native float"))?
                 .as_f64(),
         ),
-        Scalar::Text(value) => Ok(JsonValue::String(value.as_str().to_owned())),
-        Scalar::Ascii(value) => Ok(JsonValue::String(value.as_str().to_owned())),
+        Scalar::String(value) => Ok(JsonValue::String(value.as_str().to_owned())),
+        Scalar::Code(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         Scalar::Uuid(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Version(value) => Ok(marker(
             "version",

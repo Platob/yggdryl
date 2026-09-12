@@ -1,7 +1,7 @@
 //! A row declared in FIX's datatype names is an ordinary row everywhere else.
 
 use arrow_schema::DataType as ArrowDataType;
-use yggdryl::{AsciiEnum, DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::{DataType, DataTypeId, Field, Scalar, StringEnum, TimeUnit, Timezone};
 
 /// The declaration a FIX-fed writer would hand the schema, in FIX spellings.
 const FIX_ROW: &str = "struct<ccy: Currency, venue: Exchange, px: Price, qty: Qty, \
@@ -105,18 +105,18 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
 
 #[test]
 fn a_prebuilt_vocabulary_declares_the_codes_a_venue_column_carries() {
-    let venues = AsciiEnum::from_logical_name("Exchange").unwrap();
-    assert_eq!(venues.len(), AsciiEnum::MICS.len());
+    let venues = StringEnum::from_logical_name("Exchange").unwrap();
+    assert_eq!(venues.len(), StringEnum::MICS.len());
     assert_eq!(venues.get("XCME"), Some("XCME"));
 
     // The listing is what a field declares, so a venue column crosses Arrow
     // carrying the vocabulary its values come from.
     let venue = Field::new("venue", DataType::Mic, false)
-        .try_with_ascii_enum(&venues)
+        .try_with_string_enum(&venues)
         .unwrap();
     let recovered = Field::from_arrow(&venue.clone().into_arrow().unwrap()).unwrap();
     assert_eq!(recovered, venue);
-    assert_eq!(recovered.ascii_enum().unwrap().as_ref(), Some(&venues));
+    assert_eq!(recovered.string_enum().unwrap().as_ref(), Some(&venues));
 
     // A member's code is the value's own bytes under the resolved width, so
     // two processes reading this schema answer the same integers.
@@ -128,7 +128,7 @@ fn a_prebuilt_vocabulary_declares_the_codes_a_venue_column_carries() {
         );
     }
     assert_eq!(
-        AsciiEnum::from_logical_name("mic")
+        StringEnum::from_logical_name("mic")
             .unwrap()
             .into_members(&DataType::Mic)
             .unwrap(),

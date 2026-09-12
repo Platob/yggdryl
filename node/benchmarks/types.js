@@ -3,7 +3,6 @@
 const { performance } = require('node:perf_hooks')
 const arrow = require('apache-arrow')
 const {
-  AsciiEnum,
   DataType,
   Expression,
   Field,
@@ -11,6 +10,7 @@ const {
   MimeType,
   Scalar,
   Statement,
+  StringEnum,
   Version,
   fields,
   iceberg: icebergApi,
@@ -78,7 +78,11 @@ intoField(BenchRow)
 
 // The prebuilt ISO 4217 listing: what a schema pays once when it declares a
 // currency column, and the members every reader of that schema computes.
-const currencies = AsciiEnum.fromLogicalName('currency')
+const currencies = StringEnum.fromLogicalName('currency')
+// The one string datatype with everything declared, and a fixed width the
+// datatype answers for.
+const latin = DataType.string({ charset: 'windows-1252', max: 32 })
+const tenor = DataType.fixedAscii(8)
 
 const knownMime = 'application/json'
 const customMime = 'application/vnd.benchmark+json'
@@ -108,10 +112,20 @@ benchmark('schema/map_of', () => fields.mapOf('labels', 'utf8', 'int32'))
 benchmark('schema/time_infer_time32', () => DataType.time('ms'))
 benchmark('schema/time_infer_time64', () => DataType.time('ns'))
 benchmark('schema/variant_dense_2', () => DataType.variant([id, name]))
-benchmark('schema/ascii_infer', () => DataType.ascii(3))
+benchmark('schema/fixed_ascii', () => DataType.fixedAscii(3))
+benchmark('schema/string_parameters', () =>
+  DataType.string({ charset: 'windows-1252', max: 32 }),
+)
+benchmark('schema/bytes_parameters', () => DataType.bytes({ max: 16 }))
+benchmark('schema/string_parameters_get', () => latin.stringParameters)
+benchmark('schema/fixed_byte_width', () => tenor.fixedByteWidth)
 benchmark('schema/currency', () => DataType.from('currency'))
 benchmark('schema/ascii_field', () => fields.currency('ccy'))
 benchmark('schema/fixed_ascii_field', () => fields.fixedAscii('tenor', 8))
+benchmark('schema/string_field', () =>
+  fields.string('note', { charset: 'windows-1252', max: 32 }),
+)
+benchmark('schema/bytes_field', () => fields.bytes('payload', { max: 16 }))
 benchmark('schema/time_field_infer_time32', () => fields.time('clock', 'ms'))
 benchmark('schema/time_field_infer_time64', () => fields.time('clock', 'ns'))
 benchmark('schema/from_json', () => DataType.fromJSON(structuralJson))
@@ -149,10 +163,10 @@ benchmark('schema/partition_field_names', () => partitioned.partitionFieldNames(
 benchmark('schema/without_partition_fields', () =>
   partitioned.withoutPartitionFields(),
 )
-benchmark('schema/ascii_vocabulary_prebuilt', () =>
-  AsciiEnum.fromLogicalName('currency'),
+benchmark('schema/string_vocabulary_prebuilt', () =>
+  StringEnum.fromLogicalName('currency'),
 )
-benchmark('schema/ascii_vocabulary_enum', () => currencies.intoEnum('currency'))
+benchmark('schema/string_vocabulary_enum', () => currencies.intoEnum('currency'))
 benchmark('schema/mime_known_parse', () => MimeType.fromString(knownMime))
 benchmark('schema/mime_custom_parse', () => MimeType.fromString(customMime))
 benchmark('schema/media_compound_parse', () => MediaType.fromString(compoundMedia))

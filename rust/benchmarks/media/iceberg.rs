@@ -81,7 +81,7 @@ fn scratch(label: &str) -> PathBuf {
 fn plan_schema() -> Field {
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])
     .expect("the static columns are unique")
     .required_field("row");
@@ -674,7 +674,7 @@ fn read_schema() -> Field {
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.nullable_field("price"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
         DataType::Int64.required_field("ts"),
     ])
     .expect("the static columns are unique")

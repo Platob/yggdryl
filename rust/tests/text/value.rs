@@ -1,6 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use yggdryl::types::{Bytes, Geometry, Geospatial, Nested};
+use yggdryl::types::{Geometry, Geospatial, Nested};
 use yggdryl::{I256, IOMode, Scalar, TimeUnit, Timezone};
 
 /// One value of every kind, in the order [`Scalar`]'s total ordering puts them.
@@ -102,7 +102,7 @@ fn null_answers_absence_everywhere_a_value_is_read() {
     assert!(null.as_f64().is_none());
     assert!(null.as_f16().is_none());
     assert!(null.as_str().is_none());
-    assert!(null.as_utf8().is_none());
+    assert!(null.as_str().is_none());
     assert!(null.as_bytes().is_none());
     assert!(null.as_date32().is_none());
     assert!(null.as_date64().is_none());
@@ -154,7 +154,7 @@ fn every_accessor_tolerates_every_kind() {
         let _ = value.as_f64();
         let _ = value.as_f16();
         let _ = value.as_str();
-        let _ = value.as_utf8();
+        let _ = value.as_str();
         let _ = value.as_bytes();
         let _ = value.as_date32();
         let _ = value.as_date64();
@@ -283,11 +283,12 @@ fn empty_collections_share_process_wide_backing() {
     let left = Scalar::from(Vec::<u8>::new());
     let encoded = serde_json::to_vec(&left).unwrap();
     let right: Scalar = serde_json::from_slice(&encoded).unwrap();
-    let (Scalar::Bytes(Bytes::Binary(left)), Scalar::Bytes(Bytes::Binary(right))) = (&left, &right)
-    else {
+    let (Scalar::Bytes(left), Scalar::Bytes(right)) = (&left, &right) else {
         unreachable!();
     };
-    assert!(std::ptr::eq(left.as_bytes(), right.as_bytes()));
+    // An empty byte value has no backing at all: it is inline on both sides.
+    assert!(left.is_inline() && right.is_inline());
+    assert_eq!(left, right);
 
     let left = Scalar::from_sequence([]);
     let right = Scalar::from_sequence([]);

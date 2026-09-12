@@ -911,13 +911,13 @@ impl FixRegistry {
     /// use yggdryl::{DataType, FixId, FixRegistry};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    /// let mut symbol = DataType::utf8().nullable_field("Symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let mut registry = FixRegistry::from_fields([symbol])?;
     ///
     /// // A venue's file calls the same field `symbol`, under its own tag and
     /// // with a second name: that is a second spelling of tag 55's field.
-    /// let mut incoming = DataType::Utf8.nullable_field("symbol");
+    /// let mut incoming = DataType::utf8().nullable_field("symbol");
     /// incoming.as_fix_mut().set_tag(9001)?;
     /// incoming.as_fix_mut().set_aliases(["Ticker"])?;
     /// assert!(!registry.add_field(incoming)?, "folded into the stored field");
@@ -975,7 +975,7 @@ impl FixRegistry {
     /// use yggdryl::{DataType, FixCategory, FixRegistry};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    /// let mut symbol = DataType::utf8().nullable_field("Symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let mut registry = FixRegistry::from_fields([symbol.clone()])?;
     ///
@@ -983,7 +983,7 @@ impl FixRegistry {
     /// symbol.as_fix_mut().set_description("Ticker symbol")?;
     /// let mut price = DataType::Float64.nullable_field("Price");
     /// price.as_fix_mut().set_tag(44)?;
-    /// let instrument = DataType::from_fields([DataType::Utf8.nullable_field("Symbol")])?
+    /// let instrument = DataType::from_fields([DataType::utf8().nullable_field("Symbol")])?
     ///     .required_field("Instrument");
     /// assert_eq!(registry.add_fields([symbol, price, instrument])?, (2, 1));
     /// assert_eq!(registry.field_by_tag(55)?.description(), Some("Ticker symbol"));
@@ -1032,7 +1032,7 @@ impl FixRegistry {
     /// use yggdryl::{DataType, FixCategory, FixRegistry};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    /// let mut symbol = DataType::utf8().nullable_field("Symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let mut held = FixRegistry::from_fields([symbol.clone()])?;
     /// held.create_definition(
@@ -1042,11 +1042,11 @@ impl FixRegistry {
     ///
     /// // The other dictionary holds the same field under its own tag, with a
     /// // second name, and knows one more member of the component.
-    /// let mut ticker = DataType::Utf8.nullable_field("symbol");
+    /// let mut ticker = DataType::utf8().nullable_field("symbol");
     /// ticker.as_fix_mut().set_tag(9001)?;
     /// ticker.as_fix_mut().set_aliases(["Ticker"])?;
     /// let mut other = FixRegistry::from_fields([ticker])?;
-    /// let venue = DataType::Utf8.nullable_field("VenueSymbol");
+    /// let venue = DataType::utf8().nullable_field("VenueSymbol");
     /// other.create_definition(
     ///     FixCategory::Components,
     ///     DataType::from_fields([symbol, venue])?.required_field("Instrument"),
@@ -1770,7 +1770,7 @@ mod tests {
     use crate::DataType;
 
     fn tagged(name: &str, tag: i32) -> Field {
-        let mut field = DataType::Utf8.nullable_field(name);
+        let mut field = DataType::utf8().nullable_field(name);
         field.as_fix_mut().set_tag(tag).unwrap();
         field
     }

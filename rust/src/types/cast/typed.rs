@@ -104,35 +104,7 @@ typed_array!(
     crate::types::decimal::Decimal256Type,
     arrow_array::Decimal256Array
 );
-typed_array!(crate::types::bytes::BinaryType, arrow_array::BinaryArray);
-typed_array!(
-    crate::types::bytes::LargeBinaryType,
-    arrow_array::LargeBinaryArray
-);
-typed_array!(
-    crate::types::bytes::BinaryViewType,
-    arrow_array::BinaryViewArray
-);
-typed_array!(
-    crate::types::bytes::FixedSizeBinaryType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(crate::types::string::Utf8Type, arrow_array::StringArray);
 typed_array!(crate::types::version::VersionType, arrow_array::StringArray);
-typed_array!(
-    crate::types::string::LargeUtf8Type,
-    arrow_array::LargeStringArray
-);
-typed_array!(
-    crate::types::string::Utf8ViewType,
-    arrow_array::StringViewArray
-);
-// Variable ASCII stores as binary; a fixed width as fixed binary.
-typed_array!(crate::types::string::AsciiType, arrow_array::BinaryArray);
-typed_array!(
-    crate::types::string::FixedAsciiType,
-    arrow_array::FixedSizeBinaryArray
-);
 // A registered code stores as the fixed binary its standard fixes.
 typed_array!(
     crate::types::string::CountryType,
@@ -160,6 +132,14 @@ typed_array!(
 );
 typed_array!(
     crate::types::string::MsgDirectionType,
+    arrow_array::FixedSizeBinaryArray
+);
+typed_array!(
+    crate::types::string::StateType,
+    arrow_array::FixedSizeBinaryArray
+);
+typed_array!(
+    crate::types::string::TimeInForceType,
     arrow_array::FixedSizeBinaryArray
 );
 // A UUID stores as the fixed binary of its sixteen bytes.
@@ -199,8 +179,12 @@ typed_array!(
     arrow_array::BinaryArray
 );
 
-// A unit decides the physical width of a temporal value, and a key type decides
-// the physical width of a dictionary index, so these have no single array type.
+// A unit decides the physical width of a temporal value, a key type decides
+// the physical width of a dictionary index, a string's layout and charset
+// decide which text or byte array holds it and a byte layout which binary
+// array, so these have no single array type.
+opaque_array!(crate::types::string::StringType);
+opaque_array!(crate::types::bytes::BytesType);
 opaque_array!(crate::types::temporal::DateTime64Type);
 opaque_array!(crate::types::temporal::Time32Type);
 opaque_array!(crate::types::temporal::Time64Type);

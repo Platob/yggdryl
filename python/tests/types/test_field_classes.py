@@ -300,7 +300,7 @@ def test_nested_subclasses_keep_exact_fields_before_their_own_field_access() -> 
 
     nested = GenericParent.into_field()["child"]
     assert nested["narrow"] == root["narrow"]
-    assert nested["item"].dtype.id == "utf8"
+    assert nested["item"].dtype.id == "string"
 
 
 def test_plain_dataclass_into_field_attribute_does_not_override_annotations() -> None:
@@ -350,7 +350,7 @@ def test_generic_inheritance_reinfers_a_specialized_member() -> None:
     class Concrete(Swapped[int, str]):
         pass
 
-    assert Concrete.into_field()["left"].dtype.id == "utf8"
+    assert Concrete.into_field()["left"].dtype.id == "string"
     assert Concrete.into_field()["right"].dtype.id == "int64"
     assert json.loads('{"left":"x","right":"3"}', cls=Concrete) == Concrete(
         left="x",
@@ -443,7 +443,7 @@ def test_field_is_an_ordinary_member_name() -> None:
 
     root = Row.into_field()
     assert tuple(child.name for child in root.dtype) == ("field", "value")
-    assert root.dtype["field"].dtype.id == "utf8"
+    assert root.dtype["field"].dtype.id == "string"
     assert Row("custom", 1).field == "custom"
     assert field(Row) is root
 

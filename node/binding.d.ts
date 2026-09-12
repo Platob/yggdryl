@@ -1,5 +1,4 @@
 export {
-  AsciiEnum,
   BatchReader,
   Bound,
   BoundStatement,
@@ -16,6 +15,7 @@ export {
   ProtocolField,
   RecordOptions,
   Statement,
+  StringEnum,
   TextLine,
   TextOptions,
   Timezone,
@@ -30,11 +30,15 @@ export {
   Xxh128,
   Xxh32,
   Xxh64,
+  type BytesParameters,
+  type BytesParametersInput,
   type FieldBound,
   type FieldCount,
   type FieldSummaryView,
   type MetadataEntry,
   type PartitionEntry,
+  type StringParameters,
+  type StringParametersInput,
   type TimezoneAlias,
 } from './index'
 
@@ -42,6 +46,7 @@ import type {
   BatchReader,
   BoundStatement,
   ByteIterator,
+  BytesParametersInput,
   DataType,
   Digest,
   Field,
@@ -55,6 +60,7 @@ import type {
   ProtocolField,
   RecordOptions,
   Statement,
+  StringParametersInput,
   TextLine,
   TextOptions,
   Timezone,
@@ -216,21 +222,20 @@ export type DataTypeId =
   | 'fixed_size_binary'
   | 'large_binary'
   | 'binary_view'
-  | 'utf8'
-  | 'large_utf8'
-  | 'utf8_view'
   | 'string'
   | 'fixed_string'
   | 'string_view'
   | 'large_string'
   | 'large_string_view'
-  | 'ascii'
-  | 'fixed_ascii'
   | 'country'
   | 'currency'
   | 'mic'
   | 'cfi'
   | 'isin'
+  | 'side'
+  | 'state'
+  | 'timeinforce'
+  | 'msgdirection'
   | 'uuid'
   | 'version'
   | 'url'
@@ -266,7 +271,7 @@ export type DataTypeKind =
   | 'decimal'
   | 'temporal'
   | 'text'
-  | 'ascii'
+  | 'code'
   | 'bytes'
   | 'nested'
   | 'geospatial'
@@ -300,21 +305,20 @@ interface DataTypeKindById {
   fixed_size_binary: 'bytes'
   large_binary: 'bytes'
   binary_view: 'bytes'
-  utf8: 'text'
-  large_utf8: 'text'
-  utf8_view: 'text'
   string: 'text'
   fixed_string: 'text'
   string_view: 'text'
   large_string: 'text'
   large_string_view: 'text'
-  ascii: 'ascii'
-  fixed_ascii: 'ascii'
-  country: 'ascii'
-  currency: 'ascii'
-  mic: 'ascii'
-  cfi: 'ascii'
-  isin: 'ascii'
+  country: 'code'
+  currency: 'code'
+  mic: 'code'
+  cfi: 'code'
+  isin: 'code'
+  side: 'code'
+  state: 'code'
+  timeinforce: 'code'
+  msgdirection: 'code'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -339,6 +343,20 @@ interface DataTypeKindById {
 
 /** The family a variant identity belongs to, as the native core reports it. */
 export type DataTypeKindOf<K extends DataTypeId> = DataTypeKindById[K]
+
+/** The five layouts of the one string datatype, by identity. */
+export type StringDataTypeId =
+  | 'string'
+  | 'fixed_string'
+  | 'string_view'
+  | 'large_string'
+  | 'large_string_view'
+/** The four layouts of the one byte datatype, by identity. */
+export type BytesDataTypeId =
+  | 'binary'
+  | 'fixed_size_binary'
+  | 'large_binary'
+  | 'binary_view'
 
 /** Core compatibility targets supported by DataType and Field projection. */
 export type CompatibilityScheme =
@@ -425,14 +443,15 @@ declare module './index' {
     sortArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
   }
 
-  interface AsciiEnum {
+  interface StringEnum {
     /**
      * Build the generated enum: a frozen object mapping each member name to
-     * the code its ASCII value packs to under one width, tagged with the
-     * enum's own name. It is name to code only, because a numeric reverse map
-     * would collide with values that render as digits; `members` already
-     * answers the name to value direction. A code reaches 128 bits at the
-     * widest packable width, so every one of them is a `bigint`.
+     * the code its ASCII value packs to under one fixed US-ASCII width or
+     * code datatype, tagged with the enum's own name. It is name to code
+     * only, because a numeric reverse map would collide with values that
+     * render as digits; `members` already answers the name to value
+     * direction. A code reaches 128 bits at the widest packable width, so
+     * every one of them is a `bigint`.
      */
     intoEnum(width: DataType | string): Readonly<Record<string, bigint>>
   }
@@ -644,17 +663,23 @@ export type IntervalValue =
   | readonly [days: number, milliseconds: number]
   | readonly [months: number, days: number, nanoseconds: bigint]
 export type IntervalField = FieldOf<'interval', IntervalValue>
+/** The one byte datatype in whichever layout its parameters declare. */
+export type BytesField = FieldOf<BytesDataTypeId, Uint8Array>
 export type BinaryField = FieldOf<'binary', Uint8Array>
 export type FixedSizeBinaryField = FieldOf<'fixed_size_binary', Uint8Array>
 export type LargeBinaryField = FieldOf<'large_binary', Uint8Array>
 export type BinaryViewField = FieldOf<'binary_view', Uint8Array>
-export type Utf8Field = FieldOf<'utf8', string>
-export type LargeUtf8Field = FieldOf<'large_utf8', string>
-export type Utf8ViewField = FieldOf<'utf8_view', string>
-/** Variable-width ASCII text: any length, stored as the bytes it is. */
-export type AsciiField = FieldOf<'ascii', string>
-/** ASCII text padded with trailing NUL to a fixed width; read back trimmed. */
-export type FixedAsciiField = FieldOf<'fixed_ascii', string>
+/** The one string datatype in whichever layout and charset it declares. */
+export type StringField = FieldOf<StringDataTypeId, string>
+export type Utf8Field = FieldOf<'string', string>
+export type LargeUtf8Field = FieldOf<'large_string', string>
+export type Utf8ViewField = FieldOf<'string_view', string>
+/** UTF-8 padded with trailing NUL to a fixed width; read back trimmed. */
+export type FixedUtf8Field = FieldOf<'fixed_string', string>
+/** Variable-width US-ASCII text: any length, stored as the bytes it is. */
+export type AsciiField = FieldOf<'string', string>
+/** US-ASCII padded with trailing NUL to a fixed width; read back trimmed. */
+export type FixedAsciiField = FieldOf<'fixed_string', string>
 /** ISO 3166-1 alpha-2, the two-letter country code, in its own two bytes. */
 export type CountryField = FieldOf<'country', string>
 /** ISO 4217, the three-letter currency code, in its own three bytes. */
@@ -738,6 +763,11 @@ export interface FieldOptions {
   nullable?: boolean
   metadata?: FieldMetadataInput
 }
+
+/** A string field's options: the datatype's parameters beside the field's. */
+export type StringFieldOptions = FieldOptions & StringParametersInput
+/** A byte field's options: the datatype's parameters beside the field's. */
+export type BytesFieldOptions = FieldOptions & BytesParametersInput
 
 type TypedFieldValue<F extends Field> = F extends {
   readonly [yggdrylValueType]: infer V
@@ -843,6 +873,7 @@ export interface FieldsNamespace {
   duration64(name: string, options: FieldOptions): Duration64Field
   interval(name: string, unit?: string, options?: FieldOptions): IntervalField
   interval(name: string, options: FieldOptions): IntervalField
+  bytes(name: string, options?: BytesFieldOptions): BytesField
   binary(name: string, options?: FieldOptions): BinaryField
   fixedSizeBinary(
     name: string,
@@ -851,9 +882,11 @@ export interface FieldsNamespace {
   ): FixedSizeBinaryField
   largeBinary(name: string, options?: FieldOptions): LargeBinaryField
   binaryView(name: string, options?: FieldOptions): BinaryViewField
+  string(name: string, options?: StringFieldOptions): StringField
   utf8(name: string, options?: FieldOptions): Utf8Field
   largeUtf8(name: string, options?: FieldOptions): LargeUtf8Field
   utf8View(name: string, options?: FieldOptions): Utf8ViewField
+  fixedUtf8(name: string, width: number, options?: FieldOptions): FixedUtf8Field
   ascii(name: string, options?: FieldOptions): AsciiField
   fixedAscii(
     name: string,
@@ -1222,6 +1255,13 @@ export interface FieldsNamespace {
     name: N,
     options: O,
   ): NamedField<'interval', IntervalValue, N, O>
+  bytes<
+    const N extends string,
+    const O extends BytesFieldOptions | undefined = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<BytesDataTypeId, Uint8Array, N, O>
   binary<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
@@ -1248,28 +1288,43 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'binary_view', Uint8Array, N, O>
+  string<
+    const N extends string,
+    const O extends StringFieldOptions | undefined = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<StringDataTypeId, string, N, O>
   utf8<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'utf8', string, N, O>
+  ): NamedField<'string', string, N, O>
   largeUtf8<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'large_utf8', string, N, O>
+  ): NamedField<'large_string', string, N, O>
   utf8View<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'utf8_view', string, N, O>
+  ): NamedField<'string_view', string, N, O>
+  fixedUtf8<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    width: number,
+    options?: O,
+  ): NamedField<'fixed_string', string, N, O>
   ascii<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'ascii', string, N, O>
+  ): NamedField<'string', string, N, O>
   fixedAscii<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -1277,7 +1332,7 @@ export interface FieldsNamespace {
     name: N,
     width: number,
     options?: O,
-  ): NamedField<'fixed_ascii', string, N, O>
+  ): NamedField<'fixed_string', string, N, O>
   list<
     const N extends string,
     F extends Field,

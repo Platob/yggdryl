@@ -1,99 +1,37 @@
-//! ASCII values and typed scalar aliases.
+//! The registered codes' values: an identity, held in the width it fixes.
+//!
+//! A code is at most twelve US-ASCII bytes, so every value here lives inside
+//! the crate's compact string and never touches the heap: the text is
+//! validated once when it is built and never changed after. Equality, order
+//! and hashing read the text; the family enum keeps the identity in front of
+//! it, so a currency is never a country however alike their bytes look.
 
 use std::fmt;
-use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
-use super::codes::ISIN_WIDTH;
+use super::codes::{
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH,
+    STATE_WIDTH, TIMEINFORCE_WIDTH,
+};
 use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
 
-/// Borrowing access shared by every ASCII representation.
-pub trait AsciiValue: crate::ScalarValue {
-    /// The fixed byte width, or `None` when the datatype carries it.
-    const WIDTH: Option<i32>;
+/// Borrowing access shared by every code representation.
+pub trait CodeValue: crate::ScalarValue {
+    /// The fixed storage width, in bytes.
+    const WIDTH: usize;
 
-    /// Borrow the validated ASCII text.
+    /// Borrow the validated code.
     fn as_str(&self) -> &str;
-    /// Borrow the shared storage behind the validated text.
+    /// Borrow the shared storage behind the validated code.
     ///
     /// The stored text is already trimmed and checked, so a rewrite that
     /// keeps it clones this handle rather than re-validating and copying.
     fn storage(&self) -> &SmolStr;
 }
 
-/// Variable-width validated ASCII text.
-#[repr(transparent)]
-#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(transparent)]
-pub struct Ascii(SmolStr);
-
-impl Ascii {
-    /// Validate and construct variable-width ASCII text.
-    pub fn new(value: impl AsRef<str>) -> Result<Self> {
-        let value = types::ascii_free_text(value.as_ref().as_bytes())?;
-        Ok(Self(SmolStr::new(value)))
-    }
-
-    /// Borrow the validated text.
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-
-    /// Borrow the shared storage without copying the text.
-    pub fn storage(&self) -> &SmolStr {
-        &self.0
-    }
-}
-
-impl fmt::Display for Ascii {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-/// ASCII text carrying its fixed padded storage width.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-pub struct FixedAscii {
-    value: SmolStr,
-    width: i32,
-}
-
-impl FixedAscii {
-    /// Validate text against one positive fixed width.
-    pub fn new(value: impl AsRef<str>, width: i32) -> Result<Self> {
-        let _ = crate::DataType::ascii(width)?;
-        let value = types::ascii_text(width, value.as_ref().as_bytes())?;
-        Ok(Self {
-            value: SmolStr::new(value),
-            width,
-        })
-    }
-
-    /// Borrow the validated text.
-    pub fn as_str(&self) -> &str {
-        self.value.as_str()
-    }
-
-    /// Borrow the shared storage without copying the text.
-    pub fn storage(&self) -> &SmolStr {
-        &self.value
-    }
-
-    /// Return the padded storage width.
-    pub const fn width(&self) -> i32 {
-        self.width
-    }
-}
-
-impl fmt::Display for FixedAscii {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-macro_rules! ascii_code_leaf {
+macro_rules! code_leaf {
     ($name:ident, $width:expr) => {
         #[doc = concat!("One validated `", stringify!($name), "` code.")]
         #[repr(transparent)]
@@ -104,19 +42,26 @@ macro_rules! ascii_code_leaf {
         pub struct $name(SmolStr);
 
         impl $name {
-            /// Validate and construct this registered code width.
+            /// Validate and construct this registered code.
+            ///
+            /// # Errors
+            ///
+            /// Returns an error naming the width when the text is not ASCII
+            /// text that fits it.
             pub fn new(value: impl AsRef<str>) -> Result<Self> {
                 let value = types::ascii_text($width, value.as_ref().as_bytes())?;
                 Ok(Self(SmolStr::new(value)))
             }
 
             /// Borrow the validated code.
+            #[must_use]
             pub fn as_str(&self) -> &str {
                 self.0.as_str()
             }
 
             /// Borrow the shared storage without copying the code.
-            pub fn storage(&self) -> &SmolStr {
+            #[must_use]
+            pub const fn storage(&self) -> &SmolStr {
                 &self.0
             }
         }
@@ -129,10 +74,10 @@ macro_rules! ascii_code_leaf {
     };
 }
 
-ascii_code_leaf!(Country, 2);
-ascii_code_leaf!(Currency, 3);
-ascii_code_leaf!(Mic, 4);
-ascii_code_leaf!(Cfi, 6);
+code_leaf!(Country, COUNTRY_WIDTH);
+code_leaf!(Currency, CURRENCY_WIDTH);
+code_leaf!(Mic, MIC_WIDTH);
+code_leaf!(Cfi, CFI_WIDTH);
 
 /// One validated ISO 6166 international securities identification number.
 ///
@@ -173,7 +118,7 @@ impl Isin {
     /// Returns an error when the text is not twelve ASCII bytes of the
     /// number's shape, or when its check digit does not close it.
     pub fn new(value: impl AsRef<str>) -> Result<Self> {
-        let value = types::ascii_text(ISIN_WIDTH as i32, value.as_ref().as_bytes())?;
+        let value = types::ascii_text(ISIN_WIDTH, value.as_ref().as_bytes())?;
         let folded = value.to_ascii_uppercase();
         if let Some(reason) = Self::refusal(&folded) {
             return Err(crate::Error::InvalidDataType {
@@ -185,12 +130,14 @@ impl Isin {
     }
 
     /// Borrow the validated number.
+    #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 
     /// Borrow the shared storage without copying the number.
-    pub fn storage(&self) -> &SmolStr {
+    #[must_use]
+    pub const fn storage(&self) -> &SmolStr {
         &self.0
     }
 
@@ -198,19 +145,19 @@ impl Isin {
     /// the international prefixes such as `XS`.
     #[must_use]
     pub fn prefix(&self) -> &str {
-        &self.0[..2]
+        &self.as_str()[..2]
     }
 
     /// The nine-character national securities identifying number.
     #[must_use]
     pub fn nsin(&self) -> &str {
-        &self.0[2..11]
+        &self.as_str()[2..11]
     }
 
     /// The check digit that closes the number.
     #[must_use]
     pub fn check_digit(&self) -> u8 {
-        self.0.as_bytes()[11] - b'0'
+        self.as_str().as_bytes()[11] - b'0'
     }
 
     /// Whether `text` spells a number this type would accept, in either case.
@@ -308,10 +255,11 @@ impl fmt::Display for Isin {
         formatter.write_str(self.as_str())
     }
 }
-ascii_code_leaf!(Side, 4);
-ascii_code_leaf!(MsgDirection, 4);
-ascii_code_leaf!(State, 10);
-ascii_code_leaf!(TimeInForce, 8);
+
+code_leaf!(Side, SIDE_WIDTH);
+code_leaf!(MsgDirection, DIRECTION_WIDTH);
+code_leaf!(State, STATE_WIDTH);
+code_leaf!(TimeInForce, TIMEINFORCE_WIDTH);
 
 impl State {
     /// The rank a stored state opens with, first to terminal.
@@ -413,7 +361,7 @@ impl State {
     pub fn from_spelling(spelling: &str) -> Option<Self> {
         // A stored value names itself, which is what makes reading one back
         // free and the whole mapping idempotent.
-        if crate::types::AsciiEnum::STATES.contains(&spelling) {
+        if crate::types::StringEnum::STATES.contains(&spelling) {
             return Self::new(spelling).ok();
         }
         if let Some(held) = STATE_CODES
@@ -434,14 +382,14 @@ impl State {
 
 /// One spelling folded the way every name in this crate folds.
 fn folded_spelling(spelling: &str) -> SmolStr {
-    let mut held = String::with_capacity(spelling.len());
+    let mut held = smol_str::SmolStrBuilder::new();
     for byte in spelling.bytes() {
         if matches!(byte, b'_' | b'-' | b' ') {
             continue;
         }
         held.push(char::from(byte.to_ascii_lowercase()));
     }
-    SmolStr::new(held)
+    held.finish()
 }
 
 /// FIX's `OrdStatus(39)` and `ExecType(150)` wire codes, unfolded.
@@ -856,17 +804,13 @@ fn trim_start(line: &[u8]) -> &[u8] {
     &line[start..]
 }
 
-/// One exact ASCII storage or registered-code representation.
+/// One registered code, whichever registry it is drawn from.
 ///
-/// `AsciiFamily` carries the suffix because Rust cannot place the family enum
-/// and its required `Ascii` leaf in the same type namespace.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+/// The identity leads: a currency and a country whose bytes agree are two
+/// values, and they order by which code they are before they order by text.
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[non_exhaustive]
-pub enum AsciiFamily {
-    /// Variable-width ASCII.
-    Ascii(Ascii),
-    /// Fixed-width ASCII.
-    FixedAscii(FixedAscii),
+pub enum Code {
     /// ISO 3166-1 alpha-2 country code.
     Country(Country),
     /// ISO 4217 currency code.
@@ -887,32 +831,22 @@ pub enum AsciiFamily {
     TimeInForce(TimeInForce),
 }
 
-impl AsciiFamily {
-    /// Borrow the validated text independently of its storage identity.
+const _: () = assert!(std::mem::size_of::<Code>() == 32);
+
+impl Code {
+    /// Borrow the validated text independently of the code's identity.
+    #[must_use]
     pub fn as_str(&self) -> &str {
-        match self {
-            Self::Ascii(value) => value.as_str(),
-            Self::FixedAscii(value) => value.as_str(),
-            Self::Country(value) => value.as_str(),
-            Self::Currency(value) => value.as_str(),
-            Self::Mic(value) => value.as_str(),
-            Self::Cfi(value) => value.as_str(),
-            Self::Isin(value) => value.as_str(),
-            Self::Side(value) => value.as_str(),
-            Self::MsgDirection(value) => value.as_str(),
-            Self::State(value) => value.as_str(),
-            Self::TimeInForce(value) => value.as_str(),
-        }
+        self.storage().as_str()
     }
 
-    /// Borrow the shared storage independently of the storage identity.
+    /// Borrow the shared storage independently of the code's identity.
     ///
-    /// Every member holds the same trimmed, validated text, so a rewrite
-    /// between two of them clones this handle instead of the characters.
-    pub fn storage(&self) -> &SmolStr {
+    /// Every member holds the same trimmed, validated text, so a string
+    /// adopting a code's text clones this handle instead of the characters.
+    #[must_use]
+    pub const fn storage(&self) -> &SmolStr {
         match self {
-            Self::Ascii(value) => value.storage(),
-            Self::FixedAscii(value) => value.storage(),
             Self::Country(value) => value.storage(),
             Self::Currency(value) => value.storage(),
             Self::Mic(value) => value.storage(),
@@ -924,156 +858,27 @@ impl AsciiFamily {
             Self::TimeInForce(value) => value.storage(),
         }
     }
-}
 
-impl fmt::Display for AsciiFamily {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl PartialEq for AsciiFamily {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_str() == other.as_str()
-    }
-}
-
-impl Eq for AsciiFamily {}
-
-impl PartialOrd for AsciiFamily {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for AsciiFamily {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.as_str().cmp(other.as_str())
-    }
-}
-
-impl Hash for AsciiFamily {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_str().hash(state);
-    }
-}
-
-macro_rules! ascii_value {
-    ($leaf:ident, $variant:ident, $id:ident, $dtype:ident, $width:expr) => {
-        impl ScalarValue for $leaf {
-            type Family = AsciiFamily;
-
-            const ID: DataTypeId = DataTypeId::$id;
-            const KIND: DataTypeKind = DataTypeKind::Ascii;
-
-            fn dtype(&self) -> Result<DataType> {
-                Ok(DataType::$dtype)
-            }
-
-            fn into_family(self) -> Self::Family {
-                AsciiFamily::$variant(self)
-            }
-
-            fn from_family(family: &Self::Family) -> Option<&Self> {
-                match family {
-                    AsciiFamily::$variant(value) => Some(value),
-                    _ => None,
-                }
-            }
-
-            fn into_scalar(self) -> Scalar {
-                Scalar::Ascii(AsciiFamily::$variant(self))
-            }
-
-            fn from_scalar(value: &Scalar) -> Option<&Self> {
-                match value {
-                    Scalar::Ascii(AsciiFamily::$variant(value)) => Some(value),
-                    _ => None,
-                }
-            }
-        }
-
-        impl AsciiValue for $leaf {
-            const WIDTH: Option<i32> = $width;
-
-            fn as_str(&self) -> &str {
-                <$leaf>::as_str(self)
-            }
-
-            fn storage(&self) -> &SmolStr {
-                <$leaf>::storage(self)
-            }
-        }
-    };
-}
-
-ascii_value!(Ascii, Ascii, Ascii, Ascii, None);
-ascii_value!(Country, Country, Country, Country, Some(2));
-ascii_value!(Currency, Currency, Currency, Currency, Some(3));
-ascii_value!(Mic, Mic, Mic, Mic, Some(4));
-ascii_value!(Cfi, Cfi, Cfi, Cfi, Some(6));
-ascii_value!(Isin, Isin, Isin, Isin, Some(12));
-ascii_value!(Side, Side, Side, Side, Some(4));
-ascii_value!(
-    MsgDirection,
-    MsgDirection,
-    MsgDirection,
-    MsgDirection,
-    Some(4)
-);
-
-impl ScalarValue for FixedAscii {
-    type Family = AsciiFamily;
-
-    const ID: DataTypeId = DataTypeId::FixedAscii;
-    const KIND: DataTypeKind = DataTypeKind::Ascii;
-
-    fn dtype(&self) -> Result<DataType> {
-        Ok(DataType::FixedAscii(self.width()))
-    }
-
-    fn into_family(self) -> Self::Family {
-        AsciiFamily::FixedAscii(self)
-    }
-
-    fn from_family(family: &Self::Family) -> Option<&Self> {
-        match family {
-            AsciiFamily::FixedAscii(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Ascii(AsciiFamily::FixedAscii(self))
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Ascii(AsciiFamily::FixedAscii(value)) => Some(value),
-            _ => None,
-        }
-    }
-}
-
-impl AsciiValue for FixedAscii {
-    const WIDTH: Option<i32> = None;
-
-    fn as_str(&self) -> &str {
-        Self::as_str(self)
-    }
-
-    fn storage(&self) -> &SmolStr {
-        Self::storage(self)
-    }
-}
-
-impl ScalarFamily for AsciiFamily {
-    const KIND: DataTypeKind = DataTypeKind::Ascii;
-
-    fn id(&self) -> DataTypeId {
+    /// The fixed storage width of this code, in bytes.
+    #[must_use]
+    pub const fn width(&self) -> usize {
         match self {
-            Self::Ascii(_) => DataTypeId::Ascii,
-            Self::FixedAscii(_) => DataTypeId::FixedAscii,
+            Self::Country(_) => COUNTRY_WIDTH,
+            Self::Currency(_) => CURRENCY_WIDTH,
+            Self::Mic(_) => MIC_WIDTH,
+            Self::Cfi(_) => CFI_WIDTH,
+            Self::Isin(_) => ISIN_WIDTH,
+            Self::Side(_) => SIDE_WIDTH,
+            Self::MsgDirection(_) => DIRECTION_WIDTH,
+            Self::State(_) => STATE_WIDTH,
+            Self::TimeInForce(_) => TIMEINFORCE_WIDTH,
+        }
+    }
+
+    /// The identifier this code carries.
+    #[must_use]
+    pub const fn identifier(&self) -> DataTypeId {
+        match self {
             Self::Country(_) => DataTypeId::Country,
             Self::Currency(_) => DataTypeId::Currency,
             Self::Mic(_) => DataTypeId::Mic,
@@ -1086,30 +891,119 @@ impl ScalarFamily for AsciiFamily {
         }
     }
 
-    fn dtype(&self) -> Result<DataType> {
+    /// The datatype this code is a value of.
+    #[must_use]
+    pub const fn datatype(&self) -> DataType {
         match self {
-            Self::Ascii(_) => Ok(DataType::Ascii),
-            Self::FixedAscii(value) => ScalarValue::dtype(value),
-            Self::Country(_) => Ok(DataType::Country),
-            Self::Currency(_) => Ok(DataType::Currency),
-            Self::Mic(_) => Ok(DataType::Mic),
-            Self::Cfi(_) => Ok(DataType::Cfi),
-            Self::Isin(_) => Ok(DataType::Isin),
-            Self::Side(_) => Ok(DataType::Side),
-            Self::MsgDirection(_) => Ok(DataType::MsgDirection),
-            Self::State(_) => Ok(DataType::State),
-            Self::TimeInForce(_) => Ok(DataType::TimeInForce),
+            Self::Country(_) => DataType::Country,
+            Self::Currency(_) => DataType::Currency,
+            Self::Mic(_) => DataType::Mic,
+            Self::Cfi(_) => DataType::Cfi,
+            Self::Isin(_) => DataType::Isin,
+            Self::Side(_) => DataType::Side,
+            Self::MsgDirection(_) => DataType::MsgDirection,
+            Self::State(_) => DataType::State,
+            Self::TimeInForce(_) => DataType::TimeInForce,
         }
+    }
+}
+
+impl fmt::Display for Code {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+macro_rules! code_value {
+    ($leaf:ident, $id:ident, $width:expr) => {
+        impl ScalarValue for $leaf {
+            type Family = Code;
+
+            const ID: DataTypeId = DataTypeId::$id;
+            const KIND: DataTypeKind = DataTypeKind::Code;
+
+            fn dtype(&self) -> Result<DataType> {
+                Ok(DataType::$id)
+            }
+
+            fn into_family(self) -> Self::Family {
+                Code::$leaf(self)
+            }
+
+            fn from_family(family: &Self::Family) -> Option<&Self> {
+                match family {
+                    Code::$leaf(value) => Some(value),
+                    _ => None,
+                }
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::Code(Code::$leaf(self))
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::Code(Code::$leaf(value)) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl CodeValue for $leaf {
+            const WIDTH: usize = $width;
+
+            fn as_str(&self) -> &str {
+                <$leaf>::as_str(self)
+            }
+
+            fn storage(&self) -> &SmolStr {
+                <$leaf>::storage(self)
+            }
+        }
+
+        impl From<$leaf> for Scalar {
+            fn from(value: $leaf) -> Self {
+                Self::Code(Code::$leaf(value))
+            }
+        }
+    };
+}
+
+code_value!(Country, Country, COUNTRY_WIDTH);
+code_value!(Currency, Currency, CURRENCY_WIDTH);
+code_value!(Mic, Mic, MIC_WIDTH);
+code_value!(Cfi, Cfi, CFI_WIDTH);
+code_value!(Isin, Isin, ISIN_WIDTH);
+code_value!(Side, Side, SIDE_WIDTH);
+code_value!(MsgDirection, MsgDirection, DIRECTION_WIDTH);
+code_value!(State, State, STATE_WIDTH);
+code_value!(TimeInForce, TimeInForce, TIMEINFORCE_WIDTH);
+
+impl ScalarFamily for Code {
+    const KIND: DataTypeKind = DataTypeKind::Code;
+
+    fn id(&self) -> DataTypeId {
+        self.identifier()
+    }
+
+    fn dtype(&self) -> Result<DataType> {
+        Ok(self.datatype())
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::Ascii(self)
+        Scalar::Code(self)
     }
 
     fn from_scalar(value: &Scalar) -> Option<&Self> {
         match value {
-            Scalar::Ascii(value) => Some(value),
+            Scalar::Code(value) => Some(value),
             _ => None,
         }
+    }
+}
+
+impl From<Code> for Scalar {
+    fn from(value: Code) -> Self {
+        Self::Code(value)
     }
 }

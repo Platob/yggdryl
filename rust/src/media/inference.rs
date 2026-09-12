@@ -13,11 +13,11 @@
 //! a scale nobody asked for, and refusing lets the caller say which it wanted.
 //! A null child agrees with anything and makes the child field nullable.
 //!
-//! Physical identity is part of an exact scalar: `LargeUtf8`, `BinaryView`,
+//! Physical identity is part of an exact scalar: `large_utf8`, `binary_view`,
 //! `Date64`, and every other leaf name themselves rather than collapsing to a
 //! related layout. Only a newly inferred nested collection needs a layout
 //! choice: a [`crate::types::Nested::Sequence`] names the ordinary `List`
-//! layout because the values carry no offset width, and an enum names `Utf8`
+//! layout because the values carry no offset width, and an enum names `utf8`
 //! because its generic identity is not an Arrow datatype.
 //!
 //! ```
@@ -35,7 +35,7 @@
 //! );
 //! assert_eq!(
 //!     Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]).dtype()?,
-//!     DataType::list(yggdryl::Field::new("item", DataType::Utf8, true)),
+//!     DataType::list(yggdryl::Field::new("item", DataType::utf8(), true)),
 //! );
 //! # Ok(())
 //! # }
@@ -43,7 +43,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::{AsciiFamily, Bytes, Decimal, Geospatial, Integer, Nested, Temporal};
+use crate::types::{Decimal, Geospatial, Integer, Nested, Temporal};
 use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
@@ -191,30 +191,15 @@ impl Scalar {
             }
             // A string value already declares its layout, its charset and
             // its width, so the inferred datatype is what the value says it
-            // is rather than a guess over its characters.
-            Self::Text(text) => crate::ScalarFamily::dtype(text),
-            Self::Ascii(AsciiFamily::Ascii(_)) => Ok(DataType::Ascii),
-            Self::Ascii(AsciiFamily::FixedAscii(value)) => DataType::ascii(value.width()),
-            Self::Ascii(AsciiFamily::Country(_)) => Ok(DataType::Country),
-            Self::Ascii(AsciiFamily::Currency(_)) => Ok(DataType::Currency),
-            Self::Ascii(AsciiFamily::Mic(_)) => Ok(DataType::Mic),
-            Self::Ascii(AsciiFamily::Cfi(_)) => Ok(DataType::Cfi),
-            Self::Ascii(AsciiFamily::Isin(_)) => Ok(DataType::Isin),
-            Self::Ascii(AsciiFamily::Side(_)) => Ok(DataType::Side),
-            Self::Ascii(AsciiFamily::MsgDirection(_)) => Ok(DataType::MsgDirection),
-            Self::Ascii(AsciiFamily::State(_)) => Ok(DataType::State),
-            Self::Ascii(AsciiFamily::TimeInForce(_)) => Ok(DataType::TimeInForce),
+            // is rather than a guess over its characters; a code is its own
+            // identity.
+            Self::String(text) => text.dtype(),
+            Self::Code(code) => Ok(code.datatype()),
             Self::Version(_) => Ok(DataType::Version),
             Self::Url(_) => Ok(DataType::Url),
             Self::Uuid(_) => Ok(DataType::Uuid),
-            Self::Enum(_) => Ok(DataType::Utf8),
-            Self::Bytes(Bytes::Binary(_)) => Ok(DataType::Binary),
-            Self::Bytes(Bytes::FixedSizeBinary(value)) => DataType::fixed_size_binary(
-                i32::try_from(value.as_bytes().len())
-                    .map_err(|_| unnameable("binary width exceeds i32".into()))?,
-            ),
-            Self::Bytes(Bytes::LargeBinary(_)) => Ok(DataType::LargeBinary),
-            Self::Bytes(Bytes::BinaryView(_)) => Ok(DataType::BinaryView),
+            Self::Enum(_) => Ok(DataType::utf8()),
+            Self::Bytes(bytes) => bytes.dtype(),
             Self::Geospatial(Geospatial::Geometry(_)) => DataType::geometry(None),
             Self::Geospatial(Geospatial::Geography(_)) => DataType::geography(None, None),
             Self::Temporal(Temporal::Date32(_)) => Ok(DataType::Date32),

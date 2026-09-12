@@ -9,6 +9,7 @@ values cross the JavaScript boundary.
 | --- | --- |
 | `DataType` | [datatype](../types/datatype.md) |
 | `Field`, `fields` | [field](../types/field.md) |
+| `StringEnum`, `StringParameters`, `BytesParameters` | [strings & bytes](../types/text.md), [codes](../types/codes.md), and this page |
 | `Version` | [numeric versions](../types/text.md#versions) and this page |
 | `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression/index.md) |
 | `Uri`, `Url`, `Urn` | [uri](../uri/index.md) |
@@ -215,8 +216,58 @@ assert.ok(
 ```
 
 `kind`, `count`, `unit`, `zone`, `unscaled`, and `scale` expose the payload.
-`asBytes`/`asUtf8` borrow content, and `asJsonBytes`/`asJsonUtf8` use the core
-natural JSON writer.
+`asBytes`/`asStr` borrow content - `asStr` answers a string, a code, or an
+enum member - and `asJsonBytes`/`asJsonUtf8` use the core natural JSON writer.
+
+## Strings and bytes at the boundary
+
+The one string family and the one byte family of [strings & bytes](../types/text.md) cross as plain objects: `DataType.string({ layout, charset, bound | fixed | max })` and `DataType.bytes({ layout, bound | fixed | max })` read a declaration, the layout statics (`utf8`, `largeUtf8`, `utf8View`, `ascii`, `fixedUtf8(width)`, `fixedAscii(width)`, `binary`, `largeBinary`, `binaryView`, `fixedSizeBinary(width)`) pick one, and `stringParameters` / `bytesParameters` answer it back with `bound` beside its reading - `fixed` on the fixed layout, `max` everywhere else - and no key at all when the layout gives no such reading. `fields.string(name, options)` and `fields.bytes(name, options)` split one options object: the parameter keys build the datatype, every other key is a field option. `Field.stringEnum` / `setStringEnum` carry a `StringEnum`, accepted on a fixed US-ASCII string of at most sixteen bytes or a code and refused by name elsewhere.
+
+```javascript
+const assert = require('node:assert/strict')
+const { DataType, Field, Scalar, StringEnum, fields } = require('yggdryl')
+
+// A declaration is one datatype; the statics are the declaration with the
+// layout and charset picked once.
+const declared = DataType.string({ layout: 'string', charset: 'windows-1252', max: 8 })
+assert.equal(declared.toString(), 'string(windows-1252,8)')
+assert.deepEqual(declared.stringParameters, {
+  layout: 'string',
+  charset: 'windows-1252',
+  bound: 8,
+  max: 8,
+})
+assert.ok(DataType.utf8().equals(DataType.string({})))
+assert.deepEqual(DataType.utf8().stringParameters, { layout: 'string', charset: 'utf-8' })
+assert.equal(DataType.fixedAscii(4).stringParameters.fixed, 4)
+assert.equal(DataType.fixedAscii(4).fixedByteWidth, 4)
+assert.equal(DataType.from('ascii(4)').stringParameters.max, 4)
+assert.equal(DataType.bytes({ max: 16 }).bytesParameters.max, 16)
+assert.equal(DataType.fixedSizeBinary(16).bytesParameters.fixed, 16)
+
+// The field factories take the bound by its reading beside the field options.
+const name = fields.string('name', { charset: 'us-ascii', max: 8, nullable: false })
+assert.equal(name.dtype.toString(), 'ascii(8)')
+assert.equal(name.nullable, false)
+assert.equal(fields.fixedUtf8('code', 4).dtype.toString(), 'fixed_utf8(4)')
+assert.equal(fields.bytes('blob', { max: 16 }).dtype.toString(), 'binary(16)')
+assert.throws(() => fields.string('both', { fixed: 4, max: 8 }), /one of bound, fixed and max/)
+
+// A value never carries a maximum; a code is its own kind.
+assert.equal(Scalar.fromJs('AAPL').kind, 'string')
+assert.equal(Scalar.fromJs('AAPL').asStr(), 'AAPL')
+assert.equal(new DataType('currency').kind, 'code')
+
+// A vocabulary is metadata on a fixed US-ASCII string or a code.
+const side = new Field('side', DataType.fixedAscii(4), false)
+side.setStringEnum(new StringEnum('Side', { BUY: 'B', SELL: 'S' }))
+assert.equal(side.stringEnum.get('BUY'), 'B')
+assert.equal(side.stringEnum.intoMembers(side.dtype).BUY, 0x42000000n)
+assert.throws(
+  () => new Field('side', DataType.fixedUtf8(4)).setStringEnum(new StringEnum('Side', { BUY: 'B' })),
+  /fixed US-ASCII string of at most 16 bytes/,
+)
+```
 
 ## Native value protocols and checked arithmetic
 
@@ -266,7 +317,7 @@ assert.deepEqual(json.loads(json.dumps(value)), Scalar.fromJs(value).asJs())
 
 const tree = Scalar.fromJs({ legs: [{ id: 1 }] })
 assert.equal(tree.get('legs').at(0).get('id').asJs(), 1)
-assert.equal(tree.set('venue', 'XNAS').get('venue').asUtf8(), 'XNAS')
+assert.equal(tree.set('venue', 'XNAS').get('venue').asStr(), 'XNAS')
 ```
 
 `length`, iteration, `at`, `get`, `has`, and `path` return exact native

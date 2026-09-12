@@ -75,7 +75,7 @@ fn an_overwrite_keeps_the_schema_the_resource_already_stores() {
     // The incoming rows declare `id` as text and drop `symbol` entirely. An
     // overwrite replaces rows, so the stored columns survive it and the
     // text is cast back into the stored Int64.
-    let loose = DataType::from_fields([DataType::Utf8.required_field("id")])
+    let loose = DataType::from_fields([DataType::utf8().required_field("id")])
         .unwrap()
         .required_field("row");
     let incoming = RecordBatch::try_new(
@@ -672,7 +672,7 @@ fn resumed_session_fuses_on_schema_source_and_publication_failures() {
             ),
         )
         .unwrap();
-    let other = DataType::from_fields([DataType::Utf8.required_field("id")])
+    let other = DataType::from_fields([DataType::utf8().required_field("id")])
         .unwrap()
         .required_field("row");
     let other_batch = RecordBatch::try_new(
@@ -757,7 +757,7 @@ fn resumed_leaf_keeps_the_target_captured_before_an_external_replacement() {
         .unwrap();
 
     handle.clear().unwrap();
-    let loose = DataType::from_fields([DataType::Utf8.required_field("id")])
+    let loose = DataType::from_fields([DataType::utf8().required_field("id")])
         .unwrap()
         .required_field("other");
     let loose_batch = RecordBatch::try_new(

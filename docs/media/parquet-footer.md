@@ -35,7 +35,7 @@ Read the footer of a file written with two row groups and one key/value entry.
 
     let field = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?.required_field("row");
     let schema = field.into_arrow_schema()?;
     let batch = RecordBatch::try_new(
@@ -140,7 +140,7 @@ Projecting the root to Arrow before the write carries the ids into the file; rea
 
     let field = DataType::from_fields([
         DataType::Int64.required_field("id").with_parquet_field_id(1),
-        DataType::Utf8.nullable_field("symbol").with_parquet_field_id(2),
+        DataType::utf8().nullable_field("symbol").with_parquet_field_id(2),
     ])?
     .required_field("row");
 
@@ -523,7 +523,7 @@ assert!(!media.opened());
 - write with no batches -> a real file; the footer holds the schema and `num_rows == 0`.
 - geospatial column -> the writer records no min/max; a foreign writer's min/max is ignored on read.
 - geometry / geography declaration -> the CRS, and a geography's edge algorithm, ride into the file's logical type.
-- foreign `GEOMETRY` / `GEOGRAPHY` / `VARIANT` file -> plain `Binary` / `Struct` Arrow types without extension metadata; files written here round-trip through the embedded Arrow schema.
+- foreign `GEOMETRY` / `GEOGRAPHY` / `VARIANT` file -> plain Arrow `Binary` / `Struct` types without extension metadata; files written here round-trip through the embedded Arrow schema.
 - variant value across an Arrow array boundary -> unsupported until the Iceberg v3 layer lands.
 - `geoarrow.wkb` spelling -> revisitable, GeoArrow is not finalized.
 - Python and JavaScript -> an opened `IOBase` retains the same wrapper, so the footer cache applies there too.

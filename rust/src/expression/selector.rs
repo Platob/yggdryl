@@ -189,7 +189,7 @@ impl Selector {
         match self {
             Self::Depth | Self::Size => DataType::Int64,
             Self::IsContainer | Self::IsEmpty => DataType::Boolean,
-            _ => DataType::Utf8,
+            _ => DataType::utf8(),
         }
     }
 

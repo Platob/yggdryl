@@ -4,13 +4,13 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use super::Field;
-use crate::{AsciiEnum, DataType, Error};
+use crate::{DataType, Error, StringEnum};
 
 #[test]
-fn a_field_declares_the_enum_its_ascii_values_name() {
-    let side = AsciiEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")]).unwrap();
-    let field = Field::new("side", DataType::FixedAscii(4), false)
-        .try_with_ascii_enum(&side)
+fn a_field_declares_the_enum_its_string_values_name() {
+    let side = StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")]).unwrap();
+    let field = Field::new("side", DataType::fixed_ascii(4).unwrap(), false)
+        .try_with_string_enum(&side)
         .unwrap();
 
     // One reserved document, readable through the `field:` protocol view
@@ -23,7 +23,7 @@ fn a_field_declares_the_enum_its_ascii_values_name() {
         field.as_field_properties().get("enum"),
         field.get_metadata("field:enum")
     );
-    assert_eq!(field.ascii_enum().unwrap(), Some(side.clone()));
+    assert_eq!(field.string_enum().unwrap(), Some(side.clone()));
     assert_eq!(
         field.as_metadata().as_field_properties().get("enum"),
         field.get_metadata("field:enum")
@@ -37,7 +37,7 @@ fn a_field_declares_the_enum_its_ascii_values_name() {
 
     // Metadata canonicalizes the document, so one enum is one stored text
     // whichever spelling reached the field.
-    let restated = Field::new("side", DataType::FixedAscii(4), false)
+    let restated = Field::new("side", DataType::fixed_ascii(4).unwrap(), false)
         .try_with_metadata(
             "field:enum",
             r#"{"name":"Side","members":{"SELL":"S","BUY":"B"}}"#,
@@ -50,35 +50,50 @@ fn a_field_declares_the_enum_its_ascii_values_name() {
     assert_eq!(restated.stable_hash(), field.stable_hash());
 
     // A declaration the width could not store is refused whole.
-    let wide = AsciiEnum::from_members("Venue", [("LONG", "EUREX")]).unwrap();
-    let mut narrow = Field::new("venue", DataType::FixedAscii(4), false);
-    let refused = narrow.set_ascii_enum(&wide).unwrap_err().to_string();
+    let wide = StringEnum::from_members("Venue", [("LONG", "EUREX")]).unwrap();
+    let mut narrow = Field::new("venue", DataType::fixed_ascii(4).unwrap(), false);
+    let refused = narrow.set_string_enum(&wide).unwrap_err().to_string();
     assert!(refused.contains("at most 4 bytes"), "{refused}");
-    assert_eq!(narrow.ascii_enum().unwrap(), None);
-    assert!(
-        Field::new("venue", DataType::Utf8, false)
-            .set_ascii_enum(&wide)
-            .is_err()
-    );
+    assert_eq!(narrow.string_enum().unwrap(), None);
+    // Only a fixed US-ASCII string of at most sixteen bytes, or a code,
+    // packs a member; every other string is refused by name.
+    for dtype in [
+        DataType::utf8(),
+        DataType::ascii(),
+        DataType::fixed_utf8(8).unwrap(),
+        DataType::fixed_ascii(17).unwrap(),
+    ] {
+        let refused = Field::new("venue", dtype.clone(), false)
+            .set_string_enum(&wide)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains(&dtype.to_string()), "{refused}");
+    }
+    Field::new("venue", DataType::Cfi, false)
+        .set_string_enum(&wide)
+        .unwrap();
 
     // A stored document that is not one is refused where it is written.
-    let refused = Field::new("side", DataType::FixedAscii(4), false)
+    let refused = Field::new("side", DataType::fixed_ascii(4).unwrap(), false)
         .try_with_metadata("field:enum", "[]")
         .unwrap_err()
         .to_string();
     assert!(refused.contains("field:enum"), "{refused}");
 
     let mut removed = field.clone();
-    assert_eq!(removed.remove_ascii_enum().unwrap(), Some(side));
-    assert_eq!(removed.remove_ascii_enum().unwrap(), None);
-    assert_eq!(removed, Field::new("side", DataType::FixedAscii(4), false));
+    assert_eq!(removed.remove_string_enum().unwrap(), Some(side));
+    assert_eq!(removed.remove_string_enum().unwrap(), None);
+    assert_eq!(
+        removed,
+        Field::new("side", DataType::fixed_ascii(4).unwrap(), false)
+    );
 }
 
 #[test]
 fn canonical_display_json_and_arrow_round_trip() {
     let field = Field::new(
         "items",
-        DataType::list(Field::new("item", DataType::Utf8, true)),
+        DataType::list(Field::new("item", DataType::utf8(), true)),
         false,
     )
     .try_with_metadata("source", "a, b")

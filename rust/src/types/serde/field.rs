@@ -234,7 +234,7 @@ impl Field {
     /// # fn main() -> yggdryl::Result<()> {
     /// let nested = DataType::from_fields([
     ///     DataType::Int64.required_field("id"),
-    ///     DataType::Utf8.nullable_field("venue"),
+    ///     DataType::utf8().nullable_field("venue"),
     /// ])?
     /// .required_field("row");
     ///
