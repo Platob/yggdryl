@@ -83,6 +83,7 @@ pub enum Charset  (#[non_exhaustive])
   pub fn decode(self, input: &[u8]) -> Result<Cow<'_, str>>
   pub fn decode_lossy(self, input: &[u8]) -> Cow<'_, str>
   pub fn transcribe(self, input: &[u8]) -> Cow<'_, str>
+  pub fn transcribe_smol(self, input: &[u8]) -> SmolStr
   pub fn decode_into(self, input: &[u8], target: &mut String) -> Result<()>
   pub fn decode_bytes_into(self, input: &[u8], target: &mut Vec<u8>) -> Result<()>
   pub fn encoded_len(self, input: &str) -> usize

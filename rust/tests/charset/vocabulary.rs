@@ -161,12 +161,13 @@ fn three_doors_read_a_damaged_payload_three_ways() {
     let damaged = b"ok\x81";
     assert!(Charset::Cp1252.decode(damaged).is_err());
     assert_eq!(Charset::Cp1252.decode_lossy(damaged), "ok\u{FFFD}");
-    // The permissive door recovers rather than replaces: ISO 8859-1 assigns
-    // every byte, and for these five it is what the WHATWG Encoding
-    // Standard's own index answers.
+    // The permissive door recovers rather than replaces: a byte the table
+    // leaves unassigned reads as the C1 control of its number, which for
+    // these five is what the WHATWG Encoding Standard's own index answers.
     assert_eq!(Charset::Cp1252.transcribe(damaged), "ok\u{0081}");
 
-    // Bytes offered as UTF-8 that are not UTF-8 still read.
+    // Bytes offered as UTF-8 that are not UTF-8 still read: every valid run
+    // kept, every other byte as Windows-1252, through the same table.
     assert!(Charset::Utf8.decode(b"caf\xe9").is_err());
     assert_eq!(Charset::Utf8.decode_lossy(b"caf\xe9"), "caf\u{FFFD}");
     assert_eq!(Charset::Utf8.transcribe(b"caf\xe9"), "café");
@@ -178,6 +179,104 @@ fn three_doors_read_a_damaged_payload_three_ways() {
     // A charset that assigns every byte has nothing to recover.
     for charset in [Charset::Latin1, Charset::Cp437, Charset::MacRoman] {
         assert_eq!(charset.transcribe(damaged), charset.decode_lossy(damaged));
+    }
+}
+
+/// One reading through both transcribing doors, which must agree.
+fn transcribed(charset: Charset, input: &[u8]) -> String {
+    let text = charset.transcribe(input);
+    assert_eq!(
+        charset.transcribe_smol(input).as_str(),
+        &*text,
+        "{charset} {input:?}"
+    );
+    text.into_owned()
+}
+
+/// The WHATWG Encoding Standard's `windows-1252` index over `0x80..=0x9F`,
+/// the row where it and ISO 8859-1 disagree. The five C1 controls in it are
+/// the bytes the classic table leaves undefined.
+const WINDOWS_1252_C1_ROW: [char; 32] = [
+    '\u{20AC}', '\u{0081}', '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}',
+    '\u{02C6}', '\u{2030}', '\u{0160}', '\u{2039}', '\u{0152}', '\u{008D}', '\u{017D}', '\u{008F}',
+    '\u{0090}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}', '\u{2022}', '\u{2013}', '\u{2014}',
+    '\u{02DC}', '\u{2122}', '\u{0161}', '\u{203A}', '\u{0153}', '\u{009D}', '\u{017E}', '\u{0178}',
+];
+
+#[test]
+fn bytes_offered_as_utf8_read_by_one_rule_per_invalid_run() {
+    // Decision 10's lines, once the text line's own, read at the layer now
+    // and unmoved in value: a stray byte among UTF-8, a wholly Windows-1252
+    // line, each of the five holes, and a character a byte limit cut in two.
+    assert_eq!(
+        transcribed(Charset::Utf8, b"58=caf\xE9 caf\xC3\xA9|10=0|"),
+        "58=caf\u{e9} caf\u{e9}|10=0|"
+    );
+    assert_eq!(
+        transcribed(Charset::Utf8, b"\x80 \x93quoted\x94 \x96 na\xEFve"),
+        "\u{20AC} \u{201C}quoted\u{201D} \u{2013} na\u{ef}ve"
+    );
+    for byte in [0x81_u8, 0x8D, 0x8F, 0x90, 0x9D] {
+        assert_eq!(
+            transcribed(Charset::Utf8, &[b'a', byte, b'b']),
+            format!("a{}b", char::from(byte))
+        );
+    }
+    assert_eq!(
+        transcribed(Charset::Utf8, b"58=\xE2\x82"),
+        "58=\u{e2}\u{201A}"
+    );
+
+    // The mixed line a whole-buffer reading got wrong: the valid `é` stays
+    // `é`, and only the stray byte reads as Windows-1252.
+    assert_eq!(transcribed(Charset::Utf8, b"caf\xC3\xA9 \xE9"), "café é");
+    assert_eq!(
+        transcribed(Charset::Utf8, b"\x93x\x94"),
+        "\u{201C}x\u{201D}"
+    );
+    // Past the inline width the compact door builds a `String`; same rule.
+    assert_eq!(
+        transcribed(
+            Charset::Utf8,
+            b"caf\xC3\xA9 \xE9 with a tail past the inline width"
+        ),
+        "café é with a tail past the inline width"
+    );
+}
+
+#[test]
+fn the_c1_row_reads_as_the_whatwg_index_under_utf8_and_under_windows_1252() {
+    for (byte, expected) in (0x80_u8..=0x9F).zip(WINDOWS_1252_C1_ROW) {
+        let expected = expected.to_string();
+        assert_eq!(
+            transcribed(Charset::Utf8, &[byte]),
+            expected,
+            "{byte:#04x} offered as UTF-8"
+        );
+        assert_eq!(
+            transcribed(Charset::Cp1252, &[byte]),
+            expected,
+            "{byte:#04x} under windows-1252"
+        );
+    }
+}
+
+#[test]
+fn us_ascii_reads_a_broken_promise_exactly_as_utf8_does() {
+    // A US-ASCII declaration is a UTF-8 declaration with a narrower promise,
+    // so a valid UTF-8 `é` stays `é` rather than reading as two Latin-1
+    // letters, and a stray byte reads as Windows-1252; `decode` still refuses
+    // it, and `decode_lossy` still marks it.
+    assert_eq!(transcribed(Charset::Ascii, b"caf\xC3\xA9"), "café");
+    assert_eq!(transcribed(Charset::Ascii, b"\x80"), "\u{20AC}");
+    assert!(Charset::Ascii.decode(b"\x80").is_err());
+    assert_eq!(Charset::Ascii.decode_lossy(b"\x80"), "\u{FFFD}");
+    for input in [b"caf\xE9".as_slice(), b"58=\xE2\x82", b"\x93x\x94"] {
+        assert_eq!(
+            transcribed(Charset::Ascii, input),
+            transcribed(Charset::Utf8, input),
+            "{input:?}"
+        );
     }
 }
 

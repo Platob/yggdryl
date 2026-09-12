@@ -14,11 +14,14 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// map: nothing here is looked up by name on the per-row path.
 ///
 /// The body is text, and it is text by construction: a line is made from the
-/// bytes the reader cut, and where those are not UTF-8 they are decoded once,
-/// where the line is made, so every reader after that point reads text and
-/// none of them validates again. A body that was UTF-8 - every line of every
-/// capture this crate holds - stays the range of the page it was read into,
-/// so nothing is copied between the stream and the line.
+/// bytes the reader cut, and where those are not UTF-8 they are read once,
+/// where the line is made, by the charset layer's one rule for bytes offered
+/// as UTF-8 that are not - the rule behind
+/// [`Charset::transcribe`](crate::Charset::transcribe) - so every reader
+/// after that point reads text and none of them validates again. A body that
+/// was UTF-8 - every line of every capture this crate holds - stays the range
+/// of the page it was read into, so nothing is copied between the stream and
+/// the line.
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TextLine {
     index: u64,
@@ -42,9 +45,11 @@ impl TextLine {
     /// One line from its position and the bytes the reader cut for it.
     ///
     /// The bytes become text here. A body that is valid UTF-8 is kept as the
-    /// range it is; one that is not is decoded once into a page of its own,
-    /// every valid run kept and every other byte read as the character
-    /// Windows-1252 gives it - which is what [`decoded_byte_size`] counts.
+    /// range it is; one that is not is read once into a page of its own, as
+    /// [`Charset::transcribe`](crate::Charset::transcribe) reads bytes offered
+    /// as UTF-8 - every valid run kept, every other byte as Windows-1252
+    /// through the charset layer's table - and how many bytes were read that
+    /// way is what [`decoded_byte_size`] counts.
     ///
     /// # Errors
     ///
@@ -187,7 +192,8 @@ impl TextLine {
         Ok(())
     }
 
-    /// How many bytes of the line as read were not UTF-8 and were decoded.
+    /// How many bytes of the line as read were not UTF-8 and were read as
+    /// [`Charset::transcribe`](crate::Charset::transcribe) reads them.
     ///
     /// Zero for a line that was text as read. The body's count and the
     /// captures' together, because both are bytes the line held; it is the
@@ -376,17 +382,18 @@ impl fmt::Display for TextLine {
 /// The bytes as text, and how many of them had to be decoded to be so.
 ///
 /// Valid UTF-8 costs nothing: the range is answered as it is, and `0`. Any
-/// other input is decoded once into a page of its own - every valid run kept
-/// as it is, and every byte of every invalid run read as the character
-/// Windows-1252 gives it - and the count is those bytes. Per byte rather than
-/// per line, because a capture is mostly UTF-8 with an odd Latin-1 byte far
-/// more often than it is wholly Windows-1252, and decoding a valid `é` as
-/// `Ã©` because a lone `0xE9` stands elsewhere on the line would destroy what
-/// was right to repair what was wrong; a wholly Windows-1252 line has no
-/// valid multi-byte run to keep and reads byte for byte either way. A run a
-/// truncation cut inside a character is invalid too, and its orphan bytes
-/// read as the characters they are rather than as `U+FFFD`: a byte the wire
-/// held is a fact, and a replacement character is the absence of one.
+/// other input is read once into a page of its own by the charset layer's one
+/// rule for bytes offered as UTF-8 that are not, the rule behind
+/// [`Charset::transcribe`](crate::Charset::transcribe): every valid run kept
+/// as it is, and every other byte read as the character the layer's generated
+/// `windows-1252` table gives it, per invalid run rather than per line. The
+/// table, its rule for the five bytes that table leaves unassigned and the
+/// reason the reading is per run are the layer's and are stated there once;
+/// the count is what that reading answers. What is the line's is that it
+/// never refuses: a run a truncation cut inside a character is invalid too,
+/// and its orphan bytes read as the characters they are rather than as
+/// `U+FFFD`, because a byte the wire held is a fact and a replacement
+/// character is the absence of one.
 ///
 /// # Errors
 ///
@@ -398,67 +405,20 @@ pub(crate) fn decoded(bytes: TextBytes) -> Result<(TextBytes, u64)> {
     if std::str::from_utf8(held).is_ok() {
         return Ok((bytes, 0));
     }
+    // Sized here rather than left to the reading's own reservation, which is
+    // the input length: a floor every stray byte overruns by one or two
+    // bytes, so a `String::new()` would grow once at the first of them. The
+    // line already knows it holds at least one; sixteen bytes of slack keep a
+    // line with a handful at the one allocation decision 10 states.
     let mut text = String::with_capacity(held.len() + 16);
-    let mut count = 0_u64;
-    for chunk in held.utf8_chunks() {
-        text.push_str(chunk.valid());
-        for byte in chunk.invalid() {
-            text.push(windows_1252(*byte));
-            count += 1;
-        }
-    }
+    let count = crate::charset::utf8_transcribe_into(held, &mut text) as u64;
     let page = TextBytes::from_whole_page(Arc::new(text.into_bytes()))?;
     Ok((page, count))
 }
 
-/// The character Windows-1252 gives one byte, as the WHATWG encoding
-/// standard tables it.
-///
-/// `0x00`-`0x7F` are themselves and `0xA0`-`0xFF` are the Latin-1 range; the
-/// `0x80`-`0x9F` row is the classic table's punctuation, currency and
-/// letters, and the five bytes that table leaves undefined - `0x81`, `0x8D`,
-/// `0x8F`, `0x90`, `0x9D` - are the C1 controls of the same number rather
-/// than a refusal, which is what the standard answers and what keeps every
-/// byte a character. Only bytes at or above `0x80` reach this on the decode
-/// path, since every lower byte is valid UTF-8 on its own.
-const fn windows_1252(byte: u8) -> char {
-    match byte {
-        0x80 => '\u{20AC}',
-        0x82 => '\u{201A}',
-        0x83 => '\u{0192}',
-        0x84 => '\u{201E}',
-        0x85 => '\u{2026}',
-        0x86 => '\u{2020}',
-        0x87 => '\u{2021}',
-        0x88 => '\u{02C6}',
-        0x89 => '\u{2030}',
-        0x8A => '\u{0160}',
-        0x8B => '\u{2039}',
-        0x8C => '\u{0152}',
-        0x8E => '\u{017D}',
-        0x91 => '\u{2018}',
-        0x92 => '\u{2019}',
-        0x93 => '\u{201C}',
-        0x94 => '\u{201D}',
-        0x95 => '\u{2022}',
-        0x96 => '\u{2013}',
-        0x97 => '\u{2014}',
-        0x98 => '\u{02DC}',
-        0x99 => '\u{2122}',
-        0x9A => '\u{0161}',
-        0x9B => '\u{203A}',
-        0x9C => '\u{0153}',
-        0x9E => '\u{017E}',
-        0x9F => '\u{0178}',
-        // Every other byte, the five the classic table leaves undefined
-        // among them, is the code point of the same number.
-        other => other as char,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{TextLine, decoded, windows_1252};
+    use super::{TextLine, decoded};
     use crate::media::text::TextBytes;
 
     fn line(bytes: &[u8]) -> TextLine {
@@ -500,7 +460,7 @@ mod tests {
     #[test]
     fn the_five_undefined_bytes_read_as_the_controls_of_their_number() {
         for byte in [0x81_u8, 0x8D, 0x8F, 0x90, 0x9D] {
-            assert_eq!(windows_1252(byte), byte as char);
+            assert!(crate::Charset::Cp1252.scalar_of(byte).is_none());
             let read = line(&[b'a', byte, b'b']);
             assert_eq!(read.body(), format!("a{}b", byte as char));
             assert_eq!(read.decoded_byte_size(), 1);

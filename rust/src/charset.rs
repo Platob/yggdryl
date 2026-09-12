@@ -67,6 +67,7 @@ pub use writer::Writer;
 
 pub(crate) use ascii::ascii_len;
 use ascii::text;
+pub(crate) use unicode::utf8_transcribe_into;
 
 /// How many bytes `SmolStr` holds without reaching the heap.
 ///
@@ -449,12 +450,21 @@ impl Charset {
     ///   `windows-1252` leaves unassigned it is exactly what the WHATWG
     ///   Encoding Standard's own index answers - so this is the transcription,
     ///   not a fallback.
-    /// * Bytes offered as UTF-8 that are not UTF-8 are read as ISO 8859-1
-    ///   instead, which is what a mislabelled Western export nearly always is
-    ///   and which assigns every byte. A payload that really was broken UTF-8
-    ///   reads as mojibake rather than as `U+FFFD`, and that is the trade:
-    ///   this door never loses a byte, and [`Charset::decode_lossy`] is the
-    ///   one that marks damage where it is.
+    /// * Bytes offered as UTF-8, or as US-ASCII, that are not what they were
+    ///   offered as are read by one rule, written once in this layer: every
+    ///   valid UTF-8 run is kept as it is, and every other byte reads as the
+    ///   character Windows-1252 gives it, as the WHATWG Encoding Standard
+    ///   tables it, with the five bytes the classic table leaves undefined as
+    ///   the C1 controls of their number. Per invalid run, because a buffer
+    ///   is mostly UTF-8 with a stray byte far more often than it is wholly
+    ///   Windows-1252, and reading a valid `é` as `Ã©` because a lone `0xE9`
+    ///   stands elsewhere would destroy what was right to repair what was
+    ///   wrong. US-ASCII reads exactly as UTF-8: a US-ASCII declaration is a
+    ///   UTF-8 declaration with a narrower promise, and a broken promise
+    ///   about UTF-8-compatible text has one rule. A payload that really was
+    ///   broken UTF-8 reads as mojibake rather than as `U+FFFD`, and that is
+    ///   the trade: this door never loses a byte, and
+    ///   [`Charset::decode_lossy`] is the one that marks damage where it is.
     /// * A broken UTF-16 sequence has no byte-wise reading at all - a lone
     ///   surrogate is not a scalar in any encoding - so those become
     ///   `U+FFFD`, exactly as [`Charset::decode_lossy`] leaves them.
@@ -473,22 +483,27 @@ impl Charset {
     ///
     /// // Bytes that are not the UTF-8 they claim to be still read.
     /// assert_eq!(Charset::Utf8.transcribe(b"caf\xe9"), "café");
+    /// // Per run: the valid `é` is kept and only the stray byte reads as
+    /// // Windows-1252 - under US-ASCII exactly as under UTF-8.
+    /// assert_eq!(Charset::Utf8.transcribe(b"caf\xC3\xA9 \xE9"), "café é");
+    /// assert_eq!(Charset::Ascii.transcribe(b"caf\xC3\xA9 \x80"), "café €");
     /// ```
     pub fn transcribe(self, input: &[u8]) -> Cow<'_, str> {
         match self {
-            // Valid UTF-8 is itself; anything else is read as the single-byte
-            // charset that assigns every byte, which is what a mislabelled
-            // Western export is.
-            Self::Utf8 => match unicode::utf8_decode(input) {
-                Ok(text) => text,
-                Err(_) => Self::Latin1.decode_lossy(input),
+            // Valid UTF-8 is itself under both, since a US-ASCII declaration
+            // is a UTF-8 declaration with a narrower promise; anything else
+            // is the per-run reading, the layer's one rule for a stray byte.
+            Self::Utf8 | Self::Ascii => match std::str::from_utf8(input) {
+                Ok(borrowed) => Cow::Borrowed(borrowed),
+                Err(_) => {
+                    let mut target = String::new();
+                    unicode::utf8_transcribe_into(input, &mut target);
+                    Cow::Owned(target)
+                }
             },
             // A lone surrogate is not a scalar anywhere, so there is nothing
             // to transcribe it to.
             Self::Utf16Le | Self::Utf16Be => self.decode_lossy(input),
-            // US-ASCII assigns no byte above `0x7F`, and ISO 8859-1 assigns
-            // every one of them, so a high byte reads as the Latin-1 scalar.
-            Self::Ascii => Self::Latin1.decode_lossy(input),
             _ => match self.table() {
                 Some(table) if table.is_complete() => self.decode_lossy(input),
                 Some(table) => {
@@ -569,12 +584,9 @@ impl Charset {
     fn transcribe_borrowed(self, input: &[u8]) -> Option<&str> {
         match self {
             Self::Utf16Le | Self::Utf16Be => None,
-            Self::Utf8 => unicode::utf8_decode(input)
-                .ok()
-                .and_then(|text| match text {
-                    Cow::Borrowed(text) => Some(text),
-                    Cow::Owned(_) => None,
-                }),
+            // A US-ASCII declaration is a UTF-8 declaration with a narrower
+            // promise, so valid UTF-8 is its own transcription under both.
+            Self::Utf8 | Self::Ascii => std::str::from_utf8(input).ok(),
             // Every other charset here agrees with US-ASCII below `0x80`.
             _ => (ascii_len(input) == input.len())
                 .then(|| text(input).ok())
@@ -586,12 +598,8 @@ impl Charset {
     /// brought.
     fn transcribe_sink(self, input: &[u8], target: &mut impl sink::Utf8Sink) -> Result<()> {
         match self {
-            Self::Utf8 => match unicode::utf8_decode(input) {
-                Ok(_) => unicode::utf8_decode_into::<false>(input, target),
-                Err(_) => Self::Latin1.decode_sink::<true>(input, target),
-            },
+            Self::Utf8 | Self::Ascii => unicode::utf8_transcribe_sink(input, target).map(drop),
             Self::Utf16Le | Self::Utf16Be => self.decode_sink::<true>(input, target),
-            Self::Ascii => Self::Latin1.decode_sink::<true>(input, target),
             _ => match self.table() {
                 Some(table) if table.is_complete() => self.decode_sink::<true>(input, target),
                 Some(table) => table.transcribe_sink(input, target),

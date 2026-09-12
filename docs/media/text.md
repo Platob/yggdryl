@@ -260,15 +260,15 @@ forces UTF-8: a body that is valid UTF-8 - every line of every capture this
 crate holds - stays the range of the page it was read into and costs nothing
 beyond the validation. A body that is not is decoded once, for that line, into
 a page of its own: every valid UTF-8 run is kept as it is, and every byte of
-every invalid run is read as the character Windows-1252 gives it, as the WHATWG
-encoding standard tables it - `0x80`-`0x9F` as that table's punctuation,
-currency and letters, `0xA0`-`0xFF` as `U+00A0`-`U+00FF`, and the five bytes
-the classic table leaves undefined (`0x81`, `0x8D`, `0x8F`, `0x90`, `0x9D`) as
-the C1 controls of the same number rather than a refusal. A byte the wire held
-is a fact, and the reader never writes `U+FFFD` for one, because a replacement
-character is the absence of a fact where the line had one. There is no charset
-option: Windows-1252 is the one decode of a stray byte that loses nothing, since
-it maps every byte to one character.
+every invalid run is read as the character Windows-1252 gives it, through the
+[charset layer's](../charset/index.md#reading-what-cannot-be-read) generated
+`windows-1252` table with its rule for the five bytes that table leaves
+unassigned - the one rule for a stray byte, written there once, which the
+reader calls and does not restate. A byte the wire held is a fact, and the
+reader never writes `U+FFFD` for one, because a replacement character is the
+absence of a fact where the line had one. There is no charset option:
+Windows-1252 is the one decode of a stray byte that loses nothing, since it
+maps every byte to one character.
 
 The decode is per byte rather than per line. A capture is mostly UTF-8 with an
 odd Latin-1 byte far more often than it is wholly Windows-1252 - a name a

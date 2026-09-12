@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 
 use super::sink::Utf8Sink;
+use super::tables::CP1252;
 use super::{REPLACEMENT, REPLACEMENT_UTF8, truncated, unpaired};
 use crate::{Error, Result};
 
@@ -49,6 +50,61 @@ pub(super) fn utf8_pending(input: &[u8]) -> usize {
         Err(error) if error.error_len().is_none() => input.len() - error.valid_up_to(),
         Err(_) => 0,
     }
+}
+
+/// Read bytes offered as UTF-8 that may not be, appending the text to
+/// `target` and answering how many bytes were not UTF-8.
+///
+/// This is the one reading of a stray byte, and every door that reads bytes
+/// offered as UTF-8 or as US-ASCII without refusing them is this function:
+/// [`Charset::transcribe`](super::Charset::transcribe) under both charsets,
+/// and the text line where it is made. Every valid UTF-8 run is kept as it
+/// is, and every other byte reads as the character Windows-1252 gives it. Per
+/// invalid run rather than per buffer, because a buffer is mostly UTF-8 with
+/// a stray byte far more often than it is wholly Windows-1252: reading a valid
+/// `é` (`C3 A9`) as `Ã©` because a lone `0xE9` stands elsewhere would destroy
+/// what was right to repair what was wrong, and a wholly Windows-1252 buffer
+/// has no valid multi-byte run to keep and reads byte for byte either way.
+///
+/// The table and the rule for its five holes are not restated here because
+/// they are the layer's: the table is the generated `windows-1252`, checked
+/// against Python's codec registry in both directions, and the holes rule is
+/// the one `SingleByte::transcribe_sink` already applies to an unassigned
+/// byte of any Windows page. `utf8_chunks()` never puts a byte below `0x80`
+/// in an invalid run, so that walk is one table entry per byte. The walk is
+/// byte-wise over the whole buffer and never the chunked
+/// [`Decoder`](super::Decoder), which would hold a sequence the buffer cuts
+/// short as pending: `E2 82` at the end is the two bytes that are left, and
+/// they read `â‚`.
+pub(crate) fn utf8_transcribe_into(input: &[u8], target: &mut String) -> usize {
+    // A `String` re-checks each run it is handed, and every run here is one
+    // `utf8_chunks` proved or one the table walked scalar by scalar, so the
+    // refusal the sink trait lets a target spell cannot arrive. This door
+    // exists because the trait is the module's and the reading is the crate's.
+    utf8_transcribe_sink(input, target).expect("a run utf8_chunks proved is text by construction")
+}
+
+/// [`utf8_transcribe_into`] over whichever target a caller brought.
+///
+/// # Errors
+///
+/// Returns the refusal of a target that re-checks a run, which a run
+/// `utf8_chunks` proved never trips.
+pub(super) fn utf8_transcribe_sink(input: &[u8], target: &mut impl Utf8Sink) -> Result<usize> {
+    // Every byte answers at least one UTF-8 byte and a stray byte at most
+    // three, so the input length is a floor: reserved once here, and the
+    // table's walk reserves its exact answer for each run it reads.
+    target.reserve(input.len());
+    let mut read = 0;
+    for chunk in input.utf8_chunks() {
+        target.push_utf8(chunk.valid().as_bytes())?;
+        let invalid = chunk.invalid();
+        if !invalid.is_empty() {
+            CP1252.transcribe_sink(invalid, target)?;
+            read += invalid.len();
+        }
+    }
+    Ok(read)
 }
 
 /// Turn a UTF-8 validation failure into this crate's located refusal.

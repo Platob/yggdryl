@@ -711,7 +711,10 @@ change to `media/iceberg/`.
   error variant, and the charset's canonical name in `format`. `decode_lossy`
   marks each fault with `U+FFFD` and is what a capture of arbitrary wire bytes
   needs. `transcribe` reads every byte it can - an unassigned byte as its
-  ISO 8859-1 scalar, non-UTF-8 offered as UTF-8 as ISO 8859-1 - and is what a
+  ISO 8859-1 scalar, and bytes offered as UTF-8 or as US-ASCII that are not
+  what they were offered as by one rule written once in the layer, every
+  valid UTF-8 run kept and every other byte read as WHATWG windows-1252 with
+  the five holes as C1 controls, per invalid run (decision 12) - and is what a
   `string(...)` column's values arrive through. There is no lossy *encode*: a
   scalar a charset cannot spell is unrepresentable input, which fails.
   `encoded_len` answers the stored length without building the bytes, and it

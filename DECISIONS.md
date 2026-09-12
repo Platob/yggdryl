@@ -801,12 +801,14 @@ rule unchanged.
   one of its six fixtures moves in value, and the one that asserted the hand
   table (`windows_1252(byte) == byte as char` for the five holes) asserts the
   generated table instead (`Charset::Cp1252.scalar_of(byte).is_none()`).
-  Equivalence rests on two facts, both pinned at the layer: `utf8_chunks()`
-  never puts a byte below `0x80` in an invalid run, so the table's walk is one
-  entry per byte with `char::from(byte)` for the five width-0 holes - exactly
-  the deleted `match`; and the walk is byte-wise over the whole buffer, never
-  the chunked `Decoder`, which would call `E2 82` at the end of a line pending
-  and refuse at `finish` where decision 10 reads `â‚`.
+  Equivalence rests on two facts. One the standard library guarantees and
+  the table's walk does not even lean on: `utf8_chunks()` never puts a byte
+  below `0x80` in an invalid run, and the walk reads an ASCII byte as itself
+  before it reaches a table slot, so the walk is one entry per byte with
+  `char::from(byte)` for the five width-0 holes - exactly the deleted `match`.
+  The other is pinned at the layer: the walk is byte-wise over the whole
+  buffer, never the chunked `Decoder`, which would call `E2 82` at the end of
+  a line pending and refuse at `finish` where decision 10 reads `â‚`.
 - *The charset contract's "non-UTF-8 offered as UTF-8 as ISO 8859-1".*
   Changed to rule one, in `docs/charset/index.md`, the `Charset::transcribe`
   doc and the `AGENTS.md` Charsets bullet; `Utf8.transcribe(b"caf\xe9") ==
