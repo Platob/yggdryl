@@ -211,6 +211,10 @@ function createFields(DataType, Field, native) {
     mic: simple('mic'),
     cfi: simple('cfi'),
     isin: simple('isin'),
+    side: simple('side'),
+    msgdirection: simple('msgdirection'),
+    state: simple('state'),
+    timeinforce: simple('timeinforce'),
 
     list: list('list'),
     listView: list('list_view'),

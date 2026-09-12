@@ -690,6 +690,14 @@ export type MicField = FieldOf<'mic', string>
 export type CfiField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
 export type IsinField = FieldOf<'isin', string>
+/** FIX Side(54), the one-character order side, in four bytes. */
+export type SideField = FieldOf<'side', string>
+/** The verb in front of a FIX payload - SENT or RECV - in four bytes. */
+export type MsgDirectionField = FieldOf<'msgdirection', string>
+/** An order state ranked from the first to the terminal ones, in ten bytes. */
+export type StateField = FieldOf<'state', string>
+/** FIX TimeInForce(59), the spelled instruction, in eight bytes. */
+export type TimeInForceField = FieldOf<'timeinforce', string>
 export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
 export type ListViewField<V = unknown> = FieldOf<
   'list_view',
@@ -949,6 +957,10 @@ export interface FieldsNamespace {
   mic(name: string, options?: FieldOptions): MicField
   cfi(name: string, options?: FieldOptions): CfiField
   isin(name: string, options?: FieldOptions): IsinField
+  side(name: string, options?: FieldOptions): SideField
+  msgdirection(name: string, options?: FieldOptions): MsgDirectionField
+  state(name: string, options?: FieldOptions): StateField
+  timeinforce(name: string, options?: FieldOptions): TimeInForceField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -1471,6 +1483,28 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'isin', string, N, O>
+  side<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'side', string, N, O>
+  msgdirection<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'msgdirection', string, N, O>
+  state<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'state', string, N, O>
+  timeinforce<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'timeinforce', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
