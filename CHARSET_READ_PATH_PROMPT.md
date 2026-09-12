@@ -1,9 +1,10 @@
 # The text and FIX read path through the charset layer: calls and allocations
 
-One piece of work on `claude/charset-module-utf8-ascii-cp1252-q1xby7` (PR #107),
-which carries `main`'s decisions 10 and 11 and its own decision 12 and passes
-the four gates locally, and which has not yet been made cheaper than the tree
-it merged. The piece is to take the per-row cost of a text line and of a FIX
+One piece of work from `main` (PR #107 merged at `aa6566f6`, carrying
+decisions 10, 11 and 12 and passing the four gates), on a new branch, after
+`FIX_DIRECTION_MESSAGES_PROMPT.md` has landed and its baselines are re-taken;
+the read path has not yet been made cheaper than the tree it merged. The
+piece is to take the per-row cost of a text line and of a FIX
 message down where it is counted - allocations and `IOBase` calls - and to pin
 every step, with wall time as the confirmation and never as the proof.
 
