@@ -17,6 +17,7 @@
 | Update | Replaces an existing definition completely, preserving identity; omitted metadata is removed |
 | Delete | Refuses absence and live references |
 | Enums | Scalar `fix:codes` metadata; `--codes` accepts its canonical JSON document |
+| Direction rules | Tag 385's `fix:directions` metadata; `--directions` accepts its canonical JSON document |
 | Output | Plain stable text when redirected; terminal styling only when supported and `NO_COLOR` is unset |
 | Workflow | `--annotate`, also enabled by `GITHUB_ACTIONS`, prints workflow findings; failed checks and refused commands exit nonzero |
 
@@ -74,6 +75,7 @@ A field key is a decimal tag or a name; named categories use their definition na
 | `--component NAME` | Groups; identifies the existing occurrence component |
 | `--msgtype CODE` | Components; makes the component a message; full nonempty wire text, including spaces |
 | `--codes JSON` | Scalar inline enum metadata |
+| `--directions JSON` | Tag 385's scalar; its [direction rules](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) as `fix:directions`, one entry per code of the set; an empty list removes the property so the crate's defaults read again |
 | `--dialect NAME` | Membership: a dictionary this definition belongs to, recorded in `fix:branches`; repeat the flag for several. Names are lowercased, deduplicated and sorted; an empty name or one carrying a comma is refused |
 | `--description TEXT` | Definition metadata |
 | `--required` | Non-null definition; message roots are always non-null |
@@ -87,6 +89,7 @@ ygg fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' -
 ygg fix --root scratch/catalog groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
 ygg fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D
 ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes '{"codes":[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]}'
+ygg fix --root scratch/catalog fields create MsgDirection utf8 --tag 385 --codes '{"codes":[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]}' --directions '{"directions":[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]}'
 ygg fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --dialect venue --dialect Desk
 ygg fix --root scratch/catalog fields read Desk_Value
 ygg fix --root scratch/catalog fields list --dialect desk
@@ -168,7 +171,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - Two fields may hold one tag under two names; the bare tag answers the first holder, the store writes the holder first so it survives a reload, and a listing filtered on that tag shows both. Deleting the holder leaves the other alone on the tag.
 - `fix:branches` is written inside each field's document; the store keeps no manifest and no per-dialect folder, so a `--dialect` on `create` changes one shard and nothing else.
 - Every location this tool is given resolves against the working directory before it becomes a URL, so a bare relative name works wherever a path is taken.
-- Invalid inline enums, unresolved references, a dialect name that cannot be a membership, and malformed native documents carry native located errors.
+- Invalid inline enums or direction rules, unresolved references, a dialect name that cannot be a membership, and malformed native documents carry native located errors.
 - A registry mutation is atomic; persistence publishes separate documents and follows the backend's write semantics.
 - Interactive mode requires a terminal; piped one-shot commands emit plain text.
 

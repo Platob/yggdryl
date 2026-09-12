@@ -5,17 +5,21 @@
 //! with the code set `R = Receive`, `S = Send`, and the dictionary types the
 //! field as it types every coded field. What this module adds is the
 //! *reading*: which code the prose a transport wrote in front of a payload
-//! names - `sending >>`, `recv`, `[OUT]` - and which code a document that
-//! states its own half of an exchange names. The registry answers it through
-//! [`FixRegistry::msgdirection`], and a codec compiles it once when it takes
-//! its registry, so no row asks the dictionary a question the row before it
-//! asked.
+//! names - `sending >>`, `recv`, `[OUT]`, a Jolokia `Response:`. The rules
+//! are the dictionary's, carried on tag 385's field as
+//! [`fix:directions`](super::directions) (decision 15), and the defaults
+//! below answer where the field carries none. The registry answers the
+//! reading through [`FixRegistry::msgdirection`], and a codec compiles it
+//! once when it takes its registry, so no row builds a regex and no row asks
+//! the dictionary a question the row before it asked.
 
+use regex::bytes::Regex;
 use smol_str::SmolStr;
 
 use super::FixRegistry;
 use super::MSGDIRECTION_TAG_NAME;
-use crate::{DataType, Field};
+use super::directions::{FixDirection, compile, outside_set, repeated};
+use crate::{DataType, Field, FixField};
 
 /// The name tag 385's set gives the code a sent message carries.
 const SEND_NAME: &str = "Send";
@@ -28,12 +32,29 @@ const SEND_CODE: &str = "S";
 /// declares no set.
 const RECEIVE_CODE: &str = "R";
 
-/// The two halves of an exchange the reading can name.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Way {
-    Sent,
-    Recv,
-}
+/// The default patterns naming the `Send` code, where tag 385 carries no
+/// `fix:directions`.
+///
+/// Domain knowledge, written out where a reviewer can check it rather than
+/// inferred from spelling: the spelled verbs, opened by the start of the
+/// prefix, whitespace or a bracket and closed by the end, whitespace or a
+/// delimiter; the bare word only where a bracket opens it and a delimiter
+/// closes it, because that is the one shape a marker has and none of the
+/// shapes the same letters have otherwise - `direct:out` is a route
+/// endpoint; and the half a Jolokia exchange states in its prose.
+pub const SEND_PATTERNS: [&str; 3] = [
+    r"(?i)(?:^|[\s\[(<])(?:sending|sent|send|outbound|outgoing)(?:[\s\])>:,]|$)",
+    r"(?i)(?:^|[\[(])out(?:[\]):]|$)",
+    r"(?i)(?:^|\s)request:",
+];
+
+/// The default patterns naming the `Receive` code, the mirror of
+/// [`SEND_PATTERNS`]: `MCFID-IN-XPAR` is a session name and reads nothing.
+pub const RECEIVE_PATTERNS: [&str; 3] = [
+    r"(?i)(?:^|[\s\[(<])(?:receiving|received|receive|recv|inbound|incoming)(?:[\s\])>:,]|$)",
+    r"(?i)(?:^|[\[(])in(?:[\]):]|$)",
+    r"(?i)(?:^|\s)response:",
+];
 
 /// The registry's reading of tag 385: its code set, and which code the
 /// prose in front of a payload names.
@@ -52,6 +73,10 @@ enum Way {
 /// assert_eq!(reading.code("Send"), Some("S"));
 /// assert_eq!(reading.code("R"), Some("R"));
 /// assert_eq!(reading.code("sideways"), None);
+/// // The rules in force are data: the defaults, where the dictionary
+/// // carries none.
+/// assert_eq!(reading.directions().len(), 2);
+/// assert_eq!(reading.directions()[0].code(), "S");
 /// ```
 #[derive(Clone, Debug)]
 pub struct MsgDirection {
@@ -62,6 +87,14 @@ pub struct MsgDirection {
     codes: Vec<(SmolStr, SmolStr)>,
     sent: SmolStr,
     recv: SmolStr,
+    /// The rules in force, each code resolved to the set's value and every
+    /// pattern one the regex crate compiled.
+    directions: Vec<FixDirection>,
+    /// Every pattern of every rule, compiled once; applying one to a prefix
+    /// allocates nothing, which is what a per-row reading has to cost.
+    rules: Vec<Regex>,
+    /// Which rule the pattern at each index of `rules` belongs to.
+    owners: Vec<usize>,
 }
 
 impl MsgDirection {
@@ -69,7 +102,17 @@ impl MsgDirection {
     ///
     /// A dictionary without the field, or with a set naming neither `Send`
     /// nor `Receive`, answers the specification's own codes for the two
-    /// halves it does not name, so a direction is never silently absent.
+    /// halves it does not name, so a direction is never silently absent. A
+    /// field carrying no `fix:directions` reads by the defaults, keyed by
+    /// those two codes; one carrying the property reads by what it states.
+    /// A rule naming no code of the set, a second rule naming a code
+    /// already named under another spelling, a pattern the regex crate
+    /// refuses, or an entry the document grammar refuses, is dropped with a
+    /// warning that is the refusal
+    /// [`set_directions`](crate::FixFieldMut::set_directions) would have
+    /// raised: the setter is the door, and a dictionary edited by hand
+    /// degrades to fewer rules - down to none - rather than to a wrong
+    /// reading.
     pub(super) fn from_registry(registry: &FixRegistry) -> Self {
         let declared = registry.get_field_by_tag(MSGDIRECTION_TAG_NAME.0);
         let field = declared.map_or_else(
@@ -95,12 +138,79 @@ impl MsgDirection {
         };
         let sent = named(SEND_NAME, SEND_CODE);
         let recv = named(RECEIVE_NAME, RECEIVE_CODE);
-        Self {
+        let mut reading = Self {
             field,
             codes,
             sent,
             recv,
+            directions: Vec::new(),
+            rules: Vec::new(),
+            owners: Vec::new(),
+        };
+        let stated: Vec<FixDirection> = {
+            let walk = reading.field.as_fix().directions();
+            if walk.is_stated() {
+                walk.filter_map(|entry| match entry {
+                    Ok(entry) => Some(FixDirection::from(entry)),
+                    Err(error) => {
+                        warned(&error);
+                        None
+                    }
+                })
+                .collect()
+            } else {
+                // The defaults are what an absent property reads by; a
+                // property the field carries reads by what it states,
+                // however little of it survives the drops warned about here
+                // and below.
+                vec![
+                    FixDirection::new(reading.sent.clone(), SEND_PATTERNS),
+                    FixDirection::new(reading.recv.clone(), RECEIVE_PATTERNS),
+                ]
+            }
+        };
+        reading.compile(stated);
+        reading
+    }
+
+    /// Compiles the rules, resolving each code against the set and keeping
+    /// the patterns the regex crate accepts.
+    ///
+    /// Every drop is warned about with the refusal the setter raises for
+    /// the same input, so a hand-edited dictionary and a refused edit say
+    /// one thing.
+    fn compile(&mut self, rules: Vec<FixDirection>) {
+        let mut directions: Vec<FixDirection> = Vec::with_capacity(rules.len());
+        let mut compiled = Vec::new();
+        let mut owners = Vec::new();
+        for rule in rules {
+            let Some(code) = self.code(rule.code()).map(SmolStr::new) else {
+                warned(&outside_set(rule.code(), self.codes()));
+                continue;
+            };
+            if directions.iter().any(|held| held.code() == code) {
+                warned(&repeated(rule.code(), &code));
+                continue;
+            }
+            let mut kept: Vec<&str> = Vec::with_capacity(rule.patterns().len());
+            for pattern in rule.patterns() {
+                match compile(pattern) {
+                    Ok(regex) => {
+                        kept.push(pattern);
+                        compiled.push(regex);
+                        owners.push(directions.len());
+                    }
+                    Err(error) => warned(&error),
+                }
+            }
+            if kept.is_empty() {
+                continue;
+            }
+            directions.push(FixDirection::new(code, kept));
         }
+        self.rules = compiled;
+        self.owners = owners;
+        self.directions = directions;
     }
 
     /// Tag 385 as a built message carries it.
@@ -133,50 +243,41 @@ impl MsgDirection {
         }
     }
 
+    /// The rules in force, as data: the field's `fix:directions` with each
+    /// code resolved to the set's value and only the patterns that
+    /// compiled, or the defaults where the field carries none.
+    #[must_use]
+    pub fn directions(&self) -> &[FixDirection] {
+        &self.directions
+    }
+
     /// The code one spelling names: its value, or the name the set gives it,
     /// ASCII case folded; `None` where the set holds no such code.
     ///
-    /// The one place a spelling from outside becomes a code of the set, so a
-    /// pin and a stated column resolve exactly alike.
+    /// The one resolution a spelling from outside goes through to become a
+    /// code of the set, so a pin, a stated column, a rule's code and the
+    /// setter that admits one resolve exactly alike.
     #[must_use]
     pub fn code(&self, spelling: &str) -> Option<&str> {
-        let spelling = spelling.trim();
-        if spelling.is_empty() {
-            return None;
-        }
-        if let Some(value) = self.field.as_fix().code_value(spelling) {
-            return Some(value);
-        }
-        [
-            (self.sent.as_str(), SEND_NAME),
-            (self.recv.as_str(), RECEIVE_NAME),
-        ]
-        .into_iter()
-        .find(|(value, name)| {
-            value.eq_ignore_ascii_case(spelling) || name.eq_ignore_ascii_case(spelling)
-        })
-        .map(|(value, _)| value)
+        resolve(&self.field.as_fix(), spelling)
     }
 
     /// Reads which way one captured byte line moved.
     ///
-    /// The verb is read **in front of the payload**, never inside it. Where a
-    /// message starts is where the transport's own prose stops, so a `sent`
-    /// inside a FIX `Text(58)`, a bridge value spelled `OUT=1`, or an XML
-    /// payload's own wording never becomes a direction.
+    /// The rules are applied **in front of the payload**, never inside it.
+    /// Where a message starts is where the transport's own prose stops, so a
+    /// `sent` inside a FIX `Text(58)`, a bridge value spelled `OUT=1`, an XML
+    /// payload's own wording, or the `send-test-request` a configuration
+    /// document names never becomes a direction.
     ///
-    /// A prefix carrying both verbs, and one carrying neither, both answer
-    /// nothing: there is no verb the reading can prefer, and inventing one
-    /// would be a guess. Except where the payload is a document that states
-    /// its own half of an exchange - a bridge configuration echoing back the
-    /// request it answers came back, and one that is a bare request went
-    /// out. A verb the transport wrote still wins over what the document
-    /// says about itself.
+    /// A prefix two codes match, and one no code matches, both answer
+    /// nothing: there is no code the reading can prefer, and inventing one
+    /// would be a guess. A document states nothing of itself; the prose in
+    /// front of it does, `Response:` and `Request:` under the defaults.
     #[must_use]
     pub fn read_bytes(&self, line: &[u8]) -> Option<&str> {
-        let (bound, stated) = crate::mime_type::line::payload(line);
-        self.read_prefix(&line[..bound.unwrap_or(line.len())])
-            .or_else(|| self.stated(stated))
+        let bound = crate::mime_type::line::payload_at(line).unwrap_or(line.len());
+        self.read_prefix(&line[..bound])
     }
 
     /// Reads which way one captured text line moved.
@@ -188,44 +289,56 @@ impl MsgDirection {
     /// The reading, over a prefix the caller has already bounded.
     ///
     /// A reader that located the frame to parse it hands the prose in front
-    /// of it here, so the frame is located once.
+    /// of it here, so the frame is located once. Every compiled pattern is
+    /// applied to it, allocating nothing, and the rules the matches belong
+    /// to decide: one names its code, two stop the reading.
     #[must_use]
     pub(super) fn read_prefix(&self, prefix: &[u8]) -> Option<&str> {
-        let mut found: Option<(Way, bool)> = None;
-        for (way, selectable) in markers(prefix) {
-            // A bare `in` or `out` conflicts even where it could not be
-            // chosen: `sending in session 3` and `received out of order` are
-            // English, and a prefix carrying both verbs has none a reading
-            // can prefer.
-            if found.is_some_and(|(held, _)| held != way) {
-                return None;
+        let mut named: Option<usize> = None;
+        for (index, rule) in self.rules.iter().enumerate() {
+            if !rule.is_match(prefix) {
+                continue;
             }
-            match found {
-                Some((_, true)) => {}
-                _ => found = Some((way, selectable)),
+            let owner = self.owners[index];
+            match named {
+                Some(held) if held != owner => return None,
+                _ => named = Some(owner),
             }
         }
-        match found {
-            Some((way, true)) => Some(self.of(way)),
-            _ => None,
-        }
+        named.map(|owner| self.directions[owner].code())
     }
+}
 
-    /// The direction a payload that states its own half of an exchange took.
-    pub(super) fn stated(&self, answered: Option<bool>) -> Option<&str> {
-        match answered {
-            Some(true) => Some(self.recv()),
-            Some(false) => Some(self.sent()),
-            None => None,
-        }
+/// The code one spelling names in one field's set: its value, or the name
+/// the set gives it, ASCII case folded; else the specification's two halves
+/// under the codes the set gives them, `S` and `R` where it names neither.
+///
+/// The one place a spelling from outside becomes a code of the set: the
+/// reading resolves a pin, a stated column and a rule's code through it,
+/// and [`set_directions`](crate::FixFieldMut::set_directions) admits a
+/// rule's code through it, so what the door lets in is what the reading
+/// answers.
+pub(super) fn resolve<'field>(field: &FixField<'field>, spelling: &str) -> Option<&'field str> {
+    let spelling = spelling.trim();
+    if spelling.is_empty() {
+        return None;
     }
+    if let Some(value) = field.code_value(spelling) {
+        return Some(value);
+    }
+    let sent = field.code_value(SEND_NAME).unwrap_or(SEND_CODE);
+    let recv = field.code_value(RECEIVE_NAME).unwrap_or(RECEIVE_CODE);
+    [(sent, SEND_NAME), (recv, RECEIVE_NAME)]
+        .into_iter()
+        .find(|(value, name)| {
+            value.eq_ignore_ascii_case(spelling) || name.eq_ignore_ascii_case(spelling)
+        })
+        .map(|(value, _)| value)
+}
 
-    fn of(&self, way: Way) -> &str {
-        match way {
-            Way::Sent => self.sent(),
-            Way::Recv => self.recv(),
-        }
-    }
+/// Warns about one rule the reading dropped, in the setter's words.
+fn warned(error: &crate::Error) {
+    log::warn!("tag {} fix:directions: {error}", MSGDIRECTION_TAG_NAME.0);
 }
 
 /// One of two iterators, so `codes` answers without allocating.
@@ -247,78 +360,4 @@ where
             Self::Right(right) => right.next(),
         }
     }
-}
-
-/// The verbs a transport marks a line with, longest first inside each
-/// direction so `received` is not read as `receive`.
-///
-/// Domain knowledge, written out where a reviewer can check it rather than
-/// inferred from spelling. The third element marks the two bare forms, which
-/// match under a stricter rule. Decision 15 moves this table into the
-/// dictionary as rules tag 385 carries.
-const VERBS: [(&[u8], Way, bool); 13] = [
-    (b"sending", Way::Sent, false),
-    (b"sent", Way::Sent, false),
-    (b"send", Way::Sent, false),
-    (b"outbound", Way::Sent, false),
-    (b"outgoing", Way::Sent, false),
-    (b"out", Way::Sent, true),
-    (b"receiving", Way::Recv, false),
-    (b"received", Way::Recv, false),
-    (b"receive", Way::Recv, false),
-    (b"recv", Way::Recv, false),
-    (b"inbound", Way::Recv, false),
-    (b"incoming", Way::Recv, false),
-    (b"in", Way::Recv, true),
-];
-
-/// Every direction marker standing in one prefix, and whether it may be
-/// chosen.
-fn markers(prefix: &[u8]) -> impl Iterator<Item = (Way, bool)> + '_ {
-    (0..prefix.len()).filter_map(move |start| {
-        VERBS.iter().find_map(|(verb, way, bare)| {
-            let end = start + verb.len();
-            if prefix.len() < end || !prefix[start..end].eq_ignore_ascii_case(verb) {
-                return None;
-            }
-            if !opens_marker(prefix, start) || !closes_marker(prefix, end) {
-                return None;
-            }
-            // A bare `in` or `out` is *chosen* only where a bracket opens it
-            // and a delimiter closes it, because that is the one shape a
-            // marker has and none of the shapes the same letters have
-            // otherwise: `direct:out` is a route endpoint and
-            // `MCFID-IN-XPAR` is a session name. It still counts against an
-            // opposite verb, which is what makes `sending in session 3`
-            // answer nothing rather than `S`.
-            Some((*way, !*bare || bare_marker(prefix, start, end)))
-        })
-    })
-}
-
-/// Whether a marker may open at `start`.
-fn opens_marker(prefix: &[u8], start: usize) -> bool {
-    start == 0
-        || prefix
-            .get(start - 1)
-            .is_some_and(|byte| byte.is_ascii_whitespace() || matches!(byte, b'[' | b'(' | b'<'))
-}
-
-/// Whether a marker may close at `end`.
-fn closes_marker(prefix: &[u8], end: usize) -> bool {
-    prefix.get(end).is_none_or(|byte| {
-        byte.is_ascii_whitespace() || matches!(byte, b']' | b')' | b'>' | b':' | b',')
-    })
-}
-
-/// Whether a bare `in` or `out` stands as a marker rather than as English.
-fn bare_marker(prefix: &[u8], start: usize, end: usize) -> bool {
-    let opened = start == 0
-        || prefix
-            .get(start - 1)
-            .is_some_and(|byte| matches!(byte, b'[' | b'('));
-    let closed = prefix
-        .get(end)
-        .is_none_or(|byte| matches!(byte, b']' | b')' | b':'));
-    opened && closed
 }

@@ -35,14 +35,6 @@ pub(crate) const OBJECT_NAME_TYPE: &[u8] = b"type";
 /// Jolokia's own key for the operation a document asked for.
 const JOLOKIA_TYPE_KEY: &[u8] = b"\"type\"";
 
-/// The key Jolokia answers with, echoing back what was asked.
-///
-/// A request never carries it and every answer does, error answers included,
-/// which is what makes it the whole of the reading. The keys an answer also
-/// carries - `value`, `status` - are not: a write request states a `value` of
-/// its own, and reading that as an answer would invert the direction.
-const JOLOKIA_REQUEST_KEY: &[u8] = b"\"request\"";
-
 #[derive(Clone, Copy)]
 enum LineKey<'line> {
     Tag(i32),
@@ -1093,9 +1085,13 @@ pub(crate) fn trim_ascii(line: &[u8]) -> &[u8] {
 /// Where the message starts inside a log line, when one is there.
 ///
 /// Everything before it is the transport's own prose, which is what a
-/// direction is read from and what a body strips.
+/// direction is read from and what a body strips: a frame's start, else
+/// where the one document that opens a payload does. A payload states
+/// nothing about which way it moved; the prose in front of it does.
 pub(crate) fn payload_at(line: &[u8]) -> Option<usize> {
-    payload(line).0
+    locate_frame(line)
+        .map(|frame| frame.start)
+        .or_else(|| ulconfig_at(line))
 }
 
 /// Where the message starts, given where a frame was already located.
@@ -1105,23 +1101,6 @@ pub(crate) fn payload_at(line: &[u8]) -> Option<usize> {
 /// payload is looked for here and nowhere earlier.
 pub(crate) fn payload_at_or_document(line: &[u8], frame_at: Option<usize>) -> Option<usize> {
     frame_at.or_else(|| ulconfig_at(line))
-}
-
-/// Where one line's payload starts, and what a document there states about
-/// which way it moved.
-///
-/// One reading rather than two, because a caller that bounds the prose needs
-/// the statement in the same pass. A frame states nothing - which way it moved
-/// is the transport's to say - while a bridge configuration document states
-/// its own half of a Jolokia exchange, and `true` is the half that came back.
-pub(crate) fn payload(line: &[u8]) -> (Option<usize>, Option<bool>) {
-    if let Some(frame) = locate_frame(line) {
-        return (Some(frame.start), None);
-    }
-    match ulconfig_at(line) {
-        Some(at) => (Some(at), Some(ulconfig_answered(&line[at..]))),
-        None => (None, None),
-    }
 }
 
 /// Where the ULBridge configuration document one line carries opens.
@@ -1323,16 +1302,6 @@ fn skip_to(document: &[u8], mut at: usize, wanted: u8) -> Option<usize> {
         at += 1;
     }
     (document.get(at) == Some(&wanted)).then_some(at)
-}
-
-/// Whether one ULBridge configuration document is an answer, not a request.
-///
-/// Jolokia echoes the request back inside every answer it sends, and a request
-/// carries no such key of its own - so the echo is the whole of the reading. A
-/// failed read echoes it too, which is right: an error is a read that came
-/// back rather than one that went out.
-pub(crate) fn ulconfig_answered(document: &[u8]) -> bool {
-    memchr::memmem::find(document, JOLOKIA_REQUEST_KEY).is_some()
 }
 
 #[cfg(test)]

@@ -51,6 +51,7 @@ from yggdryl._native import (
     ByteIterator,
     FieldMetadata,
     FixDefinitionIterator,
+    FixDirection,
     FixMessages,
     IOCursor,
     IcebergNames,
@@ -1389,6 +1390,15 @@ fix_field_reference: str | None = fix_reference.fix.field_ref
 fix_group_reference: str | None = fix_reference.fix.group
 fix_root.fix.msgtype = "D"
 fix_message_code: str | None = fix_root.fix.msgtype
+fix_direction: Field = Field("MsgDirection", "utf8")
+fix_direction.fix.tag = 385
+fix_direction.fix.directions = [
+    {"code": "S", "patterns": ["(?i)^TX\\b"]},
+    {"code": "R", "patterns": ["(?i)^RX\\b"]},
+]
+fix_directions: list[FixDirection] = fix_direction.fix.directions
+fix_direction_code: str = fix_directions[0]["code"]
+fix_direction_patterns: list[str] = fix_directions[0]["patterns"]
 fix_catalog = fix.FixRegistry.from_fields([fix_counter])
 fix_catalog.create_definition("components", fix_component)
 fix_added_definition: bool = fix_catalog.add_definition("components", fix_component)
@@ -1456,6 +1466,8 @@ assert fix_tag == 38 and fix_tags and fix_aliases and fix_description
 assert fix_branches == ["bloomberg", "cme", "ice"] and fix_has_branch
 assert fix_ulbridge_dialect == "ulbridge" and fix_dialects
 assert fix_id is not None and fix_vendor_id is not None
+assert fix_direction_code == "S"
+assert fix_direction_patterns == ["(?i)^TX\\b"] and len(fix_directions) == 2
 assert fix_read_cblock[0] is not None
 assert python_declared is not None and python_declared.kind == "field"
 assert python_module == "trading.execution" and python_qualname == "Book.Fill"

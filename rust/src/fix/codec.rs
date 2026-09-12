@@ -412,7 +412,8 @@ pub struct FixCodec {
     /// The code a line with no verb in front of its payload takes on the
     /// batch door: a code of tag 385's set, or none.
     direction: Option<SmolStr>,
-    /// The registry's reading of tag 385, compiled once (decision 14).
+    /// The registry's reading of tag 385, its rules compiled once
+    /// (decisions 14 and 15).
     msgdirection: Arc<super::MsgDirection>,
     /// The raw bytes one Arrow batch of messages targets.
     batch_byte_size: u64,
@@ -922,17 +923,12 @@ impl FixCodec {
         let entries = entries.unwrap_or_default();
         let opens = line::payload_at_or_document(row, frame_at).unwrap_or(row.len());
         // The row's stated direction, else the reading over the prose in
-        // front of the payload - or the half a document states of itself -
-        // else the pin the door supplied (decision 14). Resolved here, where
-        // the payload was located, so the frame is located once.
-        let direction = extras.direction.or_else(|| {
-            let prefix = &row[..opens.min(row.len())];
-            self.msgdirection.read_prefix(prefix).or_else(|| {
-                let stated = (frame_at.is_none() && opens < row.len())
-                    .then(|| line::ulconfig_answered(&row[opens..]));
-                self.msgdirection.stated(stated)
-            })
-        });
+        // front of the payload, else the pin the door supplied (decisions 14
+        // and 15). Resolved here, where the payload was located, so the
+        // frame is located once.
+        let direction = extras
+            .direction
+            .or_else(|| self.msgdirection.read_prefix(&row[..opens.min(row.len())]));
         let extras = RowExtras {
             direction: direction.or(extras.direction_pin),
             direction_pin: None,

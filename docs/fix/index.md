@@ -183,6 +183,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `msgtype` | `fix:msgtype` | text | complete case-sensitive wire code on a message Struct |
 | `lineage` | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version, and where the specification deprecated or removed it; see [Registry](registry.md#versions-are-a-filter-on-the-read) |
 | `replacements` | `fix:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take; see [Registry](registry.md#a-field-carries-what-replaced-it) |
+| `directions` | `fix:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults; see [Registry](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) |
 
 ## Identity is a tag and a name
 

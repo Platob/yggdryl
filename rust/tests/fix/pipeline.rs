@@ -351,9 +351,10 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     assert_eq!(mimetype[1].as_deref(), Some("text/key-value"));
 
     // Which way each line moved is FIX's own tag 385 (decision 14): the
-    // verb in front of the frame, the document's own statement that it came
-    // back, and the codec's pin where a line stated nothing - a sentence
-    // states no direction, and on the batch door the pin fills it.
+    // verb in front of the frame, the `Response:` Jolokia wrote in front of
+    // the document (decision 15), and the codec's pin where a line stated
+    // nothing - a sentence states no direction, and on the batch door the
+    // pin fills it.
     let fix_direction = tag_text(&read, yggdryl::MSGDIRECTION_TAG_NAME.0);
     assert_eq!(fix_direction[HEARTBEAT_ROW].as_deref(), Some("S"));
     assert_eq!(fix_direction[FILL_ROW].as_deref(), Some("R"));

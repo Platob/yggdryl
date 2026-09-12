@@ -19,6 +19,7 @@
 //! | lineage | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version |
 //! | codes | `fix:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
 //! | replacements | `fix:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take |
+//! | directions | `fix:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
 //! | counter | `fix:counter` | `i32` | the wire field counting a group's occurrences |
 //! | component | `fix:component` | name | the component defining a group occurrence |
 //!
@@ -143,6 +144,7 @@ mod constants;
 mod crated;
 mod digest;
 mod direction;
+mod directions;
 mod document;
 mod enrich;
 mod entry;
@@ -181,7 +183,8 @@ pub use crated::{
     fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
-pub use direction::MsgDirection;
+pub use direction::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
+pub use directions::{FixDirection, FixDirectionEntry, FixDirections, FixPatterns};
 pub use document::{Numbers, Words};
 pub use entry::FixEntry;
 pub use field::FixSpellings;

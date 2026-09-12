@@ -8,6 +8,7 @@ import {
   fix,
   type FixMsg,
   type FixCodec,
+  type FixDirection,
   type FixLifecycle,
   type FixRegistry,
   type FixMessages,
@@ -211,6 +212,12 @@ const aliases: string[] = field.fix.aliases
 field.fix.aliases = ['Ticker']
 const description: string | null = field.fix.description
 field.fix.description = 'Ticker symbol.'
+const nulls: string[] = field.fix.nulls
+field.fix.nulls = ['<none>']
+// A direction rule is one record per code of tag 385's set, its patterns decoded.
+const directions: FixDirection[] = field.fix.directions
+field.fix.directions = [{ code: 'S', patterns: ['(?i)^TX\\b'] }, { code: 'R', patterns: ['(?i)^RX\\b'] }]
+field.fix.directions = []
 
 void branches
 void member
@@ -219,6 +226,8 @@ void tag
 void tags
 void aliases
 void description
+void nulls
+void directions
 
 // @ts-expect-error a tag crosses as a number, never a bigint
 field.fix.tag = 55n
@@ -230,6 +239,10 @@ field.fix.branches = [55]
 field.fix.id = 5001
 // @ts-expect-error aliases are strings
 field.fix.aliases = [55]
+// @ts-expect-error a rule states a code and its patterns
+field.fix.directions = [{ code: 'S' }]
+// @ts-expect-error the patterns are a list, never one pattern
+field.fix.directions = [{ code: 'S', patterns: '^TX ' }]
 
 // The codec is a class over one dictionary, with every pin optional and
 // read back as it was given.

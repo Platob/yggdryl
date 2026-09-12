@@ -1063,3 +1063,96 @@ a pin refused by name; a registry without 385 answering `S`/`R`; `ALL.len()
 importing as its storage; the equivalence snapshot regenerated: every line
 whose prefix carries a verb, and every document that states its half, gains
 `.field.msgdirection`, and nothing else moves.
+
+## 15. Direction rules are configuration the dictionary carries on tag 385
+
+**Rule.** The rules that name a code of tag 385's set from the prose in
+front of a payload are the registry's, stored on tag 385's field as
+`fix:directions`: one canonical document
+`{"directions":[{"code":"S","patterns":["..."]},...]}`, an entry per code in
+the order the dictionary lists them, each pattern a `regex::bytes`
+expression applied to the prefix - the bytes before the payload, exactly
+the bound `payload_at` answers, so a verb inside a payload is still the
+payload's word. A code matches where any of its patterns matches; exactly
+one matching code names the direction; two or more answer nothing, as
+today; none answers nothing. An entry's code is any spelling of a code of
+the set - the value or the name, resolved through the one resolution a pin
+goes through, `MsgDirection::code`, by the setter when it admits the rule
+and by the reading once when it compiles it - so each code is named once
+under any spelling, and `S` beside `Send` is one code named twice. A rule
+naming no code of the set, a second rule naming a code already named, or a
+pattern the regex crate refuses, is refused by `set_directions` and, where
+a hand edit slipped it past the door, dropped by the reading with a
+warning that is that refusal word for word: the setter is the door, and a
+dictionary edited by hand degrades to fewer rules - down to none - rather
+than to a wrong reading. Where the field carries no property the defaults
+answer, keyed by the set's `Send` and `Receive` codes so an extended set
+still reads `sending >>` as its own `Send`; a property the field carries
+reads by what it states, whatever survives, and never by the defaults.
+They are, per code, three patterns:
+
+| code | pattern | reads |
+| --- | --- | --- |
+| Send | `(?i)(?:^\|[\s\[(<])(?:sending\|sent\|send\|outbound\|outgoing)(?:[\s\])>:,]\|$)` | the spelled verbs, opened by the start, whitespace or `[`, `(`, `<`, closed by the end, whitespace or `]`, `)`, `>`, `:`, `,` |
+| Send | `(?i)(?:^\|[\[(])out(?:[\]):]\|$)` | the bare word, only bracketed: `[OUT]`, `(out)`, `OUT:` |
+| Send | `(?i)(?:^\|\s)request:` | the half a Jolokia exchange states in its prose: a request went out |
+| Receive | `(?i)(?:^\|[\s\[(<])(?:receiving\|received\|receive\|recv\|inbound\|incoming)(?:[\s\])>:,]\|$)` | the spelled verbs |
+| Receive | `(?i)(?:^\|[\[(])in(?:[\]):]\|$)` | the bare word, only bracketed: `(in)`, `[IN]` |
+| Receive | `(?i)(?:^\|\s)response:` | an answer came back |
+
+The `Response:`/`Request:` rules replace the document statement decision 14
+kept: a bridge configuration document no longer states its own half
+through the echoed `request` key - the envelope is prose in front of the
+payload, read by the same rules as every other prose, and decision 17 takes
+the echoed key away with the envelope. `MsgDirection::stated`,
+`line::payload`'s second answer and `line::ulconfig_answered` are deleted.
+The property is an accessor pair like every `fix:` key - `directions()`,
+`set_directions`, `remove_directions` on the field's FIX view, `FixDirection`
+the owned rule, `FixDirectionEntry` the borrowed one, `FixDirections` and
+`FixPatterns` the walks - merged like `fix:replacements` (incoming wins
+whole: a rule table is one statement, and two tables have no order between
+them), edited through `--directions` on `ygg fix fields create` and `update`, read and written
+by the bindings as a list on the field's `fix` view. `MsgDirection::directions`
+answers the rules in force - the property's, or the defaults - as data, so
+what a dictionary reads by is never hidden in Rust. `FixCodec::new` compiles
+every pattern once through `FixRegistry::msgdirection`, and a row applies the
+compiled patterns to its prefix allocating nothing - the allocation pins on
+the reading hold; nothing per row builds a regex. The committed
+dictionary does not carry the property: the defaults have one owner, the
+crate, and a dictionary that ships a table states its own.
+
+**Why.** A hand table in the crate was one product's verbs written into
+Rust; a bridge that logs `TX`/`RX`, or a venue whose capture prefixes its
+lines with `>>>`/`<<<`, could only be read by editing the crate. The set is
+the dictionary's already (decision 14), so the reading that names one of
+its codes belongs beside it: a dictionary that extends the set with a third
+code says how a line names it in the same document, and a registry merge
+carries the table as it carries every other `fix:` property.
+
+**What the rules cost.** Decision 14's table let a bare `in` or `out`
+count against the opposite verb wherever a word boundary held, while
+selecting only when bracketed - a three-valued marker. A rule matches or
+does not, so the bare pattern keeps the bracketed shape and only that: a
+whole-word `out` in English selects nothing, as today, and a bridge's
+`(DEBUG) IN : ...` enrichment trace stays unread, as today. What goes is the
+veto: `sending in session 3` answers `Send` and `received out of order`
+answers `Receive`, where decision 14 answered nothing, because the verb in
+front of the payload is the verb and the English `in`/`out` beside it is no
+longer a marker that can contradict it. Those two pins move and say why.
+
+**Written in:** `fix/direction.rs`, on `MsgDirection` and its defaults;
+`fix/directions.rs`, on the document; `fix/field.rs`, on `fix:directions`;
+`docs/fix/registry.md`.
+**Fixtures:** every case of `rust/tests/fix/direction.rs` under the defaults,
+the two moved cases spelled with their new answers; a rule added through
+`set_directions` on tag 385 changing what a line answers, and the verb table
+no longer applying under it; a dictionary without the property answering
+the defaults, as data and as readings; a prefix matching two codes
+answering nothing; a `Response:` line answering `R` and a `Request:` line
+`S` with no document behind either, and a bare document answering nothing;
+an entry naming the code by its name; a pattern the regex crate refuses,
+refused by the setter and dropped by the reading; the merge rule; the CLI
+flag; the bindings reading and writing the list; the equivalence snapshot
+regenerated: `ulbridge[095]` and `ulbridge[117]` (`Request: JmxReadRequest[...]`)
+gain `.field.msgdirection` `S`, `bridge[005]` (the bare configuration
+document on the line door) loses its `R`, and nothing else moves.

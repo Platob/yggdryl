@@ -14,6 +14,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::FixId;
 use super::codes::{FixCode, FixCodeValue, FixCodes};
+use super::directions::{FixDirection, FixDirections};
 use super::lineage::{FixLineage, FixLineageEntry};
 use super::replacements::{FixReplacement, FixReplacements};
 use crate::types::folds_equal;
@@ -46,6 +47,9 @@ const LINEAGE: &str = "lineage";
 const CODES: &str = "codes";
 /// How a value of this field is restated at a later version.
 const REPLACEMENTS: &str = "replacements";
+/// The rules naming a code of this field's set from the prose in front of a
+/// payload; tag 385's.
+const DIRECTIONS: &str = "directions";
 const COUNTER: &str = "counter";
 const COMPONENT: &str = "component";
 const FIELD_REF: &str = "field";
@@ -389,6 +393,38 @@ impl<'field> FixField<'field> {
     /// ```
     pub fn replacements(&self) -> FixReplacements<'field> {
         FixReplacements::over(self.get(REPLACEMENTS))
+    }
+
+    /// Walks the rules naming a code of this field's set from the prose in
+    /// front of a payload, in document order (decision 15).
+    ///
+    /// Tag 385's field carries them; the reading
+    /// [`FixRegistry::msgdirection`](crate::FixRegistry::msgdirection)
+    /// compiles them once and answers the defaults where the property is
+    /// absent. The iterator is lazy and allocates nothing: every spelling is
+    /// a slice of the stored document, which the field already owns. An
+    /// absent property yields nothing.
+    ///
+    /// ```
+    /// use yggdryl::fix::FixDirection;
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut direction = DataType::utf8().nullable_field("msgdirection");
+    /// direction.as_fix_mut().set_tag(385)?;
+    /// direction.as_fix_mut().set_directions(&[
+    ///     FixDirection::new("S", ["^TX "]),
+    ///     FixDirection::new("R", ["^RX "]),
+    /// ])?;
+    ///
+    /// let entry = direction.as_fix().directions().next().expect("one rule")?;
+    /// assert_eq!(entry.code(), "S");
+    /// assert_eq!(entry.parse_patterns()?, ["^TX "]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn directions(&self) -> FixDirections<'field> {
+        FixDirections::over(self.get(DIRECTIONS))
     }
 
     /// Returns the code one wire value stands for.
@@ -970,6 +1006,121 @@ impl FixFieldMut<'_> {
             .map(Some)
     }
 
+    /// Records the rules naming a code of this field's set from the prose in
+    /// front of a payload (decision 15).
+    ///
+    /// Entries are rendered canonically in the order given. A rule's code is
+    /// any spelling of a code of the set this field declares - the value or
+    /// the name, else the specification's `S` and `R` where it declares
+    /// none - resolved here exactly as the reading resolves it, so the
+    /// door admits what the reading answers and each code is named once
+    /// under any spelling. Every pattern is compiled here as the reading
+    /// compiles it, so what is stored is what a codec can use.
+    ///
+    /// An empty slice removes the property, exactly as an empty tag or alias
+    /// list removes its own, and the reading answers its defaults again.
+    ///
+    /// ```
+    /// use yggdryl::fix::FixDirection;
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut direction = DataType::utf8().nullable_field("msgdirection");
+    /// direction.as_fix_mut().set_tag(385)?;
+    /// direction.as_fix_mut().set_directions(&[
+    ///     FixDirection::new("S", [r"^TX\b"]),
+    ///     FixDirection::new("R", [r"^RX\b"]),
+    /// ])?;
+    /// assert_eq!(
+    ///     direction.get_metadata("fix:directions"),
+    ///     Some(concat!(
+    ///         r#"{"directions":[{"code":"S","patterns":["^TX\\b"]},"#,
+    ///         r#"{"code":"R","patterns":["^RX\\b"]}]}"#,
+    ///     ))
+    /// );
+    ///
+    /// direction.as_fix_mut().set_directions(&[])?;
+    /// assert_eq!(direction.get_metadata("fix:directions"), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when an entry names no code of the set, two
+    /// entries name one code under any spelling, an entry states an empty
+    /// code or one the reader would not read back as a word, an entry
+    /// states no pattern, or a pattern is empty or one the regex crate
+    /// refuses; and the property write's refusal otherwise. Either leaves
+    /// the field unchanged.
+    pub fn set_directions(&mut self, directions: &[FixDirection]) -> Result<()> {
+        if directions.is_empty() {
+            self.remove(DIRECTIONS);
+            return Ok(());
+        }
+        {
+            let held = self.as_protocol();
+            let mut named: Vec<&str> = Vec::with_capacity(directions.len());
+            for direction in directions {
+                let Some(code) = super::direction::resolve(&held, direction.code()) else {
+                    // The set as the reading names it: the declared codes,
+                    // else the specification's two.
+                    let mut set: Vec<&str> = held
+                        .codes()
+                        .filter_map(Result::ok)
+                        .map(|code| code.value())
+                        .collect();
+                    if set.is_empty() {
+                        set = vec!["S", "R"];
+                    }
+                    return Err(super::directions::outside_set(
+                        direction.code(),
+                        set.into_iter(),
+                    ));
+                };
+                if named.contains(&code) {
+                    return Err(super::directions::repeated(direction.code(), code));
+                }
+                named.push(code);
+            }
+        }
+        let rendered = FixDirections::render(directions)?;
+        self.store(DIRECTIONS, rendered)
+    }
+
+    /// Removes the direction rules, answering what they held.
+    ///
+    /// ```
+    /// use yggdryl::fix::FixDirection;
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut direction = DataType::utf8().nullable_field("msgdirection");
+    /// direction.as_fix_mut().set_tag(385)?;
+    /// let rules = [FixDirection::new("S", [">>>"]), FixDirection::new("R", ["<<<"])];
+    /// direction.as_fix_mut().set_directions(&rules)?;
+    ///
+    /// assert_eq!(direction.as_fix_mut().remove_directions()?, Some(rules.to_vec()));
+    /// assert_eq!(direction.as_fix_mut().remove_directions()?, None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the byte position when the stored
+    /// document does not parse, having already removed it: a document a
+    /// reader refuses is one a caller asked to take away.
+    pub fn remove_directions(&mut self) -> Result<Option<Vec<FixDirection>>> {
+        let Some(stored) = self.remove(DIRECTIONS) else {
+            return Ok(None);
+        };
+        FixDirections::over(Some(stored.as_str()))
+            .map(|entry| entry.map(FixDirection::from))
+            .collect::<Result<Vec<_>>>()
+            .map(Some)
+    }
+
     /// Folds another definition of the same field into this one.
     ///
     /// This field is the incoming definition and wins every shared key; the
@@ -988,6 +1139,7 @@ impl FixFieldMut<'_> {
     /// | `fix:lineage` | merged by pedigree, incoming winning an equal pair, re-sorted oldest first |
     /// | `fix:codes` | merged by wire value, incoming winning a shared value |
     /// | `fix:replacements` | incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
+    /// | `fix:directions` | incoming wins whole: a rule table is one statement, and two tables have no order between them |
     /// | any other `fix:` key | incoming wins; stored keeps what only it has |
     ///
     /// Precedence is the caller's ordering rather than a field on the merge:
@@ -1209,7 +1361,7 @@ impl FusedIterator for FixSpellings<'_> {}
 /// A merge walks this rather than collecting the keys a field holds, because
 /// the held names are owned `String`s behind a generic snapshot and building
 /// a vector of them to scan `O(n*m)` is what this replaced.
-const MERGED_KEYS: [&str; 8] = [
+const MERGED_KEYS: [&str; 9] = [
     TAG,
     BRANCHES,
     TAGS,
@@ -1218,6 +1370,7 @@ const MERGED_KEYS: [&str; 8] = [
     LINEAGE,
     CODES,
     REPLACEMENTS,
+    DIRECTIONS,
 ];
 
 /// Render aliases the way the setter renders them.

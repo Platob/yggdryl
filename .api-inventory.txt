@@ -546,6 +546,7 @@ impl<'field> FixField<'field>
   pub fn msgtype(&self) -> Option<&'field str>
   pub fn counter(&self) -> Result<Option<i32>>
   pub fn replacements(&self) -> FixReplacements<'field>
+  pub fn directions(&self) -> FixDirections<'field>  (tag 385's fix:directions rules in document order; nothing where absent, which reads by the defaults)
   impl FixFieldMut<'_>
   pub fn set_branches<I, S>(&mut self, dialects: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,  (each non-empty and comma-free, lowercased, deduplicated under the fold, sorted)
   pub fn add_branch(&mut self, dialect: &str) -> Result<()>
@@ -565,6 +566,8 @@ impl<'field> FixField<'field>
   pub fn remove_counter(&mut self) -> Result<Option<i32>>
   pub fn set_replacements(&mut self, entries: &[FixReplacement]) -> Result<()>
   pub fn remove_replacements(&mut self) -> Result<Option<Vec<FixReplacement>>>
+  pub fn set_directions(&mut self, directions: &[FixDirection]) -> Result<()>  (empty removes; resolves each code as the reading does and refuses one outside the set, a code named twice under any spelling, an empty code, no pattern, an empty pattern, or a pattern regex::bytes refuses; the field is unchanged)
+  pub fn remove_directions(&mut self) -> Result<Option<Vec<FixDirection>>>
   pub struct FixSpellings<'field>  (aliases and dialect memberships alike)
   impl<'field> Iterator for FixSpellings<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
 
@@ -626,6 +629,27 @@ pub struct FixReplacements<'field>
   impl<'field> Iterator for FixReplacements<'field>  (Item = Result<FixReplacementEntry<'field>>; also FusedIterator)
   impl Clone, Debug for FixReplacements<'_>
 
+### yggdryl::fix::directions  [rust\src\fix\directions.rs]
+pub struct FixDirection  (one rule of tag 385's fix:directions: a code of the set and the regex::bytes patterns that name it; re-exported at the crate root beside FixDirectionEntry, FixDirections and FixPatterns)
+  pub fn new<I, S>(code: impl Into<SmolStr>, patterns: I) -> Self where I: IntoIterator<Item = S>, S: Into<SmolStr>,
+  pub fn code(&self) -> &str
+  pub fn patterns(&self) -> &[SmolStr]
+  impl Clone, Debug, PartialEq, Eq for FixDirection
+  impl From<FixDirectionEntry<'_>> for FixDirection  (the patterns decoded)
+pub struct FixDirectionEntry<'field>  (one rule as the field stores it; allocates nothing)
+  pub const fn code(self) -> &'field str
+  pub const fn patterns(self) -> FixPatterns<'field>  (each still escaped as stored)
+  pub fn parse_patterns(self) -> Result<Vec<String>>  (decoded, in order)
+  impl Clone, Copy, Debug, PartialEq, Eq for FixDirectionEntry<'_>
+pub struct FixPatterns<'field>
+  impl<'field> Iterator for FixPatterns<'field>  (Item = &'field str; also FusedIterator)
+  impl Clone, Debug for FixPatterns<'_>
+pub struct FixDirections<'field>  (the walk FixField::directions answers; an absent property yields nothing; `render` and `over` are pub(super))
+  pub const fn is_stated(&self) -> bool  (whether the field carries the property at all: the reading answers its defaults for an absent one and reads by a stated one, however little of it survives)
+  pub fn next_ok(&mut self) -> Option<FixDirectionEntry<'field>>
+  impl<'field> Iterator for FixDirections<'field>  (Item = Result<FixDirectionEntry<'field>>; also FusedIterator)
+  impl Clone, Debug for FixDirections<'_>
+
 ### yggdryl::fix::global  [rust\src\fix\global.rs]
 impl FixRegistry
   pub fn global() -> Result<&'static Arc<Self>>
@@ -657,7 +681,7 @@ pub struct FixCodec
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn version(&self) -> Option<Version>
   pub fn direction(&self) -> Option<&str>  (the code of tag 385's set an unmarked line takes on the batch door; the set's Send code by default; decision 14)
-  pub fn msgdirection(&self) -> &MsgDirection  (the registry's reading of tag 385, compiled once)
+  pub fn msgdirection(&self) -> &MsgDirection  (the registry's reading of tag 385, the field's fix:directions or the defaults, every pattern compiled once when the codec is built)
   pub const fn batch_byte_size(&self) -> u64
   pub fn payload_column(&self) -> &str
   pub const fn separator(&self) -> Option<u8>
@@ -828,13 +852,16 @@ pub enum FixCategory { Fields, Components, Groups }  (a message is a component c
   impl Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize, FromStr, Display, AsRef<str> for FixCategory
 
 ### yggdryl::fix::MsgDirection  [rust\src\fix\direction.rs]
-pub struct MsgDirection  (the registry's reading of tag 385: its code set and which code the prose in front of a payload names; decision 14. Built by FixRegistry::msgdirection, compiled once by FixCodec::new; no public constructor)
+pub const SEND_PATTERNS: [&str; 3]  (the default patterns naming the set's Send code where tag 385's field carries no fix:directions: the spelled verbs, the bracketed bare word, the Jolokia request: prose; re-exported at yggdryl::fix beside RECEIVE_PATTERNS)
+pub const RECEIVE_PATTERNS: [&str; 3]  (the mirror for the Receive code: the spelled verbs, the bracketed bare word, the Jolokia response: prose)
+pub struct MsgDirection  (the registry's reading of tag 385: its code set and the rules naming one code from the prose in front of a payload - the field's fix:directions, the defaults built in where it carries none; decisions 14 and 15. Built by FixRegistry::msgdirection, every pattern compiled once into a regex::bytes::Regex by FixRegistry::msgdirection / FixCodec::new; no public constructor)
   pub const fn field(&self) -> &Field  (tag 385 as a built message carries it: the dictionary's field non-null, else a utf8 field carrying the tag)
   pub fn sent(&self) -> &str  (the set's `Send` code, else `S`)
   pub fn recv(&self) -> &str  (the set's `Receive` code, else `R`)
   pub fn codes(&self) -> impl Iterator<Item = &str>  (every code of the set in the dictionary's order; `S`, `R` where the dictionary declares none)
+  pub fn directions(&self) -> &[FixDirection]  (the rules in force: the field's with codes resolved to the set, or the defaults)
   pub fn code(&self, spelling: &str) -> Option<&str>  (a value, name or alias of the set, ASCII case folded, as the code; None outside the set)
-  pub fn read_bytes(&self, line: &[u8]) -> Option<&str>  (the verb in front of the payload, else the half a document states of itself; both verbs or neither = None)
+  pub fn read_bytes(&self, line: &[u8]) -> Option<&str>  (the code whose fix:directions pattern matches the prose in front of the payload; two codes matching or none = None; a document states nothing of itself)
   pub fn read_text(&self, line: &str) -> Option<&str>
   impl Clone, Debug for MsgDirection
 
@@ -868,7 +895,7 @@ impl FixRegistry
 ### yggdryl::fix::registry  [rust\src\fix\registry.rs]
 pub struct FixRegistry
   pub fn stable_hash(&self) -> u64
-  pub fn msgdirection(&self) -> MsgDirection  (the reading of tag 385 as the registry holds it now; decision 14)
+  pub fn msgdirection(&self) -> MsgDirection  (the reading of tag 385 as the registry holds it now - its set and its fix:directions rules, the defaults where the field carries none; decisions 14 and 15)
   pub fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
   pub fn get_field_by_id(&self, id: FixId) -> Option<&Field>

@@ -399,6 +399,42 @@ fn a_fix_registry_lookup_allocates_nothing() {
     free("read_bytes_direction ULCONFIG", || {
         let _ = black_box(reading.read_bytes(black_box(ULCONFIG)));
     });
+    // The rules are compiled once with the reading; applying them to the
+    // prose in front of a payload costs nothing per line, whether one code
+    // matches, two do, or none (decision 15).
+    for line in [
+        b"sending >> 8=FIX.4.4|35=D|10=0|".as_slice(),
+        b"2026-08-14 03:03:13.314 [23] [Jolokia] (DEBUG) Response: 8=FIX.4.4|35=0|10=0|",
+        b"sending and receiving 8=FIX.4.4|35=D|10=0|",
+        b"no verb printed by this plugin 8=FIX.4.4|35=D|10=0|",
+    ] {
+        free("read_bytes_direction prose", || {
+            let _ = black_box(reading.read_bytes(black_box(line)));
+        });
+    }
+    // And a table the dictionary states costs the same as the defaults.
+    let mut ruled = yggdryl::FixRegistry::new();
+    let mut field = yggdryl::DataType::utf8().nullable_field("MsgDirection");
+    field.as_fix_mut().set_tag(385).unwrap();
+    field
+        .as_fix_mut()
+        .set_directions(&[
+            yggdryl::FixDirection::new("S", [r"(?i)(?:^|\s)tx\s", ">>>"]),
+            yggdryl::FixDirection::new("R", [r"(?i)(?:^|\s)rx\s", "<<<"]),
+        ])
+        .unwrap();
+    ruled.insert(field).unwrap();
+    let ruled = ruled.msgdirection();
+    for line in [
+        b"09:12:03 TX 8=FIX.4.4|35=D|10=0|".as_slice(),
+        b"09:12:03 <<< 8=FIX.4.4|35=0|10=0|",
+        b"TX <<< 8=FIX.4.4|35=D|10=0|",
+        b"09:12:03 8=FIX.4.4|35=D|10=0|",
+    ] {
+        free("read_bytes_direction stated table", || {
+            let _ = black_box(ruled.read_bytes(black_box(line)));
+        });
+    }
     free("iter", || {
         let _ = black_box(registry.iter().count());
     });

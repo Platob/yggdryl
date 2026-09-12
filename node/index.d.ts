@@ -3047,6 +3047,16 @@ export declare class ProtocolField {
   get nulls(): Array<string>
   /** Record the spellings; an empty array removes the property. */
   set nulls(values: Array<string>)
+  /**
+   * The rules that read tag 385 off the prose in front of a payload, one
+   * per code of the set; an absent property is an empty array.
+   */
+  get directions(): Array<FixDirection>
+  /**
+   * Record the rules; an empty array removes the property, and a pattern
+   * the regex crate refuses throws leaving the field unchanged.
+   */
+  set directions(values: Array<FixDirection>)
   /** The specification's own wording for this field. */
   get description(): string | null
   /** Record the specification's own wording for this field. */
@@ -5178,6 +5188,14 @@ export interface FixCodecOptions {
  * caller registers.
  */
 export declare function fixCrateFields(): Array<JsField>
+
+/** One rule reading a code of tag 385's set off the prose in front of a payload. */
+export interface FixDirection {
+  /** A code of tag 385's set. */
+  code: string
+  /** The `regex::bytes` patterns, any of which names the code in the prose before a payload. */
+  patterns: Array<string>
+}
 
 /**
  * The fixed root every message answers as, built from one dictionary.

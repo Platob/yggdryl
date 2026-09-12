@@ -348,27 +348,37 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
 }
 
 #[test]
-fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
+fn the_prose_in_front_of_a_configuration_document_names_its_half_and_the_document_nothing() {
     let reading = FixRegistry::new().msgdirection();
 
     const ANSWERED: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin":{"ExtendedActions":[{"name":"send-test-request","description":"Send a test request message.","parameters":[{"name":"test-request-id","description":"The outgoing test request ID to send"}]}]}},"status":200}"#;
     const ASKED: &[u8] =
         br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#;
 
-    // The document says which half it is, and the words inside it - `send`,
-    // `outgoing`, `in` - are its own payload rather than a transport marker.
-    // Without the bound they would answer, and answer wrongly. The answer is
-    // a code of tag 385's set (decision 14).
-    assert_eq!(reading.read_bytes(ANSWERED), Some("R"));
-    assert_eq!(reading.read_bytes(ASKED), Some("S"));
-    // An error is an answer that came back, not a request that went out.
+    // A document states nothing of which way it moved (decision 15): the
+    // words inside it - `send`, `outgoing`, `in` - are its own payload rather
+    // than a transport marker, and the echoed `request` key is the answer's
+    // shape, not a direction. Without the bound the words would answer, and
+    // answer wrongly.
+    assert_eq!(reading.read_bytes(ANSWERED), None);
+    assert_eq!(reading.read_bytes(ASKED), None);
+    // The prose Jolokia writes in front of the document does say: an answer
+    // came back, a request went out, as codes of tag 385's set.
+    let answered = [b"Response: ".as_slice(), ANSWERED].concat();
+    assert_eq!(reading.read_bytes(&answered), Some("R"));
+    let asked = [b"Request: ".as_slice(), ASKED].concat();
+    assert_eq!(reading.read_bytes(&asked), Some("S"));
+    // An error is an answer that came back, and a bare one still says so
+    // only through its prose.
     let failed =
         br#"{"request":{"mbean":"com.ullink.ulbridge:*","type":"read"},"error":"no such MBean"}"#;
-    assert_eq!(reading.read_bytes(failed), Some("R"));
-    // A write states a `value` of its own, and it is still what went out: the
-    // echoed request is the reading, not the keys an answer happens to share.
+    assert_eq!(reading.read_bytes(failed), None);
+    let failed = [b"[Jolokia] (DEBUG) Response: ".as_slice(), failed].concat();
+    assert_eq!(reading.read_bytes(&failed), Some("R"));
+    // A write states a `value` of its own; the keys a document carries never
+    // were the reading, and the prefix bound still holds them out of it.
     let write = br#"{"type":"write","mbean":"com.ullink.ulbridge:type=Bridge","attribute":"LogLevel","value":3}"#;
-    assert_eq!(reading.read_bytes(write), Some("S"));
+    assert_eq!(reading.read_bytes(write), None);
     assert_eq!(MimeType::infer_bytes(write), MimeType::ULCONFIG);
     assert_eq!(FixCodec::infer_msgtype_bytes(write), Some(&b"Bridge"[..]));
 
@@ -376,14 +386,14 @@ fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
     let bulk = br#"[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin","type":"read"},"status":200},{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"status":200}]"#;
     assert_eq!(MimeType::infer_bytes(bulk), MimeType::ULCONFIG);
     assert_eq!(FixCodec::infer_msgtype_bytes(bulk), Some(&b"Plugin"[..]));
-    assert_eq!(reading.read_bytes(bulk), Some("R"));
+    assert_eq!(reading.read_bytes(bulk), None);
 
     // The `type=` is read inside the ObjectName that states it, so a value
     // elsewhere spelling the same five bytes is that value's business.
     let quoting = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"Comment":"routed by ,type=Decoy"},"status":200}"#;
     assert_eq!(FixCodec::infer_msgtype_bytes(quoting), Some(&b"read"[..]));
 
-    // A verb the transport wrote outranks what the document says of itself.
+    // A verb the transport wrote is read like any other prose.
     let marked = [b"sending >> ".as_slice(), ANSWERED].concat();
     assert_eq!(reading.read_bytes(&marked), Some("S"));
     // The bound is the whole prefix, so a `[jolokia]` in the prose is prose.
@@ -399,11 +409,18 @@ fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
         Some(&b"Plugin"[..])
     );
 
-    // The document's statement is filled as tag 385 on every door, and the
-    // codec's pin never overrides it.
+    // The prose's reading is filled as tag 385 on the line door, which takes
+    // no pin; a bare document fills nothing there.
     let codec = FixCodec::new(Arc::new(FixRegistry::new()));
-    let message = codec.parse_line(ANSWERED).unwrap().next().unwrap().unwrap();
+    let message = codec
+        .parse_line(&answered)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
     assert_eq!(message.by_tag(385).unwrap().as_str(), Some("R"));
+    let message = codec.parse_line(ANSWERED).unwrap().next().unwrap().unwrap();
+    assert_eq!(message.get_by_tag(385), None);
 
     let named = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=ConfigurationPlugin","type":"read"},"status":200}"#;
     assert_eq!(

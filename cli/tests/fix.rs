@@ -5,7 +5,7 @@ use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, Field, FixCode, FixId, FixRegistry};
+use yggdryl::{DataType, Field, FixCode, FixDirection, FixId, FixRegistry};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -462,4 +462,81 @@ fn field_codes_are_canonical_inline_metadata_and_invalid_updates_are_atomic() {
         r#"{"codes":[]}"#,
     ]);
     assert_eq!(workspace.read("fields", "54").as_fix().codes().count(), 0);
+}
+
+#[test]
+fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic() {
+    let workspace = Workspace::new();
+    let codes = r#"{"codes":[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]}"#;
+    workspace.success(&[
+        "fields",
+        "create",
+        "MsgDirection",
+        "utf8",
+        "--tag",
+        "385",
+        "--codes",
+        codes,
+        "--directions",
+        r#"{"directions":[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]}"#,
+    ]);
+    let field = workspace.read("fields", "385");
+    // Each raw document was re-rendered through its typed setter, and neither
+    // wiped the other: the set and its rules are one definition.
+    assert_eq!(field.as_fix().code_value("send"), Some("S"));
+    let rules = field
+        .as_fix()
+        .directions()
+        .map(|rule| rule.map(FixDirection::from))
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(
+        rules,
+        [
+            FixDirection::new("S", [r"(?i)^TX\b"]),
+            FixDirection::new("R", [r"(?i)^RX\b"]),
+        ]
+    );
+    assert_eq!(
+        field.get_metadata("fix:directions"),
+        Some(concat!(
+            r#"{"directions":[{"code":"S","patterns":["(?i)^TX\\b"]},"#,
+            r#"{"code":"R","patterns":["(?i)^RX\\b"]}]}"#,
+        ))
+    );
+    for document in [
+        "not json",
+        r#"{"directions":[]}junk"#,
+        r#"{"directions":[{"code":"S","patterns":["("]}]}"#,
+    ] {
+        workspace.failure(&[
+            "fields",
+            "update",
+            "MsgDirection",
+            "utf8",
+            "--tag",
+            "385",
+            "--codes",
+            codes,
+            "--directions",
+            document,
+        ]);
+        assert_eq!(workspace.read("fields", "385"), field);
+    }
+    workspace.success(&[
+        "fields",
+        "update",
+        "MsgDirection",
+        "utf8",
+        "--tag",
+        "385",
+        "--codes",
+        codes,
+        "--directions",
+        r#"{"directions":[]}"#,
+    ]);
+    let cleared = workspace.read("fields", "385");
+    assert_eq!(cleared.as_fix().directions().count(), 0);
+    assert_eq!(cleared.get_metadata("fix:directions"), None);
+    assert_eq!(cleared.as_fix().code_value("send"), Some("S"));
 }

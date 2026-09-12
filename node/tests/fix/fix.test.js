@@ -100,8 +100,12 @@ test('the typed vocabulary answers only on the fix view', () => {
     assert.throws(() => view.branches, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.hasBranch('cme'), { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.id, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.directions, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
       view.tag = 55
+    }, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => {
+      view.directions = [{ code: 'S', patterns: ['^TX '] }]
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
       view.aliases = ['Ticker']
@@ -113,6 +117,50 @@ test('the typed vocabulary answers only on the fix view', () => {
   }
   // The Map-like surface still works on every view, this one included.
   assert.equal(field.protocol('fix').get('tag'), '55')
+})
+
+test('direction rules cross as a typed list', () => {
+  const field = new Field('MsgDirection', 'utf8')
+  field.fix.tag = 385
+  assert.deepEqual(field.fix.directions, [])
+
+  // One record per code of the set, the patterns decoded, on tag 385.
+  const rules = [
+    { code: 'S', patterns: ['(?i)^TX\\b'] },
+    { code: 'R', patterns: ['(?i)^RX\\b'] },
+  ]
+  field.fix.directions = rules
+  assert.deepEqual(field.fix.directions, rules)
+  // The stored text is the canonical document, backslashes escaped.
+  assert.equal(
+    field.get('fix:directions'),
+    '{"directions":[{"code":"S","patterns":["(?i)^TX\\\\b"]},' +
+      '{"code":"R","patterns":["(?i)^RX\\\\b"]}]}',
+  )
+  assert.deepEqual(JSON.parse(field.get('fix:directions')), { directions: rules })
+
+  // A codec compiles the rules of the dictionary it is built over, once,
+  // and the line door fills tag 385 from them; the verb table no longer
+  // applies under a stated table.
+  const registry = new fix.FixRegistry()
+  registry.insert(field)
+  const codec = new fix.FixCodec(registry)
+  const read = (line) => codec.parseLine(Buffer.from(line)).next().value
+  assert.equal(read('TX 8=FIX.4.4|35=D|10=0|').byTag(385).asJs(), 'S')
+  assert.equal(read('RX 8=FIX.4.4|35=D|10=0|').byTag(385).asJs(), 'R')
+  assert.equal(read('sending >> 8=FIX.4.4|35=D|10=0|').getByTag(385), null)
+
+  // A pattern the regex crate refuses is refused whole, the field unchanged.
+  assert.throws(() => {
+    field.fix.directions = [{ code: 'S', patterns: ['('] }]
+  }, /valid byte regex/)
+  assert.deepEqual(field.fix.directions, rules)
+
+  // An empty array removes the property.
+  field.fix.directions = []
+  assert.deepEqual(field.fix.directions, [])
+  assert.equal(field.has('fix:directions'), false)
+  assert.deepEqual(new Field('MsgDirection', 'utf8').fix.directions, [])
 })
 
 test('a tag crosses as a number and is never narrowed', () => {
@@ -324,18 +372,22 @@ test('protocol and MsgType inference stays native and shallow', () => {
   assert.equal(fix.FixCodec.inferMsgtypeBytes(Buffer.from('35=AE|')).toString(), 'AE')
   assert.equal(fix.FixCodec.inferMsgtypeText('MSGTYPE=AE|'), 'AE')
 
-  // A bridge configuration states its own half of the exchange, and the
-  // `send` its own payload spells is never read as the marker.
+  // A bridge configuration document states no half of the exchange on its
+  // own, and the `send` its own payload spells is never read as the marker:
+  // which way it moved is the prose in front of it, read into FIX's own
+  // tag 385 by the rules the dictionary carries on that field.
   const answered =
     '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",' +
     '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
   assert.ok(MimeType.inferText(answered).equals(MimeType.ULCONFIG))
   assert.equal(fix.FixCodec.inferMsgtypeText(answered), 'read')
-  // Which way it moved is FIX's own tag 385, filled on every door.
   const codec = new fix.FixCodec(new fix.FixRegistry())
-  assert.equal(codec.parseLine(Buffer.from(answered)).next().value.byTag(385).asJs(), 'R')
+  const read = (line) => codec.parseLine(Buffer.from(line)).next().value
+  assert.equal(read(answered).getByTag(385), null)
+  assert.equal(read('Response: ' + answered).byTag(385).asJs(), 'R')
   const asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
-  assert.equal(codec.parseLine(Buffer.from(asked)).next().value.byTag(385).asJs(), 'S')
+  assert.equal(read(asked).getByTag(385), null)
+  assert.equal(read('Request: ' + asked).byTag(385).asJs(), 'S')
 })
 
 test('one namespace: a reused name merges and a reused tag stands beside its holder', () => {

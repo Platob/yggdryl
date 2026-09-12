@@ -817,9 +817,12 @@ are the whole surface: the registry, message definitions, codec, messages and
 lazy iterators. The namespace holds no constant: a dictionary is one namespace
 of tags and names, an identity is the number `field.fix.id` derives from both,
 and a dictionary's membership is `fix:branches` on the field it contributed
-to. The `fix:` vocabulary is typed accessor pairs on the `field.fix` view,
-including `id`, `tag`, `tags`, `aliases`, `branches`, `description`, `codes`,
-`counter`, `component` and `msgtype`.
+to. The `fix:` vocabulary is typed accessor pairs on the `field.fix` view:
+`id`, `tag`, `tags`, `aliases`, `branches`, `nulls`, `directions`,
+`description`, and the definition metadata `counter`, `component` and
+`msgtype`; `codes` has no accessor pair in JavaScript - `codeName(value)` and
+`codeValue(text)` read the inline enumeration, which is written as the raw
+`fix:codes` metadata.
 
 | Crossing | Rule |
 | --- | --- |
@@ -828,6 +831,7 @@ including `id`, `tag`, `tags`, `aliases`, `branches`, `description`, `codes`,
 | `FixMsg.arrivals()` | `[tag, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
 | name or path key | a `string`, folded once - ASCII case, `_`, `-` and space dropped; a bare string is a name, never an identifier |
 | membership | `field.fix.branches` is a `string[]`, sorted and lowercase, `[]` where `fix:branches` is absent; assigning an array replaces the list, folded and deduplicated, and `[]` removes the property; `addBranch(name)` is idempotent under the fold and `hasBranch(name)` folds the same way; a name that is empty or carries a comma is refused. `registry.dialects()` lists the distinct names any field or definition carries. Membership is provenance a caller filters on; no lookup consults it |
+| direction rules | `field.fix.directions` is the `FixDirection[]` a tag-385 field carries as `fix:directions`, each `{ code, patterns }` - one record per code of the set, the patterns decoded, `[]` where the property is absent; assigning an array replaces the table whole and `[]` removes the property; a pattern the regex crate refuses, an empty pattern, a record stating no pattern, a code outside the field's set, or a code named twice under any spelling throws leaving the field unchanged; a codec compiles the field's rules once when it is built, and where the property is absent the crate's defaults read the verbs |
 | `fieldByName`, `fieldByPath` | one namespace, no branch argument: the canonical fold answers first, then an alias fold; a path is decided by the one grammar |
 | `fieldByTag` | the canonical holder of a tag answers first, then the field holding it as an alternate |
 | `field.fix.id` | derived on every read from `fix:tag` and the field's name, never stored, `null` exactly when `fix:tag` is absent; the property has no setter |
@@ -839,7 +843,7 @@ including `id`, `tag`, `tags`, `aliases`, `branches`, `description`, `codes`,
 | categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
 | CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily; `addField` and `addDefinition` are the lenient twins, answering `true` when the field or definition arrived and `false` when it folded into a stored one |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; complete UTF-8 wire code |
-| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`; `parseLine`, `parseTextLine`, `parseUlconfigLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
+| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine`, `parseTextLine`, `parseUlconfigLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parseTextArrowReader`, `enrichMessagesArrowReader` and `arrowReader(schema, messages)` take and answer a native `BatchReader`, so `BatchReader.from` widens an Arrow JS table on the way in and `intoTable` drains the answer; `writeArrowReader(reader, sink)` writes lines into anything with `write(chunk: Uint8Array)` and answers their count |
 | `FixMsg` writes | `set(key, value)` and `remove(key)` change the row in place and never the entries; `FixMsg.fromRow(schema, row, registry)` reads a fixed row back, entries included |
 | output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
@@ -971,6 +975,50 @@ assert.deepEqual(parsed.intoBytes('|'.charCodeAt(0)), wire)
 assert.deepEqual(parsed.field.fix.branches, [])
 const tableField = fix.schema(registry)
 assert.equal(parsed.intoRow(tableField).asJs().length, tableField.fieldLen)
+```
+
+Which way a captured line moved is tag 385, read off the prose in front of
+the payload by the rules the dictionary carries on that field. A bridge that
+logs `TX`/`RX` is read by editing the dictionary, never the crate, and the
+codec compiles the rules of the registry it is built over, once.
+
+```javascript
+const assert = require('node:assert/strict')
+const path = require('node:path')
+const { fix } = require('yggdryl')
+
+const read = (codec, line) => codec.parseLine(Buffer.from(line)).next().value
+// Without the property, the crate's defaults read the spelled verbs.
+const plain = new fix.FixCodec(new fix.FixRegistry())
+assert.equal(read(plain, 'sending >> 8=FIX.4.4|35=D|10=0|').byTag(385).asJs(), 'S')
+
+// The rules live on the dictionary's own tag-385 field. `fieldByTag` answers
+// a copy, so the edit is written back with `update`, and before the codec is
+// built: the codec compiles what its registry states, and a stated table
+// replaces the defaults whole.
+const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
+const direction = registry.fieldByTag(385)
+assert.deepEqual(direction.fix.directions, [])
+direction.fix.directions = [
+  { code: 'S', patterns: ['(?i)^TX\\b'] },
+  { code: 'R', patterns: ['(?i)^RX\\b'] },
+]
+assert.deepEqual(direction.fix.directions[0], { code: 'S', patterns: ['(?i)^TX\\b'] })
+assert.ok(direction.get('fix:directions').startsWith('{"directions":[{"code":"S"'))
+registry.update(direction)
+const codec = new fix.FixCodec(registry)
+assert.equal(read(codec, 'TX 8=FIX.4.4|35=D|10=0|').byTag(385).asJs(), 'S')
+assert.equal(read(codec, 'RX 8=FIX.4.4|35=D|10=0|').byTag(385).asJs(), 'R')
+assert.equal(read(codec, 'sending >> 8=FIX.4.4|35=D|10=0|').getByTag(385), null)
+
+// A pattern the regex crate refuses throws leaving the field unchanged; an
+// empty array removes the property.
+assert.throws(() => {
+  direction.fix.directions = [{ code: 'S', patterns: ['('] }]
+}, /valid byte regex/)
+assert.equal(direction.fix.directions.length, 2)
+direction.fix.directions = []
+assert.equal(direction.has('fix:directions'), false)
 ```
 
 `FixMsg`'s constructor is the one widening gate: the core alone types, orders,

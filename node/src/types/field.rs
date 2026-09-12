@@ -34,6 +34,15 @@ pub struct MetadataEntry {
     pub value: String,
 }
 
+/// One rule reading a code of tag 385's set off the prose in front of a payload.
+#[napi(object)]
+pub struct FixDirection {
+    /// A code of tag 385's set.
+    pub code: String,
+    /// The `regex::bytes` patterns, any of which names the code in the prose before a payload.
+    pub patterns: Vec<String>,
+}
+
 /// Metadata as `[{key, value}]` entries or one plain object.
 pub type MetadataInput = Either<Vec<MetadataEntry>, HashMap<String, String>>;
 
@@ -2122,6 +2131,41 @@ impl JsProtocolField {
             .inner
             .as_fix_mut()
             .set_nulls(values)
+            .map_err(napi_error)
+    }
+
+    /// The rules that read tag 385 off the prose in front of a payload, one
+    /// per code of the set; an absent property is an empty array.
+    #[napi(getter)]
+    pub fn directions(&self, env: Env) -> Result<Vec<FixDirection>> {
+        self.require_fix(env, "directions")?;
+        self.field
+            .inner
+            .as_fix()
+            .directions()
+            .map(|entry| {
+                let rule = yggdryl::FixDirection::from(entry.map_err(napi_error)?);
+                Ok(FixDirection {
+                    code: rule.code().to_owned(),
+                    patterns: rule.patterns().iter().map(ToString::to_string).collect(),
+                })
+            })
+            .collect()
+    }
+
+    /// Record the rules; an empty array removes the property, and a pattern
+    /// the regex crate refuses throws leaving the field unchanged.
+    #[napi(setter)]
+    pub fn set_directions(&mut self, env: Env, values: Vec<FixDirection>) -> Result<()> {
+        self.require_fix(env, "directions")?;
+        let rules: Vec<yggdryl::FixDirection> = values
+            .into_iter()
+            .map(|rule| yggdryl::FixDirection::new(rule.code, rule.patterns))
+            .collect();
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_directions(&rules)
             .map_err(napi_error)
     }
 

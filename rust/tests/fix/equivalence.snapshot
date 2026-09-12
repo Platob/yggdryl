@@ -8247,6 +8247,7 @@ ulbridge[095]:0.field.version	"5.0.2"
 ulbridge[095]:0.field.timestamp	"2026-08-14T14:46:40.101000000Z"
 ulbridge[095]:0.field.unixpartition	1786716000
 ulbridge[095]:0.field.pluginid	"Jolokia"
+ulbridge[095]:0.field.msgdirection	"S"
 ulbridge[095].messages	1
 ulbridge[096]:0.type	unknown
 ulbridge[096]:0.digest	99aa06d3014798d86001c324468d497f
@@ -8971,6 +8972,7 @@ ulbridge[117]:0.field.version	"5.0.2"
 ulbridge[117]:0.field.timestamp	"2026-08-14T03:03:13.319000000Z"
 ulbridge[117]:0.field.unixpartition	1786676400
 ulbridge[117]:0.field.pluginid	"Jolokia"
+ulbridge[117]:0.field.msgdirection	"S"
 ulbridge[117].messages	1
 ulbridge[118]:0.type	unknown
 ulbridge[118]:0.digest	99aa06d3014798d86001c324468d497f
@@ -10579,7 +10581,6 @@ bridge[005]:0.field.msghash	"1uFNMZgmE77rmx6cUxnjoQ=="
 bridge[005]:0.field.version	"5.0.2"
 bridge[005]:0.field.timestamp	"1970-01-01T00:00:00.000000000Z"
 bridge[005]:0.field.unixpartition	0
-bridge[005]:0.field.msgdirection	"R"
 bridge[005].messages	1
 bridge[006].line	no level printed by this plugin, and no pairs either
 bridge[006]:0.type	unknown

@@ -35,6 +35,7 @@ export {
   type FieldBound,
   type FieldCount,
   type FieldSummaryView,
+  type FixDirection,
   type MetadataEntry,
   type PartitionEntry,
   type StringParameters,

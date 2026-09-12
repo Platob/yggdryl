@@ -6,14 +6,14 @@ use std::process::ExitCode;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use yggdryl::holder::Holder;
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, Field, FixCategory, FixCode, FixRegistry, IOKind, Result};
+use yggdryl::{DataType, Field, FixCategory, FixCode, FixDirection, FixRegistry, IOKind, Result};
 
 use crate::{diff, quality, registry, schema, shell, style};
 
 /// What the dictionary tool was asked to do.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix components create --input Order.json\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nField enums live in fix:codes metadata; --codes accepts that JSON document."
+    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix components create --input Order.json\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes '{\"codes\":[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]}' --directions '{\"directions\":[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]}'\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nField enums live in fix:codes metadata; --codes accepts that JSON document.\nTag 385's direction rules live in fix:directions metadata; --directions accepts that JSON document, one entry per code of the set, and an empty list removes it so the crate's defaults read again."
 )]
 pub enum Command {
     /// Tagged scalar fields, including int32 repeating-group counters.
@@ -126,7 +126,7 @@ pub enum CategoryCommand {
 /// Native Field intake; category semantics remain in the core registry.
 #[derive(Args)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields create NoPartyIDs int32 --tag 453\n  ygg fix fields create --input Side.json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix components create Order 'struct<ClOrdID: utf8>' --msgtype D\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nField enum records belong to fix:codes metadata. --codes accepts compact JSON with value before name, for example {\"codes\":[{\"value\":\"1\",\"name\":\"Buy\"}]}."
+    after_help = "Examples:\n  ygg fix fields create NoPartyIDs int32 --tag 453\n  ygg fix fields create --input Side.json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix components create Order 'struct<ClOrdID: utf8>' --msgtype D\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes '{\"codes\":[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]}' --directions '{\"directions\":[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]}'\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nField enum records belong to fix:codes metadata. --codes accepts compact JSON with value before name, for example {\"codes\":[{\"value\":\"1\",\"name\":\"Buy\"}]}.\nTag 385's direction rules belong to fix:directions metadata. --directions accepts compact JSON with one entry per code of the set, each pattern a regex read against the prose in front of a payload, for example {\"directions\":[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]}]}; an empty list removes the property so the crate's defaults read again."
 )]
 pub struct DefinitionArgs {
     /// Canonical definition name, preserving its spelling.
@@ -136,7 +136,7 @@ pub struct DefinitionArgs {
     #[arg(required_unless_present = "input")]
     dtype: Option<String>,
     /// Read one native Field JSON document; replaces positional inputs and flags.
-    #[arg(long, conflicts_with_all = ["name", "dtype", "tag", "dialect", "description", "counter", "component", "codes", "msgtype", "required"])]
+    #[arg(long, conflicts_with_all = ["name", "dtype", "tag", "dialect", "description", "counter", "component", "codes", "directions", "msgtype", "required"])]
     input: Option<PathBuf>,
     /// Numeric tag for a scalar field, including a group counter.
     #[arg(long)]
@@ -156,6 +156,9 @@ pub struct DefinitionArgs {
     /// Compact inline enum JSON, with value before name: {"codes":[{"value":"1","name":"Buy"}]}.
     #[arg(long)]
     codes: Option<String>,
+    /// Direction rules JSON for tag 385: {"directions":[{"code":"S","patterns":["(?i)^TX\\b"]}]}.
+    #[arg(long)]
+    directions: Option<String>,
     /// FIX message type making a component a message (for example, D).
     #[arg(long)]
     msgtype: Option<String>,
@@ -183,13 +186,22 @@ impl DefinitionArgs {
         let mut field = DataType::from_str(dtype)?.nullable_field(name);
         field.set_nullable(!self.required && self.msgtype.is_none());
         if let Some(document) = &self.codes {
-            field.set_metadata([("fix:codes", document.clone())])?;
+            field.update_metadata([("fix:codes", document.clone())])?;
             let codes = field
                 .as_fix()
                 .codes()
                 .map(|code| code.map(FixCode::from))
                 .collect::<Result<Vec<_>>>()?;
             field.as_fix_mut().set_codes(&codes)?;
+        }
+        if let Some(document) = &self.directions {
+            field.update_metadata([("fix:directions", document.clone())])?;
+            let rules = field
+                .as_fix()
+                .directions()
+                .map(|rule| rule.map(FixDirection::from))
+                .collect::<Result<Vec<_>>>()?;
+            field.as_fix_mut().set_directions(&rules)?;
         }
         let mut view = field.as_fix_mut();
         view.set_branches(&self.dialect)?;
@@ -477,6 +489,7 @@ fn dictionary_words(registry: &FixRegistry) -> Vec<String> {
         "--counter",
         "--component",
         "--codes",
+        "--directions",
         "--msgtype",
     ]
     .into_iter()

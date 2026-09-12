@@ -2936,6 +2936,48 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
+    /// The rules that read tag 385 off the prose in front of a payload, one
+    /// record per code of the set: `{"code", "patterns"}`.
+    ///
+    /// Assigning an empty iterable removes the property; a pattern the regex
+    /// crate refuses is a `ValueError` that leaves the field unchanged.
+    #[getter]
+    fn directions<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        self.require_fix("directions")?;
+        let field = self.borrow_field(py)?;
+        let mut records = Vec::new();
+        for entry in field.inner.as_fix().directions() {
+            let rule = yggdryl::FixDirection::from(entry.map_err(value_error)?);
+            let record = PyDict::new(py);
+            record.set_item("code", rule.code())?;
+            let patterns: Vec<&str> = rule.patterns().iter().map(AsRef::as_ref).collect();
+            record.set_item("patterns", patterns)?;
+            records.push(record);
+        }
+        Ok(records)
+    }
+
+    #[setter]
+    fn set_directions(&self, directions: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("directions")?;
+        let mut rules = Vec::new();
+        for item in directions.try_iter()? {
+            let item = item?;
+            let code = item.get_item("code")?.extract::<String>()?;
+            let mut patterns = Vec::new();
+            for pattern in item.get_item("patterns")?.try_iter()? {
+                patterns.push(pattern?.extract::<String>()?);
+            }
+            rules.push(yggdryl::FixDirection::new(code, patterns));
+        }
+        let mut field = self.borrow_field_mut(directions.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_directions(&rules)
+            .map_err(value_error)
+    }
+
     /// The specification's own wording for this field.
     #[getter]
     fn description(&self, py: Python<'_>) -> PyResult<Option<String>> {

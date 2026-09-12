@@ -1358,13 +1358,14 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `UlPlugins`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, and `ULBRIDGE_DIALECT` (`"ulbridge"`, the membership every field a bridge defines carries). The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `description`, and the definition metadata `codes`, `counter`, `component` and `msgtype`.
+`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `UlPlugins`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, and `ULBRIDGE_DIALECT` (`"ulbridge"`, the membership every field a bridge defines carries). The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `nulls`, `directions`, `description`, and the definition metadata `counter`, `component` and `msgtype`; `codes` has no typed property in Python and is read and written as the raw `fix:codes` metadata.
 
 | Crossing | Rule |
 | --- | --- |
 | keys | an `int` is a tag, a `str` a name or dotted path; a bare tag or name uses the core's deterministic best match - the canonical holder before an alternate tag, the canonical name before an alias, under the one fold; a colon-bearing string is a name, never an identifier |
 | identity | `field.fix.id` is the `int` the core derives from the tag and the folded name - `MsgType`, `msgtype` and `Msg_Type` under 35 are one id - on every read and never stored, so it is read-only and `None` exactly when `fix:tag` is absent; `field_by_id`, `get_field_by_id`, `remove_by_id`, `FixMsg.by_id` and `get_by_id` take that `int` exactly, and only a method spelled `id` reads an `int` as one |
 | membership | `field.fix.branches` is the sorted, lowercase `list[str]` of the dialects that contributed the field, assignable from any iterable of names - an empty or comma-bearing name is a `ValueError`; `add_branch` and `has_branch` fold ASCII case; `FixRegistry.dialects()` lists the distinct names any field or definition carries; no lookup consults it |
+| direction rules | `field.fix.directions` is the `list[FixDirection]` a tag-385 field carries as `fix:directions`, each a TypedDict `{"code": str, "patterns": list[str]}` - one record per code of the set, the patterns decoded, `[]` when the property is absent - assignable from any iterable of such mappings, an empty one removing the property; a pattern the regex crate refuses, an empty pattern, a record stating no pattern, a code outside the field's set, or a code named twice under any spelling is a `ValueError` that leaves the field unchanged; a codec compiles the field's rules once when it is built, and where the property is absent the crate's defaults read the verbs |
 | lookups | `field_by_tag`, `field_by_name` and `field_by_path` take one argument each; a held tag under another name is a second field beside the holder, reached by its name or its id while the bare tag keeps answering the holder, and iteration is tag-major with the holder first |
 | categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
 | CRUD | `create_definition`, `definition`, `update_definition`, `remove_definition`; `definitions` iterates one category lazily |
@@ -1374,7 +1375,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | `FixMsg.entries()` | `(tag, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
 | `FixMsg` | equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and `FixMsg.from_row(schema, row, registry=None)` reads a fixed row back, entries included |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; its wire code remains complete UTF-8 text |
-| `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect: the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the dictionary's newest, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; `parse_line`, `parse_text_line`, `parse_ulconfig_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
+| `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect: the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the dictionary's newest, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parse_line`, `parse_text_line`, `parse_ulconfig_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parse_text_arrow_reader`, `enrich_messages_arrow_reader` and `arrow_reader(schema, messages)` take and answer a `pyarrow.RecordBatchReader`, over the C Stream interface; `write_arrow_reader(reader, sink)` writes lines into a binary file-like and answers their count |
 | `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive()` counts the chains no terminal state has closed, and the lifecycle is mutable, so unhashable |
 | output | `FixMsg.into_row(field)` projects a table row; `into_bytes(separator=1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
@@ -1486,6 +1487,45 @@ assert next(messages, None) is None
 assert parsed.into_bytes(ord("|")) == wire
 table_field = fix_schema(registry)
 assert len(parsed.into_row(table_field)) == len(table_field.dtype)
+```
+
+Which way a captured line moved is tag 385, read off the prose in front of the payload by the rules the dictionary carries on that field. A bridge that logs `TX`/`RX` is read by editing the dictionary, never the crate, and the codec compiles the rules of the registry it is built over, once.
+
+```python
+import pytest
+
+from yggdryl import Field
+from yggdryl.fix import FixCodec, FixRegistry
+
+# Without the property, the crate's defaults read the spelled verbs.
+assert next(FixCodec(FixRegistry()).parse_line(b"sending >> 8=FIX.4.4|35=D|10=0|")).by_tag(385).as_py() == "S"
+
+direction = Field("MsgDirection", "utf8")
+direction.fix.tag = 385
+assert direction.fix.directions == []
+direction.fix.directions = [
+    {"code": "S", "patterns": ["(?i)^TX\\b"]},
+    {"code": "R", "patterns": ["(?i)^RX\\b"]},
+]
+assert direction.fix.directions[0] == {"code": "S", "patterns": ["(?i)^TX\\b"]}
+assert direction.metadata["fix:directions"].startswith('{"directions":[{"code":"S"')
+
+# The field is edited before the codec is built: the codec compiles what its
+# registry states, and a stated table replaces the defaults whole.
+registry = FixRegistry()
+registry.insert(direction)
+codec = FixCodec(registry)
+assert next(codec.parse_line(b"TX 8=FIX.4.4|35=D|10=0|")).by_tag(385).as_py() == "S"
+assert next(codec.parse_line(b"RX 8=FIX.4.4|35=D|10=0|")).by_tag(385).as_py() == "R"
+assert next(codec.parse_line(b"sending >> 8=FIX.4.4|35=D|10=0|")).get_by_tag(385) is None
+
+# A pattern the regex crate refuses is a ValueError leaving the field
+# unchanged; an empty list removes the property.
+with pytest.raises(ValueError):
+    direction.fix.directions = [{"code": "S", "patterns": ["("]}]
+assert len(direction.fix.directions) == 2
+direction.fix.directions = []
+assert "fix:directions" not in direction.metadata
 ```
 
 A `dict` is the obvious Python spelling of a named row, and the declared root is what says so. `FixMsg` reads one as the record its Struct field declares, while a `Map` field keeps its mapping.

@@ -13,9 +13,9 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | one output row per emitted message; bulk and wildcard bodies expand, with carried source columns repeated; a line the reader refuses is a row holding an empty message, so a row in is a row out |
 | Batches | closed by raw bytes against the codec's `batch_byte_size`, `DEFAULT_BATCH_BYTE_SIZE` (128 MiB) unless pinned: several small input batches accumulate into one, one larger than the target splits by rows in proportion, and a batch always holds at least one row |
-| Pins | on the codec, for the whole run: `with_payload_column`, `with_capture_names`, `with_separator`, `with_version`, `with_null_values`, `with_direction`, `with_batch_byte_size`; no dialect pin, because the registry is one namespace |
+| Pins | on the codec, for the whole run: `with_payload_column`, `with_capture_names`, `with_separator`, `with_version`, `with_null_values`, `try_with_direction`, `with_batch_byte_size`; no dialect pin, because the registry is one namespace |
 | Stages | a call, never a flag: `enrich_messages_arrow_reader`, `FixCodec::lifecycle`, `FixMsg::into_latest` and `FixDedup` compose over `messages` and `arrow_reader` |
-| Per row | `beginstring`, `direction` and `timestamp` are parameters read from the row; any other column named after a field - `pluginid` among them - fills it where the message did not state it |
+| Per row | `beginstring`, `msgdirection` and `timestamp` are parameters read from the row; any other column named after a field - `pluginid` among them - fills it where the message did not state it |
 | Errors | typed I/O, schema and parsing failures; a source batch of another schema than the first is a conflict; malformed bulk input reports its location and stops the stream |
 | Lazy | one source batch held at a time; configuration cursors consumed incrementally under the output batch bound |
 | Wire | `write_arrow_reader` rebuilds every line from `nofixentries` and never from the columns; a batch without that column is refused before a row is read |
@@ -176,11 +176,11 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 | `separator` | `with_separator` | `SOH` (`0x01`) | the separator a re-emitted line is written with, which is what `write_arrow_reader` writes; reading takes none, because a line already said which byte separated its fields |
 | `version` | `with_version` | none | the version values are translated at, never what a column is called; unpinned, each row answers for itself: `ApplVerID(1128)`, then `BeginString(8)`, then the dictionary's newest |
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
-| `direction` | `with_direction` | `SENT` | the direction a line that states none of its own took - no verb in front of its payload, and no [document saying which half it is](registry.md#a-direction-is-the-verb-in-front-of-the-payload) |
+| `direction` | `try_with_direction` | the set's `Send` code, `S` | the code of tag 385's set a line that states none of its own takes on the batch door - no `msgdirection` column stating one, and no [rule of tag 385's `fix:directions`](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) matching the prose in front of its payload; any spelling of a code of the set, resolved once, and `None` or `""` pins nothing |
 | `batch_byte_size` | `with_batch_byte_size` | `DEFAULT_BATCH_BYTE_SIZE`, 128 MiB | the raw bytes one output batch targets |
 | `capture_names` | `with_capture_names` | none | what a run's row-header captures are called, in the order a line answers them, so [`parse_text_line`](capture.md#a-reader-is-the-whole-parse-surface) reads a capture by position rather than by name |
 
-What happens to a message on its way into a row is a stage, and a stage is a call over the stream rather than a flag on the reader: [`enrich_messages_arrow_reader`](#filled-where-it-sits) fills batches, `lifecycle` [stamps](lifecycle.md#in-a-batch-read) a stream, `into_latest` [restates](message.md#restated-at-the-dictionarys-newest-version) a message and `FixDedup` drops an adjacent republication - each composed as `arrow_reader(schema, stage(messages(reader)))`, so the order stages run in is the order they are written in and nothing runs unasked. Python spells the pins as keywords on `FixCodec(registry, *, version, separator, payload_column, capture_names, null_values, direction, batch_byte_size)`, JavaScript as the options object of `new fix.FixCodec(registry, { ... })` in camelCase; `separator` is the byte's integer value, and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
+What happens to a message on its way into a row is a stage, and a stage is a call over the stream rather than a flag on the reader: [`enrich_messages_arrow_reader`](#filled-where-it-sits) fills batches, `lifecycle` [stamps](lifecycle.md#in-a-batch-read) a stream, `into_latest` [restates](message.md#restated-at-the-dictionarys-newest-version) a message and `FixDedup` drops an adjacent republication - each composed as `arrow_reader(schema, stage(messages(reader)))`, so the order stages run in is the order they are written in and nothing runs unasked. Python spells the pins as keywords on `FixCodec(registry, *, version, separator, payload_column, capture_names, null_values, direction, batch_byte_size)`, JavaScript as the options object of `new fix.FixCodec(registry, { ... })` in camelCase; `separator` is the byte's integer value, and `direction` is any spelling of a code of tag 385's set, `""` pinning nothing.
 
 Messages to batches, with one stage between them: the lifecycle stamps four messages of one order's life, and every row carries the chain.
 
@@ -279,7 +279,7 @@ One column carries the frames; three more supply, per row, arguments the byte re
 | --- | --- |
 | the payload column, named by the codec | the frame parsed |
 | `beginstring` | the source version |
-| `direction` | the direction, stated |
+| `msgdirection` | the direction, stated: a code of tag 385's set, under any spelling |
 | `timestamp` | the row's own clock, which [stamps the message](capture.md#every-message-is-dated-and-versioned) ahead of any clock the frame carries |
 | any other column named after a field | that field, where the message did not state it |
 
@@ -287,7 +287,7 @@ A column is the caller speaking per row and a pin is the caller speaking per run
 
 A fill is named the way a key is: a column whose folded name resolves in the registry's one namespace - the canonical fold, then an alias fold, so a `senderSessionId` capture reaches the crate's own `sendersessionid` and a `pluginid` column the crate's `pluginid` - and last through the bridge's own spellings of standard fields, `seqNum` reaching `MsgSeqNum(34)`. It is row-only: never an entry, so it is not in `nofixentries`, not re-emitted by `write_arrow_reader` and not in `msghash`; a value the field cannot hold fills nothing rather than a null; and a column named by a tag's digits fills nothing, because a name is what reaches a field. Which columns fill is decided once, from the schema and the dictionary, rather than per row.
 
-`direction` is still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. `beginstring` and `timestamp` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided, and its `timestamp` column holds what a `timestamp` column stated. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
+`beginstring`, `msgdirection` and `timestamp` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided, and its `timestamp` column holds what a `timestamp` column stated. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
 
 ### A bridge log names what it fills
 

@@ -73,6 +73,10 @@ class ParquetFileStatistics(TypedDict):
     key_value_metadata: list[ParquetKeyValue]
     row_groups: list[ParquetRowGroupStatistics]
 
+class FixDirection(TypedDict):
+    code: str
+    patterns: list[str]
+
 class MimeType:
     OCTET_STREAM: ClassVar[MimeType]
     JSON: ClassVar[MimeType]
@@ -1157,6 +1161,10 @@ class ProtocolField:
     def nulls(self) -> list[str]: ...
     @nulls.setter
     def nulls(self, spellings: Iterable[str]) -> None: ...
+    @property
+    def directions(self) -> list[FixDirection]: ...
+    @directions.setter
+    def directions(self, directions: Iterable[Mapping[str, object]]) -> None: ...
     @property
     def description(self) -> str | None: ...
     @description.setter

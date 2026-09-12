@@ -168,8 +168,57 @@ def test_typed_vocabulary_is_only_on_the_fix_view() -> None:
             view.add_branch("cme")
         with pytest.raises(TypeError, match=scheme):
             view.has_branch("cme")
+        with pytest.raises(TypeError, match=scheme):
+            view.directions
+        with pytest.raises(TypeError, match=scheme):
+            view.directions = [{"code": "S", "patterns": ["^TX "]}]
     # The mapping protocol still works on every view, including this one.
     assert field.protocol("fix")["tag"] == "55"
+
+
+def test_direction_rules_cross_as_a_list() -> None:
+    """One record per code of the set, the patterns decoded, on tag 385."""
+    field = Field("MsgDirection", "utf8")
+    field.fix.tag = 385
+    assert field.fix.directions == []
+
+    rules = [
+        {"code": "S", "patterns": ["(?i)^TX\\b"]},
+        {"code": "R", "patterns": ["(?i)^RX\\b"]},
+    ]
+    field.fix.directions = rules
+    assert field.fix.directions == rules
+    # The stored text is the canonical document, backslashes escaped.
+    assert field.metadata["fix:directions"] == (
+        '{"directions":[{"code":"S","patterns":["(?i)^TX\\\\b"]},'
+        '{"code":"R","patterns":["(?i)^RX\\\\b"]}]}'
+    )
+    assert json.loads(field.metadata["fix:directions"]) == {"directions": rules}
+
+    # A codec compiles the rules of the dictionary it is built over, once,
+    # and the line door fills tag 385 from them; the verb table no longer
+    # applies under a stated table.
+    registry = FixRegistry()
+    registry.insert(field)
+    codec = FixCodec(registry)
+    assert next(codec.parse_line(b"TX 8=FIX.4.4|35=D|10=0|")).by_tag(385).as_py() == "S"
+    assert next(codec.parse_line(b"RX 8=FIX.4.4|35=D|10=0|")).by_tag(385).as_py() == "R"
+    assert next(codec.parse_line(b"sending >> 8=FIX.4.4|35=D|10=0|")).get_by_tag(385) is None
+
+    # A pattern the regex crate refuses is refused whole, the field unchanged.
+    with pytest.raises(ValueError, match="valid byte regex"):
+        field.fix.directions = [{"code": "S", "patterns": ["("]}]
+    assert field.fix.directions == rules
+    # A record is read as a mapping: a missing key is the mapping's own error.
+    with pytest.raises(KeyError):
+        field.fix.directions = [{"code": "S"}]
+    assert field.fix.directions == rules
+
+    # An empty iterable removes the property.
+    field.fix.directions = []
+    assert field.fix.directions == []
+    assert "fix:directions" not in field.metadata
+    assert Field("MsgDirection", "utf8").fix.directions == []
 
 
 def test_tag_rejects_bool_and_refuses_to_narrow() -> None:
@@ -407,19 +456,22 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
     assert FixCodec.infer_msgtype_bytes(b"35=AE|") == b"AE"
     assert FixCodec.infer_msgtype_text("MSGTYPE=AE|") == "AE"
 
-    # A bridge configuration states its own half of the exchange, and the
-    # `send` its own payload spells is never read as the marker.
+    # A bridge configuration document states no half of the exchange on its
+    # own, and the `send` its own payload spells is never read as the marker:
+    # which way it moved is the prose in front of it, read into FIX's own
+    # tag 385 by the rules the dictionary carries on that field.
     answered = (
         '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",'
         '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
     )
     assert MimeType.infer_text(answered) == MimeType.ULCONFIG
     assert FixCodec.infer_msgtype_text(answered) == "read"
-    # Which way it moved is FIX's own tag 385, filled on every door.
     codec = FixCodec(FixRegistry())
-    assert next(codec.parse_line(answered.encode())).by_tag(385).as_py() == "R"
+    assert next(codec.parse_line(answered.encode())).get_by_tag(385) is None
+    assert next(codec.parse_line(("Response: " + answered).encode())).by_tag(385).as_py() == "R"
     asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
-    assert next(codec.parse_line(asked.encode())).by_tag(385).as_py() == "S"
+    assert next(codec.parse_line(asked.encode())).get_by_tag(385) is None
+    assert next(codec.parse_line(("Request: " + asked).encode())).by_tag(385).as_py() == "S"
 
 
 def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> None:

@@ -15,6 +15,7 @@
 | Enums | Each scalar field carries its own canonical `fix:codes` metadata, every version's values included: a code an older version declared and the newest dropped is dated `deprecated`, and an older spelling of a surviving code is one of its aliases |
 | History | `fix:lineage` dates a field's names and types; the generator writes `deprecated` and `removed` entries, so a field FIX retired is in the dictionary with the version that retired it |
 | Replacements | A field FIX retired or whose values it replaced carries `fix:replacements`: how a message's `into_latest` restates it at the newest version; Rust holds no rule table, so a registry edit is a rule edit |
+| Directions | Tag 385's field may carry `fix:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
 | Definition tags | The specification names components, groups and messages rather than tagging them, so each carries a `fix:tag` derived from its name into `[100000, 1100000)`, clear of every published tag; a reference occurrence never restates it |
 | References | `fix:field`, `fix:component`, and `fix:group` resolve once at catalog intake; live definitions hold resolved native fields |
 | Planning | Message identity, contextual counter lookup, and group layouts are compiled before parsing rows |
@@ -807,6 +808,7 @@ Scalar `update` merges the same identifier: incoming scalar metadata wins, alias
 | `fix:lineage` | Merge by pedigree, incoming entry winning a shared point |
 | `fix:codes` | Merge by wire value, incoming code winning a shared value |
 | `fix:replacements` | Incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
+| `fix:directions` | Incoming wins whole: a rule table is one statement, and two tables have no order between them |
 | Other protocol keys | Incoming wins; preserve keys only the stored field declares |
 | Generic description, display, comment, aliases | The generic metadata merge accompanies the protocol merge |
 
@@ -889,7 +891,7 @@ Environment and default-folder resolution happen once, on the first global looku
 
 ## Classifying a captured line
 
-`MimeType` owns protocol inference; `FixCodec` owns shallow raw message-code inference, which requires no registry. `FixRegistry::msgdirection` owns the reading of which way a line moved: FIX's own tag 385, its code set the dictionary's.
+`MimeType` owns protocol inference; `FixCodec` owns shallow raw message-code inference, which requires no registry. `FixRegistry::msgdirection` owns the reading of which way a line moved: FIX's own tag 385, its code set the dictionary's and the [rules that name one](#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) carried on the field as `fix:directions`.
 
 | Recognized payload | Protocol |
 | --- | --- |
@@ -934,9 +936,26 @@ Environment and default-folder resolution happen once, on the first global looku
 
 An ObjectName's `type=` property supplies its raw configuration type; otherwise the request operation supplies it. Bulk and wildcard documents expand lazily through `UlPlugins` and `FixMessages`; each selected configuration becomes one flat typed message, as described in [Capture](capture.md). The bridge's attributes are a dictionary of their own - `with_ulbridge_fields` registers them, every one a member of `ULBRIDGE_DIALECT` (`ulbridge`) with tags from 20001 - and what FIX publishes keeps FIX's tags: `SenderCompID`, `TargetCompID` and `BeginString` are 49, 56 and 8. Every registry already holds the crate's `state` and `version`, so the document's `State` and `Version` attributes are the fields `PluginState` (20019) and `PluginVersion` (20021): the row holds them under those names, and the arrival entry keeps the document's spelling.
 
-### A direction is the verb in front of the payload
+### A direction is what the rules on tag 385 read in front of the payload
 
-Which way a message moved is FIX's own fact, tag 385 `MsgDirection`, and nothing else in the crate has one (decision 14). The dictionary types the field as it types every coded field - text carrying the code set `R = Receive`, `S = Send`, extendable like any set - and `FixRegistry::msgdirection` answers the registry's reading of it, a `fix::MsgDirection`: `send`, `sending`, `sent` and outbound markers in the prose in front of the payload name the set's `Send` code; receive and inbound markers name its `Receive` code; a prefix carrying both, or neither, names nothing. A configuration response echoes `request` and came back; a request without an echo went out. Every door fills tag 385 from that reading where the wire states none - `parse_line`, `parse_text_line`, the single-dialect doors, the batch reader - and the batch reader's precedence is a stated `msgdirection` column, else the reading, else the codec's pin (`try_with_direction`, the `Send` code by default), which is a code of the set. `MsgDirection::code` resolves any spelling of a code - its value, its name, an alias - and a spelling outside the set is refused naming the set.
+Which way a message moved is FIX's own fact, tag 385 `MsgDirection`, and nothing else in the crate has one (decision 14). The dictionary types the field as it types every coded field - text carrying the code set `R = Receive`, `S = Send`, extendable like any set - and `FixRegistry::msgdirection` answers the registry's reading of it, a `fix::MsgDirection`. The rules that reading applies are the dictionary's too (decision 15): tag 385's field carries them as `fix:directions`, one canonical document `{"directions":[{"code":"S","patterns":["..."]},...]}` with an entry per code in the order the dictionary lists them, each pattern a `regex::bytes` expression applied to the prefix - the bytes before the payload, exactly the bound `payload_at` answers, so a verb inside a payload is still the payload's word. A code matches where any of its patterns matches; exactly one matching code names the direction; two or more, or none, name nothing. An entry's code is any spelling of a code of the set - its value, its name, an alias - resolved once through `MsgDirection::code` exactly as a pin is.
+
+Where the field carries no property the defaults answer, keyed by the set's `Send` and `Receive` codes so an extended set still reads `sending >>` as its own `Send`:
+
+| code | pattern | reads |
+| --- | --- | --- |
+| Send | `(?i)(?:^\|[\s\[(<])(?:sending\|sent\|send\|outbound\|outgoing)(?:[\s\])>:,]\|$)` | the spelled verbs, opened by the start, whitespace or `[`, `(`, `<`, closed by the end, whitespace or `]`, `)`, `>`, `:`, `,` |
+| Send | `(?i)(?:^\|[\[(])out(?:[\]):]\|$)` | the bare word, only bracketed: `[OUT]`, `(out)`, `OUT:` |
+| Send | `(?i)(?:^\|\s)request:` | the half a Jolokia exchange states in its prose: a request went out |
+| Receive | `(?i)(?:^\|[\s\[(<])(?:receiving\|received\|receive\|recv\|inbound\|incoming)(?:[\s\])>:,]\|$)` | the spelled verbs |
+| Receive | `(?i)(?:^\|[\[(])in(?:[\]):]\|$)` | the bare word, only bracketed: `(in)`, `[IN]` |
+| Receive | `(?i)(?:^\|\s)response:` | an answer came back |
+
+`Request:` and `Response:` prose names the half of a Jolokia exchange - a request went out, an answer came back - and a bare configuration document states nothing of itself: the envelope is prose in front of the payload, read by the same rules as every other prose, so a document with no prose in front of it has no tag 385 on the line door and takes the pin on the batch door.
+
+`set_directions` on the field's FIX view is the door: it resolves every code through the one resolution a pin goes through and refuses a code outside the set the field declares - its `fix:codes`, else the specification's `S` and `R` - a code named twice under any spelling (`S` beside `Send`), an empty code or one carrying a quote, backslash or control character, an entry with no pattern, an empty pattern, or a pattern `regex::bytes` refuses, leaving the field unchanged. A hand-edited dictionary reaches the reading without the door, and every entry the door would have refused is dropped with a warning that is that refusal word for word, so the table degrades to fewer rules - down to none, where a property the field carries states nothing readable - rather than to a wrong reading, and never falls back to the defaults, which are the absent property's alone; an empty list, or `remove_directions`, takes the property away; `directions()` walks it borrowed and `FixDirection` is the owned rule; through `update` the incoming table [wins whole](#one-merge-with-a-rule-per-key). The [CLI](cli.md#definition-flags) edits it through `--directions '<json>'` on `fields create` and `fields update` - `ygg fix fields update MsgDirection utf8 --tag 385 --codes '<json>' --directions '<json>'`, the set restated because an update replaces the definition whole - and the bindings read and write it as a list on `field.fix.directions`. `MsgDirection::directions` answers the rules in force - the field's, each code resolved to the set's value, or the defaults - as data, so what a dictionary reads by is never hidden in Rust. The codec compiles every pattern once into a `regex::bytes::Regex` when it takes its registry (`FixCodec::new`), so a codec is built after the field is edited, and a row applies the compiled patterns to its prefix allocating nothing. The committed dictionary carries no property and reads by the defaults: they have one owner, the crate, and a dictionary that ships a table states its own.
+
+Every door fills tag 385 from that reading where the wire states none - `parse_line`, `parse_text_line`, the single-dialect doors, the batch reader - and the batch reader's precedence is a stated `msgdirection` column, else the reading, else the codec's pin (`try_with_direction`, the `Send` code by default), which is a code of the set. `MsgDirection::code` resolves any spelling of a code - its value, its name, an alias - and a spelling outside the set is refused naming the set.
 
 ## Edges
 
