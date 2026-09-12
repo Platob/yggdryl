@@ -33,24 +33,47 @@ use yggdryl::{
 const LOG: &[u8] = include_bytes!("ulbridge.log");
 
 /// How many lines the capture holds.
-const LINES: usize = 113;
+const LINES: usize = 129;
 
-/// The one line that reads as two rows: a wildcard Jolokia read, which
-/// answers for two MBeans and so yields one message per MBean.
-const WILDCARD: usize = 98;
+/// The lines that read as more than one row: the wildcard Jolokia reads,
+/// each answering for several MBeans and so yielding one message per MBean.
+/// Each is the line and how many rows it yields beyond its first.
+const WILDCARDS: [(usize, usize); 2] = [(98, 1), (128, 2)];
 
-/// How many rows the capture reads as: a row a line, and the wildcard line's
-/// second MBean once more.
-const ROWS: usize = LINES + 1;
+/// How many rows the capture reads as: a row a line, and each wildcard
+/// line's further MBeans once more.
+const ROWS: usize = LINES + WILDCARDS[0].1 + WILDCARDS[1].1;
 
 /// The first row text line `line` was read into.
 const fn row_of(line: usize) -> usize {
-    if line > WILDCARD { line + 1 } else { line }
+    let mut row = line;
+    let mut at = 0;
+    while at < WILDCARDS.len() {
+        if line > WILDCARDS[at].0 {
+            row += WILDCARDS[at].1;
+        }
+        at += 1;
+    }
+    row
 }
 
 /// The text line row `row` was read from.
 const fn line_of(row: usize) -> usize {
-    if row > WILDCARD { row - 1 } else { row }
+    let mut line = row;
+    let mut at = 0;
+    while at < WILDCARDS.len() {
+        // The rows the wildcard yields all belong to its line: past the
+        // last of them the offset applies whole, inside them the line is
+        // the wildcard's.
+        let first = row_of(WILDCARDS[at].0);
+        if row > first + WILDCARDS[at].1 {
+            line -= WILDCARDS[at].1;
+        } else if row > first {
+            return WILDCARDS[at].0;
+        }
+        at += 1;
+    }
+    line
 }
 
 /// The committed dictionary beside the bridge's own vocabulary.
@@ -972,15 +995,34 @@ fn the_wire_re_emits_from_the_arrival_record_frames_included() {
         .enrich_messages_arrow_reader(parsed)
         .expect("the filling reader opens");
     let rows = codec
+        .clone()
         .with_separator(b'|')
         .write_arrow_reader(filled, &mut written)
         .expect("the capture writes");
     assert_eq!(rows, ROWS as u64);
-    let lines: Vec<&str> = std::str::from_utf8(&written)
-        .expect("text")
-        .lines()
-        .collect();
-    assert_eq!(lines.len(), ROWS);
+    // A row in is a line out: every row's wire, the codec's separator, a
+    // newline. The wires are read once more through the line door, which
+    // the equivalence identity says answers the same entries, so the written
+    // bytes are compared whole - a configuration document's
+    // `InitFileContent` carries newlines of its own inside one value, and a
+    // split of the output on newlines would count those as rows.
+    let mut wires: Vec<Vec<u8>> = Vec::with_capacity(ROWS);
+    for line in &text_lines() {
+        for message in codec.parse_text_line(line).expect("the line reads") {
+            wires.push(message.expect("a message").into_bytes(b'|'));
+        }
+    }
+    assert_eq!(wires.len(), ROWS);
+    let mut expected = Vec::with_capacity(written.len());
+    for wire in &wires {
+        expected.extend_from_slice(wire);
+        expected.push(b'\n');
+    }
+    assert_eq!(
+        String::from_utf8_lossy(&written),
+        String::from_utf8_lossy(&expected),
+        "the writer re-emits every row's wire, one line each"
+    );
     // Every frame the bridge wrote with `|` comes back byte for byte, the
     // XmlData rows included, because the entries are the frame and nothing
     // read inside one of its values was recorded as an arrival.
@@ -995,10 +1037,14 @@ fn the_wire_re_emits_from_the_arrival_record_frames_included() {
         }
         let frame = body[start..].trim_end_matches(" << queued");
         let row = row_of(line);
-        assert_eq!(lines[row], frame, "row {row} re-emits its frame");
+        assert_eq!(
+            std::str::from_utf8(&wires[row]).expect("text"),
+            frame,
+            "row {row} re-emits its frame"
+        );
         checked += 1;
     }
-    assert!(checked >= 9, "{checked} frames checked");
+    assert!(checked >= 11, "{checked} frames checked");
 }
 
 /// The members one group occurrence declares, whatever the reader named the

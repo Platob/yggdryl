@@ -95,10 +95,11 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
 
     /// How many lines the capture holds, which is how many rows the text
     /// reader answers.
-    const LINES: usize = 113;
-    /// How many FIX rows they read as: a row a line, and the wildcard Jolokia
-    /// line's second MBean once more.
-    const ROWS: usize = 114;
+    const LINES: usize = 129;
+    /// How many FIX rows they read as: a row a line, and each wildcard
+    /// Jolokia line's further MBeans once more - one line answering for two
+    /// MBeans, one for three.
+    const ROWS: usize = 132;
     /// What one bounded stream over the capture costs, before a message is
     /// built from any of it.
     const DECODE: &str =

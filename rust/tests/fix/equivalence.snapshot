@@ -8844,6 +8844,582 @@ ulbridge[112]:0.field.miccode	"XSWX"
 ulbridge[112]:0.field.state	"80FILLED"
 ulbridge[112]:0.field.msgdirection	"S"
 ulbridge[112].messages	1
+ulbridge[113]:0.type	unknown
+ulbridge[113]:0.digest	0ba9ed759ee7911ddbd720d9fe24a7f2
+ulbridge[113]:0.wire	MBean=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin|Operation=read|Status=200|SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin|MBeanType=Plugin|PluginType=FIX|BackupPort=-1|BeginString=FIX.4.2|BinaryName=ULMsg.jar|Category=InterBridge|ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]|ClassName=ULMsg|CurrentHost=localhost|CurrentPort=7061|Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"ULMSG_BROKER_TO_POSTTRADE"},{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if true","enrichmentName":"&ULMSG_Copy_Enrichment","index":1,"sessionInterfaceName":"ULMSG_BROKER_TO_POSTTRADE"}]|ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Stops the adapter with a customizable logout text.","enabled":true,"name":"stop","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"halt asked","description":"The logout text","name":"logout-text"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Issue a Sequence Reset-Reset message with new sequence number","enabled":true,"name":"sequence-reset-reset","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"492","description":"New outgoing sequence number","name":"new-seq-no"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sends a FIX logon message with the ResetSeqNum tag (141) set to Y. This action is available only when the adapter is logged.","enabled":true,"name":"hot-reset","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Synchronizes routes of incoming messages.","enabled":false,"name":"synchronize","parameters":[]}]|Guid=ULMSG_BROKER_TO_POSTTRADE|IncomingMsgSeqNum=489|InitFileContent=[class]\nname = com.ullink.ulbridge2.plugins.ULMsg\n\n[session]\nHeartBeat = 30\nSenderCompID = ${ULMSG_BROKER_TO_POSTTRADE.session.sendercompid}\nTargetCompID = ${ULMSG_BROKER_TO_POSTTRADE.session.targetcompid}\ntype = A\n\n[connection/1]\nhost = ${ULMSG_BROKER_TO_POSTTRADE.session.host}\nport = ${ULMSG_BROKER_TO_POSTTRADE.session.port}\n\n[category]\nname = InterBridge\n\n[transport]\ntimeout = 60000\nbuffer-size = 100000000\n\n[options]\nenable-synchro = false\nqueue-size = 10000\n\n[attachment-condition]\n0 = if (true) then &SetEnv\n1 = if true then &ULMSG_Copy_Enrichment\n\n[timers/plugin_ULMSG_BKRBDG_TO_PTBDG_timer_1_0]\naction = doStart\ntrigger = 0 30 22 ? * SUN\n\n[timers/plugin_ULMSG_BKRBDG_TO_PTBDG_timer_2_0]\naction = doStop();doReset()\ntrigger = 0 30 04 ? * SAT\n|LoadIsolation=0|LogLevel=-1|MinimumBridgeRevision=20050101000000|Name=ULMSG_BROKER_TO_POSTTRADE|NeedReload=false|NotificationsStatus=false|OutgoingMsgSeqNum=490|PrimaryHost=localhost|PrimaryPort=7061|PriorityLevel=5|Resources=[{"$type":"com.ullink.ulbridge.objects.ResourceInfo","name":"ulfixsession-cm-extension","targetProducts":["ul-configuration-manager"],"version":"4.4.0"}]|RevisionInformation=$Revision: 2.0.3 $ $Date: 2019/11/15 15:03:06 $|SenderCompID=ULB_BKRBDG|State=logged|TargetCompID=ULB_PTBDG|Type=A|Version=2.0.3|
+ulbridge[113]:0.entry[0]	t20001 MBean=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin
+ulbridge[113]:0.entry[1]	t20002 Operation=read
+ulbridge[113]:0.entry[2]	t20003 Status=200
+ulbridge[113]:0.entry[3]	t20010 SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin
+ulbridge[113]:0.entry[4]	t20011 MBeanType=Plugin
+ulbridge[113]:0.entry[5]	t20012 PluginType=FIX
+ulbridge[113]:0.entry[6]	t20025 BackupPort=-1
+ulbridge[113]:0.entry[7]	t8 BeginString=FIX.4.2
+ulbridge[113]:0.entry[8]	t20035 BinaryName=ULMsg.jar
+ulbridge[113]:0.entry[9]	t20014 Category=InterBridge
+ulbridge[113]:0.entry[10]	t20042 ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]
+ulbridge[113]:0.entry[11]	t20036 ClassName=ULMsg
+ulbridge[113]:0.entry[12]	t20026 CurrentHost=localhost
+ulbridge[113]:0.entry[13]	t20027 CurrentPort=7061
+ulbridge[113]:0.entry[14]	t20041 Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"ULMSG_BROKER_TO_POSTTRADE"},{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if true","enrichmentName":"&ULMSG_Copy_Enrichment","index":1,"sessionInterfaceName":"ULMSG_BROKER_TO_POSTTRADE"}]
+ulbridge[113]:0.entry[15]	t20040 ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Stops the adapter with a customizable logout text.","enabled":true,"name":"stop","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"halt asked","description":"The logout text","name":"logout-text"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Issue a Sequence Reset-Reset message with new sequence number","enabled":true,"name":"sequence-reset-reset","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"492","description":"New outgoing sequence number","name":"new-seq-no"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sends a FIX logon message with the ResetSeqNum tag (141) set to Y. This action is available only when the adapter is logged.","enabled":true,"name":"hot-reset","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Synchronizes routes of incoming messages.","enabled":false,"name":"synchronize","parameters":[]}]
+ulbridge[113]:0.entry[16]	t20015 Guid=ULMSG_BROKER_TO_POSTTRADE
+ulbridge[113]:0.entry[17]	t20028 IncomingMsgSeqNum=489
+ulbridge[113]:0.entry[18]	t20039 InitFileContent=[class]\nname = com.ullink.ulbridge2.plugins.ULMsg\n\n[session]\nHeartBeat = 30\nSenderCompID = ${ULMSG_BROKER_TO_POSTTRADE.session.sendercompid}\nTargetCompID = ${ULMSG_BROKER_TO_POSTTRADE.session.targetcompid}\ntype = A\n\n[connection/1]\nhost = ${ULMSG_BROKER_TO_POSTTRADE.session.host}\nport = ${ULMSG_BROKER_TO_POSTTRADE.session.port}\n\n[category]\nname = InterBridge\n\n[transport]\ntimeout = 60000\nbuffer-size = 100000000\n\n[options]\nenable-synchro = false\nqueue-size = 10000\n\n[attachment-condition]\n0 = if (true) then &SetEnv\n1 = if true then &ULMSG_Copy_Enrichment\n\n[timers/plugin_ULMSG_BKRBDG_TO_PTBDG_timer_1_0]\naction = doStart\ntrigger = 0 30 22 ? * SUN\n\n[timers/plugin_ULMSG_BKRBDG_TO_PTBDG_timer_2_0]\naction = doStop();doReset()\ntrigger = 0 30 04 ? * SAT\n
+ulbridge[113]:0.entry[19]	t20032 LoadIsolation=0
+ulbridge[113]:0.entry[20]	t20030 LogLevel=-1
+ulbridge[113]:0.entry[21]	t20038 MinimumBridgeRevision=20050101000000
+ulbridge[113]:0.entry[22]	t20013 Name=ULMSG_BROKER_TO_POSTTRADE
+ulbridge[113]:0.entry[23]	t20034 NeedReload=false
+ulbridge[113]:0.entry[24]	t20033 NotificationsStatus=false
+ulbridge[113]:0.entry[25]	t20029 OutgoingMsgSeqNum=490
+ulbridge[113]:0.entry[26]	t20022 PrimaryHost=localhost
+ulbridge[113]:0.entry[27]	t20023 PrimaryPort=7061
+ulbridge[113]:0.entry[28]	t20031 PriorityLevel=5
+ulbridge[113]:0.entry[29]	t20043 Resources=[{"$type":"com.ullink.ulbridge.objects.ResourceInfo","name":"ulfixsession-cm-extension","targetProducts":["ul-configuration-manager"],"version":"4.4.0"}]
+ulbridge[113]:0.entry[30]	t20037 RevisionInformation=$Revision: 2.0.3 $ $Date: 2019/11/15 15:03:06 $
+ulbridge[113]:0.entry[31]	t49 SenderCompID=ULB_BKRBDG
+ulbridge[113]:0.entry[32]	t20019 State=logged
+ulbridge[113]:0.entry[33]	t56 TargetCompID=ULB_PTBDG
+ulbridge[113]:0.entry[34]	t20020 Type=A
+ulbridge[113]:0.entry[35]	t20021 Version=2.0.3
+ulbridge[113]:0.field.beginstring	"FIX.4.2"
+ulbridge[113]:0.field.sendercompid	"ULB_BKRBDG"
+ulbridge[113]:0.field.targetcompid	"ULB_PTBDG"
+ulbridge[113]:0.field.msghash	"C6ntdZ7nkR3b1yDZ/iSn8g=="
+ulbridge[113]:0.field.version	"5.0.2"
+ulbridge[113]:0.field.timestamp	"2026-08-14T03:03:13.314000000Z"
+ulbridge[113]:0.field.unixpartition	1786676400
+ulbridge[113]:0.field.pluginid	"Jolokia"
+ulbridge[113]:0.field.msgdirection	"R"
+ulbridge[113].messages	1
+ulbridge[114]:0.type	unknown
+ulbridge[114]:0.digest	0ba9ed759ee7911ddbd720d9fe24a7f2
+ulbridge[114]:0.wire	MBean=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin|Operation=read|Status=200|SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin|MBeanType=Plugin|PluginType=FIX|BackupPort=-1|BeginString=FIX.4.2|BinaryName=ULMsg.jar|Category=InterBridge|ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]|ClassName=ULMsg|CurrentHost=localhost|CurrentPort=7061|Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"ULMSG_BROKER_TO_POSTTRADE"},{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if true","enrichmentName":"&ULMSG_Copy_Enrichment","index":1,"sessionInterfaceName":"ULMSG_BROKER_TO_POSTTRADE"}]|ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Stops the adapter with a customizable logout text.","enabled":true,"name":"stop","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"halt asked","description":"The logout text","name":"logout-text"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Issue a Sequence Reset-Reset message with new sequence number","enabled":true,"name":"sequence-reset-reset","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"492","description":"New outgoing sequence number","name":"new-seq-no"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sends a FIX logon message with the ResetSeqNum tag (141) set to Y. This action is available only when the adapter is logged.","enabled":true,"name":"hot-reset","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Synchronizes routes of incoming messages.","enabled":false,"name":"synchronize","parameters":[]}]|Guid=ULMSG_BROKER_TO_POSTTRADE|IncomingMsgSeqNum=489|InitFileContent=[class]\nname = com.ullink.ulbridge2.plugins.ULMsg\n\n[session]\nHeartBeat = 30\nSenderCompID = ${ULMSG_BROKER_TO_POSTTRADE.session.sendercompid}\nTargetCompID = ${ULMSG_BROKER_TO_POSTTRADE.session.targetcompid}\ntype = A\n\n[connection/1]\nhost = ${ULMSG_BROKER_TO_POSTTRADE.session.host}\nport = ${ULMSG_BROKER_TO_POSTTRADE.session.port}\n\n[category]\nname = InterBridge\n\n[transport]\ntimeout = 60000\nbuffer-size = 100000000\n\n[options]\nenable-synchro = false\nqueue-size = 10000\n\n[attachment-condition]\n0 = if (true) then &SetEnv\n1 = if true then &ULMSG_Copy_Enrichment\n\n[timers/plugin_ULMSG_BKRBDG_TO_PTBDG_timer_1_0]\naction = doStart\ntrigger = 0 30 22 ? * SUN\n\n[timers/plugin_ULMSG_BKRBDG_TO_PTBDG_timer_2_0]\naction = doStop();doReset()\ntrigger = 0 30 04 ? * SAT\n|LoadIsolation=0|LogLevel=-1|MinimumBridgeRevision=20050101000000|Name=ULMSG_BROKER_TO_POSTTRADE|NeedReload=false|NotificationsStatus=false|OutgoingMsgSeqNum=490|PrimaryHost=localhost|PrimaryPort=7061|PriorityLevel=5|Resources=[{"$type":"com.ullink.ulbridge.objects.ResourceInfo","name":"ulfixsession-cm-extension","targetProducts":["ul-configuration-manager"],"version":"4.4.0"}]|RevisionInformation=$Revision: 2.0.3 $ $Date: 2019/11/15 15:03:06 $|SenderCompID=ULB_BKRBDG|State=logged|TargetCompID=ULB_PTBDG|Type=A|Version=2.0.3|
+ulbridge[114]:0.entry[0]	t20001 MBean=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin
+ulbridge[114]:0.entry[1]	t20002 Operation=read
+ulbridge[114]:0.entry[2]	t20003 Status=200
+ulbridge[114]:0.entry[3]	t20010 SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin
+ulbridge[114]:0.entry[4]	t20011 MBeanType=Plugin
+ulbridge[114]:0.entry[5]	t20012 PluginType=FIX
+ulbridge[114]:0.entry[6]	t20025 BackupPort=-1
+ulbridge[114]:0.entry[7]	t8 BeginString=FIX.4.2
+ulbridge[114]:0.entry[8]	t20035 BinaryName=ULMsg.jar
+ulbridge[114]:0.entry[9]	t20014 Category=InterBridge
+ulbridge[114]:0.entry[10]	t20042 ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]
+ulbridge[114]:0.entry[11]	t20036 ClassName=ULMsg
+ulbridge[114]:0.entry[12]	t20026 CurrentHost=localhost
+ulbridge[114]:0.entry[13]	t20027 CurrentPort=7061
+ulbridge[114]:0.entry[14]	t20041 Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"ULMSG_BROKER_TO_POSTTRADE"},{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if true","enrichmentName":"&ULMSG_Copy_Enrichment","index":1,"sessionInterfaceName":"ULMSG_BROKER_TO_POSTTRADE"}]
+ulbridge[114]:0.entry[15]	t20040 ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Stops the adapter with a customizable logout text.","enabled":true,"name":"stop","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"halt asked","description":"The logout text","name":"logout-text"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Issue a Sequence Reset-Reset message with new sequence number","enabled":true,"name":"sequence-reset-reset","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"492","description":"New outgoing sequence number","name":"new-seq-no"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sends a FIX logon message with the ResetSeqNum tag (141) set to Y. This action is available only when the adapter is logged.","enabled":true,"name":"hot-reset","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Synchronizes routes of incoming messages.","enabled":false,"name":"synchronize","parameters":[]}]
+ulbridge[114]:0.entry[16]	t20015 Guid=ULMSG_BROKER_TO_POSTTRADE
+ulbridge[114]:0.entry[17]	t20028 IncomingMsgSeqNum=489
+ulbridge[114]:0.entry[18]	t20039 InitFileContent=[class]\nname = com.ullink.ulbridge2.plugins.ULMsg\n\n[session]\nHeartBeat = 30\nSenderCompID = ${ULMSG_BROKER_TO_POSTTRADE.session.sendercompid}\nTargetCompID = ${ULMSG_BROKER_TO_POSTTRADE.session.targetcompid}\ntype = A\n\n[connection/1]\nhost = ${ULMSG_BROKER_TO_POSTTRADE.session.host}\nport = ${ULMSG_BROKER_TO_POSTTRADE.session.port}\n\n[category]\nname = InterBridge\n\n[transport]\ntimeout = 60000\nbuffer-size = 100000000\n\n[options]\nenable-synchro = false\nqueue-size = 10000\n\n[attachment-condition]\n0 = if (true) then &SetEnv\n1 = if true then &ULMSG_Copy_Enrichment\n\n[timers/plugin_ULMSG_BKRBDG_TO_PTBDG_timer_1_0]\naction = doStart\ntrigger = 0 30 22 ? * SUN\n\n[timers/plugin_ULMSG_BKRBDG_TO_PTBDG_timer_2_0]\naction = doStop();doReset()\ntrigger = 0 30 04 ? * SAT\n
+ulbridge[114]:0.entry[19]	t20032 LoadIsolation=0
+ulbridge[114]:0.entry[20]	t20030 LogLevel=-1
+ulbridge[114]:0.entry[21]	t20038 MinimumBridgeRevision=20050101000000
+ulbridge[114]:0.entry[22]	t20013 Name=ULMSG_BROKER_TO_POSTTRADE
+ulbridge[114]:0.entry[23]	t20034 NeedReload=false
+ulbridge[114]:0.entry[24]	t20033 NotificationsStatus=false
+ulbridge[114]:0.entry[25]	t20029 OutgoingMsgSeqNum=490
+ulbridge[114]:0.entry[26]	t20022 PrimaryHost=localhost
+ulbridge[114]:0.entry[27]	t20023 PrimaryPort=7061
+ulbridge[114]:0.entry[28]	t20031 PriorityLevel=5
+ulbridge[114]:0.entry[29]	t20043 Resources=[{"$type":"com.ullink.ulbridge.objects.ResourceInfo","name":"ulfixsession-cm-extension","targetProducts":["ul-configuration-manager"],"version":"4.4.0"}]
+ulbridge[114]:0.entry[30]	t20037 RevisionInformation=$Revision: 2.0.3 $ $Date: 2019/11/15 15:03:06 $
+ulbridge[114]:0.entry[31]	t49 SenderCompID=ULB_BKRBDG
+ulbridge[114]:0.entry[32]	t20019 State=logged
+ulbridge[114]:0.entry[33]	t56 TargetCompID=ULB_PTBDG
+ulbridge[114]:0.entry[34]	t20020 Type=A
+ulbridge[114]:0.entry[35]	t20021 Version=2.0.3
+ulbridge[114]:0.field.beginstring	"FIX.4.2"
+ulbridge[114]:0.field.sendercompid	"ULB_BKRBDG"
+ulbridge[114]:0.field.targetcompid	"ULB_PTBDG"
+ulbridge[114]:0.field.msghash	"C6ntdZ7nkR3b1yDZ/iSn8g=="
+ulbridge[114]:0.field.version	"5.0.2"
+ulbridge[114]:0.field.timestamp	"2026-08-14T03:03:13.314000000Z"
+ulbridge[114]:0.field.unixpartition	1786676400
+ulbridge[114]:0.field.pluginid	"Jolokia"
+ulbridge[114]:0.field.msgdirection	"R"
+ulbridge[114].messages	1
+ulbridge[115]:0.type	unknown
+ulbridge[115]:0.digest	99aa06d3014798d86001c324468d497f
+ulbridge[115]:0.wire	
+ulbridge[115]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[115]:0.field.msghash	"maoG0wFHmNhgAcMkRo1Jfw=="
+ulbridge[115]:0.field.version	"5.0.2"
+ulbridge[115]:0.field.timestamp	"2026-08-14T03:03:13.319000000Z"
+ulbridge[115]:0.field.unixpartition	1786676400
+ulbridge[115]:0.field.pluginid	"Jolokia"
+ulbridge[115].messages	1
+ulbridge[116]:0.type	unknown
+ulbridge[116]:0.digest	99aa06d3014798d86001c324468d497f
+ulbridge[116]:0.wire	
+ulbridge[116]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[116]:0.field.msghash	"maoG0wFHmNhgAcMkRo1Jfw=="
+ulbridge[116]:0.field.version	"5.0.2"
+ulbridge[116]:0.field.timestamp	"2026-08-14T03:03:13.319000000Z"
+ulbridge[116]:0.field.unixpartition	1786676400
+ulbridge[116]:0.field.pluginid	"Jolokia"
+ulbridge[116].messages	1
+ulbridge[117]:0.type	unknown
+ulbridge[117]:0.digest	99aa06d3014798d86001c324468d497f
+ulbridge[117]:0.wire	
+ulbridge[117]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[117]:0.field.msghash	"maoG0wFHmNhgAcMkRo1Jfw=="
+ulbridge[117]:0.field.version	"5.0.2"
+ulbridge[117]:0.field.timestamp	"2026-08-14T03:03:13.319000000Z"
+ulbridge[117]:0.field.unixpartition	1786676400
+ulbridge[117]:0.field.pluginid	"Jolokia"
+ulbridge[117].messages	1
+ulbridge[118]:0.type	unknown
+ulbridge[118]:0.digest	99aa06d3014798d86001c324468d497f
+ulbridge[118]:0.wire	
+ulbridge[118]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[118]:0.field.msghash	"maoG0wFHmNhgAcMkRo1Jfw=="
+ulbridge[118]:0.field.version	"5.0.2"
+ulbridge[118]:0.field.timestamp	"2026-08-14T03:03:13.319000000Z"
+ulbridge[118]:0.field.unixpartition	1786676400
+ulbridge[118]:0.field.pluginid	"Jolokia"
+ulbridge[118].messages	1
+ulbridge[119]:0.type	unknown
+ulbridge[119]:0.digest	70667b0b87f5d1bcd6cdc8c528c09799
+ulbridge[119]:0.wire	MBean=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin|Operation=read|Status=200|SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin|MBeanType=Plugin|PluginType=FIX|BackupPort=-1|BeginString=FIX.4.2|BinaryName=ULMsg.jar|Category=InterBridge|ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]|ClassName=ULMsg|CurrentHost=prod-ul-bridge-dmz|CurrentPort=7062|Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"ULMSG_BROKER_TO_DMZ"}]|ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Stops the adapter with a customizable logout text.","enabled":true,"name":"stop","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"halt asked","description":"The logout text","name":"logout-text"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Issue a Sequence Reset-Reset message with new sequence number","enabled":true,"name":"sequence-reset-reset","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"491","description":"New outgoing sequence number","name":"new-seq-no"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sends a FIX logon message with the ResetSeqNum tag (141) set to Y. This action is available only when the adapter is logged.","enabled":true,"name":"hot-reset","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Synchronizes routes of incoming messages.","enabled":false,"name":"synchronize","parameters":[]}]|Guid=ULMSG_BROKER_TO_DMZ|IncomingMsgSeqNum=489|InitFileContent=[class]\nname = com.ullink.ulbridge2.plugins.ULMsg\n\n[session]\nIP_machine = ${ULMSG_BROKER_TO_DMZ.session.ip_machine}\nIP_port = ${ULMSG_BROKER_TO_DMZ.session.ip_port}\nVersion = FIX.4.2\nHeartBeat = 30\nSenderCompID = ${ULMSG_BROKER_TO_DMZ.session.sendercompid}\nTargetCompID = ${ULMSG_BROKER_TO_DMZ.session.targetcompid}\nretrytimeout = 10\ntype = I\npersistence = DATABASE\n\n[category]\nname = InterBridge\n\n[transport]\ntimeout = 60000\nbuffer-size = 100000000\n\n[options]\nenable-synchro = false\nqueue-size = 10000\n\n[routing]\ndestination = @DMZ_Broker_Routing\n\n[attachment-condition]\n0 = if (true) then &SetEnv\n\n[timers/plugin_ULMSG_ULMSG_BROKER_TO_DMZ_timer_1_0]\naction = doStart\ntrigger = 0 25 04 ? * SAT\n\n[timers/plugin_ULMSG_BROKER_TO_DMZ_timer_2_0]\naction = doStop();doReset()\ntrigger = 0 35 22 ? * SUN\n\n[timers/plugin_ULMSG_BROKER_TO_DMZ_daily_hot_Reset]\naction = com.ullink.ulbridge.sessioninterfaces.plugins:type=Plugin,name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX.executeExtendedAction("hot-reset", [])\ntrigger = 0 00 23 ? * MON-FRI\n|LoadIsolation=0|LogLevel=-1|MinimumBridgeRevision=20050101000000|Name=ULMSG_BROKER_TO_DMZ|NeedReload=false|NotificationsStatus=false|OutgoingMsgSeqNum=489|PrimaryHost=prod-ul-bridge-dmz|PrimaryPort=7062|PriorityLevel=5|Resources=[{"$type":"com.ullink.ulbridge.objects.ResourceInfo","name":"ulfixsession-cm-extension","targetProducts":["ul-configuration-manager"],"version":"4.4.0"}]|RevisionInformation=$Revision: 2.0.3 $ $Date: 2019/11/15 15:03:06 $|SenderCompID=ULB_BRK|State=logged|TargetCompID=ULB_DMZ|Type=I|Version=2.0.3|
+ulbridge[119]:0.entry[0]	t20001 MBean=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin
+ulbridge[119]:0.entry[1]	t20002 Operation=read
+ulbridge[119]:0.entry[2]	t20003 Status=200
+ulbridge[119]:0.entry[3]	t20010 SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin
+ulbridge[119]:0.entry[4]	t20011 MBeanType=Plugin
+ulbridge[119]:0.entry[5]	t20012 PluginType=FIX
+ulbridge[119]:0.entry[6]	t20025 BackupPort=-1
+ulbridge[119]:0.entry[7]	t8 BeginString=FIX.4.2
+ulbridge[119]:0.entry[8]	t20035 BinaryName=ULMsg.jar
+ulbridge[119]:0.entry[9]	t20014 Category=InterBridge
+ulbridge[119]:0.entry[10]	t20042 ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]
+ulbridge[119]:0.entry[11]	t20036 ClassName=ULMsg
+ulbridge[119]:0.entry[12]	t20026 CurrentHost=prod-ul-bridge-dmz
+ulbridge[119]:0.entry[13]	t20027 CurrentPort=7062
+ulbridge[119]:0.entry[14]	t20041 Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"ULMSG_BROKER_TO_DMZ"}]
+ulbridge[119]:0.entry[15]	t20040 ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Stops the adapter with a customizable logout text.","enabled":true,"name":"stop","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"halt asked","description":"The logout text","name":"logout-text"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Issue a Sequence Reset-Reset message with new sequence number","enabled":true,"name":"sequence-reset-reset","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"491","description":"New outgoing sequence number","name":"new-seq-no"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sends a FIX logon message with the ResetSeqNum tag (141) set to Y. This action is available only when the adapter is logged.","enabled":true,"name":"hot-reset","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Synchronizes routes of incoming messages.","enabled":false,"name":"synchronize","parameters":[]}]
+ulbridge[119]:0.entry[16]	t20015 Guid=ULMSG_BROKER_TO_DMZ
+ulbridge[119]:0.entry[17]	t20028 IncomingMsgSeqNum=489
+ulbridge[119]:0.entry[18]	t20039 InitFileContent=[class]\nname = com.ullink.ulbridge2.plugins.ULMsg\n\n[session]\nIP_machine = ${ULMSG_BROKER_TO_DMZ.session.ip_machine}\nIP_port = ${ULMSG_BROKER_TO_DMZ.session.ip_port}\nVersion = FIX.4.2\nHeartBeat = 30\nSenderCompID = ${ULMSG_BROKER_TO_DMZ.session.sendercompid}\nTargetCompID = ${ULMSG_BROKER_TO_DMZ.session.targetcompid}\nretrytimeout = 10\ntype = I\npersistence = DATABASE\n\n[category]\nname = InterBridge\n\n[transport]\ntimeout = 60000\nbuffer-size = 100000000\n\n[options]\nenable-synchro = false\nqueue-size = 10000\n\n[routing]\ndestination = @DMZ_Broker_Routing\n\n[attachment-condition]\n0 = if (true) then &SetEnv\n\n[timers/plugin_ULMSG_ULMSG_BROKER_TO_DMZ_timer_1_0]\naction = doStart\ntrigger = 0 25 04 ? * SAT\n\n[timers/plugin_ULMSG_BROKER_TO_DMZ_timer_2_0]\naction = doStop();doReset()\ntrigger = 0 35 22 ? * SUN\n\n[timers/plugin_ULMSG_BROKER_TO_DMZ_daily_hot_Reset]\naction = com.ullink.ulbridge.sessioninterfaces.plugins:type=Plugin,name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX.executeExtendedAction("hot-reset", [])\ntrigger = 0 00 23 ? * MON-FRI\n
+ulbridge[119]:0.entry[19]	t20032 LoadIsolation=0
+ulbridge[119]:0.entry[20]	t20030 LogLevel=-1
+ulbridge[119]:0.entry[21]	t20038 MinimumBridgeRevision=20050101000000
+ulbridge[119]:0.entry[22]	t20013 Name=ULMSG_BROKER_TO_DMZ
+ulbridge[119]:0.entry[23]	t20034 NeedReload=false
+ulbridge[119]:0.entry[24]	t20033 NotificationsStatus=false
+ulbridge[119]:0.entry[25]	t20029 OutgoingMsgSeqNum=489
+ulbridge[119]:0.entry[26]	t20022 PrimaryHost=prod-ul-bridge-dmz
+ulbridge[119]:0.entry[27]	t20023 PrimaryPort=7062
+ulbridge[119]:0.entry[28]	t20031 PriorityLevel=5
+ulbridge[119]:0.entry[29]	t20043 Resources=[{"$type":"com.ullink.ulbridge.objects.ResourceInfo","name":"ulfixsession-cm-extension","targetProducts":["ul-configuration-manager"],"version":"4.4.0"}]
+ulbridge[119]:0.entry[30]	t20037 RevisionInformation=$Revision: 2.0.3 $ $Date: 2019/11/15 15:03:06 $
+ulbridge[119]:0.entry[31]	t49 SenderCompID=ULB_BRK
+ulbridge[119]:0.entry[32]	t20019 State=logged
+ulbridge[119]:0.entry[33]	t56 TargetCompID=ULB_DMZ
+ulbridge[119]:0.entry[34]	t20020 Type=I
+ulbridge[119]:0.entry[35]	t20021 Version=2.0.3
+ulbridge[119]:0.field.beginstring	"FIX.4.2"
+ulbridge[119]:0.field.sendercompid	"ULB_BRK"
+ulbridge[119]:0.field.targetcompid	"ULB_DMZ"
+ulbridge[119]:0.field.msghash	"cGZ7C4f10bzWzcjFKMCXmQ=="
+ulbridge[119]:0.field.version	"5.0.2"
+ulbridge[119]:0.field.timestamp	"2026-08-14T03:03:13.319000000Z"
+ulbridge[119]:0.field.unixpartition	1786676400
+ulbridge[119]:0.field.pluginid	"Jolokia"
+ulbridge[119]:0.field.msgdirection	"R"
+ulbridge[119].messages	1
+ulbridge[120]:0.type	unknown
+ulbridge[120]:0.digest	0bde6c32672ab30102fecc8ddda62f61
+ulbridge[120]:0.wire	sent=1510822|received=73903|
+ulbridge[120]:0.entry[0]	t0 sent=1510822
+ulbridge[120]:0.entry[1]	t0 received=73903
+ulbridge[120]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[120]:0.field.msghash	"C95sMmcqswEC/syN3aYvYQ=="
+ulbridge[120]:0.field.version	"5.0.2"
+ulbridge[120]:0.field.timestamp	"2026-08-14T03:03:13.776000000Z"
+ulbridge[120]:0.field.unixpartition	1786676400
+ulbridge[120]:0.field.pluginid	"NetworkUsageMessageInterceptor"
+ulbridge[120].messages	1
+ulbridge[121]:0.type	0
+ulbridge[121]:0.digest	13ad44e6cf85d1be05046be3db50369f
+ulbridge[121]:0.wire	8=FIX.4.4|9=62|35=0|49=BRK.PROD.TRD|56=ST.PROD|34=14599|52=20260814-01:03:16|10=071|
+ulbridge[121]:0.entry[0]	t8 8=FIX.4.4
+ulbridge[121]:0.entry[1]	t9 9=62
+ulbridge[121]:0.entry[2]	t35 35=0
+ulbridge[121]:0.entry[3]	t49 49=BRK.PROD.TRD
+ulbridge[121]:0.entry[4]	t56 56=ST.PROD
+ulbridge[121]:0.entry[5]	t34 34=14599
+ulbridge[121]:0.entry[6]	t52 52=20260814-01:03:16
+ulbridge[121]:0.entry[7]	t10 10=071
+ulbridge[121]:0.field.beginstring	"FIX.4.4"
+ulbridge[121]:0.field.bodylength	62
+ulbridge[121]:0.field.msgtype	"0"
+ulbridge[121]:0.field.sendercompid	"BRK.PROD.TRD"
+ulbridge[121]:0.field.targetcompid	"ST.PROD"
+ulbridge[121]:0.field.msgseqnum	14599
+ulbridge[121]:0.field.sendingtime	"2026-08-14T01:03:16.000000000Z"
+ulbridge[121]:0.field.checksum	"071"
+ulbridge[121]:0.field.msghash	"E61E5s+F0b4FBGvj21A2nw=="
+ulbridge[121]:0.field.version	"4.4"
+ulbridge[121]:0.field.timestamp	"2026-08-14T03:03:16.016000000Z"
+ulbridge[121]:0.field.unixpartition	1786676400
+ulbridge[121]:0.field.pluginid	"SmartTrade_OrderRouting"
+ulbridge[121]:0.field.msgdirection	"S"
+ulbridge[121].messages	1
+ulbridge[122]:0.type	8
+ulbridge[122]:0.digest	901b77f268dcc2d4ddc838e969746795
+ulbridge[122]:0.wire	8=FIX.4.2|9=0327|35=8|34=2141|49=ITGADC|56=CLIENTFIS|52=20260814-01:03:17|1=client|77=O|55=1605|22=4|48=TW0001605004|15=TWD|59=6|76=RJEA|32=24000|31=39.9|20=0|150=1|39=1|11=20260814_TP1_CLIENT_1013|37=20260814_TP1_CLIENT_1013|17=2062|54=1|38=3000000|14=230000|151=2770000|6=39.9136956521739|40=1|30=RJEA|60=20260814-01:03:17|109=apclient_trade|10=103|
+ulbridge[122]:0.entry[0]	t8 8=FIX.4.2
+ulbridge[122]:0.entry[1]	t9 9=0327
+ulbridge[122]:0.entry[2]	t35 35=8
+ulbridge[122]:0.entry[3]	t34 34=2141
+ulbridge[122]:0.entry[4]	t49 49=ITGADC
+ulbridge[122]:0.entry[5]	t56 56=CLIENTFIS
+ulbridge[122]:0.entry[6]	t52 52=20260814-01:03:17
+ulbridge[122]:0.entry[7]	t1 1=client
+ulbridge[122]:0.entry[8]	t77 77=O
+ulbridge[122]:0.entry[9]	t55 55=1605
+ulbridge[122]:0.entry[10]	t22 22=4
+ulbridge[122]:0.entry[11]	t48 48=TW0001605004
+ulbridge[122]:0.entry[12]	t15 15=TWD
+ulbridge[122]:0.entry[13]	t59 59=6
+ulbridge[122]:0.entry[14]	t76 76=RJEA
+ulbridge[122]:0.entry[15]	t32 32=24000
+ulbridge[122]:0.entry[16]	t31 31=39.9
+ulbridge[122]:0.entry[17]	t20 20=0
+ulbridge[122]:0.entry[18]	t150 150=1
+ulbridge[122]:0.entry[19]	t39 39=1
+ulbridge[122]:0.entry[20]	t11 11=20260814_TP1_CLIENT_1013
+ulbridge[122]:0.entry[21]	t37 37=20260814_TP1_CLIENT_1013
+ulbridge[122]:0.entry[22]	t17 17=2062
+ulbridge[122]:0.entry[23]	t54 54=1
+ulbridge[122]:0.entry[24]	t38 38=3000000
+ulbridge[122]:0.entry[25]	t14 14=230000
+ulbridge[122]:0.entry[26]	t151 151=2770000
+ulbridge[122]:0.entry[27]	t6 6=39.9136956521739
+ulbridge[122]:0.entry[28]	t40 40=1
+ulbridge[122]:0.entry[29]	t30 30=RJEA
+ulbridge[122]:0.entry[30]	t60 60=20260814-01:03:17
+ulbridge[122]:0.entry[31]	t109 109=apclient_trade
+ulbridge[122]:0.entry[32]	t10 10=103
+ulbridge[122]:0.field.beginstring	"FIX.4.2"
+ulbridge[122]:0.field.bodylength	327
+ulbridge[122]:0.field.msgtype	"8"
+ulbridge[122]:0.field.sendercompid	"ITGADC"
+ulbridge[122]:0.field.targetcompid	"CLIENTFIS"
+ulbridge[122]:0.field.msgseqnum	2141
+ulbridge[122]:0.field.sendingtime	"2026-08-14T01:03:17.000000000Z"
+ulbridge[122]:0.field.account	"client"
+ulbridge[122]:0.field.clordid	"20260814_TP1_CLIENT_1013"
+ulbridge[122]:0.field.orderid	"20260814_TP1_CLIENT_1013"
+ulbridge[122]:0.field.execid	"2062"
+ulbridge[122]:0.field.symbol	"1605"
+ulbridge[122]:0.field.securityid	"TW0001605004"
+ulbridge[122]:0.field.securityidsource	"4"
+ulbridge[122]:0.field.side	"1"
+ulbridge[122]:0.field.ordtype	"1"
+ulbridge[122]:0.field.orderqty	3000000.0
+ulbridge[122]:0.field.currency	"TWD"
+ulbridge[122]:0.field.lastpx	39.9
+ulbridge[122]:0.field.lastqty	24000.0
+ulbridge[122]:0.field.avgpx	39.9136956521739
+ulbridge[122]:0.field.cumqty	230000.0
+ulbridge[122]:0.field.leavesqty	2770000.0
+ulbridge[122]:0.field.transacttime	"2026-08-14T01:03:17.000000000Z"
+ulbridge[122]:0.field.ordstatus	"40PARTFILL"
+ulbridge[122]:0.field.exectype	"40PARTFILL"
+ulbridge[122]:0.field.checksum	"103"
+ulbridge[122]:0.field.msghash	"kBt38mjcwtTdyDjpaXRnlQ=="
+ulbridge[122]:0.field.version	"4.2"
+ulbridge[122]:0.field.symbolticker	"1605"
+ulbridge[122]:0.field.timestamp	"2026-08-14T03:03:17.910000000Z"
+ulbridge[122]:0.field.unixpartition	1786676400
+ulbridge[122]:0.field.sendersessionid	"e7254b22"
+ulbridge[122]:0.field.msgctxid	"9f00927396"
+ulbridge[122]:0.field.pluginid	"Virtu_TritonBlack_TradeCapture"
+ulbridge[122]:0.field.isincode	"TW0001605004"
+ulbridge[122]:0.field.miccode	"RJEA"
+ulbridge[122]:0.field.state	"40PARTFILL"
+ulbridge[122]:0.field.msgdirection	"R"
+ulbridge[122].messages	1
+ulbridge[123]:0.type	executionreport
+ulbridge[123]:0.digest	2d3b64c65502ffb3807fdbc3477f76ac
+ulbridge[123]:0.wire	ACCOUNT=client|AVGPX=39.9136956521739|CLORDID=20260814_TP1_CLIENT_1013|CUMQTY=230000|CURRENCY=TWD|EXECBROKER=RJEA|EXECID=2062|EXECTYPE=trade|ISINCODE=TW0001605004|LASTMKT=RJEA|LASTPX=39.9|LASTSHARES=24000|LEAVESQTY=2770000|MSGTYPE=executionreport|OPENCLOSE=open|ORDERID=20260814_TP1_CLIENT_1013|ORDERQTY=3000000|ORDSTATUS=partfilled|ORDTYPE=market|SECURITYID=TW0001605004|SIDE=buy|SYMBOL=1605|TIMEINFORCE=gtd|TRANSACTTIME=20260814010317000|
+ulbridge[123]:0.entry[0]	t1 ACCOUNT=client
+ulbridge[123]:0.entry[1]	t6 AVGPX=39.9136956521739
+ulbridge[123]:0.entry[2]	t11 CLORDID=20260814_TP1_CLIENT_1013
+ulbridge[123]:0.entry[3]	t14 CUMQTY=230000
+ulbridge[123]:0.entry[4]	t15 CURRENCY=TWD
+ulbridge[123]:0.entry[5]	t76 EXECBROKER=RJEA
+ulbridge[123]:0.entry[6]	t17 EXECID=2062
+ulbridge[123]:0.entry[7]	t150 EXECTYPE=trade
+ulbridge[123]:0.entry[8]	t65013 ISINCODE=TW0001605004
+ulbridge[123]:0.entry[9]	t30 LASTMKT=RJEA
+ulbridge[123]:0.entry[10]	t31 LASTPX=39.9
+ulbridge[123]:0.entry[11]	t32 LASTSHARES=24000
+ulbridge[123]:0.entry[12]	t151 LEAVESQTY=2770000
+ulbridge[123]:0.entry[13]	t35 MSGTYPE=executionreport
+ulbridge[123]:0.entry[14]	t77 OPENCLOSE=open
+ulbridge[123]:0.entry[15]	t37 ORDERID=20260814_TP1_CLIENT_1013
+ulbridge[123]:0.entry[16]	t38 ORDERQTY=3000000
+ulbridge[123]:0.entry[17]	t39 ORDSTATUS=partfilled
+ulbridge[123]:0.entry[18]	t40 ORDTYPE=market
+ulbridge[123]:0.entry[19]	t48 SECURITYID=TW0001605004
+ulbridge[123]:0.entry[20]	t54 SIDE=buy
+ulbridge[123]:0.entry[21]	t55 SYMBOL=1605
+ulbridge[123]:0.entry[22]	t59 TIMEINFORCE=gtd
+ulbridge[123]:0.entry[23]	t60 TRANSACTTIME=20260814010317000
+ulbridge[123]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[123]:0.field.msgtype	"8"
+ulbridge[123]:0.field.msgseqnum	2141
+ulbridge[123]:0.field.account	"client"
+ulbridge[123]:0.field.clordid	"20260814_TP1_CLIENT_1013"
+ulbridge[123]:0.field.orderid	"20260814_TP1_CLIENT_1013"
+ulbridge[123]:0.field.execid	"2062"
+ulbridge[123]:0.field.symbol	"1605"
+ulbridge[123]:0.field.securityid	"TW0001605004"
+ulbridge[123]:0.field.side	"1"
+ulbridge[123]:0.field.ordtype	"1"
+ulbridge[123]:0.field.orderqty	3000000.0
+ulbridge[123]:0.field.currency	"TWD"
+ulbridge[123]:0.field.lastpx	39.9
+ulbridge[123]:0.field.lastqty	24000.0
+ulbridge[123]:0.field.avgpx	39.9136956521739
+ulbridge[123]:0.field.cumqty	230000.0
+ulbridge[123]:0.field.leavesqty	2770000.0
+ulbridge[123]:0.field.transacttime	"2026-08-14T01:03:17.000000000Z"
+ulbridge[123]:0.field.ordstatus	"40PARTFILL"
+ulbridge[123]:0.field.exectype	"40TRADE"
+ulbridge[123]:0.field.msghash	"LTtkxlUC/7OAf9vDR392rA=="
+ulbridge[123]:0.field.version	"5.0.2"
+ulbridge[123]:0.field.symbolticker	"1605"
+ulbridge[123]:0.field.timestamp	"2026-08-14T03:03:17.911000000Z"
+ulbridge[123]:0.field.unixpartition	1786676400
+ulbridge[123]:0.field.sendersessionid	"e7254b22"
+ulbridge[123]:0.field.msgctxid	"9f00927396"
+ulbridge[123]:0.field.pluginid	"Virtu_TritonBlack_TradeCapture"
+ulbridge[123]:0.field.isincode	"TW0001605004"
+ulbridge[123]:0.field.miccode	"RJEA"
+ulbridge[123]:0.field.state	"40PARTFILL"
+ulbridge[123].messages	1
+ulbridge[124]:0.type	unknown
+ulbridge[124]:0.digest	99aa06d3014798d86001c324468d497f
+ulbridge[124]:0.wire	
+ulbridge[124]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[124]:0.field.msgseqnum	2141
+ulbridge[124]:0.field.msghash	"maoG0wFHmNhgAcMkRo1Jfw=="
+ulbridge[124]:0.field.version	"5.0.2"
+ulbridge[124]:0.field.timestamp	"2026-08-14T03:03:17.911000000Z"
+ulbridge[124]:0.field.unixpartition	1786676400
+ulbridge[124]:0.field.sendersessionid	"e7254b22"
+ulbridge[124]:0.field.msgctxid	"9f00927396"
+ulbridge[124]:0.field.pluginid	"Virtu_TritonBlack_TradeCapture"
+ulbridge[124].messages	1
+ulbridge[125]:0.type	executionreport
+ulbridge[125]:0.digest	c1c122af2b3120e5e70446e427d42a8b
+ulbridge[125]:0.wire	ACCOUNT=client|AVGPX=39.9136956521739|CLORDID=20260814_TP1_CLIENT_1013|CONVERSATIONID=5b3bf9f0-872e-4727-acb8-da21d5248074|CUMQTY=230000|CURRENCY=TWD|ENV=PROD|EXECBROKER=RJEA|EXECID=2062|EXECTYPE=trade|FILTER=yes|ISINCODE=TW0001605004|LASTMKT=RJEA|LASTPX=39.9|LASTSHARES=24000|LEAVESQTY=2770000|MSGTYPE=executionreport|OPENCLOSE=open|ORDERID=20260814_TP1_CLIENT_1013|ORDERQTY=3000000|ORDSTATUS=partfilled|ORDTYPE=market|SECURITYID=TW0001605004|SIDE=buy|SYMBOL=1605|TIMEINFORCE=gtd|TRANSACTTIME=20260814010317000|ULFROMSESSIONNAME=Virtu_TritonBlack_TradeCapture|
+ulbridge[125]:0.entry[0]	t1 ACCOUNT=client
+ulbridge[125]:0.entry[1]	t6 AVGPX=39.9136956521739
+ulbridge[125]:0.entry[2]	t11 CLORDID=20260814_TP1_CLIENT_1013
+ulbridge[125]:0.entry[3]	t0 CONVERSATIONID=5b3bf9f0-872e-4727-acb8-da21d5248074
+ulbridge[125]:0.entry[4]	t14 CUMQTY=230000
+ulbridge[125]:0.entry[5]	t15 CURRENCY=TWD
+ulbridge[125]:0.entry[6]	t0 ENV=PROD
+ulbridge[125]:0.entry[7]	t76 EXECBROKER=RJEA
+ulbridge[125]:0.entry[8]	t17 EXECID=2062
+ulbridge[125]:0.entry[9]	t150 EXECTYPE=trade
+ulbridge[125]:0.entry[10]	t0 FILTER=yes
+ulbridge[125]:0.entry[11]	t65013 ISINCODE=TW0001605004
+ulbridge[125]:0.entry[12]	t30 LASTMKT=RJEA
+ulbridge[125]:0.entry[13]	t31 LASTPX=39.9
+ulbridge[125]:0.entry[14]	t32 LASTSHARES=24000
+ulbridge[125]:0.entry[15]	t151 LEAVESQTY=2770000
+ulbridge[125]:0.entry[16]	t35 MSGTYPE=executionreport
+ulbridge[125]:0.entry[17]	t77 OPENCLOSE=open
+ulbridge[125]:0.entry[18]	t37 ORDERID=20260814_TP1_CLIENT_1013
+ulbridge[125]:0.entry[19]	t38 ORDERQTY=3000000
+ulbridge[125]:0.entry[20]	t39 ORDSTATUS=partfilled
+ulbridge[125]:0.entry[21]	t40 ORDTYPE=market
+ulbridge[125]:0.entry[22]	t48 SECURITYID=TW0001605004
+ulbridge[125]:0.entry[23]	t54 SIDE=buy
+ulbridge[125]:0.entry[24]	t55 SYMBOL=1605
+ulbridge[125]:0.entry[25]	t59 TIMEINFORCE=gtd
+ulbridge[125]:0.entry[26]	t60 TRANSACTTIME=20260814010317000
+ulbridge[125]:0.entry[27]	t65011 ULFROMSESSIONNAME=Virtu_TritonBlack_TradeCapture
+ulbridge[125]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[125]:0.field.msgtype	"8"
+ulbridge[125]:0.field.msgseqnum	2141
+ulbridge[125]:0.field.account	"client"
+ulbridge[125]:0.field.clordid	"20260814_TP1_CLIENT_1013"
+ulbridge[125]:0.field.orderid	"20260814_TP1_CLIENT_1013"
+ulbridge[125]:0.field.execid	"2062"
+ulbridge[125]:0.field.symbol	"1605"
+ulbridge[125]:0.field.securityid	"TW0001605004"
+ulbridge[125]:0.field.side	"1"
+ulbridge[125]:0.field.ordtype	"1"
+ulbridge[125]:0.field.orderqty	3000000.0
+ulbridge[125]:0.field.currency	"TWD"
+ulbridge[125]:0.field.lastpx	39.9
+ulbridge[125]:0.field.lastqty	24000.0
+ulbridge[125]:0.field.avgpx	39.9136956521739
+ulbridge[125]:0.field.cumqty	230000.0
+ulbridge[125]:0.field.leavesqty	2770000.0
+ulbridge[125]:0.field.transacttime	"2026-08-14T01:03:17.000000000Z"
+ulbridge[125]:0.field.ordstatus	"40PARTFILL"
+ulbridge[125]:0.field.exectype	"40TRADE"
+ulbridge[125]:0.field.msghash	"wcEirysxIOXnBEbkJ9Qqiw=="
+ulbridge[125]:0.field.version	"5.0.2"
+ulbridge[125]:0.field.symbolticker	"1605"
+ulbridge[125]:0.field.timestamp	"2026-08-14T03:03:17.911000000Z"
+ulbridge[125]:0.field.unixpartition	1786676400
+ulbridge[125]:0.field.sendersessionid	"e7254b22"
+ulbridge[125]:0.field.msgctxid	"9f00927396"
+ulbridge[125]:0.field.pluginid	"ULBridge"
+ulbridge[125]:0.field.sendersessionname	"Virtu_TritonBlack_TradeCapture"
+ulbridge[125]:0.field.isincode	"TW0001605004"
+ulbridge[125]:0.field.miccode	"RJEA"
+ulbridge[125]:0.field.state	"40PARTFILL"
+ulbridge[125].messages	1
+ulbridge[126]:0.type	unknown
+ulbridge[126]:0.digest	99aa06d3014798d86001c324468d497f
+ulbridge[126]:0.wire	
+ulbridge[126]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[126]:0.field.msgseqnum	2141
+ulbridge[126]:0.field.msghash	"maoG0wFHmNhgAcMkRo1Jfw=="
+ulbridge[126]:0.field.version	"5.0.2"
+ulbridge[126]:0.field.timestamp	"2026-08-14T03:03:17.911000000Z"
+ulbridge[126]:0.field.unixpartition	1786676400
+ulbridge[126]:0.field.sendersessionid	"e7254b22"
+ulbridge[126]:0.field.msgctxid	"9f00927396"
+ulbridge[126]:0.field.pluginid	"EnrichmentManager"
+ulbridge[126].messages	1
+ulbridge[127]:0.type	unknown
+ulbridge[127]:0.digest	99aa06d3014798d86001c324468d497f
+ulbridge[127]:0.wire	
+ulbridge[127]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[127]:0.field.msgseqnum	2141
+ulbridge[127]:0.field.msghash	"maoG0wFHmNhgAcMkRo1Jfw=="
+ulbridge[127]:0.field.version	"5.0.2"
+ulbridge[127]:0.field.timestamp	"2026-08-14T03:03:17.911000000Z"
+ulbridge[127]:0.field.unixpartition	1786676400
+ulbridge[127]:0.field.sendersessionid	"e7254b22"
+ulbridge[127]:0.field.msgctxid	"9f00927396"
+ulbridge[127]:0.field.pluginid	"AliasManager"
+ulbridge[127].messages	1
+ulbridge[128]:0.type	unknown
+ulbridge[128]:0.digest	8d5c1741596e9cf61fb018151303edb6
+ulbridge[128]:0.wire	MBean=com.ullink.ulbridge.sessioninterfaces.plugins:*|Operation=read|Status=200|SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=GLMX_BANK_FIX44_DropCopy,plugin-type=FIX,type=Plugin|MBeanType=Plugin|PluginType=FIX|BackupPort=-1|BeginString=FIX.4.4|BinaryName=FIXCMSPlugin.jar|CFBInfos=[["GLMX_FIX44_DropCopy","$Revision: 1.53 $ $Date: 2025.10.27 17:10:18 $","Standard Buy Side 4.4"]]|Category=Drop Copy|ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.FIXCMSPlugin","classRevision":null}]|ClassName=FIXCMSPlugin|CurrentHost=127.0.0.1|CurrentPort=9905|Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"GLMX_BANK_FIX44_DropCopy"},{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if ($MSGTYPE=\\"tradecapturereport\\")","enrichmentName":"&GLMX_FIX44_DropCopy_Handle_Repo","index":1,"sessionInterfaceName":"GLMX_BANK_FIX44_DropCopy"},{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if ($MSGTYPE=\\"executionreport\\" and $SECURITYTYPE=\\"REPO\\")","enrichmentName":"&Force_IRIS_ByPass","index":2,"sessionInterfaceName":"GLMX_BANK_FIX44_DropCopy"}]|ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Starts the adapter and sets the ResetSeqNum tag (141) to Y in the FIX logon message. This action is available only when the adapter is stopped.","enabled":true,"name":"start-and-reset-seq-num-flag","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sets the value of the incoming and outgoing FIX sequence numbers for this adapter. This action is available only when the adapter is stopped.","enabled":true,"name":"set-sequence-numbers","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"1","description":"The incoming FIX sequence number to set","name":"incoming"},{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"1","description":"The outgoing FIX sequence number to set","name":"outgoing"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Reloads the .cfb file without stopping the underlying FIX connection.","enabled":true,"name":"reload-cfb","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Enter filter mode","enabled":true,"name":"Enter filter mode","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Exit filter mode","enabled":true,"name":"Exit filter mode","parameters":[]}]|Guid=GLMX_BANK_FIX44_DropCopy|IncomingMsgSeqNum=1|InitFileContent=[class]\nname = com.ullink.ulbridge2.plugins.FIXCMSPlugin\n\n[session]\nIP_machine = ${GLMX_BANK_FIX44_DropCopy.session.ip_machine}\nIP_port = ${GLMX_BANK_FIX44_DropCopy.session.ip_port}\nHeartBeat = 30\nretrytimeout = 30\ntype = I\npersistence = DATABASE\ncheckCompID = Y\nSenderCompID = ${GLMX_BANK_FIX44_DropCopy.session.sendercompid}\nTargetCompID = ${GLMX_BANK_FIX44_DropCopy.session.targetcompid}\nVersion = FIX.4.4\n\n[ssl]\nenabled = ${GLMX_BANK_FIX44_DropCopy.ssl.enabled}\n\n[logon]\n553 = ${GLMX_BANK_FIX44_DropCopy.logon.553}\n554 = ${GLMX_BANK_FIX44_DropCopy.logon.554}\n\n[cms]\ncfb-name = cms/GLMX_FIX44_DropCopy.cfb\nbytecode-cache-directory = ${ulbridge.cms.bytecode-cache-directory}\n\n[options]\nstrict-grammar = false\ntime-precision = 6\n\n[category]\nname = Drop Copy\n\n[attachment-condition]\n0 = if (true) then &SetEnv\n1 = if ($MSGTYPE="tradecapturereport") then &GLMX_FIX44_DropCopy_Handle_Repo\n2 = if ($MSGTYPE="executionreport" and $SECURITYTYPE="REPO") then &Force_IRIS_ByPass\n\n[timers/GLMX_BANK_FIX44_DropCopy_StopReset]\naction = doStop ; doReset\ntrigger = 0 0 23 ? * MON-FRI;\ntimezone = Europe/Zurich\n\n[timers/GLMX_BANK_FIX44_DropCopy_Start]\naction = doStart\ntrigger = 0 0 4 ? * MON-FRI;\ntimezone = Europe/Zurich\n|LoadIsolation=0|LogLevel=-1|MinimumBridgeRevision=20090514000000|Name=GLMX_BANK_FIX44_DropCopy|NeedCFBReload=false|NeedReload=false|NotificationsStatus=false|OutgoingMsgSeqNum=1|PrimaryHost=127.0.0.1|PrimaryPort=9905|PriorityLevel=5|Resources=[{"$type":"com.ullink.ulbridge.objects.ResourceInfo","name":"ulfixsession-cm-extension","targetProducts":["ul-configuration-manager"],"version":"4.7.0"}]|RevisionInformation=$Revision: 3.10.2 $ $Date: 2021/05/03 09:32:55 $|SenderCompID=CLIENT_BANK|State=stopped|TargetCompID=GLMX|Type=I|Version=3.10.2|
+ulbridge[128]:0.entry[0]	t20001 MBean=com.ullink.ulbridge.sessioninterfaces.plugins:*
+ulbridge[128]:0.entry[1]	t20002 Operation=read
+ulbridge[128]:0.entry[2]	t20003 Status=200
+ulbridge[128]:0.entry[3]	t20010 SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=GLMX_BANK_FIX44_DropCopy,plugin-type=FIX,type=Plugin
+ulbridge[128]:0.entry[4]	t20011 MBeanType=Plugin
+ulbridge[128]:0.entry[5]	t20012 PluginType=FIX
+ulbridge[128]:0.entry[6]	t20025 BackupPort=-1
+ulbridge[128]:0.entry[7]	t8 BeginString=FIX.4.4
+ulbridge[128]:0.entry[8]	t20035 BinaryName=FIXCMSPlugin.jar
+ulbridge[128]:0.entry[9]	t20045 CFBInfos=[["GLMX_FIX44_DropCopy","$Revision: 1.53 $ $Date: 2025.10.27 17:10:18 $","Standard Buy Side 4.4"]]
+ulbridge[128]:0.entry[10]	t20014 Category=Drop Copy
+ulbridge[128]:0.entry[11]	t20042 ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.FIXCMSPlugin","classRevision":null}]
+ulbridge[128]:0.entry[12]	t20036 ClassName=FIXCMSPlugin
+ulbridge[128]:0.entry[13]	t20026 CurrentHost=127.0.0.1
+ulbridge[128]:0.entry[14]	t20027 CurrentPort=9905
+ulbridge[128]:0.entry[15]	t20041 Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"GLMX_BANK_FIX44_DropCopy"},{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if ($MSGTYPE=\\"tradecapturereport\\")","enrichmentName":"&GLMX_FIX44_DropCopy_Handle_Repo","index":1,"sessionInterfaceName":"GLMX_BANK_FIX44_DropCopy"},{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if ($MSGTYPE=\\"executionreport\\" and $SECURITYTYPE=\\"REPO\\")","enrichmentName":"&Force_IRIS_ByPass","index":2,"sessionInterfaceName":"GLMX_BANK_FIX44_DropCopy"}]
+ulbridge[128]:0.entry[16]	t20040 ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Starts the adapter and sets the ResetSeqNum tag (141) to Y in the FIX logon message. This action is available only when the adapter is stopped.","enabled":true,"name":"start-and-reset-seq-num-flag","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sets the value of the incoming and outgoing FIX sequence numbers for this adapter. This action is available only when the adapter is stopped.","enabled":true,"name":"set-sequence-numbers","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"1","description":"The incoming FIX sequence number to set","name":"incoming"},{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"1","description":"The outgoing FIX sequence number to set","name":"outgoing"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Reloads the .cfb file without stopping the underlying FIX connection.","enabled":true,"name":"reload-cfb","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Enter filter mode","enabled":true,"name":"Enter filter mode","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Exit filter mode","enabled":true,"name":"Exit filter mode","parameters":[]}]
+ulbridge[128]:0.entry[17]	t20015 Guid=GLMX_BANK_FIX44_DropCopy
+ulbridge[128]:0.entry[18]	t20028 IncomingMsgSeqNum=1
+ulbridge[128]:0.entry[19]	t20039 InitFileContent=[class]\nname = com.ullink.ulbridge2.plugins.FIXCMSPlugin\n\n[session]\nIP_machine = ${GLMX_BANK_FIX44_DropCopy.session.ip_machine}\nIP_port = ${GLMX_BANK_FIX44_DropCopy.session.ip_port}\nHeartBeat = 30\nretrytimeout = 30\ntype = I\npersistence = DATABASE\ncheckCompID = Y\nSenderCompID = ${GLMX_BANK_FIX44_DropCopy.session.sendercompid}\nTargetCompID = ${GLMX_BANK_FIX44_DropCopy.session.targetcompid}\nVersion = FIX.4.4\n\n[ssl]\nenabled = ${GLMX_BANK_FIX44_DropCopy.ssl.enabled}\n\n[logon]\n553 = ${GLMX_BANK_FIX44_DropCopy.logon.553}\n554 = ${GLMX_BANK_FIX44_DropCopy.logon.554}\n\n[cms]\ncfb-name = cms/GLMX_FIX44_DropCopy.cfb\nbytecode-cache-directory = ${ulbridge.cms.bytecode-cache-directory}\n\n[options]\nstrict-grammar = false\ntime-precision = 6\n\n[category]\nname = Drop Copy\n\n[attachment-condition]\n0 = if (true) then &SetEnv\n1 = if ($MSGTYPE="tradecapturereport") then &GLMX_FIX44_DropCopy_Handle_Repo\n2 = if ($MSGTYPE="executionreport" and $SECURITYTYPE="REPO") then &Force_IRIS_ByPass\n\n[timers/GLMX_BANK_FIX44_DropCopy_StopReset]\naction = doStop ; doReset\ntrigger = 0 0 23 ? * MON-FRI;\ntimezone = Europe/Zurich\n\n[timers/GLMX_BANK_FIX44_DropCopy_Start]\naction = doStart\ntrigger = 0 0 4 ? * MON-FRI;\ntimezone = Europe/Zurich\n
+ulbridge[128]:0.entry[20]	t20032 LoadIsolation=0
+ulbridge[128]:0.entry[21]	t20030 LogLevel=-1
+ulbridge[128]:0.entry[22]	t20038 MinimumBridgeRevision=20090514000000
+ulbridge[128]:0.entry[23]	t20013 Name=GLMX_BANK_FIX44_DropCopy
+ulbridge[128]:0.entry[24]	t20044 NeedCFBReload=false
+ulbridge[128]:0.entry[25]	t20034 NeedReload=false
+ulbridge[128]:0.entry[26]	t20033 NotificationsStatus=false
+ulbridge[128]:0.entry[27]	t20029 OutgoingMsgSeqNum=1
+ulbridge[128]:0.entry[28]	t20022 PrimaryHost=127.0.0.1
+ulbridge[128]:0.entry[29]	t20023 PrimaryPort=9905
+ulbridge[128]:0.entry[30]	t20031 PriorityLevel=5
+ulbridge[128]:0.entry[31]	t20043 Resources=[{"$type":"com.ullink.ulbridge.objects.ResourceInfo","name":"ulfixsession-cm-extension","targetProducts":["ul-configuration-manager"],"version":"4.7.0"}]
+ulbridge[128]:0.entry[32]	t20037 RevisionInformation=$Revision: 3.10.2 $ $Date: 2021/05/03 09:32:55 $
+ulbridge[128]:0.entry[33]	t49 SenderCompID=CLIENT_BANK
+ulbridge[128]:0.entry[34]	t20019 State=stopped
+ulbridge[128]:0.entry[35]	t56 TargetCompID=GLMX
+ulbridge[128]:0.entry[36]	t20020 Type=I
+ulbridge[128]:0.entry[37]	t20021 Version=3.10.2
+ulbridge[128]:0.field.beginstring	"FIX.4.4"
+ulbridge[128]:0.field.sendercompid	"CLIENT_BANK"
+ulbridge[128]:0.field.targetcompid	"GLMX"
+ulbridge[128]:0.field.msghash	"jVwXQVlunPYfsBgVEwPttg=="
+ulbridge[128]:0.field.version	"5.0.2"
+ulbridge[128]:0.field.timestamp	"2026-08-14T03:13:13.131000000Z"
+ulbridge[128]:0.field.unixpartition	1786676400
+ulbridge[128]:0.field.pluginid	"Jolokia"
+ulbridge[128]:0.field.msgdirection	"R"
+ulbridge[128]:1.type	unknown
+ulbridge[128]:1.digest	67f42d545f56ca3c3330de515d63c3a4
+ulbridge[128]:1.wire	MBean=com.ullink.ulbridge.sessioninterfaces.plugins:*|Operation=read|Status=200|SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_PCO,plugin-type=FIX,type=ConfigurationPlugin|MBeanType=ConfigurationPlugin|PluginType=FIX|BinaryName=ULMsg.jar|Category=InterBridge|ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]|ClassName=ULMsg|Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"ULMSG_BROKER_BDG_DMZ_PCO"},{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&ULMSG_Add_Fields","index":1,"sessionInterfaceName":"ULMSG_BROKER_BDG_DMZ_PCO"}]|ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Stops the adapter with a customizable logout text.","enabled":true,"name":"stop","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"halt asked","description":"The logout text","name":"logout-text"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Issue a Sequence Reset-Reset message with new sequence number","enabled":true,"name":"sequence-reset-reset","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"525","description":"New outgoing sequence number","name":"new-seq-no"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sends a FIX logon message with the ResetSeqNum tag (141) set to Y. This action is available only when the adapter is logged.","enabled":true,"name":"hot-reset","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Synchronizes routes of incoming messages.","enabled":false,"name":"synchronize","parameters":[]}]|LoadIsolation=0|MinimumBridgeRevision=20050101000000|Name=ULMSG_BROKER_BDG_DMZ_PCO|NeedReload=false|PriorityLevel=5|RevisionInformation=$Revision: 2.0.3 $ $Date: 2019/11/15 15:03:06 $|State=logged|Version=2.0.3|
+ulbridge[128]:1.entry[0]	t20001 MBean=com.ullink.ulbridge.sessioninterfaces.plugins:*
+ulbridge[128]:1.entry[1]	t20002 Operation=read
+ulbridge[128]:1.entry[2]	t20003 Status=200
+ulbridge[128]:1.entry[3]	t20010 SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_PCO,plugin-type=FIX,type=ConfigurationPlugin
+ulbridge[128]:1.entry[4]	t20011 MBeanType=ConfigurationPlugin
+ulbridge[128]:1.entry[5]	t20012 PluginType=FIX
+ulbridge[128]:1.entry[6]	t20035 BinaryName=ULMsg.jar
+ulbridge[128]:1.entry[7]	t20014 Category=InterBridge
+ulbridge[128]:1.entry[8]	t20042 ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]
+ulbridge[128]:1.entry[9]	t20036 ClassName=ULMsg
+ulbridge[128]:1.entry[10]	t20041 Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"ULMSG_BROKER_BDG_DMZ_PCO"},{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&ULMSG_Add_Fields","index":1,"sessionInterfaceName":"ULMSG_BROKER_BDG_DMZ_PCO"}]
+ulbridge[128]:1.entry[11]	t20040 ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Stops the adapter with a customizable logout text.","enabled":true,"name":"stop","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"halt asked","description":"The logout text","name":"logout-text"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Issue a Sequence Reset-Reset message with new sequence number","enabled":true,"name":"sequence-reset-reset","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"525","description":"New outgoing sequence number","name":"new-seq-no"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sends a FIX logon message with the ResetSeqNum tag (141) set to Y. This action is available only when the adapter is logged.","enabled":true,"name":"hot-reset","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Synchronizes routes of incoming messages.","enabled":false,"name":"synchronize","parameters":[]}]
+ulbridge[128]:1.entry[12]	t20032 LoadIsolation=0
+ulbridge[128]:1.entry[13]	t20038 MinimumBridgeRevision=20050101000000
+ulbridge[128]:1.entry[14]	t20013 Name=ULMSG_BROKER_BDG_DMZ_PCO
+ulbridge[128]:1.entry[15]	t20034 NeedReload=false
+ulbridge[128]:1.entry[16]	t20031 PriorityLevel=5
+ulbridge[128]:1.entry[17]	t20037 RevisionInformation=$Revision: 2.0.3 $ $Date: 2019/11/15 15:03:06 $
+ulbridge[128]:1.entry[18]	t20019 State=logged
+ulbridge[128]:1.entry[19]	t20021 Version=2.0.3
+ulbridge[128]:1.field.beginstring	"FIX.5.0.2"
+ulbridge[128]:1.field.msghash	"Z/QtVF9WyjwzMN5RXWPDpA=="
+ulbridge[128]:1.field.version	"5.0.2"
+ulbridge[128]:1.field.timestamp	"2026-08-14T03:13:13.131000000Z"
+ulbridge[128]:1.field.unixpartition	1786676400
+ulbridge[128]:1.field.pluginid	"Jolokia"
+ulbridge[128]:1.field.msgdirection	"R"
+ulbridge[128]:2.type	unknown
+ulbridge[128]:2.digest	4504a323e32e101ec8023aaabd9c2123
+ulbridge[128]:2.wire	MBean=com.ullink.ulbridge.sessioninterfaces.plugins:*|Operation=read|Status=200|SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=ConfigurationPlugin|MBeanType=ConfigurationPlugin|PluginType=FIX|BinaryName=ULMsg.jar|Category=InterBridge|ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]|ClassName=ULMsg|Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"ULMSG_BROKER_TO_DMZ"}]|ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Stops the adapter with a customizable logout text.","enabled":true,"name":"stop","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"halt asked","description":"The logout text","name":"logout-text"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Issue a Sequence Reset-Reset message with new sequence number","enabled":true,"name":"sequence-reset-reset","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"511","description":"New outgoing sequence number","name":"new-seq-no"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sends a FIX logon message with the ResetSeqNum tag (141) set to Y. This action is available only when the adapter is logged.","enabled":true,"name":"hot-reset","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Synchronizes routes of incoming messages.","enabled":false,"name":"synchronize","parameters":[]}]|LoadIsolation=0|MinimumBridgeRevision=20050101000000|Name=ULMSG_BROKER_TO_DMZ|NeedReload=false|PriorityLevel=5|RevisionInformation=$Revision: 2.0.3 $ $Date: 2019/11/15 15:03:06 $|State=logged|Version=2.0.3|
+ulbridge[128]:2.entry[0]	t20001 MBean=com.ullink.ulbridge.sessioninterfaces.plugins:*
+ulbridge[128]:2.entry[1]	t20002 Operation=read
+ulbridge[128]:2.entry[2]	t20003 Status=200
+ulbridge[128]:2.entry[3]	t20010 SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=ConfigurationPlugin
+ulbridge[128]:2.entry[4]	t20011 MBeanType=ConfigurationPlugin
+ulbridge[128]:2.entry[5]	t20012 PluginType=FIX
+ulbridge[128]:2.entry[6]	t20035 BinaryName=ULMsg.jar
+ulbridge[128]:2.entry[7]	t20014 Category=InterBridge
+ulbridge[128]:2.entry[8]	t20042 ClassHierarchy=[{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.AbstractSessionInterface","classRevision":"1.103"},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.commons.standard.StandardPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.toolkit.plugins.common.core.BPlugin","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.ULFixSession","classRevision":null},{"$type":"com.ullink.ulbridge.objects.ClassAndRevision","className":"com.ullink.ulbridge2.plugins.ULMsg","classRevision":null}]
+ulbridge[128]:2.entry[9]	t20036 ClassName=ULMsg
+ulbridge[128]:2.entry[10]	t20041 Enrichments=[{"$type":"com.ullink.ulbridge.objects.EnrichmentSIAttachment","action":"unmodified","condition":"if (true)","enrichmentName":"&SetEnv","index":0,"sessionInterfaceName":"ULMSG_BROKER_TO_DMZ"}]
+ulbridge[128]:2.entry[11]	t20040 ExtendedActions=[{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Send a test request message. This action is available only when the adapter is logged.","enabled":true,"name":"send-test-request","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"PING","description":"The outgoing test request ID to send","name":"test-request-id"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Stops the adapter with a customizable logout text.","enabled":true,"name":"stop","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"halt asked","description":"The logout text","name":"logout-text"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Issue a Sequence Reset-Reset message with new sequence number","enabled":true,"name":"sequence-reset-reset","parameters":[{"$type":"com.ullink.ulbridge.objects.ExtendedActionParameter","defaultValue":"511","description":"New outgoing sequence number","name":"new-seq-no"}]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Sends a FIX logon message with the ResetSeqNum tag (141) set to Y. This action is available only when the adapter is logged.","enabled":true,"name":"hot-reset","parameters":[]},{"$type":"com.ullink.ulbridge.objects.ExtendedAction","description":"Synchronizes routes of incoming messages.","enabled":false,"name":"synchronize","parameters":[]}]
+ulbridge[128]:2.entry[12]	t20032 LoadIsolation=0
+ulbridge[128]:2.entry[13]	t20038 MinimumBridgeRevision=20050101000000
+ulbridge[128]:2.entry[14]	t20013 Name=ULMSG_BROKER_TO_DMZ
+ulbridge[128]:2.entry[15]	t20034 NeedReload=false
+ulbridge[128]:2.entry[16]	t20031 PriorityLevel=5
+ulbridge[128]:2.entry[17]	t20037 RevisionInformation=$Revision: 2.0.3 $ $Date: 2019/11/15 15:03:06 $
+ulbridge[128]:2.entry[18]	t20019 State=logged
+ulbridge[128]:2.entry[19]	t20021 Version=2.0.3
+ulbridge[128]:2.field.beginstring	"FIX.5.0.2"
+ulbridge[128]:2.field.msghash	"RQSjI+MuEB7IAjqqvZwhIw=="
+ulbridge[128]:2.field.version	"5.0.2"
+ulbridge[128]:2.field.timestamp	"2026-08-14T03:13:13.131000000Z"
+ulbridge[128]:2.field.unixpartition	1786676400
+ulbridge[128]:2.field.pluginid	"Jolokia"
+ulbridge[128]:2.field.msgdirection	"R"
+ulbridge[128].messages	3
 shapes[000].line	sending >> 8=FIX.4.2|9=176|35=D|11=ORDER-1|55=AAPL|54=1|10=203| << queued seq=1092
 shapes[000]:0.type	D
 shapes[000]:0.digest	7beed007aa5a97bb176f81bde6c8d1bd
