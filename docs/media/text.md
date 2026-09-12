@@ -460,7 +460,9 @@ handle's fact, not a second option on every reader.
 
     # Undeclared, the same bytes are the wire: each stray byte reads as the
     # Windows-1252 character it is, and the line counts the two it read so.
-    [line] = IOBase.from_bytes(wire).read_text_lines()
+    undeclared = IOBase.from_bytes(wire)
+    undeclared.media_type = "text/plain"
+    [line] = undeclared.read_text_lines()
     assert line.body == "Zürich premièr"
     assert line.decoded_byte_size == 2
     ```
@@ -486,7 +488,9 @@ handle's fact, not a second option on every reader.
 
     // Undeclared, the same bytes are the wire: each stray byte reads as the
     // Windows-1252 character it is, and the line counts the two it read so.
-    const [line] = [...IOBase.fromBytes(wire).readTextLines()]
+    const undeclared = IOBase.fromBytes(wire)
+    undeclared.mediaType = 'text/plain'
+    const [line] = [...undeclared.readTextLines()]
     assert.equal(line.body, 'Zürich premièr')
     assert.equal(line.decodedByteSize, 2)
     ```
