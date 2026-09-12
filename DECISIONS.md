@@ -835,7 +835,7 @@ rule unchanged.
   the mojibake it declares where `main` repaired nothing and read `é`. Named
   as the hazard it is, in `docs/media/text.md`, and pinned; the override is the
   handle's media type or `Transcoded::new(handle, Utf8)`.
-- *The known bypass.* `Transcoded<File>` and `Coded<File>` delegate
+- *The known bypass.* `Transcoded<File>` and `Coding<File>` delegate
   `bound_location` to the file they wrap, and `owned_handle` re-opens that
   location raw under the wrapper's stripped media type, so a record read
   through either wrapper over a local file decodes nothing. Pre-existing, on

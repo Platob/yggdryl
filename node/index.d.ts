@@ -4232,15 +4232,6 @@ export declare class TextOptions {
   get linesep(): Buffer | null
   /** Set or clear the physical-line terminator. */
   set linesep(value: string | Uint8Array | undefined | null)
-  /**
-   * Return the charset row-header captures are read in.
-   *
-   * This reads captures, never the body: a captured record is an arrival
-   * record, so `body` stays the exact bytes the line was written with.
-   */
-  get charset(): string
-  /** Set the charset row-header captures are read in. */
-  set charset(charset: string)
   /** Return whether regex-syntax capture autotyping is enabled. */
   get autotype(): boolean
   /** Enable or disable regex-syntax capture autotyping. */
