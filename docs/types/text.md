@@ -954,6 +954,42 @@ native Version example corpus.
 
 ## Performance
 
+### Allocations per row
+
+A `Str` holds its first twenty-three bytes inline and shares an `Arc<str>`
+above them; a `Bytes` holds thirty inline and shares an `Arc<[u8]>` above
+them. Those thresholds are the whole allocation story: below one a cell is
+free to build and free to clone, above it it is one shared handle and one
+copy. These counts are measured with the counting allocator and asserted in
+`rust/tests/allocations.rs` - the two inline thresholds, a column built at
+sixteen, a thousand and sixteen thousand rows, and a cell transcoded on each
+side of the buffer - not timed: a count is the same on every machine, and a
+timing is not. A cell read out of Arrow takes the same door a value does, so
+the `read` rows are the value's cost.
+
+| path | cell within the inline buffer | cell past it |
+| --- | ---: | ---: |
+| `utf8` / `ascii` build | one buffer per column | one buffer per column |
+| `utf8` / `ascii` read | 0 | 1 |
+| `string(windows-1252)` build | one buffer per column | one buffer per column |
+| `string(windows-1252)` read, all-ASCII cell | 0 | 1 |
+| `string(windows-1252)` read, transcoded cell | 0 | 2 |
+| `binary` read | 0 | 1 |
+
+A column's build cost is its buffers and not its rows: the payload is measured
+with [`Charset::encoded_len`](../charset/index.md) before a byte of it is
+built, so the count is equal at sixteen rows and at sixteen thousand. The
+`read` row past the inline buffer is one handle per cell out of a buffer Arrow
+already shares; removing it needs a storage handle that does not fit
+[`Scalar`](scalar.md)'s pinned forty-eight bytes, so it is recorded rather
+than spent.
+
+A transcoded cell past the buffer costs two because the text is built once and
+copied once into the shared handle, and `String` and `Arc<str>` have different
+layouts, so no conversion between them is free.
+
+### Timings
+
 AMD Ryzen 5 150, 12 logical CPUs, Windows; Rust 1.96, Python 3.12.13 and Node
 24.18, release builds. Rust reports Criterion point estimates; Python reports
 the median of five runs of 10,000 iterations; Node reports throughput over
