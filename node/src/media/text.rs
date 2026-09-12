@@ -403,23 +403,6 @@ impl JsTextOptions {
         Ok(())
     }
 
-    /// Return the charset row-header captures are read in.
-    ///
-    /// This reads captures, never the body: a captured record is an arrival
-    /// record, so `body` stays the exact bytes the line was written with.
-    #[napi(getter)]
-    pub fn charset(&self) -> String {
-        self.inner.charset().as_str().to_owned()
-    }
-
-    /// Set the charset row-header captures are read in.
-    #[napi(setter)]
-    pub fn set_charset(&mut self, charset: String) -> Result<()> {
-        self.inner
-            .set_charset(yggdryl::Charset::from_str(&charset).map_err(napi_error)?);
-        Ok(())
-    }
-
     /// Return whether regex-syntax capture autotyping is enabled.
     #[napi(getter)]
     pub fn autotype(&self) -> bool {

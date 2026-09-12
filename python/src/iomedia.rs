@@ -1164,7 +1164,6 @@ impl PyRecordOptions {
         if let RecordOptions::Text(options) = &self.inner {
             state.set_item("framing", options.framing())?;
             state.set_item("leading_fragment", options.leading_fragment().as_str())?;
-            state.set_item("charset", options.charset().as_str())?;
             state.set_item("max_record_byte_size", options.max_record_byte_size())?;
             state.set_item("start_rownum", options.start_rownum)?;
             state.set_item("parse_mtime", options.parse_mtime)?;
@@ -1270,8 +1269,6 @@ impl PyRecordOptions {
             text.set_leading_fragment(
                 LeadingFragment::from_str(&leading_fragment).map_err(value_error)?,
             );
-            let charset = required_record_pickle_item(state, "charset")?.extract::<String>()?;
-            text.set_charset(yggdryl::Charset::from_str(&charset).map_err(value_error)?);
             text.set_max_record_byte_size(
                 required_record_pickle_item(state, "max_record_byte_size")?.extract()?,
             );
@@ -2056,23 +2053,6 @@ impl PyTextOptions {
         self.require_mutable()?;
         self.inner
             .set_leading_fragment(LeadingFragment::from_str(treatment).map_err(value_error)?);
-        Ok(())
-    }
-
-    /// The charset row-header captures are read in.
-    ///
-    /// This reads captures, never the body: a captured record is an arrival
-    /// record, so `body` stays the exact bytes the line was written with.
-    #[getter]
-    fn charset(&self) -> &'static str {
-        self.inner.charset().as_str()
-    }
-
-    #[setter]
-    fn set_charset(&mut self, charset: &str) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_charset(yggdryl::Charset::from_str(charset).map_err(value_error)?);
         Ok(())
     }
 

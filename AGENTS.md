@@ -586,7 +586,10 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
 - Encoding comes from `MediaType` through `RecordOptions`, with no format
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core
   paths.
-- Plain-text rows start with required `url: utf8` and `body: binary`;
+- Plain-text rows start with required `url: utf8` and `body: utf8` - a line is
+  text by construction, its bytes decoded once where the line is made, each
+  byte that is not UTF-8 read as the Windows-1252 character it is, and
+  `TextLine::decoded_byte_size` counting them;
   `TextOptions.start_rownum: Option<i64>` inserts required `rownum: int64` between
   them and names its first value. `parse_mtime`, on by default, inserts nullable
   `mtime: datetime64(ns, UTC)` after it, filled by the row header's `mtime`
@@ -595,7 +598,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   captures, edge-only regex stripping, a line separator, and syntax-directed
   `autotype` via `DataType::from_regex`, so the full source field is known before
   a read. `timezone` stays a shared `RecordOptions` accessor over offset-free
-  datetime captures; writes consume only non-null binary `body`.
+  datetime captures; writes consume only non-null `utf8` `body`.
 - Content coding belongs to the handle: reject outer compression for formats that
   compress internally, such as Parquet.
 
@@ -676,9 +679,9 @@ change to `media/iceberg/`.
 `charset/`, and every byte that becomes text anywhere else.
 
 - **Text crosses the boundary once.** A byte payload is decoded at intake -
-  by a `Transcoded` handle, by `text::io::Plan`, by `TextOptions::charset`, by
-  a `string(...)` column's own value contract, or by a direct `Charset::decode`
-  - and everything past that point is `str` or UTF-8 bytes. Nothing re-decodes,
+  by a `Transcoded` handle, by `text::io::Plan`, by a `string(...)` column's
+  own value contract, or by a direct `Charset::decode` - and everything past
+  that point is `str` or UTF-8 bytes. Nothing re-decodes,
   and no cast, digest, or record layer branches on a charset per row. A layer
   that wants a charset argument wants the wrong seam: wrap the handle instead.
   A `string(...)` value does carry the charset it is *written* in, so it goes
@@ -724,10 +727,10 @@ change to `media/iceberg/`.
   answers, and every charset here is stateless past one - so a byte offset is
   the whole of what `Transcoded` needs to seek. A shift-state encoding would
   have to carry that state into the resume index before it could be added.
-- A record capture keeps its arrival bytes: `media/text` decodes row-header
-  captures under `TextOptions::charset` and leaves `body` exactly as written.
-  Reading a whole resource in one charset is `Transcoded`, not a second option
-  on every reader.
+- There is no charset option on the text record reader: `media/text` reads
+  the charset a handle's media type declares, once, where it builds the
+  transport (decision 12), and a whole resource in one charset is `Transcoded`,
+  not a second option on every reader.
 
 ## Strings
 

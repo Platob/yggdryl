@@ -1,13 +1,15 @@
 """FIX field definitions, over the fields and handles :mod:`yggdryl` already has.
 
 A FIX field is an ordinary :class:`~yggdryl.Field` whose ``fix:`` metadata the
-protocol view ``field.fix`` reads and writes as typed properties - ``branch``,
-``id``, ``tag``, ``tags``, ``aliases``, ``description`` - so nothing here is a
-second field class. A branch key and an identifier cross as ``str``, coerced
-once at the boundary, so neither has a class of its own. :class:`FixRegistry` resolves
-those fields by identifier, by tag, by branch-qualified name or by
-branch-qualified dotted path and persists them as JSON shards through any
-``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
+protocol view ``field.fix`` reads and writes as typed properties - ``id``,
+``tag``, ``tags``, ``branches``, ``aliases``, ``description`` - so nothing here
+is a second field class. A field is its tag and its name together: ``id`` is
+the ``int`` the core derives from both under the one fold, never stored, and
+what the dictionaries that contributed the field say is ``branches``, a
+sorted list of names that a caller filters on and no lookup consults. The
+registry is one namespace: :class:`FixRegistry` resolves those fields by
+identifier, by tag, by name or by dotted path and persists them as JSON
+shards through any ``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
 was resolved against, written through :meth:`FixMsg.set` and
 :meth:`FixMsg.remove` and read back from a fixed row by :meth:`FixMsg.from_row`.
 Every registry holds this crate's own fields from
@@ -49,9 +51,7 @@ batches of FIX rows - the capture's own columns first, the dictionary's fixed
 columns after, one source row's columns repeated for each message a bulk
 document expands to - closed on the raw bytes of the payload column against
 the codec's ``batch_byte_size``. A capture's ``timestamp`` column stamps its
-row; its ``pluginid`` column names the plugin that logged the line, and where
-that text is the name or an alias of a branch the dictionary declares it also
-names the dialect the row is read under, outranking the codec's own pin; and
+row; its ``pluginid`` column names the plugin that logged the line; and
 any other column named after a field - ``prevpluginid``, ``senderSessionId``,
 or a bridge's ``seqNum`` for ``MsgSeqNum`` - fills that field where the frame
 did not state it, without becoming an entry. :meth:`FixCodec.enrich_message` and
@@ -61,7 +61,7 @@ of rows without parsing them again, through the two converters every stage
 composes over batches: :meth:`FixCodec.messages` reads a batch back as the
 messages that made it and :meth:`FixCodec.arrow_reader` writes messages as
 batches under a schema. :meth:`FixCodec.write_arrow_reader` is the encode
-direction, re-emitting every row's wire. A pin - ``branch``, ``version``,
+direction, re-emitting every row's wire. A pin - ``version``,
 ``separator``, ``payload_column``, ``null_values``, ``direction``,
 ``batch_byte_size`` - is on the codec; a stage is a call.
 :func:`fix_schema` is the one fixed row a whole capture lands in - columns
@@ -72,7 +72,7 @@ to be resolved per row; the tag stays on each column's ``fix:tag``.
 dropping a capture column whose folded name a FIX column already takes.
 :func:`fix_crate_fields` lists what this crate itself adds beside the
 specification: twenty standard fields from tag 65000, above every tag FIX or
-a venue publishes, so they need no branch of their own. ``msghash``,
+a venue publishes. ``msghash``,
 ``version``, ``symbolticker``, ``timestamp``, ``unixpartition``,
 ``parentclordid`` and ``parentorderid``; what a bridge's own log states about a
 line - ``sendersessionid``, the session the message itself names, ``msgctxid``,
@@ -93,29 +93,23 @@ belongs to - joined on ``OrigClOrdID``, ``ClOrdID``, ``OrderID``,
 an iterable of messages, lazily, and composes over a whole capture through
 :meth:`FixCodec.messages` and :meth:`FixCodec.arrow_reader`.
 
-A branch is a ``str`` wherever it is a *key*; :class:`FixBranch` is what a
-*declaration* is, because a declaration also carries the dialect's default FIX
-version and the other spellings it answers to.
+A dictionary is a membership, not a namespace: :meth:`FixRegistry.from_cfb_file`
+and :meth:`FixRegistry.add_cfb_file` take a ``dialect`` and stamp it on every
+field the file produces, :meth:`FixRegistry.dialects` lists the names any
+field or definition carries, and ``ULBRIDGE_DIALECT`` is the one this crate
+stamps itself, on :func:`fix_ulbridge_fields`.
 
 The registry stores scalar ``fields`` and named ``messages``, ``components``,
 and ``groups``. Enum codes remain inline in each field's ``fix:codes`` metadata.
 Repeating counts such as ``NoPartyIDs`` are ``int32`` fields; ``Parties`` is a
 separate list of ``Party`` components. :class:`MsgType` borrows one immutable,
 registry-owned message definition and keeps its complete case-sensitive wire code.
-
-``STANDARD_BRANCH`` is what an absent ``fix:branch`` means, and
-``USER_TAG_MIN`` and ``USER_TAG_MAX`` bound the half-open range a
-non-standard branch may claim.
 """
 
 from __future__ import annotations
 
 from ._native import (
-    STANDARD_BRANCH,
-    ULBRIDGE_BRANCH,
-    USER_TAG_MAX,
-    USER_TAG_MIN,
-    FixBranch,
+    ULBRIDGE_DIALECT,
     FixMsg,
     FixCodec,
     FixLifecycle,
@@ -135,11 +129,7 @@ from ._native import (
 )
 
 __all__ = [
-    "STANDARD_BRANCH",
-    "ULBRIDGE_BRANCH",
-    "USER_TAG_MAX",
-    "USER_TAG_MIN",
-    "FixBranch",
+    "ULBRIDGE_DIALECT",
     "FixMsg",
     "FixCodec",
     "FixLifecycle",

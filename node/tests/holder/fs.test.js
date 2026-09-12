@@ -920,14 +920,12 @@ test('records round trip over storage that is only a Map', () => {
   )
 
   // Plain text reaches the same generic record path over a handler-backed
-  // handle; each physical line is the binary body of one row.
+  // handle; each physical line is the text body of one row.
   const lines = IOBase.fromFs(handler, 'bucket/rows.txt')
   lines.writeText('{"id":1}\n{"id":2}\n')
   lines.flush()
   assert.deepEqual(
-    [...lines.readRecords(RecordOptions.from('text/plain'))].map((row) =>
-      Buffer.from(row.body).toString(),
-    ),
+    [...lines.readRecords(RecordOptions.from('text/plain'))].map((row) => row.body),
     ['{"id":1}', '{"id":2}'],
   )
 })

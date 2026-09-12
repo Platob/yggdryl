@@ -5,19 +5,18 @@ use criterion::Criterion;
 use std::collections::HashMap;
 use std::hint::black_box;
 use yggdryl::{
-    DataType, Field, FieldPath, FixBranch, FixCategory, FixCode, FixCodeValue, FixCodec, FixId,
-    FixKey, FixLineageEntry, FixPedigree, FixRegistry, MimeType, Version,
+    DataType, Field, FieldPath, FixCategory, FixCode, FixCodeValue, FixCodec, FixId, FixKey,
+    FixLineageEntry, FixPedigree, FixRegistry, MimeType, Version,
 };
 
-use super::{BRANCH_FIELDS, LARGE_FIELDS, generated, mixed_categories, seed, two_branches, venue};
+use super::{DIALECT_FIELDS, LARGE_FIELDS, generated, mixed_categories, seed, two_dialects, venue};
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let registry = seed();
-    let standard = FixBranch::STANDARD;
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     assert!(matches!(
         registry
-            .definition(FixCategory::Groups, "Parties", None)
+            .definition(FixCategory::Groups, "Parties")
             .unwrap()
             .dtype(),
         DataType::List(_)
@@ -27,11 +26,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         registry.field(32).unwrap()
     );
     assert!(registry.get_field_by_tag(i32::MAX).is_none());
-    assert!(
-        registry
-            .get_field_by_name("absent", Some(&standard))
-            .is_none()
-    );
+    assert!(registry.get_field_by_name("absent").is_none());
     let mut alternate = registry.clone();
     let mut field = DataType::utf8().nullable_field("AlternateTagBenchmark");
     field.as_fix_mut().set_tag(9_000).unwrap();
@@ -56,35 +51,26 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("group_name_hit", |bencher| {
         bencher.iter(|| {
-            black_box(&registry).get_definition(
-                FixCategory::Groups,
-                black_box("Parties"),
-                Some(&standard),
-            )
+            black_box(&registry).get_definition(FixCategory::Groups, black_box("Parties"))
         });
     });
     group.bench_function("alternate_tag_hit", |bencher| {
         bencher.iter(|| black_box(&alternate).get_field_by_tag(black_box(9_001)));
     });
     group.bench_function("name_hit", |bencher| {
-        bencher
-            .iter(|| black_box(&registry).get_field_by_name(black_box("Symbol"), Some(&standard)));
+        bencher.iter(|| black_box(&registry).get_field_by_name(black_box("Symbol")));
     });
     group.bench_function("name_hit_folded", |bencher| {
-        bencher
-            .iter(|| black_box(&registry).get_field_by_name(black_box("SYMBOL"), Some(&standard)));
+        bencher.iter(|| black_box(&registry).get_field_by_name(black_box("SYMBOL")));
     });
     group.bench_function("alias_hit", |bencher| {
-        bencher.iter(|| {
-            black_box(&registry).get_field_by_name(black_box("LastShares"), Some(&standard))
-        });
+        bencher.iter(|| black_box(&registry).get_field_by_name(black_box("LastShares")));
     });
     group.bench_function("tag_miss", |bencher| {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(i32::MAX)));
     });
     group.bench_function("name_miss", |bencher| {
-        bencher
-            .iter(|| black_box(&registry).get_field_by_name(black_box("absent"), Some(&standard)));
+        bencher.iter(|| black_box(&registry).get_field_by_name(black_box("absent")));
     });
     let fixml = b"8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|";
     group.bench_function("infer_fixml_protocol", |bencher| {
@@ -94,14 +80,26 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| FixCodec::infer_msgtype_bytes(black_box(fixml)));
     });
 
-    // The identifier's own render and parse, which is what a config file or a
-    // binding boundary spells an identity as.
-    let standard_id = FixId::standard(55);
+    // The identifier's own derivation and render: an id is the fold of a tag
+    // and a name, computed on every read of a field, and spelled as its
+    // decimal digest wherever it crosses a boundary.
+    let symbol_id = FixId::of(55, "Symbol").expect("a non-negative tag");
+    assert_eq!(
+        symbol_id,
+        FixId::of(55, "SYMBOL").expect("a non-negative tag")
+    );
     group.bench_function("id_render", |bencher| {
-        bencher.iter(|| black_box(&standard_id).to_string());
+        bencher.iter(|| black_box(&symbol_id).to_string());
     });
-    group.bench_function("id_parse", |bencher| {
-        bencher.iter(|| FixId::from_str(black_box("5001:cme")).unwrap());
+    group.bench_function("id_of", |bencher| {
+        bencher.iter(|| FixId::of(black_box(55), black_box("Symbol")).unwrap());
+    });
+    group.bench_function("id_of_folded", |bencher| {
+        bencher.iter(|| FixId::of(black_box(35), black_box("Msg_Type")).unwrap());
+    });
+    group.bench_function("field_id", |bencher| {
+        let symbol = registry.field(55).unwrap();
+        bencher.iter(|| black_box(symbol).as_fix().id().unwrap().unwrap());
     });
 
     // The generic pair against the specialized one it redirects to.
@@ -127,15 +125,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
     .map(|spelling| FieldPath::from_str(spelling).expect("a path"))
     .collect();
     for path in &paths {
-        assert!(
-            registry.get_field_by_path(path, Some(&standard)).is_some(),
-            "{path}"
-        );
+        assert!(registry.get_field_by_path(path).is_some(), "{path}");
     }
     for (segments, path) in paths.iter().enumerate() {
         group.bench_function(format!("path_{}_segments", segments + 1), |bencher| {
-            bencher
-                .iter(|| black_box(&registry).get_field_by_path(black_box(path), Some(&standard)));
+            bencher.iter(|| black_box(&registry).get_field_by_path(black_box(path)));
         });
     }
 
@@ -145,10 +139,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| FieldPath::from_str(black_box("Parties.PartyID")).expect("a path"));
     });
 
-    // The plain map the index structure has to beat: a tag map with no
-    // tiers, and a lowercase name map that must fold the query to probe it.
-    // Re-measured here because the tag index is now keyed by `FixId`, so the
-    // baseline the tag hit is compared against had to be run again.
+    // The plain map the index structure has to beat: a tag map, and a
+    // lowercase name map that must fold the query to probe it.
     let by_tag: HashMap<i32, Field> = registry
         .iter()
         .map(|field| (field.as_fix().tag().unwrap().unwrap(), field.clone()))
@@ -157,10 +149,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .iter()
         .map(|field| (field.name().to_ascii_lowercase(), field.clone()))
         .collect();
-    // The equivalent baseline: the same composite key in a hash map, which is
-    // what the ordered map has to earn itself against now that it carries a
-    // branch. `HashMap<i32, Field>` above answers a strictly weaker
-    // question - it cannot hold two branches at all.
+    // The id baseline: the derived identity in a hash map, probed with the
+    // id already in hand, which is what `get_field_by_id` has to earn itself
+    // against. `HashMap<i32, Field>` above answers a strictly weaker
+    // question - it cannot hold two fields on one tag at all.
     let by_id: HashMap<FixId, Field> = registry
         .iter()
         .map(|field| (field.as_fix().id().unwrap().unwrap(), field.clone()))
@@ -169,35 +161,45 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&by_tag).get(black_box(&55)));
     });
     group.bench_function("baseline_hashmap_id_hit", |bencher| {
-        bencher.iter(|| black_box(&by_id).get(&FixId::standard(black_box(55))));
+        bencher.iter(|| black_box(&by_id).get(black_box(&symbol_id)));
+    });
+    group.bench_function("id_hit", |bencher| {
+        bencher.iter(|| black_box(&registry).get_field_by_id(black_box(symbol_id)));
     });
     group.bench_function("baseline_hashmap_name_hit_folded", |bencher| {
         bencher.iter(|| black_box(&by_name).get(&black_box("SYMBOL").to_ascii_lowercase()));
     });
 
-    // Two branches in one registry: explicit venue identifiers/names and an
-    // inferred venue tag.
+    // Two dictionaries in one registry: the venue's fields by id, name and
+    // alias, its tags beside the standard ones, membership stamped and read
+    // as provenance rather than consulted by any lookup.
     let venue = venue();
-    let mixed = two_branches(BRANCH_FIELDS);
-    let branch_middle = BRANCH_FIELDS / 2;
-    let vendor_tag = i32::try_from(5_000 + branch_middle).expect("the vendor tag fits i32");
-    let vendor_name = format!("vendor{branch_middle:05}");
-    let vendor_alias = format!("VendorAlias{branch_middle:05}");
-    let vendor_id = FixId::from_parts(&venue, vendor_tag).expect("a vendor identifier");
+    let mixed = two_dialects(DIALECT_FIELDS);
+    let dialect_middle = DIALECT_FIELDS / 2;
+    let vendor_tag = i32::try_from(5_000 + dialect_middle).expect("the vendor tag fits i32");
+    let vendor_name = format!("vendor{dialect_middle:05}");
+    let vendor_alias = format!("VendorAlias{dialect_middle:05}");
+    let vendor_id = FixId::of(vendor_tag, &vendor_name).expect("a vendor identifier");
+    let vendor = mixed.field(vendor_id).expect("the venue field by its id");
+    assert!(vendor.as_fix().has_branch(venue));
+    assert!(!mixed.field(55).unwrap().as_fix().has_branch(venue));
+    assert_eq!(mixed.dialects(), [venue.to_owned()]);
+    group.bench_function("has_branch_vendor", |bencher| {
+        bencher.iter(|| black_box(vendor).as_fix().has_branch(black_box(venue)));
+    });
     group.bench_function("id_hit_vendor", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_id(black_box(vendor_id)));
     });
     group.bench_function("name_hit_vendor", |bencher| {
-        bencher.iter(|| black_box(&mixed).get_field_by_name(black_box(&vendor_name), Some(&venue)));
+        bencher.iter(|| black_box(&mixed).get_field_by_name(black_box(&vendor_name)));
     });
     group.bench_function("alias_hit_vendor", |bencher| {
-        bencher
-            .iter(|| black_box(&mixed).get_field_by_name(black_box(&vendor_alias), Some(&venue)));
+        bencher.iter(|| black_box(&mixed).get_field_by_name(black_box(&vendor_alias)));
     });
     group.bench_function("tag_hit_vendor_inferred", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_tag(black_box(vendor_tag)));
     });
-    group.bench_function("tag_hit_two_branches", |bencher| {
+    group.bench_function("tag_hit_two_dialects", |bencher| {
         bencher.iter(|| black_box(&mixed).get_field_by_tag(black_box(55)));
     });
 
@@ -214,13 +216,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&large).get_field_by_tag(black_box(middle_tag)));
     });
     group.bench_function(format!("name_hit_{LARGE_FIELDS}"), |bencher| {
-        bencher
-            .iter(|| black_box(&large).get_field_by_name(black_box(&middle_name), Some(&standard)));
+        bencher.iter(|| black_box(&large).get_field_by_name(black_box(&middle_name)));
     });
     group.bench_function(format!("alias_hit_{LARGE_FIELDS}"), |bencher| {
-        bencher.iter(|| {
-            black_box(&large).get_field_by_name(black_box(&middle_alias), Some(&standard))
-        });
+        bencher.iter(|| black_box(&large).get_field_by_name(black_box(&middle_alias)));
     });
 
     // One scalar in fifty counts a separately named repeating group; tag 5000
@@ -248,11 +247,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function(format!("group_name_hit_{LARGE_FIELDS}"), |bencher| {
         bencher.iter(|| {
-            black_box(&realistic).get_definition(
-                yggdryl::FixCategory::Groups,
-                black_box("Group00000"),
-                None,
-            )
+            black_box(&realistic)
+                .get_definition(yggdryl::FixCategory::Groups, black_box("Group00000"))
         });
     });
     group.finish();

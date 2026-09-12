@@ -3,11 +3,13 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::IOMedia;
-use yggdryl::Url;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::{TextOptions, into_arrow_batch, read_text_lines};
+use yggdryl::media::text::{
+    TextBytes, TextEntries, TextOptions, into_arrow_batch, read_text_lines,
+};
+use yggdryl::types::MsgDirection;
+use yggdryl::{IOMedia, MimeType, Url};
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 500);
 const MULTILINE_ROWS: usize = crate::bench_profile::corpus(4_000, 200);
@@ -247,4 +249,88 @@ fn drain_lines(handle: &Buffer, options: &TextOptions) -> usize {
             // Touch the body so the decode is not optimized away.
             seen + line.expect("a line").body().len().min(1)
         })
+}
+
+/// The bridge's own capture, for the scan shapes below.
+const ULBRIDGE_LOG: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fix/ulbridge.log"
+));
+
+/// One line of the capture, stripped of its row header, checked to be the
+/// shape the benchmark names so an edit to the corpus fails here rather than
+/// silently measuring something else.
+fn capture_body(index: usize, expects: &[u8]) -> Vec<u8> {
+    let line = ULBRIDGE_LOG
+        .split(|byte| *byte == b'\n')
+        .nth(index)
+        .expect("a line of the capture");
+    // The row header closes on the level in parentheses and one space.
+    let at = line
+        .windows(2)
+        .position(|pair| pair == b") ")
+        .expect("a row header")
+        + 2;
+    let body = line[at..].to_vec();
+    assert!(
+        memchr::memmem::find(&body, expects).is_some(),
+        "line {index} of the capture no longer holds {}",
+        String::from_utf8_lossy(expects)
+    );
+    body
+}
+
+/// The one shallow scan every line pays, one shape at a time.
+///
+/// Four questions the text reader asks of a line before any message is read:
+/// where its payload opens and which way it moved, what it is, and what pairs
+/// it states - each of which locates the frame and decides what separates
+/// its fields. The shapes are the ones a capture actually mixes: a bridge row
+/// framed on pipes, a numeric frame on pipes, the same frame on raw SOH, a
+/// frame spelled `^A`, one spelled `<SOH>`, prose that states pairs but names
+/// no separator, and a document. Per shape rather than over the whole
+/// corpus, so a change to the scan is attributed to the shape it moved.
+pub(crate) fn text_scan_benchmarks(criterion: &mut Criterion) {
+    let frame_pipe = capture_body(72, b"8=FIX.4.4|9=886|35=8|");
+    let frame_soh: Vec<u8> = frame_pipe
+        .iter()
+        .map(|byte| if *byte == b'|' { 0x01 } else { *byte })
+        .collect();
+    let shapes: [(&str, Vec<u8>); 7] = [
+        (
+            "bridge_pipe",
+            capture_body(1, b"MSGTYPE=executionreport|NOPARTYIDS=2|"),
+        ),
+        ("frame_pipe", frame_pipe),
+        ("frame_soh", frame_soh),
+        ("frame_caret", capture_body(102, b"8=FIX.4.4^A9=61^A35=0^A")),
+        (
+            "frame_marker",
+            capture_body(103, b"8=FIX.4.4<SOH>9=70<SOH>35=1<SOH>"),
+        ),
+        (
+            "prose_pairs",
+            capture_body(16, b"Enrichment execution[&SetEnv, &TECH_AddFields_OMS_X1="),
+        ),
+        (
+            "document_json",
+            capture_body(98, br#"Response: {"request":{"mbean":"com.ullink.ulbridge"#),
+        ),
+    ];
+
+    let mut group = criterion.benchmark_group("text_scan");
+    for (shape, body) in &shapes {
+        group.throughput(Throughput::Bytes(body.len() as u64));
+        group.bench_function(format!("{shape}/payload"), |bencher| {
+            bencher.iter(|| MsgDirection::split_bytes(black_box(body)));
+        });
+        group.bench_function(format!("{shape}/classify"), |bencher| {
+            bencher.iter(|| MimeType::infer_bytes(black_box(body)));
+        });
+        let page = TextBytes::from_bytes(body).expect("a page");
+        group.bench_function(format!("{shape}/entries"), |bencher| {
+            bencher.iter(|| TextEntries::from_bytes(black_box(&page)).map_or(0, |held| held.len()));
+        });
+    }
+    group.finish();
 }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
-use yggdryl::{DataType, FixBranch, FixCategory, FixId, FixRegistry, IOBase};
+use yggdryl::{DataType, FixCategory, FixId, FixRegistry, IOBase};
 
 /// How many vocabulary tags and bound constraints one measured file holds.
 ///
@@ -115,23 +115,39 @@ fn handle(body: &str) -> impl IOBase {
 pub fn benchmarks(criterion: &mut Criterion) {
     let body = document();
     let handle = handle(&body);
-    let branch = FixBranch::from_str("venue").expect("a valid branch");
+    let dialect = "venue";
     let (registry, _) =
-        FixRegistry::from_cfb_file(&handle, Some(&branch)).expect("a readable CBlock");
-    let counter = FixId::from_parts(&branch, 5_000).unwrap();
+        FixRegistry::from_cfb_file(&handle, Some(dialect)).expect("a readable CBlock");
+    let counter = FixId::of(5_000, "NoVendorEntries").unwrap();
     assert_eq!(registry.field(counter).unwrap().dtype(), &DataType::Int32);
-    assert!(
-        registry
-            .get_definition(FixCategory::Groups, "VendorEntries", Some(&branch))
-            .is_some()
+    assert_eq!(
+        registry.field(counter).unwrap(),
+        registry.field(5_000).unwrap()
     );
+    // Every field, group and message the file produced is a stamped member
+    // of the dialect it was read under.
     assert!(
         registry
-            .msgtype("D", Some(&branch))
+            .field(counter)
             .unwrap()
-            .get_group_by_counter(counter)
+            .as_fix()
+            .has_branch(dialect)
+    );
+    assert!(
+        registry
+            .definition(FixCategory::Groups, "VendorEntries")
+            .unwrap()
+            .as_fix()
+            .has_branch(dialect)
+    );
+    assert!(
+        registry
+            .msgtype("D")
+            .unwrap()
+            .get_group_by_counter(5_000)
             .is_some()
     );
+    assert_eq!(registry.dialects(), [dialect.to_owned()]);
     // The normalization binding spells every tag, and only the spelling the
     // tag does not already answer to is stored beside its name.
     assert_eq!(
@@ -151,7 +167,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // name the normalization binding spells against the finished vocabulary.
     group.bench_function("parse", |bencher| {
         bencher.iter(|| {
-            FixRegistry::from_cfb_file(black_box(&handle), Some(black_box(&branch)))
+            FixRegistry::from_cfb_file(black_box(&handle), Some(black_box(dialect)))
                 .expect("a readable CBlock")
         });
     });

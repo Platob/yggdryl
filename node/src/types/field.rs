@@ -7,7 +7,10 @@ use napi::bindgen_prelude::{
     Unknown,
 };
 use napi_derive::napi;
-use yggdryl::{Field as CoreField, ProtocolField as CoreProtocolField, Scheme as CoreScheme};
+use yggdryl::{
+    Field as CoreField, FixId as CoreFixId, ProtocolField as CoreProtocolField,
+    Scheme as CoreScheme,
+};
 
 use crate::{
     JsDifferenceIterator,
@@ -15,9 +18,7 @@ use crate::{
         JsMediaType, JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input,
         mime_type_from_input,
     },
-    exact_i32,
-    fix::{branch_from_js, id_parts_from_js},
-    napi_error, napi_type_error, ordering_value,
+    exact_i32, napi_error, napi_type_error, ordering_value,
     types::datatype::{JsDataType, JsStringEnum, dtype_from_input},
     types::value::arrow_scalar_to_ipc,
     types::value::field_value_to_js,
@@ -1836,62 +1837,75 @@ impl JsProtocolField {
         self.view().display().map(ToOwned::to_owned)
     }
 
-    /// The dictionary this field belongs to, on the `fix` view.
+    /// The dictionaries that contributed this field, on the `fix` view.
     ///
-    /// A branch crosses as text: `''` is the FIX specification's own
-    /// dictionary and what an absent `fix:branch` means, and assigning it
-    /// removes the key rather than storing it. A spelling that is not a branch
-    /// throws the native parse failure, and a refusal - a tag the specification
-    /// assigns cannot move to another dictionary - leaves the field unchanged.
+    /// `fix:branches` read as an array: sorted, ASCII lowercase, and empty
+    /// where the field states none - every field the specification alone
+    /// defines. Membership is provenance a caller filters on; no lookup
+    /// consults it. Assigning an array replaces the list - folded once,
+    /// deduplicated, sorted - and an empty array removes the property; a
+    /// name that is empty or carries a comma is refused and the field is
+    /// left unchanged.
     #[napi(getter)]
-    pub fn branch(&self, env: Env) -> Result<String> {
-        self.require_fix(env, "branch")?;
+    pub fn branches(&self, env: Env) -> Result<Vec<String>> {
+        self.require_fix(env, "branches")?;
+        Ok(self
+            .field
+            .inner
+            .as_fix()
+            .branches()
+            .map(ToOwned::to_owned)
+            .collect())
+    }
+
+    /// Record the dictionaries that contributed this field.
+    #[napi(setter)]
+    pub fn set_branches(&mut self, env: Env, values: Vec<String>) -> Result<()> {
+        self.require_fix(env, "branches")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_branches(values)
+            .map_err(napi_error)
+    }
+
+    /// Add one dictionary to those that contributed this field.
+    ///
+    /// Idempotent under the fold: a name already listed is listed once.
+    #[napi]
+    pub fn add_branch(&mut self, env: Env, name: String) -> Result<()> {
+        self.require_fix(env, "branches")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .add_branch(&name)
+            .map_err(napi_error)
+    }
+
+    /// Whether `name` is one of the dictionaries that contributed this
+    /// field, ASCII case folded.
+    #[napi]
+    pub fn has_branch(&self, env: Env, name: String) -> Result<bool> {
+        self.require_fix(env, "branches")?;
+        Ok(self.field.inner.as_fix().has_branch(&name))
+    }
+
+    /// This field's identity, on the `fix` view.
+    ///
+    /// The signed 32-bit digest of the canonical tag and the field's name
+    /// under the one fold - so `MsgType`, `msg_type` and `msgtype` under tag
+    /// 35 are one identity - derived on every read and never stored, so it
+    /// is `null` exactly when `fix:tag` is absent. It is what `fieldById`
+    /// and `getById` take, and it cannot be assigned: the tag and the name
+    /// are what it is made of.
+    #[napi(getter)]
+    pub fn id(&self, env: Env) -> Result<Option<i32>> {
+        self.require_fix(env, "id")?;
         self.field
             .inner
             .as_fix()
-            .branch()
-            .map(|branch| branch.name().to_owned())
-            .map_err(napi_error)
-    }
-
-    /// Record the dictionary this field belongs to.
-    #[napi(setter)]
-    pub fn set_branch(&mut self, env: Env, value: String) -> Result<()> {
-        self.require_fix(env, "branch")?;
-        let branch = branch_from_js(&value)?;
-        self.field
-            .inner
-            .as_fix_mut()
-            .set_branch(&branch)
-            .map_err(napi_error)
-    }
-
-    /// This field's identity, `tag:branch`, on the `fix` view.
-    ///
-    /// Derived from the branch and the canonical tag on every read and never
-    /// stored, so it is `null` exactly when `fix:tag` is absent. Assigning one
-    /// moves both halves at once, which is the only ordering-safe way to move a
-    /// field between dictionaries.
-    #[napi(getter)]
-    pub fn id(&self, env: Env) -> Result<Option<String>> {
-        self.require_fix(env, "id")?;
-        let view = self.field.inner.as_fix();
-        let Some(tag) = view.tag().map_err(napi_error)? else {
-            return Ok(None);
-        };
-        let branch = view.branch().map_err(napi_error)?;
-        Ok(Some(format!("{tag}:{branch}")))
-    }
-
-    /// Record both halves of this field's identity at once.
-    #[napi(setter)]
-    pub fn set_id(&mut self, env: Env, value: String) -> Result<()> {
-        self.require_fix(env, "id")?;
-        let (branch, id) = id_parts_from_js(&value)?;
-        self.field
-            .inner
-            .as_fix_mut()
-            .set_id(&branch, id.tag())
+            .id()
+            .map(|id| id.map(CoreFixId::digest))
             .map_err(napi_error)
     }
 
@@ -1899,8 +1913,7 @@ impl JsProtocolField {
     ///
     /// Reads and writes `fix:tag` through the core's own typed accessors, so
     /// the property name is never spelled at a call site. `view.delete('tag')`
-    /// removes it, the way every other property is removed. A field in another
-    /// branch can claim only `fix.USER_TAG_MIN..fix.USER_TAG_MAX`.
+    /// removes it, the way every other property is removed.
     #[napi(getter)]
     pub fn tag(&self, env: Env) -> Result<Option<i32>> {
         self.require_fix(env, "tag")?;

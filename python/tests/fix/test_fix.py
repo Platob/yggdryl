@@ -3,8 +3,9 @@
 Every answer here is the core's; what these check is the crossing - the key
 coercion, the exception each core failure maps to, the storage locations a
 Python caller names, and the Python protocols the two wrappers implement.
-A branch and an identifier cross as ``str`` and are parsed once at the
-boundary, so there is no class for either and every refusal is the native one.
+An identifier crosses as the ``int`` the core derives from a tag and a name,
+and a dictionary's contribution is a list of names on the field, so neither
+has a class of its own and every refusal is the native one.
 """
 
 from __future__ import annotations
@@ -25,7 +26,6 @@ import pytest
 
 from yggdryl import DataType, Field, IOBase, MimeType, Scalar, TextLine, Url, refresh_logging
 from yggdryl.fix import (
-    FixBranch,
     FixMsg,
     FixMessages,
     MsgType,
@@ -33,10 +33,7 @@ from yggdryl.fix import (
     FixCodec,
     FixLifecycle,
     FixRegistry,
-    STANDARD_BRANCH,
-    ULBRIDGE_BRANCH,
-    USER_TAG_MAX,
-    USER_TAG_MIN,
+    ULBRIDGE_DIALECT,
     UlPlugin,
     fix_cfb_fields,
     fix_crate_fields,
@@ -83,7 +80,7 @@ def _field(
     dtype: str,
     tag: int,
     *,
-    branch: str = STANDARD_BRANCH,
+    branches: Iterable[str] = (),
     tags: Iterable[int] = (),
     aliases: Iterable[str] = (),
     description: str | None = None,
@@ -91,7 +88,9 @@ def _field(
 ) -> Field:
     """One FIX field, written through the protocol view alone."""
     field = Field(name, dtype, nullable=nullable)
-    field.fix.id = f"{tag}:{branch}"
+    field.fix.tag = tag
+    if branches:
+        field.fix.branches = branches
     if tags:
         field.fix.tags = tags
     if aliases:
@@ -158,15 +157,17 @@ def test_typed_vocabulary_is_only_on_the_fix_view() -> None:
         with pytest.raises(TypeError, match=scheme):
             view.aliases
         with pytest.raises(TypeError, match=scheme):
-            view.branch
+            view.branches
         with pytest.raises(TypeError, match=scheme):
             view.id
         with pytest.raises(TypeError, match=scheme):
             view.tag = 55
         with pytest.raises(TypeError, match=scheme):
-            view.branch = "cme"
+            view.branches = ["cme"]
         with pytest.raises(TypeError, match=scheme):
-            view.id = "5001:cme"
+            view.add_branch("cme")
+        with pytest.raises(TypeError, match=scheme):
+            view.has_branch("cme")
     # The mapping protocol still works on every view, including this one.
     assert field.protocol("fix")["tag"] == "55"
 
@@ -194,138 +195,122 @@ def test_tag_rejects_bool_and_refuses_to_narrow() -> None:
         field.fix.aliases = ["Sym", "sym"]
 
 
-def test_a_branch_declaration_answers_to_its_aliases() -> None:
-    bloomberg = FixBranch("bloomberg", aliases=["BLP", "blpfix"])
-    # Folded exactly as a name is, and the canonical name is not one of them.
-    assert bloomberg.aliases == ["blp", "blpfix"]
-    assert bloomberg.has_alias("BLP") and bloomberg.has_alias("blpfix")
-    assert not bloomberg.has_alias("bloomberg")
-    # An alias changes no identity, so nothing a digest keys moves.
-    assert bloomberg.digest() == FixBranch("BLOOMBERG").digest()
-    assert FixBranch("cme").aliases == []
-
-    venue = Field("VenueSym", "utf8")
-    venue.fix.id = "5055:bloomberg"
-    registry = FixRegistry.from_fields([venue])
-    registry.set_branch(bloomberg)
-
-    # Every spelling reaches the one dictionary, canonically answered.
-    for spelling in ("bloomberg", "BLOOMBERG", "blp", "BLPFIX"):
-        held = registry.branch_named(spelling)
-        assert held is not None and held.name == "bloomberg", spelling
-    assert registry.branch_named("nowhere") is None
-
-    # A spelling that already reaches a dictionary is not a second way to.
-    with pytest.raises(ValueError, match="twice"):
-        FixBranch("bloomberg", aliases=["BLOOMBERG"])
-    with pytest.raises(ValueError, match="twice"):
-        FixBranch("bloomberg", aliases=["blp", "BLP"])
-    # An alias is held to the grammar a name is.
-    with pytest.raises(ValueError, match="ASCII letter"):
-        FixBranch("bloomberg", aliases=["2blp"])
-
-
-def test_branch_and_id_round_trip_as_text() -> None:
+def test_id_is_the_tag_under_the_name_and_never_stored() -> None:
     trade = Field("TradeID", "utf8")
-    # An absent property is the standard branch, and there is no identity
-    # without a tag.
-    assert trade.fix.branch == STANDARD_BRANCH == ""
+    # There is no identity without a tag.
     assert trade.fix.id is None
-    assert "fix:branch" not in trade.metadata
+    trade.fix.tag = 5001
+    held = trade.fix.id
+    assert isinstance(held, int) and not isinstance(held, bool)
+    assert -(2**31) <= held < 2**31
+    # Derived on every read from `fix:tag` and the name, so nothing stores it
+    # and a rename is never stale.
+    assert "fix:id" not in trade.metadata
+    assert set(trade.fix) == {"tag"}
+    trade.fix.tag = 5002
+    assert trade.fix.id != held
+    trade.fix.tag = 5001
+    assert trade.fix.id == held
+    renamed = copy.copy(trade)
+    renamed.set_name("TradeRef")
+    assert renamed.fix.id != held
 
-    trade.fix.id = "5001:CME"
-    assert trade.fix.id == "5001:cme", "ASCII case folded once, on the way in"
-    assert trade.fix.branch == "cme"
-    assert trade.metadata["fix:branch"] == "cme"
-    assert trade.fix.tag == 5001
+    # One fold: ASCII case, `_`, `-` and space are not part of the name.
+    for spelling in ("MsgType", "msgtype", "MSGTYPE", "Msg_Type", "msg-type", "Msg Type"):
+        field = Field(spelling, "utf8")
+        field.fix.tag = 35
+        assert field.fix.id == Field("MsgType", "utf8", metadata={"fix:tag": "35"}).fix.id, spelling
+    # Membership is not identity: two dictionaries speaking one field share it.
+    stamped = _field("MsgType", "utf8", 35, branches=["cme", "ice"])
+    assert stamped.fix.id == _field("MsgType", "utf8", 35).fix.id
 
-    # Setting the standard branch removes the key rather than storing it.
-    trade.fix.branch = ""
-    assert trade.fix.branch == ""
-    assert "fix:branch" not in trade.metadata
-    assert trade.fix.id == "5001:"
+    # Read-only: the id is what the tag and the name say, and nothing else
+    # can say it.
+    with pytest.raises(AttributeError):
+        trade.fix.id = 7  # type: ignore[misc]
+    assert trade.fix.id == held
 
-    # `set_id` moves both halves at once, in either direction.
-    trade.fix.id = "5002:cme"
-    assert trade.fix.id == "5002:cme"
-    trade.fix.id = "35:"
-    assert trade.fix.id == "35:"
-    assert "fix:branch" not in trade.metadata
-
-    # The branch alone still moves a field whose tags allow it.
-    vendor = Field("VendorID", "utf8")
-    vendor.fix.tag = 9001
-    vendor.fix.branch = "cme"
-    assert vendor.fix.id == "9001:cme"
-
-
-def test_branch_and_id_parse_failures_are_value_errors() -> None:
-    field = Field("TradeID", "utf8")
-
-    for bad in ("2cme", "cme:x", "c,me", "a" * 24):
-        with pytest.raises(ValueError, match="fix branch"):
-            field.fix.branch = bad
-    for bad in ("5001", "+5001:cme", "-1:cme", ":cme", "5001:2cme"):
-        with pytest.raises(ValueError, match="fix identifier|fix branch"):
-            field.fix.id = bad
-    # Nothing was written by any refusal.
-    assert field.fix.branch == ""
-    assert field.fix.id is None
-
-    # A branch and an identifier are text, never a number.
-    with pytest.raises(TypeError):
-        field.fix.branch = 5001
-    with pytest.raises(TypeError):
-        field.fix.id = 5001
-
-
-def test_a_specification_tag_forces_the_standard_branch() -> None:
-    assert USER_TAG_MIN == 5000
-    assert USER_TAG_MAX == 40_000
-
-    # A canonical tag: the branch may not claim it.
-    vendor = Field("TradeID", "utf8")
-    vendor.fix.id = "5001:cme"
-    with pytest.raises(ValueError, match="fix:branch"):
-        vendor.fix.tag = 35
-    assert vendor.fix.id == "5001:cme"
-    with pytest.raises(ValueError, match="fix:branch"):
-        vendor.fix.id = "35:cme"
-    assert vendor.fix.id == "5001:cme"
-
-    # An alternate tag resolves with the same power, so it obeys the same rule.
-    with pytest.raises(ValueError, match="fix:branch"):
-        vendor.fix.tags = [35]
-    assert vendor.fix.tags == []
-    assert vendor.fix.id == "5001:cme"
-
-    # A branch change is refused against the tags the field already holds.
-    msgtype = Field("MsgType", "utf8")
-    msgtype.fix.tag = 35
-    with pytest.raises(ValueError, match="fix:branch"):
-        msgtype.fix.branch = "cme"
-    assert msgtype.fix.branch == ""
-    assert msgtype.fix.id == "35:"
-
-    alternates = Field("Wide", "utf8")
-    alternates.fix.tag = 9001
-    alternates.fix.tags = [35]
-    with pytest.raises(ValueError, match="fix:branch"):
-        alternates.fix.branch = "cme"
-    assert alternates.fix.branch == ""
-
-    # The rule is one-way: the standard branch holds any tag.
-    high = Field("Vendorish", "utf8")
-    high.fix.tag = 10_000
-    assert high.fix.id == "10000:"
-
-    for admitted in (USER_TAG_MIN, USER_TAG_MAX - 1):
+    # Nothing gates a tag on a dictionary any more: any non-negative tag.
+    for tag in (0, 35, 4999, 5000, 10_000, 40_000, 2**31 - 1):
         field = Field("Venue", "utf8")
-        field.fix.id = f"{admitted}:cme"
-        assert field.fix.tag == admitted
-    for refused in (USER_TAG_MIN - 1, USER_TAG_MAX):
-        with pytest.raises(ValueError, match=r"5000.*40000"):
-            Field("Venue", "utf8").fix.id = f"{refused}:cme"
+        field.fix.tag = tag
+        assert field.fix.tag == tag and field.fix.id is not None, tag
+
+    # The registry answers the same integer, exactly: no alias, alternate
+    # tag or fold is consulted.
+    registry = FixRegistry.from_fields([trade, _field("Symbol", "utf8", 55, tags=[65], aliases=["Ticker"])])
+    assert registry.field_by_id(held).name == "TradeID"
+    assert registry.field_by_tag(55).fix.id == _field("symbol", "utf8", 55).fix.id
+    assert registry.get_field_by_id(registry.field_by_tag(55).fix.id) == registry.field_by_tag(55)
+    assert registry.get_field_by_id(_field("Ticker", "utf8", 55).fix.id) is None
+    assert registry.get_field_by_id(_field("Symbol", "utf8", 65).fix.id) is None
+    for field in registry:
+        assert registry.field_by_id(field.fix.id) == field, field.name
+
+
+def test_membership_round_trips_as_a_sorted_list() -> None:
+    trade = Field("TradeID", "utf8")
+    # An absent property is an empty list, and there is no key behind it.
+    assert trade.fix.branches == []
+    assert not trade.fix.has_branch("cme")
+    assert "fix:branches" not in trade.metadata
+
+    # Folded to ASCII lowercase, deduplicated under the fold, sorted, and
+    # stored comma-joined under the one key.
+    trade.fix.branches = ["ICE", "cme", "Cme", "bloomberg"]
+    assert trade.fix.branches == ["bloomberg", "cme", "ice"]
+    assert trade.metadata["fix:branches"] == "bloomberg,cme,ice"
+    assert trade.fix.has_branch("CME") and trade.fix.has_branch("ice")
+    assert not trade.fix.has_branch("morgan")
+    # Any iterable of names, and a tuple is one.
+    trade.fix.branches = ("cme",)
+    assert trade.fix.branches == ["cme"]
+
+    # `add_branch` is idempotent under the fold and keeps the list sorted.
+    trade.fix.add_branch("Bloomberg")
+    trade.fix.add_branch("CME")
+    assert trade.fix.branches == ["bloomberg", "cme"]
+
+    # An empty iterable removes the property, the way every list does.
+    trade.fix.branches = []
+    assert trade.fix.branches == []
+    assert "fix:branches" not in trade.metadata
+
+    # A name is held to the alias grammar - non-empty, no separator - and a
+    # refusal writes nothing.
+    trade.fix.branches = ["cme"]
+    with pytest.raises(ValueError, match="fix:branches"):
+        trade.fix.branches = ["cme", ""]
+    with pytest.raises(ValueError, match="fix:branches"):
+        trade.fix.branches = ["c,me"]
+    with pytest.raises(ValueError, match="fix:branches"):
+        trade.fix.add_branch("")
+    assert trade.fix.branches == ["cme"]
+    # Names are text, never numbers.
+    with pytest.raises(TypeError):
+        trade.fix.branches = 5001  # type: ignore[assignment]
+    with pytest.raises(TypeError):
+        trade.fix.branches = [5001]  # type: ignore[list-item]
+    with pytest.raises(TypeError):
+        trade.fix.has_branch(5001)  # type: ignore[arg-type]
+    assert trade.fix.branches == ["cme"]
+
+    # The registry lists the distinct names its fields and definitions
+    # carry, sorted; a registry of the crate's fields alone lists none.
+    assert FixRegistry().dialects() == []
+    registry = FixRegistry.from_fields(
+        [
+            _field("Symbol", "utf8", 55),
+            _field("VenueSym", "utf8", 5055, branches=["cme", "ICE"]),
+            _field("TradeID", "utf8", 5001, branches=["cme"]),
+        ]
+    )
+    assert registry.dialects() == ["cme", "ice"]
+    assert registry.field_by_tag(5055).fix.branches == ["cme", "ice"]
+    assert registry.field_by_tag(55).fix.branches == []
+    # Membership travels through the snapshot like any other metadata.
+    assert FixRegistry.from_json(registry.into_json()).dialects() == ["cme", "ice"]
+    assert FixRegistry.from_json(registry.into_json()) == registry
 
 
 def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) -> None:
@@ -336,8 +321,10 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
 
     assert seed.field_by_tag(55).name == "symbol"
     assert seed.get_field_by_tag(55) == seed.field_by_tag(55)
-    assert seed.field_by_id("55:").name == "symbol"
-    assert seed.get_field_by_id("55:") == seed.field_by_tag(55)
+    symbol_id = seed.field_by_tag(55).fix.id
+    assert symbol_id is not None
+    assert seed.field_by_id(symbol_id).name == "symbol"
+    assert seed.get_field_by_id(symbol_id) == seed.field_by_tag(55)
     assert seed.field_by_tag(150).name == "exectype"
     # The order's state is declared twice, as `OrdStatus` and as `ExecType`,
     # and both take the crate's `state`: one lifecycle vocabulary, ranked so
@@ -352,24 +339,26 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
     alternate.fix.tags = [20]
     aliased = FixRegistry.from_fields([alternate])
     assert aliased.field_by_tag(20).name == "exectype"
-    assert aliased.field_by_id("20:").name == "exectype"
+    # An alternate tag is not an identity: the one id is the canonical tag's.
+    assert aliased.field_by_id(alternate.fix.id).name == "exectype"
+    assert aliased.get_field_by_id(_field("exectype", "utf8", 20).fix.id) is None
     # A name answers the canonical spelling whatever case it was asked in.
-    assert seed.field_by_name("symbol", "").name == "symbol"
-    assert seed.field_by_name("SYMBOL", STANDARD_BRANCH).name == "symbol"
+    assert seed.field_by_name("symbol").name == "symbol"
+    assert seed.field_by_name("SYMBOL").name == "symbol"
     # The published dictionary declares no aliases, so the alias tier is
     # exercised where one is actually declared.
     aliased = _field("symbol", "utf8", 55)
     aliased.fix.aliases = ["ticker"]
     named = FixRegistry.from_fields([aliased])
-    assert named.field_by_name("ticker", "").name == "symbol"
+    assert named.field_by_name("ticker").name == "symbol"
     # A path reaches a repeating group and one of its members.
-    assert seed.field_by_path("NoPartyIDs", "").fix.tag == 453
+    assert seed.field_by_path("NoPartyIDs").fix.tag == 453
     # An occurrence is not a path segment: the walk steps through the list
     # and the member is spelled directly under the named group.
     assert seed.field_by_tag(453).dtype == DataType("int32")
-    assert seed.field_by_path("parties.partyid", "").fix.tag == 448
-    assert seed.field_by_path("parties.partyrole", "").name == "partyrole"
-    assert seed.get_field_by_path("parties.partyid.partyid", "") is None
+    assert seed.field_by_path("parties.partyid").fix.tag == 448
+    assert seed.field_by_path("parties.partyrole").name == "partyrole"
+    assert seed.get_field_by_path("parties.partyid.partyid") is None
 
     # The generic pair answers exactly what the specialized one does.
     for key in (55, "Symbol", "nopartyids", "parties.partyid"):
@@ -431,47 +420,70 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
     assert MimeType.infer_text_direction(asked) == "SENT"
 
 
-def test_explicit_branch_pins_lookup_and_omission_infers_the_best_match() -> None:
+def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> None:
     registry = FixRegistry.from_fields(
         [
             _field("symbol", "utf8", 55, aliases=["Ticker"]),
-            # The venue dictionary reuses the name, which is the normal case.
-            _field("symbol", "utf8", 5055, branch="cme", aliases=["VenueTicker"]),
-            _field("TradeID", "utf8", 5001, branch="cme"),
+            _field("TradeID", "utf8", 5001, branches=["cme"]),
         ]
     )
+    symbol_id = registry.field_by_tag(55).fix.id
+    trade_id = registry.field_by_tag(5001).fix.id
 
-    # A name is unique per branch, not registry-wide.
-    assert registry.field_by_name("symbol", "").fix.id == "55:"
-    assert registry.field_by_name("SYMBOL", "cme").fix.id == "5055:cme"
-    assert registry.field_by_name("venueticker", "CME").name == "symbol"
-    assert registry.get_field_by_name("venueticker", "") is None
-    assert registry.get_field_by_name("ticker", "cme") is None
-    assert registry.get_field_by_path("Symbol", "cme").fix.id == "5055:cme"
+    # The same folded name under another tag is the same field spelled with
+    # another number: it merges into the holder, which gains the tag as an
+    # alternate, the alias, and the membership. No second field.
+    venue = _field("symbol", "utf8", 5055, branches=["cme"], aliases=["VenueTicker"])
+    assert registry.add_field(venue) is False
+    assert len(registry) == 2 + CRATED
+    holder = registry.field_by_tag(55)
+    assert holder.fix.tags == [5055]
+    assert holder.fix.aliases == ["Ticker", "VenueTicker"]
+    assert holder.fix.branches == ["cme"]
+    assert holder.fix.id == symbol_id
+    assert registry.get_field_by_tag(5055) == holder
+    assert registry.field_by_name("VENUETICKER") == holder
+    assert registry.get_field_by_id(venue.fix.id) is None
+    assert registry.dialects() == ["cme"]
 
-    # A bare tag uses the same deterministic best-match order.
-    assert registry.get_field_by_tag(5055).fix.id == "5055:cme"
-    assert registry.get_field_by_tag(5001).fix.id == "5001:cme"
-    assert 5055 in registry
-    assert registry.field_by_id("5055:cme").fix.id == "5055:cme"
+    # The same tag under another name is a new thing a dialect defined over
+    # a tag it reused: it stands beside the holder under its own id, the
+    # holder gains the name as an alias, and the bare tag keeps answering
+    # the holder; the newcomer is reached by its name or its id.
+    reused = _field("VenueSym", "utf8", 55, branches=["ice"])
+    assert registry.add_field(reused) is True
+    assert len(registry) == 3 + CRATED
+    assert registry.field_by_tag(55).name == "symbol"
+    assert registry.field_by_tag(55).fix.aliases == ["Ticker", "VenueTicker", "VenueSym"]
+    assert registry.field_by_id(reused.fix.id).name == "VenueSym"
+    assert registry.field_by_name("venuesym").fix.id == reused.fix.id
+    assert registry.get_field_by_tag(55).fix.branches == ["cme"]
+    assert registry.dialects() == ["cme", "ice"]
+    # Tag-major, then by id: both fields on tag 55 walk before the venue's.
+    walked = [field.fix.id for field in registry]
+    assert walked[:3] == sorted(walked[:3], key=lambda held: (registry.field_by_id(held).fix.tag, held))
+    assert {registry.field_by_id(held).name for held in walked[:2]} == {"symbol", "VenueSym"}
+    assert walked[2] == trade_id
 
-    # A standard canonical name wins; a colon-bearing string is a name, never
-    # an identifier.
-    assert registry.get_field("symbol").fix.id == "55:"
+    # A colon-bearing string is a name, never an identifier, and a bare int
+    # is a tag, never an id.
+    assert registry.get_field("symbol").fix.id == symbol_id
     assert registry.get_field("5055:cme") is None
     assert "5055:cme" not in registry
     assert registry.get("5001:cme", "fallback") == "fallback"
     assert registry.remove("5055:cme") is None
-    assert len(registry) == 3 + CRATED
 
-    # A vendor field leaves by its identifier, which is the only spelling that
-    # names one: the generic remove reaches the standard branch only.
-    assert registry.remove_by_id("9999:cme") is None
-    removed = registry.remove_by_id("5055:cme")
-    assert removed is not None and removed.fix.id == "5055:cme"
+    # A field leaves by its identifier - the only spelling that names one of
+    # two fields on a tag - or, alone on its tag, by that tag.
+    assert registry.remove_by_id(_field("Nowhere", "utf8", 9999).fix.id) is None
+    removed = registry.remove_by_id(reused.fix.id)
+    assert removed is not None and removed.name == "VenueSym"
     assert len(registry) == 2 + CRATED
-    assert registry.get_field_by_id("5055:cme") is None
-    assert registry.get_field_by_tag(55).fix.id == "55:"
+    assert registry.get_field_by_id(reused.fix.id) is None
+    assert registry.field_by_tag(55).fix.id == symbol_id
+    removed = registry.remove_by_id(trade_id)
+    assert removed is not None and removed.name == "TradeID"
+    assert registry.get_field_by_tag(5001) is None
 
 
 def test_registry_absence_is_a_key_error_carrying_the_core_message(
@@ -483,26 +495,25 @@ def test_registry_absence_is_a_key_error_carrying_the_core_message(
         seed.field_by_tag(9999)
     assert by_tag.value.args[0] == 'expected a fix field at "tag 9999", got nothing'
 
+    absent_id = _field("TradeID", "utf8", 5001).fix.id
+    assert absent_id is not None
     with pytest.raises(KeyError) as by_id:
-        seed.field_by_id("5001:cme")
-    assert by_id.value.args[0].startswith(
-        'expected a fix field at "identifier 5001:#'
-    )
-    assert by_id.value.args[0].endswith('", got nothing')
+        seed.field_by_id(absent_id)
+    assert by_id.value.args[0] == f'expected a fix field at "identifier {absent_id}", got nothing'
 
     with pytest.raises(KeyError) as by_name:
-        seed.field_by_name("Nope", "")
+        seed.field_by_name("Nope")
     assert 'name \\"Nope\\"' in by_name.value.args[0]
 
     with pytest.raises(KeyError) as by_path:
-        seed.field_by_path("Symbol.absent", "")
+        seed.field_by_path("Symbol.absent")
     assert "path Symbol.absent" in by_path.value.args[0]
 
     with pytest.raises(KeyError):
         seed[9999]
-    assert seed.get_field_by_name("Nope", "") is None
-    assert seed.get_field_by_path("Symbol.absent", "") is None
-    assert seed.get_field_by_id("5001:cme") is None
+    assert seed.get_field_by_name("Nope") is None
+    assert seed.get_field_by_path("Symbol.absent") is None
+    assert seed.get_field_by_id(absent_id) is None
 
 
 def test_registry_keys_are_an_int_tag_or_a_str_name(seed: FixRegistry) -> None:
@@ -517,70 +528,56 @@ def test_registry_keys_are_an_int_tag_or_a_str_name(seed: FixRegistry) -> None:
     with pytest.raises(TypeError, match="int tag or a str name"):
         seed[3.5]
     with pytest.raises(TypeError):
-        seed.field_by_name(55, "Symbol")
+        seed.field_by_name(55)
 
 
-def test_registry_coerces_every_branch_and_identifier_argument(
-    seed: FixRegistry,
-) -> None:
-    # A branch and an identifier are text, and a malformed one is the native
-    # parse failure rather than a miss.
-    for bad_branch in ("2cme", "c:me"):
-        with pytest.raises(ValueError, match="fix branch"):
-            seed.field_by_name("Symbol", bad_branch)
-        with pytest.raises(ValueError, match="fix branch"):
-            seed.get_field_by_name("Symbol", bad_branch)
-        with pytest.raises(ValueError, match="fix branch"):
-            seed.field_by_path("Symbol", bad_branch)
-        with pytest.raises(ValueError, match="fix branch"):
-            seed.get_field_by_path("Symbol", bad_branch)
-    for bad_id in ("55", "cme:", "cme:x"):
-        with pytest.raises(ValueError, match="fix identifier"):
-            seed.field_by_id(bad_id)
-        with pytest.raises(ValueError, match="fix identifier"):
-            seed.get_field_by_id(bad_id)
-    # The standard-tag rule reaches the boundary through the same parse.
-    with pytest.raises(ValueError, match="fix:branch"):
-        seed.field_by_id("35:cme")
-
-    for wrong in (55, None, 3.5):
+def test_registry_coerces_every_identifier_argument(seed: FixRegistry) -> None:
+    # An identifier is the `int` a field answers, and nothing else: text is
+    # never parsed into one, a bool is refused by name, and a value outside
+    # `i32` is the overflow the extraction reports rather than a narrowed id.
+    for wrong in ("55", "55:", "cme:x", None, 3.5):
         with pytest.raises(TypeError):
-            seed.field_by_id(wrong)
-
-    for wrong in (55, 3.5):
+            seed.field_by_id(wrong)  # type: ignore[arg-type]
         with pytest.raises(TypeError):
-            seed.get_field_by_name("Symbol", wrong)
+            seed.get_field_by_id(wrong)  # type: ignore[arg-type]
         with pytest.raises(TypeError):
-            seed.field_by_path("std", wrong)
-
-    assert seed.get_field_by_name("Symbol", None) == seed.field_by_tag(55)
-    assert seed.get_field_by_path("Symbol", None) == seed.field_by_tag(55)
+            seed.remove_by_id(wrong)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="not bool"):
+        seed.field_by_id(True)
+    with pytest.raises(OverflowError):
+        seed.get_field_by_id(2**31)
+    with pytest.raises(OverflowError):
+        seed.field_by_id(-(2**31) - 1)
+    # A name and a path take one argument: there is no dictionary to pin.
+    with pytest.raises(TypeError):
+        seed.get_field_by_name("Symbol", "")  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        seed.field_by_path("Symbol", None)  # type: ignore[call-arg]
+    # The counter tables are keyed by counter tag.
+    assert seed.group_by_counter(453).name == "parties"
+    assert seed.get_group_by_counter(9999) is None
+    with pytest.raises(TypeError, match="not bool"):
+        seed.get_group_by_counter(True)
+    with pytest.raises(TypeError):
+        seed.group_by_counter("453:")  # type: ignore[arg-type]
+    with pytest.raises(KeyError):
+        seed.group_by_counter(9999)
 
 
 def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
     registry = FixRegistry.from_fields(
         [
             _field("symbol", "utf8", 55),
-            _field("TradeID", "utf8", 5001, branch="cme"),
+            _field("TradeID", "utf8", 5001, branches=["cme"]),
             _field("Price", "decimal128(20, 8)", 44),
-            _field("VenueQty", "int64", 5002, branch="cme"),
+            _field("VenueQty", "int64", 5002, branches=["cme"]),
             _field("Account", "utf8", 1),
             _field("Tail", "utf8", 9001),
         ]
     )
-    # Tag-major, then by branch digest - the identifier's own order. The
-    # crate's own fields close every walk: standard fields from 65000, above
-    # any tag a test claims.
-    crated = [f"{tag}:" for tag in CRATE_TAGS]
-    assert [field.fix.id for field in registry] == [
-        "1:",
-        "44:",
-        "55:",
-        "5001:cme",
-        "5002:cme",
-        "9001:",
-        *crated,
-    ]
+    # Tag-major, then by identifier. The crate's own fields close every walk:
+    # standard fields from 65000, above any tag a test claims.
+    assert [field.fix.tag for field in registry] == [1, 44, 55, 5001, 5002, 9001, *CRATE_TAGS]
 
     walk = iter(registry)
     assert next(walk).name == "Account"
@@ -591,14 +588,7 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
         registry.remove(1)
     del walk
     assert registry.remove(1) is not None
-    assert [field.fix.id for field in registry] == [
-        "44:",
-        "55:",
-        "5001:cme",
-        "5002:cme",
-        "9001:",
-        *crated,
-    ]
+    assert [field.fix.tag for field in registry] == [44, 55, 5001, 5002, 9001, *CRATE_TAGS]
 
 
 def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
@@ -612,10 +602,10 @@ def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
     # specification publishes.
     assert tags[-CRATED:] == CRATE_TAGS
     # Every stored field is a specification field and the crate's own are
-    # standard fields too, so nothing here states a branch.
-    branches = [field.fix.branch for field in seed]
-    assert branches.count(STANDARD_BRANCH) == len(seed)
-    assert all("fix:branch" not in field.metadata for field in seed)
+    # standard fields too, so nothing here states a membership.
+    assert all(field.fix.branches == [] for field in seed)
+    assert all("fix:branches" not in field.metadata for field in seed)
+    assert seed.dialects() == []
 
 
 def test_registry_takes_every_storage_location(
@@ -674,25 +664,30 @@ def test_registry_round_trips_through_the_four_categories(
     assert FixRegistry.from_handle(root) == seed
 
 
-def test_a_vendor_branch_gets_its_own_folder(tmp_path: pathlib.Path) -> None:
+def test_a_vendor_field_shards_by_its_tag_and_keeps_its_membership(tmp_path: pathlib.Path) -> None:
     root = tmp_path / "dictionary"
     registry = FixRegistry.from_fields(
         [
             _field("MsgType", "utf8", 35),
-            _field("TradeID", "utf8", 5001, branch="cme"),
+            _field("TradeID", "utf8", 5001, branches=["cme"]),
         ]
     )
     registry.write_into(root)
 
-    # Each branch owns its own shard arithmetic: 5001 / 100 is 50.
+    # One shard arithmetic for every field: 5001 / 100 is 50, and nothing is
+    # keyed by a dictionary.
     assert (root / "fields" / "0.json").exists()
-    assert (root / "fields" / "cme" / "50.json").exists()
+    assert (root / "fields" / "50.json").exists()
+    assert not (root / "fields" / "cme").exists()
+    assert not (root / "branches.json").exists()
 
     reloaded = FixRegistry.from_handle(root)
     assert reloaded == registry
-    assert reloaded.field_by_id("5001:cme").name == "TradeID"
-    assert reloaded.field_by_name("tradeid", "cme").name == "TradeID"
-    assert reloaded.get_field_by_tag(5001) == reloaded.field_by_id("5001:cme")
+    trade_id = registry.field_by_tag(5001).fix.id
+    assert reloaded.field_by_id(trade_id).name == "TradeID"
+    assert reloaded.field_by_name("tradeid").fix.branches == ["cme"]
+    assert reloaded.get_field_by_tag(5001) == reloaded.field_by_id(trade_id)
+    assert reloaded.dialects() == ["cme"]
 
 
 def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
@@ -706,16 +701,16 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     assert registry.insert(_field("Side", "utf8", 54)) is None
     assert registry.field_by_tag(54).name == "Side"
 
-    # A key another field holds is refused, naming both and the branch;
-    # nothing changes.
-    with pytest.raises(ValueError, match="held by symbol") as conflict:
+    # A key another field holds is refused, naming both; nothing changes.
+    with pytest.raises(ValueError, match="held by symbol"):
         registry.insert(_field("SymbolSfx", "utf8", 65, aliases=["ticker"]))
-    assert 'branch \\"\\"' in str(conflict.value)
     assert len(registry) == 3 + CRATED
 
-    # The same alias in another branch is not a conflict at all.
-    assert registry.insert(_field("VenueSym", "utf8", 5055, branch="cme", aliases=["ticker"])) is None
-    assert registry.field_by_name("TICKER", "cme").name == "VenueSym"
+    # One namespace: the same alias under a venue's tag is the same conflict.
+    with pytest.raises(ValueError, match="held by symbol"):
+        registry.insert(_field("VenueSym", "utf8", 5055, branches=["cme"], aliases=["ticker"]))
+    assert len(registry) == 3 + CRATED
+    assert registry.get_field_by_tag(5055) is None
 
     # A merge concatenates the two list properties, incoming first.
     registry.update(_field("SYMBOL", "utf8", 55, tags=[65], aliases=["Sym"]))
@@ -735,7 +730,7 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     # A field with no tag cannot enter at all.
     with pytest.raises(ValueError, match="fix:tag"):
         registry.insert(Field("Untagged", "utf8"))
-    assert seed.get_field_by_name("Untagged", "") is None
+    assert seed.get_field_by_name("Untagged") is None
 
 
 def test_registry_add_field_answers_whether_the_field_arrived_or_folded() -> None:
@@ -758,7 +753,7 @@ def test_registry_add_field_answers_whether_the_field_arrived_or_folded() -> Non
     assert len(registry) == 2 + CRATED
     stored = registry.field_by_tag(55)
     assert stored.name == "Symbol"
-    assert stored.fix.id == "55:"
+    assert stored.fix.id == _field("symbol", "utf8", 55).fix.id
     assert stored.fix.tags == [65, 66, 9001]
     assert stored.fix.aliases == ["Ticker", "Sym"]
     assert stored.description == "incoming"
@@ -797,17 +792,18 @@ def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() ->
         ]
     )
 
-    # Tag 55 is stored and folds; 60 is new; the venue's 5055 shares the tag of
-    # nothing, and its branch is half of the identity.
+    # Tag 55 is stored and folds; 60 is new; the venue's 5055 shares the tag
+    # and the name of nothing, and arrives with its membership.
     added, merged = registry.add_fields(
         [
             _field("SYMBOL", "utf8", 55, tags=[65], aliases=["Sym"]),
             _field("TransactTime", "utf8", 60),
-            _field("VenueSym", "utf8", 5055, branch="cme"),
+            _field("VenueSym", "utf8", 5055, branches=["cme"]),
         ]
     )
     assert (added, merged) == (2, 1)
     assert len(registry) == 4 + CRATED
+    assert registry.field_by_tag(5055).fix.branches == ["cme"]
 
     # The fold kept what only the stored field declared and added the rest.
     folded = registry.field_by_tag(65)
@@ -834,18 +830,16 @@ def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() ->
     assert len(registry) == 4 + CRATED
 
 
-def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
-    cme = FixBranch("cme", aliases=["globex"])
+def test_merge_with_folds_the_fields_and_unions_their_membership() -> None:
     dictionary = FixRegistry.from_fields(
-        [_field("symbol", "utf8", 55), _field("VenueSym", "utf8", 5055, branch="cme")]
+        [_field("symbol", "utf8", 55), _field("VenueSym", "utf8", 5055, branches=["cme"])]
     )
-    dictionary.set_branch(cme)
-
-    incoming = FixBranch("cme", version="4.4", aliases=["cmegroup"])
     other = FixRegistry.from_fields(
-        [_field("SYMBOL", "utf8", 55), _field("VenueTime", "utf8", 5060, branch="cme")]
+        [
+            _field("SYMBOL", "utf8", 55, branches=["ice"]),
+            _field("VenueTime", "utf8", 5060, branches=["cme"]),
+        ]
     )
-    other.set_branch(incoming)
 
     # The other dictionary holds the crate's own fields as every registry
     # does, and they are never folded: they are the crate's definition, not
@@ -854,38 +848,39 @@ def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
     assert len(dictionary) == 3 + CRATED
     assert dictionary.field_by_tag(55).name == "symbol"
 
-    # The dialect arrives beside the fields, and every spelling either side
-    # answered to is kept.
-    held = dictionary.branch_named("cme")
-    assert held is not None
-    assert held.version == "4.4"
-    assert held.aliases == ["globex", "cmegroup"]
-    for spelling in ("globex", "CMEGROUP", "cme"):
-        found = dictionary.branch_named(spelling)
-        assert found is not None and found.name == "cme", spelling
+    # Membership unions onto the field it merges into and arrives whole with
+    # a field nothing held; the registry lists every name either side spoke.
+    assert dictionary.field_by_tag(55).fix.branches == ["ice"]
+    assert dictionary.field_by_tag(5060).fix.branches == ["cme"]
+    assert dictionary.dialects() == ["cme", "ice"]
+    # Unioned, not replaced: a second merge of a dictionary that also speaks
+    # `symbol` adds its name beside the one already there.
+    third = FixRegistry.from_fields([_field("Symbol", "utf8", 55, branches=["cme"])])
+    assert dictionary.merge_with(third) == (0, 1)
+    assert dictionary.field_by_tag(55).fix.branches == ["cme", "ice"]
 
 
-def test_a_cblock_reads_in_whole_with_its_dialect_and_its_file_name(
+def test_a_cblock_reads_in_whole_and_stamps_its_dialect_on_every_field(
     tmp_path: pathlib.Path,
 ) -> None:
     path = tmp_path / "MSFIX44.cfb"
     path.write_text(CBLOCK, encoding="utf-8")
 
     registry = FixRegistry()
-    assert registry.add_cfb_file(path, "morgan", ["mstanley"]) == (2, 0)
+    assert registry.add_cfb_file(path, "Morgan") == (2, 0)
     assert len(registry) == 2 + CRATED
 
-    # The dialect the root element declared, which reading the fields alone
-    # would have lost: a field carries its branch's name and nothing else.
-    branch = registry.branch_named("morgan")
-    assert branch is not None
-    assert branch.version == "4.4"
+    # Membership means "this dictionary speaks it": the standard tag and the
+    # venue's own are both stamped, folded once, and the registry lists it.
+    assert registry.field_by_tag(55).fix.branches == ["morgan"]
+    assert registry.field_by_tag(10001).fix.branches == ["morgan"]
+    assert registry.dialects() == ["morgan"]
 
-    # The file a definition arrived as is a spelling people use for it.
-    assert branch.aliases == ["mstanley", "msfix44"]
-    for spelling in ("morgan", "MSTANLEY", "MSFIX44"):
-        held = registry.branch_named(spelling)
-        assert held is not None and held.name == "morgan", spelling
+    # With no name the file's own stem stands in, and a second dictionary
+    # speaking a field unions onto it rather than replacing anything.
+    assert registry.add_cfb_file(path) == (0, 2)
+    assert registry.field_by_tag(55).fix.branches == ["morgan", "msfix44"]
+    assert registry.dialects() == ["morgan", "msfix44"]
 
     # One mutation: a refusal leaves the dictionary exactly as it was.
     retyped = tmp_path / "retyped.cfb"
@@ -893,7 +888,12 @@ def test_a_cblock_reads_in_whole_with_its_dialect_and_its_file_name(
     with pytest.raises(ValueError):
         registry.add_cfb_file(retyped, "morgan")
     assert len(registry) == 2 + CRATED
-    assert registry.branch_named("retyped") is None
+    assert registry.dialects() == ["morgan", "msfix44"]
+    # The keyword is `dialect`, and a name the grammar refuses is refused
+    # before anything is read.
+    with pytest.raises(ValueError, match="fix:branches"):
+        registry.add_cfb_file(path, dialect="mor,gan")
+    assert registry.dialects() == ["morgan", "msfix44"]
 
 
 def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
@@ -902,12 +902,12 @@ def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
     path = tmp_path / "bloomberg.cfb"
     path.write_text(CBLOCK, encoding="utf-8")
 
-    # A CBlock never names itself, so with no branch the file's own stem does.
-    # A dialect claims only the user-defined range, so tag 55 stays FIX's.
+    # A CBlock never names itself, so with no dialect the file's own stem
+    # does, and every field it produces carries it - the standard tag too.
     fields = fix_cfb_fields(path)
     assert [field.name for field in fields] == ["symbol", "excludeddealers"]
-    assert fields[0].fix.branch == STANDARD_BRANCH
-    assert fields[1].fix.branch == "bloomberg"
+    assert fields[0].fix.branches == ["bloomberg"]
+    assert fields[1].fix.branches == ["bloomberg"]
     # The file's own spelling is kept beside the folded name, and the
     # description travels on the key every catalog reads.
     assert fields[0].display == "Symbol"
@@ -923,21 +923,32 @@ def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
 
     # The registry form is the same file read whole: the same vocabulary, plus
     # the message roots its grammar bindings describe.
-    registry, roots = FixRegistry.from_cfb_file(path, "bloomberg")
+    registry, roots = FixRegistry.from_cfb_file(path, dialect="Bloomberg")
     assert len(registry) == len(fields) + CRATED
     assert [root.name for root in roots] == ["7"]
+    # The message definition the file produces is stamped like its fields.
+    assert next(registry.definitions("messages")).fix.branches == ["bloomberg"]
+    assert registry.dialects() == ["bloomberg"]
+    # The registry form stamps nothing when no dialect is named.
+    unstamped, _ = FixRegistry.from_cfb_file(path)
+    assert unstamped.dialects() == []
+    assert unstamped.field_by_tag(10001).fix.branches == []
 
-    # The vocabulary folds into a dictionary that already exists.
+    # The vocabulary folds into a dictionary that already exists, and the
+    # membership unions onto the field it merges into.
     dictionary = FixRegistry.from_fields([_field("symbol", "utf8", 55)])
     assert dictionary.add_fields(fix_cfb_fields(path, "bloomberg")) == (1, 1)
     assert dictionary.field_by_tag(55).description == "Ticker symbol."
-    assert dictionary.field_by_name("excludeddealers", "bloomberg").fix.tag == 10001
+    assert dictionary.field_by_tag(55).fix.branches == ["bloomberg"]
+    assert dictionary.field_by_name("excludeddealers").fix.tag == 10001
 
-    # A stem that is not a branch is refused rather than folded into one.
-    unnamed = tmp_path / "4.4-ms.cfb"
+    # A stem or a dialect that carries a comma is refused rather than stored.
+    unnamed = tmp_path / "ms,44.cfb"
     unnamed.write_text(CBLOCK, encoding="utf-8")
-    with pytest.raises(ValueError, match="ASCII letter"):
+    with pytest.raises(ValueError, match="fix:branches"):
         fix_cfb_fields(unnamed)
+    with pytest.raises(ValueError, match="fix:branches"):
+        fix_cfb_fields(path, "b,loomberg")
 
 
 def test_registering_a_message_type_names_it_and_describes_it(
@@ -1016,7 +1027,7 @@ def test_a_cblock_warns_about_the_declaration_it_dropped(
 
     # The tag went; every other declaration the file made stands.
     assert [field.name for field in fix_cfb_fields(broken)] == ["excludeddealers"]
-    assert registry.field_by_name("excludeddealers", "bloomberg").fix.tag == 10001
+    assert registry.field_by_name("excludeddealers").fix.tag == 10001
 
     # A document that stops with an element open leaves nothing to keep, and
     # is one of the two things still refused - through both doors, with one
@@ -1082,7 +1093,7 @@ def _order(seed: FixRegistry) -> Field:
             [
                 seed.field_by_tag(55),
                 seed.field_by_tag(38),
-                seed.field_by_name("NoPartyIDs", ""),
+                seed.field_by_name("NoPartyIDs"),
                 seed.definition("groups", "Parties"),
                 Field("9999", "utf8"),
             ]
@@ -1108,17 +1119,20 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
 
     assert message.field == root
     assert message.registry == seed
-    assert message.branch == STANDARD_BRANCH
     assert len(message) == 5
+    symbol_id = seed.field_by_tag(55).fix.id
+    assert symbol_id is not None
     assert message.by_tag(55).as_py() == "AAPL"
-    assert message.by_id("55:").as_py() == "AAPL"
+    assert message.by_id(symbol_id).as_py() == "AAPL"
     assert message.by_name("symbol").as_py() == "AAPL"
     assert message.by_tag(38).as_py() == 100.0
     assert message.by_path("parties[0].partyid").as_py() == "BROKER"
     # An unknown tag is retained under its rendered name, never dropped.
     assert message.by_tag(9999).as_py() == "custom"
-    # An identifier is exact: a dictionary this message does not speak misses.
-    assert message.get_by_id("5001:cme") is None
+    # An identifier is exact: a field the dictionary does not hold misses.
+    absent_id = _field("TradeID", "utf8", 5001).fix.id
+    assert absent_id is not None
+    assert message.get_by_id(absent_id) is None
 
     assert message[55] == message.by_tag(55)
     assert message["symbol"] == message.by_tag(55)
@@ -1131,11 +1145,8 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
         message.by_tag(1234)
     assert by_tag.value.args[0] == 'expected a fix value at "tag 1234", got nothing'
     with pytest.raises(KeyError) as by_id:
-        message.by_id("5001:cme")
-    assert by_id.value.args[0].startswith(
-        'expected a fix value at "identifier 5001:#'
-    )
-    assert by_id.value.args[0].endswith('", got nothing')
+        message.by_id(absent_id)
+    assert by_id.value.args[0] == f'expected a fix value at "identifier {absent_id}", got nothing'
     with pytest.raises(KeyError) as by_name:
         message.by_name("nope")
     assert 'name \\"nope\\"' in by_name.value.args[0]
@@ -1144,13 +1155,15 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert "path Parties.PartyID" in by_path.value.args[0]
     with pytest.raises(TypeError, match="not bool"):
         message[True]
-    # A malformed identifier is the native parse failure, never a miss.
-    with pytest.raises(ValueError, match="fix identifier"):
-        message.by_id("55")
-    with pytest.raises(ValueError, match="fix identifier"):
-        message.get_by_id("cme:")
+    # An identifier is an `int` and nothing else is read as one.
     with pytest.raises(TypeError):
-        message.get_by_id(55)
+        message.by_id("55")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        message.get_by_id("cme:")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="not bool"):
+        message.get_by_id(True)
+    with pytest.raises(OverflowError):
+        message.get_by_id(2**31)
 
     # The mapping input became the ordered row the root declares.
     pairs = [(name, value.as_py()) for name, value in message]
@@ -1161,15 +1174,17 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert FixMsg(root, message.value, seed) == message
 
 
-def test_a_venue_message_resolves_in_two_steps() -> None:
+def test_a_venues_field_and_msgtype_are_both_reachable_from_a_venue_message() -> None:
     registry = FixRegistry.from_fields(
         [
             _field("MsgType", "utf8", 35),
-            _field("TradeID", "utf8", 5001, branch="cme", aliases=["VenueTrade"]),
+            _field("TradeID", "utf8", 5001, branches=["cme"], aliases=["VenueTrade"]),
             _field("Symbol", "utf8", 55, aliases=["Ticker"]),
-            _field("Symbol", "utf8", 5055, branch="cme", aliases=["VenueTicker"]),
         ]
     )
+    # The venue re-spells `Symbol` under its own tag: one field, an
+    # alternate tag, and a second alias.
+    assert registry.add_field(_field("Symbol", "utf8", 5055, branches=["cme"], aliases=["VenueTicker"])) is False
     root = Field(
         "VenueOrder",
         DataType.from_fields(
@@ -1181,36 +1196,35 @@ def test_a_venue_message_resolves_in_two_steps() -> None:
         ),
         nullable=False,
     )
-    root.fix.branch = "cme"
     message = FixMsg(
         root, {"MsgType": "D", "TradeID": "T-1", "Symbol": "AAPL"}, registry
     )
 
-    # The branch is the root's own, derived and never declared.
-    assert message.branch == "cme"
-    # Step one: the message's own dictionary.
+    # One namespace: the venue's field, its aliases, and the specification's
+    # own resolve alike, and no step depends on who contributed what.
     assert message.by_tag(5001).as_py() == "T-1"
     assert message.by_name("venuetrade").as_py() == "T-1"
     assert message.by_name("venueticker").as_py() == "AAPL"
-    # Step two: the standard branch, which every FIX message still carries.
+    assert message.by_tag(5055).as_py() == "AAPL"
     assert message.by_tag(35).as_py() == "D"
-    # And no third step: a standard alias the venue does not define still
-    # resolves, because the standard branch is the second tier.
     assert message.by_name("ticker").as_py() == "AAPL"
 
-    # An identifier names one dictionary exactly and does not tier.
-    assert message.by_id("5001:cme").as_py() == "T-1"
-    assert message.by_id("35:").as_py() == "D"
-    assert message.get_by_id("5001:") is None
+    # An identifier is exact.
+    assert message.by_id(registry.field_by_tag(5001).fix.id).as_py() == "T-1"
+    assert message.by_id(registry.field_by_tag(35).fix.id).as_py() == "D"
+    assert message.get_by_id(_field("TradeID", "utf8", 5002).fix.id) is None
+    # A message root the codec or a caller builds is not a dictionary member.
+    assert message.field.fix.branches == []
+    assert registry.field_by_tag(5001).fix.has_branch("cme")
 
-    # A standard message is one step: it never reads a venue dictionary.
+    # A message that carries none of the venue's fields still resolves the
+    # standard ones and misses the rest.
     plain = Field(
         "Order",
-        DataType.from_fields([Field("MsgType", "utf8"), Field("TradeID", "utf8")]),
+        DataType.from_fields([Field("MsgType", "utf8"), Field("Account", "utf8")]),
         nullable=False,
     )
-    standard = FixMsg(plain, {"MsgType": "D", "TradeID": "T-1"}, registry)
-    assert standard.branch == ""
+    standard = FixMsg(plain, {"MsgType": "D", "Account": "A1"}, registry)
     assert standard.by_tag(35).as_py() == "D"
     assert standard.get_by_tag(5001) is None
     assert standard.get_by_name("venuetrade") is None
@@ -1227,16 +1241,6 @@ def test_message_refuses_a_value_its_field_refuses(seed: FixRegistry) -> None:
         FixMsg(root, {"symbol": [1]})
     with pytest.raises(ValueError):
         FixMsg(Field("scalar", "utf8"), {"symbol": "AAPL"})
-
-    # A root whose stored branch is malformed fails at construction.
-    broken = Field(
-        "row",
-        DataType.from_fields([Field("Symbol", "utf8")]),
-        nullable=False,
-        metadata={"fix:branch": "2cme"},
-    )
-    with pytest.raises(ValueError, match="fix:branch"):
-        FixMsg(broken, {"symbol": "AAPL"}, seed)
 
 
 def test_message_links_the_process_default_when_none_is_named() -> None:
@@ -1291,7 +1295,7 @@ seed = FixRegistry.from_handle(pathlib.Path(sys.argv[1]))
 install_global_registry(seed)
 assert global_registry() == seed
 assert global_registry().field_by_tag(55).name == "symbol"
-assert global_registry().field_by_name("SYMBOL", "").name == "symbol"
+assert global_registry().field_by_name("SYMBOL").name == "symbol"
 
 root = Field(
     "row",
@@ -1329,7 +1333,6 @@ def test_scalar_value_and_field_stay_the_native_ones(seed: FixRegistry) -> None:
     assert isinstance(message.value, Scalar)
     assert isinstance(message.field, Field)
     assert isinstance(message[55], Scalar)
-    assert isinstance(message.branch, str)
     assert message.value.kind == "sequence"
     assert message.field.fix.tag is None
     assert message.field.fix.id is None
@@ -1390,7 +1393,7 @@ def test_arrow_reader_uses_separatorless_group_inference(seed: FixRegistry) -> N
 
 
 def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
-    """A branch, a version and the spellings that mean nothing was sent."""
+    """A version and the spellings that mean nothing was sent."""
     assert FixCodec(seed).registry == seed
 
     # Tag 32 is `lastshares` at 4.2 and `lastqty` from 4.3 on. A pin settles how
@@ -1407,8 +1410,10 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
     silent = FixCodec(seed, null_values=["<none>"])
     assert next(silent.parse_line(b"8=FIX.4.4|35=D|55=<none>|10=0|")).get_by_tag(55) is None
 
-    with pytest.raises(ValueError):
-        FixCodec(seed, branch="not a branch")
+    # There is no dialect to pin: the dictionary is one namespace.
+    with pytest.raises(TypeError):
+        FixCodec(seed, branch="cme")  # type: ignore[call-arg]
+    assert not hasattr(FixCodec(seed), "branch")
 
 
 def test_a_reader_fills_what_the_line_implied_and_leaves_the_wire_alone(
@@ -1530,14 +1535,20 @@ def test_the_bridge_vocabulary_is_a_caller_s_choice(bridge: FixRegistry) -> None
     """Registering ULBridge's fields is the one thing that types its answers."""
     fields = fix_ulbridge_fields()
     assert fields, "the bridge publishes its own vocabulary"
-    assert all(field.fix.branch == ULBRIDGE_BRANCH for field in fields)
-    # Every one of them is in the dictionary that folded them, under the
-    # branch they declare and nowhere else.
+    assert ULBRIDGE_DIALECT == "ulbridge"
+    assert all(field.fix.branches == [ULBRIDGE_DIALECT] for field in fields)
+    assert all(field.fix.has_branch("ULBridge") for field in fields)
+    # Every one of them is in the dictionary that folded them, carrying the
+    # membership it declared, and a dictionary that never folded them holds
+    # none of them.
     for field in fields:
-        assert bridge.field_by_name(field.name, ULBRIDGE_BRANCH).fix.tag == field.fix.tag
-    assert FixRegistry.from_handle(SEED).get_field_by_name(
-        fields[0].name, ULBRIDGE_BRANCH
-    ) is None
+        held = bridge.field_by_name(field.name)
+        assert held.fix.tag == field.fix.tag
+        assert held.fix.branches == [ULBRIDGE_DIALECT]
+        assert bridge.field_by_id(field.fix.id) == held
+    assert bridge.dialects() == [ULBRIDGE_DIALECT]
+    assert FixRegistry.from_handle(SEED).get_field_by_name(fields[0].name) is None
+    assert FixRegistry.from_handle(SEED).dialects() == []
 
 
 def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
@@ -1547,12 +1558,17 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
     assert MimeType.infer_bytes(LOGGED) == MimeType.ULCONFIG
     assert FixCodec.infer_msgtype_bytes(LOGGED) == b"Plugin"
 
-    reader = FixCodec(bridge, branch=ULBRIDGE_BRANCH)
+    reader = FixCodec(bridge)
     message = next(reader.parse_ulconfig_line(LOGGED))
     # FIX's own names stay FIX's and the bridge's own are the bridge's, both
-    # inside the occurrence the document answered for.
+    # inside the occurrence the document answered for. The registry is one
+    # namespace, so the plugin's own `Version` and `State` - not the FIX
+    # version a row was read at, nor the order's state - are held under the
+    # bridge's `PluginVersion` and `PluginState`.
     assert message.by_path("SenderCompID").as_py() == "CLI.PROD.TRD"
-    assert message.by_path("Version").as_py() == "4.7.0"
+    assert message.by_path("PluginVersion").as_py() == "4.7.0"
+    assert message.by_path("PluginState").as_py() == "logged"
+    assert message.by_path("Version") == message.by_tag(65001)
     # The registered vocabulary types a port as a number and a flag as a flag.
     assert message.by_path("CurrentPort").as_py() == 9726
     assert message.by_path("NeedCFBReload").as_py() is False
@@ -1600,7 +1616,7 @@ def test_every_plugin_a_document_answers_for_crosses_both_ways(
 
     # And back to a typed message, and out of one again: the crossing keeps
     # the ObjectName, the attributes and their types.
-    reader = FixCodec(bridge, branch=ULBRIDGE_BRANCH)
+    reader = FixCodec(bridge)
     message = held[0].into_fixmsg(reader)
     assert message.by_path("PriorityLevel").as_py() == 5
     back = UlPlugin.from_fixmsg(message)
@@ -1766,8 +1782,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     """The digest says how it was taken, the partition what it derives from."""
     fields = {field.name: field for field in fix_crate_fields()}
     assert len(fields) == CRATED
-    # In tag order, one block from 65000, every one a standard field: above
-    # every tag FIX or a venue publishes, so none needs a branch of its own.
+    # In tag order, one block from 65000, above every tag FIX or a venue
+    # publishes, and none is a dictionary's contribution.
     assert list(fields) == [
         "msghash",
         "version",
@@ -1813,8 +1829,10 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "TargetSessionId",
     ]
     assert [field.fix.tag for field in fields.values()] == CRATE_TAGS
-    assert all(field.fix.branch == STANDARD_BRANCH for field in fields.values())
-    assert [field.fix.id for field in fields.values()] == [f"{tag}:" for tag in CRATE_TAGS]
+    assert all(field.fix.branches == [] for field in fields.values())
+    assert [field.fix.id for field in fields.values()] == [
+        _field(name, "utf8", tag).fix.id for name, tag in zip(fields, CRATE_TAGS)
+    ]
     # Every one is nullable as a field - the fixed row is what declares the
     # four every message fills - and every one says what it holds.
     assert all(field.nullable for field in fields.values())
@@ -1864,18 +1882,15 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     for name in ("instid", "id", "persistentid"):
         assert fields[name].dtype == DataType("fixed_size_binary(16)"), name
 
-    # Every registry holds them from construction, on the branch every
-    # dictionary resolves through: the standard one is the only branch a new
-    # registry holds, and a bridge row spelling `SESSIONID` or
-    # `ULFROMSESSIONNAME` reaches them by name. The listing is the very
-    # definition a registry answers.
+    # Every registry holds them from construction, and a bridge row spelling
+    # `SESSIONID` or `ULFROMSESSIONNAME` reaches them by name. The listing is
+    # the very definition a registry answers.
     registry = FixRegistry()
     assert len(registry) == CRATED
-    assert registry.branches() == [FixBranch.STANDARD]
+    assert registry.dialects() == []
     for name, field in fields.items():
-        assert registry.field_by_name(name, STANDARD_BRANCH) == field
         assert registry.field_by_name(name) == field
-        assert registry.field_by_id(f"{field.fix.tag}:") == field
+        assert registry.field_by_id(field.fix.id) == field
         assert registry.field_by_tag(field.fix.tag) == field
     assert registry.field_by_tag(65007).name == "sendersessionid"
     assert registry.field_by_name("SenderSessionId").name == "sendersessionid"
@@ -1913,7 +1928,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
     assert len(message) == 7
     assert message.by_tag(65001).as_py() == "4.4"
     assert message.by_tag(8).as_py() == "FIX.4.4"
-    assert message.by_id("65003:") == message.by_name("timestamp")
+    assert message.by_id(seed.field_by_tag(65003).fix.id) == message.by_name("timestamp")
     assert message.by_tag(65003) == message.by_name("timestamp")
 
     # A message with no clock is stamped with the epoch rather than left
@@ -2014,16 +2029,14 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     assert {entry["tag"] for entry in entries[1]} == {8, 35, 34, 52, 10}
 
 
-def test_a_rows_pluginid_fills_its_field_and_names_the_dialect_it_is_read_under(
+def test_a_rows_pluginid_fills_its_field_and_selects_nothing(
     seed: FixRegistry,
 ) -> None:
-    """A row's `pluginid` fills the crate's field and, where it spells a branch, is the row's dialect."""
+    """A row's `pluginid` fills the crate's field; the dictionary is one namespace."""
     crated = {field.name: field.fix.tag for field in fix_crate_fields()}
-    # A dialect declared under a plugin's name and an alias, with one field of
-    # its own, so a row's `VENUETAG` resolves under that dialect and nowhere
-    # else.
-    seed.set_branch(FixBranch("venue", aliases=["vnu"]))
-    seed.insert(_field("VenueTag", "utf8", 5001, branch="venue"))
+    # A venue's field, stamped as the venue's, resolves for every row
+    # whatever plugin logged it: membership is provenance, not a namespace.
+    seed.insert(_field("VenueTag", "utf8", 5001, branches=["venue"]))
     codec = FixCodec(seed)
     body = b"MSGTYPE=D|CLORDID=A|VENUETAG=dark"
     spellings = ["venue", "VNU", "OMS_X1_TradeCapture", None, ""]
@@ -2048,46 +2061,28 @@ def test_a_rows_pluginid_fills_its_field_and_names_the_dialect_it_is_read_under(
     assert parsed.column("pluginid").to_pylist() == spellings
     assert parsed.column("prevpluginid").to_pylist() == previous
 
-    # The dialect is the row's own: the branch's name and its alias in another
-    # case each read the row under it, so the dialect's field resolves and the
-    # message carries the branch it resolved in - one value for the message,
-    # never one per pair. Any other plugin - one no branch is named after, a
-    # null, an empty string - keeps the codec's pin, then the standard branch,
-    # where the same key maps to nothing and is kept under its own spelling
-    # instead.
+    # The plugin selects nothing: the venue's key maps to its field on every
+    # row - one whose plugin spells the venue's name, one that spells another
+    # plugin, a null, an empty string - and nothing is left unmapped.
     entries = parsed.column("nofixentries").to_pylist()
     unmapped = parsed.column("nounmappedfixentries").to_pylist()
-    for row in (0, 1):
+    for row in range(len(spellings)):
         assert {entry["tag"] for entry in entries[row]} == {35, 11, 5001}, row
         assert unmapped[row] == [], row
-    for row in (2, 3, 4):
-        assert {entry["tag"] for entry in entries[row]} == {35, 11, 0}, row
-        assert [entry["key"] for entry in unmapped[row]] == ["VENUETAG"], row
 
     # One line read alone answers exactly what the batch did, and a fill is
     # never an entry: neither plugin is one.
     lined = FixCodec(seed, capture_names=["pluginid"])
-    for row, spelled in enumerate(spellings):
+    for spelled in spellings:
         message = next(lined.parse_text_line(TextLine(0, body, [spelled])))
-        assert message.branch == ("venue" if row < 2 else STANDARD_BRANCH), spelled
+        assert message.by_tag(5001).as_py() == "dark", spelled
+        assert message.field.fix.branches == [], spelled
         held = message.get_by_name("pluginid")
         assert (held.as_py() if held is not None else None) == spelled, spelled
         assert all(
             tag not in (crated["pluginid"], crated["prevpluginid"])
             for tag, _, _ in message.entries()
         ), spelled
-
-    # A capture speaks per row where the codec speaks per run: the pin stands
-    # for a row that names no dialect, and a row that names one outranks a pin
-    # naming another.
-    pinned = FixCodec(seed, branch="venue", capture_names=["pluginid"])
-    for spelled in ("OMS_X1_TradeCapture", None, ""):
-        message = next(pinned.parse_text_line(TextLine(0, body, [spelled])))
-        assert message.branch == "venue", spelled
-        assert message.by_tag(5001).as_py() == "dark", spelled
-    elsewhere = FixCodec(seed, branch="elsewhere", capture_names=["pluginid"])
-    assert next(elsewhere.parse_text_line(TextLine(0, body, ["vnu"]))).branch == "venue"
-    assert next(elsewhere.parse_text_line(TextLine(0, body, ["ULBridge"]))).branch == "elsewhere"
 
     # The two session names are only ever what the line itself spells, through
     # the aliases a bridge writes them under: neither the plugin that logged
@@ -2118,88 +2113,6 @@ def test_a_rows_pluginid_fills_its_field_and_names_the_dialect_it_is_read_under(
     assert spoken.column("targetsessionname").to_pylist() == [None, "ULMSG_BROKER_BDG_DMZ_CLI"]
     assert spoken.column("sendersessionid").to_pylist() == [None, None]
     assert spoken.column("prevpluginid").to_pylist() == [None, None]
-
-
-def test_a_branch_declaration_carries_its_dialect() -> None:
-    import copy
-    import pickle
-
-    from yggdryl.fix import FixBranch
-
-    branch = FixBranch("CME", version="4.4")
-
-    # The name is folded once and is the identity; the rest describes it.
-    assert branch.name == "cme"
-    assert str(branch) == "cme"
-    assert branch.version == "4.4"
-    assert not branch.is_standard()
-    assert branch.digest() == FixBranch("cme").digest()
-
-    # Equality is the whole declaration, not the name it is keyed by: two
-    # branches naming the same dictionary can still declare different versions.
-    assert branch != FixBranch.from_value("cme")
-    assert branch == FixBranch("cme", version="4.4")
-    assert hash(branch) == hash(copy.copy(branch))
-    assert copy.copy(branch) == branch
-    assert pickle.loads(pickle.dumps(branch)) == branch
-    assert eval(repr(branch), {"FixBranch": FixBranch}) == branch
-
-    standard = FixBranch.STANDARD
-    assert standard.is_standard()
-    assert standard.name == ""
-    assert FixBranch().is_standard()
-    assert FixBranch.MAX_LENGTH == 23
-
-    with pytest.raises(ValueError):
-        FixBranch("2cme")
-    with pytest.raises(ValueError):
-        FixBranch("a" * (FixBranch.MAX_LENGTH + 1))
-
-
-def test_a_registry_declares_the_branches_it_resolves_against() -> None:
-    from yggdryl.fix import FixBranch
-
-    # A new registry already holds the crate's own fields, and they are
-    # standard fields: the branch they are on is the one branch it holds.
-    registry = FixRegistry()
-    assert registry.branches() == [FixBranch.STANDARD]
-    assert [held.name for held in registry.branches()] == [STANDARD_BRANCH]
-
-    registry.set_branch(FixBranch("morgan"))
-    branch = FixBranch("cme", version="4.4")
-    registry.set_branch(branch)
-
-    # Branches list in name order, the standard one first, whatever order
-    # they were declared in.
-    assert [held.name for held in registry.branches()] == ["", "cme", "morgan"]
-    assert registry.branch_named("cme") == branch
-    assert registry.branch_named("CME").version == "4.4"
-    assert registry.branch_named("absent") is None
-
-    # An identifier carries the branch's identity, so it resolves to the
-    # declaration without a second lookup. A non-standard branch claims a tag
-    # in the user-defined range.
-    assert registry.branch_of(f"{USER_TAG_MIN}:cme") == branch
-    assert registry.branch_of(f"{USER_TAG_MIN}:absent") is None
-
-    # An entry carries its dialect as the branch digest, so the registry is
-    # what turns a capture's `bid` column back into the branch. The digest is
-    # one way; without this table an outside reader would have to reproduce
-    # the hash to join the two.
-    assert registry.branch_by_digest(branch.digest()) == branch
-    assert registry.get_branch_by_digest(branch.digest()) == branch
-    # Zero is the standard branch's digest, and it resolves to it - the
-    # crate's own fields put the standard branch in every registry - so a
-    # reader joining the column never meets a row it cannot explain. A digest
-    # no branch carries names nothing rather than raising.
-    assert registry.get_branch_by_digest(0) == FixBranch.STANDARD
-    assert registry.get_branch_by_digest(-1) is None
-    with pytest.raises(ValueError):
-        registry.branch_by_digest(-1)
-
-    # The standard branch declares no dialect and no session.
-    with pytest.raises(ValueError):
-        registry.set_branch(FixBranch("", version="4.4"))
 
 
 # The messages of one order's life, as a venue and its client tell it: the

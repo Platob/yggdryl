@@ -61,9 +61,7 @@ use crate::arrow::value::value_from_array;
 use crate::types::MsgDirection;
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar};
 
-use super::build::{
-    BEGINSTRING_COLUMN, CLOCK_COLUMN, DIRECTION_COLUMN, PLUGINID_COLUMN, version_of,
-};
+use super::build::{BEGINSTRING_COLUMN, CLOCK_COLUMN, DIRECTION_COLUMN, version_of};
 use super::build::{Fill, RowExtras};
 use super::codec::{FixCodec, SOH};
 use super::msg::FixMsg;
@@ -94,22 +92,20 @@ impl FixCodec {
     ///
     /// Each row is read cell by cell out of the arrays and parsed through the
     /// same funnel as a line: the payload as [`Self::parse_line`] reads it,
-    /// the `pluginid`, `beginstring` and `timestamp` columns as
-    /// [`Self::parse_text_line`] reads the captures of those names - `pluginid`
-    /// both filling its
-    /// own column and naming the dialect the row is read under - the
+    /// the `beginstring` and `timestamp` columns as
+    /// [`Self::parse_text_line`] reads the captures of those names, the
     /// `direction` column, which this reader alone reads, and every other
-    /// column named after a field the dictionary knows filling that field
-    /// where the line left it unsaid. `direction` is a parameter to both
-    /// readers even so, because a column the record reader left to the fills
-    /// would silently land on a field. Where each column sits and which
-    /// field it fills is decided once from the schema, and a row's dialect
-    /// once per distinct plugin name, so no row copies the codec or asks the
-    /// dictionary a question the row before it asked. A line the reader
+    /// column named after a field the dictionary knows - `pluginid` among
+    /// them - filling that field where the line left it unsaid. `direction`
+    /// is a parameter to both readers even so, because a column the record
+    /// reader left to the fills would silently land on a field. Where each
+    /// column sits and which field it fills is decided once from the schema,
+    /// so no row copies the codec or asks the dictionary a question the row
+    /// before it asked. A line the reader
     /// refuses is a row holding an empty message, never a row lost, so a row
     /// in is a row out; a bulk configuration document is one row per MBean,
     /// each repeating its source row's carried columns. The direction column
-    /// [`MSGDIRECTION_TAG`](super::MSGDIRECTION_TAG) names takes the row's
+    /// [`MSGDIRECTION_TAG_NAME`](super::MSGDIRECTION_TAG_NAME) names takes the row's
     /// `direction` column, else the verb in front of its payload, else
     /// [`Self::with_direction`].
     ///
@@ -161,7 +157,7 @@ impl FixCodec {
         // read from the line in front of the frame, which is gone by the time
         // a row is built. Its two values are built once, as the column holds
         // them.
-        let direction_at = super::schema::fix_column_of(&field, super::MSGDIRECTION_TAG);
+        let direction_at = super::schema::fix_column_of(&field, super::MSGDIRECTION_TAG_NAME.0);
         let directions = direction_at.map(|at| {
             let column = &field.fields()[at];
             let held = |direction: &str| {
@@ -548,16 +544,6 @@ struct Columns {
     direction: Option<usize>,
     /// The column stating the row's own clock, which stamps the message.
     clock: Option<usize>,
-    /// The column naming the plugin that logged the row.
-    ///
-    /// Its own position, not a fill's: the dialect a row is read under is
-    /// stated by this column whether or not the dictionary also holds a
-    /// field for it to fill, and a registry that dropped the crate's own
-    /// `pluginid` still reads its rows under the dialect they name. The cell
-    /// is decoded once and the same value fills the field where there is
-    /// one. A payload column spelled so is the payload alone, as the record
-    /// reader has it.
-    pluginid: Option<usize>,
     /// The columns whose names reach a field, each beside the field it fills.
     ///
     /// Resolved once from the schema and the dictionary: a column named after
@@ -596,7 +582,6 @@ impl Columns {
             beginstring: named(BEGINSTRING_COLUMN),
             direction: named(DIRECTION_COLUMN),
             clock: named(CLOCK_COLUMN),
-            pluginid: named(PLUGINID_COLUMN).filter(|at| *at != payload_at),
             fills,
             kept,
             dtypes: fields.iter().map(|held| held.dtype().clone()).collect(),
@@ -656,24 +641,10 @@ impl Rows {
             })
             .or_else(|| MsgDirection::infer_bytes(&payload))
             .or(self.codec.direction());
-        // The plugin that logged the row, read by its own column and decoded
-        // once: it names the row's dialect whether or not the dictionary also
-        // holds a field of that name, and where it does the same value is
-        // what fills it.
-        let mut plugin = stated(self.columns.pluginid)?;
-        let branch = plugin
-            .as_ref()
-            .and_then(Scalar::as_str)
-            .and_then(|named| self.codec.dialect_of(named));
         // The cells that fill fields, read only where the row states them.
         let mut cells: Vec<(&Field, i32, Scalar)> = Vec::with_capacity(self.columns.fills.len());
         for (at, field, tag) in &self.columns.fills {
-            let held = if Some(*at) == self.columns.pluginid {
-                plugin.take()
-            } else {
-                stated(Some(*at))?
-            };
-            let Some(value) = held else {
+            let Some(value) = stated(Some(*at))? else {
                 continue;
             };
             cells.push((field, *tag, value));
@@ -687,7 +658,6 @@ impl Rows {
             })
             .collect();
         let extras = RowExtras {
-            branch,
             version: beginstring
                 .as_ref()
                 .and_then(Scalar::as_str)

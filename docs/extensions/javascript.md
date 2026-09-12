@@ -812,34 +812,34 @@ assert.ok(TxHash.from(value.toString()).equals(value))
 `fix.FixRegistry`, `fix.FixMsg`, `fix.MsgType`, `fix.FixCodec`,
 `fix.FixMessages`, `fix.FixLifecycle`, `fix.UlPlugin`, `fix.UlPlugins`,
 `fix.schema()`, `fix.schemaCarrying()`, `fix.schemaTags()`, `fix.crateFields()`,
-`fix.ulbridgeFields()`, `fix.globalRegistry()`, `fix.installGlobalRegistry()`,
-`fix.STANDARD_BRANCH` (`''`, what an absent `fix:branch` means), and
-`fix.USER_TAG_MIN` (`5000`) and `fix.USER_TAG_MAX` (`40000`), the half-open tag
-range a non-standard branch may claim for a scalar field, are the whole
-surface: the registry, message definitions, codec, messages and lazy
-iterators. The `fix:` vocabulary is typed accessor pairs on the `field.fix`
-view, including `branch`, `id`, `tag`, `tags`, `aliases`, `description`,
-`codes`, `counter`, `component` and `msgtype`.
+`fix.ulbridgeFields()`, `fix.globalRegistry()` and `fix.installGlobalRegistry()`
+are the whole surface: the registry, message definitions, codec, messages and
+lazy iterators. The namespace holds no constant: a dictionary is one namespace
+of tags and names, an identity is the number `field.fix.id` derives from both,
+and a dictionary's membership is `fix:branches` on the field it contributed
+to. The `fix:` vocabulary is typed accessor pairs on the `field.fix` view,
+including `id`, `tag`, `tags`, `aliases`, `branches`, `description`, `codes`,
+`counter`, `component` and `msgtype`.
 
 | Crossing | Rule |
 | --- | --- |
 | tag key | a `number`, coerced once and checked exactly |
-| branch digests | `branchByDigest` / `getBranchByDigest` take the number a branch digests to, as the store's branch manifest publishes it, and answer the branch's name; only a declared branch resolves. Nothing in this binding answers that number yet - the Python view does, through `FixBranch.digest()` |
-| `FixMsg.arrivals()` | `[tag, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them; the dialect is the message's own `branch`, not each pair's |
-| name or path key | a `string`; omitted branches use the core's deterministic best match; a colon-bearing string is a name |
-| branch, identifier | `string`, parsed by the core `FixBranch` and `FixId` |
-| `fieldByName`, `fieldByPath` | accept an optional branch restriction; canonical names precede aliases, standard precedes named branches within a tier |
-| `fieldByTag` | canonical tags precede alternates, standard precedes named branches within a tier; `fieldById('55:')` selects the standard branch exactly |
-| `field.fix.id` | `'tag:branch'`, `null` exactly when `fix:tag` is absent; assigning one moves both halves |
-| `field.fix.branch` | `''` when the key is absent; assigning `''` removes it |
+| identifier | a `number`: the signed 32-bit digest of a tag and a name, what `field.fix.id` answers; `fieldById`, `getFieldById`, `removeById`, `message.byId` and `getById` take it exactly - no fold, no tiering - and a fractional or out-of-`i32` number is refused rather than narrowed. A bare number anywhere else is a tag, never an identifier |
+| `FixMsg.arrivals()` | `[tag, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
+| name or path key | a `string`, folded once - ASCII case, `_`, `-` and space dropped; a bare string is a name, never an identifier |
+| membership | `field.fix.branches` is a `string[]`, sorted and lowercase, `[]` where `fix:branches` is absent; assigning an array replaces the list, folded and deduplicated, and `[]` removes the property; `addBranch(name)` is idempotent under the fold and `hasBranch(name)` folds the same way; a name that is empty or carries a comma is refused. `registry.dialects()` lists the distinct names any field or definition carries. Membership is provenance a caller filters on; no lookup consults it |
+| `fieldByName`, `fieldByPath` | one namespace, no branch argument: the canonical fold answers first, then an alias fold; a path is decided by the one grammar |
+| `fieldByTag` | the canonical holder of a tag answers first, then the field holding it as an alternate |
+| `field.fix.id` | derived on every read from `fix:tag` and the field's name, never stored, `null` exactly when `fix:tag` is absent; the property has no setter |
+| `fromCfbFile(location, dialect?)` | answers `[registry, roots]`; `dialect` stamps every field, group, component and message the file produces on its `fix:branches`, standard tags included, and with none named nothing is stamped; the root element's version is read past |
 | `message.at`, `message.byId` | the failing halves; `value` holds the whole message value |
 | `fromHandle`, `writeInto` | an `IOBase`, a `Url`, or the string naming one |
 | `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive` is a read-only number |
-| iteration | registry branch-major then by tag, message in the root's declared order |
+| iteration | registry tag-major, the tag's holder first, then by identifier; message in the root's declared order |
 | categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
 | CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily; `addField` and `addDefinition` are the lenient twins, answering `true` when the field or definition arrived and `false` when it folded into a stored one |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; complete UTF-8 wire code |
-| `FixCodec` | pins cross in the options object - `branch`, `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction`, `batchByteSize`; `parseLine`, `parseTextLine`, `parseUlconfigLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
+| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction`, `batchByteSize`; `parseLine`, `parseTextLine`, `parseUlconfigLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parseTextArrowReader`, `enrichMessagesArrowReader` and `arrowReader(schema, messages)` take and answer a native `BatchReader`, so `BatchReader.from` widens an Arrow JS table on the way in and `intoTable` drains the answer; `writeArrowReader(reader, sink)` writes lines into anything with `write(chunk: Uint8Array)` and answers their count |
 | `FixMsg` writes | `set(key, value)` and `remove(key)` change the row in place and never the entries; `FixMsg.fromRow(schema, row, registry)` reads a fixed row back, entries included |
 | output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
@@ -868,21 +868,23 @@ assert.throws(() => registry.get(55n), {
   message: 'key must be a number tag or a string name, got BigInt',
 })
 
-// A branch and an identifier cross as text: a lookup takes the branch after
-// the name it qualifies, an identifier is the tag then the branch, and a
-// malformed one throws rather than missing.
-assert.equal(fix.STANDARD_BRANCH, '')
-assert.deepEqual([fix.USER_TAG_MIN, fix.USER_TAG_MAX], [5_000, 40_000])
 // Names are folded once, so a caller spells one however they have it.
 assert.equal(registry.fieldByName('SYMBOL').name, 'symbol')
 assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
 assert.equal(registry.definition('fields', 'NoPartyIDs').dtype.id, 'int32')
 assert.equal(registry.definition('groups', 'Parties').fix.counter, 453)
 assert.equal(registry.definition('components', 'Party').dtype.kind, 'nested')
-assert.equal(registry.fieldById('55:').fix.id, '55:')
-assert.throws(() => registry.fieldByName('symbol', '2cme'), /fix branch/)
-assert.throws(() => registry.fieldById('55'), /fix identifier/)
-assert.throws(() => registry.fieldById(55), /into rust type `String`/)
+
+// An identifier is a number - the signed 32-bit digest of a tag and a name,
+// what `field.fix.id` answers - and the `ById` doors take it exactly. A bare
+// number anywhere else is a tag, a bare string a name, and a malformed
+// identifier throws rather than missing.
+const symbolId = registry.fieldByTag(55).fix.id
+assert.ok(Number.isInteger(symbolId))
+assert.equal(registry.fieldById(symbolId).name, 'symbol')
+assert.equal(registry.getField(`${symbolId}`), null)
+assert.throws(() => registry.fieldById(1.5), /id must be a signed 32-bit integer/)
+assert.throws(() => registry.fieldById('55'), /into rust type `f64`/)
 
 // Absence throws with the native message; the `get` half answers null.
 assert.throws(
@@ -892,22 +894,38 @@ assert.throws(
 assert.equal(registry.getFieldByName('Nope'), null)
 assert.throws(() => registry.insert(Field.from('Untagged: utf8')), /fix:tag/)
 
-// The typed vocabulary is answered by the fix view alone, and a tag the FIX
-// specification assigns cannot move to another dictionary.
+// The typed vocabulary is answered by the fix view alone. The identity is
+// derived from the tag and the name on every read, never stored, and the name
+// folds - ASCII case, `_`, `-` and space dropped - so two spellings of one
+// field under one tag are one identity.
 const symbol = registry.fieldByTag(55)
 assert.equal(symbol.fix.tag, 55)
-assert.equal(symbol.fix.id, '55:')
+assert.equal(symbol.fix.id, symbolId)
+assert.equal(symbol.has('fix:id'), false)
 // The specification's own spelling stays on the generic display key.
 assert.equal(symbol.display, 'Symbol')
 assert.throws(() => symbol.iceberg.tag, { name: 'TypeError', message: /iceberg/ })
 const vendor = Field.from('TradeID: utf8')
-vendor.fix.id = '5001:CME'
-assert.equal(vendor.fix.id, '5001:cme')
-assert.equal(vendor.fix.branch, 'cme')
-assert.throws(() => {
-  vendor.fix.tag = 35
-}, /fix:branch/)
-assert.equal(vendor.fix.id, '5001:cme')
+assert.equal(vendor.fix.id, null)
+vendor.fix.tag = 5001
+const vendorId = vendor.fix.id
+const spelled = Field.from('trade_id: utf8')
+spelled.fix.tag = 5001
+assert.equal(spelled.fix.id, vendorId)
+// The identity has no setter: an assignment does not take (strict code sees
+// a `TypeError`), because the tag and the name are what it is made of.
+vendor.fix.id = 42
+assert.equal(vendor.fix.id, vendorId)
+
+// Membership is provenance on the field, a sorted lowercase list under
+// `fix:branches`; it changes no identity and no lookup consults it.
+assert.deepEqual(vendor.fix.branches, [])
+vendor.fix.branches = ['CME', 'cme']
+assert.deepEqual(vendor.fix.branches, ['cme'])
+assert.equal(vendor.get('fix:branches'), 'cme')
+vendor.fix.addBranch('ICE')
+assert.equal(vendor.fix.hasBranch('Ice'), true)
+assert.equal(vendor.fix.id, vendorId)
 
 // A message shares the dictionary it resolved against, so mutating it refuses.
 const root = fields.struct('row', [symbol], { nullable: false })
@@ -916,21 +934,32 @@ assert.throws(() => registry.remove(55), /shared with a message/)
 const independent = fix.FixRegistry.fromFields([symbol])
 assert.equal(independent.remove(55).name, 'symbol')
 
-// A vendor field leaves by its identifier: `remove` reads a string as a
-// standard-branch name.
+// One namespace: a venue reusing the tag 55 under another name stands beside
+// its holder, which gains the name as an alias while the bare tag keeps
+// answering it; the newcomer is reached by its name or its identifier, and
+// `removeById` is how it leaves. `dialects()` lists what any field names.
 const venue = fix.FixRegistry.fromFields([vendor])
-assert.equal(venue.remove('TradeID'), null)
-assert.equal(venue.removeById('5001:cme').name, 'TradeID')
+const venueSymbol = Field.from('VenueSymbol: utf8')
+venueSymbol.fix.tag = 55
+venueSymbol.fix.branches = ['cme']
+assert.equal(venue.insert(symbol), null)
+assert.equal(venue.insert(venueSymbol), null)
+assert.equal(venue.fieldByTag(55).name, 'symbol')
+assert.deepEqual(venue.fieldByTag(55).fix.aliases, ['VenueSymbol'])
+assert.equal(venue.fieldByName('venuesymbol').fix.id, venueSymbol.fix.id)
+assert.deepEqual(venue.dialects(), ['cme', 'ice'])
+assert.equal(venue.removeById(venueSymbol.fix.id).name, 'VenueSymbol')
+assert.equal(venue.remove('TradeID').name, 'TradeID')
 // What remains is the crate's own fields, which every registry holds.
-assert.equal(venue.size, fix.crateFields().length)
+assert.equal(venue.size, 1 + fix.crateFields().length)
+assert.deepEqual(venue.dialects(), [])
 
 // Both collections are lazy native iterators the loader gives the protocol.
 assert.equal([...registry].length, registry.size)
 assert.deepEqual([...message].map(([name]) => name), ['symbol'])
 assert.equal(message.at('SYMBOL').asJs(), 'AAPL')
-assert.equal(message.branch, fix.STANDARD_BRANCH)
-assert.equal(message.byId('55:').asJs(), 'AAPL')
-assert.equal(message.getById('5001:cme'), null)
+assert.equal(message.byId(symbolId).asJs(), 'AAPL')
+assert.equal(message.getById(vendorId), null)
 
 // Generic intake is lazy even when the source yields one message.
 const wire = Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')
@@ -938,6 +967,8 @@ const messages = new fix.FixCodec(registry).parseLine(wire)
 const parsed = messages.next().value
 assert.equal(messages.next().done, true)
 assert.deepEqual(parsed.intoBytes('|'.charCodeAt(0)), wire)
+// A message root the codec builds is not a dictionary member.
+assert.deepEqual(parsed.field.fix.branches, [])
 const tableField = fix.schema(registry)
 assert.equal(parsed.intoRow(tableField).asJs().length, tableField.fieldLen)
 ```
@@ -948,7 +979,11 @@ and validates a plain object. Resolution and merging are the core's, on the
 
 Bulk configuration responses stream one flat message per selected plugin. Each
 message retains its selected MBean and source envelope, with the plugin's
-fields directly addressable on the message.
+fields directly addressable on the message. The bridge's fields are members of
+the `ulbridge` dictionary and resolve in the one namespace like any other; the
+document's `State` and `Version` attributes are held under `PluginState` and
+`PluginVersion`, because every registry already holds the crate's own `state`
+and `version`, and the arrival record keeps the document's spelling.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -956,16 +991,31 @@ const { fix } = require('yggdryl')
 
 const registry = new fix.FixRegistry()
 registry.withUlbridgeFields()
-const codec = new fix.FixCodec(registry, { branch: 'ulbridge' })
+// The bridge's fields are members of the `ulbridge` dictionary; no codec pin
+// names one, since the dictionary is one namespace.
+assert.deepEqual(registry.dialects(), ['ulbridge'])
+assert.deepEqual(registry.fieldByName('MBean').fix.branches, ['ulbridge'])
+assert.equal(registry.fieldByName('PluginState').fix.tag, 20019)
+assert.equal(registry.fieldByName('PluginVersion').fix.tag, 20021)
+const codec = new fix.FixCodec(registry)
 const document = [
   { request: { type: 'read', mbean: 'bridge:type=Plugin,name=Orders' },
-    status: 200, value: { Name: 'Orders' } },
+    status: 200, value: { Name: 'Orders', State: 'Running', Version: '1.2' } },
   { request: { type: 'read', mbean: 'bridge:type=Plugin,name=Prices' },
     status: 200, value: { Name: 'Prices' } },
 ]
 const messages = codec.parseUlconfigLine(Buffer.from(JSON.stringify(document)))
 assert.ok(messages instanceof fix.FixMessages)
-assert.deepEqual([...messages].map(message => message.byName('Name').asJs()), ['Orders', 'Prices'])
+const [orders, prices] = [...messages]
+assert.deepEqual([orders, prices].map(message => message.byName('Name').asJs()), ['Orders', 'Prices'])
+// The document's `State` and `Version` attributes are held under the bridge's
+// own names; the arrival entry keeps the document's spelling.
+assert.equal(orders.byName('PluginState').asJs(), 'Running')
+assert.equal(orders.byName('PluginVersion').asJs(), '1.2')
+assert.deepEqual(
+  orders.arrivals().filter(([tag]) => tag === 20019 || tag === 20021),
+  [[20019, 'State', 'Running'], [20021, 'Version', '1.2']],
+)
 assert.equal(messages.next().done, true)
 const selected = fix.UlPlugin.fromJsonScalar(document).next().value
 assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Orders')
@@ -1078,21 +1128,29 @@ assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Orders')
   key -> `TypeError`.
 - The `fix:` vocabulary read or written on another protocol's view ->
   `TypeError` naming that view's scheme.
-- `message.branch` -> the dictionary the message is spelled in, derived from
-  its root field.
+- `field.fix.id` -> a `number` in strict code and sloppy code alike; the
+  property has no setter, so an assignment throws under `'use strict'` and
+  does not take without it.
+- `message.field.fix.branches` -> `[]` for a root the codec built: a message
+  is not a dictionary member.
+- `message.liftSource(facet)` -> the tag a lifted facet was read from, a
+  `number`, or `null`; the field that tag names is the registry's to answer.
 - Registry mutation while a `FixMsg`, `MsgType`, the process default, or a live
   native iterator holds it -> throws; `registry.clone()` is the mutable deep copy.
 - A `keys()` walk -> stops sharing when drained, or when a `for...of` `break`
   returns it.
-- `registry.remove(string)` -> a standard-branch name; `removeById(id)` is how
-  a vendor field leaves.
+- `registry.remove(key)` -> a number is a tag and a string is a name;
+  `removeById(id)` reaches one of two fields sharing a tag by its own
+  identity, and answers `null` for one that is not there.
 - FIX absence -> the native refusal, or `null` from the `get`-prefixed twins,
   for a key that parses.
 - A missing FIX folder -> a registry holding only the crate's own fields.
-- A registry write -> category folders `fields/`, `messages/`, `components/`
-  and `groups/`, with standard definitions directly below each and branch
-  definitions under `<branch>/`.
-- `message.getById`/`byId` -> name one dictionary exactly and do not tier.
+- A registry write -> `fields/<shard>.json` with the shard a tag's hundred,
+  and `messages/`, `components/` and `groups/` with every definition directly
+  below its category; membership travels inside each field's metadata, and
+  the crate's own fields are never written.
+- `message.getById`/`byId` -> exact: no fold, no tiering; a field the
+  dictionary does not hold under the identifier misses.
 
 ```javascript
 const { DataType } = require('yggdryl')

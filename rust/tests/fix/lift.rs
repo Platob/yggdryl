@@ -2,7 +2,7 @@
 
 use super::OneMessage;
 
-use yggdryl::{FixAnomaly, FixCodec, FixId, Scalar};
+use yggdryl::{FixAnomaly, FixCodec, Scalar};
 
 fn reader() -> FixCodec {
     FixCodec::new(super::committed_registry())
@@ -35,8 +35,8 @@ fn an_order_answers_who_what_how_much_and_when() {
     assert_eq!(order.lifted("nosuchfacet"), None);
 
     // The source is the tag that actually answered.
-    assert_eq!(order.lift_source("id"), Some(FixId::standard(11)));
-    assert_eq!(order.lift_source("quantity"), Some(FixId::standard(38)));
+    assert_eq!(order.lift_source("id"), Some(11));
+    assert_eq!(order.lift_source("quantity"), Some(38));
     assert_eq!(order.lift_source("nosuchfacet"), None);
 }
 
@@ -52,7 +52,7 @@ fn the_message_type_decides_which_source_a_facet_takes() {
         )
         .unwrap();
     assert_eq!(fill.lifted("price"), Some(&Scalar::from(12.75_f64)));
-    assert_eq!(fill.lift_source("price"), Some(FixId::standard(31)));
+    assert_eq!(fill.lift_source("price"), Some(31));
     assert_eq!(fill.lifted("quantity"), Some(&Scalar::from(50.0_f64)));
     assert_eq!(fill.lifted("execid"), Some(&Scalar::from("EXEC-1")));
     assert_eq!(lifted(&fill, "id"), Some("ORD-9"), "a fill is named by 37");
@@ -65,7 +65,7 @@ fn the_message_type_decides_which_source_a_facet_takes() {
         )
         .unwrap();
     assert_eq!(order.lifted("price"), Some(&Scalar::from(12.5_f64)));
-    assert_eq!(order.lift_source("price"), Some(FixId::standard(44)));
+    assert_eq!(order.lift_source("price"), Some(44));
 }
 
 #[test]
@@ -80,10 +80,7 @@ fn a_fallback_is_visible_through_the_source_it_resolved_from() {
         message.lifted("transacttime"),
         message.lifted("sendingtime")
     );
-    assert_eq!(
-        message.lift_source("transacttime"),
-        Some(FixId::standard(52))
-    );
+    assert_eq!(message.lift_source("transacttime"), Some(52));
 
     let exact = reader
         .one_line(
@@ -91,7 +88,7 @@ fn a_fallback_is_visible_through_the_source_it_resolved_from() {
             false,
         )
         .unwrap();
-    assert_eq!(exact.lift_source("transacttime"), Some(FixId::standard(60)));
+    assert_eq!(exact.lift_source("transacttime"), Some(60));
     assert_ne!(exact.lifted("transacttime"), exact.lifted("sendingtime"));
 }
 
@@ -103,13 +100,13 @@ fn a_superseded_source_is_tried_after_every_current_one() {
     let old = reader
         .one_line(b"8=FIX.4.4|35=D|11=A|38=100|465=1|10=0|", false)
         .unwrap();
-    assert_eq!(old.lift_source("quantitytype"), Some(FixId::standard(465)));
+    assert_eq!(old.lift_source("quantitytype"), Some(465));
 
     // Carrying both, the current one wins whichever order they arrived in.
     let both = reader
         .one_line(b"8=FIX.4.4|35=D|11=A|38=100|465=1|854=2|10=0|", false)
         .unwrap();
-    assert_eq!(both.lift_source("quantitytype"), Some(FixId::standard(854)));
+    assert_eq!(both.lift_source("quantitytype"), Some(854));
 }
 
 #[test]
@@ -214,7 +211,7 @@ fn a_side_and_a_price_fill_their_lane_on_an_order_and_not_on_a_fill() {
     assert_eq!(buy.lifted("asksize"), None);
     // The derivation names the tag it came from, so it is never mistaken for
     // a quote the venue actually sent.
-    assert_eq!(buy.lift_source("bidpx"), Some(FixId::standard(44)));
+    assert_eq!(buy.lift_source("bidpx"), Some(44));
 
     let sell = reader
         .one_line(b"8=FIX.4.4|35=D|11=A|54=2|44=12.5|38=100|10=0|", false)
@@ -248,7 +245,7 @@ fn one_lane_implies_a_side_and_two_lanes_imply_nothing() {
         .one_line(b"8=FIX.4.4|35=S|117=Q1|132=12.4|10=0|", false)
         .unwrap();
     assert_eq!(lifted(&bidding, "side"), Some("1"));
-    assert_eq!(bidding.lift_source("side"), Some(FixId::standard(132)));
+    assert_eq!(bidding.lift_source("side"), Some(132));
 
     let offering = reader
         .one_line(b"8=FIX.4.4|35=S|117=Q1|133=12.6|10=0|", false)
@@ -276,14 +273,14 @@ fn enrichment_fills_and_never_overwrites() {
         .one_line(b"8=FIX.4.4|35=S|117=Q1|132=12.4|54=2|10=0|", false)
         .unwrap();
     assert_eq!(lifted(&stated, "side"), Some("2"), "the stated side wins");
-    assert_eq!(stated.lift_source("side"), Some(FixId::standard(54)));
+    assert_eq!(stated.lift_source("side"), Some(54));
 
     // An order stating its own bid lane keeps it rather than deriving one.
     let order = reader
         .one_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|", false)
         .unwrap();
     assert_eq!(order.lifted("bidpx"), Some(&Scalar::from(99.0_f64)));
-    assert_eq!(order.lift_source("bidpx"), Some(FixId::standard(132)));
+    assert_eq!(order.lift_source("bidpx"), Some(132));
 }
 
 #[test]

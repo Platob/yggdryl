@@ -5,7 +5,7 @@ use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, Field, FixCode};
+use yggdryl::{DataType, Field, FixCode, FixId, FixRegistry};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -199,52 +199,95 @@ fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
     }
 }
 
-#[test]
-fn field_crud_preserves_branch_identity_and_refuses_invalid_mutations() {
-    let workspace = Workspace::new();
+/// Creates one scalar field under `dialect` through the tool.
+fn create_member(workspace: &Workspace, name: &str, dtype: &str, tag: &str, dialect: &str) {
     workspace.success(&[
         "fields",
         "create",
+        name,
+        dtype,
+        "--tag",
+        tag,
+        "--dialect",
+        dialect,
+    ]);
+}
+
+#[test]
+fn field_membership_is_stamped_folded_and_replaced_by_update() {
+    let workspace = Workspace::new();
+    create_member(&workspace, "DeskValue", "int32", "5001", "Alpha");
+    let created = workspace.read("fields", "5001");
+    assert_eq!(created.name(), "DeskValue");
+    assert_eq!(created.as_fix().branches().collect::<Vec<_>>(), ["alpha"]);
+    assert!(created.as_fix().has_branch("ALPHA"));
+    assert!(!created.as_fix().has_branch("beta"));
+
+    // One namespace: the same tag under the same folded name is one identity,
+    // whatever dictionary claims it.
+    workspace.failure(&[
+        "fields",
+        "create",
+        "desk_value",
+        "utf8",
+        "--tag",
+        "5001",
+        "--dialect",
+        "beta",
+    ]);
+    // Update replaces membership with what it states, in sorted folded form.
+    workspace.success(&[
+        "fields",
+        "update",
         "DeskValue",
         "int32",
         "--tag",
         "5001",
-        "--branch",
+        "--dialect",
+        "gamma",
+        "--dialect",
         "alpha",
     ]);
-    workspace.success(&[
-        "fields",
-        "create",
-        "DeskValue",
-        "utf8",
-        "--tag",
-        "5001",
-        "--branch",
-        "beta",
-    ]);
-    workspace.failure(&[
-        "fields",
-        "create",
-        "OtherName",
-        "int64",
-        "--tag",
-        "5001",
-        "--branch",
-        "alpha",
-    ]);
-    workspace.failure(&[
-        "fields", "update", "Missing", "int32", "--tag", "5002", "--branch", "alpha",
-    ]);
+    let updated = workspace.read("fields", "5001");
+    assert_eq!(
+        updated.as_fix().branches().collect::<Vec<_>>(),
+        ["alpha", "gamma"]
+    );
+    let shown = output_text(&workspace.success(&["fields", "read", "DeskValue"]));
+    assert!(
+        shown.contains("dialects") && shown.contains("alpha, gamma"),
+        "{shown}"
+    );
+    // A dialect name is held to the alias grammar; a refusal leaves the
+    // field as it was.
     workspace.failure(&[
         "fields",
         "update",
         "DeskValue",
         "int32",
         "--tag",
+        "5001",
+        "--dialect",
+        "a,b",
+    ]);
+    assert_eq!(workspace.read("fields", "5001"), updated);
+    workspace.success(&["fields", "update", "DeskValue", "int32", "--tag", "5001"]);
+    assert_eq!(
+        workspace.read("fields", "5001").as_fix().branches().count(),
+        0
+    );
+
+    workspace.failure(&[
+        "fields",
+        "update",
+        "Missing",
+        "int32",
+        "--tag",
         "5002",
-        "--branch",
+        "--dialect",
         "alpha",
     ]);
+    workspace.failure(&["fields", "update", "DeskValue", "int32", "--tag", "5002"]);
     workspace.failure(&[
         "fields",
         "create",
@@ -252,19 +295,118 @@ fn field_crud_preserves_branch_identity_and_refuses_invalid_mutations() {
         "struct<x: int32>",
         "--tag",
         "5003",
-        "--branch",
-        "alpha",
     ]);
-    workspace.failure(&["fields", "read", "5001:alpha", "--branch", "beta"]);
-    let output = workspace.success(&["fields", "read", "5001", "--branch", "alpha", "--json"]);
-    let before = Field::from_json_bytes(&output.stdout).expect("field");
-    assert_eq!(before.name(), "DeskValue");
-    assert_eq!(before.dtype(), &DataType::Int32);
-    workspace.success(&["fields", "delete", "5001", "--branch", "alpha"]);
-    workspace.failure(&["fields", "read", "5001", "--branch", "alpha"]);
-    let output = workspace.success(&["fields", "read", "5001", "--branch", "beta", "--json"]);
-    let remaining = Field::from_json_bytes(&output.stdout).expect("remaining branch field");
-    assert_eq!(remaining.dtype(), &DataType::utf8());
+    // A colon-bearing key is a name, never an identity.
+    workspace.failure(&["fields", "read", "5001:alpha"]);
+}
+
+#[test]
+fn one_namespace_holds_two_fields_on_one_tag_and_lists_by_membership() {
+    let workspace = Workspace::new();
+    create_member(&workspace, "DeskValue", "int32", "5001", "alpha");
+    // The same tag under another name is a second field beside the holder:
+    // each answers its own name, the holder carries the newcomer's name as an
+    // alias, and the bare tag keeps answering the holder - every command
+    // reloads the store, which writes the holder first and reads it back so.
+    create_member(&workspace, "OtherName", "int64", "5001", "beta");
+    let other = workspace.read("fields", "OtherName");
+    assert_eq!(other.dtype(), &DataType::Int64);
+    assert_eq!(other.as_fix().branches().collect::<Vec<_>>(), ["beta"]);
+    let holder = workspace.read("fields", "DeskValue");
+    assert_eq!(holder.dtype(), &DataType::Int32);
+    assert!(holder.as_fix().aliases().any(|alias| alias == "OtherName"));
+    let by_tag = workspace.read("fields", "5001");
+    assert_eq!(by_tag.as_fix().tag().unwrap(), Some(5001));
+    assert_eq!(by_tag, holder);
+
+    // A listing filters on membership and never resolves by it.
+    let alpha = output_text(&workspace.success(&["fields", "list", "--dialect", "alpha"]));
+    assert!(
+        alpha.contains("DeskValue") && !alpha.contains("OtherName"),
+        "{alpha}"
+    );
+    let beta = output_text(&workspace.success(&["fields", "list", "--dialect", "BETA"]));
+    assert!(
+        beta.contains("OtherName") && !beta.contains("DeskValue"),
+        "{beta}"
+    );
+    let none = output_text(&workspace.success(&["fields", "list", "--dialect", "delta"]));
+    assert!(
+        !none.contains("DeskValue") && !none.contains("OtherName"),
+        "{none}"
+    );
+    let all = output_text(&workspace.success(&["fields", "list", "5001"]));
+    assert!(
+        all.contains("DeskValue") && all.contains("OtherName"),
+        "{all}"
+    );
+
+    // What the tool wrote is what the registry reads back.
+    let stored = FixRegistry::from_handle(&Folder::new(workspace.root()).expect("root"))
+        .expect("stored dictionary");
+    assert_eq!(stored.dialects(), ["alpha", "beta"]);
+    assert!(
+        stored
+            .field_by_name("DeskValue")
+            .unwrap()
+            .as_fix()
+            .has_branch("alpha")
+    );
+    assert!(
+        stored
+            .field_by_name("OtherName")
+            .unwrap()
+            .as_fix()
+            .has_branch("beta")
+    );
+
+    // Deleting one of the two leaves the other alone on the tag. Its name may
+    // still answer as the survivor's alias - the fold gave the holder that
+    // name - so absence is asserted on the listing, not on a name lookup.
+    workspace.success(&["fields", "delete", "DeskValue"]);
+    let rows = output_text(&workspace.success(&["fields", "list", "5001"]));
+    assert!(
+        !rows.contains("DeskValue") && rows.contains("OtherName"),
+        "{rows}"
+    );
+    assert_eq!(workspace.read("fields", "5001").name(), "OtherName");
+    workspace.success(&["fields", "delete", "5001"]);
+    workspace.failure(&["fields", "read", "5001"]);
+    workspace.failure(&["fields", "read", "OtherName"]);
+    workspace.failure(&["fields", "read", "DeskValue"]);
+}
+
+#[test]
+fn a_field_identity_is_its_tag_and_name_as_one_int() {
+    let workspace = Workspace::new();
+    workspace.success(&["fields", "create", "Desk_Value", "int32", "--tag", "5001"]);
+    let expected = FixId::of(5001, "deskvalue").expect("identity");
+    let field = workspace.read("fields", "5001");
+    assert_eq!(field.as_fix().id().unwrap(), Some(expected));
+    let shown = output_text(&workspace.success(&["fields", "read", "Desk_Value"]));
+    let identity = shown
+        .lines()
+        .find_map(|line| line.trim_start().strip_prefix("identity"))
+        .expect("identity entry")
+        .trim();
+    assert_eq!(identity, expected.digest().to_string());
+    let stored = FixRegistry::from_handle(&Folder::new(workspace.root()).expect("root"))
+        .expect("stored dictionary");
+    assert_eq!(
+        stored.field_by_id(expected).expect("by id").name(),
+        "Desk_Value"
+    );
+    assert_eq!(
+        stored
+            .field_by_id(FixId::from_digest(expected.digest()))
+            .expect("by digest"),
+        stored.field_by_tag(5001).expect("by tag")
+    );
+    assert!(
+        stored
+            .get_field_by_id(FixId::of(5001, "Other").unwrap())
+            .is_none()
+    );
 }
 
 #[test]

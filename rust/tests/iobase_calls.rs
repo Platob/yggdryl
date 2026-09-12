@@ -58,23 +58,20 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     field.as_fix_mut().set_tag(55).unwrap();
     let registry = FixRegistry::from_fields([field]).unwrap();
     // Counted measures navigation at this root; child handles own the
-    // document reads and writes and are outside this tally.
+    // document reads and writes and are outside this tally. No manifest:
+    // a dictionary is one namespace, and what each dialect contributed
+    // travels on the field it contributed to.
     costs(
-        "one field shard, four categories, one manifest",
+        "one field shard, four categories",
         &calls,
-        "child_by_path=6",
+        "child_by_path=5",
         || {
             registry.write_into(&mut folder).unwrap();
         },
     );
-    costs(
-        "four category roots and one manifest",
-        &calls,
-        "child_by_path=5",
-        || {
-            assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
-        },
-    );
+    costs("four category roots", &calls, "child_by_path=4", || {
+        assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
+    });
     folder.remove(true).unwrap();
 }
 

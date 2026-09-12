@@ -132,7 +132,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
     // `MsgDirection` is FIX's own and already sits in the header's dialect,
     // but no message carries it on the wire - it is read from the line - so
     // it is appended here rather than expected among the header's tags.
-    tags.push(super::MSGDIRECTION_TAG);
+    tags.push(super::MSGDIRECTION_TAG_NAME.0);
     tags
 }
 
@@ -144,9 +144,9 @@ pub fn fix_schema_tags() -> Vec<i32> {
 /// that carried it, by its own clock, or by the epoch.
 const REQUIRED_TAGS: [i32; 4] = [
     8,
-    super::MSGHASH_TAG,
-    super::TIMESTAMP_TAG,
-    super::UNIXPARTITION_TAG,
+    super::MSGHASH_TAG_NAME.0,
+    super::TIMESTAMP_TAG_NAME.0,
+    super::UNIXPARTITION_TAG_NAME.0,
 ];
 
 /// The fixed root every message answers as.
@@ -192,7 +192,7 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
         {
             fields.push(held);
         }
-        if let Some(group) = registry.get_group_by_counter(crate::FixId::standard(tag)) {
+        if let Some(group) = registry.get_group_by_counter(tag) {
             let mut group = group.clone();
             group.set_nullable(true);
             fields.push(group);
@@ -235,7 +235,7 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
 /// let capture = DataType::from_fields([
 ///     DataType::utf8().required_field("url"),
 ///     DataType::Int64.required_field("rownum"),
-///     DataType::binary().required_field("body"),
+///     DataType::utf8().required_field("body"),
 /// ])?
 /// .required_field("line");
 ///
@@ -610,7 +610,7 @@ impl super::FixMsg {
     /// exactly as [`Self::with_registry`] checks one, so the columns are the
     /// message's children under the names the schema gave them and every
     /// lookup reaches them by tag as it reaches a parsed message's. The
-    /// branch is the schema's own `fix:branch`. The entries are rebuilt from
+    /// branches are the schema's own `fix:branches`. The entries are rebuilt from
     /// the [`ENTRIES_COLUMN`] - every level the row materialized, and the
     /// leaf the deepest level folded into decoded through the crate's own
     /// JSON reader - so [`Self::into_bytes`] re-emits the line the row was
@@ -867,27 +867,40 @@ impl super::FixMsg {
         }
         // The columns every row fills, derived here for a message built from
         // a schema and a value exactly as the builder stamps one it parsed.
-        match tag {
-            8 => crate::Scalar::from(format!(
+        // A tuple's half is not a pattern, so the crate's tags are matched
+        // by name.
+        let is = |held: (i32, &str)| held.0 == tag;
+        if tag == 8 {
+            return crate::Scalar::from(format!(
                 "FIX.{}",
                 self.registry()
                     .newest()
                     .map_or_else(|| "4.4".to_owned(), |held| held.version().to_string())
-            )),
-            super::MSGHASH_TAG => crate::Scalar::from(self.digest().to_be_bytes().to_vec()),
-            super::VERSION_TAG => self.version().map_or(crate::Scalar::Null, |held| {
+            ));
+        }
+        if is(super::MSGHASH_TAG_NAME) {
+            crate::Scalar::from(self.digest().to_be_bytes().to_vec())
+        } else if is(super::VERSION_TAG_NAME) {
+            self.version().map_or(crate::Scalar::Null, |held| {
                 crate::Scalar::from(held.to_string())
-            }),
-            super::SYMBOLTICKER_TAG => self.symbol_ticker(),
-            super::TIMESTAMP_TAG => clock.get_or_insert_with(|| self.stamped_clock()).clone(),
-            super::UNIXPARTITION_TAG => partition_of(
+            })
+        } else if is(super::SYMBOLTICKER_TAG_NAME) {
+            self.symbol_ticker()
+        } else if is(super::TIMESTAMP_TAG_NAME) {
+            clock.get_or_insert_with(|| self.stamped_clock()).clone()
+        } else if is(super::UNIXPARTITION_TAG_NAME) {
+            partition_of(
                 clock.get_or_insert_with(|| self.stamped_clock()),
                 super::DEFAULT_PARTITION_SECONDS,
-            ),
-            super::ISINCODE_TAG => self.isin_code(),
-            super::MICCODE_TAG => self.mic_code(),
-            super::STATE_TAG => self.state(),
-            _ => crate::Scalar::Null,
+            )
+        } else if is(super::ISINCODE_TAG_NAME) {
+            self.isin_code()
+        } else if is(super::MICCODE_TAG_NAME) {
+            self.mic_code()
+        } else if is(super::STATE_TAG_NAME) {
+            self.state()
+        } else {
+            crate::Scalar::Null
         }
     }
 
@@ -1107,7 +1120,7 @@ impl super::FixMsg {
     /// ran first once.
     #[must_use]
     pub fn market_timestamp(&self) -> crate::Scalar {
-        if let Some(stamped) = self.get_by_tag(super::TIMESTAMP_TAG) {
+        if let Some(stamped) = self.get_by_tag(super::TIMESTAMP_TAG_NAME.0) {
             if !stamped.is_null() {
                 return stamped.clone();
             }

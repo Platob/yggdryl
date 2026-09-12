@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use smol_str::{SmolStr, format_smolstr};
+use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
 use crate::media::IORecordOptions as _;
@@ -147,14 +147,14 @@ fn value_of(
                 .unwrap_or(&crate::MimeType::OCTET_STREAM)
                 .as_str(),
         ),
-        TextSource::Body => Scalar::from(line.body().as_bytes().to_vec()),
+        TextSource::Body => Scalar::from(line.body()),
         TextSource::DroppedByteSize => line.dropped_byte_size().map_or(Scalar::Null, Scalar::from),
         TextSource::Capture(index) => capture_value(line, *index, dtype, options)?,
         // A path naming something this line did not carry is a null, which is
         // the whole reason a caller lifts a path out of a shape that varies.
-        TextSource::Entry(path) => line.get_entry_by_path(path).map_or(Scalar::Null, |entry| {
-            Scalar::from(entry.value().as_bytes().to_vec())
-        }),
+        TextSource::Entry(path) => line
+            .get_entry_by_path(path)
+            .map_or(Scalar::Null, |entry| Scalar::from(entry.value().as_ref())),
     })
 }
 
@@ -165,20 +165,11 @@ fn capture_value(
     dtype: &DataType,
     options: &TextOptions,
 ) -> Result<Scalar> {
-    let Some(Some(raw)) = line.captures().get(index) else {
+    let Some(text) = line.capture(index) else {
         return Ok(Scalar::Null);
     };
     let name = options.capture_names().nth(index).unwrap_or_default();
-    let text = raw.decode(options.charset()).map_err(|error| {
-        super::arrow::row_error(
-            line.index(),
-            None,
-            line.url(),
-            name,
-            format_smolstr!("{error}"),
-        )
-    })?;
-    super::arrow::parse_capture(&text, dtype, options.timezone())
+    super::arrow::parse_capture(text, dtype, options.timezone())
         .map_err(|reason| super::arrow::row_error(line.index(), None, line.url(), name, reason))
 }
 
@@ -349,7 +340,7 @@ fn line_of(
     row: usize,
     field: &crate::Field,
 ) -> Result<TextLine> {
-    let mut line = TextLine::new(row as u64, super::TextBytes::new());
+    let mut line = TextLine::from_bytes(row as u64, super::TextBytes::new())?;
     let mut captures: Vec<Option<super::TextBytes>> = Vec::new();
     for (index, column) in plan.columns().iter().enumerate() {
         let Some(at) = intake.positions[index] else {
@@ -369,7 +360,7 @@ fn line_of(
         let value = value.get(0).cloned().unwrap_or(value);
         apply(&mut line, &mut captures, &column.source, &value)?;
     }
-    line.set_captures(captures);
+    line.set_captures(captures)?;
     Ok(line)
 }
 
@@ -435,7 +426,7 @@ fn apply(
         }
         TextSource::Body => {
             if let Some(held) = read_bytes(value)? {
-                line.set_body(held);
+                line.set_body(held)?;
             }
         }
         TextSource::DroppedByteSize => {

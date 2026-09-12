@@ -4,7 +4,7 @@ use criterion::{Criterion, Throughput};
 use yggdryl::holder::local::Folder;
 use yggdryl::{DataType, FixCategory, FixRegistry, Url};
 
-use super::{BRANCH_FIELDS, scratch, seed, seed_root, two_branches};
+use super::{DIALECT_FIELDS, scratch, seed, seed_root, two_dialects};
 
 /// A folder holding `shards` shards of ten fields each, built outside the
 /// timer.
@@ -62,21 +62,32 @@ pub fn benchmarks(criterion: &mut Criterion) {
         },
     );
 
-    // The branched layout: a registry holding two dictionaries opens, loads
-    // and writes them as separate folders of shards.
-    let mixed = two_branches(BRANCH_FIELDS);
+    // Two dictionaries in one registry: the venue's fields land in the same
+    // shards as the standard ones, membership written on each and read back
+    // with it, nothing keyed by dialect.
+    let mixed = two_dialects(DIALECT_FIELDS);
     let mixed_root = scratch("two-branches");
     let mut mixed_folder = Folder::new(&mixed_root).expect("a local folder");
     mixed
         .write_into(&mut mixed_folder)
         .expect("the shards written");
+    let reloaded = FixRegistry::from_handle(&mixed_folder).expect("the shards read back");
+    assert_eq!(reloaded.len(), mixed.len());
+    assert!(
+        reloaded
+            .field(5_000)
+            .expect("the first venue field")
+            .as_fix()
+            .has_branch(super::venue())
+    );
+    assert_eq!(reloaded.dialects(), mixed.dialects());
     group.throughput(Throughput::Elements(u64::try_from(mixed.len()).unwrap()));
-    group.bench_function("from_handle_two_branches", |bencher| {
+    group.bench_function("from_handle_two_dialects", |bencher| {
         bencher.iter(|| black_box(FixRegistry::from_handle(black_box(&mixed_folder)).unwrap()));
     });
     let mixed_target = scratch("two-branches-write");
     let mut mixed_target_folder = Folder::new(&mixed_target).expect("a local folder");
-    group.bench_function("write_into_two_branches", |bencher| {
+    group.bench_function("write_into_two_dialects", |bencher| {
         bencher.iter(|| {
             black_box(&mixed)
                 .write_into(&mut mixed_target_folder)
@@ -116,7 +127,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             black_box(
                 catalog
-                    .definition(FixCategory::Groups, black_box("Parties"), None)
+                    .definition(FixCategory::Groups, black_box("Parties"))
                     .unwrap(),
             )
         });
@@ -129,17 +140,15 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(field.as_fix().code_name(black_box("1"))));
     });
     group.bench_function("msgtype_code", |bencher| {
-        bencher.iter(|| black_box(catalog.get_msgtype(black_box("D"), None)));
+        bencher.iter(|| black_box(catalog.get_msgtype(black_box("D"))));
     });
     group.bench_function("msgtype_stable_hash_one_state_allocation", |bencher| {
-        let message = catalog.msgtype("D", None).unwrap();
+        let message = catalog.msgtype("D").unwrap();
         bencher.iter(|| black_box(message.stable_hash()));
     });
     group.bench_function("msgtype_scoped_group", |bencher| {
-        let message = catalog.msgtype("D", None).unwrap();
-        bencher.iter(|| {
-            black_box(message.get_group_by_counter(black_box(yggdryl::FixId::standard(453))))
-        });
+        let message = catalog.msgtype("D").unwrap();
+        bencher.iter(|| black_box(message.get_group_by_counter(black_box(453))));
     });
     let codec = yggdryl::FixCodec::new(std::sync::Arc::new(catalog.clone()));
     group.bench_function("numeric_group_cached_plan", |bencher| {

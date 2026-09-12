@@ -4,9 +4,7 @@ use super::path as fpath;
 
 use std::path::PathBuf;
 use yggdryl::holder::local::Folder;
-use yggdryl::{
-    DataType, Field, FixBranch, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar,
-};
+use yggdryl::{DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar};
 
 fn scratch(label: &str) -> PathBuf {
     let path = Folder::temporary().unwrap().path().unwrap().join(format!(
@@ -43,7 +41,7 @@ fn catalog() -> FixRegistry {
     // the message below takes the stored group rather than the field it was
     // built from.
     let component = registry
-        .definition(FixCategory::Components, "Party", None)
+        .definition(FixCategory::Components, "Party")
         .unwrap()
         .clone();
     let mut group = DataType::list(component).nullable_field("Parties");
@@ -53,7 +51,7 @@ fn catalog() -> FixRegistry {
         .insert_definition(FixCategory::Groups, group)
         .unwrap();
     let mut group = registry
-        .definition(FixCategory::Groups, "Parties", None)
+        .definition(FixCategory::Groups, "Parties")
         .unwrap()
         .clone();
     group.as_fix_mut().set_group("Parties").unwrap();
@@ -70,25 +68,30 @@ fn catalog() -> FixRegistry {
 }
 
 #[test]
-fn registry_json_snapshots_preserve_the_graph_and_all_branch_declarations() {
+fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     let mut registry = catalog();
-    let branch = FixBranch::from_parts("cme", "3.4.5".parse().unwrap())
-        .unwrap()
-        .with_aliases(["merc"])
-        .unwrap();
     let mut venue = tagged("VenueTrade", 5001, DataType::utf8());
-    venue.as_fix_mut().set_branch(&branch).unwrap();
+    venue
+        .as_fix_mut()
+        .set_branches(["CME", "merc", "cme"])
+        .unwrap();
     registry
         .create_definition(FixCategory::Fields, venue)
         .unwrap();
-    registry.set_branch(branch.clone()).unwrap();
-    let empty = FixBranch::from_parts("pending", "7.1".parse().unwrap()).unwrap();
-    registry.set_branch(empty.clone()).unwrap();
+    let mut pending = registry
+        .definition(FixCategory::Messages, "NewOrderSingle")
+        .unwrap()
+        .clone();
+    pending.as_fix_mut().set_branches(["pending"]).unwrap();
+    registry
+        .update_definition(FixCategory::Messages, pending)
+        .unwrap();
 
     let json = registry.into_json().unwrap();
     let document = yggdryl::from_json_scalar(&json).unwrap();
     let record = document.as_record().unwrap();
-    assert_eq!(record.len(), 5);
+    assert_eq!(record.len(), FixCategory::ALL.len());
+    assert!(record.get("branches").is_none());
     for category in FixCategory::ALL {
         assert!(record[category.as_str()].as_sequence().is_some());
     }
@@ -103,22 +106,32 @@ fn registry_json_snapshots_preserve_the_graph_and_all_branch_declarations() {
     assert_eq!(loaded, registry);
     assert_eq!(loaded.into_json().unwrap(), json);
     assert_eq!(loaded.stable_hash(), registry.stable_hash());
-    assert_eq!(loaded.branch_named("merc"), Some(&branch));
-    assert_eq!(loaded.branch_named("pending"), Some(&empty));
+    // Membership is stamped on the field and the definition it was declared
+    // on, folded once, deduplicated and sorted, and read back as written.
+    let venue = loaded.field(5001).unwrap().as_fix();
+    assert_eq!(venue.branches().collect::<Vec<_>>(), ["cme", "merc"]);
+    assert!(venue.has_branch("Cme"));
+    assert!(!venue.has_branch("pending"));
+    assert!(
+        loaded
+            .field(448)
+            .unwrap()
+            .as_fix()
+            .branches()
+            .next()
+            .is_none()
+    );
+    let message = loaded.msgtype("D").unwrap();
+    assert!(message.as_field().as_fix().has_branch("pending"));
+    assert_eq!(loaded.dialects(), ["cme", "merc", "pending"]);
     assert_eq!(loaded.field(453).unwrap().dtype(), &DataType::Int32);
     assert_eq!(
         loaded.field(448).unwrap().as_fix().code_name("B"),
         Some("Broker")
     );
-    let message = loaded.msgtype("D", None).unwrap();
+    let message = loaded.msgtype("D").unwrap();
     assert_eq!(message.name(), "NewOrderSingle");
-    assert_eq!(
-        message
-            .get_group_by_counter(FixId::standard(453))
-            .unwrap()
-            .name(),
-        "Parties"
-    );
+    assert_eq!(message.get_group_by_counter(453).unwrap().name(), "Parties");
 
     let reversed = Scalar::from_record(record.iter().map(|(key, value)| {
         (
@@ -174,7 +187,6 @@ fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
         let before = registry.clone();
         for duplicate in [
             current.clone(),
-            tagged("other", 1865, DataType::Int32),
             tagged("quoteackstatus", 1866, DataType::Int32),
         ] {
             assert!(
@@ -184,6 +196,34 @@ fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
             );
             assert_eq!(registry, before);
         }
+        // Another name on the held tag is a field of its own beside the
+        // holder, which lends nothing but learns the name; the bare tag
+        // keeps answering the holder.
+        registry
+            .create_definition(FixCategory::Fields, tagged("other", 1865, DataType::Int32))
+            .unwrap();
+        assert_eq!(registry.len(), 3 + super::crated());
+        assert_eq!(registry.field(1865).unwrap().name(), "quoteackstatus");
+        assert_eq!(registry.field("other").unwrap().name(), "other");
+        assert_eq!(
+            registry
+                .field(FixId::of(1865, "other").unwrap())
+                .unwrap()
+                .name(),
+            "other"
+        );
+        assert!(
+            registry
+                .field(1865)
+                .unwrap()
+                .as_fix()
+                .aliases()
+                .any(|alias| alias == "other")
+        );
+        assert_eq!(
+            FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
+            registry
+        );
     }
 }
 
@@ -202,10 +242,10 @@ fn the_complete_committed_catalog_round_trips_through_one_snapshot() {
 }
 
 #[test]
-fn registry_hashes_include_named_definitions_and_branch_metadata() {
+fn registry_hashes_include_named_definitions_and_membership() {
     let original = catalog();
     let mut changed = original.clone();
-    let old_message = original.msgtype("D", None).unwrap();
+    let old_message = original.msgtype("D").unwrap();
     let mut field = old_message.as_field().clone();
     field.as_fix_mut().set_msgtype("D2").unwrap();
     changed
@@ -214,32 +254,52 @@ fn registry_hashes_include_named_definitions_and_branch_metadata() {
     assert_ne!(changed, original);
     assert_ne!(changed.stable_hash(), original.stable_hash());
     assert_ne!(
-        changed.msgtype("D2", None).unwrap().stable_hash(),
+        changed.msgtype("D2").unwrap().stable_hash(),
         old_message.stable_hash()
     );
     assert_eq!(old_message.stable_hash(), old_message.clone().stable_hash());
 
+    // Membership is metadata a field carries, so it is part of what the
+    // registry hashes; its order is not, since the store sorts it.
     let mut declared = original.clone();
-    declared
-        .set_branch(FixBranch::from_parts("pending", "1.0".parse().unwrap()).unwrap())
-        .unwrap();
+    let mut member = declared.field(448).unwrap().clone();
+    member.as_fix_mut().set_branches(["pending"]).unwrap();
+    declared.update(member).unwrap();
     let before = declared.stable_hash();
-    declared
-        .set_branch(FixBranch::from_parts("pending", "1.1".parse().unwrap()).unwrap())
-        .unwrap();
+    assert_ne!(before, original.stable_hash());
+    let mut member = declared.field(448).unwrap().clone();
+    member.as_fix_mut().add_branch("venue").unwrap();
+    declared.update(member).unwrap();
     assert_ne!(declared.stable_hash(), before);
-    assert_ne!(declared.stable_hash(), original.stable_hash());
+    let mut reversed = original.clone();
+    let mut member = reversed.field(448).unwrap().clone();
+    member
+        .as_fix_mut()
+        .set_branches(["Venue", "pending"])
+        .unwrap();
+    reversed.update(member).unwrap();
+    assert_eq!(reversed, declared);
+    assert_eq!(reversed.stable_hash(), declared.stable_hash());
 }
 
 #[test]
 fn registry_snapshots_reject_missing_categories_and_unresolved_references() {
     for json in [
         "[]",
-        r#"{"fields":[],"messages":[],"components":[],"groups":[]}"#,
+        r#"{"fields":[],"messages":[],"components":[]}"#,
         r#"{"fields":[],"messages":[],"components":[],"groups":[],"branches":[],"codesets":[]}"#,
     ] {
         assert!(FixRegistry::from_json(json).is_err(), "{json}");
     }
+    // The four categories are the whole of a snapshot: nothing else is
+    // declared beside them, so an empty one is a registry of the crate's own
+    // fields and nothing more.
+    let empty =
+        FixRegistry::from_json(r#"{"fields":[],"messages":[],"components":[],"groups":[]}"#)
+            .unwrap();
+    assert_eq!(empty, FixRegistry::new());
+    assert_eq!(empty.len(), super::crated());
+    assert!(empty.dialects().is_empty());
     let document = yggdryl::from_json_scalar(catalog().into_json().unwrap()).unwrap();
     let missing = Scalar::from_record(document.as_record().unwrap().iter().map(|(key, value)| {
         (
@@ -292,7 +352,7 @@ fn categories_round_trip_compact_references_and_counter_fields() {
     assert_eq!(loaded, registry);
     assert_eq!(
         loaded
-            .definition(FixCategory::Groups, "Parties", None)
+            .definition(FixCategory::Groups, "Parties")
             .unwrap()
             .as_fix()
             .tag()
@@ -301,13 +361,7 @@ fn categories_round_trip_compact_references_and_counter_fields() {
         "the derived tag survives the round trip"
     );
     assert_eq!(loaded.field(453).unwrap().dtype(), &DataType::Int32);
-    assert_eq!(
-        loaded
-            .group_by_counter(FixId::standard(453))
-            .unwrap()
-            .name(),
-        "Parties"
-    );
+    assert_eq!(loaded.group_by_counter(453).unwrap().name(), "Parties");
     assert_eq!(loaded.field(448).unwrap().as_fix().codes().count(), 1);
     assert_eq!(
         loaded.field(448).unwrap().as_fix().code_name("B"),
@@ -331,7 +385,7 @@ fn catalog_mutations_refuse_dangling_or_stale_resolved_references_atomically() {
         (FixCategory::Groups, "Parties"),
     ] {
         assert!(
-            registry.remove_definition(category, name, None).is_err(),
+            registry.remove_definition(category, name).is_err(),
             "{category}/{name}"
         );
         assert_eq!(registry, before);
@@ -343,12 +397,20 @@ fn catalog_mutations_refuse_dangling_or_stale_resolved_references_atomically() {
             .is_err()
     );
     assert_eq!(registry, before);
+    // The held name on another tag is the same field spelled with another
+    // number, which a creation refuses: only a merge folds it in.
     assert!(
         registry
             .create_definition(
                 FixCategory::Fields,
-                tagged("OtherName", 448, DataType::utf8())
+                tagged("PartyID", 5001, DataType::utf8())
             )
+            .is_err()
+    );
+    assert_eq!(registry, before);
+    assert!(
+        registry
+            .insert(tagged("party_id", 5001, DataType::utf8()))
             .is_err()
     );
     assert_eq!(registry, before);
@@ -362,41 +424,50 @@ fn catalog_mutations_refuse_dangling_or_stale_resolved_references_atomically() {
     );
     assert_eq!(registry, before);
     registry
-        .remove_definition(FixCategory::Messages, "NewOrderSingle", None)
+        .remove_definition(FixCategory::Messages, "NewOrderSingle")
         .unwrap()
         .unwrap();
     registry
-        .remove_definition(FixCategory::Groups, "Parties", None)
+        .remove_definition(FixCategory::Groups, "Parties")
         .unwrap()
         .unwrap();
     registry
-        .remove_definition(FixCategory::Components, "Party", None)
+        .remove_definition(FixCategory::Components, "Party")
         .unwrap()
         .unwrap();
     registry
-        .remove_definition(FixCategory::Fields, "PartyID", None)
+        .remove_definition(FixCategory::Fields, "PartyID")
         .unwrap()
         .unwrap();
 }
 
 #[test]
-fn enum_codes_belong_to_each_field_and_branch() {
+fn enum_codes_belong_to_each_field() {
     let mut registry = catalog();
-    let venue = FixBranch::from_str("venue").unwrap();
-    let mut field = DataType::utf8().nullable_field("PartyID");
-    field.as_fix_mut().set_id(&venue, 5001).unwrap();
+    // A venue's field on the standard tag, under its own name: a second
+    // field beside the holder, each with the codes it declared.
+    let mut field = tagged("VenuePartyID", 448, DataType::utf8());
+    field.as_fix_mut().set_branches(["venue"]).unwrap();
     field
         .as_fix_mut()
         .set_codes(&[FixCode::new("VenueBroker", "V")])
         .unwrap();
     registry.insert(field).unwrap();
+    let venue = registry
+        .field(FixId::of(448, "VenuePartyID").unwrap())
+        .unwrap()
+        .as_fix();
+    assert_eq!(venue.code_value("VenueBroker"), Some("V"));
+    assert_eq!(venue.code_value("Broker"), None);
+    assert!(venue.has_branch("venue"));
+    assert_eq!(registry.field(448).unwrap().name(), "PartyID");
     assert_eq!(
         registry
-            .field(FixId::from_parts(&venue, 5001).unwrap())
+            .field(448)
             .unwrap()
             .as_fix()
             .code_value("VenueBroker"),
-        Some("V")
+        None
     );
     assert_eq!(
         registry.field(448).unwrap().as_fix().code_value("Broker"),
@@ -407,22 +478,142 @@ fn enum_codes_belong_to_each_field_and_branch() {
 }
 
 #[test]
+fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
+    // A dictionary's own name over a tag the standard holds is a second
+    // field: it shares the holder's shard, the holder keeps the bare tag and
+    // the alias it learnt, and both survive every order a store reads.
+    let mut registry = catalog();
+    let mut venue = tagged("VenuePartyID", 448, DataType::utf8());
+    venue.as_fix_mut().set_branches(["venue"]).unwrap();
+    registry.insert(venue).unwrap();
+    let holder = FixId::of(448, "PartyID").unwrap();
+    let newcomer = FixId::of(448, "VenuePartyID").unwrap();
+    assert_ne!(holder, newcomer);
+    let check = |registry: &FixRegistry| {
+        assert_eq!(registry.len(), 3 + super::crated());
+        assert_eq!(registry.field(448).unwrap().name(), "PartyID");
+        assert_eq!(registry.field(holder).unwrap().name(), "PartyID");
+        assert_eq!(registry.field(newcomer).unwrap().name(), "VenuePartyID");
+        assert_eq!(
+            registry.field("venue_party_id").unwrap().name(),
+            "VenuePartyID"
+        );
+        assert!(
+            registry
+                .field(newcomer)
+                .unwrap()
+                .as_fix()
+                .has_branch("venue")
+        );
+        assert_eq!(
+            registry
+                .field(448)
+                .unwrap()
+                .as_fix()
+                .aliases()
+                .collect::<Vec<_>>(),
+            ["VenuePartyID"]
+        );
+        assert!(
+            registry
+                .field(448)
+                .unwrap()
+                .as_fix()
+                .branches()
+                .next()
+                .is_none()
+        );
+        // Tag-major, the holder first: the two share a tag and sit side by
+        // side, the one the bare tag answers leading, which is what a store
+        // writes first and a reader loads first.
+        let tags: Vec<i32> = registry
+            .iter()
+            .filter_map(|field| field.as_fix().tag().unwrap())
+            .filter(|tag| *tag < yggdryl::CRATE_TAG_MIN)
+            .collect();
+        assert_eq!(tags, [448, 448, 453]);
+        let on_448: Vec<FixId> = registry
+            .iter()
+            .filter(|field| field.as_fix().tag().unwrap() == Some(448))
+            .map(|field| field.as_fix().id().unwrap().unwrap())
+            .collect();
+        assert_eq!(
+            on_448[0],
+            registry.field(448).unwrap().as_fix().id().unwrap().unwrap(),
+            "{on_448:?}"
+        );
+        assert_eq!(
+            registry
+                .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
+                .unwrap()
+                .as_fix()
+                .code_name("B"),
+            Some("Broker")
+        );
+    };
+    check(&registry);
+
+    let json = registry.into_json().unwrap();
+    let loaded = FixRegistry::from_json(&json).unwrap();
+    assert_eq!(loaded, registry);
+    check(&loaded);
+    // The array order is the arrival order, and the holder of a shared tag
+    // is decided by arrival: a document that lists the two the other way
+    // round describes the other field as the holder, with the alias lent
+    // the other way - a different dictionary, loaded as written.
+    let document = yggdryl::from_json_scalar(&json).unwrap();
+    let reversed = Scalar::from_record(document.as_record().unwrap().iter().map(|(key, value)| {
+        (
+            key.clone(),
+            Scalar::from_sequence(value.as_sequence().unwrap().iter().rev().cloned()),
+        )
+    }))
+    .unwrap();
+    let reordered = FixRegistry::from_json(&yggdryl::into_json_scalar(&reversed).unwrap()).unwrap();
+    assert_ne!(reordered, registry);
+    assert_eq!(reordered.field(448).unwrap().name(), "VenuePartyID");
+    assert_eq!(
+        reordered
+            .field(448)
+            .unwrap()
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        ["PartyID"]
+    );
+    assert_eq!(reordered.len(), registry.len());
+    assert_eq!(
+        FixRegistry::from_json(&reordered.into_json().unwrap()).unwrap(),
+        reordered,
+        "what a store writes, it reads back exactly, whichever field holds the tag"
+    );
+
+    let root = scratch("two-on-one-tag");
+    let mut folder = Folder::new(&root).unwrap();
+    registry.write_into(&mut folder).unwrap();
+    assert!(root.join("fields/4.json").is_file());
+    let shard =
+        yggdryl::from_json_scalar(std::fs::read(root.join("fields/4.json")).unwrap()).unwrap();
+    assert_eq!(shard.as_sequence().unwrap().len(), 3);
+    let stored = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(stored, registry);
+    check(&stored);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn contexts_sharing_a_counter_are_explicitly_ambiguous() {
     let mut registry = catalog();
     let mut group = registry
-        .definition(FixCategory::Groups, "Parties", None)
+        .definition(FixCategory::Groups, "Parties")
         .unwrap()
         .clone();
     group.set_name("TradeParties");
     registry
         .insert_definition(FixCategory::Groups, group)
         .unwrap();
-    assert!(
-        registry
-            .get_group_by_counter(FixId::standard(453))
-            .is_none()
-    );
-    assert!(registry.group_by_counter(FixId::standard(453)).is_err());
+    assert!(registry.get_group_by_counter(453).is_none());
+    assert!(registry.group_by_counter(453).is_err());
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 2);
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
 }
@@ -438,7 +629,7 @@ fn store_removes_empty_shards_and_named_documents() {
     registry.write_into(&mut folder).unwrap();
     registry.remove(10000).unwrap();
     registry
-        .remove_definition(FixCategory::Messages, "NewOrderSingle", None)
+        .remove_definition(FixCategory::Messages, "NewOrderSingle")
         .unwrap();
     registry.write_into(&mut folder).unwrap();
     assert!(!root.join("fields/100.json").exists());
@@ -475,7 +666,7 @@ fn unresolved_and_cyclic_compact_references_name_the_failure() {
 }
 
 #[test]
-fn malformed_shards_and_folder_disagreements_are_located() {
+fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
     let root = scratch("malformed");
     let folder = Folder::new(&root).unwrap();
     for bytes in [
@@ -502,19 +693,35 @@ fn malformed_shards_and_folder_disagreements_are_located() {
         .unwrap()
         .remove(false)
         .unwrap();
-    let field = tagged("WrongBranch", 5001, DataType::utf8());
+    // A shard whose number disagrees with the tags inside is located by
+    // its own name.
+    let field = tagged("Misplaced", 5001, DataType::utf8());
+    let bytes =
+        yggdryl::text::json::into_bytes(&Scalar::from_sequence([field.clone().into_value()]))
+            .unwrap();
+    folder
+        .child_by_path("fields/49.json")
+        .unwrap()
+        .write_all_bytes(&bytes)
+        .unwrap();
+    let error = FixRegistry::from_handle(&folder).unwrap_err().to_string();
+    assert!(error.contains("49.json"), "{error}");
+    folder
+        .child_by_path("fields/49.json")
+        .unwrap()
+        .remove(false)
+        .unwrap();
+    // There are no per-dictionary folders: a folder inside a category is
+    // not a store's layout, so what it holds is passed over rather than read
+    // as a dictionary's own shard.
     folder
         .child_by_path("fields/venue/50.json")
         .unwrap()
-        .write_all_bytes(
-            &yggdryl::text::json::into_bytes(&Scalar::from_sequence([field.into_value()])).unwrap(),
-        )
+        .write_all_bytes(&bytes)
         .unwrap();
-    let error = FixRegistry::from_handle(&folder).unwrap_err().to_string();
-    assert!(
-        error.contains("venue") && error.contains("50.json"),
-        "{error}"
-    );
+    let loaded = FixRegistry::from_handle(&folder).unwrap();
+    assert!(loaded.get_field(5001).is_none());
+    assert_eq!(loaded.len(), super::crated());
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -531,9 +738,7 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
         assert_eq!(registry.definitions(category).count(), count, "{category}");
     }
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
-    let group = registry
-        .definition(FixCategory::Groups, "Parties", None)
-        .unwrap();
+    let group = registry.definition(FixCategory::Groups, "Parties").unwrap();
     let DataType::List(item) = group.dtype() else {
         panic!("parties list")
     };
@@ -631,20 +836,17 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
             (FixCategory::Groups, "Parties"),
             (FixCategory::Messages, "NewOrderSingle"),
         ] {
-            assert_eq!(
-                target.definition(category, name, None).unwrap().name(),
-                name
-            );
+            assert_eq!(target.definition(category, name).unwrap().name(), name);
         }
         let group = target
-            .msgtype("D", None)
+            .msgtype("D")
             .unwrap()
-            .get_group_by_counter(FixId::standard(453))
+            .get_group_by_counter(453)
             .unwrap();
         assert_eq!(group.name(), "Parties");
         assert_eq!(
             target
-                .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
+                .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
                 .unwrap()
                 .as_fix()
                 .code_name("B"),
@@ -668,7 +870,7 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
         .unwrap();
     source.insert(coded).unwrap();
     let mut message = source
-        .definition(FixCategory::Messages, "NewOrderSingle", None)
+        .definition(FixCategory::Messages, "NewOrderSingle")
         .unwrap()
         .clone();
     message.set_name("IncomingOrder");
@@ -686,14 +888,14 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
         "NewOrderSingle.Parties.PartyID",
         "IncomingOrder.Parties.PartyID",
     ] {
-        let field = target.field_by_path(&fpath(path), None).unwrap();
+        let field = target.field_by_path(&fpath(path)).unwrap();
         assert_eq!(field.as_fix().code_name("B"), Some("Broker"), "{path}");
         assert_eq!(field.as_fix().code_name("C"), Some("Client"), "{path}");
     }
     let group = target
-        .msgtype("I", None)
+        .msgtype("I")
         .unwrap()
-        .get_group_by_counter(FixId::standard(453))
+        .get_group_by_counter(453)
         .unwrap();
     let DataType::List(item) = group.dtype() else {
         panic!("the resolved group list")
@@ -720,10 +922,8 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
         .as_fix_mut()
         .set_codes(&[FixCode::new("Client", "C")])
         .unwrap();
+    coded.as_fix_mut().set_branches(["incoming"]).unwrap();
     let mut source = FixRegistry::from_fields([coded]).unwrap();
-    source
-        .set_branch(FixBranch::from_str("incoming").unwrap())
-        .unwrap();
     let mut member = source.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
     let extended = DataType::from_fields([member, DataType::Int32.nullable_field("Extra")])
@@ -743,19 +943,30 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
         "NewOrderSingle.Parties.Extra",
     ] {
         assert_eq!(
-            target.field_by_path(&fpath(path), None).unwrap().dtype(),
+            target.field_by_path(&fpath(path)).unwrap().dtype(),
             &DataType::Int32,
             "{path}"
         );
     }
     assert_eq!(
         target
-            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
             .unwrap()
             .as_fix()
             .code_name("C"),
         Some("Client")
     );
+    // The membership the source stamped unions onto the standard field the
+    // target already held, and reaches its occurrences the same way.
+    assert!(target.field(448).unwrap().as_fix().has_branch("incoming"));
+    assert!(
+        target
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
+            .unwrap()
+            .as_fix()
+            .has_branch("incoming")
+    );
+    assert_eq!(target.dialects(), ["incoming"]);
     assert_eq!(source, before_source);
     assert_eq!(
         FixRegistry::from_json(&target.into_json().unwrap()).unwrap(),
@@ -782,7 +993,7 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
 fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_loss() {
     let mut registry = catalog();
     let mut component = registry
-        .definition(FixCategory::Components, "Party", None)
+        .definition(FixCategory::Components, "Party")
         .unwrap()
         .clone();
     component
@@ -793,7 +1004,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .update_definition(FixCategory::Components, component)
         .unwrap();
     let DataType::List(item) = registry
-        .field_by_path(&fpath("NewOrderSingle.Parties"), None)
+        .field_by_path(&fpath("NewOrderSingle.Parties"))
         .unwrap()
         .dtype()
     else {
@@ -810,14 +1021,14 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .unwrap();
     assert_eq!(
         registry
-            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
+            .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
             .unwrap()
             .as_fix()
             .description(),
         Some("A party identifier")
     );
     let mut group = registry
-        .definition(FixCategory::Groups, "Parties", None)
+        .definition(FixCategory::Groups, "Parties")
         .unwrap()
         .clone();
     group
@@ -829,7 +1040,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .unwrap();
     assert_eq!(
         registry
-            .field_by_path(&fpath("NewOrderSingle.Parties"), None)
+            .field_by_path(&fpath("NewOrderSingle.Parties"))
             .unwrap()
             .as_fix()
             .description(),
@@ -871,7 +1082,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
         (FixCategory::Messages, "NewOrderSingle"),
     ] {
         for (replace, description) in [(false, "Updated metadata"), (true, "Replaced metadata")] {
-            let mut field = registry.definition(category, name, None).unwrap().clone();
+            let mut field = registry.definition(category, name).unwrap().clone();
             field.set_name(name.to_ascii_lowercase());
             field.as_fix_mut().set_description(description).unwrap();
             if replace {
@@ -879,18 +1090,18 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
             } else {
                 registry.update_definition(category, field).unwrap();
             }
-            let canonical = registry.definition(category, name, None).unwrap();
+            let canonical = registry.definition(category, name).unwrap();
             assert_eq!(canonical.name(), name);
             assert_eq!(canonical.as_fix().description(), Some(description));
         }
     }
     let partyid = registry
-        .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"), None)
+        .field_by_path(&fpath("NewOrderSingle.Parties.PartyID"))
         .unwrap();
     assert_eq!(partyid.name(), "PartyID");
     assert_eq!(partyid.as_fix().description(), Some("Replaced metadata"));
     let group = registry
-        .field_by_path(&fpath("NewOrderSingle.Parties"), None)
+        .field_by_path(&fpath("NewOrderSingle.Parties"))
         .unwrap();
     assert_eq!(group.name(), "Parties");
     assert_eq!(group.as_fix().description(), Some("Replaced metadata"));
@@ -905,7 +1116,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
 
     let before = registry.clone();
     let mut component = registry
-        .definition(FixCategory::Components, "Party", None)
+        .definition(FixCategory::Components, "Party")
         .unwrap()
         .clone();
     component.set_name("Pa_rty");
@@ -930,7 +1141,7 @@ fn folded_field_updates_keep_canonical_names_and_refresh_references() {
     assert_eq!(canonical.as_fix().tags().unwrap(), [9001]);
     assert!(std::ptr::eq(registry.field(9001).unwrap(), canonical));
     for path in ["Instrument.Symbol", "NewOrderSingle.Instrument.Symbol"] {
-        let occurrence = registry.field_by_path(&fpath(path), None).unwrap();
+        let occurrence = registry.field_by_path(&fpath(path)).unwrap();
         assert_eq!(occurrence.name(), "symbol");
         assert_eq!(occurrence.as_fix().field_ref(), Some("symbol"));
         assert_eq!(occurrence.as_fix().tags().unwrap(), [9001]);
@@ -1005,20 +1216,20 @@ fn mixed_inline_and_reference_depth_has_one_bound() {
 #[test]
 fn message_types_borrow_the_catalog_schema_and_keep_wire_codes_case_sensitive() {
     let registry = catalog();
-    let by_code = registry.msgtype("D", None).unwrap();
-    let by_name = registry.msgtype("new_order_single", None).unwrap();
+    let by_code = registry.msgtype("D").unwrap();
+    let by_name = registry.msgtype("new_order_single").unwrap();
     assert!(std::ptr::eq(by_code, by_name));
     assert!(std::ptr::eq(
         by_code.as_field(),
         registry
-            .definition(FixCategory::Messages, "NewOrderSingle", None)
+            .definition(FixCategory::Messages, "NewOrderSingle")
             .unwrap()
     ));
     assert_eq!(by_code.name(), "NewOrderSingle");
     assert_eq!(by_code.as_str(), "D");
-    assert!(registry.get_msgtype("d", None).is_none());
+    assert!(registry.get_msgtype("d").is_none());
     assert_eq!(registry.msgtypes().count(), 1);
-    assert!(registry.msgtype("unknown", None).is_err());
+    assert!(registry.msgtype("unknown").is_err());
     assert!(std::ptr::eq(by_code, registry.msgtype_at(0).unwrap()));
     assert!(registry.msgtype_at(1).is_none());
     assert!(registry.msgtype_at(usize::MAX).is_none());
@@ -1032,10 +1243,7 @@ fn message_position_keeps_identity_when_a_name_is_another_messages_wire_code() {
     registry
         .insert_definition(FixCategory::Messages, field)
         .unwrap();
-    assert_eq!(
-        registry.msgtype("D", None).unwrap().name(),
-        "NewOrderSingle"
-    );
+    assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
     assert_eq!(registry.msgtype_at(0).unwrap().name(), "D");
     assert_eq!(registry.msgtype_at(0).unwrap().as_str(), "X");
     assert_eq!(registry.msgtype_at(1).unwrap().name(), "NewOrderSingle");
@@ -1043,8 +1251,10 @@ fn message_position_keeps_identity_when_a_name_is_another_messages_wire_code() {
 }
 
 #[test]
-fn message_code_ambiguity_and_branch_namespaces_are_explicit() {
+fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
     let mut registry = catalog();
+    // A code re-declared under another name is a second message: the bare
+    // code keeps answering the first holder, the newcomer is reached by name.
     let mut other = DataType::from_fields([])
         .unwrap()
         .required_field("OtherOrder");
@@ -1052,33 +1262,59 @@ fn message_code_ambiguity_and_branch_namespaces_are_explicit() {
     registry
         .insert_definition(FixCategory::Messages, other)
         .unwrap();
-    assert!(registry.get_msgtype("D", None).is_none());
-    assert_eq!(registry.msgtype("OtherOrder", None).unwrap().as_str(), "D");
+    assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
+    assert_eq!(registry.msgtype("OtherOrder").unwrap().as_str(), "D");
+    assert_eq!(registry.msgtype("other_order").unwrap().as_str(), "D");
+    assert_eq!(registry.msgtypes().count(), 2);
+    // Once the first holder goes, the code answers the one left.
     registry
-        .remove_definition(FixCategory::Messages, "OtherOrder", None)
+        .remove_definition(FixCategory::Messages, "NewOrderSingle")
+        .unwrap()
         .unwrap();
-    assert_eq!(
-        registry.msgtype("D", None).unwrap().name(),
-        "NewOrderSingle"
-    );
+    assert_eq!(registry.msgtype("D").unwrap().name(), "OtherOrder");
+    registry
+        .remove_definition(FixCategory::Messages, "OtherOrder")
+        .unwrap()
+        .unwrap();
+    assert!(registry.get_msgtype("D").is_none());
 
-    let venue = FixBranch::from_str("venue").unwrap();
+    // A dictionary's message on a standard code is the same one namespace:
+    // re-declared under the folded name it folds into the stored message,
+    // under its own name it stands beside it, carrying its membership.
+    let mut registry = catalog();
+    let mut restated = DataType::from_fields([])
+        .unwrap()
+        .required_field("new_order_single");
+    restated.as_fix_mut().set_msgtype("D").unwrap();
+    restated.as_fix_mut().set_branches(["venue"]).unwrap();
+    assert!(
+        !registry
+            .add_definition(FixCategory::Messages, restated)
+            .unwrap()
+    );
+    assert_eq!(registry.msgtypes().count(), 1);
+    let folded = registry.msgtype("D").unwrap();
+    assert_eq!(folded.name(), "NewOrderSingle");
+    assert!(folded.as_field().as_fix().has_branch("venue"));
+    assert_eq!(folded.get_group_by_counter(453).unwrap().name(), "Parties");
     let mut message = DataType::from_fields([])
         .unwrap()
         .required_field("VenueOrder");
     message.as_fix_mut().set_msgtype("D").unwrap();
-    message.as_fix_mut().set_branch(&venue).unwrap();
+    message.as_fix_mut().set_branches(["venue"]).unwrap();
     registry
         .insert_definition(FixCategory::Messages, message)
         .unwrap();
-    assert_eq!(
-        registry.msgtype("D", Some(&venue)).unwrap().name(),
-        "VenueOrder"
-    );
-    assert_eq!(
-        registry.msgtype("D", None).unwrap().name(),
-        "NewOrderSingle"
-    );
+    assert_eq!(registry.msgtypes().count(), 2);
+    assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
+    let venue = registry.msgtype("VenueOrder").unwrap();
+    assert_eq!(venue.as_str(), "D");
+    assert!(venue.as_field().as_fix().has_branch("venue"));
+    assert_eq!(registry.dialects(), ["venue"]);
+    let loaded = FixRegistry::from_json(&registry.into_json().unwrap()).unwrap();
+    assert_eq!(loaded, registry);
+    assert_eq!(loaded.msgtype("D").unwrap().name(), "NewOrderSingle");
+    assert_eq!(loaded.msgtype("VenueOrder").unwrap().as_str(), "D");
 }
 
 #[test]
@@ -1090,15 +1326,15 @@ fn message_code_aliases_reindex_after_field_enum_mutation() {
         .set_codes(&[FixCode::new("Order", "D").with_aliases(["NOS"])])
         .unwrap();
     registry.insert(field).unwrap();
-    assert_eq!(registry.msgtype("nos", None).unwrap().as_str(), "D");
+    assert_eq!(registry.msgtype("nos").unwrap().as_str(), "D");
     let mut field = registry.field(35).unwrap().clone();
     field
         .as_fix_mut()
         .set_codes(&[FixCode::new("Order", "D").with_aliases(["NewOrder"])])
         .unwrap();
     registry.insert(field).unwrap();
-    assert!(registry.get_msgtype("NOS", None).is_none());
-    assert_eq!(registry.msgtype("new_order", None).unwrap().as_str(), "D");
+    assert!(registry.get_msgtype("NOS").is_none());
+    assert_eq!(registry.msgtype("new_order").unwrap().as_str(), "D");
 }
 
 #[test]
@@ -1130,10 +1366,10 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
         .set_codes(&[FixCode::new("Order", "D").with_aliases(["NOS"])])
         .unwrap();
     registry.update(coded).unwrap();
-    assert_eq!(registry.msgtype("NOS", None).unwrap().as_str(), "D");
+    assert_eq!(registry.msgtype("NOS").unwrap().as_str(), "D");
     assert_eq!(
         registry
-            .field_by_path(&fpath("EnumReport.Header.MsgType"), None)
+            .field_by_path(&fpath("EnumReport.Header.MsgType"))
             .unwrap()
             .as_fix()
             .code_value("NOS"),
@@ -1151,7 +1387,7 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
     registry.insert(changed).unwrap();
     assert_eq!(
         registry
-            .field_by_path(&fpath("EnumReport.Header.MsgType"), None)
+            .field_by_path(&fpath("EnumReport.Header.MsgType"))
             .unwrap()
             .as_fix()
             .description(),
@@ -1161,10 +1397,10 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
     let mut uncoded = registry.field(35).unwrap().clone();
     uncoded.as_fix_mut().set_codes(&[]).unwrap();
     registry.insert(uncoded).unwrap();
-    assert!(registry.get_msgtype("NOS", None).is_none());
+    assert!(registry.get_msgtype("NOS").is_none());
     assert!(
         registry
-            .field_by_path(&fpath("EnumReport.Header.MsgType"), None)
+            .field_by_path(&fpath("EnumReport.Header.MsgType"))
             .unwrap()
             .as_fix()
             .codes()
@@ -1177,23 +1413,19 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
 fn message_context_resolves_a_group_whose_global_counter_is_ambiguous() {
     let mut registry = catalog();
     let mut group = registry
-        .definition(FixCategory::Groups, "Parties", None)
+        .definition(FixCategory::Groups, "Parties")
         .unwrap()
         .clone();
     group.set_name("TradeParties");
     registry
         .insert_definition(FixCategory::Groups, group.clone())
         .unwrap();
-    assert!(
-        registry
-            .get_group_by_counter(FixId::standard(453))
-            .is_none()
-    );
+    assert!(registry.get_group_by_counter(453).is_none());
     assert_eq!(
         registry
-            .msgtype("D", None)
+            .msgtype("D")
             .unwrap()
-            .get_group_by_counter(FixId::standard(453))
+            .get_group_by_counter(453)
             .unwrap()
             .name(),
         "Parties"
@@ -1211,9 +1443,9 @@ fn message_context_resolves_a_group_whose_global_counter_is_ambiguous() {
         .unwrap();
     assert_eq!(
         registry
-            .msgtype("T", None)
+            .msgtype("T")
             .unwrap()
-            .get_group_by_counter(FixId::standard(453))
+            .get_group_by_counter(453)
             .unwrap()
             .name(),
         "TradeParties"
@@ -1227,7 +1459,7 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
         .insert(tagged("NoHops", 627, DataType::Int32))
         .unwrap();
     let mut parties = registry
-        .definition(FixCategory::Groups, "Parties", None)
+        .definition(FixCategory::Groups, "Parties")
         .unwrap()
         .clone();
     parties.as_fix_mut().set_group("Parties").unwrap();
@@ -1244,7 +1476,7 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
         .insert_definition(FixCategory::Groups, hops)
         .unwrap();
     let mut hops = registry
-        .definition(FixCategory::Groups, "Hops", None)
+        .definition(FixCategory::Groups, "Hops")
         .unwrap()
         .clone();
     hops.as_fix_mut().set_group("Hops").unwrap();
@@ -1255,21 +1487,9 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
     registry
         .insert_definition(FixCategory::Messages, message)
         .unwrap();
-    let message = registry.msgtype("H", None).unwrap();
-    assert_eq!(
-        message
-            .get_group_by_counter(FixId::standard(627))
-            .unwrap()
-            .name(),
-        "Hops"
-    );
-    assert_eq!(
-        message
-            .get_group_by_counter(FixId::standard(453))
-            .unwrap()
-            .name(),
-        "Parties"
-    );
+    let message = registry.msgtype("H").unwrap();
+    assert_eq!(message.get_group_by_counter(627).unwrap().name(), "Hops");
+    assert_eq!(message.get_group_by_counter(453).unwrap().name(), "Parties");
     let mut duplicate = DataType::from_fields([
         DataType::from_fields([parties.clone()])
             .unwrap()
@@ -1286,9 +1506,9 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
         .unwrap();
     assert!(
         registry
-            .msgtype("R", None)
+            .msgtype("R")
             .unwrap()
-            .get_group_by_counter(FixId::standard(453))
+            .get_group_by_counter(453)
             .is_none()
     );
 }
@@ -1321,7 +1541,7 @@ fn message_types_require_non_null_structs_and_complete_non_control_codes() {
         .unwrap();
     assert_eq!(
         registry
-            .msgtype("P Report Acknowledgement", None)
+            .msgtype("P Report Acknowledgement")
             .unwrap()
             .as_str(),
         "P Report Acknowledgement"

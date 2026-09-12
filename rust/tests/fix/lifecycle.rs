@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 use yggdryl::holder::local::Folder;
 use yggdryl::{
-    FixCodec, FixLifecycle, FixMsg, FixRegistry, ID_TAG, INSTID_TAG, PERSISTENTID_TAG, Scalar,
+    FixCodec, FixLifecycle, FixMsg, FixRegistry, ID_TAG_NAME, INSTID_TAG_NAME,
+    PERSISTENTID_TAG_NAME, Scalar,
 };
 
 fn registry() -> Arc<FixRegistry> {
@@ -60,13 +61,13 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     // One instrument, one chain, six messages.
     let instruments: Vec<_> = stamped
         .iter()
-        .map(|held| bytes(held, INSTID_TAG).expect("an instrument"))
+        .map(|held| bytes(held, INSTID_TAG_NAME.0).expect("an instrument"))
         .collect();
     assert!(instruments.iter().all(|held| *held == instruments[0]));
     assert_eq!(instruments[0].len(), 16);
     let chains: Vec<_> = stamped
         .iter()
-        .map(|held| bytes(held, PERSISTENTID_TAG).expect("a chain"))
+        .map(|held| bytes(held, PERSISTENTID_TAG_NAME.0).expect("a chain"))
         .collect();
     assert!(
         chains.iter().all(|held| *held == chains[0]),
@@ -74,7 +75,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     );
     let ids: Vec<_> = stamped
         .iter()
-        .map(|held| bytes(held, ID_TAG).expect("an id"))
+        .map(|held| bytes(held, ID_TAG_NAME.0).expect("an id"))
         .collect();
     for pair in ids.windows(2) {
         assert!(pair[0] < pair[1], "ids sort by the impact clock");
@@ -99,15 +100,18 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     let again = life
         .fill(reader.one_line(tomorrow.as_bytes(), false).unwrap())
         .unwrap();
-    assert_ne!(bytes(&again, PERSISTENTID_TAG).unwrap(), chains[0]);
+    assert_ne!(bytes(&again, PERSISTENTID_TAG_NAME.0).unwrap(), chains[0]);
     assert_eq!(life.alive(), 1);
     life.clear();
     assert_eq!(life.alive(), 0);
     // The same line at the same instant is the same chain identity, which is
     // what makes two reads of one capture agree.
     let replayed = life.fill(reader.one_line(LIFE[0], false).unwrap()).unwrap();
-    assert_eq!(bytes(&replayed, PERSISTENTID_TAG).unwrap(), chains[0]);
-    assert_eq!(bytes(&replayed, ID_TAG), Some(ids[0].clone()));
+    assert_eq!(
+        bytes(&replayed, PERSISTENTID_TAG_NAME.0).unwrap(),
+        chains[0]
+    );
+    assert_eq!(bytes(&replayed, ID_TAG_NAME.0), Some(ids[0].clone()));
 }
 
 #[test]
@@ -120,25 +124,32 @@ fn a_message_naming_no_order_has_an_id_and_no_chain() {
     let mut stamped = reader.lifecycle([heartbeat]);
     let held = stamped.next().unwrap().unwrap();
     assert!(stamped.next().is_none());
-    assert!(bytes(&held, ID_TAG).is_some(), "every message has an id");
     assert!(
-        bytes(&held, PERSISTENTID_TAG).is_none(),
+        bytes(&held, ID_TAG_NAME.0).is_some(),
+        "every message has an id"
+    );
+    assert!(
+        bytes(&held, PERSISTENTID_TAG_NAME.0).is_none(),
         "no identifier, no chain"
     );
     assert!(
-        bytes(&held, INSTID_TAG).is_none(),
+        bytes(&held, INSTID_TAG_NAME.0).is_none(),
         "no instrument, no identity"
     );
     // The impact clock is the sending time where no transaction time is
     // stated, and the epoch where the message states no clock at all.
-    let sent = i64::from_be_bytes(bytes(&held, ID_TAG).unwrap()[..8].try_into().unwrap());
+    let sent = i64::from_be_bytes(
+        bytes(&held, ID_TAG_NAME.0).unwrap()[..8]
+            .try_into()
+            .unwrap(),
+    );
     assert_eq!(sent, 1_767_348_930_000_000);
     let undated = reader
         .lifecycle([reader.one_line(b"8=FIX.4.4|35=0|10=0|", false).unwrap()])
         .next()
         .unwrap()
         .unwrap();
-    assert_eq!(&bytes(&undated, ID_TAG).unwrap()[..8], &[0; 8]);
+    assert_eq!(&bytes(&undated, ID_TAG_NAME.0).unwrap()[..8], &[0; 8]);
 }
 
 #[test]
@@ -149,7 +160,7 @@ fn the_instrument_identity_is_the_same_across_spellings_and_venues() {
     let mut identity = |line: &[u8]| {
         bytes(
             &life.fill(reader.one_line(line, false).unwrap()).unwrap(),
-            INSTID_TAG,
+            INSTID_TAG_NAME.0,
         )
     };
     // An ISIN outranks a symbol, so the same security under two symbols is
@@ -189,7 +200,7 @@ fn a_stamped_stream_read_again_keeps_what_it_carries() {
         .map(|held| held.unwrap())
         .collect();
     for (first, second) in once.iter().zip(&twice) {
-        for tag in [INSTID_TAG, ID_TAG, PERSISTENTID_TAG] {
+        for tag in [INSTID_TAG_NAME.0, ID_TAG_NAME.0, PERSISTENTID_TAG_NAME.0] {
             assert_eq!(bytes(first, tag), bytes(second, tag), "tag {tag}");
         }
         assert_eq!(first.entries().len(), second.entries().len());

@@ -7,8 +7,9 @@
 //! for callers that already hold their bytes in chunks.
 //!
 //! Text crosses this boundary exactly once. A byte payload is decoded to UTF-8
-//! at intake - by a [`Transcoded`] handle, by [`crate::media::text::TextOptions`],
-//! or by a direct [`Charset::decode`] - and everything past that point is
+//! at intake - by a [`Transcoded`] handle, by the structured-text plan
+//! (`text::io::Plan`), or by a direct [`Charset::decode`] - and everything past
+//! that point is
 //! `str`, `Scalar::String`, or an Arrow string array whose bytes are already
 //! UTF-8. Nothing re-decodes, and no layer branches on a charset per row.
 //!

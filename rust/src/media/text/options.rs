@@ -8,7 +8,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 #[cfg(feature = "arrow")]
 use crate::media::IORecordOptions;
-use crate::{Charset, DataType, Error, Field, FieldPath, Level, Metadata, Result, Timezone};
+use crate::{DataType, Error, Field, FieldPath, Level, Metadata, Result, Timezone};
 
 use super::{LeadingFragment, LineSep};
 
@@ -167,7 +167,6 @@ pub struct TextOptions {
     lstrip: Vec<Expression>,
     rstrip: Vec<Expression>,
     linesep: Option<LineSep>,
-    charset: Charset,
     autotype: bool,
     timezone: Option<Timezone>,
     captures: Vec<Field>,
@@ -205,7 +204,6 @@ impl TextOptions {
             lstrip: Vec::new(),
             rstrip: Vec::new(),
             linesep: None,
-            charset: Charset::Utf8,
             autotype: true,
             timezone: None,
             captures: Vec::new(),
@@ -422,31 +420,6 @@ impl TextOptions {
     #[must_use]
     pub fn with_linesep(mut self, linesep: LineSep) -> Self {
         self.set_linesep(Some(linesep));
-        self
-    }
-
-    /// Return the charset row-header captures are read in.
-    ///
-    /// This reads *captures*, never the body: a captured record is an arrival
-    /// record, so `body` stays the exact bytes the line was written with and
-    /// nothing in this module transcodes them. To read a whole resource in one
-    /// charset - so that line splitting, entries, and the body itself are
-    /// UTF-8 - wrap the handle in [`crate::charset::Transcoded`] instead; the
-    /// two doors answer two different questions and neither guesses.
-    #[must_use]
-    pub const fn charset(&self) -> Charset {
-        self.charset
-    }
-
-    /// Set the charset row-header captures are read in.
-    pub const fn set_charset(&mut self, charset: Charset) {
-        self.charset = charset;
-    }
-
-    /// Return these options with a different capture charset.
-    #[must_use]
-    pub const fn with_charset(mut self, charset: Charset) -> Self {
-        self.set_charset(charset);
         self
     }
 

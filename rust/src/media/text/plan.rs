@@ -137,9 +137,9 @@ impl TextPlan {
             &mut columns,
             TextSource::Body,
             "body",
-            DataType::binary(),
+            DataType::utf8(),
             false,
-            "The line itself, with whatever was read off its front removed.",
+            "The line itself, as text, with whatever was read off its front removed.",
         );
         if options.max_record_byte_size().is_some() {
             push(
@@ -182,7 +182,7 @@ impl TextPlan {
                 &mut columns,
                 TextSource::Entry(path.clone()),
                 name,
-                DataType::binary(),
+                DataType::utf8(),
                 true,
                 None,
             );

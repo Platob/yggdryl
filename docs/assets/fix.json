@@ -106,7 +106,8 @@
     "messages": 181,
     "components": 747,
     "columns": 105,
-    "branches": 1,
+    "memberships": 0,
+    "dialects": 0,
     "datatypes": 20,
     "versions": 10,
     "dtypes": [
@@ -191,12 +192,7 @@
         1
       ]
     ],
-    "branchSizes": [
-      [
-        "",
-        6261
-      ]
-    ],
+    "dialectSizes": [],
     "versionList": [
       "2.7",
       "3",
@@ -211,13 +207,6 @@
     ]
   },
   "catalog": {
-    "branches": [
-      {
-        "branch": 0,
-        "name": "",
-        "version": "0"
-      }
-    ],
     "components": [
       {
         "dtype": {
@@ -236645,9 +236634,75 @@
       "mime": "text/fix",
       "msgtype": "D",
       "direction": "SENT",
-      "branch": "",
       "size": 19,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "D"
+        },
+        {
+          "t": 49,
+          "n": "SenderCompID",
+          "y": "utf8",
+          "v": "BUYSIDE"
+        },
+        {
+          "t": 56,
+          "n": "TargetCompID",
+          "y": "utf8",
+          "v": "VENUE"
+        },
+        {
+          "t": 34,
+          "n": "MsgSeqNum",
+          "y": "int64",
+          "v": "12"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "AAPL"
+        },
+        {
+          "t": 207,
+          "n": "SecurityExchange",
+          "y": "mic",
+          "v": "XNAS"
+        },
+        {
+          "t": 54,
+          "n": "Side",
+          "y": "side",
+          "v": "1"
+        },
+        {
+          "t": 38,
+          "n": "OrderQty",
+          "y": "float64",
+          "v": "100"
+        },
+        {
+          "t": 44,
+          "n": "Price",
+          "y": "float64",
+          "v": "10.5"
+        },
+        {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "10.5"
+        },
+        {
+          "t": 60,
+          "n": "TransactTime",
+          "y": "datetime64(ns,\"UTC\")",
+          "v": "2024-02-01T12:34:56.123000000Z"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -236740,62 +236795,62 @@
         [
           "id",
           "ORDER-1",
-          "11:"
+          11
         ],
         [
           "symbol",
           "AAPL",
-          "55:"
+          55
         ],
         [
           "side",
           "1",
-          "54:"
+          54
         ],
         [
           "price",
           "10.5",
-          "44:"
+          44
         ],
         [
           "bidpx",
           "10.5",
-          "44:"
+          44
         ],
         [
           "bidsize",
           "100",
-          "38:"
+          38
         ],
         [
           "quantity",
           "100",
-          "38:"
+          38
         ],
         [
           "transacttime",
           "2024-02-01T12:34:56.123000000Z",
-          "60:"
+          60
         ],
         [
           "sendingtime",
           "2024-02-01T12:34:56.000000000Z",
-          "52:"
+          52
         ],
         [
           "seqnum",
           "12",
-          "34:"
+          34
         ],
         [
           "sender",
           "BUYSIDE",
-          "49:"
+          49
         ],
         [
           "target",
           "VENUE",
-          "56:"
+          56
         ]
       ],
       "anomalies": [],
@@ -237146,9 +237201,75 @@
       "mime": "text/fix",
       "msgtype": "8",
       "direction": null,
-      "branch": "",
       "size": 22,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "8"
+        },
+        {
+          "t": 49,
+          "n": "SenderCompID",
+          "y": "utf8",
+          "v": "VENUE"
+        },
+        {
+          "t": 56,
+          "n": "TargetCompID",
+          "y": "utf8",
+          "v": "BUYSIDE"
+        },
+        {
+          "t": 34,
+          "n": "MsgSeqNum",
+          "y": "int64",
+          "v": "98"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "AAPL"
+        },
+        {
+          "t": 54,
+          "n": "Side",
+          "y": "side",
+          "v": "1"
+        },
+        {
+          "t": 31,
+          "n": "LastPx",
+          "y": "float64",
+          "v": "10.5"
+        },
+        {
+          "t": 32,
+          "n": "LastQty",
+          "y": "float64",
+          "v": "100"
+        },
+        {
+          "t": 39,
+          "n": "OrdStatus",
+          "y": "state",
+          "v": "80FILLED"
+        },
+        {
+          "t": 150,
+          "n": "ExecType",
+          "y": "state",
+          "v": "40TRADE"
+        },
+        {
+          "t": 60,
+          "n": "TransactTime",
+          "y": "datetime64(ns,\"UTC\")",
+          "v": "2024-02-01T12:34:57.900000000Z"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -237256,62 +237377,62 @@
         [
           "id",
           "O-9",
-          "37:"
+          37
         ],
         [
           "execid",
           "E-1",
-          "17:"
+          17
         ],
         [
           "symbol",
           "AAPL",
-          "55:"
+          55
         ],
         [
           "side",
           "1",
-          "54:"
+          54
         ],
         [
           "price",
           "10.5",
-          "31:"
+          31
         ],
         [
           "quantity",
           "100",
-          "32:"
+          32
         ],
         [
           "transacttime",
           "2024-02-01T12:34:57.900000000Z",
-          "60:"
+          60
         ],
         [
           "status",
           "80FILLED",
-          "39:"
+          39
         ],
         [
           "sendingtime",
           "2024-02-01T12:34:57.880000000Z",
-          "52:"
+          52
         ],
         [
           "seqnum",
           "98",
-          "34:"
+          34
         ],
         [
           "sender",
           "VENUE",
-          "49:"
+          49
         ],
         [
           "target",
           "BUYSIDE",
-          "56:"
+          56
         ]
       ],
       "anomalies": [],
@@ -237729,9 +237850,63 @@
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "branch": "",
       "size": 16,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "D"
+        },
+        {
+          "t": 49,
+          "n": "SenderCompID",
+          "y": "utf8",
+          "v": "BUYSIDE"
+        },
+        {
+          "t": 56,
+          "n": "TargetCompID",
+          "y": "utf8",
+          "v": "VENUE"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "BRN"
+        },
+        {
+          "t": 54,
+          "n": "Side",
+          "y": "side",
+          "v": "1"
+        },
+        {
+          "t": 38,
+          "n": "OrderQty",
+          "y": "float64",
+          "v": "50"
+        },
+        {
+          "t": 44,
+          "n": "Price",
+          "y": "float64",
+          "v": "41.25"
+        },
+        {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "41.25"
+        },
+        {
+          "t": 60,
+          "n": "TransactTime",
+          "y": "datetime64(ns,\"UTC\")",
+          "v": "2024-02-01T12:35:02.000000000Z"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -237834,52 +238009,52 @@
         [
           "id",
           "ORDER-2",
-          "11:"
+          11
         ],
         [
           "symbol",
           "BRN",
-          "55:"
+          55
         ],
         [
           "side",
           "1",
-          "54:"
+          54
         ],
         [
           "price",
           "41.25",
-          "44:"
+          44
         ],
         [
           "bidpx",
           "41.25",
-          "44:"
+          44
         ],
         [
           "bidsize",
           "50",
-          "38:"
+          38
         ],
         [
           "quantity",
           "50",
-          "38:"
+          38
         ],
         [
           "transacttime",
           "2024-02-01T12:35:02.000000000Z",
-          "60:"
+          60
         ],
         [
           "sender",
           "BUYSIDE",
-          "49:"
+          49
         ],
         [
           "target",
           "VENUE",
-          "56:"
+          56
         ]
       ],
       "anomalies": [],
@@ -241076,9 +241251,33 @@
       "mime": "text/fix",
       "msgtype": "W",
       "direction": null,
-      "branch": "",
       "size": 11,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "W"
+        },
+        {
+          "t": 49,
+          "n": "SenderCompID",
+          "y": "utf8",
+          "v": "VENUE"
+        },
+        {
+          "t": 56,
+          "n": "TargetCompID",
+          "y": "utf8",
+          "v": "BUYSIDE"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "BRN"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -241156,17 +241355,17 @@
         [
           "symbol",
           "BRN",
-          "55:"
+          55
         ],
         [
           "sender",
           "VENUE",
-          "49:"
+          49
         ],
         [
           "target",
           "BUYSIDE",
-          "56:"
+          56
         ]
       ],
       "anomalies": [],
@@ -241369,9 +241568,39 @@
       "mime": "text/fix",
       "msgtype": "S",
       "direction": null,
-      "branch": "",
       "size": 12,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "S"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "BRN"
+        },
+        {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "41.2"
+        },
+        {
+          "t": 133,
+          "n": "OfferPx",
+          "y": "float64",
+          "v": "41.3"
+        },
+        {
+          "t": 60,
+          "n": "TransactTime",
+          "y": "datetime64(ns,\"UTC\")",
+          "v": "2024-02-01T12:35:00.000000000Z"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -241429,32 +241658,32 @@
         [
           "symbol",
           "BRN",
-          "55:"
+          55
         ],
         [
           "bidpx",
           "41.2",
-          "132:"
+          132
         ],
         [
           "askpx",
           "41.3",
-          "133:"
+          133
         ],
         [
           "bidsize",
           "500",
-          "134:"
+          134
         ],
         [
           "asksize",
           "500",
-          "135:"
+          135
         ],
         [
           "transacttime",
           "2024-02-01T12:35:00.000000000Z",
-          "60:"
+          60
         ]
       ],
       "anomalies": [],
@@ -241688,9 +241917,33 @@
       "mime": "text/fix",
       "msgtype": "A",
       "direction": null,
-      "branch": "",
       "size": 14,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "A"
+        },
+        {
+          "t": 49,
+          "n": "SenderCompID",
+          "y": "utf8",
+          "v": "BUYSIDE"
+        },
+        {
+          "t": 56,
+          "n": "TargetCompID",
+          "y": "utf8",
+          "v": "VENUE"
+        },
+        {
+          "t": 34,
+          "n": "MsgSeqNum",
+          "y": "int64",
+          "v": "1"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -241758,27 +242011,27 @@
         [
           "transacttime",
           "2024-02-01T12:00:00.000000000Z",
-          "52:"
+          52
         ],
         [
           "sendingtime",
           "2024-02-01T12:00:00.000000000Z",
-          "52:"
+          52
         ],
         [
           "seqnum",
           "1",
-          "34:"
+          34
         ],
         [
           "sender",
           "BUYSIDE",
-          "49:"
+          49
         ],
         [
           "target",
           "VENUE",
-          "56:"
+          56
         ]
       ],
       "anomalies": [],
@@ -241953,9 +242206,33 @@
       "mime": "text/fix",
       "msgtype": "0",
       "direction": null,
-      "branch": "",
       "size": 10,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "0"
+        },
+        {
+          "t": 49,
+          "n": "SenderCompID",
+          "y": "utf8",
+          "v": "VENUE"
+        },
+        {
+          "t": 56,
+          "n": "TargetCompID",
+          "y": "utf8",
+          "v": "BUYSIDE"
+        },
+        {
+          "t": 34,
+          "n": "MsgSeqNum",
+          "y": "int64",
+          "v": "7"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -242003,27 +242280,27 @@
         [
           "transacttime",
           "2024-02-01T12:35:01.000000000Z",
-          "52:"
+          52
         ],
         [
           "sendingtime",
           "2024-02-01T12:35:01.000000000Z",
-          "52:"
+          52
         ],
         [
           "seqnum",
           "7",
-          "34:"
+          34
         ],
         [
           "sender",
           "VENUE",
-          "49:"
+          49
         ],
         [
           "target",
           "BUYSIDE",
-          "56:"
+          56
         ]
       ],
       "anomalies": [],
@@ -242254,9 +242531,33 @@
       "mime": "text/fix",
       "msgtype": "3",
       "direction": null,
-      "branch": "",
       "size": 14,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "3"
+        },
+        {
+          "t": 49,
+          "n": "SenderCompID",
+          "y": "utf8",
+          "v": "VENUE"
+        },
+        {
+          "t": 56,
+          "n": "TargetCompID",
+          "y": "utf8",
+          "v": "BUYSIDE"
+        },
+        {
+          "t": 34,
+          "n": "MsgSeqNum",
+          "y": "int64",
+          "v": "99"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -242324,27 +242625,27 @@
         [
           "seqnum",
           "99",
-          "34:"
+          34
         ],
         [
           "sender",
           "VENUE",
-          "49:"
+          49
         ],
         [
           "target",
           "BUYSIDE",
-          "56:"
+          56
         ],
         [
           "text",
           "Incorrect data format for value",
-          "58:"
+          58
         ],
         [
           "reason",
           "6",
-          "373:"
+          373
         ]
       ],
       "anomalies": [],
@@ -242621,9 +242922,63 @@
       "mime": "text/fix",
       "msgtype": "G",
       "direction": null,
-      "branch": "",
       "size": 17,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "G"
+        },
+        {
+          "t": 49,
+          "n": "SenderCompID",
+          "y": "utf8",
+          "v": "BUYSIDE"
+        },
+        {
+          "t": 56,
+          "n": "TargetCompID",
+          "y": "utf8",
+          "v": "VENUE"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "AAPL"
+        },
+        {
+          "t": 54,
+          "n": "Side",
+          "y": "side",
+          "v": "1"
+        },
+        {
+          "t": 38,
+          "n": "OrderQty",
+          "y": "float64",
+          "v": "150"
+        },
+        {
+          "t": 44,
+          "n": "Price",
+          "y": "float64",
+          "v": "10.75"
+        },
+        {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "10.75"
+        },
+        {
+          "t": 60,
+          "n": "TransactTime",
+          "y": "datetime64(ns,\"UTC\")",
+          "v": "2024-02-01T12:36:00.000000000Z"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -242706,57 +243061,57 @@
         [
           "id",
           "ORDER-3",
-          "11:"
+          11
         ],
         [
           "secondaryid",
           "ORDER-1",
-          "41:"
+          41
         ],
         [
           "symbol",
           "AAPL",
-          "55:"
+          55
         ],
         [
           "side",
           "1",
-          "54:"
+          54
         ],
         [
           "price",
           "10.75",
-          "44:"
+          44
         ],
         [
           "bidpx",
           "10.75",
-          "44:"
+          44
         ],
         [
           "bidsize",
           "150",
-          "38:"
+          38
         ],
         [
           "quantity",
           "150",
-          "38:"
+          38
         ],
         [
           "transacttime",
           "2024-02-01T12:36:00.000000000Z",
-          "60:"
+          60
         ],
         [
           "sender",
           "BUYSIDE",
-          "49:"
+          49
         ],
         [
           "target",
           "VENUE",
-          "56:"
+          56
         ]
       ],
       "anomalies": [],
@@ -242974,9 +243329,57 @@
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "branch": "",
       "size": 13,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "D"
+        },
+        {
+          "t": 48,
+          "n": "SecurityID",
+          "y": "utf8",
+          "v": "US0378331005"
+        },
+        {
+          "t": 22,
+          "n": "SecurityIDSource",
+          "y": "utf8",
+          "v": "4"
+        },
+        {
+          "t": 207,
+          "n": "SecurityExchange",
+          "y": "mic",
+          "v": "XNAS"
+        },
+        {
+          "t": 54,
+          "n": "Side",
+          "y": "side",
+          "v": "1"
+        },
+        {
+          "t": 38,
+          "n": "OrderQty",
+          "y": "float64",
+          "v": "100"
+        },
+        {
+          "t": 44,
+          "n": "Price",
+          "y": "float64",
+          "v": "10.5"
+        },
+        {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "10.5"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -243039,37 +243442,37 @@
         [
           "symbol",
           "US0378331005",
-          "48:"
+          48
         ],
         [
           "side",
           "1",
-          "54:"
+          54
         ],
         [
           "price",
           "10.5",
-          "44:"
+          44
         ],
         [
           "bidpx",
           "10.5",
-          "44:"
+          44
         ],
         [
           "bidsize",
           "100",
-          "38:"
+          38
         ],
         [
           "quantity",
           "100",
-          "38:"
+          38
         ],
         [
           "currency",
           "USD",
-          "15:"
+          15
         ]
       ],
       "anomalies": [],
@@ -243362,9 +243765,51 @@
       "mime": "text/fix",
       "msgtype": "d",
       "direction": null,
-      "branch": "",
       "size": 18,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "d"
+        },
+        {
+          "t": 49,
+          "n": "SenderCompID",
+          "y": "utf8",
+          "v": "VENUE"
+        },
+        {
+          "t": 56,
+          "n": "TargetCompID",
+          "y": "utf8",
+          "v": "BUYSIDE"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "BRN"
+        },
+        {
+          "t": 48,
+          "n": "SecurityID",
+          "y": "utf8",
+          "v": "GB00BN7SWP63"
+        },
+        {
+          "t": 22,
+          "n": "SecurityIDSource",
+          "y": "utf8",
+          "v": "4"
+        },
+        {
+          "t": 207,
+          "n": "SecurityExchange",
+          "y": "mic",
+          "v": "XLON"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -243452,22 +243897,22 @@
         [
           "symbol",
           "BRN",
-          "55:"
+          55
         ],
         [
           "currency",
           "GBP",
-          "15:"
+          15
         ],
         [
           "sender",
           "VENUE",
-          "49:"
+          49
         ],
         [
           "target",
           "BUYSIDE",
-          "56:"
+          56
         ]
       ],
       "anomalies": [],
@@ -243684,9 +244129,33 @@
       "mime": "text/ullink",
       "msgtype": null,
       "direction": null,
-      "branch": "",
       "size": 9,
-      "columns": [],
+      "columns": [
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "TTF"
+        },
+        {
+          "t": 54,
+          "n": "Side",
+          "y": "side",
+          "v": "1"
+        },
+        {
+          "t": 38,
+          "n": "OrderQty",
+          "y": "float64",
+          "v": "1200"
+        },
+        {
+          "t": 44,
+          "n": "Price",
+          "y": "float64",
+          "v": "41.25"
+        }
+      ],
       "arrivals": [
         [
           "55",
@@ -243726,22 +244195,22 @@
         [
           "symbol",
           "TTF",
-          "55:"
+          55
         ],
         [
           "side",
           "1",
-          "54:"
+          54
         ],
         [
           "price",
           "41.25",
-          "44:"
+          44
         ],
         [
           "quantity",
           "1200",
-          "38:"
+          38
         ]
       ],
       "anomalies": [
@@ -243917,9 +244386,33 @@
       "mime": "text/fixul",
       "msgtype": "D",
       "direction": null,
-      "branch": "",
       "size": 10,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "D"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "AAPL"
+        },
+        {
+          "t": 54,
+          "n": "Side",
+          "y": "side",
+          "v": "1"
+        },
+        {
+          "t": 38,
+          "n": "OrderQty",
+          "y": "float64",
+          "v": "100"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -243967,27 +244460,27 @@
         [
           "id",
           "ORDER-4",
-          "11:"
+          11
         ],
         [
           "symbol",
           "AAPL",
-          "55:"
+          55
         ],
         [
           "side",
           "1",
-          "54:"
+          54
         ],
         [
           "bidsize",
           "100",
-          "38:"
+          38
         ],
         [
           "quantity",
           "100",
-          "38:"
+          38
         ]
       ],
       "anomalies": [],
@@ -244156,9 +244649,33 @@
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "branch": "",
       "size": 10,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "D"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "AAPL"
+        },
+        {
+          "t": 54,
+          "n": "Side",
+          "y": "side",
+          "v": "1"
+        },
+        {
+          "t": 38,
+          "n": "OrderQty",
+          "y": "float64",
+          "v": "100"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -244208,22 +244725,22 @@
         [
           "symbol",
           "AAPL",
-          "55:"
+          55
         ],
         [
           "side",
           "1",
-          "54:"
+          54
         ],
         [
           "bidsize",
           "100",
-          "38:"
+          38
         ],
         [
           "quantity",
           "100",
-          "38:"
+          38
         ]
       ],
       "anomalies": [],
@@ -244397,9 +244914,27 @@
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "branch": "",
       "size": 10,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "D"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "AAPL"
+        },
+        {
+          "t": 54,
+          "n": "Side",
+          "y": "side",
+          "v": "1"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -244447,12 +244982,12 @@
         [
           "symbol",
           "AAPL",
-          "55:"
+          55
         ],
         [
           "side",
           "1",
-          "54:"
+          54
         ]
       ],
       "anomalies": [
@@ -244566,7 +245101,6 @@
       "mime": "text/key-value",
       "msgtype": null,
       "direction": null,
-      "branch": "",
       "size": 6,
       "columns": [],
       "arrivals": [
@@ -244661,7 +245195,6 @@
       "mime": "application/octet-stream",
       "msgtype": null,
       "direction": null,
-      "branch": "",
       "size": 3,
       "columns": [],
       "arrivals": [],
@@ -244838,9 +245371,45 @@
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "branch": "",
       "size": 10,
-      "columns": [],
+      "columns": [
+        {
+          "t": 35,
+          "n": "MsgType",
+          "y": "utf8",
+          "v": "D"
+        },
+        {
+          "t": 55,
+          "n": "Symbol",
+          "y": "utf8",
+          "v": "AAPL"
+        },
+        {
+          "t": 54,
+          "n": "Side",
+          "y": "side",
+          "v": "1"
+        },
+        {
+          "t": 38,
+          "n": "OrderQty",
+          "y": "float64",
+          "v": "100"
+        },
+        {
+          "t": 44,
+          "n": "Price",
+          "y": "float64",
+          "v": "10.5"
+        },
+        {
+          "t": 132,
+          "n": "BidPx",
+          "y": "float64",
+          "v": "10.5"
+        }
+      ],
       "arrivals": [
         [
           "8",
@@ -244888,32 +245457,32 @@
         [
           "symbol",
           "AAPL",
-          "55:"
+          55
         ],
         [
           "side",
           "1",
-          "54:"
+          54
         ],
         [
           "price",
           "10.5",
-          "44:"
+          44
         ],
         [
           "bidpx",
           "10.5",
-          "44:"
+          44
         ],
         [
           "bidsize",
           "100",
-          "38:"
+          38
         ],
         [
           "quantity",
           "100",
-          "38:"
+          38
         ]
       ],
       "anomalies": [],

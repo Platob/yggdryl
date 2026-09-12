@@ -284,7 +284,7 @@ depend on.
 | --- | --- |
 | `HttpField`, `HttpFieldMut` | `content_type`, `content_length`, `mime_type`, `media_type`, `location` |
 | [`IcebergField`, `IcebergFieldMut`](../media/iceberg/schema.md) | `doc`, `schema_id`, `spec_id`, `transform` |
-| [`FixField`, `FixFieldMut`](../fix/index.md) | `branch`, `id`, `tag`, `tags`, `aliases`, `description` |
+| [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag`, `tags`, `aliases`, `branches`, `description` |
 | [`DigestField`, `DigestFieldMut`](../xxhash/values.md#filling-digest-holders) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters; [`time`, `unit`, `is_coupled`](../txhash/arrow.md#coupled-holders) and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `identity:` |
 | [`PartitionField`, `PartitionFieldMut`](../holder/iobase/partitions.md#derived-partition-columns) | `sources`, `transform`, `expression`, `apply_arrow_batch`, and the two setters |

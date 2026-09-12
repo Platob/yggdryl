@@ -34,8 +34,6 @@ mod lift;
 mod merge;
 #[path = "fix/message.rs"]
 mod message;
-#[path = "fix/numeric_branch.rs"]
-mod numeric_branch;
 #[path = "fix/pipeline.rs"]
 mod pipeline;
 #[path = "fix/schema.rs"]

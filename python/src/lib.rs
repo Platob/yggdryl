@@ -374,12 +374,9 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     register_classes(module)?;
     register_functions(module)?;
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    // The two FIX facts a caller spells rather than derives: what an absent
-    // `fix:branch` means, and where the FIX specification's own tag range ends.
-    module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.name())?;
-    module.add("ULBRIDGE_BRANCH", yggdryl::ULBRIDGE_BRANCH)?;
-    module.add("USER_TAG_MIN", yggdryl::FixId::USER_TAG_MIN)?;
-    module.add("USER_TAG_MAX", yggdryl::FixId::USER_TAG_MAX)?;
+    // The one dictionary membership this crate itself stamps: the name every
+    // `ULBridge` field carries in `fix:branches`.
+    module.add("ULBRIDGE_DIALECT", yggdryl::ULBRIDGE_DIALECT)?;
     // The reserved Arrow schema metadata key that carries per-field dictionary
     // IDs across the C Data Interface, which has no slot for them.
     module.add(
@@ -432,7 +429,6 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyProtocolField>()?;
     module.add_class::<types::python::PyPythonMetadata>()?;
     module.add_class::<types::cast::PyArrowCastPlan>()?;
-    module.add_class::<fix::PyFixBranch>()?;
     module.add_class::<fix::PyFixRegistry>()?;
     module.add_class::<version::PyVersion>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;

@@ -4,19 +4,21 @@
 //! version a dialect speaks, and then two things worth reading: a
 //! `vocabulary` of tags, and a `grammar-binding` per message type describing
 //! that message's tree. Everything else in the file describes the file, the
-//! transcoding, or the plugin, and is skipped.
+//! transcoding, or the plugin, and is skipped - the version among it, because
+//! which version a run reads at is the codec's pin and not a vocabulary's.
 //!
 //! # Two entry points, one parse
 //!
 //! [`FixRegistry::from_cfb_file`] answers the whole file: a dictionary of its
-//! scalar fields with code metadata, components, groups and message definitions,
-//! plus the branch record and the message roots. [`FixField::from_cfb_file`] answers
-//! the vocabulary alone, in declaration order, and takes the branch name from
-//! the file's own stem when the caller supplies none - which is what a reader
-//! folding one counterparty's file into a dictionary through
-//! [`FixRegistry::add_fields`] wants, and it loses the roots and the branch
-//! record to say so. Both drive the same read, drop the same elements and
-//! refuse the same two documents.
+//! scalar fields with code metadata, components, groups and message
+//! definitions, plus the message roots. [`FixField::from_cfb_file`] answers
+//! the vocabulary alone, in declaration order, and takes the dialect name
+//! from the file's own stem when the caller supplies none - which is what a
+//! reader folding one counterparty's file into a dictionary through
+//! [`FixRegistry::add_fields`] wants, and it loses the roots to say so. Both
+//! drive the same read, drop the same elements and refuse the same two
+//! documents, and both stamp every field they produce as a member of the
+//! dialect in its `fix:branches`.
 //!
 //! # Two passes, and the second never invents a type
 //!
@@ -78,8 +80,8 @@
 //! A real dialect spells one `alt` over two tags. `TRTN_FX_TradeCapture`
 //! declares `HedgeCurrency` twice, once for the currency a hedge settles in
 //! and once for the currency it is quoted in, and the two are different
-//! fields with different tags. A dictionary indexes a name per branch, so
-//! that spelling cannot name both there - and picking either would give a
+//! fields with different tags. A dictionary indexes a name once, so that
+//! spelling cannot name both there - and picking either would give a
 //! reader a `HedgeCurrency` the file never said was the one.
 //!
 //! So it names neither. A tag whose `alt` another tag also declares, and a
@@ -175,9 +177,8 @@
 //! of thousands of elements, and one element this reader cannot make sense of
 //! is one element: a tag spelled in a way the core cannot store, a constraint
 //! naming a tag the file's own vocabulary never declared, a mapping to a type
-//! nothing listed, a `fix-version` the version grammar cannot read. Each is
-//! dropped, the rest of the file is still a dictionary, and what went is
-//! logged at warn level.
+//! nothing listed. Each is dropped, the rest of the file is still a
+//! dictionary, and what went is logged at warn level.
 //!
 //! A dropped element carries the sentence a refusal would have: one
 //! [`Error::Parse`] with `cfb` as its target, the byte the reader had reached
@@ -216,9 +217,9 @@ use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
-use crate::{DataType, Error, Field, FixField, IOBase, Result, Url, Version};
+use crate::{DataType, Error, Field, FixField, IOBase, Result, Url};
 
-use super::{FixBranch, FixCode, FixId, FixRegistry, MSGTYPE_TAG};
+use super::{FixCode, FixRegistry, MSGTYPE_TAG_NAME};
 
 /// How deep a grammar may nest before the parse stops descending.
 ///
@@ -254,12 +255,13 @@ impl FixRegistry {
     /// Parses an Ullink CBlock configuration into the vocabulary it declares
     /// and the message roots its grammar bindings describe.
     ///
-    /// `branch` names the dialect, because a `.cfb` never names itself: the
-    /// file states a version and a session but no name for the pair, so the
-    /// caller supplies one. `None` reads it into the standard branch, which
+    /// `dialect` names the dictionary, because a `.cfb` never names itself:
+    /// the file states a version and a session but no name for the pair, so
+    /// the caller supplies one, and every field the file produces is stamped
+    /// as a member of it in its `fix:branches`. `None` stamps nothing, which
     /// is right for a file read only for its vocabulary. The root element's
-    /// `fix-version`, `sendercompid` and `targetcompid` become that branch's
-    /// own record.
+    /// `fix-version`, `sendercompid` and `targetcompid` are read past: which
+    /// version a run reads at is the codec's pin.
     ///
     /// The registry holds scalar wire fields under their tags and message
     /// roots under the Messages category. Nested grammars contribute Groups
@@ -277,7 +279,7 @@ impl FixRegistry {
     /// Returns [`Error::Parse`] naming the byte position and quoting what the
     /// reader stopped on, for a document that is not well-formed XML or that
     /// stops with an element open. Everything else this reader cannot make
-    /// sense of - an unreadable `fix-version`, a `type` outside the eight, a
+    /// sense of - a `type` outside the eight, a
     /// `domain` outside the two, a constraint whose tag misses the vocabulary,
     /// a nested grammar with no counter, nesting past the guard depth, a
     /// mapping to a type nothing listed, and anything the core will not store,
@@ -285,12 +287,9 @@ impl FixRegistry {
     /// warning naming it, and the rest of the file is still a dictionary. The
     /// warnings are `log` records at warn level; nothing is emitted unless the
     /// host installs a logger.
-    pub fn from_cfb_file(
-        handle: &dyn IOBase,
-        branch: Option<&FixBranch>,
-    ) -> Result<(Self, Vec<Field>)> {
+    pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<(Self, Vec<Field>)> {
         let bytes = handle.read_all_bytes()?;
-        Parse::new(&bytes, branch).run()
+        Parse::new(&bytes, dialect)?.run()
     }
 }
 
@@ -298,51 +297,60 @@ impl FixField<'_> {
     /// Reads an Ullink CBlock configuration for the vocabulary it declares.
     ///
     /// The dictionary half of [`FixRegistry::from_cfb_file`], answered on
-    /// its own and in declaration order. Every field carries the `fix:tag` and
-    /// `fix:branch` that key it and whatever code set the file's maps decode
-    /// for it, which is what [`FixRegistry::add_fields`] needs to fold one
-    /// counterparty's file into a dictionary that already exists.
+    /// its own and in declaration order. Every field carries the `fix:tag`
+    /// that keys it, the dialect it is a member of in `fix:branches`, and
+    /// whatever code set the file's maps decode for it, which is what
+    /// [`FixRegistry::add_fields`] needs to fold one counterparty's file into
+    /// a dictionary that already exists.
     ///
-    /// **`branch` names the dialect, and the file names it when the caller
-    /// does not.** A CBlock states a version and a session but no name for the
-    /// pair, so with none supplied the handle's own stem stands in:
-    /// `s3://cblocks/MSFIX44.cfb` reads into the branch `msfix44`. A handle
-    /// answering no URL at all has no stem and reads into the standard branch.
+    /// **`dialect` names the dictionary, and the file names it when the
+    /// caller does not.** A CBlock states a version and a session but no name
+    /// for the pair, so with none supplied the handle's own stem stands in
+    /// where it reads as a name: `s3://cblocks/MSFIX44.cfb` stamps its fields
+    /// as members of `msfix44`. A handle answering no URL at all has no stem,
+    /// and one whose stem is not a name - the address a
+    /// [`Buffer`](crate::holder::Buffer) is identified by, a bare number -
+    /// names nothing, and both stamp nothing: bytes held in memory are named
+    /// by the caller or not at all.
     ///
-    /// A stem that is not a branch is refused rather than folded into one,
-    /// because a dictionary keyed on a guess is worse than a refusal. That
-    /// includes the stem of a [`Buffer`](crate::holder::Buffer), whose URL is
-    /// an identity and not a location: bytes held in memory are named by the
-    /// caller or not at all.
+    /// A supplied name that cannot be a membership - empty, or carrying the
+    /// comma a membership list is rendered with - is refused rather than
+    /// folded into one, because a dictionary keyed on a guess is worse than
+    /// a refusal.
     ///
     /// The grammar bindings are still read and still validated, exactly as
     /// [`FixRegistry::from_cfb_file`] reads them, and their roots dropped: one
     /// parse, one set of drops and refusals, whichever entry point a caller
     /// takes.
     ///
-    /// Two things a registry would hold are therefore not here - the message
-    /// roots, and the branch record. A field stores its branch's *name* and
-    /// never the version the root element declares, so a dictionary built
-    /// from these fields alone knows the dialect by name and nothing else.
-    /// Take [`FixRegistry::from_cfb_file`] when either matters.
-    ///
-    /// One difference is not a loss: a dictionary keeps one entry per
-    /// identity, so a tag a file declares twice identically arrives twice
-    /// here and once there.
+    /// The message roots are therefore not here; take
+    /// [`FixRegistry::from_cfb_file`] when they matter. One difference is not
+    /// a loss: a dictionary keeps one entry per identity, so a tag a file
+    /// declares twice identically arrives twice here and once there.
     ///
     /// # Errors
     ///
-    /// Returns what [`FixRegistry::from_cfb_file`] returns, and
-    /// [`Error::Parse`] naming `fix branch` when the supplied name - or the
-    /// stem standing in for it - is not one.
-    pub fn from_cfb_file(handle: &dyn IOBase, branch: Option<&str>) -> Result<Vec<Field>> {
-        let dialect = branch
-            .or_else(|| handle.url().and_then(Url::stem))
-            .map(FixBranch::from_str)
-            .transpose()?;
+    /// Returns what [`FixRegistry::from_cfb_file`] returns, and the
+    /// membership refusal when the supplied name cannot be one.
+    pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<Vec<Field>> {
+        let dialect = dialect.or_else(|| stem_dialect(handle));
         let bytes = handle.read_all_bytes()?;
-        Parse::new(&bytes, dialect.as_ref()).fields()
+        Parse::new(&bytes, dialect)?.fields()
     }
+}
+
+/// The dialect a handle's own stem names, where it names one.
+///
+/// A stem stands in for a name the caller did not supply, so it is taken
+/// only where it reads as one: non-empty and opening with an ASCII letter.
+/// The address a buffer is identified by and a bare number are stems and
+/// not names, and stand in for nothing.
+pub(super) fn stem_dialect(handle: &dyn IOBase) -> Option<&str> {
+    handle.url().and_then(Url::stem).filter(|stem| {
+        stem.bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphabetic())
+    })
 }
 
 /// One file being read.
@@ -354,8 +362,9 @@ struct Parse<'doc> {
     /// malformed document has no element to name, so the bytes are kept to
     /// quote the span just before that position.
     bytes: &'doc [u8],
-    /// The dialect as the caller named it, filled in from the root element.
-    branch: FixBranch,
+    /// The dialect every produced field is a member of, as the caller named
+    /// it; nothing, for a file read as a bare vocabulary.
+    dialect: Option<String>,
     /// The vocabulary in declaration order, and where each tag sits in it.
     ///
     /// Indexed rather than scanned: a binding resolves every constraint it
@@ -413,17 +422,27 @@ struct Declared {
 }
 
 impl<'doc> Parse<'doc> {
-    fn new(bytes: &'doc [u8], branch: Option<&FixBranch>) -> Self {
+    /// Opens a read, proving the dialect name a membership before a byte is
+    /// read: a name no field could carry refuses the file, not each field.
+    fn new(bytes: &'doc [u8], dialect: Option<&str>) -> Result<Self> {
+        let dialect = match dialect {
+            Some(name) => {
+                let mut probe = DataType::utf8().nullable_field("dialect");
+                probe.as_fix_mut().set_branches([name])?;
+                probe.as_fix().branches().next().map(str::to_owned)
+            }
+            None => None,
+        };
         // Text arrives exactly as the file wrote it. The reader's own trimming
         // is per event, and a description carrying an entity arrives as
         // several, so it would eat the space in front of `&lt;SOH&gt;` and
         // join two words. Layout is [`single_line`]'s question, and the only
         // text this reads is a description's.
         let reader = Reader::from_reader(bytes);
-        Self {
+        Ok(Self {
             reader,
             bytes,
-            branch: branch.cloned().unwrap_or(FixBranch::STANDARD),
+            dialect,
             vocabulary: Vec::new(),
             positions: std::collections::HashMap::new(),
             msgtypes: Vec::new(),
@@ -431,6 +450,14 @@ impl<'doc> Parse<'doc> {
             spellings: std::collections::HashMap::new(),
             roots: Vec::new(),
             named: Vec::new(),
+        })
+    }
+
+    /// Stamps one produced field as a member of this file's dialect.
+    fn stamp(&self, field: &mut Field) -> Result<()> {
+        match &self.dialect {
+            Some(dialect) => field.as_fix_mut().set_branches([dialect.as_str()]),
+            None => Ok(()),
         }
     }
 
@@ -449,10 +476,10 @@ impl<'doc> Parse<'doc> {
     /// the file declares twice is dropped, and both doors have to drop the
     /// same declarations.
     ///
-    /// Two things a dictionary would hold are not here - the roots, and the
-    /// branch record, which no field can carry. A third is a difference rather
-    /// than a loss: a dictionary keeps one entry per identity, so a tag a file
-    /// declares twice identically arrives twice here and once there.
+    /// The roots a dictionary would hold are not here. One more thing is a
+    /// difference rather than a loss: a dictionary keeps one entry per
+    /// identity, so a tag a file declares twice identically arrives twice
+    /// here and once there.
     fn fields(mut self) -> Result<Vec<Field>> {
         self.read()?;
         let ordered: Vec<Field> = self
@@ -470,28 +497,6 @@ impl<'doc> Parse<'doc> {
     /// checked against each other rather than only against the grammar.
     fn dictionary(mut self) -> Result<(FixRegistry, Vec<Field>)> {
         let mut registry = FixRegistry::new();
-        // The branch record first, and explicitly. A field's metadata carries
-        // only its branch's *name* - the version is the dictionary's own
-        // record of the dialect - so inserting fields alone
-        // would register a nameless-versioned branch and lose what the root
-        // element was read for. The standard branch declares no dialect, so a
-        // file parsed without a name registers nothing.
-        if !self.branch.is_standard() {
-            let branch = self.branch.clone();
-            if let Err(error) = registry.set_branch(branch) {
-                // Located at the start, where the root element that declared
-                // this branch is: it is the document's first element, and the
-                // reader is at the end of the file by the time this runs.
-                self.dropped(&refusal(
-                    0,
-                    format_smolstr!(
-                        "branch {} at FIX {}: {error}",
-                        self.branch,
-                        self.branch.version()
-                    ),
-                ));
-            }
-        }
         for held in std::mem::take(&mut self.vocabulary) {
             let Declared {
                 tag,
@@ -538,9 +543,13 @@ impl<'doc> Parse<'doc> {
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>();
         let mut root = catalog_members(registry, root, &scope)?;
+        // The root a caller is handed is the file's too, so it carries the
+        // membership the catalogued message carries; only its name differs,
+        // the caller's keeping the wire's spelling.
+        self.stamp(&mut root)?;
         let held = root.clone();
         let named = registry
-            .get_field_by_tag(MSGTYPE_TAG)
+            .get_field_by_tag(MSGTYPE_TAG_NAME.0)
             .and_then(|field| field.as_fix().code_name(wire))
             .filter(|name| {
                 name.bytes()
@@ -549,7 +558,6 @@ impl<'doc> Parse<'doc> {
             .filter(|name| *name != wire)
             .map_or_else(|| format!("message{scope}"), str::to_ascii_lowercase);
         root.set_name(named);
-        root.as_fix_mut().set_branch(&self.branch)?;
         root.as_fix_mut().set_msgtype(wire)?;
         catalog_entry(registry, crate::FixCategory::Messages, root, &scope)?;
         Ok(held)
@@ -563,8 +571,11 @@ impl<'doc> Parse<'doc> {
                 Err(error) => return Err(self.malformed(&error.to_string())),
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(element)) => {
+                    // The root element opens the document and states its
+                    // version and session, none of which is a vocabulary's:
+                    // it is read past, and its children are what is read.
                     if is_named(&element, b"cplugin-configuration") {
-                        self.read_root(&element)?;
+                        // Nothing to read on the root itself.
                     } else if is_named(&element, b"vocabulary") {
                         self.read_vocabulary()?;
                     } else if is_named(&element, b"grammar-binding") {
@@ -587,11 +598,6 @@ impl<'doc> Parse<'doc> {
                         self.skip(&name)?;
                     }
                 }
-                Ok(Event::Empty(element)) => {
-                    if is_named(&element, b"cplugin-configuration") {
-                        self.read_root(&element)?;
-                    }
-                }
                 Ok(_) => {}
             }
             buffer.clear();
@@ -610,9 +616,8 @@ impl<'doc> Parse<'doc> {
     /// the declared spelling as their `display`, so nothing the file said is
     /// lost and [`spelled`] still answers what the counterparty calls them.
     ///
-    /// Contended per branch, because a name is unique per branch: a venue's
-    /// own 11024 and FIX's 44 never contend, and [`Parse::owner`] is what
-    /// decides which of the two a tag lands in.
+    /// Contended across the whole file, because a name is unique in the one
+    /// namespace a dictionary is.
     ///
     /// Every tag is left named, always. A tag that keeps its spelling holds
     /// one no other tag claims and that is no other tag's decimal; a tag that
@@ -632,21 +637,20 @@ impl<'doc> Parse<'doc> {
             std::collections::HashMap::new();
         let mut decimals: std::collections::HashMap<u64, i32> = std::collections::HashMap::new();
         for held in &self.vocabulary {
-            let branch = self.owner(held.tag);
             let tags = claimed
-                .entry(super::registry::name_key(&branch, held.field.name()))
+                .entry(super::registry::name_key(held.field.name()))
                 .or_default();
             if !tags.contains(&held.tag) {
                 tags.push(held.tag);
             }
             decimals.insert(
-                super::registry::name_key(&branch, &format_smolstr!("{}", held.tag)),
+                super::registry::name_key(&format_smolstr!("{}", held.tag)),
                 held.tag,
             );
         }
         for at in 0..self.vocabulary.len() {
             let tag = self.vocabulary[at].tag;
-            let key = super::registry::name_key(&self.owner(tag), self.vocabulary[at].field.name());
+            let key = super::registry::name_key(self.vocabulary[at].field.name());
             let sharing = claimed.get(&key).cloned().unwrap_or_default();
             let contended =
                 sharing.len() > 1 || decimals.get(&key).is_some_and(|held| *held != tag);
@@ -689,71 +693,6 @@ impl<'doc> Parse<'doc> {
             }
         }
         Ok(())
-    }
-
-    /// Reads the branch record the root element carries.
-    ///
-    /// A CBlock is one counterparty's dictionary, and `fix-version` is what it
-    /// declares about the dialect. It becomes the branch's version and never
-    /// its name: a branch name must start with an ASCII letter, so `4.4` could
-    /// not be one, which is what carrying both on one record ends the
-    /// confusion about.
-    ///
-    /// `sendercompid` and `targetcompid` are read past. A branch is a
-    /// dictionary, and which two parties spoke it is a fact about a run rather
-    /// than about a vocabulary - the same file written from the other side
-    /// declares the pair reversed and describes the same dialect.
-    fn read_root(&mut self, element: &BytesStart<'_>) -> Result<()> {
-        // An absent `fix-version` is the file saying nothing about the
-        // dialect and keeps the caller's; one the version grammar cannot read
-        // is the file saying something this cannot, and is dropped with a
-        // warning, which keeps the caller's too - so what the dialect is
-        // recorded as is always something somebody stated.
-        let version = match self.attribute(element, "fix-version")? {
-            // Trimmed, because attribute-value normalization turns a wrapped
-            // line into a space and never drops one; quoted as the file wrote
-            // it, because that is what a warning is for.
-            Some(held) => match held.trim().parse::<Version>() {
-                Ok(version) => version,
-                Err(error) => {
-                    self.dropped(&self.refused_in(
-                        element,
-                        "a FIX version",
-                        format_args!("{:?}: {error}", elide_to(&held, ERROR_TEXT_LIMIT)),
-                    ));
-                    self.branch.version()
-                }
-            },
-            None => self.branch.version(),
-        };
-        match FixBranch::from_parts(self.branch.name(), version) {
-            Ok(branch) => self.branch = branch,
-            Err(error) => self.dropped(&self.refused_by(
-                format_args!("branch {} at FIX {version}", self.branch),
-                &error,
-            )),
-        }
-        Ok(())
-    }
-
-    /// Which branch owns one tag.
-    ///
-    /// A dialect redefines its own tags, never FIX's: `BeginString(8)` means
-    /// the same thing in every counterparty's file, and only the
-    /// user-defined range is a venue's to claim. So a CBlock's standard tags
-    /// land in the standard branch and its custom ones in the named branch -
-    /// which is also what the identity rule requires, since a non-standard
-    /// branch may only claim that range.
-    ///
-    /// The consequence is worth knowing: a file read for a named dialect
-    /// still contributes most of its vocabulary to the standard branch, and
-    /// two counterparties' files merge there rather than each shadowing FIX.
-    fn owner(&self, tag: i32) -> FixBranch {
-        if (FixId::USER_TAG_MIN..FixId::USER_TAG_MAX).contains(&tag) {
-            self.branch.clone()
-        } else {
-            FixBranch::STANDARD
-        }
     }
 
     /// Reads every `vocabulary-tag` into a dictionary field.
@@ -918,9 +857,12 @@ impl<'doc> Parse<'doc> {
                 return Ok(());
             }
         }
-        let owner = self.owner(tag);
-        if let Err(error) = field.as_fix_mut().set_id(&owner, tag) {
-            self.dropped(&self.refused_by(format_args!("tag {tag} on branch {owner}"), &error));
+        if let Err(error) = field
+            .as_fix_mut()
+            .set_tag(tag)
+            .and_then(|()| self.stamp(&mut field))
+        {
+            self.dropped(&self.refused_by(format_args!("tag {tag}"), &error));
             return Ok(());
         }
         if let Some(described) = described {
@@ -1084,7 +1026,7 @@ impl<'doc> Parse<'doc> {
     /// reach the field.
     ///
     /// The spelling is tried before the fold, and both from the end. Two tags
-    /// can fold to one name across branches, and the one a map *spells* is
+    /// can fold to one name, and the one a map *spells* is
     /// the one it decodes; and where a file declares one tag twice, the last
     /// declaration is the entry the dictionary keeps.
     ///
@@ -1320,7 +1262,7 @@ impl<'doc> Parse<'doc> {
         if self.msgtypes.is_empty() {
             return Ok(());
         }
-        let Some(at) = self.positions.get(&MSGTYPE_TAG).copied() else {
+        let Some(at) = self.positions.get(&MSGTYPE_TAG_NAME.0).copied() else {
             return Ok(());
         };
         let mut codes = std::mem::take(&mut self.msgtypes);
@@ -1344,7 +1286,10 @@ impl<'doc> Parse<'doc> {
         if let Err(error) = self.vocabulary[at].field.as_fix_mut().set_codes(&codes) {
             self.dropped(&refusal(
                 position,
-                format_smolstr!("the message types tag {MSGTYPE_TAG} carries: {error}"),
+                format_smolstr!(
+                    "the message types tag {} carries: {error}",
+                    MSGTYPE_TAG_NAME.0
+                ),
             ));
         }
         Ok(())
@@ -1516,17 +1461,13 @@ impl<'doc> Parse<'doc> {
     ///   resolves without one. Most of a real binding is this case.
     /// - one the tag already carries as an alias, because a file spells a tag
     ///   in as many normalizations as it maps the tag in.
-    /// - one another tag in the same branch already answers to, canonically
-    ///   or as an alias. Two fields one spelling reaches resolve to neither,
+    /// - one another tag already answers to, canonically or as an alias.
+    ///   Two fields one spelling reaches resolve to neither,
     ///   so the second claim is dropped exactly as a map entry's second claim
     ///   on one name is - and a dictionary that refuses the whole file over
     ///   it would refuse a document nothing is wrong with.
     /// - one carrying the separator a stored alias list is rendered with,
     ///   which is the one spelling the core cannot hold.
-    ///
-    /// A branch is what scopes the third: a CBlock's standard tags land in
-    /// the standard branch and its user-range tags in the named one, so two
-    /// tags may share a spelling across the two without either losing it.
     ///
     /// The two tests fold differently, and the dictionary is why. What a tag
     /// *already answers to* is decided by ASCII case, because that is what
@@ -1551,14 +1492,13 @@ impl<'doc> Parse<'doc> {
         let mut claimed: std::collections::HashMap<u64, Option<(i32, usize)>> =
             std::collections::HashMap::new();
         for (at, held) in self.vocabulary.iter().enumerate() {
-            let branch = self.owner(held.tag);
             let field = &held.field;
             let spellings = [field.name(), spelled(field)]
                 .into_iter()
                 .chain(field.as_fix().aliases());
             for spelling in spellings {
                 claimed
-                    .entry(super::registry::name_key(&branch, spelling))
+                    .entry(super::registry::name_key(spelling))
                     .and_modify(|prior| {
                         if prior.is_some_and(|(claimant, _)| claimant != held.tag) {
                             *prior = None;
@@ -1579,7 +1519,7 @@ impl<'doc> Parse<'doc> {
             if name.contains(',') {
                 continue;
             }
-            let key = super::registry::name_key(&self.owner(tag), &name);
+            let key = super::registry::name_key(&name);
             match claimed.get(&key) {
                 Some(Some((claimant, _))) if *claimant != tag => continue,
                 Some(None) => continue,
@@ -1804,12 +1744,11 @@ impl<'doc> Parse<'doc> {
             entry.push_str("component");
         }
         let built = || -> Result<(Field, Field)> {
-            let branch = counter.as_fix().branch()?;
             let mut item = DataType::from_fields(children)?.required_field(entry.clone());
-            item.as_fix_mut().set_branch(&branch)?;
+            self.stamp(&mut item)?;
             let mut group = DataType::list(item).nullable_field(name);
             group.set_nullable(counter.is_nullable());
-            group.as_fix_mut().set_branch(&branch)?;
+            self.stamp(&mut group)?;
             group.as_fix_mut().set_counter(tag)?;
             group.as_fix_mut().set_component(&entry)?;
             Ok((counter.clone(), group))
@@ -2190,13 +2129,12 @@ fn catalog_entry(
     mut field: Field,
     scope: &str,
 ) -> Result<Field> {
-    let branch = field.as_fix().branch()?;
-    if let Some(held) = registry.get_definition(category, field.name(), Some(&branch)) {
+    if let Some(held) = registry.get_definition(category, field.name()) {
         if held == &field {
             return Ok(field);
         }
         field.set_name(format!("{}{scope}", field.name()));
-        if let Some(held) = registry.get_definition(category, field.name(), Some(&branch)) {
+        if let Some(held) = registry.get_definition(category, field.name()) {
             if held != &field {
                 return Err(Error::Conflict {
                     expected: "one CBlock definition per context",
@@ -2233,11 +2171,17 @@ fn catalog_members(registry: &mut FixRegistry, mut field: Field, scope: &str) ->
             field.as_fix_mut().set_group(&name)?;
         }
         _ => {
-            if let Some(known) = field
-                .as_fix()
-                .id()?
-                .and_then(|id| registry.get_field_by_id(id))
-            {
+            // By identity where the child kept the dictionary's name, else by
+            // tag: a duplicate constraint or a contended spelling renamed the
+            // child, and the tag is what still names the field it constrains.
+            let view = field.as_fix();
+            let known = match (view.id()?, view.tag()?) {
+                (Some(id), tag) => registry
+                    .get_field_by_id(id)
+                    .or_else(|| tag.and_then(|tag| registry.get_field_by_tag(tag))),
+                (None, _) => None,
+            };
+            if let Some(known) = known {
                 if field.dtype() == known.dtype() {
                     // Maps and message codes can follow the grammar. Resolve
                     // its earlier clone against the completed vocabulary.

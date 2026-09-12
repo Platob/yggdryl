@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use yggdryl::holder::local::Folder;
-use yggdryl::{Field, FixBranch, FixCategory, FixRegistry, Result};
+use yggdryl::{Field, FixCategory, FixRegistry, Result};
 
 use crate::style;
 
@@ -99,37 +99,36 @@ fn row(field: &Field) -> Vec<String> {
         .ok()
         .flatten()
         .map_or_else(|| "-".to_owned(), |held| held.to_string());
-    let branch = view
-        .branch()
-        .ok()
-        .filter(|held| !held.is_standard())
-        .map_or_else(String::new, |held| held.name().to_owned());
     vec![
         tag,
         field.name().to_owned(),
         field.dtype().to_string(),
-        branch,
+        view.branches().collect::<Vec<_>>().join(", "),
         view.description().unwrap_or_default().to_owned(),
     ]
 }
 
 /// The header every listing shares.
-const COLUMNS: [&str; 5] = ["tag", "name", "type", "branch", "description"];
+const COLUMNS: [&str; 5] = ["tag", "name", "type", "dialects", "description"];
 
 /// Lists the fields whose name or tag contains `filter`.
+///
+/// `dialect` keeps only the definitions whose `fix:branches` membership
+/// names that dictionary; it is a filter on provenance and changes nothing
+/// about how a key resolves.
 pub fn list(
     store: &Store,
     category: FixCategory,
     filter: Option<&str>,
-    branch: Option<&FixBranch>,
+    dialect: Option<&str>,
     limit: usize,
-) -> Result<()> {
+) {
     let folded = filter.map(str::to_lowercase);
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut matched = 0_usize;
     for field in store.registry().definitions(category) {
-        if let Some(branch) = branch {
-            if &field.as_fix().branch()? != branch {
+        if let Some(dialect) = dialect {
+            if !field.as_fix().has_branch(dialect) {
                 continue;
             }
         }
@@ -158,18 +157,11 @@ pub fn list(
     } else {
         style::note(&format!("{matched} {category}"));
     }
-    Ok(())
 }
 
 /// Shows one field in full: what it is, what it was, and what it may hold.
-pub fn read(
-    store: &Store,
-    category: FixCategory,
-    key: &str,
-    branch: Option<&FixBranch>,
-    json: bool,
-) -> Result<()> {
-    let field = resolve(store.registry(), category, key, branch)?;
+pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Result<()> {
+    let field = resolve(store.registry(), category, key)?;
     if json {
         println!("{}", field.clone().into_json()?);
         return Ok(());
@@ -188,10 +180,9 @@ pub fn read(
     );
     style::entry("type", &field.dtype().to_string());
     style::entry("nullable", if field.is_nullable() { "yes" } else { "no" });
-    if let Ok(branch) = view.branch() {
-        if !branch.is_standard() {
-            style::entry("branch", branch.name());
-        }
+    let dialects: Vec<&str> = view.branches().collect();
+    if !dialects.is_empty() {
+        style::entry("dialects", &dialects.join(", "));
     }
     if let Some(described) = view.description() {
         style::entry("description", described);
@@ -260,35 +251,22 @@ pub fn read(
     Ok(())
 }
 
-/// The field a key reaches, by tag, identifier, name or path.
+/// The field a key reaches, by tag, name or path.
+///
+/// A decimal key is a tag and never an identity: the canonical holder of the
+/// tag answers, then an alternate. Anything else is a name, resolved under
+/// the registry's one fold.
 pub fn resolve<'registry>(
     registry: &'registry FixRegistry,
     category: FixCategory,
     key: &str,
-    branch: Option<&FixBranch>,
 ) -> Result<&'registry Field> {
     if category == FixCategory::Fields {
         if let Ok(tag) = key.parse::<i32>() {
-            return match branch {
-                Some(branch) => registry.field_by_id(yggdryl::FixId::from_parts(branch, tag)?),
-                None => registry.field_by_tag(tag),
-            };
-        }
-        if key.contains(':') {
-            let id: yggdryl::FixId = key.parse()?;
-            if let Some(branch) = branch {
-                if id != yggdryl::FixId::from_parts(branch, id.tag())? {
-                    return Err(yggdryl::Error::conflict(
-                        "a FIX identifier agreeing with --branch",
-                        "a different branch",
-                        key,
-                    ));
-                }
-            }
-            return registry.field_by_id(id);
+            return registry.field_by_tag(tag);
         }
     }
-    registry.definition(category, key, branch)
+    registry.definition(category, key)
 }
 
 /// Creates a definition, refusing an existing identity atomically.
@@ -317,18 +295,12 @@ pub fn update(store: &mut Store, category: FixCategory, field: Field) -> Result<
 /// # Errors
 ///
 /// Returns a typed absence when nothing holds that key.
-pub fn delete(
-    store: &mut Store,
-    category: FixCategory,
-    key: &str,
-    branch: Option<&FixBranch>,
-) -> Result<()> {
-    let field = resolve(store.registry(), category, key, branch)?;
+pub fn delete(store: &mut Store, category: FixCategory, key: &str) -> Result<()> {
+    let field = resolve(store.registry(), category, key)?;
     let name = field.name().to_owned();
-    let branch = field.as_fix().branch()?;
     store
         .registry_mut()
-        .remove_definition(category, &name, Some(&branch))?
+        .remove_definition(category, &name)?
         .ok_or_else(|| yggdryl::Error::Absent {
             expected: "a FIX definition",
             path: name.clone().into(),

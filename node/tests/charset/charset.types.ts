@@ -1,4 +1,4 @@
-import { MediaType, TextOptions, charset } from 'yggdryl'
+import { MediaType, charset } from 'yggdryl'
 import type { Charset, CharsetMark } from 'yggdryl'
 
 const names: readonly Charset[] = charset.CHARSETS
@@ -13,8 +13,4 @@ const media: MediaType = MediaType.fromString('text/csv;charset=windows-1252')
 const declared: string | null = media.charset
 media.setCharset('latin1')
 
-const options: TextOptions = new TextOptions()
-const capture: string = options.charset
-options.charset = 'cp1252'
-
-export { names, canonical, decoded, lossy, encoded, mark, bom, declared, capture }
+export { names, canonical, decoded, lossy, encoded, mark, bom, declared }

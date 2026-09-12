@@ -58,7 +58,7 @@ use std::sync::LazyLock;
 use crate::digest::DigestAlgorithm;
 
 use super::msg::FixMsg;
-use super::{MSGTYPE_TAG, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
+use super::{MSGTYPE_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 
 /// Every tag the digest leaves out, sorted once.
 ///
@@ -73,7 +73,7 @@ static ENVELOPE_TAGS: LazyLock<Vec<i32>> = LazyLock::new(|| {
         .iter()
         .chain(STANDARD_TRAILER_TAGS.iter())
         .copied()
-        .filter(|tag| *tag != MSGTYPE_TAG)
+        .filter(|tag| *tag != MSGTYPE_TAG_NAME.0)
         .collect();
     tags.extend(
         super::fix_crate_fields()

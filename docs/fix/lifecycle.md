@@ -6,7 +6,7 @@ A message says what happened; it does not say which order it happened to, beyond
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `FixLifecycle`, `FixCodec::lifecycle`, `INSTID_TAG`, `ID_TAG`, `PERSISTENTID_TAG` |
+| Owns | `FixLifecycle`, `FixCodec::lifecycle`, `INSTID_TAG_NAME`, `ID_TAG_NAME`, `PERSISTENTID_TAG_NAME` |
 | Columns | `instid` (65016), `id` (65017), `persistentid` (65018): three of the [crate's own](capture.md#the-crates-own-columns), sixteen bytes each, big-endian |
 | `instid` | the xxh128 digest of the instrument's market, classification, ISIN - else symbol - and currency, upper-cased; null where the message names none of them |
 | `id` | the instant closest to the market impact, in microseconds, then the xxh3 digest of what the message said: every message has one, and ids sort by time |
@@ -28,7 +28,7 @@ One order's life, six messages long, on one persistent identity.
     use std::sync::Arc;
 
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixCodec, FixLifecycle, FixRegistry, ID_TAG, INSTID_TAG, PERSISTENTID_TAG};
+    use yggdryl::{FixCodec, FixLifecycle, FixRegistry, ID_TAG_NAME, INSTID_TAG_NAME, PERSISTENTID_TAG_NAME};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
@@ -50,13 +50,13 @@ One order's life, six messages long, on one persistent identity.
 
     // One chain from the order to the fill, whatever identifier each
     // message chose, and one instrument.
-    let chain = stamped[0].by_tag(PERSISTENTID_TAG)?;
-    assert!(stamped.iter().all(|held| held.get_by_tag(PERSISTENTID_TAG) == Some(chain)));
-    let instrument = stamped[0].by_tag(INSTID_TAG)?;
-    assert!(stamped.iter().all(|held| held.get_by_tag(INSTID_TAG) == Some(instrument)));
+    let chain = stamped[0].by_tag(PERSISTENTID_TAG_NAME.0)?;
+    assert!(stamped.iter().all(|held| held.get_by_tag(PERSISTENTID_TAG_NAME.0) == Some(chain)));
+    let instrument = stamped[0].by_tag(INSTID_TAG_NAME.0)?;
+    assert!(stamped.iter().all(|held| held.get_by_tag(INSTID_TAG_NAME.0) == Some(instrument)));
 
     // Ids sort by the market's own clock.
-    let ids: Vec<&[u8]> = stamped.iter().map(|held| held.by_tag(ID_TAG).unwrap().as_bytes().unwrap()).collect();
+    let ids: Vec<&[u8]> = stamped.iter().map(|held| held.by_tag(ID_TAG_NAME.0).unwrap().as_bytes().unwrap()).collect();
     assert!(ids.windows(2).all(|pair| pair[0] < pair[1]));
 
     // The fill ended the chain: nothing is alive, and the wire is untouched.
@@ -69,7 +69,7 @@ One order's life, six messages long, on one persistent identity.
             reader.parse_line(line).unwrap().next().expect("one frame").unwrap()
         }))
         .collect::<yggdryl::Result<_>>()?;
-    assert_eq!(again[3].by_tag(PERSISTENTID_TAG)?, chain);
+    assert_eq!(again[3].by_tag(PERSISTENTID_TAG_NAME.0)?, chain);
     ```
 
 === "Python"

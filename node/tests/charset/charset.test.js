@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { MediaType, TextOptions, charset, enums } = require('yggdryl')
+const { MediaType, charset, enums } = require('yggdryl')
 
 // The charsets whose WHATWG label decodes the same bytes the same way.
 //
@@ -95,14 +95,4 @@ test('a media type carries the charset it declares', () => {
   assert.equal(mutable.charset, 'iso-8859-1')
   mutable.setCharset(null)
   assert.equal(mutable.charset, null)
-})
-
-test('text options declare the capture charset', () => {
-  const options = new TextOptions()
-  assert.equal(options.charset, 'utf-8')
-  options.charset = 'cp1252'
-  assert.equal(options.charset, 'windows-1252')
-  assert.throws(() => {
-    options.charset = 'nope'
-  }, /charset/)
 })

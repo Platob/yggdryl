@@ -6,9 +6,10 @@
 // arrives as, the storage locations a JavaScript caller names, and the
 // language protocols the loader wires over the native halves.
 //
-// A branch and an identifier cross as strings and are parsed once at the
-// boundary, so there is no class for either and every refusal is the native
-// one.
+// An identifier crosses as a number - the digest the core derives from a
+// tag and a name - so there is no class for it, and a dictionary's membership
+// is a list of names on the field it contributed to; every refusal is the
+// native one.
 
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
@@ -37,9 +38,10 @@ function seed() {
   return seedRegistry.clone()
 }
 
-function fixField(name, dtype, tag, { branch = fix.STANDARD_BRANCH, tags, aliases, description } = {}) {
+function fixField(name, dtype, tag, { branches, tags, aliases, description } = {}) {
   const field = Field.from(`${name}: ${dtype}`)
-  field.fix.id = `${tag}:${branch}`
+  field.fix.tag = tag
+  if (branches) field.fix.branches = branches
   if (tags) field.fix.tags = tags
   if (aliases) field.fix.aliases = aliases
   if (description !== undefined) field.fix.description = description
@@ -95,7 +97,8 @@ test('the typed vocabulary answers only on the fix view', () => {
     assert.throws(() => view.tags, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.aliases, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.description, { name: 'TypeError', message: new RegExp(scheme) })
-    assert.throws(() => view.branch, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.branches, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.hasBranch('cme'), { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.id, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
       view.tag = 55
@@ -104,11 +107,9 @@ test('the typed vocabulary answers only on the fix view', () => {
       view.aliases = ['Ticker']
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
-      view.branch = 'cme'
+      view.branches = ['cme']
     }, { name: 'TypeError', message: new RegExp(scheme) })
-    assert.throws(() => {
-      view.id = '5001:cme'
-    }, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.addBranch('cme'), { name: 'TypeError', message: new RegExp(scheme) })
   }
   // The Map-like surface still works on every view, this one included.
   assert.equal(field.protocol('fix').get('tag'), '55')
@@ -142,123 +143,110 @@ test('a tag crosses as a number and is never narrowed', () => {
   assert.equal(field.fix.tag, null)
 })
 
-test('the branch and the identifier round trip as text', () => {
+test('the identifier is a number derived from the tag and the name', () => {
   const trade = Field.from('TradeID: utf8')
-  // An absent property is the standard branch, and there is no identity
-  // without a tag.
-  assert.equal(trade.fix.branch, fix.STANDARD_BRANCH)
-  assert.equal(fix.STANDARD_BRANCH, '')
+  // There is no identity without a tag.
   assert.equal(trade.fix.id, null)
-  assert.equal(trade.has('fix:branch'), false)
 
-  trade.fix.id = '5001:CME'
-  assert.equal(trade.fix.id, '5001:cme', 'ASCII case folded once, on the way in')
-  assert.equal(trade.fix.branch, 'cme')
-  assert.equal(trade.get('fix:branch'), 'cme')
-  assert.equal(trade.fix.tag, 5001)
+  trade.fix.tag = 5001
+  const id = trade.fix.id
+  assert.equal(typeof id, 'number')
+  assert.ok(Number.isInteger(id))
+  assert.ok(id >= -(2 ** 31) && id < 2 ** 31, 'a signed 32-bit digest')
+  // Derived on every read, never stored: the view holds the tag alone.
+  assert.equal(trade.fix.size, 1)
+  assert.equal(trade.has('fix:id'), false)
+  // What the field answers is what the registry answers by it.
+  assert.equal(fix.FixRegistry.fromFields([trade]).fieldById(id).name, 'TradeID')
 
-  // Setting the standard branch removes the key rather than storing it.
-  trade.fix.branch = ''
-  assert.equal(trade.fix.branch, '')
-  assert.equal(trade.has('fix:branch'), false)
-  assert.equal(trade.fix.id, '5001:')
+  // The name folds once - ASCII case, `_`, `-` and space dropped - so three
+  // spellings of one field under one tag are one identity; another tag or
+  // another name is another.
+  const ids = ['MsgType', 'msgtype', 'Msg_Type', 'msg-type', 'Msg Type'].map((name) => {
+    const field = Field.from(`${name}: utf8`)
+    field.fix.tag = 35
+    return field.fix.id
+  })
+  assert.equal(new Set(ids).size, 1)
+  const other = Field.from('MsgSeqNum: utf8')
+  other.fix.tag = 35
+  assert.notEqual(other.fix.id, ids[0])
+  const moved = Field.from('MsgType: utf8')
+  moved.fix.tag = 36
+  assert.notEqual(moved.fix.id, ids[0])
+  // A renamed field is another identity, from the same tag.
+  trade.fix.tag = 35
+  assert.notEqual(trade.fix.id, ids[0])
 
-  // Assigning an identifier moves both halves at once, in either direction.
-  trade.fix.id = '5002:cme'
-  assert.equal(trade.fix.id, '5002:cme')
-  trade.fix.id = '35:'
-  assert.equal(trade.fix.id, '35:')
-  assert.equal(trade.has('fix:branch'), false)
+  // The identity is read, never assigned: the tag and the name are what it
+  // is made of, and a property with no setter refuses an assignment.
+  assert.throws(() => {
+    trade.fix.id = 42
+  }, TypeError)
+  assert.equal(trade.fix.tag, 35)
 
-  // The branch alone still moves a field whose tags allow it.
-  const vendor = Field.from('VendorID: utf8')
-  vendor.fix.tag = 9001
-  vendor.fix.branch = 'cme'
-  assert.equal(vendor.fix.id, '9001:cme')
+  // Any non-negative tag holds an identity: nothing gates a tag on its
+  // dictionary any more.
+  for (const tag of [0, 35, 4999, 5000, 39_999, 40_000, 65_000, 2 ** 31 - 1]) {
+    const field = Field.from('Any: utf8')
+    field.fix.tag = tag
+    assert.ok(Number.isInteger(field.fix.id), `${tag}`)
+  }
 })
 
-test('a malformed branch or identifier is the native parse failure', () => {
-  const field = Field.from('TradeID: utf8')
+test('membership is a sorted list of dictionary names on the field', () => {
+  const trade = Field.from('TradeID: utf8')
+  // An absent property is an empty list, and no field the specification
+  // alone defines states one.
+  assert.deepEqual(trade.fix.branches, [])
+  assert.equal(trade.has('fix:branches'), false)
+  assert.equal(trade.fix.hasBranch('cme'), false)
 
-  for (const bad of ['2cme', 'cme:x', 'c,me', 'a'.repeat(24)]) {
-    assert.throws(() => {
-      field.fix.branch = bad
-    }, /fix branch/)
-  }
-  for (const bad of ['5001', '+5001:cme', '-1:cme', ':cme', '5001:2cme']) {
-    assert.throws(() => {
-      field.fix.id = bad
-    }, /fix identifier|fix branch/i)
-  }
-  // Nothing was written by any refusal.
-  assert.equal(field.fix.branch, '')
-  assert.equal(field.fix.id, null)
+  // Assigning replaces the list: folded once, deduplicated under the fold,
+  // sorted, and stored comma-joined under `fix:branches`.
+  trade.fix.branches = ['CME', 'Bloomberg', 'cme']
+  assert.deepEqual(trade.fix.branches, ['bloomberg', 'cme'])
+  assert.equal(trade.get('fix:branches'), 'bloomberg,cme')
+  assert.equal(trade.fix.hasBranch('CME'), true)
+  assert.equal(trade.fix.hasBranch('bloomberg'), true)
+  assert.equal(trade.fix.hasBranch('ice'), false)
 
-  // A branch and an identifier are text, never a number.
+  // `addBranch` is idempotent under the fold.
+  trade.fix.addBranch('ICE')
+  trade.fix.addBranch('cme')
+  assert.deepEqual(trade.fix.branches, ['bloomberg', 'cme', 'ice'])
+
+  // Membership is provenance: it never touches the identity.
+  trade.fix.tag = 5001
+  const id = trade.fix.id
+  trade.fix.branches = ['venue']
+  assert.equal(trade.fix.id, id)
+
+  // An empty array removes the property, as every list property is removed.
+  trade.fix.branches = []
+  assert.deepEqual(trade.fix.branches, [])
+  assert.equal(trade.has('fix:branches'), false)
+
+  // A name that is empty or carries the separator is the core's refusal,
+  // naming the key, and nothing is written by it.
+  trade.fix.branches = ['cme']
+  for (const bad of [[''], ['c,me'], ['ice', '']]) {
+    assert.throws(() => {
+      trade.fix.branches = bad
+    }, /fix:branches/)
+  }
+  assert.throws(() => trade.fix.addBranch(''), /fix:branches/)
+  assert.throws(() => trade.fix.addBranch('a,b'), /fix:branches/)
+  assert.deepEqual(trade.fix.branches, ['cme'])
+  // The list is strings, never a bare string or a number.
   assert.throws(() => {
-    field.fix.branch = 5001
+    trade.fix.branches = 'cme'
+  })
+  assert.throws(() => {
+    trade.fix.branches = [5001]
   }, /into rust type `String`/)
-  assert.throws(() => {
-    field.fix.id = 5001
-  }, /into rust type `String`/)
-})
-
-test('a specification tag forces the standard branch at every door', () => {
-  assert.equal(fix.USER_TAG_MIN, 5000)
-  assert.equal(fix.USER_TAG_MAX, 40_000)
-
-  // A canonical tag: another branch may not claim it.
-  const vendor = Field.from('TradeID: utf8')
-  vendor.fix.id = '5001:cme'
-  assert.throws(() => {
-    vendor.fix.tag = 35
-  }, /fix:branch/)
-  assert.equal(vendor.fix.id, '5001:cme')
-  assert.throws(() => {
-    vendor.fix.id = '35:cme'
-  }, /fix:branch/)
-  assert.equal(vendor.fix.id, '5001:cme')
-
-  // An alternate tag resolves with the same power, so it obeys the same rule.
-  assert.throws(() => {
-    vendor.fix.tags = [35]
-  }, /fix:branch/)
-  assert.deepEqual(vendor.fix.tags, [])
-  assert.equal(vendor.fix.id, '5001:cme')
-
-  // A branch change is refused against the tags the field already holds.
-  const msgType = Field.from('MsgType: utf8')
-  msgType.fix.tag = 35
-  assert.throws(() => {
-    msgType.fix.branch = 'cme'
-  }, /fix:branch/)
-  assert.equal(msgType.fix.branch, '')
-  assert.equal(msgType.fix.id, '35:')
-
-  const alternates = Field.from('Wide: utf8')
-  alternates.fix.tag = 9001
-  alternates.fix.tags = [35]
-  assert.throws(() => {
-    alternates.fix.branch = 'cme'
-  }, /fix:branch/)
-  assert.equal(alternates.fix.branch, '')
-
-  // The rule is one-way: the standard branch holds any tag.
-  const high = Field.from('Vendorish: utf8')
-  high.fix.tag = 10_000
-  assert.equal(high.fix.id, '10000:')
-
-  for (const admitted of [fix.USER_TAG_MIN, fix.USER_TAG_MAX - 1]) {
-    const field = Field.from('Venue: utf8')
-    field.fix.id = `${admitted}:cme`
-    assert.equal(field.fix.tag, admitted)
-  }
-  for (const refused of [fix.USER_TAG_MIN - 1, fix.USER_TAG_MAX]) {
-    const field = Field.from('Venue: utf8')
-    assert.throws(() => {
-      field.fix.id = `${refused}:cme`
-    }, /5000.*40000/)
-  }
+  assert.throws(() => trade.fix.addBranch(5001), /into rust type `String`/)
+  assert.deepEqual(trade.fix.branches, ['cme'])
 })
 
 test('the registry resolves every key the way the core does', () => {
@@ -269,24 +257,25 @@ test('the registry resolves every key the way the core does', () => {
 
   assert.equal(registry.fieldByTag(55).name, 'symbol')
   assert.equal(registry.getFieldByTag(55).name, 'symbol')
-  assert.equal(registry.fieldById('55:').name, 'symbol')
-  assert.ok(registry.getFieldById('55:').equals(registry.fieldByTag(55)))
+  const symbol = registry.fieldByTag(55).fix.id
+  assert.equal(registry.fieldById(symbol).name, 'symbol')
+  assert.ok(registry.getFieldById(symbol).equals(registry.fieldByTag(55)))
   // The alternate tag 20 reaches ExecType, which claims 150 canonically.
   assert.equal(registry.fieldByTag(150).name, 'exectype')
   // `OrdStatus` and `ExecType` are the order's state, read as one type.
   assert.ok(registry.fieldByTag(39).dtype.equals(DataType.from('state')))
   assert.ok(registry.fieldByTag(150).dtype.equals(DataType.from('state')))
   // A name answers the canonical spelling whatever case it was asked in.
-  assert.equal(registry.fieldByName('symbol', '').name, 'symbol')
-  assert.equal(registry.fieldByName('SYMBOL', fix.STANDARD_BRANCH).name, 'symbol')
-  assert.equal(registry.fieldByName('clordid', '').name, 'clordid')
+  assert.equal(registry.fieldByName('symbol').name, 'symbol')
+  assert.equal(registry.fieldByName('SYMBOL').name, 'symbol')
+  assert.equal(registry.fieldByName('clordid').name, 'clordid')
   // A path reaches a repeating group and one of its members.
-  assert.equal(registry.fieldByPath('NoPartyIDs', '').fix.tag, 453)
+  assert.equal(registry.fieldByPath('NoPartyIDs').fix.tag, 453)
   // An occurrence is not a path segment: the walk steps through the list and
   // the member is spelled directly under the counter.
-  assert.equal(registry.fieldByPath('parties.partyid', '').fix.tag, 448)
-  assert.equal(registry.fieldByPath('parties.partyrole', '').name, 'partyrole')
-  assert.equal(registry.getFieldByPath('parties.partyid.partyid', ''), null)
+  assert.equal(registry.fieldByPath('parties.partyid').fix.tag, 448)
+  assert.equal(registry.fieldByPath('parties.partyrole').name, 'partyrole')
+  assert.equal(registry.getFieldByPath('parties.partyid.partyid'), null)
 
   // The generic pair answers exactly what the specialized one does.
   for (const key of [55, 'Symbol', 'nopartyids', 'parties.partyid']) {
@@ -299,8 +288,10 @@ test('the registry resolves every key the way the core does', () => {
   assert.equal(registry.has('Nope'), false)
   assert.equal(registry.getField(9999), null)
   assert.equal(registry.get('Nope'), null)
-  assert.equal(registry.getFieldByPath('Symbol.absent', ''), null)
+  assert.equal(registry.getFieldByPath('Symbol.absent'), null)
   assert.equal(registry.has('55'), false, 'a tag query never consults names')
+  // Membership is provenance and the seed states none.
+  assert.deepEqual(registry.dialects(), [])
 })
 
 test('protocol and MsgType inference stays native and shallow', () => {
@@ -345,67 +336,89 @@ test('protocol and MsgType inference stays native and shallow', () => {
   assert.equal(MimeType.inferTextDirection(asked), 'SENT')
 })
 
-test('an explicit branch pins lookup and omission infers the best match', () => {
+test('one namespace: a reused name merges and a reused tag stands beside its holder', () => {
   const registry = fix.FixRegistry.fromFields([
     fixField('Symbol', 'utf8', 55, { aliases: ['Ticker'] }),
-    // The venue dictionary reuses the name, which is the normal case.
-    fixField('Symbol', 'utf8', 5055, { branch: 'cme', aliases: ['VenueTicker'] }),
-    fixField('TradeID', 'utf8', 5001, { branch: 'cme' }),
+    fixField('TradeID', 'utf8', 5001, { branches: ['cme'] }),
   ])
+  assert.deepEqual(registry.dialects(), ['cme'])
 
-  // A name is unique per branch, not registry-wide.
-  assert.equal(registry.fieldByName('symbol', '').fix.id, '55:')
-  assert.equal(registry.fieldByName('SYMBOL', 'cme').fix.id, '5055:cme')
-  assert.equal(registry.fieldByName('venueticker', 'CME').name, 'Symbol')
-  assert.equal(registry.getFieldByName('venueticker', ''), null)
-  assert.equal(registry.getFieldByName('ticker', 'cme'), null)
-  assert.equal(registry.getFieldByPath('Symbol', 'cme').fix.id, '5055:cme')
+  // A venue reusing a name under another tag is the same field spelled with
+  // another number: `addField` folds it into the holder, which gains the tag
+  // as an alternate, the alias, and the membership; `insert` refuses it.
+  const venueSymbol = fixField('Symbol', 'utf8', 5055, { branches: ['cme'], aliases: ['VenueTicker'] })
+  assert.throws(() => registry.insert(venueSymbol), /held by Symbol/)
+  assert.equal(registry.addField(venueSymbol), false)
+  assert.equal(registry.size, 2 + CRATED)
+  const symbol = registry.fieldByTag(55)
+  assert.equal(registry.fieldByTag(5055).name, 'Symbol')
+  assert.deepEqual(symbol.fix.tags, [5055])
+  assert.deepEqual(symbol.fix.aliases, ['Ticker', 'VenueTicker'])
+  assert.deepEqual(symbol.fix.branches, ['cme'])
+  assert.equal(registry.fieldByName('venueticker').fix.id, symbol.fix.id)
+  assert.equal(registry.getFieldByPath('Symbol').fix.id, symbol.fix.id)
 
-  // A bare tag uses the same deterministic best-match order.
-  assert.equal(registry.getFieldByTag(5055).fix.id, '5055:cme')
-  assert.equal(registry.getFieldByTag(5001).fix.id, '5001:cme')
-  assert.equal(registry.has(5055), true)
-  assert.equal(registry.fieldById('5055:cme').fix.id, '5055:cme')
+  // A venue reusing a tag under another name is a new thing it defined over
+  // that tag: it is registered under its own identity beside the holder,
+  // the holder gains the name as an alias, and the bare tag keeps answering
+  // the holder while the newcomer is reached by its name or its identity.
+  const venueId = fixField('VenueSymbol', 'utf8', 55, { branches: ['cme'] })
+  assert.equal(registry.insert(venueId), null)
+  assert.equal(registry.size, 3 + CRATED)
+  assert.equal(registry.fieldByTag(55).name, 'Symbol')
+  assert.deepEqual(registry.fieldByTag(55).fix.aliases, ['Ticker', 'VenueTicker', 'VenueSymbol'])
+  const newcomer = registry.fieldByName('venuesymbol')
+  assert.equal(newcomer.name, 'VenueSymbol')
+  assert.notEqual(newcomer.fix.id, symbol.fix.id)
+  assert.equal(newcomer.fix.id, venueId.fix.id)
+  assert.equal(registry.fieldById(newcomer.fix.id).name, 'VenueSymbol')
+  assert.equal(registry.fieldById(symbol.fix.id).name, 'Symbol')
+  assert.equal(registry.has(55), true)
+  assert.deepEqual(registry.dialects(), ['cme'])
 
-  // A standard canonical name wins; a colon-bearing string is a name, never
-  // an identifier.
-  assert.equal(registry.getField('symbol').fix.id, '55:')
-  assert.equal(registry.getField('5055:cme'), null)
-  assert.equal(registry.has('5055:cme'), false)
-  assert.equal(registry.get('5001:cme'), null)
-  assert.equal(registry.remove('5055:cme'), null)
+  // A bare string is a name, never an identifier, and a bare number is a
+  // tag: an identifier is only ever spelled through the `ById` doors.
+  assert.equal(registry.getField('symbol').fix.id, symbol.fix.id)
+  assert.equal(registry.getField(`${symbol.fix.id}`), null)
+  assert.equal(registry.has(`${symbol.fix.id}`), false)
+  assert.equal(registry.get(55).name, 'Symbol')
+  assert.equal(registry.remove(`${symbol.fix.id}`), null)
   assert.equal(registry.size, 3 + CRATED)
 })
 
-test('removeById is how a vendor field leaves the dictionary', () => {
+test('removeById reaches one of two fields on a tag by its own identity', () => {
   const registry = fix.FixRegistry.fromFields([
     fixField('Symbol', 'utf8', 55, { aliases: ['Ticker'] }),
-    fixField('TradeID', 'utf8', 5001, { branch: 'cme', aliases: ['VenueTrade'] }),
-    fixField('VenueQty', 'int64', 5002, { branch: 'cme' }),
+    fixField('TradeID', 'utf8', 5001, { branches: ['cme'], aliases: ['VenueTrade'] }),
   ])
-
-  // The generic `remove` cannot reach another branch at all.
-  assert.equal(registry.remove('TradeID'), null)
-  assert.equal(registry.remove(5001), null)
+  registry.insert(fixField('VenueSymbol', 'utf8', 55, { branches: ['cme'] }))
   assert.equal(registry.size, 3 + CRATED)
+  const symbol = registry.fieldByTag(55).fix.id
+  const venue = registry.fieldByName('VenueSymbol').fix.id
 
-  const removed = registry.removeById('5001:CME')
-  assert.equal(removed.name, 'TradeID')
+  // The generic `remove` reads a number as the tag, which the holder answers;
+  // the identity is what reaches the newcomer.
+  const removed = registry.removeById(venue)
+  assert.equal(removed.name, 'VenueSymbol')
   assert.equal(registry.size, 2 + CRATED)
-  assert.equal(registry.getFieldById('5001:cme'), null)
-  assert.equal(registry.getFieldByName('venuetrade', 'cme'), null)
+  assert.equal(registry.getFieldById(venue), null)
+  // The alias the holder gained when the newcomer arrived is the holder's
+  // to keep: the name still answers, now to the holder alone.
+  assert.equal(registry.getFieldByName('venuesymbol').name, 'Symbol')
+  assert.equal(registry.fieldByTag(55).name, 'Symbol')
   // A field that is not there answers null rather than throwing.
-  assert.equal(registry.removeById('5001:cme'), null)
-  assert.equal(registry.removeById('9999:'), null)
-  // And the standard branch is reached by identifier just as well.
-  assert.equal(registry.removeById('55:').name, 'Symbol')
+  assert.equal(registry.removeById(venue), null)
+  // And the holder is reached by identifier just as well.
+  assert.equal(registry.removeById(symbol).name, 'Symbol')
+  assert.equal(registry.getFieldByName('ticker'), null)
   assert.equal(registry.size, 1 + CRATED)
+  assert.equal(registry.removeById(registry.fieldByTag(5001).fix.id).name, 'TradeID')
+  assert.equal(registry.size, CRATED)
 
-  // A malformed identifier is the native parse failure, never a miss.
-  assert.throws(() => registry.removeById('5002'), /fix identifier/)
-  assert.throws(() => registry.removeById('35:cme'), /fix:branch/)
-  assert.throws(() => registry.removeById(5002), /into rust type `String`/)
-  assert.equal(registry.size, 1 + CRATED)
+  // An identifier is an exact number, never text.
+  assert.throws(() => registry.removeById(1.5), /id must be a signed 32-bit integer/)
+  assert.throws(() => registry.removeById('55'), /into rust type `f64`/)
+  assert.equal(registry.size, CRATED)
 })
 
 test('absence throws with the core message, its get twin answers null', () => {
@@ -415,15 +428,18 @@ test('absence throws with the core message, its get twin answers null', () => {
     () => registry.fieldByTag(9999),
     /^Error: expected a fix field at "tag 9999", got nothing$/,
   )
+  // An identifier no field stands behind: one derived for a tag the seed
+  // does not hold.
+  const stray = fixField('TradeID', 'utf8', 5001)
   assert.throws(
-    () => registry.fieldById('5001:cme'),
-    /^Error: expected a fix field at "identifier 5001:#[0-9a-f]{8}", got nothing$/,
+    () => registry.fieldById(stray.fix.id),
+    new RegExp(`^Error: expected a fix field at "identifier ${stray.fix.id}", got nothing$`),
   )
-  assert.throws(() => registry.fieldByName('Nope', ''), /name \\"Nope\\"/)
-  assert.throws(() => registry.fieldByPath('Symbol.absent', ''), /path Symbol\.absent/)
+  assert.throws(() => registry.fieldByName('Nope'), /name \\"Nope\\"/)
+  assert.throws(() => registry.fieldByPath('Symbol.absent'), /path Symbol\.absent/)
   assert.throws(() => registry.field(9999), /tag 9999/)
-  assert.equal(registry.getFieldByName('Nope', ''), null)
-  assert.equal(registry.getFieldById('5001:cme'), null)
+  assert.equal(registry.getFieldByName('Nope'), null)
+  assert.equal(registry.getFieldById(stray.fix.id), null)
 })
 
 test('a key is a number tag or a string name, and nothing else', () => {
@@ -448,61 +464,59 @@ test('a key is a number tag or a string name, and nothing else', () => {
     })
   }
   // The specialized halves take exactly one shape, checked by Node-API.
-  assert.throws(() => registry.fieldByName('std', 55), /into rust type `String`/)
+  assert.throws(() => registry.fieldByName(55), /into rust type `String`/)
   assert.throws(() => registry.fieldByTag('55'), /into rust type `f64`/)
 })
 
-test('every branch and identifier argument is coerced at the boundary', () => {
+test('every identifier argument is an exact number at the boundary', () => {
   const registry = seed()
 
-  for (const bad of ['2cme', 'c:me']) {
-    assert.throws(() => registry.fieldByName('Symbol', bad), /fix branch/)
-    assert.throws(() => registry.getFieldByName('Symbol', bad), /fix branch/)
-    assert.throws(() => registry.fieldByPath('Symbol', bad), /fix branch/)
-    assert.throws(() => registry.getFieldByPath('Symbol', bad), /fix branch/)
+  // A fractional or out-of-range number is refused rather than narrowed into
+  // another identity, and text is not a number at all.
+  for (const bad of [1.5, 2 ** 31, -(2 ** 31) - 1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(() => registry.fieldById(bad), /id must be a signed 32-bit integer/)
+    assert.throws(() => registry.getFieldById(bad), /id must be a signed 32-bit integer/)
+    assert.throws(() => registry.removeById(bad), /id must be a signed 32-bit integer/)
   }
-  for (const bad of ['55', 'cme:', 'cme:x']) {
-    assert.throws(() => registry.fieldById(bad), /fix identifier/)
-    assert.throws(() => registry.getFieldById(bad), /fix identifier/)
-    assert.throws(() => registry.removeById(bad), /fix identifier/)
-  }
-  // The standard-tag rule reaches the boundary through that same parse.
-  assert.throws(() => registry.fieldById('35:cme'), /fix:branch/)
-
-  for (const wrong of [55, null, 3.5]) {
-    assert.throws(() => registry.fieldById(wrong), /into rust type `String`/)
+  for (const wrong of ['55', null, 55n, { id: 55 }]) {
+    assert.throws(() => registry.fieldById(wrong), /into rust type `f64`/)
+    assert.throws(() => registry.getFieldById(wrong), /into rust type `f64`/)
   }
   for (const wrong of [55, 3.5]) {
-    assert.throws(() => registry.getFieldByName('Symbol', wrong), /into rust type `String`/)
-    assert.throws(() => registry.fieldByPath('std', wrong), /into rust type `String`/)
+    assert.throws(() => registry.getFieldByName(wrong), /into rust type `String`/)
+    assert.throws(() => registry.fieldByPath(wrong), /none of these types `String`, `JsFieldPath`/)
   }
-  assert.equal(registry.getFieldByName('Symbol', null).name, 'symbol')
 })
 
 test('the registry iterates lazily in ascending identifier order', () => {
   const registry = fix.FixRegistry.fromFields([
     fixField('Symbol', 'utf8', 55),
-    fixField('TradeID', 'utf8', 5001, { branch: 'cme' }),
+    fixField('TradeID', 'utf8', 5001, { branches: ['cme'] }),
     fixField('Price', 'decimal128(20, 8)', 44),
-    fixField('VenueQty', 'int64', 5002, { branch: 'cme' }),
+    fixField('VenueQty', 'int64', 5002, { branches: ['cme'] }),
     fixField('Account', 'utf8', 1),
     fixField('Tail', 'utf8', 9001),
   ])
+  // Two fields on one tag: the second stands beside the holder.
+  registry.insert(fixField('VenueSymbol', 'utf8', 55))
 
-  // Tag-major, then by branch digest - the identifier's own order. The
-  // vendor fields therefore precede the later standard tag, and the crate's
-  // own fields close the walk: standard fields whose tags sit above any a
-  // test claims.
-  const crated = fix.crateFields().map((field) => field.fix.id)
-  assert.deepEqual(crated, Array.from({ length: CRATED }, (_, at) => `${CRATE_TAG_MIN + at}:`))
+  // Tag-major, the tag's holder first, then by identifier - the core's own
+  // order. The venue fields therefore precede the later standard tag, and
+  // the crate's own fields close the walk: standard fields whose tags sit
+  // above any a test claims.
+  const crated = fix.crateFields().map((field) => field.fix.tag)
+  assert.deepEqual(crated, Array.from({ length: CRATED }, (_, at) => CRATE_TAG_MIN + at))
   assert.deepEqual(
-    [...registry].map((field) => field.fix.id),
-    ['1:', '44:', '55:', '5001:cme', '5002:cme', '9001:', ...crated],
+    [...registry].map((field) => field.fix.tag),
+    [1, 44, 55, 55, 5001, 5002, 9001, ...crated],
   )
+  const pair = [...registry].filter((field) => field.fix.tag === 55).map((field) => field.name)
+  assert.deepEqual(pair, ['Symbol', 'VenueSymbol'])
   assert.deepEqual(
     [...registry.keys()].map((field) => field.fix.id),
     [...registry].map((field) => field.fix.id),
   )
+  assert.ok([...registry].every((field) => Number.isInteger(field.fix.id)))
 
   // An unfinished walk shares the registry, so a mutation refuses until the
   // walk ends - by exhaustion or by the `return` a `break` sends.
@@ -510,12 +524,12 @@ test('the registry iterates lazily in ascending identifier order', () => {
   assert.equal(walk.next().value.name, 'Account')
   assert.equal(walk.next().value.name, 'Price')
   assert.throws(() => registry.remove(1), /shared with a message/)
-  assert.throws(() => registry.removeById('5001:cme'), /shared with a message/)
+  assert.throws(() => registry.removeById(registry.fieldByTag(5001).fix.id), /shared with a message/)
   walk.return()
   assert.equal(registry.remove(1).name, 'Account')
   assert.deepEqual(
-    [...registry].map((field) => field.fix.id),
-    ['44:', '55:', '5001:cme', '5002:cme', '9001:', ...crated],
+    [...registry].map((field) => field.fix.tag),
+    [44, 55, 55, 5001, 5002, 9001, ...crated],
   )
 })
 
@@ -530,10 +544,11 @@ test('the seed iterates in canonical-tag order and every field is standard', () 
   assert.deepEqual(tags, [...tags].sort((left, right) => left - right))
   // Every stored field is a specification field, and the crate's own twenty
   // are standard fields above every published tag, so no field states a
-  // branch at all - and the crate's close the walk, since nothing the seed
-  // stores sits at or above their first tag.
-  assert.ok([...registry].every((field) => field.fix.branch === fix.STANDARD_BRANCH))
-  assert.ok([...registry].every((field) => !field.has('fix:branch')))
+  // membership at all - and the crate's close the walk, since nothing the
+  // seed stores sits at or above their first tag.
+  assert.ok([...registry].every((field) => field.fix.branches.length === 0))
+  assert.ok([...registry].every((field) => !field.has('fix:branches')))
+  assert.deepEqual(registry.dialects(), [])
   assert.deepEqual(
     tags.filter((tag) => tag >= CRATE_TAG_MIN),
     fix.crateFields().map((field) => field.fix.tag),
@@ -591,20 +606,21 @@ test('a written catalog reloads all four categories', (t) => {
   assert.ok(fix.FixRegistry.fromHandle(dictionary).equals(reference))
 })
 
-test('a vendor branch gets its own folder', (t) => {
+test('membership is stored on the field, in the one shard tree', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const dictionary = path.join(root, 'dictionary')
 
   const registry = fix.FixRegistry.fromFields([
     fixField('MsgType', 'utf8', 35),
-    fixField('TradeID', 'utf8', 5001, { branch: 'cme' }),
+    fixField('TradeID', 'utf8', 5001, { branches: ['cme'] }),
   ])
   registry.writeInto(dictionary)
 
-  // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
-  assert.ok(fs.existsSync(path.join(dictionary, 'fields', '0.json')))
-  assert.ok(fs.existsSync(path.join(dictionary, 'fields', 'cme', '50.json')))
+  // One shard arithmetic for every field: 5001 / 100 is 50, whatever the
+  // field's membership, and nothing is keyed by a dictionary name.
+  assert.deepEqual(fs.readdirSync(path.join(dictionary, 'fields')).sort(), ['0.json', '50.json'])
+  assert.equal(fs.existsSync(path.join(dictionary, 'branches.json')), false)
   assert.equal(
     fs.existsSync(path.join(dictionary, 'fields', '650.json')),
     false,
@@ -613,9 +629,17 @@ test('a vendor branch gets its own folder', (t) => {
 
   const reloaded = fix.FixRegistry.fromHandle(dictionary)
   assert.ok(reloaded.equals(registry))
-  assert.equal(reloaded.fieldById('5001:cme').name, 'TradeID')
-  assert.equal(reloaded.fieldByName('tradeid', 'cme').name, 'TradeID')
-  assert.equal(reloaded.getFieldByTag(5001).name, 'TradeID')
+  assert.equal(reloaded.stableHash(), registry.stableHash())
+  assert.equal(reloaded.fieldById(registry.fieldByTag(5001).fix.id).name, 'TradeID')
+  assert.equal(reloaded.fieldByName('tradeid').name, 'TradeID')
+  assert.deepEqual(reloaded.fieldByTag(5001).fix.branches, ['cme'])
+  assert.deepEqual(reloaded.fieldByTag(35).fix.branches, [])
+  assert.deepEqual(reloaded.dialects(), ['cme'])
+  // Membership is metadata like any other: it is in the snapshot's fields
+  // and nowhere else.
+  const document = registry.toJSON()
+  assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups', 'messages'])
+  assert.equal(document.fields.find((field) => field.name === 'TradeID').metadata['fix:branches'], 'cme')
 })
 
 test('insert, update and remove carry the core rules across', () => {
@@ -627,24 +651,21 @@ test('insert, update and remove carry the core rules across', () => {
   assert.equal(registry.insert(fixField('Side', 'utf8', 54)), null)
   assert.equal(registry.fieldByTag(54).name, 'Side')
 
-  // A key another field holds is refused, naming both and the branch; nothing
-  // changes.
+  // A key another field holds is refused, naming both; nothing changes.
   assert.throws(
     () => registry.insert(fixField('SymbolSfx', 'utf8', 65, { aliases: ['ticker'] })),
-    /held by Symbol/,
-  )
-  assert.throws(
-    () => registry.insert(fixField('SymbolSfx', 'utf8', 65, { aliases: ['ticker'] })),
-    /branch \\"\\"/,
+    /alias \\"ticker\\" of SymbolSfx, held by Symbol/,
   )
   assert.equal(registry.size, 3 + CRATED)
 
-  // The same alias in another branch is not a conflict at all.
-  assert.equal(
-    registry.insert(fixField('VenueSym', 'utf8', 5055, { branch: 'cme', aliases: ['ticker'] })),
-    null,
+  // One namespace: the same alias under a venue's membership is the same
+  // conflict.
+  assert.throws(
+    () => registry.insert(fixField('VenueSym', 'utf8', 5055, { branches: ['cme'], aliases: ['ticker'] })),
+    /held by Symbol/,
   )
-  assert.equal(registry.fieldByName('TICKER', 'cme').name, 'VenueSym')
+  assert.equal(registry.size, 3 + CRATED)
+  assert.equal(registry.fieldByName('TICKER').name, 'Symbol')
 
   // A merge concatenates the two list properties, incoming first.
   registry.update(fixField('SYMBOL', 'utf8', 55, { tags: [65], aliases: ['Sym'] }))
@@ -682,7 +703,7 @@ test('addField answers whether the field arrived or folded into a stored one', (
   assert.equal(registry.size, 2 + CRATED)
   const stored = registry.fieldByTag(55)
   assert.equal(stored.name, 'Symbol')
-  assert.equal(stored.fix.id, '55:')
+  assert.equal(stored.fix.tag, 55)
   assert.deepEqual(stored.fix.tags, [65, 66, 9001])
   assert.deepEqual(stored.fix.aliases, ['Ticker', 'Sym'])
   assert.equal(stored.fix.description, 'incoming')
@@ -722,7 +743,7 @@ test('a shared registry refuses mutation and a clone is independent', () => {
     () => registry.insert(fixField('side', 'utf8', 54)),
     () => registry.update(fixField('symbol', 'utf8', 55)),
     () => registry.remove(55),
-    () => registry.removeById('55:'),
+    () => registry.removeById(registry.fieldByTag(55).fix.id),
   ]) {
     assert.throws(mutation, /shared with a message or installed as the process default/)
   }
@@ -742,7 +763,7 @@ function order(registry) {
     [
       registry.fieldByTag(55),
       registry.fieldByTag(38),
-      registry.fieldByName('nopartyids', ''),
+      registry.fieldByName('nopartyids'),
       registry.definition('groups', 'Parties'),
       Field.from('9999: utf8'),
     ],
@@ -765,20 +786,22 @@ test('a message resolves through the registry it carries', () => {
 
   assert.ok(message.field.equals(root))
   assert.ok(message.registry.equals(registry))
-  assert.equal(message.branch, fix.STANDARD_BRANCH)
   assert.equal([...message].length, 5)
   // `size` is what Python spells `len(message)`, and it agrees with the walk.
   assert.equal(message.size, 5)
   assert.equal(message.size, [...message.entries()].length)
   assert.equal(message.byTag(55).asJs(), 'AAPL')
-  assert.equal(message.byId('55:').asJs(), 'AAPL')
+  assert.equal(message.byId(registry.fieldByTag(55).fix.id).asJs(), 'AAPL')
   assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
   assert.equal(message.byTag(38).toString(), '100.0')
   assert.equal(message.byPath('parties[0].partyid').asJs(), 'BROKER')
   // An unknown tag is retained under its rendered name, never dropped.
   assert.equal(message.byTag(9999).asJs(), 'custom')
-  // An identifier is exact: a dictionary this message does not speak misses.
-  assert.equal(message.getById('5001:cme'), null)
+  // An identifier is exact: one the dictionary holds no field under misses,
+  // and so does one whose field the root does not declare.
+  const stray = fixField('TradeID', 'utf8', 5001)
+  assert.equal(message.getById(stray.fix.id), null)
+  assert.equal(message.getById(registry.fieldByTag(44).fix.id), null)
 
   assert.ok(message.get(55).equals(message.byTag(55)))
   assert.ok(message.at('symbol').equals(message.byTag(55)))
@@ -790,8 +813,8 @@ test('a message resolves through the registry it carries', () => {
     /^Error: expected a fix value at "tag 1234", got nothing$/,
   )
   assert.throws(
-    () => message.byId('5001:cme'),
-    /^Error: expected a fix value at "identifier 5001:#[0-9a-f]{8}", got nothing$/,
+    () => message.byId(stray.fix.id),
+    new RegExp(`^Error: expected a fix value at "identifier ${stray.fix.id}", got nothing$`),
   )
   assert.throws(() => message.byName('nope'), /name \\"nope\\"/)
   assert.throws(() => message.byPath('parties.partyid'), /path parties\.partyid/)
@@ -800,10 +823,10 @@ test('a message resolves through the registry it carries', () => {
     message: 'key must be a number tag or a string name, got BigInt',
   })
   assert.throws(() => message.byTag(2 ** 31), /tag must be a signed 32-bit integer/)
-  // A malformed identifier is the native parse failure, never a miss.
-  assert.throws(() => message.byId('55'), /fix identifier/)
-  assert.throws(() => message.getById('cme:'), /fix identifier/)
-  assert.throws(() => message.getById(55), /into rust type `String`/)
+  // An identifier that is not an exact number is refused, never a miss.
+  assert.throws(() => message.byId(1.5), /id must be a signed 32-bit integer/)
+  assert.throws(() => message.getById(2 ** 31), /id must be a signed 32-bit integer/)
+  assert.throws(() => message.getById('55'), /into rust type `f64`/)
 
   // The plain object became the ordered row the root declares.
   const pairs = [...message]
@@ -816,53 +839,49 @@ test('a message resolves through the registry it carries', () => {
   assert.ok(new fix.FixMsg(root, message.value, registry).equals(message))
 })
 
-test('a venue message resolves in two steps', () => {
+test("a venue's field and MsgType are both reachable from a venue message", () => {
   const registry = fix.FixRegistry.fromFields([
     fixField('MsgType', 'utf8', 35),
-    fixField('TradeID', 'utf8', 5001, { branch: 'cme', aliases: ['VenueTrade'] }),
+    fixField('TradeID', 'utf8', 5001, { branches: ['cme'], aliases: ['VenueTrade'] }),
     fixField('Symbol', 'utf8', 55, { aliases: ['Ticker'] }),
-    fixField('Symbol', 'utf8', 5055, { branch: 'cme', aliases: ['VenueTicker'] }),
   ])
   const root = fields.struct(
     'VenueOrder',
     [Field.from('MsgType: utf8'), Field.from('TradeID: utf8'), Field.from('Symbol: utf8')],
     { nullable: false },
   )
-  root.fix.branch = 'cme'
   const message = new fix.FixMsg(
     root,
     { MsgType: 'D', TradeID: 'T-1', Symbol: 'AAPL' },
     registry,
   )
 
-  // The branch is the root's own, derived and never declared.
-  assert.equal(message.branch, 'cme')
-  // Step one: the message's own dictionary.
+  // One namespace, one step: the venue's own field, the specification's,
+  // and every alias either declares resolve alike, whatever dictionary
+  // contributed them - membership is provenance, never a tier.
   assert.equal(message.byTag(5001).asJs(), 'T-1')
   assert.equal(message.byName('venuetrade').asJs(), 'T-1')
-  assert.equal(message.byName('venueticker').asJs(), 'AAPL')
-  // Step two: the standard branch, which every FIX message still carries.
   assert.equal(message.byTag(35).asJs(), 'D')
-  // And no third step: a standard alias the venue does not define still
-  // resolves, because the standard branch is the second tier.
   assert.equal(message.byName('ticker').asJs(), 'AAPL')
+  assert.equal(message.byId(registry.fieldByTag(5001).fix.id).asJs(), 'T-1')
+  assert.equal(message.byId(registry.fieldByTag(35).fix.id).asJs(), 'D')
+  assert.ok(registry.fieldByTag(5001).fix.hasBranch('cme'))
+  assert.equal(registry.fieldByTag(35).fix.hasBranch('cme'), false)
+  // A message root is not a dictionary member: it carries no membership.
+  assert.deepEqual(message.field.fix.branches, [])
 
-  // An identifier names one dictionary exactly and does not tier.
-  assert.equal(message.byId('5001:cme').asJs(), 'T-1')
-  assert.equal(message.byId('35:').asJs(), 'D')
-  assert.equal(message.getById('5001:'), null)
-
-  // A standard message is one step: it never reads a venue dictionary.
+  // A root that does not declare the child misses it, whatever the
+  // dictionary holds.
   const plain = fields.struct(
     'Order',
     [Field.from('MsgType: utf8'), Field.from('TradeID: utf8')],
     { nullable: false },
   )
   const standard = new fix.FixMsg(plain, { MsgType: 'D', TradeID: 'T-1' }, registry)
-  assert.equal(standard.branch, '')
   assert.equal(standard.byTag(35).asJs(), 'D')
-  assert.equal(standard.getByTag(5001), null)
-  assert.equal(standard.getByName('venuetrade'), null)
+  assert.equal(standard.byTag(5001).asJs(), 'T-1')
+  assert.equal(standard.getByTag(55), null)
+  assert.equal(standard.getByName('ticker'), null)
 })
 
 test('a message refuses a value its field refuses', () => {
@@ -875,11 +894,6 @@ test('a message refuses a value its field refuses', () => {
   assert.throws(() => new fix.FixMsg(root, { symbol: [1] }, registry), /symbol/)
   assert.throws(() => new fix.FixMsg(Field.from('scalar: utf8'), { symbol: 'AAPL' }, registry))
   assert.throws(() => fix.FixMsg(root, { symbol: 'AAPL' }, registry), /without 'new'/)
-
-  // A root whose stored branch is malformed fails at construction.
-  const broken = fields.struct('row', [Field.from('Symbol: utf8')], { nullable: false })
-  broken.set('fix:branch', '2cme')
-  assert.throws(() => new fix.FixMsg(broken, { Symbol: 'AAPL' }, registry), /fix:branch/)
 })
 
 test('a message links the process default when none is named', () => {
@@ -952,9 +966,6 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
       'FixMsg',
       'FixRegistry',
       'MsgType',
-      'STANDARD_BRANCH',
-      'USER_TAG_MAX',
-      'USER_TAG_MIN',
       'UlPlugin',
       'UlPlugins',
       'crateFields',
@@ -966,9 +977,6 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
       'ulbridgeFields',
     ],
   )
-  assert.equal(fix.STANDARD_BRANCH, '')
-  assert.equal(fix.USER_TAG_MIN, 5000)
-  assert.equal(fix.USER_TAG_MAX, 40_000)
   for (const name of [
     'FixFieldIterator',
     'FixMsg',
@@ -984,8 +992,6 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
     'fixSchema',
     'fixSchemaCarrying',
     'fixSchemaTags',
-    '_fixStandardBranchNative',
-    '_fixStandardTagLimitNative',
     'fixGlobalRegistryNative',
     'fixInstallGlobalRegistryNative',
   ]) {
@@ -1003,7 +1009,7 @@ test('installing the process default wins before anything resolves it', () => {
     fix.installGlobalRegistry(seed)
     assert.ok(fix.globalRegistry().equals(seed))
     assert.equal(fix.globalRegistry().fieldByTag(55).name, 'symbol')
-    assert.equal(fix.globalRegistry().fieldByName('SYMBOL', '').name, 'symbol')
+    assert.equal(fix.globalRegistry().fieldByName('SYMBOL').name, 'symbol')
     const root = fields.struct('row', [fix.globalRegistry().fieldByTag(55)], { nullable: false })
     assert.ok(new fix.FixMsg(root, { symbol: 'AAPL' }).registry.equals(seed))
     assert.throws(() => fix.installGlobalRegistry(new fix.FixRegistry()), /already resolved/)
@@ -1086,8 +1092,6 @@ test('a reader takes the pins the core takes', () => {
   // A stated absence produces no field at all.
   const silent = new fix.FixCodec(registry, { nullValues: ['<none>'] })
   assert.equal(silent.parseLine(Buffer.from('8=FIX.4.4|35=D|55=<none>|10=0|')).next().value.getByTag(55), null)
-
-  assert.throws(() => new fix.FixCodec(registry, { branch: 'not a branch' }))
 })
 
 test('a reader fills what the line implied and leaves the wire alone', () => {
@@ -1465,14 +1469,14 @@ test('the crate fields declare their own protocols', () => {
       'TargetSessionId',
     ],
   )
-  // In tag order, on the standard branch, from 65000 up: above every tag FIX
-  // or a venue publishes, so they collide with nothing a dictionary declares
-  // and need no branch of their own.
+  // In tag order from 65000 up: above every tag FIX or a venue publishes, so
+  // they collide with nothing a dictionary declares and belong to none.
   assert.deepEqual(
-    held.map((field) => field.fix.id),
-    held.map((_, at) => `${CRATE_TAG_MIN + at}:`),
+    held.map((field) => field.fix.tag),
+    held.map((_, at) => CRATE_TAG_MIN + at),
   )
-  assert.ok(held.every((field) => field.fix.branch === fix.STANDARD_BRANCH))
+  assert.ok(held.every((field) => field.fix.branches.length === 0))
+  assert.ok(held.every((field) => Number.isInteger(field.fix.id)))
 
   const digest = held[0]
   assert.equal(digest.getProperty('digest', 'role'), 'holder')
@@ -1493,14 +1497,14 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   // session names the line spells.
   const held = fix.crateFields().slice(7, 13)
   assert.deepEqual(
-    held.map((field) => [field.name, field.display, field.fix.id]),
+    held.map((field) => [field.name, field.display, field.fix.tag]),
     [
-      ['sendersessionid', 'SenderSessionId', '65007:'],
-      ['msgctxid', 'MsgCtxId', '65008:'],
-      ['pluginid', 'PluginId', '65009:'],
-      ['prevpluginid', 'PrevPluginId', '65010:'],
-      ['sendersessionname', 'SenderSessionName', '65011:'],
-      ['targetsessionname', 'TargetSessionName', '65012:'],
+      ['sendersessionid', 'SenderSessionId', 65007],
+      ['msgctxid', 'MsgCtxId', 65008],
+      ['pluginid', 'PluginId', 65009],
+      ['prevpluginid', 'PrevPluginId', 65010],
+      ['sendersessionname', 'SenderSessionName', 65011],
+      ['targetsessionname', 'TargetSessionName', 65012],
     ],
   )
   assert.ok(held.every((field) => field.dtype.equals(DataType.from('utf8'))))
@@ -1518,11 +1522,11 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   // state is ten bytes, two digits of rank then the name, as `40PARTFILL`.
   const derived = fix.crateFields().slice(13, 16)
   assert.deepEqual(
-    derived.map((field) => [field.name, field.display, field.fix.id, field.dtype.toString()]),
+    derived.map((field) => [field.name, field.display, field.fix.tag, field.dtype.toString()]),
     [
-      ['isincode', 'ISINCode', '65013:', 'isin'],
-      ['miccode', 'MICCode', '65014:', 'mic'],
-      ['state', 'State', '65015:', 'state'],
+      ['isincode', 'ISINCode', 65013, 'isin'],
+      ['miccode', 'MICCode', 65014, 'mic'],
+      ['state', 'State', 65015, 'state'],
     ],
   )
   assert.equal(derived[2].dtype.fixedByteWidth, 10)
@@ -1532,29 +1536,29 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   // them as it joins on the digest.
   const identities = fix.crateFields().slice(16, 19)
   assert.deepEqual(
-    identities.map((field) => [field.name, field.display, field.fix.id, field.dtype.toString()]),
+    identities.map((field) => [field.name, field.display, field.fix.tag, field.dtype.toString()]),
     [
-      ['instid', 'InstId', '65016:', 'fixed_size_binary(16)'],
-      ['id', 'Id', '65017:', 'fixed_size_binary(16)'],
-      ['persistentid', 'PersistentId', '65018:', 'fixed_size_binary(16)'],
+      ['instid', 'InstId', 65016, 'fixed_size_binary(16)'],
+      ['id', 'Id', 65017, 'fixed_size_binary(16)'],
+      ['persistentid', 'PersistentId', 65018, 'fixed_size_binary(16)'],
     ],
   )
   assert.ok(identities.every((field) => field.description))
 
-  // A new registry, a loaded one and a built one answer them alike, by
-  // identifier, by name on the standard branch, and by the bare tag or name,
-  // which is that branch's.
+  // A new registry, a loaded one and a built one answer them alike, by the
+  // identifier the listed field derives on its own, by name, and by the bare
+  // tag or name.
   for (const registry of [
     new fix.FixRegistry(),
     seed(),
     fix.FixRegistry.fromFields([fixField('Symbol', 'utf8', 55)]),
   ]) {
-    assert.equal(registry.fieldById('65007:').name, 'sendersessionid')
-    assert.equal(registry.fieldByName('SenderSessionId', fix.STANDARD_BRANCH).fix.tag, 65007)
+    assert.equal(registry.fieldById(held[0].fix.id).name, 'sendersessionid')
+    assert.equal(registry.fieldByName('SenderSessionId').fix.tag, 65007)
     assert.equal(registry.fieldByTag(65012).name, 'targetsessionname')
-    assert.equal(registry.field('msgctxid').fix.id, '65008:')
+    assert.equal(registry.field('msgctxid').fix.id, held[1].fix.id)
     assert.equal(registry.has('pluginid'), true)
-    assert.equal(registry.fieldByName('ULToSessionName', fix.STANDARD_BRANCH).name, 'targetsessionname')
+    assert.equal(registry.fieldByName('ULToSessionName').name, 'targetsessionname')
   }
 
   // And each is a column of the fixed row, typed by the crate's own
@@ -1592,48 +1596,60 @@ test('a message says everything the core derives about it', () => {
   // A buy order at a price is a party willing to pay it, so the bid lane it
   // never wrote is still true of it.
   assert.equal(message.lifted('bidpx').toJSON(), 10.5)
-  assert.match(message.liftSource('bidpx'), /^44/)
+  // A lift source is the tag the facet was read from.
+  assert.equal(message.liftSource('bidpx'), 44)
+  assert.equal(message.liftSource('nope'), null)
   assert.ok(message.lift().length > 0)
   assert.equal(message.digest().length, 16)
+  // An arrival states the tag its key named.
   assert.equal(message.arrivals()[0][0], 8)
-  // An arrival states the tag its key named; the dialect is the message's own,
-  // and a message read under none is on the standard branch.
-  assert.equal(message.branch, fix.STANDARD_BRANCH)
   assert.equal(message.intoBytes(124).toString().split('|')[0], '8=FIX.4.4')
 })
 
-test('a dialect crosses as its name and the registry resolves a digest back', () => {
+test('a CBlock read under a dialect stamps membership on everything it produced', (t) => {
   const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const file = path.join(root, 'bloomberg.cfb')
   fs.writeFileSync(
     file,
     [
-      '<CBlock>',
-      '<Fields>',
-      '<Field name="10001" alt="ExcludedDealers" type="string" desc="Dealers excluded."/>',
-      '</Fields>',
-      '</CBlock>',
+      '<?xml version="1.0"?>',
+      '<cplugin-configuration fix-version="4.4">',
+      '<vocabulary>',
+      '<vocabulary-tag name="10001" alt="ExcludedDealers" type="string" />',
+      '<vocabulary-tag name="55" alt="Symbol" type="string" />',
+      '</vocabulary>',
+      '</cplugin-configuration>',
     ].join('\n'),
     'utf8',
   )
-  const [registry] = fix.FixRegistry.fromCfbFile(file, 'bloomberg')
+  const [registry, roots] = fix.FixRegistry.fromCfbFile(file, 'Bloomberg')
+  assert.equal(roots.length, 0)
+  assert.equal(registry.size, 2 + CRATED)
 
-  // The dialect is declared by the file, and a capture read under it carries
-  // that dialect once, on the message. A pair does not repeat it: what a
-  // dictionary decided is one value for every field of one message.
-  const reader = new fix.FixCodec(registry, { branch: 'bloomberg' })
-  const message = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|')).next().value
-  assert.equal(message.branch, 'bloomberg')
+  // Every field the file produced - a standard tag included, since membership
+  // means the dictionary speaks it - carries the dialect, folded once.
+  assert.deepEqual(registry.fieldByTag(10001).fix.branches, ['bloomberg'])
+  assert.deepEqual(registry.fieldByTag(55).fix.branches, ['bloomberg'])
+  assert.ok(registry.fieldByTag(10001).fix.hasBranch('BLOOMBERG'))
+  assert.deepEqual(registry.dialects(), ['bloomberg'])
+  assert.ok(fix.crateFields().every((field) => !registry.fieldByTag(field.fix.tag).fix.hasBranch('bloomberg')))
+
+  // Membership is provenance: the codec reads the one namespace with no pin
+  // and the venue's field resolves like any other.
+  const message = new fix.FixCodec(registry).parseLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|')).next().value
+  assert.equal(message.byName('ExcludedDealers').asJs(), 'NONE')
+  assert.equal(message.byTag(10001).asJs(), 'NONE')
   assert.ok(message.arrivals().every(([tag]) => Number.isInteger(tag)))
 
-  // The digest table stays what it is: a capture written by a reader that
-  // stores digests joins to a declaration through it, without reproducing the
-  // hash. Zero is the standard branch, which every registry holds through the
-  // crate's own fields; a value no declared branch digests to names nothing at
-  // all.
-  assert.equal(registry.getBranchByDigest(0), fix.STANDARD_BRANCH)
-  assert.equal(registry.getBranchByDigest(-1), null)
-  assert.throws(() => registry.branchByDigest(-1))
+  // With no dialect named nothing is stamped, and a name that is empty or
+  // carries the separator is refused before anything is read.
+  const [unstamped] = fix.FixRegistry.fromCfbFile(file)
+  assert.deepEqual(unstamped.fieldByTag(10001).fix.branches, [])
+  assert.deepEqual(unstamped.dialects(), [])
+  assert.equal(fix.FixRegistry.fromCfbFile(file, null)[0].dialects().length, 0)
+  assert.throws(() => fix.FixRegistry.fromCfbFile(file, 'a,b'), /fix:branches/)
+  assert.throws(() => fix.FixRegistry.fromCfbFile(file, ''), /fix:branches/)
 })
 
 test('a message type keeps its complete wire code and immutable schema', () => {

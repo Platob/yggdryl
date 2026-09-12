@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use arrow_array::builder::{Int32Builder, ListBuilder};
 use arrow_array::{
-    ArrayRef, BinaryArray, Int32Array, Int64Array, ListArray, RecordBatch, StringArray, StructArray,
+    ArrayRef, Int32Array, Int64Array, ListArray, RecordBatch, StringArray, StructArray,
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use criterion::measurement::WallTime;
@@ -156,17 +156,17 @@ fn media_target(source: &RecordBatch, seeded: bool, merge: bool) -> Media {
     Media::from(ipc)
 }
 
-/// Text's writable record shape: the encoder consumes the binary body column.
+/// Text's writable record shape: the encoder consumes the text body column.
 fn text_source() -> RecordBatch {
     let schema = Arc::new(Schema::new(vec![ArrowField::new(
         "body",
-        ArrowDataType::Binary,
+        ArrowDataType::Utf8,
         false,
     )]));
     RecordBatch::try_new(
         schema,
-        vec![Arc::new(BinaryArray::from_iter_values(
-            (0..STATEFUL_ROWS).map(|row| format!("event-{row:08}").into_bytes()),
+        vec![Arc::new(StringArray::from_iter_values(
+            (0..STATEFUL_ROWS).map(|row| format!("event-{row:08}")),
         ))],
     )
     .expect("a text-line fixture")

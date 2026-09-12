@@ -1,7 +1,8 @@
 # The decisions the TextLine adaptation rests on
 
-Nine decisions and three amendments, settled while the FIX layer was moved onto
-the text reader that landed in `main`. Each is one rule, and the module doc
+Twelve decisions and three amendments, settled while the FIX layer was moved
+onto the text reader that landed in `main`, then made text, then given one
+namespace, then met the charset layer. Each is one rule, and the module doc
 named beside it is where the rule is written down.
 
 They are here rather than in a scratchpad because they are the contract the work
@@ -11,7 +12,10 @@ find the answer without archaeology.
 
 Decisions 1-7 were settled before the work began, from five reader reports that
 measured both sides against the branch's own fixtures. Decision 8 was settled
-when the codec's entry point changed, decision 9 when its paths did. The
+when the codec's entry point changed, decision 9 when its paths did, and
+decision 10 when the line became text, decision 11 when the registry's branches
+went, and decision 12 when the charset layer and the text line met in one
+merge - each written, like the others, before the code that keeps it. The
 amendments record where a decision turned out to over-claim once it met the
 code - which is the part most worth keeping.
 
@@ -162,8 +166,9 @@ reading the contract forbids. The grammar is not too narrow here - it already
 writes positions, and FIX simply wrote them differently.
 
 What must survive, and does, is FIX's *name* resolution: alias before exact,
-the fold that drops case and separators, and the branch tiers. That belongs in
-how a segment resolves a name against the registry, not in a second parser.
+the fold that drops case and separators, and the branch tiers (the tiers went
+with decision 11; the rest stands). That belongs in how a segment resolves a
+name against the registry, not in a second parser.
 
 **Written in:** `fix/msg.rs`, on the path navigator, and `docs/fix/message.md`.
 **Fixtures:** every `by_path`/`get_by_path` site in the FIX suites, the Python
@@ -268,8 +273,10 @@ fields and its row-header captures, never as a name looked up in a map per row:
 The codec is told the capture names once - `FixCodec::with_capture_names`,
 taking what `TextOptions::capture_names` answers - and resolves each there to
 the one role it plays: the dialect, the version, the clock, the direction, or a
-fill and the field it fills. Per line it reads a capture by position. A line
-carrying no captures states nothing, and nothing is silence, never an error.
+fill and the field it fills (the dialect role went with decision 11: a
+`pluginid` capture is a fill and selects nothing). Per line it reads a capture
+by position. A line carrying no captures states nothing, and nothing is
+silence, never an error.
 
 **Why not a lifted entry.** A lift reaches into the body, and the body is the
 message. A fact read out of it is already a FIX field, which the codec fills
@@ -349,8 +356,10 @@ could not do: the registry needed `Parties.PartyID` where the message needed
 
 **What survives, per segment.** FIX's name resolution is the behaviour this
 must not lose: the codec's dialect first and then the standard branch
-(`known_by_name`), alias before exact, the fold that drops case and separators,
-and the registry's canonical spelling before a folded child (`child_index`).
+(`known_by_name`; superseded by decision 11, under which `known_by_name` is
+the one namespace's lookup), alias before exact, the fold that drops case and
+separators, and the registry's canonical spelling before a folded child
+(`child_index`).
 None of that is parsing, so none of it belongs in the grammar; it is how a
 `Field` segment resolves a name against a dictionary.
 
@@ -368,3 +377,508 @@ lookup.
 suites re-spelled; a case proving a bare decimal reaches a child named `0` and
 answers none otherwise; a case proving one spelling reaches the same member
 through the message and through the registry.
+
+## 10. A line is text, and what arrived as something else is decoded where the line is made
+
+**Rule.** A `TextLine`'s body is text. `TextLine::body` answers `&str`, and it
+can, because the line is made text where it is made: `TextLine::from_bytes`
+and `set_body` take the bytes the reader cut, and where those are not valid UTF-8
+they are decoded once into a page of their own - every valid UTF-8 run kept as
+it is, and every byte of every invalid run read as the character Windows-1252
+gives it. A body that was valid UTF-8, which is every line of every capture this
+crate holds, costs nothing: the same page, the same range, no byte read twice
+beyond the validation. A body that was not costs one allocation, for that line.
+
+The row-header captures take the same decode, because a capture is text the
+header wrote and a line half text would be two readings of one line. The
+refusal a non-UTF-8 capture used to raise - `expected a UTF-8 row-header
+capture` - goes, with the branch that raised it.
+
+The Arrow twin follows: the row's `body` column is `utf8`, required, and a
+lifted entry column is `utf8`, nullable. What the reader answers as text it
+declares as text; a `binary` column over bytes proven to be text would be a
+second reading, and every consumer of it - the FIX batch reader, the row
+writer, a caller reading a frame - would validate again what the reader
+already validated. Writes consume only a non-null `utf8` body, and a batch
+carrying a `binary` body is refused naming what was expected.
+
+`TextEntry` stays a pair of ranges of the page (shape C of the three the
+handover named): `key()` and `value()` answer `Cow<str>` infallibly, borrowed
+wherever the range is text and owned only where it is not, and `key_bytes()`
+and `value_bytes()` answer the ranges for the reader that needs offsets - the
+FIX codec re-slicing a data field to the length its `Len` field stated, or
+re-emitting a frame byte for byte. On a line the reader made, the borrowed
+case is the only case: the scanner cuts a range at `=`, at a separator, at
+whitespace and at the punctuation a transport closed a line with, all of
+them ASCII, so no range it cuts ever divides a character. The owned case is
+left for a page a caller built from bytes of their own.
+
+`TextLine::decoded_byte_size` says how many bytes of the line as read were not
+UTF-8 and were decoded; `0` for a line that was text as read. It is the one
+fact the decode keeps, so a reader auditing a capture can find the lines the
+reader repaired without decoding them again.
+
+**The table.** (Decision 12 moves the table out of `media/text/line.rs` and
+into the charset layer, which generates it, and adds the case of a handle that
+declares its charset; the rule below is unchanged by it.) Windows-1252 as the
+WHATWG encoding standard has it: `0x00`-`0x7F`
+are themselves, `0xA0`-`0xFF` are `U+00A0`-`U+00FF`, and `0x80`-`0x9F` are the
+classic table's punctuation, currency and letters, with the five bytes the
+classic table leaves undefined - `0x81`, `0x8D`, `0x8F`, `0x90`, `0x9D` - read
+as the C1 controls of the same number rather than refused. A byte the wire
+held is a fact, and the reader never writes `U+FFFD` for one, because a
+replacement character is the absence of a fact where the line had one.
+
+**Why per byte rather than per line.** A capture is mostly UTF-8 with an odd
+Latin-1 byte far more often than it is wholly Windows-1252 - a name a
+Windows tool wrote into a log a Linux service otherwise wrote in UTF-8 - and
+decoding a valid `é` (`C3 A9`) as `Ã©` because a lone `0xE9` stands elsewhere
+on the line would destroy what was right to repair what was wrong. A wholly
+Windows-1252 line has no valid multi-byte run to keep and decodes byte for
+byte, so the per-byte rule reads it exactly as a per-line rule would. What
+neither rule can do is tell `C3 A9` written as two Latin-1 letters from one
+UTF-8 `é`; the reader takes the UTF-8 reading, because it is the encoding
+the row's schema declares.
+
+**Why one rule and no option.** A `TextOptions` charset would be a knob for a
+case nobody has: this crate's captures are UTF-8 with stray bytes, and
+Windows-1252 is the one decode of a stray byte that loses nothing, since it
+maps every byte to one character. A capture in another encoding whole is a
+different input with its own argument, and it can have its own option then.
+(Decision 12 gives that input its argument - the handle's media type, which
+already owns it everywhere else - and keeps this sentence: there is still no
+option.)
+
+**Why the decode comes last.** Everything the reader does to a line's bytes
+before the line exists - the row-header match, `lstrip`/`rstrip`, the
+direction, `max_record_byte_size`, `dropped_byte_size`, adjacent
+deduplication - is a fact of the bytes as read, in bytes as read, and stays
+so. A limit stated in bytes bounds the wire, not the decode: a body of N
+wire bytes decodes to as many as 3N. A truncation that cut a multi-byte
+character in two leaves its orphan bytes invalid, and they decode as the
+Windows-1252 characters they are - `E2 82` reads `â‚` - which is the honest
+answer to a reader that asked for N bytes and got them.
+
+**What it collides with, and how each is settled.**
+
+- *Decision 2's stated length.* A data field's `Len` counts wire bytes, and
+  the codec re-slices the value to it in page offsets. On a line the reader
+  made, the page is the wire wherever the wire was text, so the length lands
+  where it landed before - the 264 messages of the equivalence snapshot among
+  them. Where the wire was not text, the decoded value is longer than its
+  stated length, the length reaches no boundary the frame stated, and it is
+  not honoured - exactly as any stated length that reaches no boundary is not
+  (`fd76e05`): the value stays what the frame cut. That is a loss, and it is
+  named here rather than hidden: a binary data field on a line that was not
+  UTF-8 is read as text to the separator, and the line's
+  `decoded_byte_size` says the line was decoded. The codec's own byte doors -
+  `parse_fix_line`, `parse_ullink_line`, `own_pairs` - take bytes as given
+  and decode nothing, so a caller holding the wire still reads it as the wire.
+- *Byte-for-byte re-emission.* `FixMsg::into_bytes` re-emits the entries, and
+  the entries are ranges of the line's page, so a message read from a text
+  line re-emits that line's text: the wire as received wherever the wire was
+  text, and the decode of it where it was not. `.wire` in the snapshot cannot
+  move, because the corpus is UTF-8 throughout.
+- *The `Lossy` anomaly.* It keeps its meaning - a value that is not text
+  reaches the row as a decode of it - and it keeps its fixture, which goes
+  through the byte door. It cannot arise from a line the reader made, because
+  that line was text before the codec read it; that a line was decoded is the
+  line's fact, `decoded_byte_size`, and not a message's.
+- *Decision 5.* An entry is still a range of the line, and the line is still
+  the line; the decode happens before the line exists, so nothing here makes
+  an entry carry bytes the line does not.
+
+**Written in:** `media/text/line.rs`, on `TextLine`, with the table beside
+the decode; `media/text/entry.rs`, on the two accessors; `docs/media/text.md`.
+**Fixtures:** a line with one Latin-1 byte among UTF-8, decoded to the one
+character; a wholly Windows-1252 line; each of the five bytes the classic
+table leaves undefined; a line `max_record_byte_size` cut inside a
+character; a capture holding an invalid byte, reaching its typed column
+decoded; a data field carrying an invalid byte read through the text reader,
+which stays as the frame cut it and raises no `Lossy`, beside the same line
+through `parse_fix_line`, which reads the wire and does; the equivalence
+snapshot, unmoved; the Python and Node record dictionaries, answering `str`.
+
+**What it costs.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `media/text/line.rs` | `body()` answers `&str`, `body_bytes()` the range; `from_bytes`/`set_body` decode; `decoded_byte_size` | the page and offsets of every UTF-8 line |
+| `media/text/arrow.rs`, `plan.rs`, `batch.rs` | `body` and lifted columns `utf8`; the writer consumes `utf8`; captures decoded at `convert` | wire-byte counts: `dropped_byte_size`, `max_record_byte_size` |
+| `media/text/entry.rs` | `key()`/`value()` answer `Cow<str>`; `key_bytes()`/`value_bytes()` the ranges | every range the scanner cuts |
+| `fix/` | call sites read the ranges through the `_bytes` accessors | the equivalence snapshot; the byte-door fixture in `tests/fix/message.rs` |
+| Python, Node | `body`, `key`, `value`, captures answer text; `key_bytes`/`value_bytes` beside them; `decoded_byte_size` | argument order and error semantics |
+| docs, `AGENTS.md` | `body: utf8`; the examples read text | |
+
+## 11. A field is its tag and its name; a dictionary is a membership, not a namespace
+
+**Rule.** A FIX field is identified by its tag and its name together, and by
+nothing else. `FixId` is one `i32`: the signed XXH32, under a fixed seed, of
+the tag's four little-endian bytes followed by the name under the crate's one
+fold - ASCII case dropped, `_`, `-` and space dropped - so `Msg_Type`,
+`msgtype` and `MsgType` under tag 35 are one id, and the id agrees with what
+every name lookup already answers. It is derived on every read from
+`fix:tag` and the field's name, never written into a dictionary shard, for
+the reason `FixField::id` gives today: the registry, the catalog, the store
+and the CBlock reader rename a field after it is built, and a stored id
+would go stale where a derived one cannot. Wherever an id crosses a boundary
+- `FixKey::Id`, `FixMsg::get_by_id`, Python, Node, a row - it is that
+integer, rendered as its decimal; `FixKey::from(i32)` keeps meaning a tag,
+and an id is always spelled `FixKey::Id`, because one integer must not have
+two readings. `FixMsg::lift_source` answers the tag a facet was read from,
+because a lift source is declared by tag and the tag is the whole of what
+it is; the field that tag names is the registry's to answer.
+
+The branch goes. `FixBranch`, the branch half of the old identity, the
+`tag:branch` spelling, the admissibility rule that let a dialect claim only
+`5000..40000`, the branch table and its order, the four-tier resolution
+(standard canonical, named canonical, standard alias, named alias), every
+`Option<&FixBranch>` parameter, the codec's pin and its per-row dialect, the
+builder's and the message's own-branch step, the store's `branches.json`
+manifest and per-branch folders, and the `branches` array of the JSON
+snapshot are all deleted. What a dictionary contributes is recorded on the
+field it contributed to: `fix:branches` is a comma-separated list of
+dialect names, each validated as an alias is (non-empty, no `,`), folded by
+ASCII case once, deduplicated under the crate fold and kept sorted so that
+two registries built from the same dictionaries in any order hash alike.
+`FixField::branches` and `has_branch` read it, `FixFieldMut::set_branches`
+and `add_branch` write it, `merge_with` unions it, and a message root the
+codec builds carries none, because a message is not a dictionary member.
+`FixRegistry::dialects` lists the distinct names any field or definition
+carries. Membership is provenance a caller filters on; resolution never
+consults it.
+
+**What one namespace means for a field that arrives.** The identity is the
+pair, so three things can happen when a field is added or merged:
+
+| the registry holds | the arrival | what happens |
+| --- | --- | --- |
+| the same tag under the same folded name | the same field | update: `merge_with` unions its tags, aliases, membership and the rest, as today |
+| the same tag under another name | a new field | it is registered under its own id, *and* the holder gains the arrival's name as an alias; a bare wire tag keeps answering the first holder, the newcomer is reached by its name or its id |
+| the same folded name under another tag | the same field spelled with another tag | it merges into the holder, which gains the tag as an alternate; no second field |
+| neither | a new field | it is inserted as it arrived |
+
+A name is what identifies a field to a reader, so a new name on a held tag
+is a new thing a dialect defined over a tag it reused; a tag is what
+identifies a field on the wire, so a held name on a new tag is the same
+thing spelled with another number. The asymmetry is the rule and not an
+accident of it. Two identities hashing to one id - possible, since the id
+is 32 bits - is a typed conflict on insert, exactly as a digest collision is
+today, and every id hit is rechecked against the tag and the fold before it
+counts.
+
+**Resolution without tiers.** Canonical before alternate for tags, canonical
+name before alias for names, the fold always, and nothing else:
+`get_field_by_id` is exact; `get_field_by_tag` answers the canonical holder
+of a tag, then an alternate; `get_field_by_name` answers the canonical fold,
+then an alias fold; `get_field_by_path` is decision 9 unchanged. On a
+message, `known_by_tag` and `known_by_name` are those two lookups, and
+`child_index` keeps the registry's canonical spelling before an exact child
+before the one folded child. Message codes live in one map under the same
+rule as fields - a definition re-declaring a code under the same folded name
+folds into the stored one, under another name it is a second message reached
+by its name. The bare code answers the message named as tag 35's code set
+names the code - what the specification calls it, and what a reader of
+`35=D` means - else the first in name order: both are facts of the catalog's
+content rather than of the order it was built in, so a dictionary folded,
+stored and loaded answers the same message, and a venue's second message on
+a specification code never takes that code from the specification's. The
+counter tables are keyed by counter tag, since every caller holds a tag.
+`known_msgtype` and `known_group` go with the tiers they existed for.
+
+**The codec.** No pin, no dialect: `FixCodec::with_branch`, `dialect_of`
+and `tier` go, `RowTier` is the declared message alone, and `RowExtras`,
+`RowStamp`, `Builder` and `FixMsg` lose their branch member. A row's
+`pluginid` capture fills the crate's `pluginid` field and selects nothing.
+A dialect's default FIX version loses its home with the branch: the
+version a row reads at is the row's own `beginstring` capture or column,
+else the `FixCodec::with_version` pin, else what the line states -
+`ApplVerID`, then `BeginString` - else the registry's newest, exactly as
+before with the dialect's default step taken out; a CBlock file that
+declared one is read under the pin the caller states.
+
+**Crate fields as tuples.** Every field this crate defines is declared once
+as a `(tag, name)` pair - `PLUGINID_TAG_NAME`, `TIMESTAMP_TAG_NAME`,
+`VERSION_TAG_NAME` and the rest - because that pair is what identifies it,
+and a caller that names one of them names both halves. The bare `*_TAG`
+constants and `TIMESTAMP_NAME` are deleted with the branch. ULBridge's own
+fields keep their tags from `ULBRIDGE_TAG_MIN` and carry
+`fix:branches=ulbridge`; that spelling is `ULBRIDGE_DIALECT`, which replaces
+`ULBRIDGE_BRANCH`. The derived definition-tag block stays, as it never
+depended on a branch; `USER_TAG_MIN`/`USER_TAG_MAX` and `is_admissible` go,
+since nothing gates a tag on its dictionary any more.
+
+**Ingest and the store.** `FixRegistry::from_cfb_file(handle, dialect)` and
+`FixField::from_cfb_file` stamp the dialect on every field, group, component
+and message the file produces - standard tags included, since membership
+means "this dictionary speaks it"; `add_cfb_file(handle, dialect)` takes
+the dialect or the file's stem and merges under the table above; the
+`aliases` parameter goes with `dialect_of`. The store writes
+`fields/<shard>.json` and `<category>/<name>.json` and nothing keyed by
+branch; a placeholder does not copy the target's membership, as it does not
+copy its tag. The shipped dictionary under `config/fix` changes in no file,
+because it never declared a branch and the id is not stored.
+
+**Order.** Tag-major, then the tag's holder, then id, so `FixFieldIter` and
+the bindings' documented ascending iteration keep their order on a registry
+of any size - and so the store, which writes in that order and loads in
+file order, hands the bare tag back to the field that held it: the holder
+is decided by arrival and survives a round trip because it is written first.
+
+**What it collides with.** Decisions 6 and 9 name "the codec's dialect first
+and then the standard branch" among what survives: that clause is
+superseded here, and the rest of both - alias before exact, the one fold,
+canonical spelling before folded child, the list-transparent descend, the
+unique-head rule - is what this decision keeps. `FixRegistry::stable_hash`
+moves, because the branches it folded in are gone. The Iceberg snapshot
+branches are another word and untouched.
+
+**Written in:** `fix/mod.rs`, on `FixId`; `fix/field.rs`, on `fix:branches`;
+`fix/registry.rs`, on the insert rule; `docs/fix/registry.md`.
+**Fixtures:** the three rows of the table, each through `add_field` and
+through `merge_with`, with the alias and the alternate asserted on the
+holder and the bare tag answering the first holder; two identities forced
+onto one id refused; `Msg_Type`, `msgtype` and `MsgType` one id; a CBlock
+merged under a dialect stamping every field it touched and unioning onto a
+standard one; the one message-code namespace; iteration order over a
+registry holding two fields on one tag; the equivalence snapshot, unmoved;
+the allocation pins over the unseeded fold, still zero.
+
+**What it costs.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `fix/mod.rs` | `FixBranch` deleted; `FixId` one `i32` with `of(tag, name)`; the colon grammar gone | `FixKey`'s three doors; `From<i32>` = a tag |
+| `fix/field.rs` | `fix:branch` -> `fix:branches`; the branch-identity refusal in `merge_with` gone | the tag-must-agree refusal; every other `fix:` key |
+| `fix/registry.rs`, `catalog.rs`, `memo.rs` | one namespace: tag, alternate, name, alias and id indexes, unseeded; the table above; counters by tag; one code map | `identity_of`'s borrowed read; zero allocations per lookup |
+| `fix/codec.rs`, `build.rs`, `msg.rs`, `batch.rs`, `ulbridge.rs`, `lift.rs`, `anomaly.rs`, `latest.rs` | no branch member, pin, tier or dialect; `pluginid` a fill; version as stated above | the wire bytes, the entries, the row values, the equivalence snapshot |
+| `fix/cfb.rs`, `store.rs` | dialect stamped on every produced field; no manifest, no branch folders, no snapshot `branches` | the shard arithmetic; provenance checks; the shipped files |
+| `fix/crated.rs` | `*_TAG_NAME` tuples; `ULBRIDGE_DIALECT` | the tags themselves |
+| tests, benchmarks | the branch pins go or are re-spelled; `numeric_branch.rs` goes | `tier_order_never_lets_an_alternate_key_shadow_a_canonical_one`, the path and fold cases |
+| Python, Node, CLI | `field.fix.id` an int, `fix.branches` a list, `--dialect`; every `branch=` gone | argument order and error semantics elsewhere |
+| docs | eleven pages and the explorer re-spelled | |
+
+## 12. One reading of a stray byte, owned by the charset layer; the charset a line is read in is what its handle declares
+
+Settled when this branch's charset layer met decision 10 in one merge. The two
+had written the same fact twice and a third fact three ways: `media/text/line.rs`
+held a hand-written Windows-1252 table beside the generated one in
+`charset/tables.rs`; bytes offered as UTF-8 that are not UTF-8 read per invalid
+run as Windows-1252 through the text line and whole as ISO 8859-1 through
+`Charset::Utf8.transcribe` (`caf\xC3\xA9 \xE9` is `café é` by the first and
+`cafÃ© é` by the second); and `TextOptions::charset` decoded row-header
+captures strictly while decision 10 decodes captures and body alike where the
+line is made, so the option's own contract - "captures only, `body` stays the
+bytes that arrived" - was false the moment the two met. Three rules settle it,
+and each was tried against the code by three readers instructed to refute it
+before it was written here.
+
+**Rule one - the reading.** Bytes offered as UTF-8, or as US-ASCII, that are
+not what they were offered as are read - never refused, never `U+FFFD` - by
+one rule written once in the charset layer: every valid UTF-8 run is kept as it
+is, and every other byte reads as the character Windows-1252 gives it, as the
+WHATWG Encoding Standard tables it - `0x80`-`0x9F` the classic table's
+punctuation, currency and letters, `0xA0`-`0xFF` as `U+00A0`-`U+00FF`, and the
+five bytes the classic table leaves undefined (`0x81`, `0x8D`, `0x8F`, `0x90`,
+`0x9D`) as the C1 controls of the same number. Per invalid run, because a
+capture is mostly UTF-8 with a stray byte far more often than it is wholly
+Windows-1252 - decision 10's reasoning, now the layer's. The table is the
+generated `CP1252`, checked against Python's codec registry in both directions,
+and the rule for its five holes is the one the layer already applies to an
+unassigned byte of any Windows page (`SingleByte::transcribe_sink`), so nothing
+is restated: the reading is `charset::unicode::utf8_transcribe_into`, a walk
+over `utf8_chunks()` that copies each valid run and sends each invalid run
+through the table's transcribing walk, answering how many bytes it read that
+way. `Charset::Utf8.transcribe`, `Charset::Ascii.transcribe` and their
+`transcribe_smol` are that function; `TextLine::from_bytes` calls it in the
+branch a valid line never enters and holds no table of its own. US-ASCII reads
+exactly as UTF-8 - a US-ASCII declaration is a UTF-8 declaration with a
+narrower promise, and a broken promise about UTF-8-compatible text has one
+rule - so `Ascii.transcribe(b"caf\xC3\xA9")` is `café`, not `cafÃ©`, which the
+WHATWG `us-ascii` label (the windows-1252 decoder, whole) would answer; WHATWG
+is cited for the byte table and for nothing else. What does not move: `decode`
+refuses and names the byte, `decode_lossy` marks it `U+FFFD`, an unassigned
+byte of a single-byte charset reads as its C1 control, a lone UTF-16 surrogate
+stays `U+FFFD` because no byte-wise reading of it exists, and `Str::from_bytes`
+still decodes `utf8`/`ascii` columns strictly and transcribes every other
+charset, so no stored value changes.
+
+**Rule two - the owner.** There is no charset option on the text record
+reader. The handle's media type is the one owner of "which charset are these
+bytes in", as it is for a structured document (`text::io::Plan`) and for
+`Transcoded`: the reader reads `Charset::from_media_type(handle.media_type())`
+once, where it is built, beside the codings it already reads there, and
+nothing past that point holds a `Charset`. Decision 10's sentence stands as
+written - a `TextOptions` charset is a knob for a case nobody has - and the
+charset contract's two sentences stand with it: a layer that wants a charset
+argument wants the wrong seam, and reading a resource in one charset is not a
+second option on every reader. The explicit argument the precedence rule names
+is `Transcoded::new(handle, charset)` in Rust and `set_media_type` on every
+handle in every binding, which exist. `TextOptions::charset`, `set_charset`,
+`with_charset`, `TextBytes::decode`, the `charset` field of `TextLines`, the
+Python and Node accessors, the pickle item and the options-table row are
+deleted; the strict `capture_value`/`row_timestamp` path is `main`'s again.
+
+**Rule three - the declaration is applied at the transport.** Where the
+declared charset is neither UTF-8 nor US-ASCII, the reader lays a transcribing
+stream decoder over the coding chain at the three places it builds a transport
+(`read_owned_arrow_reader_at`, `read_owned_text_lines_at`, `row_size`) - coding
+first, charset second, the order `text::io::Plan` already composes in - so the
+line splitter, the row header, `lstrip`/`rstrip`, the direction, adjacent
+deduplication, classification and the entries all read the declared text, and
+`TextLine::from_bytes` finds every line text as read. Under UTF-8 or US-ASCII
+nothing is wrapped: the transport is the object `main` builds, and every line
+takes `main`'s instructions. The stream transcribes and never refuses, as
+decision 10 never refuses: a byte the declared charset leaves unassigned reads
+as the C1 control of its number, a lone surrogate as `U+FFFD`, and a Unicode
+sequence the source cuts short at its very end as `U+FFFD` for the bytes that
+are left. A byte-order mark that names the declared Unicode form is taken off,
+the declaration winning over the mark exactly as the structured plan has it; no
+mark is read where nothing was declared, so an undeclared `EF BB BF` stays the
+first three bytes of the first line as it does on `main`. The writer follows
+the same declaration, or a declared handle would read its own UTF-8 back as
+legacy bytes: bodies are rendered through `Charset::writer` around the coding
+writer, and an append compares the tail against the terminator as encoded.
+
+Two consequences are the rule and not an accident of it. First, under a
+declaration every count the reader takes in bytes - `max_record_byte_size`,
+`dropped_byte_size`, the decoded size a limit is measured against - is a count
+of the bytes it split, which are the decoded bytes: the units a coding already
+gives (a gzip'd capture's "bytes as read" were never its compressed bytes) and
+the units `Transcoded` gives. "Bytes as read" means below the transport, and
+the charset is transport. Decision 10's "the limit bounds the wire" stands for
+the undeclared case, where the transport is the wire. Second,
+`decoded_byte_size` keeps one meaning - how many bytes the reader had to read
+other than as declared, so a reader auditing a capture can find the lines it
+repaired - and is `0` under a declaration: the reader did what the handle said
+and repaired nothing, and a file mis-declared as Windows-1252 reads as the
+mojibake it was declared to be. Whether a resource was declared is the
+handle's fact, `MediaType::charset`, and not a per-line count.
+
+**Why the transport and not the line, and not a resolved reading at the
+assembly.** The charset contract forbids a record layer branching on a
+charset per row, and the rule is structural: a `Charset` compare per line is
+not measurable against the validation of a kilobyte line (three orders below
+criterion's noise on `text_lines/decode`), and it is refused all the same,
+because a `Charset` in `TextLine`, in `TextLines` or in `line.rs` is a second
+place the fact lives. A per-line page (decode after the split, into a page of
+its own) would also match the row header against wire bytes the handle has
+just said are not UTF-8, so `\S+` in Unicode mode never matches `ü` and the
+capture is silently null, and it would pay two allocations and a second walk
+on every declared line holding a high byte. A reading resolved once and
+applied where the splitter copies each part into the line's vector keeps wire
+units but puts a second unit into eight arithmetic sites of the reader's
+hottest loop, each a place where one missed site is silent mojibake, and
+cannot read UTF-16 at all. The transport touches nothing per line, reads
+UTF-16 because it decodes before it splits, composes with the codings the way
+the structured reader already does, and is the one door `owned_handle` cannot
+bypass, because it copies the media type onto the handle it re-opens. Its
+cost, stated: two 64 KiB buffers and one `Box` per declared reader, and two
+`memcpy` passes over every byte of a declared resource (ASCII runs by the
+word-at-a-time scan, high bytes by one table entry each); a mostly-ASCII
+Western export pays those passes where a per-line page would borrow every
+all-ASCII line, and a Cyrillic log pays no allocation per line where a per-line
+page would pay two.
+
+**What it decides that decision 10 left open.** Decision 10 could not tell
+`C3 A9` written as two Latin-1 letters from one UTF-8 `é` and took the UTF-8
+reading because it is what the row's schema declares. With a declaration the
+reader can tell, and does: under `text/plain;charset=windows-1252` those bytes
+read `Ã©`, under `windows-1251` `ГЁ`. The undeclared case keeps decision 10's
+rule unchanged.
+
+**What it collides with, and how each is settled.**
+
+- *Decision 10's "no option".* Kept, literally: the sentence stays in
+  `DECISIONS.md` and in `docs/media/text.md`, and the merged tree carries no
+  option.
+- *Decision 10's "the decode comes last".* Kept for the undeclared case and
+  for every count's meaning; under a declaration the transport decodes below
+  everything, and the counts follow the transport as they already follow a
+  coding. The docs row that says "counted in bytes as read" says what "as
+  read" means.
+- *Decision 10's table paragraph and fixtures.* The table's owner moves; not
+  one of its six fixtures moves in value, and the one that asserted the hand
+  table (`windows_1252(byte) == byte as char` for the five holes) asserts the
+  generated table instead (`Charset::Cp1252.scalar_of(byte).is_none()`).
+  Equivalence rests on two facts, both pinned at the layer: `utf8_chunks()`
+  never puts a byte below `0x80` in an invalid run, so the table's walk is one
+  entry per byte with `char::from(byte)` for the five width-0 holes - exactly
+  the deleted `match`; and the walk is byte-wise over the whole buffer, never
+  the chunked `Decoder`, which would call `E2 82` at the end of a line pending
+  and refuse at `finish` where decision 10 reads `â‚`.
+- *The charset contract's "non-UTF-8 offered as UTF-8 as ISO 8859-1".*
+  Changed to rule one, in `docs/charset/index.md`, the `Charset::transcribe`
+  doc and the `AGENTS.md` Charsets bullet; `Utf8.transcribe(b"caf\xe9") ==
+  "café"` and `Cp1252.transcribe(b"ok\x81") == "ok\u{81}"` hold; what moves was
+  pinned nowhere: `Utf8.transcribe(b"caf\xC3\xA9 \xE9")` from `cafÃ© é` to
+  `café é`, `Utf8.transcribe(b"\x93x\x94")` from two C1 controls to `“x”`,
+  `Ascii.transcribe(b"\x80")` from `U+0080` to `€`.
+- *`Transcoded` refuses where the record reader transcribes.* Two doors, two
+  contracts, both stated: a document read whole and addressed at random names
+  damage by position (`Error::Codec`, through `Transcoded` and `text::from_io`),
+  and a line is a wire fact a capture reader never refuses a whole file for.
+- *A mis-declared handle.* A media type set from a stale `Content-Type` -
+  `charset=iso-8859-1` over UTF-8 bytes, a common server default - now reads
+  the mojibake it declares where `main` repaired nothing and read `é`. Named
+  as the hazard it is, in `docs/media/text.md`, and pinned; the override is the
+  handle's media type or `Transcoded::new(handle, Utf8)`.
+- *The known bypass.* `Transcoded<File>` and `Coded<File>` delegate
+  `bound_location` to the file they wrap, and `owned_handle` re-opens that
+  location raw under the wrapper's stripped media type, so a record read
+  through either wrapper over a local file decodes nothing. Pre-existing, on
+  both sides of the merge; not fixed here, named in the hand-off with its fix
+  (a byte-changing wrapper answers no bound location), and the reason
+  `docs/charset/transcoded.md` now points a declared handle at its media type.
+- *The `Decoder`'s refusal position.* `push_sink` reported a byte position
+  relative to the chunk, not to the first byte the decoder was fed as its doc
+  promises. Fixed beside the transcribing mode, since the same lines change;
+  pinned.
+
+**Written in:** `charset.rs` (the module doc's intake list, the `transcribe`
+doc, `transcriber`), `charset/unicode.rs` (`utf8_transcribe_into`),
+`charset/decoder.rs` (the transcribing mode), `media/text/line.rs` (on
+`decoded`), `media/text/arrow.rs` (the three transport sites and the writer),
+`docs/charset/index.md`, `docs/media/text.md`, `AGENTS.md` Charsets.
+**Fixtures:** at the layer, the six decision-10 lines re-run through
+`Utf8.transcribe` unmoved in value, the mixed line, the `0x80`-`0x9F` row
+against the WHATWG index entry by entry, `58=\xE2\x82` read as `â‚` with count
+`2`, `Ascii` on `caf\xC3\xA9` and on `\x80`, `transcribe_into` counting `1` for
+`caf\xe9` under UTF-8 and `0` for all-ASCII under any charset; through the
+reader, a `text/plain;charset=windows-1251` buffer reading `Москва` where
+`text/plain` reads `Ìîñêâà`, `C3 A9` under a declared `windows-1252` reading
+`Ã©`, body and captures alike as `utf8` with `decoded_byte_size` `0`, a
+Unicode-class header capturing `Zürich` under a declaration, `0x81` under a
+declared `windows-1252` reading `U+0081` with no refusal, a UTF-16LE capture
+with its mark splitting into two rows with the mark gone, a declared
+`iso-8859-1` handle over UTF-8 bytes reading mojibake by declaration, a byte
+limit under a declaration counting decoded bytes, a declared buffer round-
+tripping through the writer with one wire byte per scalar, a `Transcoded`
+buffer needing nothing, a declared `us-ascii` handle over `caf\xe9` reading
+`café` with `decoded_byte_size` `1`; in the counting allocator, an absolute
+pin on `read_text_lines` over UTF-8 lines at 16 and at 1 024 rows with the
+per-line slope stated, and a declared read costing the same constant over the
+UTF-8 read of the same lines at both sizes; the equivalence snapshot, unmoved;
+the Python and Node record dictionaries answering `str` for a declared body.
+
+**What it costs.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `charset/unicode.rs`, `charset.rs` | `utf8_transcribe_into`; `Utf8`/`Ascii` `transcribe`, `transcribe_smol` and `transcribe_sink` read through it; `Charset::transcriber` beside `decoder` | `decode`, `decode_lossy`, `decode_into`, every table, every single-byte `transcribe`, the all-ASCII borrow, `INLINE_CAPACITY` |
+| `charset/decoder.rs`, `charset/reader.rs` | a transcribing mode that never refuses; positions rebased on `consumed`; `Reader` generic over its source so `Send` follows it | `Decoder`'s strict mode and its carry; `Charset::reader` |
+| `media/text/line.rs` | `windows_1252` deleted; `decoded` calls `utf8_transcribe_into` in the branch a valid line never enters | `from_bytes`/`set_body`/`set_captures` and their contract; the page and offsets of every UTF-8 line; every decision-10 fixture |
+| `media/text/options.rs`, `bytes.rs` | `charset` and its accessors deleted; `TextBytes::decode` deleted | every other option; `as_str` |
+| `media/text/arrow.rs` | the charset resolved once beside the codings at the three transport sites and laid over the coding chain when not UTF-8/US-ASCII, the mark taken off a declared Unicode form; `TextLines.charset` deleted; `encoded_bodies` and the append tail through the declaration | `RawRows`, `convert`, the `Utf8` transport object, the Arrow schema (`body: utf8`), every UTF-8 corpus fixture |
+| Python, Node | `TextOptions.charset` and the pickle item deleted; nothing added | `set_media_type`/`setMediaType`, `MediaType.charset`, argument order and error semantics elsewhere |
+| docs, `AGENTS.md` | the rule stated once in `docs/charset/index.md` and pointed to; the options row deleted; a "declaring a charset" section on the text page; the intake list and the last Charsets bullet re-spelled | "There is no charset option"; the precedence bullet |
+
+**How it lands.** Three commits, so each number has one cause: the merge,
+with this decision written and the option deleted; the reading moved into the
+layer; the declaration at the transport. Each is measured against the one
+before it on `text_lines`, `text_record_framing`, `text_scan`, `fix/line` and
+`fix/pipeline`, named baselines, a quiet box; `text_scan` and `fix/line` never
+see a charset and are the controls, and a regression above criterion's noise on
+`text_lines/decode/*`, `text_record_framing/oversized/*` or
+`fix/pipeline/{text_read,parse_text_arrow_reader,parse_lines}` falsifies the
+commit that shows it.

@@ -13,6 +13,7 @@ criterion_group!(
     fix_benches::cblock::benchmarks,
     fix_benches::mutate::benchmarks,
     fix_benches::pipeline::benchmarks,
+    fix_benches::pipeline::line_benchmarks,
     fix_benches::store::benchmarks,
     fix_benches::ulconfig::benchmarks,
 );

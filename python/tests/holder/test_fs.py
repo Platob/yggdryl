@@ -406,9 +406,9 @@ class TestFramedText:
 
         table = reader.read_all()
         assert table.column("body").to_pylist() == [
-            b"first\ncontinued in a",
-            b"leading in b",
-            b"second",
+            "first\ncontinued in a",
+            "leading in b",
+            "second",
         ]
         assert table.column("rownum").to_pylist() == [1, 1, 2]
         assert table.column("kind").to_pylist() == ["A", None, "B"]

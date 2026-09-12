@@ -6,9 +6,8 @@ use napi::bindgen_prelude::{Generator, Result};
 use napi_derive::napi;
 use yggdryl::{FixCategory, FixRegistry, MsgType};
 
-use super::id_from_js;
 use crate::types::field::JsField;
-use crate::{napi_error, ordering_value};
+use crate::{exact_i32, napi_error, ordering_value};
 
 /// Lazy category definitions with a retained native registry.
 #[napi(iterator, js_name = "FixDefinitionIterator")]
@@ -89,13 +88,13 @@ impl JsMsgType {
         JsField::from_core(self.inner().as_field().clone())
     }
 
-    /// Look up the unique repeating group for a native counter identifier.
+    /// Look up the unique repeating group for a native counter tag.
     #[napi]
-    pub fn get_group_by_counter(&self, id: String) -> Result<Option<JsField>> {
-        let id = id_from_js(&id)?;
+    pub fn get_group_by_counter(&self, tag: f64) -> Result<Option<JsField>> {
+        let tag = exact_i32(tag, "tag")?;
         Ok(self
             .inner()
-            .get_group_by_counter(id)
+            .get_group_by_counter(tag)
             .cloned()
             .map(JsField::from_core))
     }

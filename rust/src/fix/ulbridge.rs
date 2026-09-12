@@ -1,4 +1,4 @@
-//! ULBridge's own vocabulary, on a dictionary of its own.
+//! ULBridge's own vocabulary, a dictionary the registry holds by name.
 //!
 //! A [bridge configuration document](crate::MimeType::ULCONFIG) states what a
 //! session interface *is* - which venue it talks to, over which host and port,
@@ -12,19 +12,21 @@
 //! | `SenderCompID`, `TargetCompID`, `BeginString` | FIX's own tags 49, 56 and 8 |
 //! | everything else | this dictionary's own tags, from [`ULBRIDGE_TAG_MIN`] |
 //!
-//! # Why a branch
+//! # Why a dictionary of its own
 //!
 //! Because ULBridge is not FIX and is not this crate. The specification
-//! publishes no `PrimaryHost`, so putting one on the standard branch would
-//! say it does; this crate did not invent it either, so the crate's own
-//! tags above [`CRATE_TAG_MIN`](super::CRATE_TAG_MIN) are not its home. It
-//! is a vendor's dictionary, which is exactly what a [`FixBranch`] is for -
-//! and being a branch is also what lets a venue keep its own 20001 without
-//! colliding.
+//! publishes no `PrimaryHost`, so a field claiming to be FIX's would say it
+//! does; this crate did not invent it either, so the crate's own tags above
+//! [`CRATE_TAG_MIN`](super::CRATE_TAG_MIN) are not its home. It is a
+//! vendor's dictionary, so every field here is stamped as a member of
+//! [`ULBRIDGE_DIALECT`] in its `fix:branches`, and a venue keeps its own
+//! 20001 beside it under its own name: a field is its tag and its name, and
+//! a name that differs is a different field.
 //!
-//! A reader pins it with [`FixCodec::with_branch`](super::FixCodec), and the
-//! names FIX publishes still resolve, because a name is looked for in the
-//! message's own branch first and in the standard one after.
+//! A reader registers them with
+//! [`FixRegistry::with_ulbridge_fields`](super::FixRegistry::with_ulbridge_fields),
+//! and the names FIX publishes still resolve, because the registry is one
+//! namespace.
 //!
 //! # One configuration per message
 //!
@@ -39,9 +41,11 @@
 //! # fn main() -> yggdryl::Result<()> {
 //! let held = yggdryl::fix_ulbridge_fields()?;
 //! assert_eq!(held[0].name(), "MBean");
-//! // A venue's own 20001 is a different field, because the branch differs.
+//! // A venue's own 20001 under another name is a different field.
 //! let mine = held[0].as_fix().id()?.expect("an identity");
-//! assert_ne!(mine, yggdryl::FixId::standard(20_001));
+//! assert_eq!(mine, yggdryl::FixId::of(20_001, "mbean")?);
+//! assert_ne!(mine, yggdryl::FixId::of(20_001, "VenueOwnThing")?);
+//! assert!(held[0].as_fix().has_branch("ulbridge"));
 //! # Ok(())
 //! # }
 //! ```
@@ -52,10 +56,8 @@ use smol_str::SmolStr;
 
 use crate::{DataType, Field, Result, Scalar};
 
-use super::FixBranch;
-
-/// The dictionary ULBridge's own attributes are defined on.
-pub const ULBRIDGE_BRANCH: &str = "ulbridge";
+/// The dictionary ULBridge's own attributes are members of.
+pub const ULBRIDGE_DIALECT: &str = "ulbridge";
 
 /// The first tag this dictionary claims.
 ///
@@ -63,17 +65,17 @@ pub const ULBRIDGE_BRANCH: &str = "ulbridge";
 /// venues actually crowd, and the 30000s this crate's own fields sit in.
 pub const ULBRIDGE_TAG_MIN: i32 = 20_001;
 
-/// The tag carrying the MBean a request named.
-pub const MBEAN_TAG: i32 = 20_001;
+/// The tag and name carrying the MBean a request named.
+pub const MBEAN_TAG_NAME: (i32, &str) = (20_001, "MBean");
 
-/// The tag carrying the Jolokia operation a document asked for.
-pub const OPERATION_TAG: i32 = 20_002;
+/// The tag and name carrying the Jolokia operation a document asked for.
+pub const OPERATION_TAG_NAME: (i32, &str) = (20_002, "Operation");
 
-/// The tag carrying the status a Jolokia answer came back with.
-pub const STATUS_TAG: i32 = 20_003;
+/// The tag and name carrying the status a Jolokia answer came back with.
+pub const STATUS_TAG_NAME: (i32, &str) = (20_003, "Status");
 
-/// The tag carrying what a Jolokia answer failed with.
-pub const ERROR_TAG: i32 = 20_004;
+/// The tag and name carrying what a Jolokia answer failed with.
+pub const ERROR_TAG_NAME: (i32, &str) = (20_004, "Error");
 
 /// The name the actual returned ObjectName member carries.
 const SESSIONINTERFACE_NAME: &str = "SessionInterface";
@@ -90,16 +92,14 @@ const SESSIONINTERFACE_NAME: &str = "SessionInterface";
 ///
 /// Every capture is named for what it does. `timestamp` is the row's clock,
 /// so it stamps the message; `msgCtxId` fills the crate's own
-/// [`MsgCtxId`](super::MSGCTXID_TAG); `seqNum` fills `MsgSeqNum(34)`,
+/// [`MsgCtxId`](super::MSGCTXID_TAG_NAME); `seqNum` fills `MsgSeqNum(34)`,
 /// through the bridge's own spellings of standard fields; `pluginid` is the
 /// plugin that logged the line, which fills the crate's own
-/// [`PluginId`](super::PLUGINID_TAG) and names the dialect the line is read
-/// under where the dictionary declares a branch by that name or alias, as
-/// [`FixCodec::parse_text_line`](super::FixCodec::parse_text_line)
-/// says - the session names the line moved between are what the line itself
-/// spells, never the plugin; `senderSessionId` is the session instance the
-/// bridge handled the line on, and fills
-/// [`SenderSessionId`](super::SENDERSESSIONID_TAG) - but only where the
+/// [`PluginId`](super::PLUGINID_TAG_NAME) - the session names the line
+/// moved between are what the line itself spells, never the plugin;
+/// `senderSessionId` is the session instance the bridge handled the line
+/// on, and fills [`SenderSessionId`](super::SENDERSESSIONID_TAG_NAME) - but
+/// only where the
 /// message states none of its own, because a fill never lands over a value the
 /// message already stated. A row spelling `SESSIONID` therefore keeps its own
 /// reading, and a line that spells nothing takes the bracket's.
@@ -134,22 +134,52 @@ pub(super) fn capture_tag(name: &str) -> Option<i32> {
 /// The bridge's own spellings of standard fields, beside the tags they fill.
 const CAPTURE_SPELLINGS: [(&str, i32); 1] = [("seqnum", 34)];
 
-/// This dictionary, built once.
-fn branch() -> Result<FixBranch> {
-    FixBranch::from_str(ULBRIDGE_BRANCH)
+/// The document attributes whose spelling names a field of this crate's own,
+/// beside the name the dictionary holds them under.
+///
+/// A registry is one namespace, and every registry holds the crate's `state`
+/// (the order's, read out of `OrdStatus`) and its `version` (the FIX version
+/// a row was read at). A bridge document spells a plugin's own state and its
+/// own version with the same two words, and they are not the same facts, so
+/// the dictionary calls them `PluginState` and `PluginVersion` and the
+/// document's spelling is translated at the one boundary a document crosses,
+/// in both directions: the row fills under the dictionary's name, and the
+/// arrival record keeps the document's spelling, exactly as a line keeps
+/// what it wrote. Every other attribute is named as the document spells it.
+const ATTRIBUTE_SPELLINGS: [(&str, &str); 2] =
+    [("State", "PluginState"), ("Version", "PluginVersion")];
+
+/// The dictionary name one document attribute is held under, where it is not
+/// the attribute's own spelling.
+fn attribute_name(spelling: &str) -> Option<&'static [u8]> {
+    ATTRIBUTE_SPELLINGS
+        .iter()
+        .find(|(document, _)| crate::types::folds_equal(document, spelling))
+        .map(|(_, held)| held.as_bytes())
+}
+
+/// The document spelling of one dictionary field of the bridge's.
+fn attribute_spelling(name: &str) -> &str {
+    ATTRIBUTE_SPELLINGS
+        .iter()
+        .find(|(_, held)| crate::types::folds_equal(held, name))
+        .map_or(name, |(document, _)| document)
 }
 
 /// The fields, built once and shared.
 static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| build().ok());
 
-/// One field on ULBridge's branch, named exactly as the document spells it.
+/// One field of ULBridge's dictionary, named as the document spells it.
 ///
 /// The canonical name is the attribute's own spelling, because that spelling
 /// is what arrives and resolution folds ASCII case once on the way in - so
-/// nothing has to translate a document's keys before they resolve.
+/// nothing has to translate a document's keys before they resolve - except
+/// the two [`ATTRIBUTE_SPELLINGS`] translates, whose spelling is the crate's
+/// own.
 fn attribute(name: &str, tag: i32, dtype: DataType, description: &str) -> Result<Field> {
     let mut field = dtype.nullable_field(name);
-    field.as_fix_mut().set_id(&branch()?, tag)?;
+    field.as_fix_mut().set_tag(tag)?;
+    field.as_fix_mut().set_branches([ULBRIDGE_DIALECT])?;
     field.set_display(name)?;
     field.set_description(description)?;
     Ok(field)
@@ -218,10 +248,11 @@ fn build() -> Result<Vec<Field>> {
             "Whatever an operator wrote about this session interface.",
         ),
         (
-            "State",
+            "PluginState",
             20_019,
             DataType::utf8(),
-            "What the session is doing now: logged, stopped, and the rest.",
+            "What the session is doing now: logged, stopped, and the rest; \
+             the document spells it State.",
         ),
         (
             "Type",
@@ -230,10 +261,11 @@ fn build() -> Result<Vec<Field>> {
             "Which side of the connection this is: A accepts, I initiates.",
         ),
         (
-            "Version",
+            "PluginVersion",
             20_021,
             DataType::utf8(),
-            "The plugin version this session interface runs.",
+            "The plugin version this session interface runs; the document \
+             spells it Version.",
         ),
         (
             "PrimaryHost",
@@ -404,26 +436,26 @@ fn build() -> Result<Vec<Field>> {
 
     let mut fields = vec![
         attribute(
-            "MBean",
-            MBEAN_TAG,
+            MBEAN_TAG_NAME.1,
+            MBEAN_TAG_NAME.0,
             DataType::utf8(),
             "The MBean the request named, which is a pattern where it named many.",
         )?,
         attribute(
-            "Operation",
-            OPERATION_TAG,
+            OPERATION_TAG_NAME.1,
+            OPERATION_TAG_NAME.0,
             DataType::utf8(),
             "The Jolokia operation the document asked for: read, write, exec, list, search.",
         )?,
         attribute(
-            "Status",
-            STATUS_TAG,
+            STATUS_TAG_NAME.1,
+            STATUS_TAG_NAME.0,
             DataType::Int64,
             "The status the answer came back with; absent on a request.",
         )?,
         attribute(
-            "Error",
-            ERROR_TAG,
+            ERROR_TAG_NAME.1,
+            ERROR_TAG_NAME.0,
             DataType::utf8(),
             "What the answer failed with, where it failed.",
         )?,
@@ -440,14 +472,14 @@ fn build() -> Result<Vec<Field>> {
 ///
 /// # Errors
 ///
-/// Returns the schema grammar's refusal when the branch or one of the
-/// datatypes does not build, which is a defect in this module rather than
-/// anything a caller did.
+/// Returns the schema grammar's refusal when one of the datatypes does not
+/// build, which is a defect in this module rather than anything a caller
+/// did.
 pub fn fix_ulbridge_fields() -> Result<&'static [Field]> {
     FIELDS
         .as_deref()
         .ok_or_else(|| crate::Error::InvalidRecord {
-            path: ULBRIDGE_BRANCH.into(),
+            path: ULBRIDGE_DIALECT.into(),
             reason: crate::text::expected_got("ULBridge's own fields", "a build failure"),
         })
 }
@@ -464,7 +496,7 @@ impl super::FixRegistry {
     ///
     /// Returns the registry's own refusal when a field collides with something
     /// already held, which cannot happen on a dictionary that does not already
-    /// declare ULBridge's branch.
+    /// hold a field under one of these tags and names.
     pub fn with_ulbridge_fields(mut self) -> Result<Self> {
         self.add_fields(fix_ulbridge_fields()?.iter().cloned())?;
         Ok(self)
@@ -472,15 +504,12 @@ impl super::FixRegistry {
 }
 
 /// The returned ObjectName and attributes, as flat scalar pairs.
-fn push_attributes(
-    pairs: &mut Vec<(Vec<u8>, Vec<u8>)>,
-    mbean: Option<&str>,
-    attributes: &Scalar,
-) -> Result<()> {
+fn push_attributes(pairs: &mut Vec<Pair>, mbean: Option<&str>, attributes: &Scalar) -> Result<()> {
     if let Some(mbean) = mbean {
         pairs.push((
             SESSIONINTERFACE_NAME.as_bytes().to_vec(),
             mbean.as_bytes().to_vec(),
+            None,
         ));
         // The ObjectName's own properties, read where the classifier reads
         // them so one spelling answers for both.
@@ -494,14 +523,18 @@ fn push_attributes(
             if let Some(value) =
                 crate::mime_type::line::object_name_property(mbean.as_bytes(), property)
             {
-                pairs.push((member.to_vec(), value.to_vec()));
+                pairs.push((member.to_vec(), value.to_vec(), None));
             }
         }
     }
     if let Some(attributes) = attributes.as_record() {
         for (attribute, value) in attributes {
             if let Some(value) = rendered(value)? {
-                pairs.push((attribute.as_bytes().to_vec(), value));
+                pairs.push((
+                    attribute.as_bytes().to_vec(),
+                    value,
+                    attribute_name(attribute),
+                ));
             }
         }
     }
@@ -510,15 +543,13 @@ fn push_attributes(
 
 /// What the row a document arrived on stated beside it.
 ///
-/// A row's dialect, version, clock and own columns are borrowed from the row
+/// A row's version, clock and own columns are borrowed from the row
 /// the reader framed, and one document answers for as many plugins as it
 /// names, so what the row stated is retained here and applied to each of
 /// them rather than borrowed across an expansion the caller drives. One
 /// copy per document, never per line: an ordinary line borrows.
 #[derive(Clone, Debug)]
 struct RowStamp {
-    /// The dialect the row is read under, where it named one.
-    branch: Option<FixBranch>,
     /// The version the row is read at, where it stated one.
     version: Option<crate::Version>,
     /// The row's own clock.
@@ -530,15 +561,10 @@ struct RowStamp {
 impl RowStamp {
     /// What a row stated, retained; nothing at all where it stated nothing.
     fn retained(extras: super::build::RowExtras<'_>) -> Option<Arc<Self>> {
-        if extras.branch.is_none()
-            && extras.version.is_none()
-            && extras.clock.is_none()
-            && extras.fills.is_empty()
-        {
+        if extras.version.is_none() && extras.clock.is_none() && extras.fills.is_empty() {
             return None;
         }
         Some(Arc::new(Self {
-            branch: extras.branch.cloned(),
             version: extras.version,
             clock: extras.clock.cloned(),
             fills: extras
@@ -551,19 +577,20 @@ impl RowStamp {
 }
 
 /// One leaf of the envelope, where the document stated it.
-fn push_leaf(
-    pairs: &mut Vec<(Vec<u8>, Vec<u8>)>,
-    key: &[u8],
-    value: Option<&Scalar>,
-) -> Result<()> {
+fn push_leaf(pairs: &mut Vec<Pair>, key: &[u8], value: Option<&Scalar>) -> Result<()> {
     let Some(value) = value else {
         return Ok(());
     };
     if let Some(rendered) = rendered(value)? {
-        pairs.push((key.to_vec(), rendered));
+        pairs.push((key.to_vec(), rendered, None));
     }
     Ok(())
 }
+
+/// One pair a document states: the key as the document spells it, the
+/// rendered value, and the dictionary's name for the field where that is
+/// not the key.
+type Pair = (Vec<u8>, Vec<u8>, Option<&'static [u8]>);
 
 /// What one JSON value contributes, or nothing where it states nothing.
 ///
@@ -781,7 +808,7 @@ impl UlPlugin {
             {
                 continue;
             }
-            attributes.push((SmolStr::new(name), value.clone()));
+            attributes.push((SmolStr::new(attribute_spelling(name)), value.clone()));
         }
         let mut request = Vec::new();
         if let Some(value) = message.get_by_name("MBean") {
@@ -826,12 +853,12 @@ impl UlPlugin {
             push_leaf(&mut pairs, b"Status", root.get("status"))?;
             push_leaf(&mut pairs, b"Error", root.get("error"))?;
         } else if let Some(mbean) = &self.mbean {
-            pairs.push((b"MBean".to_vec(), mbean.as_bytes().to_vec()));
+            pairs.push((b"MBean".to_vec(), mbean.as_bytes().to_vec(), None));
         }
         push_attributes(&mut pairs, self.mbean.as_deref(), &self.attributes)?;
-        let borrowed: Vec<(&[u8], &[u8])> = pairs
+        let borrowed: Vec<super::codec::SpelledPair<'_>> = pairs
             .iter()
-            .map(|(key, value)| (key.as_slice(), value.as_slice()))
+            .map(|(key, value, name)| (key.as_slice(), value.as_slice(), *name))
             .collect();
         let fills: Vec<super::build::Fill<'_>> = self
             .stamp
@@ -844,7 +871,6 @@ impl UlPlugin {
             })
             .collect();
         let extras = super::build::RowExtras {
-            branch: self.stamp.as_ref().and_then(|stamp| stamp.branch.as_ref()),
             version: self.stamp.as_ref().and_then(|stamp| stamp.version),
             clock: self.stamp.as_ref().and_then(|stamp| stamp.clock.as_ref()),
             fills: &fills,
@@ -1073,8 +1099,8 @@ impl super::FixCodec {
     /// Bulk responses and wildcard values may yield several messages; each
     /// carries the common envelope and exactly one MBean's scalar attributes.
     ///
-    /// Pin [`ULBRIDGE_BRANCH`] to type a document's own attributes; FIX's own
-    /// names resolve either way.
+    /// Register [`fix_ulbridge_fields`] to type a document's own attributes;
+    /// FIX's own names resolve either way.
     ///
     /// # Errors
     ///

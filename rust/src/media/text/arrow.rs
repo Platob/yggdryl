@@ -4,7 +4,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::ops::Range;
 use std::sync::Arc;
 
-use arrow_array::{Array as _, BinaryArray, RecordBatch};
+use arrow_array::cast::AsArray as _;
+use arrow_array::{Array as _, RecordBatch};
 use arrow_schema::{DataType as ArrowDataType, Schema};
 use regex_automata::dfa::{
     Automaton,
@@ -18,7 +19,7 @@ use crate::holder::Buffer;
 use crate::holder::Holder;
 use crate::media::IORecordOptions;
 use crate::types::temporal::iso;
-use crate::{Charset, Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
+use crate::{Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
 use crate::{Cursor, IOBase};
 
 use super::leading::LeadingFragment;
@@ -102,7 +103,6 @@ fn text_lines(
         reads_entries: plan.reads_entries(),
         reads_classification: plan.reads_classification(),
         timezone: options.timezone().copied(),
-        charset: options.charset(),
         timestamp_capture,
     })
 }
@@ -970,8 +970,6 @@ pub struct TextLines {
     reads_entries: bool,
     reads_classification: bool,
     timezone: Option<Timezone>,
-    /// The charset a capture is read in, resolved before the first byte.
-    charset: Charset,
     /// Where the timestamp capture sits, when the header declares one.
     timestamp_capture: Option<usize>,
 }
@@ -991,36 +989,40 @@ impl TextLines {
     /// Turn one parsed row into the typed line the columns are built from.
     fn convert(&self, row: RawRow) -> Result<TextLine> {
         let index = row.index;
+        // The line is made text here - the body and every capture decoded
+        // where they are not UTF-8 - and everything after this reads text.
+        // Everything before it read the bytes as they were, and the counts it
+        // took are counts of those bytes.
         let body = TextBytes::from_whole_page(row.body)?;
-        let mut line = TextLine::new(index, body);
+        let mut line = TextLine::from_bytes(index, body)?;
         line.set_url(self.url.clone());
         line.set_direction(row.direction);
         line.set_dropped_byte_size(row.dropped_byte_size);
 
         if self.reads_classification {
-            let (shape, _) = crate::mime_type::line::classify(line.body().as_bytes());
+            let (shape, _) = crate::mime_type::line::classify(line.body_bytes().as_bytes());
             line.set_bodytype(Some(shape));
         }
         if self.reads_entries {
-            let entries = super::TextEntries::from_bytes(line.body());
+            let entries = super::TextEntries::from_bytes(line.body_bytes());
             line.set_entries(entries);
         }
 
         let mut captures = Vec::with_capacity(row.captures.len());
         for value in row.captures {
             captures.push(match value {
-                Some(bytes) => Some(TextBytes::from_bytes(bytes)?),
+                Some(bytes) => Some(TextBytes::from_whole_page(Arc::new(bytes))?),
                 None => None,
             });
         }
+        line.set_captures(captures)?;
         match self.timestamp_capture {
             Some(at) => {
-                let stamp = self.row_timestamp(captures.get(at), index)?;
+                let stamp = self.row_timestamp(line.capture(at), index)?;
                 line.set_timestamp(stamp);
             }
             None => line.set_timestamp(self.mtime),
         }
-        line.set_captures(captures);
         Ok(line)
     }
 
@@ -1029,37 +1031,20 @@ impl TextLines {
     /// A header that declares the capture but did not match it on this line
     /// falls back too: a line the expression did not date is exactly the case
     /// the handle's own time is there to answer.
-    fn row_timestamp(
-        &self,
-        capture: Option<&Option<TextBytes>>,
-        index: u64,
-    ) -> Result<Option<i128>> {
-        let Some(Some(raw)) = capture else {
+    fn row_timestamp(&self, capture: Option<&str>, index: u64) -> Result<Option<i128>> {
+        let Some(text) = capture else {
             return Ok(self.mtime);
         };
-        let text = raw.decode(self.charset).map_err(|error| {
-            row_error(
-                index,
-                None,
-                self.url.as_deref(),
-                super::options::MTIME_COLUMN,
-                format_smolstr!("{error}"),
-            )
-        })?;
-        let parsed = parse_capture(
-            &text,
-            &super::options::mtime_dtype(),
-            self.timezone.as_ref(),
-        )
-        .map_err(|reason| {
-            row_error(
-                index,
-                None,
-                self.url.as_deref(),
-                super::options::MTIME_COLUMN,
-                reason,
-            )
-        })?;
+        let parsed = parse_capture(text, &super::options::mtime_dtype(), self.timezone.as_ref())
+            .map_err(|reason| {
+                row_error(
+                    index,
+                    None,
+                    self.url.as_deref(),
+                    super::options::MTIME_COLUMN,
+                    reason,
+                )
+            })?;
         Ok(parsed
             .as_temporal()
             .map(|held| i128::from(held.count()))
@@ -1288,6 +1273,12 @@ fn render_batches(
     Ok(())
 }
 
+/// The `body` column a write renders, whichever string layout carries it.
+///
+/// Text and nothing else, because that is what a text row's body is: a
+/// `binary` column may hold anything, and rendering one would write bytes no
+/// reader of the file could read back as the rows they were. The three
+/// layouts Arrow spells a string in are one spelling here.
 struct BodyColumn(usize);
 
 impl BodyColumn {
@@ -1298,13 +1289,13 @@ impl BodyColumn {
             .position(|field| field.name().eq_ignore_ascii_case("body"))
             .ok_or_else(|| Error::InvalidRecord {
                 path: SmolStr::new_static("$.body"),
-                reason: SmolStr::new_static("expected a binary body column to encode text rows"),
+                reason: SmolStr::new_static("expected a utf8 body column to encode text rows"),
             })?;
-        if schema.field(index).data_type() != &ArrowDataType::Binary {
+        if !is_string_layout(schema.field(index).data_type()) {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.body"),
                 reason: format_smolstr!(
-                    "expected a binary body column, got {}",
+                    "expected a utf8 body column, got {}",
                     schema.field(index).data_type()
                 ),
             });
@@ -1319,22 +1310,15 @@ impl BodyColumn {
         terminator: &[u8],
         output: &mut Vec<u8>,
     ) -> Result<()> {
-        let body = batch
-            .column(self.0)
-            .as_any()
-            .downcast_ref::<BinaryArray>()
-            .ok_or_else(|| Error::InvalidRecord {
-                path: SmolStr::new_static("$.body"),
-                reason: SmolStr::new_static("expected a binary body column"),
-            })?;
+        let body = Bodies::of(batch.column(self.0))?;
         for row in 0..batch.num_rows() {
-            if body.is_null(row) {
+            let Some(value) = body.get(row) else {
                 return Err(Error::InvalidRecord {
                     path: format_smolstr!("$[{row}].body"),
-                    reason: SmolStr::new_static("expected a non-null binary line body"),
+                    reason: SmolStr::new_static("expected a non-null line body"),
                 });
-            }
-            let value = body.value(row);
+            };
+            let value = value.as_bytes();
             let contains_break = if flexible {
                 memchr::memchr2(b'\n', b'\r', value).is_some()
             } else {
@@ -1352,6 +1336,74 @@ impl BodyColumn {
             output.extend_from_slice(terminator);
         }
         Ok(())
+    }
+}
+
+/// Whether a column holds text in one of the layouts Arrow spells a string
+/// in - plain, large-offset, view, or any of those behind a dictionary.
+fn is_string_layout(dtype: &ArrowDataType) -> bool {
+    match dtype {
+        ArrowDataType::Utf8 | ArrowDataType::LargeUtf8 | ArrowDataType::Utf8View => true,
+        ArrowDataType::Dictionary(_, values) => is_string_layout(values),
+        _ => false,
+    }
+}
+
+/// One `body` column, whichever of Arrow's string layouts it came in.
+///
+/// A dictionary-encoded string column - what Arrow JS infers for a plain
+/// record's string - is unpacked once per batch into the layout it encodes,
+/// so every row after that is one offset read.
+struct Bodies {
+    column: arrow_array::ArrayRef,
+    layout: StringLayout,
+}
+
+#[derive(Clone, Copy)]
+enum StringLayout {
+    Utf8,
+    LargeUtf8,
+    Utf8View,
+}
+
+impl Bodies {
+    fn of(column: &arrow_array::ArrayRef) -> Result<Self> {
+        let column = match column.data_type() {
+            ArrowDataType::Dictionary(_, values) if is_string_layout(values) => {
+                arrow_cast::cast(column, values)?
+            }
+            _ => Arc::clone(column),
+        };
+        let layout = match column.data_type() {
+            ArrowDataType::Utf8 => StringLayout::Utf8,
+            ArrowDataType::LargeUtf8 => StringLayout::LargeUtf8,
+            ArrowDataType::Utf8View => StringLayout::Utf8View,
+            other => {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$.body"),
+                    reason: format_smolstr!("expected a utf8 body column, got {other}"),
+                });
+            }
+        };
+        Ok(Self { column, layout })
+    }
+
+    /// The body of one row, `None` where the row has none.
+    fn get(&self, row: usize) -> Option<&str> {
+        match self.layout {
+            StringLayout::Utf8 => {
+                let held = self.column.as_string::<i32>();
+                held.is_valid(row).then(|| held.value(row))
+            }
+            StringLayout::LargeUtf8 => {
+                let held = self.column.as_string::<i64>();
+                held.is_valid(row).then(|| held.value(row))
+            }
+            StringLayout::Utf8View => {
+                let held = self.column.as_string_view();
+                held.is_valid(row).then(|| held.value(row))
+            }
+        }
     }
 }
 

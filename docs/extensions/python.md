@@ -1162,7 +1162,7 @@ with pytest.raises(ValueError, match="overwrite"):
 
 ### Record options
 
-Configure field, selection, batch sizing, compression, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema, logical framing, leading-fragment treatment, per-record decoded-byte retention, and row numbering of [plain-text records](../media/text.md).
+Configure field, selection, batch sizing, compression, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema, logical framing, leading-fragment treatment, per-record retained-byte limit, and row numbering of [plain-text records](../media/text.md).
 
 ## pandas and polars
 
@@ -1358,23 +1358,23 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixBranch`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), `ULBRIDGE_BRANCH` (`"ulbridge"`, the branch a bridge's own fields declare), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim for a scalar field. The `fix:` vocabulary is typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`, and the definition metadata `codes`, `counter`, `component` and `msgtype`.
+`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `UlPlugins`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, and `ULBRIDGE_DIALECT` (`"ulbridge"`, the membership every field a bridge defines carries). The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `description`, and the definition metadata `codes`, `counter`, `component` and `msgtype`.
 
 | Crossing | Rule |
 | --- | --- |
-| keys | an `int` is a tag, a `str` a name or dotted path; omitted branches use the core's deterministic best match; a colon-bearing string is a name, never an identifier |
-| branches and identifiers | lookup arguments cross as `str`, parsed once by the core; `FixBranch` carries declared branch metadata |
-| `field.fix.branch`, `field.fix.id` | `""` when the key is absent, `None` exactly when `fix:tag` is absent; assigning `""` removes the key, and assigning a `"tag:branch"` id moves both halves at once |
-| lookups | `field_by_name` and `field_by_path` accept an optional branch restriction; canonical names precede aliases, standard precedes named branches within a tier; `field_by_id("55:")` selects the standard branch exactly |
+| keys | an `int` is a tag, a `str` a name or dotted path; a bare tag or name uses the core's deterministic best match - the canonical holder before an alternate tag, the canonical name before an alias, under the one fold; a colon-bearing string is a name, never an identifier |
+| identity | `field.fix.id` is the `int` the core derives from the tag and the folded name - `MsgType`, `msgtype` and `Msg_Type` under 35 are one id - on every read and never stored, so it is read-only and `None` exactly when `fix:tag` is absent; `field_by_id`, `get_field_by_id`, `remove_by_id`, `FixMsg.by_id` and `get_by_id` take that `int` exactly, and only a method spelled `id` reads an `int` as one |
+| membership | `field.fix.branches` is the sorted, lowercase `list[str]` of the dialects that contributed the field, assignable from any iterable of names - an empty or comma-bearing name is a `ValueError`; `add_branch` and `has_branch` fold ASCII case; `FixRegistry.dialects()` lists the distinct names any field or definition carries; no lookup consults it |
+| lookups | `field_by_tag`, `field_by_name` and `field_by_path` take one argument each; a held tag under another name is a second field beside the holder, reached by its name or its id while the bare tag keeps answering the holder, and iteration is tag-major with the holder first |
 | categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
 | CRUD | `create_definition`, `definition`, `update_definition`, `remove_definition`; `definitions` iterates one category lazily |
-| locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; category folders contain standard definitions directly and branch definitions under `<branch>/` |
+| locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; a store is `fields/<shard>.json` beside `messages/`, `components/` and `groups/`, one file per name, with membership inside each field's metadata |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
-| branch digests | `branch_by_digest` / `get_branch_by_digest` take the `int` a branch digests to - `FixBranch.digest()`, and what the store's branch manifest publishes - and answer the `FixBranch` it names; only a declared branch resolves |
-| `FixMsg.entries()` | `(tag, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them; the dialect is the message's own `branch`, not each pair's |
+| ingest | `from_cfb_file(location, dialect=None)` and `add_cfb_file(location, dialect=None)` stamp every field, group, component and message the file produces with the dialect, `add_cfb_file` taking the file's stem when none is given; the root element's version is read past, so `FixCodec(version=...)` dates a capture |
+| `FixMsg.entries()` | `(tag, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
 | `FixMsg` | equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and `FixMsg.from_row(schema, row, registry=None)` reads a fixed row back, entries included |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; its wire code remains complete UTF-8 text |
-| `FixCodec` | pins are keywords - `branch`, `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction`, `batch_byte_size`; `parse_line`, `parse_text_line`, `parse_ulconfig_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
+| `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction`, `batch_byte_size` - and no pin names a dialect: the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the dictionary's newest, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; `parse_line`, `parse_text_line`, `parse_ulconfig_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parse_text_arrow_reader`, `enrich_messages_arrow_reader` and `arrow_reader(schema, messages)` take and answer a `pyarrow.RecordBatchReader`, over the C Stream interface; `write_arrow_reader(reader, sink)` writes lines into a binary file-like and answers their count |
 | `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive()` counts the chains no terminal state has closed, and the lifecycle is mutable, so unhashable |
 | output | `FixMsg.into_row(field)` projects a table row; `into_bytes(separator=1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
@@ -1390,7 +1390,7 @@ import pickle
 import pytest
 
 from yggdryl import DataType, Field, IOBase, Url
-from yggdryl.fix import STANDARD_BRANCH, USER_TAG_MAX, USER_TAG_MIN, FixCodec, FixMsg, FixRegistry, fix_schema
+from yggdryl.fix import FixCodec, FixMsg, FixRegistry, fix_schema
 
 seed = pathlib.Path("config/fix").resolve()
 
@@ -1410,22 +1410,24 @@ with pytest.raises(OverflowError):
 with pytest.raises(TypeError, match="int tag or a str name"):
     registry[3.5]
 
-# A branch and an identifier cross as text: a lookup takes the branch after
-# the name it qualifies, an identifier is the tag then the branch, and a
-# malformed one is a ValueError rather than a miss.
-assert STANDARD_BRANCH == "" and (USER_TAG_MIN, USER_TAG_MAX) == (5000, 40000)
+# A field is its tag and its name: `fix.id` is the int the core derives from
+# both under the one fold, never stored, and only a method spelled `id`
+# reads an int as one - a bare 55 there is an identifier nobody holds.
+symbol = registry[55]
+assert isinstance(symbol.fix.id, int)
+assert registry.field_by_id(symbol.fix.id) == symbol
+assert registry.get_field_by_id(55) is None
+twin = Field("Msg_Type", "utf8")
+twin.fix.tag = 35
+assert twin.fix.id == registry[35].fix.id and registry[35].name == "msgtype"
+assert Field("Untagged", "utf8").fix.id is None
+with pytest.raises(TypeError, match="not bool"):
+    registry.field_by_id(True)
 assert registry.field_by_name("SYMBOL").name == "symbol"
 assert registry.field_by_path("Parties.PartyID").fix.tag == 448
 assert registry.definition("fields", "NoPartyIDs").dtype == DataType("int32")
 assert registry.definition("groups", "Parties").fix.counter == 453
 assert registry.definition("components", "Party").dtype.kind == "nested"
-assert registry.field_by_id("55:").fix.id == "55:"
-with pytest.raises(ValueError, match="fix branch"):
-    registry.field_by_name("symbol", "2cme")
-with pytest.raises(ValueError, match="fix identifier"):
-    registry.field_by_id("55")
-with pytest.raises(TypeError):
-    registry.field_by_id(55)
 
 # Absence is a KeyError carrying the native message; a refusal is a ValueError.
 with pytest.raises(KeyError) as absent:
@@ -1435,13 +1437,31 @@ assert registry.get_field_by_name("Nope") is None
 with pytest.raises(ValueError, match="fix:tag"):
     registry.insert(Field("Untagged", "utf8"))
 
-# A tag the FIX specification assigns cannot move to another dictionary.
-vendor = Field("TradeID", "utf8")
-vendor.fix.id = "5001:CME"
-assert vendor.fix.id == "5001:cme" and vendor.fix.branch == "cme"
-with pytest.raises(ValueError, match="fix:branch"):
-    vendor.fix.tag = 35
-assert vendor.fix.id == "5001:cme"
+# Membership is what the dictionaries that contributed a field say: a sorted,
+# lowercase list a caller filters on and no lookup consults.
+vendor = Field("VenueTradeKey", "utf8")
+vendor.fix.tag = 5001
+assert vendor.fix.branches == []
+vendor.fix.branches = ["CME", "cme"]
+vendor.fix.add_branch("Eurex")
+assert vendor.fix.branches == ["cme", "eurex"] and vendor.fix.has_branch("CME")
+with pytest.raises(ValueError, match="fix:branches"):
+    vendor.fix.add_branch("cme,eurex")
+assert registry.dialects() == []
+registry.insert(vendor)
+assert registry.dialects() == ["cme", "eurex"]
+assert registry["venue_trade_key"].fix.id == vendor.fix.id
+
+# A held tag under another name is a second field beside the holder: reached
+# by its name or its id, listed after the holder, while the bare tag keeps
+# answering the holder, which gains the name as an alias.
+venue = Field("VenueSymbol", "utf8")
+venue.fix.tag = 55
+registry.insert(venue)
+assert registry[55].name == "symbol" and registry[55].fix.aliases == ["VenueSymbol"]
+assert registry["VenueSymbol"].fix.id == venue.fix.id != symbol.fix.id
+assert [field.name for field in registry if field.fix.tag == 55] == ["symbol", "VenueSymbol"]
+assert registry.remove_by_id(venue.fix.id).name == "VenueSymbol"
 
 # A message shares the dictionary it resolved against, so mutating it refuses.
 root = Field("row", DataType.from_fields([registry.field_by_tag(55)]), nullable=False)
@@ -1454,9 +1474,9 @@ assert copy.deepcopy(message) == message
 assert pickle.loads(pickle.dumps(message)) == message
 assert pickle.loads(pickle.dumps(message)).registry == registry
 assert hash(message) == hash(FixMsg(root, message.value, registry))
-assert message.branch == STANDARD_BRANCH
-assert message.by_id("55:").as_py() == "AAPL"
-assert message.get_by_id("5001:cme") is None
+assert message.by_id(symbol.fix.id).as_py() == "AAPL"
+assert message.get_by_id(vendor.fix.id) is None
+assert message.lift_source("symbol") == 55
 
 # Generic intake is lazy even when the source yields one message.
 wire = b"8=FIX.4.4|35=D|55=AAPL|10=0|"
@@ -1477,11 +1497,14 @@ addressable on the message.
 ```python
 import json
 
-from yggdryl.fix import FixCodec, FixMessages, FixRegistry, UlPlugin
+from yggdryl.fix import ULBRIDGE_DIALECT, FixCodec, FixMessages, FixRegistry, UlPlugin, fix_ulbridge_fields
 
 registry = FixRegistry()
 registry.with_ulbridge_fields()
-codec = FixCodec(registry, branch="ulbridge")
+assert ULBRIDGE_DIALECT == "ulbridge" and registry.dialects() == ["ulbridge"]
+assert all(field.fix.has_branch("ulbridge") for field in fix_ulbridge_fields())
+assert [registry[tag].name for tag in (20019, 20021)] == ["PluginState", "PluginVersion"]
+codec = FixCodec(registry)
 document = [
     {"request": {"type": "read", "mbean": "bridge:type=Plugin,name=Orders"},
      "status": 200, "value": {"Name": "Orders"}},
@@ -1555,10 +1578,11 @@ assert selected.into_fixmsg(codec).by_name("Name").as_py() == "Orders"
 - a `fix:` property on another protocol's view -> `TypeError` naming that view's scheme.
 - an absent registry folder -> loads empty and creates nothing.
 - `registry[key]`, `registry.get`, `key in registry`, and `FixMsg[key]` -> the same int-tag or str-name pair.
-- `FixRegistry` -> mutable, so unhashable; equality and `stable_hash()` cover all four categories and branch declarations.
+- `FixRegistry` -> mutable, so unhashable; equality and `stable_hash()` cover all four categories, a field's `fix:branches` included like any other metadata.
 - a registry linked by a `FixMsg`, `MsgType`, live iterator or process default -> mutations raise `ValueError`; copy the registry for independent edits.
-- `remove` -> reaches the standard branch only; `remove_by_id` is how a vendor field leaves.
-- `msg.by_id` / `msg.get_by_id` -> name one dictionary exactly and do not tier; `msg.branch` comes from the root field.
+- `remove(key)` -> reads an `int` as a tag, so it reaches the tag's holder; `remove_by_id` is how a field sharing its tag with the holder leaves on its own.
+- `msg.by_id` / `msg.get_by_id` -> take the `int` a field's `fix.id` answers and match it exactly, no alias, alternate tag or fold consulted; `msg.lift_source(facet)` answers the `int` tag a facet was read from.
+- `field.fix.tag` -> assignable to any non-negative tag; the id follows it, since nothing gates a tag on the dictionary that speaks it.
 - iterating a `FixMsg` -> `(name, Scalar)` pairs in the root's declared order; `value` answers a `Scalar`, `field` a `Field`.
 - a native `Scalar` or a sequence in the root's own order -> crosses untouched, at every depth, including a repeating group's occurrence.
 - every other native refusal -> the idiomatic Python exception with the Rust message, path or byte offset included.

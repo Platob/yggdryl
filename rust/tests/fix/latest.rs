@@ -11,7 +11,7 @@ use yggdryl::fix::{FixCode, FixFill, FixFillSource, FixLineageEntry, FixPedigree
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::types::State;
 use yggdryl::{
-    DataType, Field, FixCategory, FixCodec, FixMsg, FixRegistry, Scalar, VERSION_TAG, Version,
+    DataType, Field, FixCategory, FixCodec, FixMsg, FixRegistry, Scalar, VERSION_TAG_NAME, Version,
 };
 
 fn version(text: &str) -> Version {
@@ -127,7 +127,7 @@ fn an_alias_named_child_is_re_expressed_under_the_registry_field() {
     assert!(!latest.as_field().fields()[0].is_nullable());
     assert_eq!(text(&latest, 55), Some("AAPL"));
     assert_eq!(latest.version(), None, "an undated registry stamps nothing");
-    assert_eq!(latest.get_by_tag(VERSION_TAG), None);
+    assert_eq!(latest.get_by_tag(VERSION_TAG_NAME.0), None);
 }
 
 #[test]
@@ -230,7 +230,7 @@ fn the_version_is_stamped_from_a_dated_registry_and_a_second_pass_is_equal() {
     assert_eq!(message.version(), None);
     let latest = message.into_latest().expect("restated");
     assert_eq!(latest.version(), Some(version("4.3")));
-    assert_eq!(text(&latest, VERSION_TAG), Some("4.3"));
+    assert_eq!(text(&latest, VERSION_TAG_NAME.0), Some("4.3"));
     assert_eq!(names(&latest), ["lastqty", "version"]);
     // The lineage's old spelling reaches the field as an alias does.
     assert_eq!(
@@ -243,7 +243,10 @@ fn the_version_is_stamped_from_a_dated_registry_and_a_second_pass_is_equal() {
 
     // A stated version is replaced in place rather than stood beside.
     let mut stated = DataType::utf8().required_field("version");
-    stated.as_fix_mut().set_tag(VERSION_TAG).expect("a tag");
+    stated
+        .as_fix_mut()
+        .set_tag(VERSION_TAG_NAME.0)
+        .expect("a tag");
     let message = built(
         dated_registry(),
         vec![stated, DataType::Int64.required_field("LastShares")],
@@ -710,12 +713,12 @@ fn a_batch_read_lands_at_the_newest_version_when_asked() {
         batches[0].column(at).as_string::<i32>().value(0).to_owned()
     };
     let restated = rows(true);
-    assert_eq!(column(&restated, VERSION_TAG), newest.to_string());
+    assert_eq!(column(&restated, VERSION_TAG_NAME.0), newest.to_string());
     let read = rows(false);
-    assert_eq!(column(&read, VERSION_TAG), "4.2");
+    assert_eq!(column(&read, VERSION_TAG_NAME.0), "4.2");
 
     // The line door composes the same way.
-    let line = TextLine::new(0, TextBytes::from_bytes(REPORT).expect("a page"));
+    let line = TextLine::from_bytes(0, TextBytes::from_bytes(REPORT).expect("a page")).unwrap();
     let message = codec
         .parse_text_line(&line)
         .expect("a readable line")
@@ -746,7 +749,7 @@ fn the_dictionary_carries_the_rules_the_engine_reads() {
     registry.update(rule80a).expect("updated");
     assert!(
         registry
-            .get_definition(FixCategory::Groups, "parties", None)
+            .get_definition(FixCategory::Groups, "parties")
             .is_some(),
         "the catalog is untouched"
     );
@@ -815,7 +818,7 @@ fn declared_parties(list: Field, value: Scalar) -> FixMsg {
 fn a_declared_group_stating_no_occurrence_is_opened_by_a_fill_into_it() {
     let registry = super::committed_registry();
     let mut list = registry
-        .get_definition(FixCategory::Groups, "parties", None)
+        .get_definition(FixCategory::Groups, "parties")
         .expect("parties")
         .clone();
     list.set_nullable(true);
@@ -842,7 +845,7 @@ fn a_declared_group_stating_no_occurrence_is_opened_by_a_fill_into_it() {
 fn a_group_that_arrived_as_a_large_list_keeps_its_shape() {
     let registry = super::committed_registry();
     let definition = registry
-        .get_definition(FixCategory::Groups, "parties", None)
+        .get_definition(FixCategory::Groups, "parties")
         .expect("parties");
     let item = match definition.dtype() {
         DataType::List(item) => item.as_ref().clone(),

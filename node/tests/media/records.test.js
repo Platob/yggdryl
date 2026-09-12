@@ -445,7 +445,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
     [
       ['url', 'Utf8', true],
       ['mtime', 'Timestamp<NANOSECOND, UTC>', true],
-      ['body', 'Binary', false],
+      ['body', 'Utf8', false],
     ],
   )
   // The url column is the `url` datatype: Utf8 storage carrying the extension
@@ -542,7 +542,7 @@ test('a row header that dates a line fills mtime rather than adding a column', (
     counted.schema.fields.map((field) => [field.name, field.type.toString()]),
     [
       ['url', 'Utf8'],
-      ['body', 'Binary'],
+      ['body', 'Utf8'],
       ['mtime', 'Int64'],
     ],
   )

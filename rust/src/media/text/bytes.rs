@@ -1,13 +1,12 @@
 //! A counted range of bytes over one retained page.
 
-use std::borrow::Cow;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use smol_str::format_smolstr;
 
-use crate::{Charset, Error, Result};
+use crate::{Error, Result};
 
 /// A counted range of bytes over one retained page.
 ///
@@ -172,27 +171,9 @@ impl TextBytes {
     }
 
     /// The bytes as text, when they are valid UTF-8.
-    ///
-    /// This is [`Self::decode`] under [`Charset::Utf8`] with the refusal
-    /// dropped, kept because most callers here only ask whether a range is
-    /// already text.
     #[must_use]
     pub fn as_str(&self) -> Option<&str> {
         std::str::from_utf8(self.as_bytes()).ok()
-    }
-
-    /// The bytes as text, read in one charset.
-    ///
-    /// The answer borrows these bytes whenever they are already UTF-8 - which
-    /// an all-ASCII range is under every ASCII-compatible charset - so the
-    /// common capture costs no allocation.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Codec`] naming the charset, the byte position within
-    /// this range, and what was found there.
-    pub fn decode(&self, charset: Charset) -> Result<Cow<'_, str>> {
-        charset.decode(self.as_bytes())
     }
 
     /// Copy the bytes into an owned vector.

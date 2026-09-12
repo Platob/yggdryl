@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 import yggdryl
-from yggdryl import MediaType, TextOptions, charset
+from yggdryl import MediaType, charset
 
 # The charset as this package spells it, and as ``codecs`` knows it.
 PYTHON_NAME = {
@@ -82,11 +82,3 @@ class TestCharsets:
         assert mutable.charset == "iso-8859-1"
         mutable.set_charset(None)
         assert mutable.charset is None
-
-    def test_text_options_declare_the_capture_charset(self) -> None:
-        options = TextOptions()
-        assert options.charset == "utf-8"
-        options.charset = "cp1252"
-        assert options.charset == "windows-1252"
-        with pytest.raises(ValueError):
-            options.charset = "nope"
