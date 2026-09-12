@@ -17,8 +17,9 @@ use yggdryl::{Charset, DataType, Scalar, Str};
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
-/// The widths a column case runs at: one inside the inline buffer, one past it.
-const WIDTHS: [usize; 2] = [8, 64];
+/// The widths a column case runs at: one inside the inline buffer, one past
+/// it, and one where the copy a cell pays past the buffer is the whole cost.
+const WIDTHS: [usize; 3] = [8, 64, 4096];
 
 /// The widths a single-cell case runs at, straddling the inline buffer exactly.
 const CELL_WIDTHS: [usize; 4] = [8, 23, 24, 64];
@@ -214,8 +215,10 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
             &ascii,
         );
         column_round_trip(&mut group, &format!("charset_high_{width}"), &latin, &high);
-        // And the fixed slot, which pads rather than offsets.
-        let fixed = DataType::from_str("fixed_string(windows-1252,64)").expect("a fixed string");
+        // And the fixed slot, which pads rather than offsets, at the column's
+        // own width so that nothing is trimmed and nothing refused.
+        let fixed = DataType::from_str(&format!("fixed_string(windows-1252,{width})"))
+            .expect("a fixed string");
         column_round_trip(&mut group, &format!("fixed_{width}"), &fixed, &ascii);
     }
 

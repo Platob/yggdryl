@@ -55,6 +55,20 @@ fn column_round_trip(
                 .expect("the built column reads back")
         });
     });
+    // Clone and drop of every row read out of the column, one value at a
+    // time: what a value's handle costs once it is no longer a buffer Arrow
+    // owns. The sequence itself is one shared handle, so it is walked.
+    let rows = yggdryl::arrow::array_to_value(&field, array.as_ref())
+        .expect("the built column reads back");
+    let rows = rows
+        .as_sequence()
+        .expect("a column reads back as a sequence");
+    group.bench_function(
+        BenchmarkId::new(format!("{label}_row_clone"), ROWS),
+        |bencher| {
+            bencher.iter(|| black_box(rows).to_vec());
+        },
+    );
 }
 
 pub(crate) fn bytes_benchmarks(criterion: &mut Criterion) {
